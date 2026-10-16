@@ -92,7 +92,16 @@ describe("colours", () => {
 
   test("says why a colour can't be read", () => {
     expect(parseColour("ansi:300")).toEqual(Result.fail("'ansi:300' is not a palette slot (0–255)"))
-    for (const text of ["#12345", "#GGGGGG", "cyan", "ansi:", "ansi:-1", "Default", ""]) {
+    for (const text of [
+      "#12345",
+      "#GGGGGG",
+      "cyan",
+      "ansi:",
+      "ansi:-1",
+      "ansi:007",
+      "Default",
+      "",
+    ]) {
       expect(parseColour(text)).toEqual(
         Result.fail(`'${text}' is not a colour: use #RRGGBB, ansi:N (0–255) or default`),
       )

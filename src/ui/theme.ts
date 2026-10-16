@@ -68,7 +68,7 @@ export type Colour =
   | { readonly _tag: "Default" }
 
 const hexPattern = /^#[0-9A-Fa-f]{6}$/
-const slotPattern = /^ansi:(\d+)$/
+const slotPattern = /^ansi:(0|[1-9]\d*)$/
 
 /** Reads a colour, `#RRGGBB`, `ansi:N` (0–255) or `default`, or says why it can't. */
 export const parseColour = (text: string): Result.Result<Colour, string> => {
