@@ -1,0 +1,22 @@
+{
+  "numStartups": 3,
+  "mcpServers": {
+    "firecrawl": {
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp"],
+      "env": { "FIRECRAWL_API_KEY": "user-secret" }
+    },
+    "exa": { "type": "http", "url": "https://user.example/exa" },
+    "postgres": { "type": "http", "url": "https://user.example/postgres" },
+    "websocket": { "type": "ws", "url": "wss://user.example/ws" }
+  },
+  "projects": {
+    "<repo>": {
+      "allowedTools": [],
+      "mcpServers": { "postgres": { "type": "stdio", "command": "pg-mcp", "args": ["--local"] } }
+    },
+    "/somewhere/else": { "mcpServers": { "digitalocean": { "command": "do-mcp" } } }
+  },
+  "claudeAiMcpEverConnected": ["claude.ai Gmail", "claude.ai Google Drive"],
+  "claudeInChromeDefaultEnabled": "yes"
+}

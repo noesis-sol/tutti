@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "exa": { "type": "sse", "url": "https://project.example/exa" },
+    "postgres": { "type": "http", "url": "https://project.example/postgres" }
+  }
+}

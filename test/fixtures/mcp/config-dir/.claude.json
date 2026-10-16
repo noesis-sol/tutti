@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "browserbase": { "command": "npx", "args": ["-y", "@browserbasehq/mcp-server-browserbase"] }
+  },
+  "projects": {
+    "<repo>": {
+      "mcpServers": { "sentry": { "type": "http", "url": "https://config-dir.example/sentry" } }
+    }
+  }
+}
