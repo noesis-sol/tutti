@@ -25,6 +25,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import type { PermissionModeInEffect } from "./Account.ts"
 import { Attention } from "./Attention.ts"
 import { Transcripts } from "./Transcripts.ts"
 import { initial, step, type Worker, WorkerEvent, WorkerState } from "./WorkerState.ts"
@@ -55,6 +56,20 @@ export interface Receipt {
   readonly stillQueued: ReadonlyArray<string>
   readonly cancelled: ReadonlyArray<string>
 }
+
+/**
+ * What workers' sessions said of the setup on their first system/init (§ 4.1): the permission mode
+ * in effect, when it isn't the one asked for, and the setup problems that ended workers (MCP servers
+ * they weren't given, an API key they would bill).
+ */
+export interface SetupFindings {
+  /** null until a session's mode in effect differs from the one asked for. */
+  readonly permissionMode: PermissionModeInEffect | null
+  readonly problems: ReadonlyArray<string>
+}
+
+/** Nothing found yet. */
+export const noFindings: SetupFindings = { permissionMode: null, problems: [] }
 
 /** A message of a worker's session, as Transcripts records it. */
 export interface SessionMessage {
@@ -147,6 +162,8 @@ export class AgentHost extends Context.Service<
     state(ticket: string): Stream.Stream<WorkerState, AgentGone>
     /** Its sessions' messages, from now on, until it is ended. */
     messages(ticket: string): Stream.Stream<SessionMessage, AgentGone>
+    /** What the sessions' first system/init said of the setup, so far. */
+    readonly setup: Effect.Effect<SetupFindings>
   }
 >()("tutti/agent/AgentHost") {}
 

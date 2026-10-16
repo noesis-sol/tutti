@@ -1,0 +1,317 @@
+// A fake Claude Code for test/agent-host-live.test.ts: started by the Agent SDK in place of the
+// real one (pathToClaudeCodeExecutable), it speaks the SDK's stream-json protocol on stdin and
+// stdout, with the message shapes docs/spikes/01-sdk-session.md and 02-sdk-lifecycle.md recorded
+// (SDK 0.3.301, Claude Code 2.1.301). It answers the SDK's initialize and interrupt control
+// requests, plays one turn per message it is sent (a message sent during a turn waits in its queue
+// and runs, with the others waiting, as the next turn), and ends when its stdin closes, which it
+// logs as `{ closed: true }`.
+//
+// What it does is the scenario in FAKE_CLAUDE_SCENARIO, as JSON. It appends its arguments and every
+// line it reads to the scenario's log, one JSON line each, for the test to read back.
+import { appendFileSync } from "node:fs"
+import { createInterface } from "node:readline"
+
+/** A step of a turn, played after its system/init. */
+type Step =
+  /** An assistant message with this text. */
+  | { readonly text: string }
+  /** Waits until the turn is interrupted. */
+  | { readonly hang: true }
+  /** Waits for a message and takes it, rather than queueing it for the next turn. */
+  | { readonly wait: true }
+  /** The process exits with this code, mid-turn. */
+  | { readonly exit: number }
+  /** Writes this to stderr. */
+  | { readonly stderr: string }
+  /** Calls the SDK's hook callbacks for the event, and waits for their answers. */
+  | {
+      readonly hook: {
+        readonly hook_event_name: string
+        readonly tool_name: string
+        readonly tool_input: Record<string, unknown>
+      }
+    }
+  /** Asks the SDK's canUseTool, waits for the answer, and says what it was. */
+  | { readonly permission: { readonly tool_name: string; readonly input: Record<string, unknown> } }
+
+interface Scenario {
+  /** Fields laid over every system/init. */
+  readonly init?: Record<string, unknown>
+  /** Fields laid over the initialize control request's answer. */
+  readonly initialize?: Record<string, unknown>
+  /** In place of the initialize's answer, a startup failure's result with this reason, then exit 1. */
+  readonly startupFailure?: string
+  /** The process exits with this code at once, before reading anything. */
+  readonly exitAtStart?: number
+  /** Each turn's steps, in order; a turn past them answers `ECHO: <its messages>`. */
+  readonly turns?: ReadonlyArray<ReadonlyArray<Step>>
+  /** The file the arguments and every line read are appended to. */
+  readonly log?: string
+}
+
+interface UserMessage {
+  readonly type: "user"
+  readonly uuid?: string
+  readonly message: { readonly content: unknown }
+}
+
+const scenario: Scenario = JSON.parse(process.env.FAKE_CLAUDE_SCENARIO ?? "{}")
+const args = process.argv.slice(2)
+
+const log = (entry: object) => {
+  if (scenario.log !== undefined) appendFileSync(scenario.log, `${JSON.stringify(entry)}\n`)
+}
+
+/** The value of `--name=value` or `--name value` among the arguments. */
+const flag = (name: string): string | undefined => {
+  for (const [i, arg] of args.entries()) {
+    if (arg === name) return args[i + 1]
+    if (arg.startsWith(`${name}=`)) return arg.slice(name.length + 1)
+  }
+  return undefined
+}
+
+const sessionId = flag("--session-id") ?? flag("--resume") ?? crypto.randomUUID()
+
+const write = (message: object) =>
+  new Promise<void>((resolve) =>
+    process.stdout.write(`${JSON.stringify(message)}\n`, () => resolve()),
+  )
+
+const exit = async (code: number) => {
+  await new Promise<void>((resolve) => process.stdout.write("", () => resolve()))
+  process.exit(code)
+}
+
+log({ args })
+if (scenario.exitAtStart !== undefined) await exit(scenario.exitAtStart)
+
+/** The hook callback IDs the SDK registered, by event. */
+let hookIds: Record<string, ReadonlyArray<string>> = {}
+/** Answers to the control requests this process sent, by request ID. */
+const answers = new Map<string, (response: unknown) => void>()
+let requests = 0
+
+const ask = (request: object) =>
+  new Promise<unknown>((resolve) => {
+    const id = `fake_req_${++requests}`
+    answers.set(id, resolve)
+    void write({ type: "control_request", request_id: id, request })
+  })
+
+/** Messages sent during a turn, waiting for the next. */
+let queued: Array<UserMessage> = []
+let turns = 0
+let running = false
+/** Ends the running turn's hang, when it is interrupted. */
+let interrupted: (() => void) | undefined
+/** Takes the next message, for a turn waiting for one. */
+let waiting: ((message: UserMessage) => void) | undefined
+
+const textOf = (content: unknown): string =>
+  typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? content.map((block) => (typeof block?.text === "string" ? block.text : "")).join("")
+      : ""
+
+const assistant = (text: string) =>
+  write({
+    type: "assistant",
+    message: { role: "assistant", content: [{ type: "text", text }] },
+    parent_tool_use_id: null,
+    session_id: sessionId,
+    uuid: crypto.randomUUID(),
+  })
+
+const result = (text: string, uuids: ReadonlyArray<string>) =>
+  write({
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    result: text,
+    num_turns: 1,
+    duration_ms: 1,
+    duration_api_ms: 1,
+    stop_reason: "end_turn",
+    total_cost_usd: 0,
+    usage: {},
+    modelUsage: {},
+    permission_denials: [],
+    queued_turn_count: queued.length,
+    user_message_uuids: uuids,
+    session_id: sessionId,
+    uuid: crypto.randomUUID(),
+  })
+
+/** Plays a turn for `messages`, then the next for those queued meanwhile. */
+const turn = async (messages: ReadonlyArray<UserMessage>) => {
+  running = true
+  const uuids = messages.flatMap((m) => (m.uuid === undefined ? [] : [m.uuid]))
+  const steps = scenario.turns?.[turns++] ?? [
+    { text: `ECHO: ${messages.map((m) => textOf(m.message.content)).join("\n")}` },
+  ]
+  await write({ type: "system", subtype: "session_state_changed", state: "running" })
+  await write({
+    type: "system",
+    subtype: "init",
+    session_id: sessionId,
+    cwd: process.cwd(),
+    permissionMode: flag("--permission-mode") ?? "default",
+    apiKeySource: "none",
+    tools: [],
+    mcp_servers: [],
+    model: "claude-fake",
+    slash_commands: [],
+    output_style: "default",
+    claude_code_version: "2.1.301",
+    capabilities: ["interrupt_receipt_v1", "interrupt_cancel_queued_v1", "msg_lifecycle_v1"],
+    user_message_uuids: uuids,
+    uuid: crypto.randomUUID(),
+    ...scenario.init,
+  })
+  let last = ""
+  for (const step of steps) {
+    if ("text" in step) {
+      last = step.text
+      await assistant(step.text)
+    } else if ("hang" in step) {
+      await new Promise<void>((resolve) => {
+        interrupted = resolve
+      })
+      interrupted = undefined
+      await write({
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "[Request interrupted by user]" }],
+        },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      })
+      await write({
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        errors: [],
+        num_turns: 1,
+        session_id: sessionId,
+        uuid: crypto.randomUUID(),
+      })
+      await write({ type: "system", subtype: "session_state_changed", state: "idle" })
+      return next()
+    } else if ("wait" in step) {
+      await new Promise<UserMessage>((resolve) => {
+        waiting = resolve
+      })
+      waiting = undefined
+    } else if ("exit" in step) {
+      await exit(step.exit)
+    } else if ("stderr" in step) {
+      process.stderr.write(step.stderr)
+    } else if ("hook" in step) {
+      for (const id of hookIds[step.hook.hook_event_name] ?? []) {
+        await ask({
+          subtype: "hook_callback",
+          callback_id: id,
+          input: { ...step.hook, session_id: sessionId, cwd: process.cwd() },
+          tool_use_id: "toolu_fake",
+        })
+      }
+    } else {
+      await write({ type: "system", subtype: "session_state_changed", state: "requires_action" })
+      const answer = (await ask({
+        subtype: "can_use_tool",
+        tool_name: step.permission.tool_name,
+        input: step.permission.input,
+        tool_use_id: "toolu_fake",
+        display_name: step.permission.tool_name,
+      })) as { behavior?: string } | undefined
+      await write({ type: "system", subtype: "session_state_changed", state: "running" })
+      last = `PERMISSION: ${answer?.behavior}`
+      await assistant(last)
+    }
+  }
+  await result(last, uuids)
+  await write({ type: "system", subtype: "session_state_changed", state: "idle" })
+  return next()
+}
+
+const next = (): Promise<void> | undefined => {
+  running = false
+  if (queued.length === 0) return undefined
+  const taken = queued
+  queued = []
+  return turn(taken)
+}
+
+const control = async (id: string, request: Record<string, unknown>) => {
+  const answer = (response: object) =>
+    write({ type: "control_response", response: { subtype: "success", request_id: id, response } })
+  switch (request.subtype) {
+    case "initialize": {
+      hookIds = Object.fromEntries(
+        Object.entries(
+          (request.hooks ?? {}) as Record<string, Array<{ hookCallbackIds: string[] }>>,
+        ).map(([event, matchers]) => [event, matchers.flatMap((m) => m.hookCallbackIds)]),
+      )
+      if (scenario.startupFailure !== undefined) {
+        await write({
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          errors: [`startup failed: ${scenario.startupFailure}`],
+          num_turns: 0,
+          startup_failure_reason: scenario.startupFailure,
+          session_id: sessionId,
+          uuid: crypto.randomUUID(),
+        })
+        await exit(1)
+      }
+      await answer({
+        commands: [],
+        agents: [],
+        output_style: "default",
+        available_output_styles: ["default"],
+        models: [],
+        account: { subscriptionType: "Claude Max", apiProvider: "firstParty" },
+        ...scenario.initialize,
+      })
+      return
+    }
+    case "interrupt": {
+      const uuids = queued.flatMap((m) => (m.uuid === undefined ? [] : [m.uuid]))
+      if (request.cancel_queued === true) {
+        queued = []
+        await answer({ still_queued: [], cancelled: uuids })
+      } else {
+        await answer({ still_queued: uuids })
+      }
+      interrupted?.()
+      return
+    }
+    default:
+      await answer({})
+  }
+}
+
+const lines = createInterface({ input: process.stdin })
+lines.on("line", (line) => {
+  if (line.trim() === "") return
+  const message = JSON.parse(line)
+  log({ stdin: message })
+  if (message.type === "control_request") {
+    void control(message.request_id, message.request)
+  } else if (message.type === "control_response") {
+    answers.get(message.response.request_id)?.(message.response.response)
+    answers.delete(message.response.request_id)
+  } else if (message.type === "user") {
+    if (waiting !== undefined) waiting(message)
+    else if (running) queued.push(message)
+    else void turn([message])
+  }
+})
+lines.on("close", () => {
+  log({ closed: true })
+  void exit(0)
+})

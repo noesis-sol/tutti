@@ -27,8 +27,10 @@ import {
   AgentStartFailed,
   type Message,
   makeWorkers,
+  noFindings,
   type Receipt,
   type Session,
+  type SetupFindings,
   userMessage,
   type WorkerEntry,
 } from "../agent/AgentHost.ts"
@@ -127,6 +129,8 @@ const uuidOf = (n: number): SDKUserMessage["uuid"] & string =>
 export interface Options {
   /** The project's check commands: tool calls running them are `testing`. */
   readonly checks?: ReadonlyArray<string>
+  /** What the sessions' first system/init said of the setup: nothing by default. */
+  readonly setup?: SetupFindings
 }
 
 /**
@@ -311,6 +315,7 @@ export const layer = (
         current: workers.current,
         state: workers.state,
         messages: workers.messages,
+        setup: Effect.succeed(options.setup ?? noFindings),
       })
 
       const recording = Recording.of({
