@@ -1,7 +1,7 @@
 // tutti's commands (§ 8.1): `tutti` takes the run flags (§ 8.2), and its subcommands are in the
 // table below. Each subcommand finds the project's main checkout from wherever it is started, a
 // ticket's worktree included, since that is where an agent answering a request runs.
-import { Console, Effect, Option } from "effect"
+import { Console, Effect, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
 import { answerWords } from "../agent/attentionFiles.ts"
@@ -29,13 +29,16 @@ export const mainCheckout = (dir: string) =>
     Effect.provide(GitWriter.layer),
   )
 
-// A command's failure: its message on stderr, and exit status 1.
+/** A subcommand failed, and said why on stderr; tutti exits with status 1. */
+export class CommandFailed extends Schema.TaggedError<CommandFailed>()("CommandFailed", {
+  command: Schema.String,
+}) {}
+
+// A command's failure: its message on stderr, and CommandFailed.
 const failed = (message: string) =>
   Effect.andThen(
     Console.error(`tutti answer: ${message}`),
-    Effect.sync(() => {
-      process.exitCode = 1
-    }),
+    Effect.fail(new CommandFailed({ command: "answer" })),
   )
 
 /** `tutti answer`, finding the main checkout with `repo`. */

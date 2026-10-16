@@ -10,5 +10,15 @@ import { tutti } from "./cli/commands.ts"
 export const version: string = pkg.version
 
 if (import.meta.main) {
-  BunRuntime.runMain(Command.run(tutti, { version }).pipe(Effect.provide(BunServices.layer)))
+  BunRuntime.runMain(
+    Command.run(tutti, { version }).pipe(
+      // The command has said why on stderr.
+      Effect.catchTag("CommandFailed", () =>
+        Effect.sync(() => {
+          process.exitCode = 1
+        }),
+      ),
+      Effect.provide(BunServices.layer),
+    ),
+  )
 }

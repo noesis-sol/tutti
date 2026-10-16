@@ -46,7 +46,7 @@ import {
   show,
   showJson,
 } from "../src/answer/answer.ts"
-import { tuttiWith } from "../src/cli/commands.ts"
+import { CommandFailed, tuttiWith } from "../src/cli/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
@@ -831,7 +831,6 @@ describe("tutti answer", () => {
 
     test("lists, as JSON too, and answers with --choice and --reason", async () => {
       const repo = tempRepo()
-      const exitCode = process.exitCode
       const out = capturing()
       const { results, listed } = await run(
         repo,
@@ -866,29 +865,24 @@ describe("tutti answer", () => {
         "The run took the answer to request r2: deny.",
       ])
       expect(out.errors).toEqual([])
-      expect(process.exitCode).toBe(exitCode)
     })
 
-    test("a defaultToNo allow without --confirm fails with exit status 1", async () => {
+    test("a defaultToNo allow without --confirm fails, saying why on stderr", async () => {
       const repo = tempRepo()
-      const exitCode = process.exitCode
       const out = capturing()
-      try {
-        await run(
-          repo,
-          Effect.gen(function* () {
-            yield* ask("tut-1", "Bash", rm, held())
-            yield* until("the request file", present(repo, requestFile("r1")))
-            yield* cli(repo, ["r1", "allow"], out.console)
-          }),
-        )
-        expect(out.errors).toEqual([
-          "tutti answer: not answered: allowing request r1 needs --confirm",
-        ])
-        expect(process.exitCode).toBe(1)
-      } finally {
-        process.exitCode = exitCode
-      }
+      const exit = await run(
+        repo,
+        Effect.gen(function* () {
+          yield* ask("tut-1", "Bash", rm, held())
+          yield* until("the request file", present(repo, requestFile("r1")))
+          return yield* Effect.exit(cli(repo, ["r1", "allow"], out.console))
+        }),
+      )
+      expect(failure(exit)).toEqual(new CommandFailed({ command: "answer" }))
+      expect(out.errors).toEqual([
+        "tutti answer: not answered: allowing request r1 needs --confirm",
+      ])
+      expect(existsSync(join(repo, answerFile("r1")))).toBe(false)
     })
   })
 })
