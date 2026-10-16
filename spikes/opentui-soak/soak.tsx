@@ -105,7 +105,7 @@ const takeSample = async () => {
   const t = producer.transcript.getSnapshot()
   // --gc: a full collection first, to tell memory the GC would free from memory held.
   if (values.gc) Bun.gc(true)
-  const s = await sample(minute)
+  const s = await sample(minute++)
   write({
     ...s,
     ticks: producer.ticks(),
@@ -115,7 +115,6 @@ const takeSample = async () => {
     width: renderer.width,
     height: renderer.height,
   })
-  minute++
   if (performance.now() - started >= minutes * 60_000) await finish("done")
 }
 write({ event: "start", minutes, window: values.window, pid: process.pid, argv: process.argv })

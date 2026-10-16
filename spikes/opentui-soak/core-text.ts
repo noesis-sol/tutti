@@ -77,13 +77,12 @@ process.on("SIGINT", () => void finish("SIGINT"))
 const started = performance.now()
 const takeSample = async () => {
   write({
-    ...(await sample(minute)),
+    ...(await sample(minute++)),
     ticks: tick,
     frames: renderer.getStats().frameCount,
     mounted: 0,
     appended: 0,
   })
-  minute++
   if (performance.now() - started >= Number(values.minutes) * 60_000) await finish("done")
 }
 write({ event: "start", script: "core-text", pid: process.pid })
