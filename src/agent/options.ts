@@ -8,7 +8,13 @@
 // SpawnedProcess is a Node ChildProcess, so this spawn is node:child_process's rather than
 // effect/process's. The SDK reads a custom spawn's stdout and stdin only, so its stderr is passed
 // to the session's stderr callback here.
-import { spawn } from "node:child_process"
+//
+// Each worker also gets a reaper (§ 3.2): a sh in a process group of its own, its stdin a pipe from
+// tutti. Claude Code reads its own stdin's EOF only once a turn is over, so a busy worker would
+// outlive a kill -9 of tutti (docs/spikes/02-sdk-lifecycle.md § 4). That kill closes the reaper's
+// pipe too, and the reaper ends Claude Code's whole group: SIGTERM, then SIGKILL after a grace.
+// A worker that ends normally takes its reaper with it.
+import { type ChildProcess, spawn } from "node:child_process"
 import { StringDecoder } from "node:string_decoder"
 import type {
   CanUseTool,
@@ -58,10 +64,42 @@ export interface WorkerOptionsInput {
   readonly abortController: AbortController
 }
 
+/** How long a reaped group has between the reaper's SIGTERM and its SIGKILL, in whole seconds. */
+export const reapGrace = 10
+
+// The reaper's script: $1 is the group, $2 the grace. `read` returns once tutti's end of the pipe
+// closes; the group is then given its SIGTERM, and its SIGKILL if it is still there after the grace.
+const reaperScript =
+  'read _; kill -TERM -"$1" 2>/dev/null; i=0; while [ "$i" -lt "$2" ] && kill -0 -"$1" 2>/dev/null; do sleep 1; i=$((i + 1)); done; kill -KILL -"$1" 2>/dev/null'
+
 /**
- * The SDK's spawn for a worker: Claude Code detached into a process group of its own, its stderr
- * decoded and passed to `stderr`. `signal`, the SDK's forwarded one, fires only after its graceful
- * close, so passing it to spawn is safe.
+ * Starts the reaper of the process group `child` leads, and returns it, or undefined when `child`
+ * has no PID to reap. The reaper is killed when `child` exits; it holds no reference to tutti's
+ * event loop.
+ */
+export const reap = (child: ChildProcess, grace: number = reapGrace): ChildProcess | undefined => {
+  const group = child.pid
+  if (group === undefined || !Number.isInteger(group) || group <= 1) return undefined
+  const reaper = spawn("/bin/sh", ["-c", reaperScript, "reaper", String(group), String(grace)], {
+    stdio: ["pipe", "ignore", "ignore"],
+    detached: true,
+    windowsHide: true,
+  })
+  reaper.on("error", () => {})
+  reaper.stdin?.on("error", () => {})
+  reaper.unref()
+  const done = () => {
+    if (reaper.exitCode === null && reaper.signalCode === null) reaper.kill("SIGKILL")
+  }
+  if (child.exitCode !== null || child.signalCode !== null) done()
+  else child.once("exit", done)
+  return reaper
+}
+
+/**
+ * The SDK's spawn for a worker: Claude Code detached into a process group of its own, with a
+ * reaper (reap), its stderr decoded and passed to `stderr`. `signal`, the SDK's forwarded one,
+ * fires only after its graceful close, so passing it to spawn is safe.
  */
 export const spawnInOwnProcessGroup =
   (stderr: (data: string) => void) =>
@@ -74,6 +112,7 @@ export const spawnInOwnProcessGroup =
       signal: options.signal,
       windowsHide: true,
     })
+    reap(child)
     const decoder = new StringDecoder("utf8")
     const pass = (text: string) => {
       if (text === "") return

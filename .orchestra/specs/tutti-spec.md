@@ -166,7 +166,9 @@ tutti (Bun process)
   - Without this, a Ctrl+C in plain mode would interrupt every worker, git command and check before tutti could act.
 - **Memory.** The SDK's hosting guide says to plan on "1 GiB RAM per agent as a starting point". tutti keeps a session open only while the ticket needs it (§4.8), so the count of live subprocesses stays near `concurrent`.
 - **Ending a session.** The SDK ends a session by closing the subprocess's stdin and, after about 2 seconds of grace, aborting it.
-  - When tutti is killed (`kill -9`), each worker's stdin closes with it and the worker ends. Verify this in M0.
+  - When tutti is killed (`kill -9`), each worker's stdin closes with it. An idle worker reads that EOF and ends, within a second. A busy one reads it only once its turn is over, which can be many minutes of editing and committing with no tutti (docs/spikes/02-sdk-lifecycle.md §4). The SDK's own guard (`process.on("exit")`) doesn't run on SIGKILL, and neither the SDK nor the CLI has a parent-death or stdin-EOF option.
+  - **So each worker has a reaper.** `spawnInOwnProcessGroup` also starts `/bin/sh -c 'read _; kill -TERM -"$1"; …' reaper <claude's pgid>`, detached into a process group of its own (a terminal's signals don't reach it), its stdin a pipe from tutti. However tutti ends, that pipe closes, `read` returns, and the reaper sends SIGTERM to `claude`'s whole group, and SIGKILL if the group is still there 10 seconds later. In the spike the Bash commands went in 0.1 s and `claude`, after its graceful shutdown, in 2.9 s.
+  - When a worker ends normally, tutti kills its reaper. The reaper holds no reference to tutti's event loop.
   - The next run resumes those sessions from their transcripts (§4.8).
 
 ### 3.3 Services
@@ -195,7 +197,7 @@ Each service has a live layer and a test layer. Names are illustrative. Errors a
 | `Clock` | Effect's `Clock`: every duration in the loop goes through it | | `TestClock` |
 | `Tty` | Whether stdin and stdout are a TTY, `TERM=dumb`, the size, colour depth (named so as not to clash with Effect's `Terminal`) | | Fixed |
 
-**Time limits.** Every external command goes through `ChildProcess` (`effect/process`), with a scope (its own process group, killed on interruption) and a time limit. The limits are orchestra's: 30 s for a read, 2 min for a git write or a `bd` update, and the check limits from settings. A time limit kills the process group itself when it expires. It doesn't rely on interrupting the fiber (§3.4).
+**Time limits.** Every external command goes through `ChildProcess` (`effect/process`), with a scope (its own process group, killed on interruption) and a time limit. The limits are orchestra's: 30 s for a read, 2 min for a git write or a `bd` update, and the check limits from settings. A time limit kills the process group itself when it expires. It doesn't rely on interrupting the fiber (§3.4). A kill -9 of tutti takes the time limit with it, so a command's group gets a reaper as a worker's does (§3.2), and doesn't run on unwatched.
 
 ### 3.4 Concurrency
 
@@ -249,7 +251,7 @@ const q = query({
     stderr: transcripts.stderr(ticketId),
     env: workerEnv(),                  // §4.13: { ...process.env, ...tutti's variables }, the API key handled
     pathToClaudeCodeExecutable: claudeBinary,   // the embedded binary, extracted (§12)
-    spawnClaudeCodeProcess: spawnInOwnProcessGroup,
+    spawnClaudeCodeProcess: spawnInOwnProcessGroup,   // with its reaper (§3.2)
     abortController,
   },
 })
@@ -1532,7 +1534,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | Memory: about 1 GiB per live session | `-c 16` needs a large machine | Sessions closed when not needed (§4.8); `init` and the startup line state the estimate; concurrency default 1, as orchestra's |
 | Usage limits on a subscription with many workers | Runs stall for hours | The usage-limit hold waits and resumes by itself (§4.12); the warning shows early |
 | Auto mode's classifier unavailable, or refusing everything | Workers can't work | Auto mode's fallback is reported at startup (§4.1); a classifier refusing everything trips the environment hold, as orchestra's docs describe |
-| A single process: a crash or closed terminal ends work in flight | Lost turns | Session IDs saved before each session starts; resume next run; SIGHUP quits cleanly (§4.8) |
+| A single process: a crash or closed terminal ends work in flight | Lost turns; without a reaper, a busy worker would go on editing and committing with no tutti | Session IDs saved before each session starts; resume next run; SIGHUP quits cleanly (§4.8); each worker's and command's reaper ends its process group however tutti ends, `kill -9` included (§3.2) |
 | Subscription use through the SDK | The SDK's terms ask third-party products not to offer claude.ai login | tutti is a tool you run under your own login on your own machine; it never offers login to others. If it is distributed to others, document API-key use (`--billing api`) as the supported path |
 | Version skew between the SDK and Claude Code | Protocol errors | The embedded binary always matches (§12); `--claude` warns outside the supported range; contract tests on every bump |
 | Loss of the "real thing": you no longer see Claude Code's own screen | Less familiar | A worker view designed for reading and steering, with tool calls expandable and the composer; this was chosen knowingly (D3) |
