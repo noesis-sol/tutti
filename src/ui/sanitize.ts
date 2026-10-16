@@ -8,6 +8,8 @@ const BEL = 0x07
 const TAB = 0x09
 const LF = 0x0a
 const CR = 0x0d
+const CAN = 0x18
+const SUB = 0x1a
 const ESC = 0x1b
 const ST = 0x9c // the C1 string terminator
 
@@ -37,10 +39,11 @@ const escapeEnd = (text: string, start: number): number => {
     return i
   }
   if (stringIntroducers.has(at())) {
-    // The string ends at BEL, at ST (ESC \ or U+009C), or at an ESC that starts another sequence.
+    // The string ends at BEL, at ST (ESC \ or U+009C), at CAN or SUB, which cancel it, or at an ESC
+    // that starts another sequence.
     for (i++; i < text.length; i++) {
       const c = at()
-      if (c === BEL || c === ST) return i + 1
+      if (c === BEL || c === ST || c === CAN || c === SUB) return i + 1
       if (c === ESC) return text.charCodeAt(i + 1) === 0x5c ? i + 2 : i
     }
     return i

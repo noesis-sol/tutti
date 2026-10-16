@@ -98,6 +98,7 @@ describe("sanitize", () => {
     ["a CSI cut short by a character", "a\x1b[12\nb", "a\nb"],
     ["an OSC ended by ST", "a\x1b]8;;https://x\x1b\\b", "ab"],
     ["an OSC ended by a C1 ST", "a\x1b]2;t\x9cb", "ab"],
+    ["an OSC cancelled by CAN or SUB", "a\x1b]0;t\x18b\x1b]2;u\x1ac", "abc"],
     ["an OSC cut short", "a\x1b]52;c;cm0g", "a"],
     ["an OSC cut short by another escape", "a\x1b]0;t\x1b[2Jb", "ab"],
     ["a DCS", "a\x1bPq#0;2;0;0;0\x1b\\b", "ab"],
