@@ -5,3 +5,8 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Dependencies, build output and the pinned shellcheck (scripts/check.sh)
+node_modules/
+dist/
+.cache/

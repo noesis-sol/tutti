@@ -60,13 +60,24 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
+tutti runs on Bun (>= 1.3.14). The spec is `.orchestra/specs/tutti-spec.md`.
 
 ```bash
-# Example:
-# npm install
-# npm test
+bun install                 # dependencies, pinned exactly in package.json; bun.lock is committed
+bun src/main.ts             # run tutti from the checkout
+scripts/check.sh            # the project's check: tsc, biome, the tests, shellcheck
+scripts/test.sh             # the tests only (bun test; arguments go to bun test)
+bun test test/<part>.test.ts   # one test file, while iterating
+TUTTI_SLOW=1 scripts/check.sh  # also the slow suites (real git); scripts/check-full.sh does this
+TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent SDK
 ```
+
+- `scripts/check-fast.sh` (orchestra's merge check) runs `scripts/check.sh`; `scripts/check-full.sh`
+  runs it with `TUTTI_SLOW=1`.
+- `scripts/test.sh` reruns each failed test once by name and prints `FLAKY: <file> <test>` for one
+  that passes on its rerun; a flaky test doesn't fail the check.
+- shellcheck is a pinned release fetched into `.cache/shellcheck/` (git-ignored) and checked against
+  its sha256. Offline, the check says so and skips it.
 
 ## Architecture Overview
 
@@ -74,4 +85,20 @@ _Add a brief overview of your project architecture_
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- **Layout** follows the spec's Appendix B: `src/cli`, `src/project`, `src/services`, `src/agent`,
+  `src/run`, `src/organs`, `src/ui`, `src/print`, `src/update`; `src/main.ts` is the entry point,
+  run with `BunRuntime.runMain`.
+- **Effect services.** Each service is a `Context.Service` with a live layer next to it and a test
+  layer under `src/testing/`, one file per service. Tests and whole-run scenarios use the test layers.
+- **Errors** are tagged errors defined with `Schema.TaggedError`, not thrown exceptions.
+- **External commands** go through `effect/process` (`ChildProcess`), never `Bun.spawn` directly in
+  `src/`.
+- **Tests** are in `test/<part>.test.ts`, one file per part, with `bun:test`. Mark slow tests (real
+  git) with `slow.test` / `slow.describe` from `test/gates.ts`, and contract tests against the real
+  Agent SDK with `live.test` / `live.describe`.
+- **Property tests** use `fast-check`, for every function that reads text a model, worker or ticket
+  author wrote.
+- **Style** is Biome's (`bunx biome check --write .`): no semicolons, double quotes, 100 columns.
+  TypeScript is `strict` with `exactOptionalPropertyTypes`.
+- **Changelog.** Add entries to `CHANGELOG.md` under Unreleased as new lines; don't reword or move
+  others (`CHANGELOG.md merge=union`).

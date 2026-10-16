@@ -5,5 +5,9 @@
 # repository's root, and finds its own test files: a new test in an existing suite needs no edit here.
 # Each runs in a subshell, ( ), so that a command failing anywhere in it (cd web && npm test) fails
 # the script, and its cd leaves the next suite at the root.
-# It checks nothing yet: add a line for each suite.
-exit 0
+set -e
+cd "$(dirname "$0")/.."
+
+# check with the slow suites (real git, marked with test/gates.ts' slow), defined in scripts/check.sh
+echo "SUITE: check-slow"
+(TUTTI_SLOW=1 scripts/check.sh)
