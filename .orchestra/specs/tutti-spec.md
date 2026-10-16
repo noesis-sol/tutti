@@ -272,7 +272,7 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 **Checking the first `system/init` of each session.** tutti reads it and acts on three things:
 
 - **The permission mode in effect.** If auto mode isn't available (an account or model without it), the mode in effect differs. The log and the `START` block say so once: `permission mode: default (auto mode isn't available here)`.
-- **The MCP servers loaded.** These must be exactly the chosen names, each with source `sdk` or the scope tutti passed (§4.6). Any other server stops that worker and is a setup problem.
+- **The MCP servers loaded.** These must be exactly the chosen names, each with source `dynamic` (a definition passed in `mcpServers`) or `sdk` (an in-process server), as §4.6 says. Names and sources are compared, not statuses. Any other server stops that worker and is a setup problem.
 - **The API key source** (§4.13).
 
 **Messages.**
@@ -453,7 +453,13 @@ As orchestra: `settings.json` keeps names, and each name is resolved on this mac
 
 `strictMcpConfig: true` keeps everything else out. It is the SDK's `--strict-mcp-config`: "Only use MCP servers passed via the `mcpServers` option … ignoring all other MCP configurations: project `.mcp.json`, user settings, plugins, and on-disk agent frontmatter".
 
-tutti also checks each session's first `system/init`. Its `mcp_servers` must list exactly the chosen names. A claude.ai connector (Gmail, Drive, Calendar and the like on a subscription account) or any other server ends that worker before it does anything, and is reported as a setup problem: `workers got MCP servers they weren't given: <names>`. M0 confirms that `strictMcpConfig` keeps claude.ai connectors out.
+tutti also checks each session's first `system/init`. Its `mcp_servers` must list exactly the chosen names. A claude.ai connector (Gmail, Drive, Calendar and the like on a subscription account) or any other server ends that worker before it does anything, and is reported as a setup problem: `workers got MCP servers they weren't given: <names>`. M0 confirmed that `strictMcpConfig` keeps claude.ai connectors out (docs/spikes/03-sdk-mcp-subagents.md, §1).
+
+What the check accepts, from that spike:
+
+- **Sources.** A definition passed in `mcpServers` shows source `dynamic` (and `mcpServerStatus()` scope `dynamic`), whatever scope tutti resolved it from: tutti can't pass a scope. An in-process server from `createSdkMcpServer` shows `sdk`. A chosen name is accepted with source `dynamic` or `sdk`; the scope tutti resolved it from is accepted too, should a later SDK report it.
+- **Connectors.** A claude.ai connector shows source `claudeai` and is named `claude.ai <Name>` (`claude.ai Gmail`). That is how the setup check tells that a name refers to a connector.
+- **Statuses.** A server can still be `pending` in the first `system/init`. The check compares names and sources, never statuses.
 
 ### 4.7 Hand-backs and nudges
 
