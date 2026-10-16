@@ -1,0 +1,50 @@
+[
+  {
+    "id": "demo-1an",
+    "title": "Loose C",
+    "status": "open",
+    "priority": 0,
+    "issue_type": "bug",
+    "owner": "maintainer@example.com",
+    "created_at": "2026-10-16T21:35:20Z",
+    "created_by": "A Maintainer",
+    "updated_at": "2026-10-16T21:35:20Z",
+    "dependencies": [
+      {
+        "id": "demo-mtp.1",
+        "title": "Child A",
+        "description": "a desc",
+        "acceptance_criteria": "a ok",
+        "status": "open",
+        "priority": 2,
+        "issue_type": "task",
+        "owner": "maintainer@example.com",
+        "created_at": "2026-10-16T21:35:18Z",
+        "created_by": "A Maintainer",
+        "updated_at": "2026-10-16T21:35:18Z",
+        "metadata": {
+          "files": ["src/a.ts", "src/b.ts"]
+        },
+        "labels": ["area:ui", "solo"],
+        "dependency_type": "discovered-from"
+      },
+      {
+        "id": "demo-n0n",
+        "title": "A question?",
+        "status": "open",
+        "priority": 2,
+        "issue_type": "task",
+        "owner": "maintainer@example.com",
+        "created_at": "2026-10-16T21:35:20Z",
+        "created_by": "A Maintainer",
+        "updated_at": "2026-10-16T21:35:20Z",
+        "labels": ["human"],
+        "dependency_type": "blocks"
+      }
+    ],
+    "dependent_count": 0,
+    "dependency_count": 2,
+    "comment_count": 0,
+    "revision": "-31279043757340549"
+  }
+]

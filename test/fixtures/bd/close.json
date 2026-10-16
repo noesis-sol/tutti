@@ -1,0 +1,15 @@
+[
+  {
+    "id": "demo-813",
+    "title": "Epic blocker",
+    "status": "closed",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "maintainer@example.com",
+    "created_at": "2026-10-16T21:35:55Z",
+    "created_by": "A Maintainer",
+    "updated_at": "2026-10-16T21:35:57Z",
+    "closed_at": "2026-10-16T21:35:57Z",
+    "close_reason": "done"
+  }
+]

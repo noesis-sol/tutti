@@ -1,0 +1,22 @@
+[
+  {
+    "id": "demo-mtp.1",
+    "title": "Child A",
+    "description": "a desc",
+    "acceptance_criteria": "a ok",
+    "notes": "note one",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "assignee": "A Maintainer",
+    "owner": "maintainer@example.com",
+    "created_at": "2026-10-16T21:35:18Z",
+    "created_by": "A Maintainer",
+    "updated_at": "2026-10-16T21:35:58Z",
+    "started_at": "2026-10-16T21:35:51Z",
+    "metadata": {
+      "predicted_files": "[\"x.ts\"]"
+    },
+    "labels": ["area:ui", "solo"]
+  }
+]
