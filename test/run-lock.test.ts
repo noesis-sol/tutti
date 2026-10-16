@@ -214,6 +214,14 @@ describe("the live lock", () => {
     expect(lockable(join(repo.commonDir, "tutti.lock"))).toBe(true)
   })
 
+  test("waits out a lock held for a moment, as orchestra holds its file shared", async () => {
+    const repo = newRepo()
+    const fd = Effect.runSync(openCloexec(join(repo.commonDir, "orchestra.lock"), O.RDWR | O.CREAT))
+    expect(Effect.runSync(flockExclusiveNonBlocking(fd))).toBe(true)
+    setTimeout(() => Effect.runSync(close(fd)), 40)
+    expect(Exit.isSuccess(await withLock(request(repo)))).toBe(true)
+  })
+
   test("both locks are released when the holder is killed with kill -9", async () => {
     const repo = newRepo()
     const other = await startHolder(repo.commonDir, "tutti")

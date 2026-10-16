@@ -150,6 +150,10 @@ export const orchestraLockText = (holder: Holder): string =>
     2,
   )}\n`
 
+/** How often a held lock is tried before the run is refused, and how long apart. */
+const lockAttempts = 5
+const lockRetryDelay = "25 millis"
+
 const failed = (file: string) => (error: unknown) =>
   new LockFailed({ file, reason: error instanceof Error ? error.message : String(error) })
 
@@ -168,7 +172,13 @@ const take = (
       openCloexec(file, O.RDWR | O.CREAT, 0o644).pipe(Effect.mapError(failed(file))),
       (fd) => Effect.ignore(close(fd)),
     )
-    const locked = yield* flockExclusiveNonBlocking(fd).pipe(Effect.mapError(failed(file)))
+    // orchestra takes a shared lock on its file for a moment (plan, init) and retries its own
+    // exclusive one five times over about 100 ms to get past that; tutti does the same.
+    let locked = false
+    for (let attempt = 0; attempt < lockAttempts && !locked; attempt++) {
+      if (attempt > 0) yield* Effect.sleep(lockRetryDelay)
+      locked = yield* flockExclusiveNonBlocking(fd).pipe(Effect.mapError(failed(file)))
+    }
     if (!locked) {
       const said = yield* Effect.sync(() => {
         try {
