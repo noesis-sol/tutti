@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { exactNamePattern, flakyLine, parseJUnit, unescapeXml } from "../scripts/test.ts"
+import {
+  exactNamePattern,
+  flakyLine,
+  parseJUnit,
+  summaryCounts,
+  unescapeXml,
+} from "../scripts/test.ts"
 
 // A report as bun test --reporter=junit writes it (Bun 1.4.3): one testsuite per file, a nested
 // testsuite per describe block.
@@ -65,6 +71,18 @@ test("flakyLine names the file and the test", () => {
   )
 })
 
+describe("summaryCounts", () => {
+  test("reads the fail and error counts from bun test's summary", () => {
+    const output = "a.test.ts:\n(fail) x\n\n 3 pass\n 2 fail\n 1 error\n 5 expect() calls\n"
+    expect(summaryCounts(output)).toEqual({ fail: 2, error: 1 })
+  })
+
+  test("reads coloured output, and zero when a count is missing", () => {
+    expect(summaryCounts("\u001b[0m\u001b[31m 4 fail\u001b[0m\n")).toEqual({ fail: 4, error: 0 })
+    expect(summaryCounts(" 2 errors\n")).toEqual({ fail: 0, error: 2 })
+  })
+})
+
 describe("scripts/test.ts", () => {
   const runner = resolve(import.meta.dir, "../scripts/test.ts")
 
@@ -100,6 +118,15 @@ test("steady", () => expect(1).toBe(1))
     })
     expect(out).not.toContain("FLAKY:")
     expect(code).toBe(1)
+  })
+
+  test("fails on a file that doesn't load, even when another test is flaky", () => {
+    const { code, out } = run({
+      "f.test.ts": flaky,
+      "g.test.ts": `throw new Error("does not load")\n`,
+    })
+    expect(out).not.toContain("FLAKY:")
+    expect(code).not.toBe(0)
   })
 
   test("exits 0 without reruns when every test passes", () => {

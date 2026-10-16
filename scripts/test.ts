@@ -76,10 +76,45 @@ export const flakyLine = (test: TestCase): string => `FLAKY: ${test.file} ${test
 const fileArgument = (file: string): string =>
   file.startsWith("/") || file.startsWith("./") ? file : `./${file}`
 
-const runBunTest = (args: ReadonlyArray<string>, report: string): number =>
-  Bun.spawnSync(["bun", "test", "--reporter=junit", `--reporter-outfile=${report}`, ...args], {
-    stdio: ["inherit", "inherit", "inherit"],
-  }).exitCode
+/** The fail and error counts in bun test's closing summary (" 2 fail", " 1 error"). */
+export const summaryCounts = (
+  output: string,
+): { readonly fail: number; readonly error: number } => {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: strips colour codes, ESC included
+  const plain = output.replace(/\u001b\[[0-9;]*m/g, "")
+  const count = (word: string): number => {
+    const matches = [...plain.matchAll(new RegExp(`^\\s*(\\d+) ${word}s?\\s*$`, "gm"))]
+    return Number(matches.at(-1)?.[1] ?? 0)
+  }
+  return { fail: count("fail"), error: count("error") }
+}
+
+// Copies a stream of bun test's output through to ours, as it comes, and returns all of it.
+const tee = async (stream: ReadableStream<Uint8Array>, to: NodeJS.WriteStream): Promise<string> => {
+  const decoder = new TextDecoder()
+  let text = ""
+  for await (const chunk of stream) {
+    to.write(chunk)
+    text += decoder.decode(chunk, { stream: true })
+  }
+  return text + decoder.decode()
+}
+
+const runBunTest = async (
+  args: ReadonlyArray<string>,
+  report: string,
+): Promise<{ readonly code: number; readonly output: string }> => {
+  const proc = Bun.spawn(
+    ["bun", "test", "--reporter=junit", `--reporter-outfile=${report}`, ...args],
+    { stdin: "inherit", stdout: "pipe", stderr: "pipe" },
+  )
+  const [out, err, code] = await Promise.all([
+    tee(proc.stdout, process.stdout),
+    tee(proc.stderr, process.stderr),
+    proc.exited,
+  ])
+  return { code, output: `${out}\n${err}` }
+}
 
 const readReport = (report: string): ReadonlyArray<TestCase> => {
   try {
@@ -89,33 +124,34 @@ const readReport = (report: string): ReadonlyArray<TestCase> => {
   }
 }
 
-const main = (args: ReadonlyArray<string>): number => {
+const main = async (args: ReadonlyArray<string>): Promise<number> => {
   const reports = mkdtempSync(join(tmpdir(), "tutti-test-"))
   const first = join(reports, "first.xml")
-  const code = runBunTest(args, first)
+  const { code, output } = await runBunTest(args, first)
   if (code === 0) return 0
   const failed = readReport(first).filter((test) => test.failed)
-  // A failure outside any test (a file that doesn't load, an error between tests) has no name to
-  // rerun: the run fails as bun test did.
-  if (failed.length === 0) return code
+  // A failure outside any test (a file that doesn't load, an error between tests) isn't in the
+  // report and has no name to rerun: when bun counted one, the run fails as bun test did.
+  const counts = summaryCounts(output)
+  if (failed.length === 0 || counts.error > 0 || counts.fail !== failed.length) return code
   let stillFailing = 0
-  failed.forEach((test, index) => {
+  for (const [index, test] of failed.entries()) {
     const report = join(reports, `rerun-${index}.xml`)
     console.log(`\nRerunning ${test.file} ${test.name}`)
-    const rerunCode = runBunTest(
+    const rerun = await runBunTest(
       [fileArgument(test.file), "--test-name-pattern", exactNamePattern(test.name)],
       report,
     )
     const reran = readReport(report)
-    if (rerunCode === 0 && reran.length > 0 && reran.every((t) => !t.failed)) {
+    if (rerun.code === 0 && reran.length > 0 && reran.every((t) => !t.failed)) {
       console.log(flakyLine(test))
     } else {
       stillFailing++
     }
-  })
+  }
   return stillFailing === 0 ? 0 : 1
 }
 
 if (import.meta.main) {
-  process.exit(main(Bun.argv.slice(2)))
+  process.exit(await main(Bun.argv.slice(2)))
 }
