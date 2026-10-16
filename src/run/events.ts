@@ -414,9 +414,12 @@ const unsafe = /[\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g
 
 const escapeUnsafe = (c: string): string => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
 
+/** A line of JSON with those characters escaped: the same JSON, safe to show in a terminal. */
+export const terminalSafe = (json: string): string => json.replace(unsafe, escapeUnsafe)
+
 /** `record` as its line in events.jsonl, without the newline; fails on a record that doesn't fit. */
 export const encodeLine = (record: EventRecord): Result.Result<string, Schema.SchemaError> =>
-  Result.map(encodeJson(record), (line) => line.replace(unsafe, escapeUnsafe))
+  Result.map(encodeJson(record), terminalSafe)
 
 /** A line of events.jsonl as a record; fails on an unknown kind or a field that doesn't fit. */
 export const decodeLine = Schema.decodeUnknownResult(EventLine)
