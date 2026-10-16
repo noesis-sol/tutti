@@ -321,17 +321,23 @@ describe("Transcripts in memory", () => {
   })
 
   test("partial messages are dropped while no view is open", async () => {
-    const { recent, files } = await inMemory(
+    const { recent, files, live } = await inMemory(
       Effect.gen(function* () {
+        const t = yield* Transcripts
         yield* recordAll([init(), ...streamed(["Hel", "lo"]), text("Hello")])
+        // A message under way when no view was open: none of it is folded for a view opened later.
+        yield* recordAll(streamed(["secret"]).slice(0, 3))
+        const live = yield* Effect.scoped(Effect.map(t.view(worker), (view) => view.live))
         return {
-          recent: yield* (yield* Transcripts).recent(worker),
+          recent: yield* t.recent(worker),
           files: yield* (yield* Files).messages(worker),
+          live,
         }
       }),
     )
     expect(recent.map((item) => item.message.type)).toEqual(["system", "assistant"])
     expect(files.map((item) => item.message.type)).toEqual(["system", "assistant"])
+    expect(live).toEqual([])
   })
 
   test("partial messages fold into the live message while a view is open", async () => {
