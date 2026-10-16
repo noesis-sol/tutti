@@ -40,8 +40,15 @@ export const notSetUpMessage =
   "  tutti init\n" +
   "It writes .tutti/ (the worker prompt and settings) and sets up Beads if needed."
 
-/** The folders a clean tree may have changes in: tools' state, not the project's work. */
-export const ignoredFolders: ReadonlyArray<string> = [".tutti", ".orchestra", ".claude", ".beads"]
+/**
+ * The folders a clean tree may have changes in: the run state of tutti and orchestra, and bd's,
+ * which bd writes as it goes. The rest of .tutti/ and .orchestra/ is the project's, committed.
+ */
+export const ignoredFolders: ReadonlyArray<string> = [
+  join(".tutti", "run"),
+  join(".orchestra", "run"),
+  ".beads",
+]
 
 /** orchestra's run state in the main checkout, naming the workers it left behind (§ 11). */
 export const orchestraStateFile = join(".orchestra", "run", "state.json")

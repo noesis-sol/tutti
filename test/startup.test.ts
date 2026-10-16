@@ -238,7 +238,7 @@ describe("the startup checks", () => {
       )
     })
 
-    test("changes in the tools' own folders leave the tree clean", async () => {
+    test("changes in the run state and bd's folder leave the tree clean", async () => {
       const { repo } = project()
       passed(
         await run(repo, {
@@ -246,12 +246,29 @@ describe("the startup checks", () => {
             repository.write(repo, {
               ".tutti/run/events.jsonl": "{}\n",
               ".orchestra/run/state.json": "{}\n",
-              ".claude/settings.local.json": "{}\n",
               ".beads/issues.jsonl": "{}\n",
             }),
           ),
         }),
       )
+    })
+
+    test("changes to the project's committed tool files are uncommitted changes", async () => {
+      const { repo } = project()
+      const failure = failed(
+        await run(repo, {
+          before: Effect.flatMap(Repository, (repository) =>
+            repository.write(repo, {
+              ".tutti/worker-prompt.md": "Work on TICKET_ID.\n",
+              ".orchestra/specs/spec.md": "# spec\n",
+              ".claude/agents/verifier.md": "verify\n",
+            }),
+          ),
+        }),
+      )
+      expect(failure.problems).toEqual([
+        "The main checkout has uncommitted changes (.claude/agents/verifier.md, .orchestra/specs/spec.md, .tutti/worker-prompt.md). Commit or stash them first: finished tickets merge into it. Inspect with: git status",
+      ])
     })
 
     test("bd isn't installed", async () => {
