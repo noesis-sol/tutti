@@ -214,6 +214,21 @@ describe("the live lock", () => {
     expect(lockable(join(repo.commonDir, "tutti.lock"))).toBe(true)
   })
 
+  test("a refused run frees tutti.lock at once, while the caller's scope is still open", async () => {
+    const repo = newRepo()
+    await startHolder(repo.commonDir, "orchestra")
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* Effect.flip(acquire(request(repo)))
+          return lockable(join(repo.commonDir, "tutti.lock"))
+        }),
+      ).pipe(Effect.provide(RunLock.layer)),
+    )
+    if (Exit.isFailure(exit)) throw new Error(String(exit.cause))
+    expect(exit.value).toBe(true)
+  })
+
   test("waits out a lock held for a moment, as orchestra holds its file shared", async () => {
     const repo = newRepo()
     const fd = Effect.runSync(openCloexec(join(repo.commonDir, "orchestra.lock"), O.RDWR | O.CREAT))
