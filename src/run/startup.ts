@@ -317,12 +317,12 @@ export const check = <R>(checking: Checking<R>) =>
       return yield* new StartupFailed({ notSetUp: false, problems: [found.failure], warnings: [] })
     }
     const { repo, linked } = found.success
-    const notSetUp = !(yield* setUp(repo))
-
     const configured = yield* collect(checking.config(repo))
     const config = Option.getOrElse(configured.value, () => fallbackConfig(repo))
-    // A project never set up has no worker prompt of its own to check, unless --prompt gives one.
+    // A worker prompt of its own (--prompt) is enough to run in a project init hasn't set up, as
+    // in orchestra; without one, such a project has no worker prompt to check.
     const ownPrompt = config.prompt !== resolvePath(repo, workerPromptFile)
+    const notSetUp = !ownPrompt && !(yield* setUp(repo))
 
     const [branch, tree, beads, account, mcp, prompt, leftWorkers] = yield* Effect.all(
       [
@@ -335,7 +335,7 @@ export const check = <R>(checking: Checking<R>) =>
           ),
         ),
         collect(resolveServers(repo, config.settings.workers.mcp_servers)),
-        notSetUp && !ownPrompt
+        notSetUp
           ? Effect.succeed({ value: Option.none<WorkerPrompt>(), problems: [] })
           : collect(loadWorkerPrompt(config)),
         orchestraWorkers(repo),
