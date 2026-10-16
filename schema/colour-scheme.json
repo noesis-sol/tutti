@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/colour-scheme.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "the scheme's name: its file's, without .json"
+    },
+    "description": {
+      "type": "string"
+    },
+    "extends": {
+      "type": "string",
+      "minLength": 1,
+      "description": "the scheme every role this file leaves out comes from, such as orchestra"
+    },
+    "colours": {
+      "type": "object",
+      "properties": {
+        "live": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "done": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "notice": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "needsYou": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "windingDown": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "frame": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "organ": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "organText": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "toMerge": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "merging": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "emphasis": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "pill": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "pillText": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "heading1": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "heading2": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "heading3": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "code": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "link": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "added": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "removed": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "selection": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "selectionText": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formText": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formTitle": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formAccent": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formAccentText": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formSelected": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formSelectedMark": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formError": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formMuted": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formButton": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formPlaceholder": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "formFrame": {
+          "$ref": "#/$defs/RoleColour"
+        }
+      },
+      "additionalProperties": false,
+      "description": "roles to colours; without extends, every role"
+    }
+  },
+  "required": [
+    "name",
+    "colours"
+  ],
+  "additionalProperties": false,
+  "title": "tutti colour scheme",
+  "$defs": {
+    "RoleColour": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(#[0-9A-Fa-f]{6}|ansi:([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|default)$",
+          "description": "#RRGGBB, ansi:N (a palette slot, 0–255) or default"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "light": {
+              "type": "string",
+              "pattern": "^(#[0-9A-Fa-f]{6}|ansi:([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|default)$",
+              "description": "the colour on a light background"
+            },
+            "dark": {
+              "type": "string",
+              "pattern": "^(#[0-9A-Fa-f]{6}|ansi:([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|default)$",
+              "description": "the colour on a dark background"
+            }
+          },
+          "required": [
+            "light",
+            "dark"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "one colour for both variants, or { light, dark }"
+    }
+  }
+}

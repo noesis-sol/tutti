@@ -18,6 +18,7 @@ import { Config, Context, Duration, Effect, Exit, Layer, Option, Result, Schema 
 import { type ConfigFileInvalid, type ConfigProblem, decodeConfig } from "../project/configFile.ts"
 import { readSettings, Settings, settingsFile } from "../project/settings.ts"
 import { readUserConfig, UserConfig } from "../project/userConfig.ts"
+import { type LoadedScheme, loadScheme, orchestraLoaded, schemeFolders } from "../ui/theme.ts"
 import {
   type billings,
   oneOf,
@@ -51,6 +52,9 @@ export const appearances = ["auto", "light", "dark"] as const
 
 /** The variable that overrides the user config's appearance; it has no flag. */
 export const appearanceVariable = "TUTTI_APPEARANCE"
+
+/** The variable that, set and not empty, draws every colour role in the default colour. */
+export const noColorVariable = "NO_COLOR"
 
 /** The default folder for the worktrees: `<repo>-tutti` beside the repository (§ 11). */
 export const defaultWorktrees = (repo: string): string =>
@@ -89,9 +93,16 @@ export interface AppConfigValue {
   readonly usageLimitWait: Duration.Duration
   /** The Claude Code workers run with (--claude), as given; null for the embedded one. */
   readonly claude: string | null
-  /** The colour scheme's name, in § 7.11's order; loading it is the theme's. */
+  /** The colour scheme's name, in § 7.11's order. */
   readonly colourScheme: string
+  /**
+   * The colour scheme in use: `colourScheme` loaded at startup, or orchestra with the reason it
+   * isn't. `resolve` reads no files, and leaves it orchestra; `load` loads it.
+   */
+  readonly scheme: LoadedScheme
   readonly appearance: (typeof appearances)[number]
+  /** NO_COLOR is set: every colour role is the terminal's default colour (§ 7.11). */
+  readonly noColor: boolean
 }
 
 export class AppConfig extends Context.Service<AppConfig, AppConfigValue>()(
@@ -248,7 +259,9 @@ export const resolve = (sources: Sources): Result.Result<AppConfigValue, Readonl
     // § 7.11: the flag, TUTTI_COLOUR_SCHEME, the user config, the settings, orchestra. The
     // settings' own default is orchestra too.
     colourScheme: pick("colourScheme", user.colour_scheme ?? settings.ui.colour_scheme),
+    scheme: orchestraLoaded,
     appearance,
+    noColor: Option.isSome(variable(noColorVariable)),
   }
   return problems.length === 0 ? Result.succeed(value) : Result.fail(problems)
 }
@@ -278,9 +291,13 @@ export const defaultSettings: Settings = defaultsOf(Settings, settingsFile)
 /** The user config as a missing file gives it. */
 export const defaultUserConfig: UserConfig = defaultsOf(UserConfig, "config.json")
 
-/** Every flag's variable, and TUTTI_APPEARANCE, as the environment has them. */
+/** Every flag's variable, TUTTI_APPEARANCE and NO_COLOR, as the environment has them. */
 const readVariables = Effect.gen(function* () {
-  const names = [...Object.values(runFlags).map((flag) => flag.variable), appearanceVariable]
+  const names = [
+    ...Object.values(runFlags).map((flag) => flag.variable),
+    appearanceVariable,
+    noColorVariable,
+  ]
   const values = new Map<string, string>()
   for (const name of names) {
     const value = yield* Config.option(Config.String(name))
@@ -291,7 +308,8 @@ const readVariables = Effect.gen(function* () {
 
 /**
  * Reads the TUTTI_* variables, the user config and the project's settings, and resolves them under
- * `flags` for the project at `repo`, the main checkout's top level.
+ * `flags` for the project at `repo`, the main checkout's top level. Then it loads the colour
+ * scheme, which never fails: one that can't be used gives orchestra and says why.
  */
 export const load = (flags: RunFlags, repo: string) =>
   Effect.gen(function* () {
@@ -305,7 +323,11 @@ export const load = (flags: RunFlags, repo: string) =>
     )
     const resolved = resolve({ repo, flags, env: (name) => variables.get(name), user, settings })
     const problems = [...(Result.isFailure(resolved) ? resolved.failure : []), ...fileProblems]
-    if (Result.isSuccess(resolved) && problems.length === 0) return resolved.success
+    if (Result.isSuccess(resolved) && problems.length === 0) {
+      const folders = yield* schemeFolders(repo)
+      const scheme = yield* loadScheme(resolved.success.colourScheme, folders)
+      return { ...resolved.success, scheme }
+    }
     return yield* new SetupProblem({ problems })
   })
 
