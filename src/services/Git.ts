@@ -339,10 +339,7 @@ export class Git extends Context.Service<
                 worktree,
                 ["rebase", "--no-autostash", onto],
                 limits.write,
-              ).pipe(
-                Effect.onInterrupt(() => abandonRebase(worktree)),
-                Effect.tapError(() => abandonRebase(worktree)),
-              )
+              ).pipe(Effect.tapError(() => abandonRebase(worktree)))
               if (output.exitCode === 0) return
               const conflicted = yield* read("diff --diff-filter=U", worktree, [
                 "diff",
@@ -354,7 +351,10 @@ export class Git extends Context.Service<
               if (files.length > 0) return yield* new RebaseConflict({ files })
               yield* abandonRebase(worktree)
               return yield* failed("rebase", shown, output)
-            }),
+            }).pipe(
+              // Interrupted anywhere before it reports, up to reading the conflicts, it is put back.
+              Effect.onInterrupt(() => abandonRebase(worktree)),
+            ),
           )
 
         return Git.of({
