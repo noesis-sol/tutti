@@ -4,7 +4,7 @@
 // The file is opened below the checkout with openat and O_NOFOLLOW, so a symbolic link in its path
 // is refused rather than written through. A stream that can't be opened or written is warned about
 // once; the run goes on, and later records are still tried.
-import { mkdirSync, writeSync } from "node:fs"
+import { lstatSync, mkdirSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Clock, Context, Effect, Layer, Result } from "effect"
 import { close, O, openUnder } from "../native/libc.ts"
@@ -20,6 +20,18 @@ export const stamp = (event: Event, run: string, now: number): EventRecord =>
 /** The warning for a stream that can't be opened or written, as orchestra words it. */
 export const notRecorded = (reason: string): string =>
   `events not recorded in ${eventsFile}: ${reason}; the run goes on, and later failures aren't logged`
+
+// makeRunFolder makes .tutti/run in repo where it is missing, stopping at a link, which openUnder
+// then refuses: nothing is made through one.
+const makeRunFolder = (repo: string): void => {
+  for (const folder of [join(repo, ".tutti"), join(repo, ".tutti", "run")]) {
+    try {
+      if (!lstatSync(folder).isDirectory()) return
+    } catch {
+      mkdirSync(folder)
+    }
+  }
+}
 
 const reasonOf = (error: unknown): string =>
   error instanceof Error ? error.message : typeof error === "string" ? error : String(error)
@@ -54,7 +66,7 @@ export class EventStream extends Context.Service<
 
         const fd = yield* Effect.acquireRelease(
           Effect.try({
-            try: () => mkdirSync(join(options.repo, ".tutti", "run"), { recursive: true }),
+            try: () => makeRunFolder(options.repo),
             catch: reasonOf,
           }).pipe(
             Effect.andThen(

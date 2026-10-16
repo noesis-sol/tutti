@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync } from "node:fs"
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Arbitrary, Effect, Layer, Result } from "effect"
@@ -360,7 +367,7 @@ describe("the records", () => {
     }
   })
 
-  test("unknown fields are skipped; an unknown kind, a missing field or another v is refused", () => {
+  test("unknown fields are skipped; an unknown kind, a missing field, a bad time or another v is refused", () => {
     expect(
       decoded(`{"v":1,"time":"${head.time}","run":"${run}","kind":"end","code":2,"new":1}`),
     ).toEqual({ ...head, kind: "end", code: 2 })
@@ -369,7 +376,7 @@ describe("the records", () => {
       `{"v":1,"time":"${head.time}","run":"${run}","kind":"end"}`,
       `{"v":2,"time":"${head.time}","run":"${run}","kind":"end","code":2}`,
       `{"v":1,"time":"yesterday","run":"${run}","kind":"end","code":2}`,
-      `{"v":1,"time":"${head.time}","run":"${run}","kind":"stop","detail":"TERMINAL_FAILED"}`,
+      `{"v":1,"time":"${head.time}","run":"${run}","kind":"stop","detail":"PAUSED"}`,
     ]) {
       expect(Result.isFailure(decodeLine(line))).toBe(true)
     }
@@ -496,7 +503,15 @@ describe("EventStream", () => {
     expect(() => readFileSync(join(outside, "events.jsonl"))).toThrow()
   })
 
-  test("a record that can't be written warns once, and later records are still written", () => {
+  test("nothing is made through a link in the stream's path", () => {
+    const repo = tempRepo()
+    const outside = tempRepo()
+    symlinkSync(outside, join(repo, ".tutti"))
+    expect(withStream(repo, emit(info("one")))).toHaveLength(1)
+    expect(readdirSync(outside)).toEqual([])
+  })
+
+  test("a record that doesn't fit its schema warns once, and later records are still written", () => {
     const repo = tempRepo()
     const warnings = withStream(
       repo,
