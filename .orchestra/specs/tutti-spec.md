@@ -290,7 +290,7 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 | State | Derived from | Card shows |
 |---|---|---|
 | `Starting` | the session is spawned and its first `system/init` hasn't arrived | `starting` (grey) |
-| `Working{doing}` | `session_state_changed: running`, a turn under way, or a live background task (below). `doing` is the current tool's category | `working`, `editing`, `reading`, `testing` (bold yellow), `subagent` (cyan) |
+| `Working{doing}` | `session_state_changed: running`, a turn under way, no `idle` since the last `result`, a send of tutti's outstanding, or a live background task (below). `doing` is the current tool's category | `working`, `editing`, `reading`, `testing` (bold yellow), `subagent` (cyan) |
 | `Retrying{attempt, max, status}` | an `api_retry` message, until the next message of the turn | `retrying 3/10 (529)` (yellow) |
 | `NeedsYou{requests}` | one or more pending `canUseTool` calls or elicitations, or `session_state_changed: requires_action` | `permission — waiting for you` or `question — waiting for you`, with a count when there are several (red border) |
 | `UsageLimited{resetsAt}` | the turn ended on the account's usage limit (§4.12) | `usage limit · resets 14:05` (yellow) |
@@ -300,11 +300,12 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 
 **When a turn has ended (`Idle`).** All of these must hold:
 
-- **The turn's `result` arrived** with `queued_turn_count` 0 or absent. A count above 0 means more turns follow without further input, such as a queued nudge or your queued message.
-- **It isn't an error result.** `is_error` isn't set. A `success` result with `is_error: true` is an API error ending the turn: a rate limit goes to §4.12, and anything else is a failed turn.
+- **The turns are over: `session_state_changed: idle` arrived** after the last `result`. The CLI sends `idle` once, after the last queued turn has run, and not between queued turns, whichever way the queued messages were sent. Until it comes, the worker is `Working`: a `result` alone ends a turn, not the worker's work.
+- **The last `result` isn't an error.** `is_error` isn't set. A `success` result with `is_error: true` is an API error ending the turn: a rate limit goes to §4.12, and anything else is a failed turn.
+- **None of tutti's sends is outstanding.** tutti gives each message it pushes into the inbox a `uuid`, and the CLI reports it in `command_lifecycle` messages (`{ type: "command_lifecycle", command_uuid, state: "queued" | "started" | "completed" }`, one set per send, whether it ran as a turn of its own, shared one or was folded into the running turn). A send is outstanding from its push until its `completed`, or until a `result`'s `user_message_uuids` lists it, or an interrupt's receipt reports it `cancelled` (§4.8). This covers a message pushed just as the last turn ends, before the CLI says `running` again. `command_lifecycle` isn't in the SDK's `SDKMessage` union, so tutti decodes it from the raw message, and `user_message_uuids` alone suffices when it is missing.
 - **No background task is live.** The live set comes from `background_tasks_changed`, whose payload replaces the set each time. Tasks marked `ambient` (live-update watchers, which the SDK says hosts "should exclude … from activity indicators") don't count. Counting them would keep a worker `Working` forever and its ticket would never merge.
 
-`session_state_changed: idle` confirms the same.
+**`queued_turn_count` isn't used.** It counts only queued messages sent without `client_composed`, and every message tutti composes is `client_composed` (§4.1). With SDK 0.3.301, two queued `client_composed` nudges left it 0 with another turn still to come, and a queued message you typed followed by a composed one gave 1, then 0 while the composed one was still queued (docs/spikes/01-sdk-session.md, items 1 and 4). Reading it would call a worker `Idle` with a nudge or hand-back still queued.
 
 **What `doing` is.** In-process hook callbacks (`PreToolUse`, `PostToolUse`, `SubagentStart`, `SubagentStop`, `PreCompact`) set it, classified as orchestra classifies them:
 
@@ -1473,8 +1474,8 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
 - **Property tests** (`fast-check`) cover the functions that read text a model, worker or ticket author wrote: footprint parsing, ticket-ID validation, plan parsing, `bd` output decoding, `tutti answer`'s file parsing, and the sanitiser (§7.10: no control sequence survives, printable text is kept). These replace orchestra's Go fuzz tests.
 - **Contract tests against the real SDK** are gated by `TUTTI_LIVE=1`. Each runs one tiny session in a temp repository and checks the behaviour tutti's state machine relies on:
   - `system/init` per turn
-  - `session_state_changed`
-  - `result` with `queued_turn_count`
+  - `session_state_changed`, with `idle` only after the last queued turn, `client_composed` sends among them
+  - `command_lifecycle` for each send, and `result`'s `user_message_uuids`
   - `canUseTool` for a call that needs asking, with `defaultToNo` on a held removal
   - `interrupt()` and its receipt
   - `resume` with `sessionId`
