@@ -94,7 +94,8 @@ const compile = async () => {
     const out = join(work, script.replace(/\.ts$/, ""))
     const build = Bun.spawnSync(
       [process.execPath, "build", "--compile", join(here, script), "--outfile", out],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      // From the temp folder: bun build --compile leaves .<hash>.bun-build files in its cwd.
+      { cwd: work, stdio: ["ignore", "pipe", "pipe"] },
     )
     if (build.exitCode !== 0) throw new Error(`bun build --compile ${script}: ${build.stderr}`)
     binaries.set(script, out)
