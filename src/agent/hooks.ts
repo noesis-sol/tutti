@@ -47,12 +47,8 @@ export const activityHooks = (
 ): Effect.Effect<Hooks> =>
   Effect.map(Effect.context<never>(), (context) => {
     const run = Effect.runForkWith(context)
-    const record = (input: HookInput): Effect.Effect<void> =>
-      Effect.suspend(() =>
-        input.hook_event_name === "PreCompact"
-          ? Effect.andThen(recorder.activity(input), recorder.compaction(input))
-          : recorder.activity(input),
-      ).pipe(
+    const record = (input: HookInput, recording: () => Effect.Effect<void, unknown>) =>
+      Effect.suspend(recording).pipe(
         Effect.catchCause((cause) =>
           warn(hookFailed(ticket, input.hook_event_name, Cause.pretty(cause))),
         ),
@@ -60,7 +56,11 @@ export const activityHooks = (
       )
     const callback: HookCallback = async (input) => {
       try {
-        run(record(input))
+        run(record(input, () => recorder.activity(input)))
+        // A compaction is recorded even when its activity can't be.
+        if (input.hook_event_name === "PreCompact") {
+          run(record(input, () => recorder.compaction(input)))
+        }
       } catch {
         // Nothing a hook does may fail its tool call.
       }

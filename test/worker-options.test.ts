@@ -361,11 +361,30 @@ describe("activityHooks", () => {
       expect(await callbackFor(hooks, "PreToolUse")(preToolUse, "toolu_1", signal)).toEqual({})
       expect(await callbackFor(hooks, "PreCompact")(preCompact, undefined, signal)).toEqual({})
       await settle()
-      expect(warnings).toHaveLength(2)
+      // PreCompact's activity and its compaction each fail.
+      expect(warnings).toHaveLength(3)
       expect(warnings[0]).toStartWith("tutti-abc.1's PreToolUse hook failed to record: ")
       expect(warnings[1]).toStartWith("tutti-abc.1's PreCompact hook failed to record: ")
+      expect(warnings[2]).toStartWith("tutti-abc.1's PreCompact hook failed to record: ")
     })
   }
+
+  test("a compaction is recorded even when its activity fails to be", async () => {
+    const compactions: Array<string> = []
+    const hooks = await Effect.runPromise(
+      activityHooks(
+        "t",
+        {
+          activity: () => Effect.fail("no state"),
+          compaction: (input) => Effect.sync(() => compactions.push(input.trigger)),
+        },
+        () => Effect.void,
+      ),
+    )
+    expect(await callbackFor(hooks, "PreCompact")(preCompact, undefined, signal)).toEqual({})
+    await settle()
+    expect(compactions).toEqual(["auto"])
+  })
 
   test("a warning that fails too is swallowed", async () => {
     const hooks = await Effect.runPromise(
