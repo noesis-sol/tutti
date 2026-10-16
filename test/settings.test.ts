@@ -235,7 +235,41 @@ describe("settings", () => {
         message: `Expected a time such as "30m" or "2h", got "2 hours"`,
       },
       { path: "merge.resolve_timeout", message: "Expected string, got 20" },
-      { path: "environment_hold.window", message: `Expected a time longer than 0, such as "30m"` },
+      {
+        path: "environment_hold.window",
+        message: `Expected a time longer than 0, such as "30m", got "0"`,
+      },
+    ])
+  })
+
+  test("every problem in a section is reported, a zero time's among them", async () => {
+    expect(
+      await settingsProblems((s) => {
+        ;(s.workers as { permission_mode: unknown }).permission_mode = "plan"
+        s.workers.ticket_limit = "0"
+        ;(s.workers as { model: unknown }).model = 3
+        Object.assign(s.workers, { foo: 1 })
+        s.merge.resolve_timeout = "soon"
+        ;(s.merge as { resolve_conflicts: unknown }).resolve_conflicts = "yes"
+      }),
+    ).toEqual([
+      { path: "workers.foo", message: `unknown key "foo"` },
+      {
+        path: "workers.permission_mode",
+        message:
+          "can't be plan: a worker in it only plans, and never changes a file. Use one of auto, " +
+          "default, acceptEdits",
+      },
+      { path: "workers.model", message: "Expected string | null, got 3" },
+      {
+        path: "workers.ticket_limit",
+        message: `Expected a time longer than 0, such as "30m", got "0"`,
+      },
+      { path: "merge.resolve_conflicts", message: `Expected boolean, got "yes"` },
+      {
+        path: "merge.resolve_timeout",
+        message: `Expected a time such as "30m" or "2h", got "soon"`,
+      },
     ])
   })
 

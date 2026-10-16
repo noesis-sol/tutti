@@ -192,33 +192,34 @@ export const formatDuration = (duration: Duration.Duration): string => {
   return text === "" ? "0" : text
 }
 
-const DurationFromText = Schema.String.pipe(
-  Schema.decodeTo(
-    Schema.Duration,
-    SchemaTransformation.transformEffect({
-      decode: (text, options) =>
-        Option.match(parseDuration(text), {
-          onNone: () =>
-            Effect.fail(
-              new SchemaIssue.InvalidValue(
-                { expected: `a time such as "30m" or "2h"` },
-                text,
-                options,
-              ),
-            ),
-          onSome: Effect.succeed,
-        }),
-      encode: (duration) => Effect.succeed(formatDuration(duration)),
-    }),
-  ),
-)
+/**
+ * A time such as "30m", decoded to a Duration; `positive` refuses "0". The text is checked before
+ * it is decoded, with the other keys' types, so its problem is reported beside theirs: a struct
+ * stops before its decoding step when one of its keys has the wrong type.
+ */
+const DurationFromText = (positive: boolean) =>
+  Schema.String.check(
+    Schema.makeFilter((text) =>
+      Option.match(parseDuration(text), {
+        onNone: () => `Expected a time such as "30m" or "2h", got ${JSON.stringify(text)}`,
+        onSome: (duration) =>
+          !positive ||
+          Duration.isGreaterThan(duration, Duration.zero) ||
+          `Expected a time longer than 0, such as "30m", got ${JSON.stringify(text)}`,
+      }),
+    ),
+  ).pipe(
+    Schema.decodeTo(
+      Schema.Duration,
+      SchemaTransformation.transform({
+        decode: (text) => Option.getOrElse(parseDuration(text), () => Duration.zero),
+        encode: formatDuration,
+      }),
+    ),
+  )
 
 /** A time such as "30m", decoded to a Duration, that is more than zero. */
-export const PositiveDuration = DurationFromText.check(
-  Schema.makeFilter((duration) => Duration.isGreaterThan(duration, Duration.zero), {
-    message: `Expected a time longer than 0, such as "30m"`,
-  }),
-)
+export const PositiveDuration = DurationFromText(true)
 
 /** A time such as "10m", decoded to a Duration, or "0". */
-export const NonNegativeDuration = DurationFromText
+export const NonNegativeDuration = DurationFromText(false)
