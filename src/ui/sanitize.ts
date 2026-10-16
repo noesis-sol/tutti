@@ -89,15 +89,19 @@ export const sanitizeLine = (text: string): string => sanitize(text).replace(/[\
 // HTML, autolinks, entities and table cells.
 const inlineSpecial = /[\\`*_~[\]<>&|]/g
 
-// What starts a heading, a block quote, a list item or a setext underline at the start of a line.
-const blockStart = /^([ \t]*)([#>+=-]|\d+[.)])/gm
+// The start of a line with text on it: its indentation, which would make the line code, where
+// escapes are shown rather than read, and what starts a heading, a block quote, a list item or a
+// setext underline.
+const lineStart = /^([ \t]*)(?=[^ \t\n\r])([#>+=-]|\d+[.)])?/gm
 
 // escapeMarkdown is text that Markdown shows as it is: each character Markdown would act on is
-// escaped with a backslash. It escapes only; sanitise the text as well where it is shown.
+// escaped with a backslash, and a line's indentation is written as character references, which
+// Markdown shows as spaces and tabs but doesn't read as indentation. It escapes only; sanitise the
+// text as well where it is shown.
 export const escapeMarkdown = (text: string): string =>
   text
     .replace(inlineSpecial, "\\$&")
-    .replace(
-      blockStart,
-      (_, indent: string, marker: string) => `${indent}${marker.slice(0, -1)}\\${marker.slice(-1)}`,
-    )
+    .replace(lineStart, (_, indent: string, marker: string | undefined) => {
+      const references = indent.replace(/ /g, "&#32;").replace(/\t/g, "&#9;")
+      return marker ? `${references}${marker.slice(0, -1)}\\${marker.slice(-1)}` : references
+    })

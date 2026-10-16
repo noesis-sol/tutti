@@ -183,15 +183,21 @@ describe("sanitizeLine", () => {
   })
 })
 
-// unescapeMarkdown undoes Markdown's backslash escapes, as a Markdown renderer does.
+// unescapeMarkdown undoes Markdown's backslash escapes and the character references for a space and
+// a tab, as a Markdown renderer does.
 const unescapeMarkdown = (markdown: string): string =>
-  markdown.replace(/\\([!-/:-@[-`{-~])/g, (_, c: string) => c)
+  markdown.replace(
+    /\\([!-/:-@[-`{-~])|&#32;|&#9;/g,
+    (reference, c: string | undefined) => c ?? (reference === "&#9;" ? "\t" : " "),
+  )
 
-// literal is whether markdown has no character Markdown would act on: none of \ ` * _ ~ [ ] < > & |
-// anywhere, and none of # > + = - or a number with . or ) at a line's start, unless escaped.
+// literal is whether markdown has no character Markdown would act on: no indentation before text,
+// none of \ ` * _ ~ [ ] < > & | anywhere, and none of # > + = - or a number with . or ) at a line's
+// start, unless escaped. Indentation written as character references is not indentation.
 const literal = (markdown: string): boolean => {
-  for (const line of markdown.split(/\r\n|\r|\n/)) {
-    if (/^[ \t]*([#>+=-]|\d+[.)])/.test(line)) return false
+  for (const whole of markdown.split(/\r\n|\r|\n/)) {
+    const line = whole.replace(/^(&#32;|&#9;)*/, "")
+    if (/^[ \t]+[^ \t]/.test(line) || /^([#>+=-]|\d+[.)])/.test(line)) return false
     for (let i = 0; i < line.length; i++) {
       if (line[i] === "\\") i++
       else if ("\\`*_~[]<>&|".includes(line[i] ?? "")) return false
@@ -203,7 +209,11 @@ const literal = (markdown: string): boolean => {
 describe("escapeMarkdown", () => {
   test.each([
     ["# Heading", "\\# Heading"],
-    ["  > quote", "  \\> quote"],
+    ["  > quote", "&#32;&#32;\\> quote"],
+    [
+      "a\n    at f (<anonymous>)\n\tb\n  \nc",
+      "a\n&#32;&#32;&#32;&#32;at f (\\<anonymous\\>)\n&#9;b\n  \nc",
+    ],
     ["- item\n+ item\n12. item\n3) item", "\\- item\n\\+ item\n12\\. item\n3\\) item"],
     ["title\n===", "title\n\\==="],
     ["*bold* _it_ ~~gone~~ `code`", "\\*bold\\* \\_it\\_ \\~\\~gone\\~\\~ \\`code\\`"],
