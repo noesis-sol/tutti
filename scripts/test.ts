@@ -1,9 +1,9 @@
 // scripts/test.ts: the test runner behind scripts/test.sh (§ 13).
 //
 // Bun's --retry retries a failed test, but neither its console output nor its JUnit report says
-// which tests passed only on their retry (checked with Bun 1.4.3). So this follows § 13's fallback:
-// run the suites once without --retry, rerun each failed test once by name (-t), and print
-// FLAKY: <file> <test> for each that passes on its rerun. A flaky test does not fail the run; a test
+// which tests passed only on their retry (Bun 1.4.3; docs/spikes/08-bun-test-retry.md). So this
+// follows § 13's fallback: run the suites once without --retry, rerun each failed test once by
+// name (-t), and print FLAKY: <file> <test> for each that passes on its rerun. A flaky test does not fail the run; a test
 // that fails twice does. Arguments are passed on to bun test.
 import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
