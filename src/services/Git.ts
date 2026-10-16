@@ -123,7 +123,8 @@ export const parseStatus = (output: string): ReadonlyArray<StatusEntry> => {
     const field = fields[i] ?? ""
     if (field.length < 4) continue
     const code = field.slice(0, 2)
-    if (code[0] === "R" || code[0] === "C") {
+    // A rename or copy in either column, staged or (after `git add -N`) in the worktree only.
+    if (/[RC]/.test(code)) {
       i++
       entries.push({ code, path: field.slice(3), from: fields[i] ?? "" })
     } else {

@@ -126,11 +126,17 @@ describe("reading git's -z output", () => {
       { code: "UU", path: "c.ts" },
     ])
     const code = fc.constantFrom(" M", "M ", "A ", "D ", "??", "UU", "AM")
+    const renameCode = fc.constantFrom("R ", " R", "RM", "C ", " C", "CM")
+    const entry = fc.oneof(
+      fc.record({ code, path: field }),
+      fc.record({ code: renameCode, path: field, from: field }),
+    )
     fc.assert(
-      fc.property(fc.array(fc.record({ code, path: field })), (entries) => {
-        expect(
-          parseStatus(entries.map((entry) => `${entry.code} ${entry.path}\0`).join("")),
-        ).toEqual(entries)
+      fc.property(fc.array(entry), (entries) => {
+        const output = entries
+          .map((each) => `${each.code} ${each.path}\0${"from" in each ? `${each.from}\0` : ""}`)
+          .join("")
+        expect(parseStatus(output)).toEqual(entries)
       }),
     )
   })
@@ -423,12 +429,17 @@ slow.describe("Git against a real repository", () => {
     repo.commit("Files", { "a.txt": "a\n", "b.txt": "b\n", "src/c.ts": "c\n" })
     repo.write({ "a.txt": "changed\n", "new dir/d e.txt": "new\n" })
     repo.git(["mv", "b.txt", "renamed.txt"])
+    // Moved in the worktree only, the new path marked with intent to add: a rename in the second column.
+    repo.git(["mv", "src/c.ts", "src/moved.ts"])
+    repo.git(["reset", "--quiet", "--", "src/c.ts", "src/moved.ts"])
+    repo.git(["add", "-N", "src/moved.ts"])
     const [all, under] = await run(
       withGit((git) => Effect.all([git.status(repo.dir), git.status(repo.dir, ["new dir"])])),
     )
     expect(all).toEqual([
       { code: " M", path: "a.txt" },
       { code: "R ", path: "renamed.txt", from: "b.txt" },
+      { code: " R", path: "src/moved.ts", from: "src/c.ts" },
       { code: "??", path: "new dir/d e.txt" },
     ])
     expect(under).toEqual([{ code: "??", path: "new dir/d e.txt" }])
