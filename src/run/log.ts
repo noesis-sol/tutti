@@ -175,8 +175,29 @@ export const question = (q: {
   )`${request(q.id, asked)}; answer with: tutti answer ${q.requestId} allow --choice <option>`
 }
 
-/** How a request was answered. */
-export type Verdict = "allowed" | "allowed for this run" | "denied" | "answered"
+/** QUESTION: an MCP server's elicitation, asking for input or a URL login (§ 4.5). */
+export const elicitation = (e: {
+  readonly id: string
+  readonly requestId: string
+  readonly server: string
+  readonly message: string
+  /** The URL to open, for a URL login. */
+  readonly url?: string
+}): Line => {
+  const url = e.url === undefined ? "" : line` (open ${e.url})`
+  return ticketLine(
+    Tag.question,
+  )`${request(e.id, line`MCP server ${e.server}: ${e.message}`)}${url}; answer in tutti, request ${e.requestId}`
+}
+
+/** How a request was answered, or that the SDK withdrew it. */
+export type Verdict =
+  | "allowed"
+  | "allowed for this run"
+  | "denied"
+  | "answered"
+  | "declined"
+  | "withdrawn"
 
 /** A request's answer: `  PERMISSION: tut-1's worker: Bash(x) allowed, via tutti answer`. */
 export const answered = (a: {

@@ -1,0 +1,798 @@
+// The Attention service (§ 4.5): where a worker waits on a person. `request(ticket)` gives a
+// session's canUseTool callback and `elicitation(ticket)` its onElicitation. Each call becomes an
+// AttentionRequest in its worker's queue, oldest first, and the callback awaits a Deferred that an
+// answer, from the screen or `tutti answer`, resolves. Answers map to the SDK's results exactly as
+// § 4.5's table says; a request whose signal aborts is removed, and an answer to a request that is
+// no longer open is refused with NotOpen, for the caller's toast.
+//
+// Allow for this run passes the request's `addRules` suggestions with their destination rewritten
+// to `session`, and keeps their rules for the run: a later request from any worker whose suggested
+// rules are all among them is allowed without asking. `setMode` and `addDirectories` suggestions
+// are never passed (one switched the session to acceptEdits in the spike), and neither are the
+// suggested destinations, `localSettings` and `projectSettings`, which resolve in the worktree.
+//
+// Every request and answer is a PERMISSION or QUESTION log line and an `attention` or
+// `attention_answered` event, and is tallied per ticket.
+import { randomBytes } from "node:crypto"
+import type {
+  CanUseTool,
+  ElicitationRequest,
+  ElicitationResult,
+  OnElicitation,
+  PermissionResult,
+  PermissionUpdate,
+} from "@anthropic-ai/claude-agent-sdk"
+import {
+  Clock,
+  Context,
+  Deferred,
+  Duration,
+  Effect,
+  Layer,
+  Ref,
+  Schema,
+  Semaphore,
+  Stream,
+  SubscriptionRef,
+} from "effect"
+import type { AttentionQuestion } from "../run/events.ts"
+import { EventStream } from "../run/eventstream.ts"
+import * as log from "../run/log.ts"
+import { Log } from "../run/log.ts"
+import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+
+/** The tool whose calls are questions rather than permission requests. */
+export const askUserQuestion = "AskUserQuestion"
+
+/** How long a request may wait before the run holds with BLOCKED (§ 4.3). */
+export const blockedAfter = Duration.minutes(4)
+
+/** A question of AskUserQuestion's, its text sanitised for showing. */
+export interface Question {
+  readonly question: string
+  readonly header?: string
+  readonly options: ReadonlyArray<{ readonly label: string; readonly description?: string }>
+  readonly multiSelect: boolean
+}
+
+/** A tool call waiting for a person's permission. */
+export interface Permission {
+  readonly _tag: "Permission"
+  readonly tool: string
+  /** The tool's input as the worker gave it: what an allow sends back as `updatedInput`. */
+  readonly input: Readonly<Record<string, unknown>>
+  /** The SDK's suggestions, as they came. */
+  readonly suggestions: ReadonlyArray<PermissionUpdate>
+  /** A one-line summary of the input, sanitised: `rm -rf build`. */
+  readonly summary: string
+}
+
+/** An AskUserQuestion call: 1 to 4 questions, each with its options. */
+export interface Questions {
+  readonly _tag: "Question"
+  readonly questions: ReadonlyArray<Question>
+  /** The questions as the worker asked them, sent back with the answers. */
+  readonly input: Readonly<Record<string, unknown>>
+}
+
+/** An MCP server asking for input or a URL login. */
+export interface Elicitation {
+  readonly _tag: "Elicitation"
+  /** The server's name, sanitised: untrusted text, per the SDK. */
+  readonly server: string
+  readonly message: string
+  readonly mode: "form" | "url"
+  readonly url?: string
+  /** The form's JSON Schema. */
+  readonly requestedSchema?: Readonly<Record<string, unknown>>
+}
+
+export type RequestKind = Permission | Questions | Elicitation
+
+/** A request for a person's attention (§ 4.5). Every text field shown is sanitised (§ 7.10). */
+export interface AttentionRequest {
+  /** tutti's ID for it, as `tutti answer` takes it. */
+  readonly id: string
+  readonly ticket: string
+  /** The SDK's ID of the tool call; an elicitation has none. */
+  readonly toolUseID?: string
+  /** The subagent that asked, if one did. */
+  readonly agentID?: string
+  readonly kind: RequestKind
+  /** "Claude wants to read foo.txt". */
+  readonly title?: string
+  /** The tool's name, or a short phrase for the action. */
+  readonly displayName?: string
+  readonly description?: string
+  readonly decisionReason?: string
+  readonly blockedPath?: string
+  /** The MCP server serving the tool, for `mcp__*` tools. */
+  readonly mcpServer?: { readonly name: string; readonly source: string }
+  /** No one-key approve: the request opens on Deny. */
+  readonly defaultToNo: boolean
+  /** No persistent "don't ask again": no Allow for this run. */
+  readonly suppressAlwaysAllowRule: boolean
+  /** When it was made, in epoch milliseconds. */
+  readonly createdAt: number
+}
+
+/** An answer to a request (§ 4.5). */
+export type Answer =
+  | { readonly _tag: "Allow" }
+  | { readonly _tag: "AllowForRun" }
+  | { readonly _tag: "Deny"; readonly reason?: string }
+  /** A question's answers, one per question in order: the chosen label or the person's own text. */
+  | { readonly _tag: "Choose"; readonly answers: ReadonlyArray<string> }
+  /** An elicitation answered: the URL opened, or the form's content. */
+  | {
+      readonly _tag: "Accept"
+      readonly content?: Readonly<Record<string, string | number | boolean | ReadonlyArray<string>>>
+    }
+  | { readonly _tag: "Decline" }
+
+/** Where an answer came from (§ 10's `via`). */
+export type Via = "screen" | "answer_command"
+
+/** The answer was for a request that is no longer open: answered, or withdrawn by the SDK. */
+export class NotOpen extends Schema.TaggedError<NotOpen>()("NotOpen", {
+  request: Schema.String,
+}) {
+  override get message(): string {
+    return `request ${this.request} is no longer open`
+  }
+}
+
+/** The answer doesn't fit the request: an Allow for this run without rules to keep, say. */
+export class DoesNotFit extends Schema.TaggedError<DoesNotFit>()("DoesNotFit", {
+  request: Schema.String,
+  answer: Schema.String,
+}) {
+  override get message(): string {
+    return `request ${this.request} can't be answered ${this.answer}`
+  }
+}
+
+/** A ticket's requests and their answers, for triage and the reviewer. */
+export interface Tally {
+  readonly permissions: number
+  readonly questions: number
+  readonly elicitations: number
+  readonly allowed: number
+  readonly allowedForRun: number
+  /** Allowed without asking, by a rule allowed for this run. */
+  readonly allowedByRule: number
+  readonly denied: number
+  /** Questions answered and elicitations accepted. */
+  readonly answered: number
+  readonly declined: number
+  /** Withdrawn by the SDK before an answer. */
+  readonly cancelled: number
+}
+
+export const emptyTally: Tally = {
+  permissions: 0,
+  questions: 0,
+  elicitations: 0,
+  allowed: 0,
+  allowedForRun: 0,
+  allowedByRule: 0,
+  denied: 0,
+  answered: 0,
+  declined: 0,
+  cancelled: 0,
+}
+
+/** The message a denial sends the worker, before the reason typed with it. */
+export const denialMessage = "Denied by the maintainer in tutti"
+
+/** The text an answer is described by, in a DoesNotFit and the log. */
+const answerName: Record<Answer["_tag"], string> = {
+  Allow: "allow",
+  AllowForRun: "allow for this run",
+  Deny: "deny",
+  Choose: "with choices",
+  Accept: "accept",
+  Decline: "decline",
+}
+
+// A key for a rule, by tool name and rule content.
+const ruleKey = (rule: { readonly toolName: string; readonly ruleContent?: string }): string =>
+  `${rule.toolName}\0${rule.ruleContent ?? ""}`
+
+/** The request's suggestions that allow by rule, as Allow for this run passes them: in session. */
+export const runRules = (request: AttentionRequest): ReadonlyArray<PermissionUpdate> =>
+  request.kind._tag === "Permission"
+    ? request.kind.suggestions.flatMap((update) =>
+        update.type === "addRules" && update.behavior === "allow" && update.rules.length > 0
+          ? [{ ...update, rules: [...update.rules], destination: "session" as const }]
+          : [],
+      )
+    : []
+
+/** Whether the request offers Allow for this run: a permission with rules to keep, not suppressed. */
+export const allowsForRun = (request: AttentionRequest): boolean =>
+  !request.suppressAlwaysAllowRule && runRules(request).length > 0
+
+/** Whether `answer` is one `request` can take. */
+export const fits = (request: AttentionRequest, answer: Answer): boolean => {
+  switch (request.kind._tag) {
+    case "Permission":
+      return (
+        answer._tag === "Allow" ||
+        answer._tag === "Deny" ||
+        (answer._tag === "AllowForRun" && allowsForRun(request))
+      )
+    case "Question":
+      return (
+        answer._tag === "Deny" ||
+        (answer._tag === "Choose" && answer.answers.length === request.kind.questions.length)
+      )
+    case "Elicitation":
+      return answer._tag === "Accept" || answer._tag === "Decline"
+  }
+}
+
+const deny = (reason?: string): PermissionResult => ({
+  behavior: "deny",
+  message:
+    reason === undefined || reason.trim() === "" ? denialMessage : `${denialMessage}: ${reason}`,
+  decisionClassification: "user_reject",
+})
+
+/** What the request was withdrawn with: nobody reads it, since the SDK stopped waiting. */
+const withdrawn: PermissionResult = {
+  behavior: "deny",
+  message: "The request was withdrawn",
+}
+
+/**
+ * The SDK's result for a permission or question answered `answer` (§ 4.5's table). A request that
+ * isn't one, or an answer that doesn't fit it, is a denial.
+ */
+export const permissionResult = (request: AttentionRequest, answer: Answer): PermissionResult => {
+  const kind = request.kind
+  if (kind._tag === "Elicitation" || !fits(request, answer)) return deny()
+  switch (answer._tag) {
+    case "Allow":
+      return {
+        behavior: "allow",
+        updatedInput: { ...kind.input },
+        decisionClassification: "user_temporary",
+      }
+    case "AllowForRun":
+      return {
+        behavior: "allow",
+        updatedInput: { ...kind.input },
+        updatedPermissions: [...runRules(request)],
+        decisionClassification: "user_permanent",
+      }
+    case "Choose": {
+      if (kind._tag !== "Question") return deny()
+      const asked = questionTexts(kind.input)
+      const answers = Object.fromEntries(
+        answer.answers.map((chosen, i) => [asked[i] ?? kind.questions[i]?.question ?? "", chosen]),
+      )
+      return { behavior: "allow", updatedInput: { questions: kind.input.questions, answers } }
+    }
+    case "Deny":
+      return deny(answer.reason)
+    default:
+      return deny()
+  }
+}
+
+/** The SDK's result for an elicitation answered `answer`; anything else declines. */
+export const elicitationResult = (answer: Answer): ElicitationResult =>
+  answer._tag === "Accept"
+    ? answer.content === undefined
+      ? { action: "accept" }
+      : {
+          action: "accept",
+          content: Object.fromEntries(
+            Object.entries(answer.content).map(([k, v]) => [k, Array.isArray(v) ? [...v] : v]),
+          ) as Record<string, string | number | boolean | Array<string>>,
+        }
+    : { action: "decline" }
+
+// AskUserQuestion's input, as far as tutti reads it. Anything else in it is kept as it came.
+const QuestionsInput = Schema.Struct({
+  questions: Schema.Array(
+    Schema.Struct({
+      question: Schema.String,
+      header: Schema.optionalKey(Schema.String),
+      options: Schema.Array(
+        Schema.Struct({
+          label: Schema.String,
+          description: Schema.optionalKey(Schema.String),
+        }),
+      ),
+      multiSelect: Schema.optionalKey(Schema.Boolean),
+    }),
+  ).check(Schema.isMinLength(1)),
+})
+
+const decodeQuestions = Schema.decodeUnknownOption(QuestionsInput)
+
+// The question texts as the worker wrote them: the keys of the answers map.
+const questionTexts = (input: Readonly<Record<string, unknown>>): ReadonlyArray<string> => {
+  const decoded = decodeQuestions(input)
+  return decoded._tag === "Some" ? decoded.value.questions.map((q) => q.question) : []
+}
+
+/**
+ * AskUserQuestion's questions, sanitised for showing, or undefined when `input` doesn't hold any.
+ * Questions and labels keep their line breaks; headers are one line.
+ */
+export const questionsOf = (input: unknown): ReadonlyArray<Question> | undefined => {
+  const decoded = decodeQuestions(input)
+  if (decoded._tag === "None") return undefined
+  return decoded.value.questions.map((q) => ({
+    question: sanitize(q.question),
+    ...(q.header === undefined ? {} : { header: sanitizeLine(q.header) }),
+    options: q.options.map((o) => ({
+      label: sanitizeLine(o.label),
+      ...(o.description === undefined ? {} : { description: sanitize(o.description) }),
+    })),
+    multiSelect: q.multiSelect ?? false,
+  }))
+}
+
+/** The longest summary of a tool's input, in characters. */
+export const summaryLength = 120
+
+// The input fields that say most about a call, in the order they are looked for.
+const telling = ["command", "file_path", "path", "notebook_path", "pattern", "url", "query"]
+
+const clip = (text: string): string => {
+  const chars = [...text]
+  return chars.length <= summaryLength ? text : `${chars.slice(0, summaryLength - 1).join("")}…`
+}
+
+/**
+ * A one-line summary of a tool call's input, sanitised and at most `summaryLength` characters: the
+ * command, the file or the pattern it names, else the input as JSON.
+ */
+export const summarize = (input: Readonly<Record<string, unknown>>): string => {
+  for (const key of telling) {
+    const value = input[key]
+    if (typeof value === "string" && value.trim() !== "") return clip(sanitizeLine(value).trim())
+  }
+  let json: string | undefined
+  try {
+    json = JSON.stringify(input)
+  } catch {
+    json = undefined
+  }
+  return clip(sanitizeLine(json ?? "").trim())
+}
+
+/** The request as the log names it: its title, else `Bash(rm -rf build)`. */
+export const describe = (request: AttentionRequest): string => {
+  const kind = request.kind
+  switch (kind._tag) {
+    case "Permission":
+      return request.title ?? `${kind.tool}(${kind.summary})`
+    case "Question":
+      return kind.questions.map((q) => q.question).join("; ")
+    case "Elicitation":
+      return `MCP server ${kind.server}: ${kind.message}`
+  }
+}
+
+/** The requests open longer than `blockedAfter` at `now`, oldest first: what holds the run. */
+export const overdue = (
+  requests: ReadonlyArray<AttentionRequest>,
+  now: number,
+): ReadonlyArray<AttentionRequest> =>
+  requests.filter((r) => now - r.createdAt >= Duration.toMillis(blockedAfter))
+
+/** An answer the SDK no longer waits for. */
+const Cancelled = { _tag: "Cancelled" } as const
+type Outcome = Answer | typeof Cancelled
+
+interface Open {
+  readonly request: AttentionRequest
+  readonly done: Deferred.Deferred<Outcome>
+}
+
+export class Attention extends Context.Service<
+  Attention,
+  {
+    /** The canUseTool callback for the ticket's session. */
+    request(ticket: string): Effect.Effect<CanUseTool>
+    /** The onElicitation callback for the ticket's session. */
+    elicitation(ticket: string): Effect.Effect<OnElicitation>
+    /** Answers the open request `request`; fails NotOpen when it is no longer open. */
+    answer(request: string, answer: Answer, via: Via): Effect.Effect<void, NotOpen | DoesNotFit>
+    /** The open requests, every worker's, oldest first. */
+    readonly current: Effect.Effect<ReadonlyArray<AttentionRequest>>
+    /** The open requests, every worker's, oldest first: now, then on each change. */
+    readonly open: Stream.Stream<ReadonlyArray<AttentionRequest>>
+    /** The ticket's worker's open requests, oldest first: now, then on each change. */
+    openFor(ticket: string): Stream.Stream<ReadonlyArray<AttentionRequest>>
+    /** The ticket's requests and answers so far. */
+    tally(ticket: string): Effect.Effect<Tally>
+  }
+>()("tutti/agent/Attention") {
+  /** The live service: requests wait for a person. */
+  static readonly layer: Layer.Layer<Attention, never, Log | EventStream> = Layer.effect(
+    Attention,
+    Effect.suspend(() => make()),
+  )
+}
+
+/** Answers a request as it opens, or leaves it open (undefined) for a person. */
+export type Policy = (request: AttentionRequest) => Answer | undefined
+
+/** What `make` takes; the test layer sets both. */
+export interface Options {
+  readonly policy?: Policy
+  /** Draws a request's ID; by default 8 random hex digits. */
+  readonly ids?: Effect.Effect<string>
+}
+
+const randomId = Effect.sync(() => randomBytes(4).toString("hex"))
+
+// An AbortSignal's abort, as an Effect that completes when it fires.
+const aborted = (signal: AbortSignal): Effect.Effect<void> =>
+  Effect.callback<void>((resume) => {
+    if (signal.aborted) return resume(Effect.void)
+    const fire = () => resume(Effect.void)
+    signal.addEventListener("abort", fire, { once: true })
+    return Effect.sync(() => signal.removeEventListener("abort", fire))
+  })
+
+const sanitizedOptional = <K extends string>(
+  key: K,
+  value: string | undefined,
+  clean: (text: string) => string = sanitize,
+): { readonly [P in K]?: string } =>
+  (value === undefined ? {} : { [key]: clean(value) }) as { readonly [P in K]?: string }
+
+/** The Attention service over the run's Log and EventStream. */
+export const make = (
+  options: Options = {},
+): Effect.Effect<Attention["Service"], never, Log | EventStream> =>
+  Effect.gen(function* () {
+    const logs = yield* Log
+    const events = yield* EventStream
+    const ids = options.ids ?? randomId
+    const opened = yield* SubscriptionRef.make<ReadonlyArray<Open>>([])
+    const rules = yield* Ref.make<ReadonlySet<string>>(new Set())
+    const tallies = yield* Ref.make<ReadonlyMap<string, Tally>>(new Map())
+    // Opening a request and announcing it, answering one and withdrawing one each hold the permit,
+    // so a request's answer is never recorded before the request itself.
+    const one = yield* Semaphore.make(1)
+
+    const count = (ticket: string, field: keyof Tally) =>
+      Ref.update(tallies, (all) => {
+        const next = new Map(all)
+        const tally = all.get(ticket) ?? emptyTally
+        next.set(ticket, { ...tally, [field]: tally[field] + 1 })
+        return next
+      })
+
+    const requests = (all: ReadonlyArray<Open>) => all.map((o) => o.request)
+
+    // A fresh ID, none of the open requests' IDs.
+    const freshId: Effect.Effect<string> = Effect.gen(function* () {
+      const taken = new Set(requests(yield* SubscriptionRef.get(opened)).map((r) => r.id))
+      for (;;) {
+        const id = yield* ids
+        if (!taken.has(id)) return id
+      }
+    })
+
+    // Takes the request out of the open ones: the Open, or undefined when it wasn't open.
+    const take = (id: string) =>
+      SubscriptionRef.modify(opened, (all): [Open | undefined, ReadonlyArray<Open>] => {
+        const found = all.find((o) => o.request.id === id)
+        return found === undefined ? [undefined, all] : [found, all.filter((o) => o !== found)]
+      })
+
+    const asked = (request: AttentionRequest) =>
+      Effect.gen(function* () {
+        const kind = request.kind
+        const base = {
+          kind: "attention" as const,
+          ticket: request.ticket,
+          request: request.id,
+          default_to_no: request.defaultToNo,
+        }
+        switch (kind._tag) {
+          case "Permission": {
+            yield* count(request.ticket, "permissions")
+            yield* logs.write(
+              log.permission({
+                id: request.ticket,
+                requestId: request.id,
+                what: describe(request),
+                ...(request.decisionReason === undefined ? {} : { why: request.decisionReason }),
+                defaultToNo: request.defaultToNo,
+                suppressAlwaysAllowRule: !allowsForRun(request),
+              }),
+            )
+            yield* events.emit({
+              ...base,
+              type: "permission",
+              tool: kind.tool,
+              summary: kind.summary,
+            })
+            return
+          }
+          case "Question": {
+            yield* count(request.ticket, "questions")
+            yield* logs.write(
+              log.question({
+                id: request.ticket,
+                requestId: request.id,
+                questions: kind.questions.map((q) => ({
+                  question: q.question,
+                  options: q.options.map((o) => o.label),
+                })),
+              }),
+            )
+            const questions: ReadonlyArray<typeof AttentionQuestion.Type> = kind.questions.map(
+              (q) => ({
+                question: q.question,
+                ...(q.header === undefined ? {} : { header: q.header }),
+                options: q.options.map((o) => ({
+                  label: o.label,
+                  ...(o.description === undefined ? {} : { description: o.description }),
+                })),
+                multi_select: q.multiSelect,
+              }),
+            )
+            yield* events.emit({ ...base, type: "question", questions })
+            return
+          }
+          case "Elicitation": {
+            yield* count(request.ticket, "elicitations")
+            yield* logs.write(
+              log.elicitation({
+                id: request.ticket,
+                requestId: request.id,
+                server: kind.server,
+                message: kind.message,
+                ...(kind.url === undefined ? {} : { url: kind.url }),
+              }),
+            )
+            yield* events.emit({
+              ...base,
+              type: "elicitation",
+              tool: kind.server,
+              summary: sanitizeLine(kind.message),
+            })
+            return
+          }
+        }
+      })
+
+    // Logs, records and tallies the answer to a request just taken out of the open ones.
+    const answered = (request: AttentionRequest, outcome: Outcome, via: Via | undefined) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis
+        const after_ms = Math.max(0, now - request.createdAt)
+        const base = {
+          kind: "attention_answered" as const,
+          ticket: request.ticket,
+          request: request.id,
+          after_ms,
+        }
+        const kind = request.kind._tag === "Permission" ? "permission" : "question"
+        const what = describe(request)
+        const viaLog = via === "answer_command" ? "tutti answer" : "screen"
+        const line = (verdict: log.Verdict, detail?: string) =>
+          logs.write(
+            log.answered({
+              id: request.ticket,
+              kind,
+              what,
+              verdict,
+              ...(detail === undefined || detail === "" ? {} : { detail }),
+              via: viaLog,
+            }),
+          )
+        const viaField = via === undefined ? {} : { via }
+        switch (outcome._tag) {
+          case "Cancelled":
+            yield* count(request.ticket, "cancelled")
+            yield* line("withdrawn")
+            yield* events.emit({ ...base, cancelled: true })
+            return
+          case "Allow":
+          case "Accept":
+            yield* count(request.ticket, outcome._tag === "Allow" ? "allowed" : "answered")
+            yield* line(outcome._tag === "Allow" ? "allowed" : "answered")
+            yield* events.emit({ ...base, answer: "allow", ...viaField })
+            return
+          case "AllowForRun":
+            yield* count(request.ticket, "allowedForRun")
+            yield* line("allowed for this run")
+            yield* events.emit({ ...base, answer: "allow_run", ...viaField })
+            return
+          case "Deny":
+            yield* count(request.ticket, "denied")
+            yield* line("denied", outcome.reason)
+            yield* events.emit({ ...base, answer: "deny", ...viaField })
+            return
+          case "Decline":
+            yield* count(request.ticket, "declined")
+            yield* line("declined")
+            yield* events.emit({ ...base, answer: "deny", ...viaField })
+            return
+          case "Choose":
+            yield* count(request.ticket, "answered")
+            yield* line("answered", outcome.answers.join(", "))
+            yield* events.emit({ ...base, answer: [...outcome.answers], ...viaField })
+            return
+        }
+      })
+
+    const answer = (id: string, given: Answer, via: Via) =>
+      Effect.gen(function* () {
+        const found = requests(yield* SubscriptionRef.get(opened)).find((r) => r.id === id)
+        if (found === undefined) return yield* new NotOpen({ request: id })
+        if (!fits(found, given)) {
+          return yield* new DoesNotFit({ request: id, answer: answerName[given._tag] })
+        }
+        const open = yield* take(id)
+        if (open === undefined) return yield* new NotOpen({ request: id })
+        if (given._tag === "AllowForRun") {
+          yield* Ref.update(rules, (kept) => {
+            const next = new Set(kept)
+            for (const update of runRules(open.request)) {
+              if (update.type === "addRules")
+                for (const rule of update.rules) next.add(ruleKey(rule))
+            }
+            return next
+          })
+        }
+        yield* answered(open.request, given, via)
+        yield* Deferred.succeed(open.done, given)
+      }).pipe(one.withPermit)
+
+    // Withdraws the request if it is still open: the SDK no longer waits for it.
+    const cancel = (id: string) =>
+      Effect.gen(function* () {
+        const open = yield* take(id)
+        if (open === undefined) return
+        yield* answered(open.request, Cancelled, undefined)
+        yield* Deferred.succeed(open.done, Cancelled)
+      }).pipe(one.withPermit)
+
+    // Opens the request, answers it by the policy if it has one, and waits for its outcome; an
+    // abort withdraws it.
+    const wait = (request: AttentionRequest, signal: AbortSignal) =>
+      Effect.gen(function* () {
+        const done = yield* Deferred.make<Outcome>()
+        yield* Effect.andThen(
+          SubscriptionRef.update(opened, (all) => [...all, { request, done }]),
+          asked(request),
+        ).pipe(one.withPermit)
+        const policy = options.policy?.(request)
+        if (policy !== undefined) yield* Effect.ignore(answer(request.id, policy, "screen"))
+        return yield* Effect.raceFirst(
+          Deferred.await(done),
+          Effect.andThen(aborted(signal), Effect.andThen(cancel(request.id), Deferred.await(done))),
+        ).pipe(Effect.onInterrupt(() => cancel(request.id)))
+      })
+
+    // Whether every rule the request suggests was allowed for this run.
+    const allowedByRule = (request: AttentionRequest) =>
+      Effect.map(Ref.get(rules), (kept) => {
+        if (request.defaultToNo || !allowsForRun(request)) return false
+        return runRules(request).every(
+          (update) =>
+            update.type === "addRules" && update.rules.every((rule) => kept.has(ruleKey(rule))),
+        )
+      })
+
+    const display = (options: Parameters<CanUseTool>[2]) => ({
+      ...sanitizedOptional("title", options.title),
+      ...sanitizedOptional("displayName", options.displayName, sanitizeLine),
+      ...sanitizedOptional("description", options.description),
+      ...sanitizedOptional("decisionReason", options.decisionReason),
+      ...sanitizedOptional("blockedPath", options.blockedPath, sanitizeLine),
+      ...(options.mcpServer === undefined
+        ? {}
+        : {
+            mcpServer: {
+              name: sanitizeLine(options.mcpServer.name),
+              source: sanitizeLine(options.mcpServer.source),
+            },
+          }),
+    })
+
+    const canUseTool = (
+      ticket: string,
+      toolName: string,
+      input: Record<string, unknown>,
+      sdk: Parameters<CanUseTool>[2],
+    ): Effect.Effect<PermissionResult> =>
+      Effect.gen(function* () {
+        const questions = toolName === askUserQuestion ? questionsOf(input) : undefined
+        const kind: RequestKind =
+          questions === undefined
+            ? {
+                _tag: "Permission",
+                tool: sanitizeLine(toolName),
+                input,
+                suggestions: sdk.suggestions ?? [],
+                summary: summarize(input),
+              }
+            : { _tag: "Question", questions, input }
+        const request: AttentionRequest = {
+          id: yield* freshId,
+          ticket,
+          toolUseID: sdk.toolUseID,
+          ...(sdk.agentID === undefined ? {} : { agentID: sdk.agentID }),
+          kind,
+          ...display(sdk),
+          defaultToNo: sdk.defaultToNo ?? false,
+          suppressAlwaysAllowRule: sdk.suppressAlwaysAllowRule ?? false,
+          createdAt: yield* Clock.currentTimeMillis,
+        }
+        if (yield* allowedByRule(request)) {
+          yield* count(ticket, "allowedByRule")
+          yield* logs.write(log.allowedByRule(ticket, describe(request)))
+          return permissionResult(request, { _tag: "AllowForRun" })
+        }
+        const outcome = yield* wait(request, sdk.signal)
+        return outcome._tag === "Cancelled" ? withdrawn : permissionResult(request, outcome)
+      })
+
+    const onElicitation = (
+      ticket: string,
+      sdk: ElicitationRequest,
+      signal: AbortSignal,
+    ): Effect.Effect<ElicitationResult> =>
+      Effect.gen(function* () {
+        const request: AttentionRequest = {
+          id: yield* freshId,
+          ticket,
+          kind: {
+            _tag: "Elicitation",
+            server: sanitizeLine(sdk.serverName),
+            message: sanitize(sdk.message),
+            mode: sdk.mode ?? (sdk.url === undefined ? "form" : "url"),
+            ...(sdk.url === undefined ? {} : { url: sanitizeLine(sdk.url) }),
+            ...(sdk.requestedSchema === undefined ? {} : { requestedSchema: sdk.requestedSchema }),
+          },
+          ...sanitizedOptional("title", sdk.title),
+          ...sanitizedOptional("displayName", sdk.displayName, sanitizeLine),
+          ...sanitizedOptional("description", sdk.description),
+          defaultToNo: false,
+          suppressAlwaysAllowRule: true,
+          createdAt: yield* Clock.currentTimeMillis,
+        }
+        const outcome = yield* wait(request, signal)
+        return outcome._tag === "Cancelled" ? { action: "cancel" } : elicitationResult(outcome)
+      })
+
+    return Attention.of({
+      request: (ticket) =>
+        Effect.map(
+          Effect.context<never>(),
+          (context) => (toolName, input, sdk) =>
+            Effect.runPromiseWith(context)(canUseTool(ticket, toolName, input, sdk)),
+        ),
+      elicitation: (ticket) =>
+        Effect.map(
+          Effect.context<never>(),
+          (context) => (request, sdk) =>
+            Effect.runPromiseWith(context)(onElicitation(ticket, request, sdk.signal)),
+        ),
+      answer,
+      current: Effect.map(SubscriptionRef.get(opened), requests),
+      open: Stream.map(SubscriptionRef.changes(opened), requests),
+      openFor: (ticket) =>
+        SubscriptionRef.changes(opened).pipe(
+          Stream.map((all) => requests(all).filter((r) => r.ticket === ticket)),
+          Stream.changesWith(
+            (a, b) => a.length === b.length && a.every((r, i) => r.id === b[i]?.id),
+          ),
+        ),
+      tally: (ticket) => Effect.map(Ref.get(tallies), (all) => all.get(ticket) ?? emptyTally),
+    })
+  })
