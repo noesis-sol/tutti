@@ -7,6 +7,7 @@ import { join } from "node:path"
 import { Effect, Layer } from "effect"
 import {
   branchOf,
+  checkRunFolder,
   checkTicketId,
   type Earlier,
   nothingEarlier,
@@ -51,6 +52,7 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
           }),
         ),
       openRunFile,
+      checkRunFolder,
       writeRunFile,
     })
   })

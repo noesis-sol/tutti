@@ -214,6 +214,23 @@ export const openRunFile = (
     (fd) => Effect.ignore(close(fd)),
   )
 
+/**
+ * Checks that the worktree's .tutti/run/ is a folder of its own, making it when it is missing: a
+ * symbolic link in place of .tutti or .tutti/run is refused with RunFilesOutside, naming it, before
+ * a worker is started there (§ 9.1).
+ */
+export const checkRunFolder = (worktree: string): Effect.Effect<void, RunFilesError> =>
+  Effect.suspend(() => {
+    makeRunFolder(worktree)
+    return openUnder(worktree, runFolder, O.RDONLY | O.DIRECTORY)
+  }).pipe(
+    Effect.flatMap((fd) => Effect.ignore(close(fd))),
+    Effect.catchIf(
+      (error): error is SymlinkRefused => error instanceof SymlinkRefused,
+      (error) => Effect.fail(new RunFilesOutside({ worktree, path: error.component })),
+    ),
+  )
+
 /** Writes `text` to the run file `name` in the worktree, replacing what it held (see openRunFile). */
 export const writeRunFile = (
   worktree: string,
@@ -255,6 +272,8 @@ export class Worktrees extends Context.Service<
       flags: number,
       mode?: number,
     ): Effect.Effect<number, RunFilesError, Scope.Scope>
+    /** Checks a worktree's .tutti/run/ before its worker starts (see checkRunFolder). */
+    checkRunFolder(worktree: string): Effect.Effect<void, RunFilesError>
     /** Writes a file under a worktree's .tutti/run/ (see writeRunFile). */
     writeRunFile(worktree: string, name: string, text: string): Effect.Effect<void, RunFilesError>
   }
@@ -337,7 +356,7 @@ export class Worktrees extends Context.Service<
             )
           })
 
-        return Worktrees.of({ prepare, remove, openRunFile, writeRunFile })
+        return Worktrees.of({ prepare, remove, openRunFile, checkRunFolder, writeRunFile })
       }),
     )
 }
