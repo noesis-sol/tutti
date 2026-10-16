@@ -414,8 +414,8 @@ const scenarios: Record<string, () => Promise<void>> = {
     })
   },
 
-  // A pattern no string matches, through generateObject. The pattern survives the Anthropic
-  // transformer, so it reaches the CLI; whether the CLI enforces it is the question.
+  // A pattern no string matches, through generateObject. The Anthropic transformer sends the
+  // pattern as a description only, so the CLI accepts any string and the codec rejects it.
   pattern: async () => {
     const Impossible = Schema.Struct({
       word: Schema.String.check(Schema.isPattern(/^(?!)$/)),
