@@ -178,6 +178,13 @@ describe("time limits", () => {
     expect(await gone(await pidsIn(pidFile))).toBe(true)
   })
 
+  test("fail a command that exits with 0 on the SIGTERM they send", async () => {
+    const exit = await runExit(
+      run(sh("trap 'echo cleaned up; exit 0' TERM; sleep 30 & wait", { timeLimit: "300 millis" })),
+    )
+    expect(failure(exit)).toBeInstanceOf(CommandTimedOut)
+  })
+
   test("hold while the caller is uninterruptible", async () => {
     const pidFile = join(tempDir(), "pids")
     const exit = await runExit(

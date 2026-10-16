@@ -147,14 +147,15 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         .pipe(Effect.mapError(notRun))
       const kill = Effect.ignore(handle.kill({ killSignal: "SIGTERM", forceKillAfter: grace }))
 
+      // A leader still running at the limit has timed out, whatever code it exits with once killed.
       let timedOut = false
       yield* Effect.interruptible(Effect.sleep(timeLimit)).pipe(
-        Effect.andThen(
-          Effect.suspend(() => {
-            timedOut = true
-            return kill
-          }),
-        ),
+        Effect.andThen(handle.isRunning),
+        Effect.flatMap((running) => {
+          timedOut = running
+          return running ? kill : Effect.void
+        }),
+        Effect.ignore,
         Effect.forkScoped,
       )
 
@@ -178,7 +179,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       yield* Fiber.join(reading)
 
       const exitCode = Exit.isSuccess(exit) ? exit.value : signalExitCode(exit.cause)
-      if (timedOut && exitCode !== 0) {
+      if (timedOut) {
         return yield* new CommandTimedOut({ command: shown, timeLimit, stderr: stderr.text() })
       }
       return { exitCode, stdout: stdout.text(), stderr: stderr.text() } satisfies Output
