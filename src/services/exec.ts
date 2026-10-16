@@ -5,7 +5,7 @@
 // it expires: a fiber of its own sends the signals, so the limit holds even while the caller is
 // uninterruptible (§ 3.4).
 import { constants } from "node:os"
-import { Cause, Duration, Effect, Exit, Fiber, FileSystem, Schema, Stream } from "effect"
+import { Cause, Context, Duration, Effect, Exit, Fiber, FileSystem, Schema, Stream } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 
@@ -44,6 +44,15 @@ export interface Output {
   readonly stdout: string
   readonly stderr: string
 }
+
+/**
+ * The process groups exec has started and not yet seen killed, by their leader's PID. A command
+ * that is still here once the run's scope has closed was left running: whole-run scenarios read
+ * this to fail on it (§ 13), each with a registry of its own.
+ */
+export const ProcessGroups = Context.Reference<Set<number>>("tutti/services/exec/ProcessGroups", {
+  defaultValue: () => new Set(),
+})
 
 /** The command exited with a code other than 0. A command killed by a signal gets 128 + its number. */
 export class CommandFailed extends Schema.TaggedError<CommandFailed>()("CommandFailed", {
@@ -116,6 +125,7 @@ const signalExitCode = (cause: Cause.Cause<PlatformError>): number => {
 export const exec = Effect.fn("exec")(function* (command: Command) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const fs = yield* FileSystem.FileSystem
+  const groups = yield* ProcessGroups
   const shown = showCommand(command)
   const notRun = (error: PlatformError) =>
     new CommandNotRun({ command: shown, reason: error.message })
@@ -129,6 +139,13 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         command.outputFile === undefined
           ? undefined
           : yield* fs.open(command.outputFile, { flag: "w" }).pipe(Effect.mapError(notRun))
+      // Added before the spawn, so it runs after the spawner's finalizer has killed the group.
+      let group: number | undefined
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          if (group !== undefined) groups.delete(group)
+        }),
+      )
       const handle = yield* spawner
         .spawn(
           ChildProcess.make(command.command, command.args, {
@@ -147,6 +164,8 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
           }),
         )
         .pipe(Effect.mapError(notRun))
+      group = handle.pid
+      groups.add(group)
       const kill = Effect.ignore(handle.kill({ killSignal: "SIGTERM", forceKillAfter: grace }))
 
       // A leader still running at the limit has timed out, whatever code it exits with once killed.
