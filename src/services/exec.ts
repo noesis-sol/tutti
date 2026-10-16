@@ -32,6 +32,8 @@ export interface Command {
   readonly stdin?: string
   /** A file that receives the whole of stdout and stderr as they come, interleaved. */
   readonly outputFile?: string
+  /** Called with each chunk of stdout and stderr as it comes, before it reaches the file. */
+  readonly onOutput?: (chunk: Uint8Array, from: "stdout" | "stderr") => void
   /** The bytes of stdout and of stderr kept in the result; past this, only the last ones. */
   readonly maxOutputBytes?: number
   readonly killGrace?: Duration.Input
@@ -162,11 +164,12 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       const stdout = new Tail(max)
       const stderr = new Tail(max)
       const reading = yield* Stream.merge(
-        Stream.map(handle.stdout, (chunk) => [stdout, chunk] as const),
-        Stream.map(handle.stderr, (chunk) => [stderr, chunk] as const),
+        Stream.map(handle.stdout, (chunk) => [stdout, chunk, "stdout"] as const),
+        Stream.map(handle.stderr, (chunk) => [stderr, chunk, "stderr"] as const),
       ).pipe(
-        Stream.runForEach(([tail, chunk]) => {
+        Stream.runForEach(([tail, chunk, from]) => {
           tail.push(chunk)
+          command.onOutput?.(chunk, from)
           return file === undefined ? Effect.void : file.writeAll(chunk)
         }),
         Effect.mapError(notRun),
