@@ -74,6 +74,7 @@ export const Tag = {
   steered: "STEERED",
   released: "RELEASED",
   message: "MESSAGE",
+  organ: "ORGAN",
   usage: "USAGE",
   usageLimit: "USAGE_LIMIT",
   phaseBug: "PHASE_BUG",

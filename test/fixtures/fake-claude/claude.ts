@@ -1,6 +1,7 @@
-// A fake Claude Code for test/agent-host-live.test.ts: started by the Agent SDK in place of the
-// real one (pathToClaudeCodeExecutable), it speaks the SDK's stream-json protocol on stdin and
-// stdout, with the message shapes docs/spikes/01-sdk-session.md and 02-sdk-lifecycle.md recorded
+// A fake Claude Code for test/agent-host-live.test.ts and test/agent-sdk-language-model.test.ts:
+// started by the Agent SDK in place of the real one (pathToClaudeCodeExecutable), it speaks the
+// SDK's stream-json protocol on stdin and stdout, with the message shapes
+// docs/spikes/01-sdk-session.md and 02-sdk-lifecycle.md recorded
 // (SDK 0.3.301, Claude Code 2.1.301). It answers the SDK's initialize and interrupt control
 // requests, plays one turn per message it is sent (a message sent during a turn waits in its queue
 // and runs as the next turn, with those of its kind waiting behind it, or a wait step folds it into
@@ -43,6 +44,10 @@ type Step =
     }
   /** Asks the SDK's canUseTool, waits for the answer, and says what it was. */
   | { readonly permission: { readonly tool_name: string; readonly input: Record<string, unknown> } }
+  /** Writes this message as it is, with the session's ID. */
+  | { readonly message: Record<string, unknown> }
+  /** Fields laid over the turn's result: a structured output, an error subtype, a cost. */
+  | { readonly result: Record<string, unknown> }
 
 interface Scenario {
   /** Fields laid over every system/init. */
@@ -57,6 +62,10 @@ interface Scenario {
   readonly turns?: ReadonlyArray<ReadonlyArray<Step>>
   /** The file the arguments and every line read are appended to. */
   readonly log?: string
+  /** Environment variables logged with the arguments, unset ones as null. */
+  readonly env?: ReadonlyArray<string>
+  /** Reads stdin's end only once the running turns are over, as Claude Code does, then ends. */
+  readonly eofAfterTurn?: boolean
 }
 
 interface UserMessage {
@@ -94,7 +103,12 @@ const exit = async (code: number) => {
   process.exit(code)
 }
 
-log({ args })
+log({
+  args,
+  pid: process.pid,
+  cwd: process.cwd(),
+  env: Object.fromEntries((scenario.env ?? []).map((name) => [name, process.env[name] ?? null])),
+})
 if (scenario.exitAtStart !== undefined) await exit(scenario.exitAtStart)
 
 /** The hook callback IDs the SDK registered, by event. */
@@ -153,7 +167,11 @@ const lifecycle = (messages: ReadonlyArray<UserMessage>, state: string) =>
     ),
   )
 
-const result = (text: string, uuids: ReadonlyArray<string>) =>
+const result = (
+  text: string,
+  uuids: ReadonlyArray<string>,
+  overrides: Record<string, unknown> = {},
+) =>
   write({
     type: "result",
     subtype: "success",
@@ -171,6 +189,7 @@ const result = (text: string, uuids: ReadonlyArray<string>) =>
     user_message_uuids: uuids,
     session_id: sessionId,
     uuid: crypto.randomUUID(),
+    ...overrides,
   })
 
 /** Plays a turn for `messages`, then the next for those queued meanwhile. */
@@ -208,6 +227,7 @@ const turn = async (first: ReadonlyArray<UserMessage>) => {
     ...scenario.init,
   })
   let last = ""
+  let overrides: Record<string, unknown> = {}
   for (const step of steps) {
     if ("text" in step) {
       last = step.text
@@ -256,6 +276,10 @@ const turn = async (first: ReadonlyArray<UserMessage>) => {
       await backgroundTasks()
     } else if ("exit" in step) {
       await exit(step.exit)
+    } else if ("message" in step) {
+      await write({ ...step.message, session_id: sessionId })
+    } else if ("result" in step) {
+      overrides = { ...overrides, ...step.result }
     } else if ("stderr" in step) {
       process.stderr.write(step.stderr)
     } else if ("hook" in step) {
@@ -281,7 +305,7 @@ const turn = async (first: ReadonlyArray<UserMessage>) => {
       await assistant(last)
     }
   }
-  await result(last, uuids())
+  await result(last, uuids(), overrides)
   await lifecycle(messages, "completed")
   return next()
 }
@@ -305,7 +329,10 @@ const next = async (): Promise<void> => {
     // With no report to come, a message sent from now starts a turn of its own.
     if (task === undefined) running = false
     await write({ type: "system", subtype: "session_state_changed", state: "idle" })
-    if (task === undefined) return
+    if (task === undefined) {
+      if (ended) await exit(0)
+      return
+    }
     await write({
       type: "system",
       subtype: "task_notification",
@@ -394,7 +421,14 @@ lines.on("line", (line) => {
     else void turn([message])
   }
 })
+/** Whether stdin has ended, with a turn still to finish. */
+let ended = false
+
 lines.on("close", () => {
   log({ closed: true })
-  void exit(0)
+  if (scenario.eofAfterTurn === true && running) {
+    ended = true
+    // With stdin gone, nothing else keeps a hanging turn's process alive.
+    setInterval(() => {}, 60_000)
+  } else void exit(0)
 })
