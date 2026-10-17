@@ -301,7 +301,7 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 | State | Derived from | Card shows |
 |---|---|---|
 | `Starting` | the session is spawned and its first `system/init` hasn't arrived | `starting` (grey) |
-| `Working{doing}` | `session_state_changed: running`, a turn under way, no `idle` since the last `result`, a send of tutti's outstanding, or a live background task (below). `doing` is the current tool's category | `working`, `editing`, `reading`, `testing` (bold yellow), `subagent` (cyan) |
+| `Working{doing}` | `session_state_changed: running`, a turn under way, no `idle` since the last `result`, a send of tutti's outstanding, a live background task, or a finished task's report still to come (below). `doing` is the current tool's category | `working`, `editing`, `reading`, `testing` (bold yellow), `subagent` (cyan) |
 | `Retrying{attempt, max, status}` | an `api_retry` message, until the next message of the turn | `retrying 3/10 (529)` (yellow) |
 | `NeedsYou{requests}` | one or more pending `canUseTool` calls or elicitations, or `session_state_changed: requires_action` | `permission — waiting for you` or `question — waiting for you`, with a count when there are several (red border) |
 | `UsageLimited{resetsAt}` | the turn ended on the account's usage limit (§4.12) | `usage limit · resets 14:05` (yellow) |
@@ -311,10 +311,13 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 
 **When a turn has ended (`Idle`).** All of these must hold:
 
-- **The turns are over: `session_state_changed: idle` arrived** after the last `result`. The CLI sends `idle` once, after the last queued turn has run, and not between queued turns, whichever way the queued messages were sent. Until it comes, the worker is `Working`: a `result` alone ends a turn, not the worker's work.
+- **The turns are over: `session_state_changed: idle` arrived** after the last `result`. The CLI sends `idle` once, after the last queued turn has run, and not between queued turns, whichever way the queued messages were sent. Until it comes, the worker is `Working`: a `result` alone ends a turn, not the worker's work. `idle` says only that no turn is running or queued. It doesn't say the worker's background work is done: it comes right after the `result` even while a background task is live (docs/spikes/01-sdk-session.md, item 4), so the next two conditions are checked as well.
 - **The last `result` isn't an error.** `is_error` isn't set. A `success` result with `is_error: true` is an API error ending the turn: a rate limit goes to §4.12, and anything else is a failed turn.
 - **None of tutti's sends is outstanding.** tutti gives each message it pushes into the inbox a `uuid`, and the CLI reports it in `command_lifecycle` messages (`{ type: "command_lifecycle", command_uuid, state: "queued" | "started" | "completed" }`, one set per send, whether it ran as a turn of its own, shared one or was folded into the running turn). A send is outstanding from its push until its `completed`, or until a `result`'s `user_message_uuids` lists it, or an interrupt's receipt reports it `cancelled` (§4.8). This covers a message pushed just as the last turn ends, before the CLI says `running` again. `command_lifecycle` isn't in the SDK's `SDKMessage` union, so tutti decodes it from the raw message, and `user_message_uuids` alone suffices when it is missing.
-- **No background task is live.** The live set comes from `background_tasks_changed`, whose payload replaces the set each time. Tasks marked `ambient` (live-update watchers, which the SDK says hosts "should exclude … from activity indicators") don't count. Counting them would keep a worker `Working` forever and its ticket would never merge.
+- **No background task is live.** The live set comes from `background_tasks_changed`, whose payload replaces the set each time, and must be empty of tasks that aren't `ambient`. Tasks marked `ambient` (live-update watchers, which the SDK says hosts "should exclude … from activity indicators") don't count. Counting them would keep a worker `Working` forever and its ticket would never merge. A Bash `run_in_background` command and a Monitor watch count: neither is `ambient` (docs/spikes/01-sdk-session.md, item 4).
+- **No finished task's report is still to come.** When a task that isn't `ambient` ends between `idle` and the next `running`, the CLI starts a turn by itself to report it: `task_notification`, `background_tasks_changed` without the task, then `running`, `system/init`, a `result` and `idle`, with no send of tutti's behind it. The set empties about 70 ms before `running` arrives, so for that moment the conditions above all hold although a turn is coming. A task leaving the live set in that interval therefore keeps the worker `Working` until the next `idle`. If no `running` follows within 30 s, tutti logs it and stops waiting for that report, so a task that ends without a report can't keep a worker `Working`. A task that ends while a turn is running needs nothing more: its report is folded into that turn or queued behind it, and `idle` comes after it.
+
+**A Monitor watch keeps its worker `Working`.** A Monitor call starts a background task (`task_type: "local_bash"`, not `ambient`) that lives until its source ends or it expires (30 minutes in the spike; the worker may re-arm it), and each event it sees starts a turn. A worker that set a watch and ended its turn is waiting for those events, not done. Counting it as `Idle` would settle it: the per-ticket fiber would read a ticket still in progress and send a continue nudge into a worker that is only waiting, and after two nudges and the idle grace the run would hold with `PAUSED` (§4.3). So a watch counts as a live task like any other, however long it lives. `TICKET_LIMIT` bounds it, as it bounds a long turn, and closing or suspending the session ends it (§4.8). While no turn runs and only background tasks are live, `doing` is `working`.
 
 **`queued_turn_count` isn't used.** It counts only queued messages sent without `client_composed`, and every message tutti composes is `client_composed` (§4.1). With SDK 0.3.301, two queued `client_composed` nudges left it 0 with another turn still to come, and a queued message you typed followed by a composed one gave 1, then 0 while the composed one was still queued (docs/spikes/01-sdk-session.md, items 1 and 4). Reading it would call a worker `Idle` with a nudge or hand-back still queued.
 
@@ -1475,7 +1478,7 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
 - **Whole-run scenarios** use the test layers (§3.3) under `TestClock`, as orchestra's `newTimedHarness` uses `synctest`. `AgentHost`'s test layer replays scripted SDK message sequences, including:
   - `canUseTool` calls and their answers
   - `rate_limit_event`, `api_retry` and `is_error` results
-  - `background_tasks_changed` with ambient tasks
+  - `background_tasks_changed` with ambient tasks, a Monitor watch live after `idle`, and a task ending after `idle` with the turn the CLI starts to report it, including the moment between the emptied set and `running`, and a report that never comes
   - interrupts, resumes and gone sessions
 
   `Beads` and `Git` are in memory. Git-subject scenarios use real git in a temp folder and are marked slow. Spinners and animations take their clock from a test service, so frames are deterministic.
@@ -1486,6 +1489,7 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
 - **Contract tests against the real SDK** are gated by `TUTTI_LIVE=1`. Each runs one tiny session in a temp repository and checks the behaviour tutti's state machine relies on:
   - `system/init` per turn
   - `session_state_changed`, with `idle` only after the last queued turn, `client_composed` sends among them
+  - `idle` with a background task live, and the turn the CLI starts when the task ends, after the set empties
   - `command_lifecycle` for each send, and `result`'s `user_message_uuids`
   - `canUseTool` for a call that needs asking, with `defaultToNo` on a held removal
   - `interrupt()` and its receipt
