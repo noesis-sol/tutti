@@ -6,7 +6,8 @@
 // it was. So the failure is handed back to the ticket's worker, which has the change in mind, when
 // it can take it: hand-backs on (merge.check_hand_backs), attempts left of them, a failure to show
 // it (the check finished), git able to say what the check failed on, the run not winding down, and
-// its worker Idle or Failed and not steered, or its session closed by tutti, which is resumed.
+// its worker Idle or Failed and not steered, or its session closed by tutti, which is resumed, or
+// Gone with its ticket's one Gone resume of the run left, resumed too (handback.ts's give).
 //
 // The hand-back is a client_composed message with orchestra's instructions: what failed, the lines
 // that say so, what landed on the base since the branch was cut, and to commit a fix naming the
@@ -361,7 +362,8 @@ export const fixCheck = (
         check,
         Result.isSuccess(landed) ? landed.success : undefined,
       )
-      const why = yield* give(stop.ticket, prompt, limit)
+      const what = line`${id}'s failed check is handed back to its worker`
+      const why = yield* give(stop.ticket, prompt, what, limit)
       const verified =
         why === undefined
           ? yield* verifyFixed(stop, options)

@@ -3,9 +3,12 @@
 // ticket's rebase that stops on conflicts is handed back to its worker to resolve when it can take
 // it: hand-backs on, a check command set to check the resolution with, attempts left, git able to say
 // what the rebase stopped on, and its worker Idle or Failed and not steered, or its session closed by
-// tutti, which is resumed for it (not a Gone resume, so it counts toward no resume limit). The
-// rebase is left in progress, the ticket moves Merging → Resolving{attempt} with the RESOLVING
-// line, and the merge queue goes on with the tickets behind it meanwhile.
+// tutti, which is resumed for it (not a Gone resume, so it counts toward no resume limit). A worker
+// whose session ended unexpectedly (Gone) takes it too while the ticket's one Gone resume of the run
+// is left (§ 4.8): its session is resumed for the hand-back, and one that can't be is WORKER_GONE.
+// Either resume is recorded as sessions.ts has it (RESUMED, `resumed`). The rebase is left in
+// progress, the ticket moves Merging → Resolving{attempt} with the RESOLVING line, and the merge
+// queue goes on with the tickets behind it meanwhile.
 //
 // The hand-back is a client_composed message with orchestra's instructions. It is under way from its
 // push until its send is no longer outstanding and the worker has settled, within resolve_timeout
@@ -43,6 +46,7 @@ import {
   uncommitted,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
+import { type ResumeWhy, resume } from "./sessions.ts"
 import { answers, namesTicket, untilSettled } from "./settle.ts"
 
 /** How many times a ticket's rebase conflicts are handed back to its worker in a run. */
@@ -169,18 +173,28 @@ export const whyNotHandBack = (
     return busy === undefined ? undefined : not(busy)
   })
 
+/** What a Gone worker whose session was resumed once in this run already is, for a line. */
+const goneAgain = (why: string): string =>
+  `its worker is gone (${why}) and its session was resumed once in this run already`
+
 /**
  * Why the ticket's worker can't take a hand-back, as it is now: undefined when it is Idle or
- * Failed, or its session, closed by tutti in this run or an earlier one, can be resumed.
+ * Failed, its session, closed by tutti in this run or an earlier one, can be resumed, or it is Gone
+ * with the ticket's one Gone resume of the run left (§ 4.8).
  */
 export const workerAway = (
   id: string,
-): Effect.Effect<string | undefined, never, AgentHost | Store> =>
+): Effect.Effect<string | undefined, never, AgentHost | Ledger | Store> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
+    const ledger = yield* Ledger
     const store = yield* Store
     const state = yield* Effect.result(host.current(id))
-    if (Result.isSuccess(state)) return away(state.success)
+    if (Result.isSuccess(state)) {
+      const now = state.success
+      if (now._tag !== "Gone") return away(now)
+      return (yield* ledger.goneResumed(id)) ? goneAgain(now.why) : undefined
+    }
     // No worker in this run: its session, closed by an earlier one, is resumed.
     const saved = yield* store.ticket(id)
     return saved?.session === undefined ? "its worker has no session to resume" : undefined
@@ -301,25 +315,74 @@ export const handOver = (
 const still = (state: WorkerState): string =>
   away(state) ?? (state._tag === "Closed" ? "its session is closed" : "its worker is idle")
 
+/** What give needs: the host, and what a resume records (sessions.ts). */
+export type GiveEnv = AgentHost | Store | Ledger | Log | EventStream
+
 /**
- * Gives the ticket's worker a hand-back, `prompt`, resuming its session if tutti closed it, and
- * waits until its send is no longer outstanding and the worker has settled, within `limit` from the
- * push. Why it wasn't done; undefined when what it left is to be looked at.
+ * Resumes the ticket's session for its hand-back, `prompt`, recording it (`why`, the RESUMED line
+ * starting with `what`). Why it couldn't be; undefined once it is resumed.
+ */
+const resumeFor = (
+  id: string,
+  why: ResumeWhy,
+  prompt: string,
+  what: Line,
+): Effect.Effect<string | undefined, never, GiveEnv> =>
+  Effect.map(Effect.result(resume(id, why, prompt, what)), (resumed) =>
+    Result.isFailure(resumed) ? resumed.failure.reason : undefined,
+  )
+
+/**
+ * The ticket's Gone worker (`why`) resumed for its hand-back, `prompt`, as the ticket's one Gone
+ * resume of the run (§ 4.8): one that can't be is warned about, WORKER_GONE. Why it wasn't resumed;
+ * undefined once it is.
+ */
+const resumeGoneFor = (
+  id: string,
+  why: string,
+  prompt: string,
+  what: Line,
+): Effect.Effect<string | undefined, never, GiveEnv> =>
+  Effect.gen(function* () {
+    const ledger = yield* Ledger
+    const logs = yield* Log
+    const events = yield* EventStream
+    if (!(yield* ledger.claimGoneResume(id))) return goneAgain(why)
+    const failed = yield* resumeFor(id, "gone", prompt, line`${what}, which is gone (${why})`)
+    if (failed === undefined) return undefined
+    const text = ticketLine(
+      Tag.workerGone,
+    )`${id}'s worker is gone (${why}), and its session could not be resumed for its hand-back (${failed})`
+    yield* events.emit({ kind: "warn", ticket: id, detail: "its worker gone", text })
+    yield* logs.write(text)
+    return line`its worker is gone (${why}) and its session could not be resumed: ${failed}`
+  })
+
+/**
+ * Gives the ticket's worker a hand-back, `prompt`, resuming its session if tutti closed it or it is
+ * Gone (the RESUMED line starting with `what`), and waits until its send is no longer outstanding
+ * and the worker has settled, within `limit` from the push. Why it wasn't done; undefined when what
+ * it left is to be looked at.
  */
 export const give = (
   ticket: FinishedTicket,
   prompt: string,
+  what: Line,
   limit: Duration.Duration,
-): Effect.Effect<string | undefined, never, AgentHost | Store> =>
+): Effect.Effect<string | undefined, never, GiveEnv> =>
   Effect.scoped(
     Effect.gen(function* () {
       const host = yield* AgentHost
-      const store = yield* Store
-      const { id, worktree } = ticket
+      const { id } = ticket
       const from: From = "clientComposed"
       const state = yield* Effect.result(host.current(id))
       let taken: Effect.Effect<void>
-      if (Result.isSuccess(state) && state.success._tag !== "Closed") {
+      if (Result.isSuccess(state) && state.success._tag === "Gone") {
+        const failed = yield* resumeGoneFor(id, state.success.why, prompt, what)
+        if (failed !== undefined) return failed
+        // As below: the resume put its state back at Starting.
+        taken = Effect.void
+      } else if (Result.isSuccess(state) && state.success._tag !== "Closed") {
         // The session's messages are taken from before the send, so its turn's result can't be
         // missed.
         const heard = yield* Queue.unbounded<SDKMessage>()
@@ -343,14 +406,8 @@ export const give = (
         )
         taken = Effect.raceFirst(Effect.asVoid(answered), ended)
       } else {
-        const session = (yield* store.ticket(id))?.session
-        if (session === undefined) return line`its worker has no session to resume`
-        const resumed = yield* Effect.result(
-          host.resume(id, { sessionId: session, cwd: worktree }, { text: prompt, from }),
-        )
-        if (Result.isFailure(resumed)) {
-          return line`its session could not be resumed: ${resumed.failure.reason}`
-        }
+        const failed = yield* resumeFor(id, "hand_back", prompt, what)
+        if (failed !== undefined) return line`its session could not be resumed: ${failed}`
         // The resume put its state back at Starting: it settles only once the hand-back's turn,
         // the first of a resumed session, is over.
         taken = Effect.void
@@ -504,7 +561,8 @@ export const resolve = (
     const { base } = options
     const check = config.settings.checks.fast.command ?? ""
     const limit = config.settings.merge.resolve_timeout
-    let why: string | undefined = yield* give(stop.ticket, resolvePrompt(stop, base, check), limit)
+    const what = line`${id}'s conflicts with ${base} are handed back to its worker`
+    let why = yield* give(stop.ticket, resolvePrompt(stop, base, check), what, limit)
     if (why === undefined) why = yield* verifyResolved(stop, options)
     if (why === undefined) {
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)

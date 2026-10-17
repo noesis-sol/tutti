@@ -243,6 +243,8 @@ export class Ledger extends Context.Service<
      * true the first time, false after.
      */
     claimGoneResume(ticket: string): Effect.Effect<boolean>
+    /** Whether `ticket`'s one resume of a Gone session in this run is claimed already. */
+    goneResumed(ticket: string): Effect.Effect<boolean>
     /** Adds `by` (1 by default) to one of `ticket`'s tallies; a ticket not in the run has none. */
     count(ticket: string, tally: TallyName, by?: number): Effect.Effect<void>
     /** Begins the wind-down, noting the tickets running now; nothing when it has begun. */
@@ -368,6 +370,9 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
         resumed.has(ticket) ? [false, resumed] : [true, new Set([...resumed, ticket])],
       )
 
+    const goneResumedOf: Ledger["Service"]["goneResumed"] = (ticket) =>
+      Effect.map(Ref.get(goneResumed), (resumed) => resumed.has(ticket))
+
     const windDown = SubscriptionRef.updateEffect(ref, (state) =>
       state.windDown !== null
         ? Effect.succeed(state)
@@ -392,6 +397,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       steer,
       release,
       claimGoneResume,
+      goneResumed: goneResumedOf,
       count,
       windDown,
       windUp,

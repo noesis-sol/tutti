@@ -532,6 +532,8 @@ Conflict resolution and check fixes go to the ticket's worker as orchestra sends
 - The worker must be `Idle` or `Failed` (§4.2) and not steered (§4.3). One that is working, needs you or is steered isn't handed anything, and the `MERGE_CONFLICT` or `CHECKS_FAILED` line says why, as orchestra's does.
 - A hand-back is under way from its push until its send is no longer outstanding (§4.2) and the worker has settled. Only then does tutti verify what the worker left. `resolve_timeout` counts from the push. Its turn may be shared with a message you typed meanwhile (§4.3), so tutti waits for the hand-back's `uuid`, not for the next `result`.
 - A worker whose session tutti closed (§4.8) is resumed for the hand-back. That doesn't count toward "resumed once in this run", which counts only sessions that ended unexpectedly (`Gone`).
+- A worker whose session ended unexpectedly (`Gone`) is resumed for the hand-back while its ticket's one `Gone` resume of the run (§4.8) is left, and that uses it. Once it is used, the hand-back isn't given, and the line says so. A resume that fails is `WORKER_GONE`, and the hand-back is set aside as one not done: `MERGE_CONFLICT` or `CHECKS_FAILED`, its line and notes saying why.
+- Either resume is recorded as every resume is: the `RESUMED` line, a `resumed` record (§10, `why: hand_back` or `gone`) and one more resume in `state.json`. Once the hand-back is over, its session is closed if the ticket's phase no longer needs it (§4.8's table).
 
 ### 4.8 Sessions: lifetime, quitting and carry-over
 
