@@ -186,8 +186,9 @@ The SDK checks no version: `pathToClaudeCodeExecutable` runs whatever it is give
 - `package.json` has `"claudeCodeVersion": "2.1.301"`, the Claude Code its platform packages carry.
   The SDK sets `CLAUDE_AGENT_SDK_VERSION=0.3.301` in the child's environment.
 - Each Claude Code release's `manifest.json` has `sdkCompat.testedWrapperVersions`, the SDK
-  versions that Claude Code was tested with: the 30 most recent before it. Claude Code 2.1.302
-  lists 0.3.269 to 0.3.301, 2.1.301 lists 0.3.267 to 0.3.285, and 2.1.285 lists 0.3.245 to 0.3.282.
+  versions that Claude Code was tested with: up to 30 recent ones before it. Claude Code 2.1.302
+  lists 0.3.269 to 0.3.301 (30 versions), 2.1.301 lists 0.3.267 to 0.3.285 (19), and 2.1.285
+  lists 0.3.245 to 0.3.282 (30).
   So a newer Claude Code is tested with older SDKs, never the reverse.
 - `sdk.d.ts` names minimum Claude Code versions for some features: 2.1.248, 2.1.261
   (`pluginDelivery: "initialize"`) and 2.1.268 (`pending_permission_requests` in the initialize
