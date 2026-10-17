@@ -443,12 +443,18 @@ The reviewer's **Needs you** recommends rules for calls the classifier kept deny
 **What the UI shows.**
 
 - **On the card.** It turns red and shows the request's `title`, else the tool and a one-line summary of its input, then its buttons:
-  - for a permission: **Deny**, **Allow**, and **Allow for this run** (not when `suppressAlwaysAllowRule` is set)
+  - for a permission: **Deny**, **Allow**, and **Allow for this run** (not when `suppressAlwaysAllowRule` is set, nor when the request's `suggestions` hold no `addRules`)
   - for a question: each question's options
 - **In the worker view.** The same, with `description`, `decisionReason` and the full input.
 - **Not shown.** Whatever the card can't hold appears as **Answer in view**.
 
-**Allow for this run** answers allow with the SDK's suggested rules, their `destination` rewritten to `session`, so this worker isn't asked again. tutti also keeps the suggested rules (tool name and rule content) for the run. A later request from any worker whose `suggestions` contain the same rule is allowed without asking, and logged as `ALLOWED by a rule you allowed for this run`. The suggested destinations (`localSettings`, `projectSettings`) are never used: they resolve in the worker's worktree, where a rule would dirty the tree before its merge, be committed, or vanish with the cleanup. Whether to also offer a permanent rule is open (§15, Q2).
+**Allow for this run** answers allow with the SDK's suggested rules, their `destination` rewritten to `session`, so this worker isn't asked again. Only the `addRules` suggestions that allow are passed, and only they are kept:
+
+- The SDK's `suggestions` mix kinds. A Bash call in default mode suggested `addRules` (the exact command, in `localSettings`), `addDirectories` and `setMode acceptEdits` (both in `session`); a Write suggested only `setMode acceptEdits`.
+- `setMode` and `addDirectories` are dropped. Passed back, `setMode acceptEdits` switched the worker's session to `acceptEdits` for every later turn, after which a removal with a variable target ran without asking (the session spike).
+- A request whose `suggestions` hold no `addRules` that allow has no Allow for this run, as with `suppressAlwaysAllowRule`.
+
+tutti keeps those rules (tool name and rule content) for the run. A later request from any worker whose suggested rules are all among them is allowed without asking, and logged as `ALLOWED by a rule you allowed for this run`; a sibling command suggests a rule of its own, so it is still asked. The suggested destinations (`localSettings`, `projectSettings`) are never used: they resolve in the worker's worktree, where a rule would dirty the tree before its merge, be committed, or vanish with the cleanup. Whether to also offer a permanent rule is open (§15, Q2).
 
 **Keys.** §7.3 has the full table.
 
@@ -468,7 +474,7 @@ The reviewer's **Needs you** recommends rules for calls the classifier kept deny
 | Answer | Result |
 |---|---|
 | Allow | `{ behavior: "allow", updatedInput: input, decisionClassification: "user_temporary" }`. `updatedInput` is always sent, since older CLIs reject an allow without it |
-| Allow for this run | the above, plus `updatedPermissions` (destination `session`) and `decisionClassification: "user_permanent"` |
+| Allow for this run | the above, plus `updatedPermissions` (the `addRules` suggestions only, destination `session`) and `decisionClassification: "user_permanent"` |
 | Deny | `{ behavior: "deny", message: "Denied by the maintainer in tutti", decisionClassification: "user_reject" }`, plus your reason if you typed one. Never `interrupt: true`: the turn goes on with the refusal |
 | A question | `{ behavior: "allow", updatedInput: { questions, answers } }`, with `answers` mapping each question's text to the chosen label or your own text |
 
@@ -969,7 +975,7 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 | `Esc`, a click on `← Dashboard` | close an open box | leave the composer, then the view |
 | `d`, `Shift+D` | deny the target request; deny with a reason | the same |
 | `a` | allow the target request, only without `defaultToNo` (§4.5) | the same |
-| `r` | allow for this run (not with `suppressAlwaysAllowRule`) | the same |
+| `r` | allow for this run (not with `suppressAlwaysAllowRule`, nor without suggested `addRules`) | the same |
 | `1`–`4` inside a question | pick an option | pick an option |
 | `i`, a click on the composer | | focus the composer; `Enter` sends, `Alt+Enter` or `Ctrl+J` adds a new line |
 | `Ctrl+X` | | interrupt the worker's turn (asks first); the worker becomes steered |
