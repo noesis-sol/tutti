@@ -437,6 +437,8 @@ export const layer = (
       const push = (session: Open, message: Message) =>
         Effect.gen(function* () {
           const uuid = randomUUID()
+          // Outstanding before the CLI can see it, so its turn's result can't come first.
+          yield* workers.fold(session.entry, WorkerEvent.Sent({ uuid }))
           yield* Queue.offer(session.inbox, userMessage(message, uuid, session.sessionId))
           return uuid as string
         })
@@ -478,10 +480,12 @@ export const layer = (
                   ? new AgentProtocol({ ticket, detail: `interrupt failed: ${messageOf(cause)}` })
                   : new AgentGone({ ticket, why: "its session ended during the interrupt" }),
             })
-            return {
+            const receipt: Receipt = {
               stillQueued: response?.still_queued ?? [],
               cancelled: response?.cancelled ?? [],
-            } satisfies Receipt
+            }
+            yield* workers.fold(session.entry, WorkerEvent.Cancelled({ uuids: receipt.cancelled }))
+            return receipt
           }),
         close,
         end: (ticket) => Effect.andThen(close(ticket), workers.forget(ticket)),

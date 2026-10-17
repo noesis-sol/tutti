@@ -255,6 +255,40 @@ describe("AgentHost live: the inbox", () => {
     expect(results).toEqual(["PERMISSION: allow", "ECHO: second"])
     expect(users.map((m) => m.message.content)).toEqual(["first", "second"])
   })
+
+  test("two queued client_composed sends keep it Working though queued_turn_count is 0", async () => {
+    const { results, lifecycles } = await run(
+      { turns: [[{ permission: { tool_name: "Bash", input: { command: "rm -rf build" } } }]] },
+      ({ dir, log }) =>
+        Effect.gen(function* () {
+          const host = yield* AgentHost
+          const attention = yield* Attention
+          yield* host.start("t-1", session(dir))
+          yield* host.send("t-1", "first", "clientComposed")
+          yield* until("t-1", (s) => s._tag === "NeedsYou")
+          yield* host.send("t-1", "second", "clientComposed")
+          yield* host.send("t-1", "third", "clientComposed")
+          yield* logShows(log, (l) => usersIn(l).length === 3)
+          yield* attention.answer("r1", { _tag: "Allow" }, "screen")
+          // The first Idle comes only after the queued sends' turn: the transcript, recorded before
+          // each message is folded in, holds both results by then.
+          yield* until("t-1", idle)
+          const items = yield* (yield* Files).messages("t-1")
+          const raw = items.map((item) => item.message as unknown as Record<string, unknown>)
+          return {
+            results: raw
+              .filter((m) => m.type === "result")
+              .map((m) => [m.result, m.queued_turn_count]),
+            lifecycles: raw.filter((m) => m.type === "command_lifecycle").map((m) => m.state),
+          }
+        }),
+    )
+    expect(results).toEqual([
+      ["PERMISSION: allow", 0],
+      ["ECHO: second\nthird", 0],
+    ])
+    expect(lifecycles.filter((state) => state === "completed")).toHaveLength(3)
+  })
 })
 
 describe("AgentHost live: state, hooks and stderr", () => {

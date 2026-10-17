@@ -29,7 +29,6 @@ const result = (fields: object = {}) =>
     is_error: false,
     result: "DONE",
     num_turns: 1,
-    queued_turn_count: 0,
     ...fields,
   })
 const errorResult = (fields: object = {}) =>
@@ -74,6 +73,11 @@ const rateLimit = (status: "allowed" | "allowed_warning" | "rejected", resetsAt?
 const assistant = (fields: object = {}) =>
   sdk({ type: "assistant", message: { content: [] }, parent_tool_use_id: null, ...fields })
 const streamEvent = sdk({ type: "stream_event", event: { type: "message_start" } })
+// A send of tutti's: pushed, its command_lifecycle (not in the SDK's union), and its cancellation.
+const sent = (uuid: string) => WorkerEvent.Sent({ uuid })
+const lifecycle = (uuid: string, state: "queued" | "started" | "completed" | "cancelled") =>
+  sdk({ type: "command_lifecycle", command_uuid: uuid, state })
+const cancelled = (...uuids: ReadonlyArray<string>) => WorkerEvent.Cancelled({ uuids })
 
 const hook = (input: object): WorkerEvent =>
   WorkerEvent.Hook({ input: input as unknown as HookInput })
@@ -110,24 +114,28 @@ describe("Starting", () => {
 })
 
 describe("Idle", () => {
-  test("a clean result with nothing queued and no tasks is Idle, from when it came", () => {
-    expect(stateAfter(init, preTool("Read"), result())).toEqual(WorkerState.Idle({ at: 2 }))
+  test("a clean result, then idle, with no tasks is Idle, from when idle came", () => {
+    expect(stateAfter(init, preTool("Read"), result(), idle)).toEqual(WorkerState.Idle({ at: 3 }))
   })
 
   test("Idle keeps the time it began", () => {
-    expect(stateAfter(init, result(), idle, requests(0))).toEqual(WorkerState.Idle({ at: 1 }))
+    expect(stateAfter(init, result(), idle, requests(0))).toEqual(WorkerState.Idle({ at: 2 }))
   })
 
-  test("queued_turn_count absent counts as 0", () => {
-    const absent = sdk({ type: "result", subtype: "success", is_error: false, result: "DONE" })
-    expect(stateAfter(init, absent)._tag).toBe("Idle")
+  test("a result alone ends a turn, not the worker's work: Working until idle", () => {
+    expect(stateAfter(init, result())).toEqual(WorkerState.Working({ doing: "working" }))
+    expect(stateAfter(init, result(), idle)._tag).toBe("Idle")
   })
 
-  test("queued turns keep a worker Working until the last result", () => {
-    expect(stateAfter(init, result({ queued_turn_count: 2 }))).toEqual(
-      WorkerState.Working({ doing: "working" }),
-    )
-    expect(stateAfter(init, result({ queued_turn_count: 1 }), init, result())._tag).toBe("Idle")
+  test("queued turns keep a worker Working until idle after the last result", () => {
+    expect(stateAfter(init, result(), running, init, result())._tag).toBe("Working")
+    expect(stateAfter(init, result(), running, init, result(), idle)._tag).toBe("Idle")
+    // An idle from before the last result doesn't count.
+    expect(stateAfter(init, result(), idle, running, init, result())._tag).toBe("Working")
+  })
+
+  test("queued_turn_count isn't read", () => {
+    expect(stateAfter(init, result({ queued_turn_count: 2 }), idle)._tag).toBe("Idle")
   })
 
   test("a live background task keeps a worker Working; its end makes it Idle", () => {
@@ -137,21 +145,22 @@ describe("Idle", () => {
   })
 
   test("background_tasks_changed replaces the set each time", () => {
-    const events = [init, tasks({ id: "b1" }), tasks({ id: "b1" }, { id: "b2" }), result()]
+    const events = [init, tasks({ id: "b1" }), tasks({ id: "b1" }, { id: "b2" }), result(), idle]
     expect(stateAfter(...events)._tag).toBe("Working")
     expect(stateAfter(...events, tasks({ id: "b2" }))._tag).toBe("Working")
     expect(stateAfter(...events, tasks({ id: "b2" }), tasks())._tag).toBe("Idle")
   })
 
   test("ambient tasks never keep a worker Working", () => {
-    expect(stateAfter(init, tasks({ id: "watch", ambient: true }), result())._tag).toBe("Idle")
-    expect(stateAfter(init, result(), tasks({ id: "watch", ambient: true }))._tag).toBe("Idle")
-    expect(stateAfter(init, tasks({ id: "a", ambient: true }, { id: "b" }), result())._tag).toBe(
-      "Working",
-    )
+    const watch = tasks({ id: "watch", ambient: true })
+    expect(stateAfter(init, watch, result(), idle)._tag).toBe("Idle")
+    expect(stateAfter(init, result(), idle, watch)._tag).toBe("Idle")
+    expect(
+      stateAfter(init, tasks({ id: "a", ambient: true }, { id: "b" }), result(), idle)._tag,
+    ).toBe("Working")
     // A task that becomes ambient stops counting.
     expect(
-      stateAfter(init, tasks({ id: "a" }), result(), tasks({ id: "a", ambient: true }))._tag,
+      stateAfter(init, tasks({ id: "a" }), result(), idle, tasks({ id: "a", ambient: true }))._tag,
     ).toBe("Idle")
   })
 
@@ -162,7 +171,81 @@ describe("Idle", () => {
   })
 
   test("a new turn after Idle is Working again", () => {
-    expect(stateAfter(init, result(), running)).toEqual(WorkerState.Working({ doing: "working" }))
+    expect(stateAfter(init, result(), idle, running)).toEqual(
+      WorkerState.Working({ doing: "working" }),
+    )
+  })
+})
+
+describe("tutti's sends", () => {
+  const first = "00000000-0000-4000-8000-000000000001"
+  const second = "00000000-0000-4000-8000-000000000002"
+
+  test("two queued client_composed sends with queued_turn_count 0 keep a worker Working", () => {
+    // docs/spikes/01-sdk-session.md, item 1: the first result said 0, yet a further turn followed.
+    const events = [
+      sent(first),
+      lifecycle(first, "queued"),
+      running,
+      init,
+      lifecycle(first, "started"),
+      sent(second),
+      lifecycle(second, "queued"),
+      result({ queued_turn_count: 0, user_message_uuids: [first] }),
+      lifecycle(first, "completed"),
+    ]
+    expect(stateAfter(...events)._tag).toBe("Working")
+    // Even an idle wouldn't do while the second is outstanding.
+    expect(stateAfter(...events, idle)._tag).toBe("Working")
+    const next = [
+      init,
+      lifecycle(second, "started"),
+      result({ queued_turn_count: 0, user_message_uuids: [second] }),
+      lifecycle(second, "completed"),
+    ]
+    expect(stateAfter(...events, ...next)._tag).toBe("Working")
+    expect(stateAfter(...events, ...next, idle)._tag).toBe("Idle")
+  })
+
+  test("a send is outstanding from its push until a result lists it", () => {
+    expect(stateAfter(init, result(), idle, sent(first))._tag).toBe("Working")
+    const answered = [init, sent(first), result({ user_message_uuids: [first] }), idle]
+    expect(stateAfter(...answered)._tag).toBe("Idle")
+    const other = [init, sent(first), result({ user_message_uuids: [second] }), idle]
+    expect(stateAfter(...other)._tag).toBe("Working")
+  })
+
+  test("a turn that lists none of tutti's sends leaves them outstanding", () => {
+    // A turn the CLI starts by itself, to report a finished background task.
+    const events = [init, sent(first), result({ user_message_uuids: [] }), idle]
+    expect(stateAfter(...events)._tag).toBe("Working")
+  })
+
+  test("command_lifecycle completed or cancelled ends a send; queued or started doesn't", () => {
+    const pushed = [init, result({ user_message_uuids: [] }), sent(first)]
+    expect(stateAfter(...pushed, lifecycle(first, "queued"), idle)._tag).toBe("Working")
+    expect(stateAfter(...pushed, lifecycle(first, "started"), idle)._tag).toBe("Working")
+    expect(stateAfter(...pushed, lifecycle(first, "completed"), idle)._tag).toBe("Idle")
+    expect(stateAfter(...pushed, lifecycle(first, "cancelled"), idle)._tag).toBe("Idle")
+    expect(stateAfter(...pushed, lifecycle(second, "completed"), idle)._tag).toBe("Working")
+  })
+
+  test("command_lifecycle doesn't end an api_retry", () => {
+    expect(stateAfter(init, retry(2), lifecycle(first, "queued"))._tag).toBe("Retrying")
+  })
+
+  test("an interrupt's receipt cancelling a send ends it", () => {
+    const events = [init, sent(first), sent(second), errorResult({ user_message_uuids: [first] })]
+    expect(stateAfter(...events, idle)._tag).toBe("Working")
+    expect(stateAfter(...events, cancelled(second), idle)).toEqual(
+      WorkerState.Failed({ at: 5, error: "error_during_execution", interrupted: true }),
+    )
+  })
+
+  test("a result without user_message_uuids answers every send", () => {
+    // A CLI that doesn't report sends: settle's answers reads it the same way.
+    const absent = sdk({ type: "result", subtype: "success", is_error: false, result: "DONE" })
+    expect(stateAfter(init, sent(first), sent(second), absent, idle)._tag).toBe("Idle")
   })
 })
 
@@ -171,7 +254,7 @@ describe("error results", () => {
     const apiError = result({ is_error: true, api_error_status: 500, result: "API Error: 500" })
     const worker = fold([init, apiError, idle])
     expect(worker.state).toEqual(
-      WorkerState.Failed({ at: 1, error: "API Error: 500", interrupted: false }),
+      WorkerState.Failed({ at: 2, error: "API Error: 500", interrupted: false }),
     )
     expect(settled(worker.state)).toBe(true)
     expect(failure(worker)).toBe("API Error: 500")
@@ -179,9 +262,9 @@ describe("error results", () => {
 
   test("an interrupted turn (error_during_execution) is Failed and interrupted", () => {
     const interrupted = errorResult({ errors: ["[ede_diagnostic] stop_reason=tool_use"] })
-    expect(stateAfter(init, preTool("Bash"), interrupted)).toEqual(
+    expect(stateAfter(init, preTool("Bash"), interrupted, idle)).toEqual(
       WorkerState.Failed({
-        at: 2,
+        at: 3,
         error: "[ede_diagnostic] stop_reason=tool_use",
         interrupted: true,
       }),
@@ -190,41 +273,53 @@ describe("error results", () => {
 
   test("another error subtype is Failed, not interrupted; its subtype says why without errors", () => {
     const maxTurns = errorResult({ subtype: "error_max_turns", errors: [] })
-    expect(stateAfter(init, maxTurns)).toEqual(
-      WorkerState.Failed({ at: 1, error: "error_max_turns", interrupted: false }),
+    expect(stateAfter(init, maxTurns, idle)).toEqual(
+      WorkerState.Failed({ at: 2, error: "error_max_turns", interrupted: false }),
     )
   })
 
   test("Failed keeps the time it began", () => {
     expect(stateAfter(init, errorResult(), idle, requests(0))).toEqual(
-      WorkerState.Failed({ at: 1, error: "error_during_execution", interrupted: true }),
+      WorkerState.Failed({ at: 2, error: "error_during_execution", interrupted: true }),
     )
   })
 
   test("a live background task keeps a failed worker Working; its end makes it Failed", () => {
-    const live = [init, tasks({ id: "b1" }), errorResult()]
+    const live = [init, tasks({ id: "b1" }), errorResult(), idle]
     expect(stateAfter(...live)._tag).toBe("Working")
     expect(stateAfter(...live, tasks())._tag).toBe("Failed")
-    expect(stateAfter(init, tasks({ id: "w", ambient: true }), errorResult())._tag).toBe("Failed")
+    expect(stateAfter(init, tasks({ id: "w", ambient: true }), errorResult(), idle)._tag).toBe(
+      "Failed",
+    )
   })
 
-  test("a failed turn with a turn queued behind it is Working until that one ends", () => {
-    const queued = errorResult({ queued_turn_count: 1 })
-    expect(stateAfter(init, queued)._tag).toBe("Working")
-    expect(stateAfter(init, queued, init, result())._tag).toBe("Idle")
-    const apiError = result({ is_error: true, result: "API Error: 500", queued_turn_count: 1 })
+  test("a failed turn is Working until idle after the last result", () => {
+    expect(stateAfter(init, errorResult())._tag).toBe("Working")
+    expect(stateAfter(init, errorResult(), running, init, result(), idle)._tag).toBe("Idle")
+    const apiError = result({ is_error: true, result: "API Error: 500" })
     expect(stateAfter(init, apiError)._tag).toBe("Working")
+    expect(stateAfter(init, apiError, idle)._tag).toBe("Failed")
+  })
+
+  test("a failed turn with a send of tutti's outstanding is Working until it is answered", () => {
+    const uuid = "00000000-0000-4000-8000-000000000001"
+    const events = [init, WorkerEvent.Sent({ uuid }), errorResult({ user_message_uuids: [] })]
+    expect(stateAfter(...events, idle)._tag).toBe("Working")
+    const answered = [init, result({ user_message_uuids: [uuid] }), idle]
+    expect(stateAfter(...events, idle, running, ...answered)._tag).toBe("Idle")
   })
 
   test("the turn after a failed one is Working again, and a second failure starts afresh", () => {
-    expect(stateAfter(init, errorResult(), init)).toEqual(WorkerState.Working({ doing: "working" }))
-    expect(stateAfter(init, errorResult(), running, errorResult())).toEqual(
-      WorkerState.Failed({ at: 3, error: "error_during_execution", interrupted: true }),
+    expect(stateAfter(init, errorResult(), idle, init)).toEqual(
+      WorkerState.Working({ doing: "working" }),
+    )
+    expect(stateAfter(init, errorResult(), idle, running, errorResult(), idle)).toEqual(
+      WorkerState.Failed({ at: 5, error: "error_during_execution", interrupted: true }),
     )
   })
 
   test("a clean result after a failed turn is Idle", () => {
-    const worker = fold([init, errorResult(), init, result()])
+    const worker = fold([init, errorResult(), init, result(), idle])
     expect(worker.state._tag).toBe("Idle")
     expect(failure(worker)).toBeNull()
   })
@@ -253,8 +348,8 @@ describe("UsageLimited", () => {
     expect(stateAfter(init, rateLimit("rejected", 1_700_000_000), apiError)._tag).toBe(
       "UsageLimited",
     )
-    expect(stateAfter(init, rateLimit("allowed_warning"), apiError)._tag).toBe("Failed")
-    expect(stateAfter(rateLimit("rejected"), rateLimit("allowed"), init, apiError)._tag).toBe(
+    expect(stateAfter(init, rateLimit("allowed_warning"), apiError, idle)._tag).toBe("Failed")
+    expect(stateAfter(rateLimit("rejected"), rateLimit("allowed"), init, apiError, idle)._tag).toBe(
       "Failed",
     )
   })
@@ -262,11 +357,13 @@ describe("UsageLimited", () => {
   test("an assistant message with the rate_limit error marks the turn's error result", () => {
     const apiError = result({ is_error: true, result: "API Error" })
     expect(stateAfter(init, assistant({ error: "rate_limit" }), apiError)._tag).toBe("UsageLimited")
-    expect(stateAfter(init, assistant({ error: "rate_limit" }), init, apiError)._tag).toBe("Failed")
+    expect(stateAfter(init, assistant({ error: "rate_limit" }), init, apiError, idle)._tag).toBe(
+      "Failed",
+    )
   })
 
   test("a clean result is never UsageLimited", () => {
-    expect(stateAfter(init, rateLimit("rejected"), result())._tag).toBe("Idle")
+    expect(stateAfter(init, rateLimit("rejected"), result(), idle)._tag).toBe("Idle")
   })
 
   test("UsageLimited is not settled, and the next turn is Working", () => {
@@ -288,7 +385,8 @@ describe("Retrying", () => {
   test("the next message of the turn ends it", () => {
     expect(stateAfter(init, retry(1), streamEvent)._tag).toBe("Working")
     expect(stateAfter(init, retry(1), assistant())._tag).toBe("Working")
-    expect(stateAfter(init, retry(1), result())._tag).toBe("Idle")
+    expect(stateAfter(init, retry(1), result())._tag).toBe("Working")
+    expect(stateAfter(init, retry(1), result(), idle)._tag).toBe("Idle")
   })
 
   test("hooks and attention don't end it", () => {
@@ -311,8 +409,8 @@ describe("NeedsYou", () => {
   })
 
   test("a request open after the turn's result still needs you", () => {
-    expect(stateAfter(init, result(), requests(1))._tag).toBe("NeedsYou")
-    expect(stateAfter(init, requests(1), result(), requests(0))._tag).toBe("Idle")
+    expect(stateAfter(init, result(), idle, requests(1))._tag).toBe("NeedsYou")
+    expect(stateAfter(init, requests(1), result(), idle, requests(0))._tag).toBe("Idle")
   })
 
   test("NeedsYou outranks Retrying and Starting", () => {
@@ -420,6 +518,11 @@ describe("properties", () => {
     fc.integer({ min: 1, max: 10 }).map((n) => retry(n)),
     fc.array(task, { maxLength: 3 }).map((live) => tasks(...live)),
     fc.nat({ max: 3 }).map((n) => result({ queued_turn_count: n })),
+    fc.constantFrom("u1", "u2").map(sent),
+    fc
+      .tuple(fc.constantFrom("u1", "u2"), fc.constantFrom("queued", "started", "completed"))
+      .map(([uuid, state]) => lifecycle(uuid, state as "queued")),
+    fc.subarray(["u1", "u2"]).map((uuids) => result({ user_message_uuids: uuids })),
     fc.constant(result({ is_error: true, api_error_status: 429 })),
     fc.constant(errorResult()),
     fc
@@ -430,7 +533,7 @@ describe("properties", () => {
     fc.constantFrom(postTool("Edit"), subagentStart("a1"), subagentStop("a1"), preCompact),
   )
 
-  test("a sequence ending in a clean result with no live tasks settles", () => {
+  test("a sequence ending in a clean result, idle, no sends and no live tasks settles", () => {
     fc.assert(
       fc.property(
         fc.array(anyEvent, { maxLength: 40 }),
@@ -439,7 +542,15 @@ describe("properties", () => {
           { maxLength: 3 },
         ),
         (events, ambient) => {
-          const end = [requests(0), init, tasks(...ambient), result()]
+          const end = [
+            requests(0),
+            init,
+            tasks(...ambient),
+            result({ user_message_uuids: [] }),
+            cancelled("u1"),
+            lifecycle("u2", "completed"),
+            idle,
+          ]
           expect(settled(fold([...events, ...end]).state)).toBe(true)
         },
       ),
@@ -449,8 +560,17 @@ describe("properties", () => {
   test("a live non-ambient task never lets a worker settle while its session runs", () => {
     fc.assert(
       fc.property(fc.array(anyEvent, { maxLength: 40 }), (events) => {
-        const worker = fold([...events, init, tasks({ id: "b1" }), result()])
+        const worker = fold([...events, init, tasks({ id: "b1" }), result(), idle])
         expect(settled(worker.state)).toBe(false)
+      }),
+    )
+  })
+
+  test("an outstanding send never lets a worker settle while its session runs", () => {
+    fc.assert(
+      fc.property(fc.array(anyEvent, { maxLength: 40 }), (events) => {
+        const end = [init, tasks(), sent("u3"), result({ user_message_uuids: ["u1"] }), idle]
+        expect(settled(fold([...events, ...end]).state)).toBe(false)
       }),
     )
   })

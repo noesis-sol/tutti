@@ -19,7 +19,7 @@ type Empty = Record<never, never>
 export type WorkerState = Data.TaggedEnum<{
   /** The session is spawned and its first `system/init` hasn't arrived. */
   Starting: Empty
-  /** A turn is under way, more turns follow, or a background task is live. */
+  /** A turn is under way, more turns follow, a send of tutti's is outstanding, or a task is live. */
   Working: { readonly doing: Doing }
   /** An `api_retry` message, until the next message of the turn. `status` is null without a response. */
   Retrying: { readonly attempt: number; readonly max: number; readonly status: number | null }
@@ -27,11 +27,14 @@ export type WorkerState = Data.TaggedEnum<{
   NeedsYou: { readonly requests: number }
   /** The turn ended on the account's usage limit (§ 4.12); `resetsAt` null when nothing said when. */
   UsageLimited: { readonly resetsAt: number | null }
-  /** The turn ended cleanly, nothing is queued and no background task is live, since `at`. */
+  /**
+   * The turns are over (`idle` after the last result, which was clean), none of tutti's sends is
+   * outstanding and no background task is live, since `at`.
+   */
   Idle: { readonly at: number }
   /**
-   * The turn ended on an error other than the usage limit, nothing is queued and no background
-   * task is live, since `at`; `interrupted` when it was cut off (`error_during_execution`).
+   * The last turn ended on an error other than the usage limit, and otherwise as for Idle, since
+   * `at`; `interrupted` when it was cut off (`error_during_execution`).
    */
   Failed: { readonly at: number; readonly error: string; readonly interrupted: boolean }
   /** tutti closed the session on purpose, keeping its ID (§ 4.8). */
@@ -49,10 +52,17 @@ export const settled = (state: WorkerState): boolean =>
   state._tag === "Closed" ||
   state._tag === "Gone"
 
-/** What reaches the reducer: an SDK message, a hook callback, attention, or the session's end. */
+/**
+ * What reaches the reducer: an SDK message, a send of tutti's or its cancellation, a hook callback,
+ * attention, or the session's end.
+ */
 export type WorkerEvent = Data.TaggedEnum<{
   /** A message from the session's stream. */
   Message: { readonly message: SDKMessage }
+  /** tutti is pushing the message `uuid` into the session's inbox: it is outstanding from now. */
+  Sent: { readonly uuid: string }
+  /** An interrupt's receipt or `cancel_async_message` cancelled these sends. */
+  Cancelled: { readonly uuids: ReadonlyArray<string> }
   /** An in-process hook callback's input (PreToolUse, PostToolUse, SubagentStart, …). */
   Hook: { readonly input: HookInput }
   /** How many of the worker's `canUseTool` calls and elicitations are open now. */
@@ -117,12 +127,12 @@ export type Turn = Data.TaggedEnum<{
   None: Empty
   /** A turn is under way. */
   Running: Empty
-  /** The turn's result arrived clean; `queued` sends follow without further input. */
-  Ended: { readonly queued: number }
+  /** The turn's result arrived clean. */
+  Ended: Empty
   /** The turn's result arrived with is_error on the usage limit. */
   Limited: Empty
-  /** The turn's result arrived with is_error for another reason: a failed turn; `queued` as Ended's. */
-  Failed: { readonly error: string; readonly interrupted: boolean; readonly queued: number }
+  /** The turn's result arrived with is_error for another reason: a failed turn. */
+  Failed: { readonly error: string; readonly interrupted: boolean }
 }>
 
 export const Turn = Data.taggedEnum<Turn>()
@@ -135,6 +145,13 @@ export interface Worker {
   /** Whether a `system/init` has arrived. */
   readonly started: boolean
   readonly turn: Turn
+  /** Whether `session_state_changed: idle` came after the last result: no turn runs or is queued. */
+  readonly idle: boolean
+  /**
+   * tutti's sends, by uuid, pushed and not yet completed or cancelled per `command_lifecycle`,
+   * listed in a result's `user_message_uuids`, or cancelled by an interrupt's receipt.
+   */
+  readonly outstanding: ReadonlyArray<string>
   /** Why the session ended, when it did: Closed by tutti, or Gone. */
   readonly end: { readonly closed: true } | { readonly closed: false; readonly why: string } | null
   /** The live background tasks that count: `background_tasks_changed`'s, but for ambient ones. */
@@ -165,6 +182,8 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   checks,
   started: false,
   turn: Turn.None(),
+  idle: false,
+  outstanding: [],
   end: null,
   tasks: [],
   pending: 0,
@@ -184,13 +203,35 @@ const epochMillis = (at: number): number => (at < 1e12 ? at * 1000 : at)
 const newTurn = (worker: Worker): Worker => ({
   ...worker,
   turn: Turn.Running(),
+  idle: false,
   retry: null,
   tool: null,
   subagents: [],
   rateLimited: false,
 })
 
+/** `worker` with the sends `uuids` no longer outstanding. */
+const done = (worker: Worker, uuids: ReadonlyArray<string>): Worker => ({
+  ...worker,
+  outstanding: worker.outstanding.filter((uuid) => !uuids.includes(uuid)),
+})
+
+/**
+ * A `command_lifecycle` message's send, when it says the send is no longer outstanding: completed
+ * or cancelled. It isn't in the SDK's SDKMessage union, so it is read from the raw message.
+ */
+const lifecycleEnd = (message: SDKMessage): string | null => {
+  const raw = message as { readonly type: string } & Record<string, unknown>
+  if (raw.type !== "command_lifecycle" || typeof raw.command_uuid !== "string") return null
+  return raw.state === "completed" || raw.state === "cancelled" ? raw.command_uuid : null
+}
+
 const onMessage = (worker: Worker, message: SDKMessage): Worker => {
+  // A send's lifecycle isn't a message of the turn, so it leaves an api_retry be.
+  if ((message as { readonly type: string }).type === "command_lifecycle") {
+    const ended = lifecycleEnd(message)
+    return ended === null ? worker : done(worker, [ended])
+  }
   // An api_retry holds until the turn's next message, whatever that is.
   const next =
     message.type === "system" && message.subtype === "api_retry"
@@ -211,9 +252,9 @@ const onMessage = (worker: Worker, message: SDKMessage): Worker => {
             case "requires_action":
               return { ...next, requiresAction: true }
             case "idle":
-              // It confirms a turn's end, but it also comes with background tasks live and after
-              // an error result (docs/spikes/01-sdk-session.md), so the result decides.
-              return { ...next, requiresAction: false }
+              // No turn runs or is queued. It comes with background tasks live and after an error
+              // result too (docs/spikes/01-sdk-session.md), so those are checked beside it.
+              return { ...next, idle: true, requiresAction: false }
           }
           return next
         case "api_retry":
@@ -247,12 +288,20 @@ const onMessage = (worker: Worker, message: SDKMessage): Worker => {
     case "assistant":
       return message.error === "rate_limit" ? { ...next, rateLimited: true } : next
     case "result": {
-      const ended = { ...next, requiresAction: false, tool: null, subagents: [] }
+      // A result that lists no sends, from a CLI that doesn't report them, answered them all.
+      const listed = message.user_message_uuids ?? next.outstanding
+      const ended = {
+        ...done(next, listed),
+        idle: false,
+        requiresAction: false,
+        tool: null,
+        subagents: [],
+      }
       if (message.subtype !== "success" && message.startup_failure_reason !== undefined) {
         return { ...ended, end: { closed: false, why: message.startup_failure_reason } }
       }
       if (!message.is_error) {
-        return { ...ended, turn: Turn.Ended({ queued: message.queued_turn_count ?? 0 }) }
+        return { ...ended, turn: Turn.Ended() }
       }
       const status = message.subtype === "success" ? message.api_error_status : undefined
       if (status === 429 || next.limit.rejected || next.rateLimited) {
@@ -263,8 +312,7 @@ const onMessage = (worker: Worker, message: SDKMessage): Worker => {
           ? message.result
           : message.errors.join("\n") || message.subtype
       const interrupted = message.subtype === "error_during_execution"
-      const queued = message.queued_turn_count ?? 0
-      return { ...ended, turn: Turn.Failed({ error, interrupted, queued }) }
+      return { ...ended, turn: Turn.Failed({ error, interrupted }) }
     }
   }
   return next
@@ -304,16 +352,18 @@ const derive = (worker: Worker, now: number): WorkerState => {
     WorkerState.Working({
       doing: worker.tool ?? (worker.subagents.length > 0 ? "subagent" : "working"),
     })
+  // The turns are over, none of tutti's sends is outstanding and no background task is live.
+  const over = worker.idle && worker.outstanding.length === 0 && worker.tasks.length === 0
   switch (worker.turn._tag) {
     case "Limited":
       return WorkerState.UsageLimited({ resetsAt: worker.limit.resetsAt })
     case "Ended":
-      if (worker.turn.queued === 0 && worker.tasks.length === 0) {
+      if (over) {
         return worker.state._tag === "Idle" ? worker.state : WorkerState.Idle({ at: now })
       }
       return working()
     case "Failed":
-      if (worker.turn.queued === 0 && worker.tasks.length === 0) {
+      if (over) {
         return worker.state._tag === "Failed"
           ? worker.state
           : WorkerState.Failed({
@@ -334,6 +384,8 @@ export const step = (worker: Worker, event: WorkerEvent, now: number): Worker =>
   }
   const next = WorkerEvent.$match(event, {
     Message: ({ message }) => onMessage(worker, message),
+    Sent: ({ uuid }) => ({ ...worker, outstanding: [...worker.outstanding, uuid] }),
+    Cancelled: ({ uuids }) => done(worker, uuids),
     Hook: ({ input }) => onHook(worker, input),
     Requests: ({ pending }) => ({ ...worker, pending: Math.max(0, pending) }),
     Closed: () => ({ ...worker, end: { closed: true as const } }),

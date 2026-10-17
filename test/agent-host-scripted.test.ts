@@ -26,6 +26,7 @@ import {
   layer as hostLayer,
   init,
   interruptedResult,
+  type Options,
   Recording,
   result,
   type Script,
@@ -47,11 +48,12 @@ const run = <A, E>(
   scripts: Readonly<Record<string, Script>>,
   effect: Effect.Effect<A, E, Env>,
   policy: Policy = waitForTest,
+  options: Options = {},
 ): Promise<A> =>
   Effect.runPromise(
     effect.pipe(
       Effect.provide(
-        hostLayer(scripts, { checks: [checkCommand] }).pipe(
+        hostLayer(scripts, { checks: [checkCommand], ...options }).pipe(
           Layer.provideMerge(Layer.mergeAll(attentionLayer(policy), transcriptsLayer())),
           Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer())),
           Layer.provideMerge(TestClock.layer()),
@@ -88,6 +90,21 @@ const startAndWatch = (ticket: string, n: number) =>
     const states = yield* watch(ticket, n)
     yield* host.send(ticket, `Your ticket is ${ticket}.`, "clientComposed")
     return yield* Fiber.join(states)
+  })
+
+/** Watches the ticket's state, from now until it is Idle: a fiber with the states seen. */
+const untilIdle = (ticket: string) =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const listening = yield* Deferred.make<void>()
+    const fiber = yield* host.state(ticket).pipe(
+      Stream.tap(() => Deferred.succeed(listening, undefined)),
+      Stream.takeUntil((s) => s._tag === "Idle"),
+      Stream.runCollect,
+      Effect.forkChild,
+    )
+    yield* Deferred.await(listening)
+    return fiber
   })
 
 const working = WorkerState.Working({ doing: "working" })
@@ -179,14 +196,16 @@ describe("scripted cases", () => {
     const done = await run(
       { "t-1": [script] },
       Effect.gen(function* () {
-        const states = yield* startAndWatch("t-1", 4)
+        const states = yield* startAndWatch("t-1", 5)
         return { states, now: yield* (yield* AgentHost).current("t-1") }
       }),
     )
+    // The result ends the turn; idle after it ends the worker's work.
     expect(done.states).toEqual([
       WorkerState.Starting(),
       working,
       WorkerState.Retrying({ attempt: 2, max: 10, status: 500 }),
+      working,
       failed,
     ])
     expect(done.now).toEqual(failed)
@@ -356,7 +375,7 @@ describe("what it was sent", () => {
     expect(done.messages[1]?.origin).toEqual({ kind: "human" })
   })
 
-  test("an interrupt withdraws the open request and its receipt lists what is queued", async () => {
+  test("an interrupt withdraws the open request and its receipt cancels what is queued", async () => {
     const script = [
       wait,
       init(),
@@ -395,8 +414,11 @@ describe("what it was sent", () => {
           sent: yield* (yield* Recording).sentTo("t-1"),
         }
       }),
+      waitForTest,
+      { cancelQueued: true },
     )
-    expect(done.receipt).toEqual({ stillQueued: [done.queued], cancelled: [] })
+    // Cancelled, the queued message is no longer outstanding: the interrupted worker settles.
+    expect(done.receipt).toEqual({ stillQueued: [], cancelled: [done.queued] })
     expect(Option.getOrNull(done.stopped)).toMatchObject({ _tag: "Failed", interrupted: true })
     expect(done.open).toEqual([])
     expect(done.now).toEqual(WorkerState.Closed())
@@ -412,6 +434,102 @@ describe("what it was sent", () => {
     expect(answered?._tag === "Answered" && answered.result?.behavior).toBe("deny")
   })
 
+  test("without cancelQueued, the messages still queued run after the interrupted turn", async () => {
+    const script = [
+      wait,
+      init(),
+      sessionState("running"),
+      canUseTool("Bash", { command: "sleep 60" }),
+      awaitInterrupt,
+      interruptedResult,
+      sessionState("idle"),
+      ...turn([]),
+    ]
+    const done = await run(
+      { "t-1": [script] },
+      Effect.gen(function* () {
+        const host = yield* AgentHost
+        yield* host.start("t-1", session())
+        yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.state("t-1").pipe(
+          Stream.takeUntil((s) => s._tag === "NeedsYou"),
+          Stream.runDrain,
+        )
+        const queued = yield* host.send("t-1", "And then this.", "human")
+        const states = yield* untilIdle("t-1")
+        const receipt = yield* host.interrupt("t-1")
+        return {
+          queued,
+          receipt,
+          states: yield* Fiber.join(states),
+          transcript: yield* (yield* Files).messages("t-1"),
+        }
+      }),
+    )
+    expect(done.receipt).toEqual({ stillQueued: [done.queued], cancelled: [] })
+    // The queued message is outstanding through the interrupted turn: Working, never Failed.
+    expect(done.states.map((s) => s._tag)).toEqual(["NeedsYou", "Working", "Idle"])
+    const raw = done.transcript.map((item) => item.message as unknown as Record<string, unknown>)
+    expect(raw.filter((m) => m.type === "result").map((m) => m.user_message_uuids)).toEqual([
+      [expect.any(String)],
+      [done.queued],
+    ])
+    expect(raw.filter((m) => m.subtype === "session_state_changed" && m.state === "idle")).toEqual([
+      expect.anything(),
+    ])
+  })
+
+  test("each send has its command_lifecycle; idle waits for the last queued turn", async () => {
+    const script = [
+      wait,
+      init(),
+      sessionState("running"),
+      canUseTool("Bash", { command: "sleep 60" }),
+      result(),
+      sessionState("idle"),
+      ...turn([]),
+    ]
+    const done = await run(
+      { "t-1": [script] },
+      Effect.gen(function* () {
+        const host = yield* AgentHost
+        const attention = yield* Attention
+        yield* host.start("t-1", session())
+        const first = yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.state("t-1").pipe(
+          Stream.takeUntil((s) => s._tag === "NeedsYou"),
+          Stream.runDrain,
+        )
+        const second = yield* host.send("t-1", "Continue.", "clientComposed")
+        const states = yield* untilIdle("t-1")
+        yield* attention.answer("r1", { _tag: "Allow" }, "screen")
+        return {
+          first,
+          second,
+          states: yield* Fiber.join(states),
+          transcript: yield* (yield* Files).messages("t-1"),
+        }
+      }),
+    )
+    expect(done.states.map((s) => s._tag)).toEqual(["NeedsYou", "Working", "Idle"])
+    const raw = done.transcript.map((item) => item.message as unknown as Record<string, unknown>)
+    const lifecycle = (uuid: string) =>
+      raw
+        .filter((m) => m.type === "command_lifecycle" && m.command_uuid === uuid)
+        .map((m) => m.state)
+    expect(lifecycle(done.first)).toEqual(["queued", "started", "completed"])
+    expect(lifecycle(done.second)).toEqual(["queued", "started", "completed"])
+    expect(raw.filter((m) => m.type === "result").map((m) => m.user_message_uuids)).toEqual([
+      [done.first],
+      [done.second],
+    ])
+    // The first turn's idle is held back: the CLI says idle once, after the last queued turn.
+    expect(raw.at(-1)).toMatchObject({ subtype: "session_state_changed", state: "idle" })
+    expect(raw.filter((m) => m.subtype === "session_state_changed" && m.state === "idle")).toEqual([
+      expect.anything(),
+    ])
+  })
+
   test("a resume is recorded with its message, and its messages go to the transcript", async () => {
     const done = await run(
       { "t-1": [turn([...bash("bd update t-1 --claim")]), turn([])] },
@@ -421,7 +539,7 @@ describe("what it was sent", () => {
         yield* host.close("t-1")
         const messages = yield* host
           .messages("t-1")
-          .pipe(Stream.take(4), Stream.runCollect, Effect.forkChild)
+          .pipe(Stream.take(7), Stream.runCollect, Effect.forkChild)
         yield* Effect.yieldNow
         const resumed = yield* watch("t-1", 4)
         yield* host.resume("t-1", session(), {
@@ -450,15 +568,20 @@ describe("what it was sent", () => {
       "Message",
     ])
     expect(done.sent[3]).toEqual(Sent.Resumed({ ticket: "t-1", session: session() }))
+    // The message's command_lifecycle, queued and started, the turn, and its completed before idle.
     expect(done.messages.map((m: SessionMessage) => [m.session, m.message.type])).toEqual([
+      ["s-1", "command_lifecycle"],
+      ["s-1", "command_lifecycle"],
       ["s-1", "system"],
       ["s-1", "system"],
       ["s-1", "result"],
+      ["s-1", "command_lifecycle"],
       ["s-1", "system"],
     ])
-    // The first session's 6 messages (a tool call's 2 among them), then the resumed one's 4.
+    // The first session's 9 messages (a tool call's 2 and a send's 3 among them), then the
+    // resumed one's 7.
     expect(done.transcript.map((item) => item.seq)).toEqual(
-      Array.from({ length: 10 }, (_, i) => i + 1),
+      Array.from({ length: 16 }, (_, i) => i + 1),
     )
     expect(done.transcript.every((item) => item.session === "s-1")).toBe(true)
   })

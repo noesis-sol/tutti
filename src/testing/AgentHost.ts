@@ -7,7 +7,11 @@
 // way every time.
 //
 // Every message is recorded in Transcripts and folded into the worker's state as the live layer
-// does it (makeWorkers). Everything the layer is sent is recorded, in order: starts, resumes,
+// does it (makeWorkers). The layer speaks for the CLI where a script can't know the uuids: each send
+// gets its command_lifecycle (`queued` when pushed, `started` when a Wait takes it, `completed`
+// after the result of the turn that took it), a result lists in `user_message_uuids` the sends
+// taken since the last result unless the script lists them itself, and an `idle` is held back
+// while a send waits untaken, as the CLI sends `idle` only after the last queued turn. Everything the layer is sent is recorded, in order: starts, resumes,
 // messages as the SDK would get them (client_composed or origin human), interrupts and their
 // receipts, the answers to permission requests and elicitations, closes and ends. Recording reads
 // them back.
@@ -115,6 +119,10 @@ interface Running {
   readonly inbox: Queue.Queue<SDKUserMessage>
   /** The uuids of the messages sent and not yet taken by a Wait: an interrupt's still_queued. */
   readonly queued: Ref.Ref<ReadonlyArray<string>>
+  /** The uuids of the messages taken by a Wait since the last result: the next one's sends. */
+  readonly taken: Ref.Ref<ReadonlyArray<string>>
+  /** The uuids of the messages an interrupt cancelled: a Wait passes over them. */
+  readonly cancelled: Set<string>
   readonly interrupts: Queue.Queue<void>
   /** The signal open requests are withdrawn by; an interrupt aborts it and draws another. */
   readonly controller: Ref.Ref<AbortController>
@@ -131,6 +139,12 @@ export interface Options {
   readonly checks?: ReadonlyArray<string>
   /** What the sessions' first system/init said of the setup: nothing by default. */
   readonly setup?: SetupFindings
+  /**
+   * Whether an interrupt cancels the queued messages, as `interrupt({ cancelQueued: true })` does
+   * where the CLI advertises `interrupt_cancel_queued_v1` (§ 4.8): the receipt lists them under
+   * `cancelled`, not `still_queued`, and they never run. False by default.
+   */
+  readonly cancelQueued?: boolean
 }
 
 /**
@@ -164,13 +178,36 @@ export const layer = (
           yield* workers.fold(session.entry, WorkerEvent.Ended({ why }))
         }).pipe(one.withPermit)
 
+      const emitIn = (session: Running, message: object) =>
+        workers.emit(session.entry, session.sessionId, {
+          ...message,
+          session_id: session.sessionId,
+        } as SDKMessage)
+
+      const lifecycle = (session: Running, uuid: string, state: string) =>
+        emitIn(session, { type: "command_lifecycle", command_uuid: uuid, state })
+
+      // A scripted message, with what the CLI would add to it (see the header).
+      const emitScripted = (session: Running, message: SDKMessage) =>
+        Effect.gen(function* () {
+          if (message.type === "result") {
+            const taken = yield* Ref.getAndSet(session.taken, [])
+            const listed = message.user_message_uuids ?? taken
+            yield* emitIn(session, { ...message, user_message_uuids: listed })
+            for (const uuid of listed) yield* lifecycle(session, uuid, "completed")
+            return
+          }
+          const held =
+            message.type === "system" &&
+            message.subtype === "session_state_changed" &&
+            message.state === "idle" &&
+            (yield* Ref.get(session.queued)).length > 0
+          if (!held) yield* emitIn(session, message)
+        })
+
       const play = (ticket: string, session: Running, step: Step): Effect.Effect<void> =>
         Step.$match(step, {
-          Emit: ({ message }) =>
-            workers.emit(session.entry, session.sessionId, {
-              ...message,
-              session_id: session.sessionId,
-            } as SDKMessage),
+          Emit: ({ message }) => emitScripted(session, message),
           Hook: ({ input }) => workers.fold(session.entry, WorkerEvent.Hook({ input })),
           CanUseTool: ({ toolName, input, options }) =>
             Effect.gen(function* () {
@@ -201,8 +238,14 @@ export const layer = (
             }),
           Wait: () =>
             Effect.gen(function* () {
-              const message = yield* Queue.take(session.inbox)
-              yield* Ref.update(session.queued, (uuids) => uuids.filter((u) => u !== message.uuid))
+              let message = yield* Queue.take(session.inbox)
+              while (session.cancelled.has(message.uuid ?? "")) {
+                message = yield* Queue.take(session.inbox)
+              }
+              const uuid = message.uuid ?? ""
+              yield* Ref.update(session.queued, (uuids) => uuids.filter((u) => u !== uuid))
+              yield* Ref.update(session.taken, (uuids) => [...uuids, uuid])
+              yield* lifecycle(session, uuid, "started")
             }),
           AwaitInterrupt: () => Queue.take(session.interrupts),
           Sleep: ({ duration }) => Effect.sleep(duration),
@@ -218,6 +261,8 @@ export const layer = (
           const uuid = uuidOf(yield* Ref.updateAndGet(drawn, (k) => k + 1))
           const sdk = userMessage(message, uuid, session.sessionId)
           yield* record(Sent.Message({ ticket, message: sdk }))
+          yield* workers.fold(session.entry, WorkerEvent.Sent({ uuid }))
+          yield* lifecycle(session, uuid, "queued")
           yield* Ref.update(session.queued, (uuids) => [...uuids, uuid])
           yield* Queue.offer(session.inbox, sdk)
           return uuid as string
@@ -254,6 +299,8 @@ export const layer = (
             entry,
             inbox: yield* Queue.unbounded<SDKUserMessage>(),
             queued: yield* Ref.make<ReadonlyArray<string>>([]),
+            taken: yield* Ref.make<ReadonlyArray<string>>([]),
+            cancelled: new Set(),
             interrupts: yield* Queue.unbounded<void>(),
             controller: yield* Ref.make(new AbortController()),
           }
@@ -298,7 +345,17 @@ export const layer = (
         interrupt: (ticket) =>
           Effect.gen(function* () {
             const playing = yield* session(ticket)
-            const receipt: Receipt = { stillQueued: yield* Ref.get(playing.queued), cancelled: [] }
+            const queued = yield* Ref.get(playing.queued)
+            const cancelQueued = options.cancelQueued === true
+            if (cancelQueued) yield* Ref.set(playing.queued, [])
+            const receipt: Receipt = cancelQueued
+              ? { stillQueued: [], cancelled: queued }
+              : { stillQueued: queued, cancelled: [] }
+            for (const uuid of receipt.cancelled) {
+              playing.cancelled.add(uuid)
+              yield* lifecycle(playing, uuid, "cancelled")
+            }
+            yield* workers.fold(playing.entry, WorkerEvent.Cancelled({ uuids: receipt.cancelled }))
             const controller = yield* Ref.getAndSet(playing.controller, new AbortController())
             controller.abort()
             yield* record(Sent.Interrupted({ ticket, receipt }))
@@ -382,7 +439,6 @@ export const result = (text = "DONE", fields: object = {}) =>
     is_error: false,
     result: text,
     num_turns: 1,
-    queued_turn_count: 0,
     ...fields,
   })
 
@@ -395,7 +451,6 @@ export const apiErrorResult = (text: string, status: number) =>
     result: text,
     api_error_status: status,
     num_turns: 1,
-    queued_turn_count: 0,
   })
 
 /** An interrupted turn's result, as the spike saw it. */

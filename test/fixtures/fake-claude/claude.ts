@@ -4,7 +4,9 @@
 // (SDK 0.3.301, Claude Code 2.1.301). It answers the SDK's initialize and interrupt control
 // requests, plays one turn per message it is sent (a message sent during a turn waits in its queue
 // and runs, with the others waiting, as the next turn), and ends when its stdin closes, which it
-// logs as `{ closed: true }`.
+// logs as `{ closed: true }`. Each message gets its command_lifecycle (queued, started, then
+// completed or cancelled), `idle` comes only after the last queued turn, and `queued_turn_count`
+// counts only queued messages sent without `client_composed`, as the spike saw them.
 //
 // What it does is the scenario in FAKE_CLAUDE_SCENARIO, as JSON. It appends its arguments and every
 // line it reads to the scenario's log, one JSON line each, for the test to read back.
@@ -52,6 +54,7 @@ interface Scenario {
 interface UserMessage {
   readonly type: "user"
   readonly uuid?: string
+  readonly client_composed?: boolean
   readonly message: { readonly content: unknown }
 }
 
@@ -124,6 +127,22 @@ const assistant = (text: string) =>
     uuid: crypto.randomUUID(),
   })
 
+const lifecycle = (messages: ReadonlyArray<UserMessage>, state: string) =>
+  Promise.all(
+    messages.flatMap((m) =>
+      m.uuid === undefined
+        ? []
+        : [
+            write({
+              type: "command_lifecycle",
+              command_uuid: m.uuid,
+              state,
+              session_id: sessionId,
+            }),
+          ],
+    ),
+  )
+
 const result = (text: string, uuids: ReadonlyArray<string>) =>
   write({
     type: "result",
@@ -138,16 +157,19 @@ const result = (text: string, uuids: ReadonlyArray<string>) =>
     usage: {},
     modelUsage: {},
     permission_denials: [],
-    queued_turn_count: queued.length,
+    queued_turn_count: queued.filter((m) => m.client_composed !== true).length,
     user_message_uuids: uuids,
     session_id: sessionId,
     uuid: crypto.randomUUID(),
   })
 
 /** Plays a turn for `messages`, then the next for those queued meanwhile. */
-const turn = async (messages: ReadonlyArray<UserMessage>) => {
+const turn = async (first: ReadonlyArray<UserMessage>) => {
   running = true
-  const uuids = messages.flatMap((m) => (m.uuid === undefined ? [] : [m.uuid]))
+  // The turn's messages: those it started for, and those a wait step folds into it.
+  const messages = [...first]
+  const uuids = () => messages.flatMap((m) => (m.uuid === undefined ? [] : [m.uuid]))
+  await lifecycle(messages, "started")
   const steps = scenario.turns?.[turns++] ?? [
     { text: `ECHO: ${messages.map((m) => textOf(m.message.content)).join("\n")}` },
   ]
@@ -166,7 +188,7 @@ const turn = async (messages: ReadonlyArray<UserMessage>) => {
     output_style: "default",
     claude_code_version: "2.1.301",
     capabilities: ["interrupt_receipt_v1", "interrupt_cancel_queued_v1", "msg_lifecycle_v1"],
-    user_message_uuids: uuids,
+    user_message_uuids: uuids(),
     uuid: crypto.randomUUID(),
     ...scenario.init,
   })
@@ -195,16 +217,19 @@ const turn = async (messages: ReadonlyArray<UserMessage>) => {
         is_error: true,
         errors: [],
         num_turns: 1,
+        user_message_uuids: uuids(),
         session_id: sessionId,
         uuid: crypto.randomUUID(),
       })
-      await write({ type: "system", subtype: "session_state_changed", state: "idle" })
+      await lifecycle(messages, "completed")
       return next()
     } else if ("wait" in step) {
-      await new Promise<UserMessage>((resolve) => {
+      const taken = await new Promise<UserMessage>((resolve) => {
         waiting = resolve
       })
       waiting = undefined
+      messages.push(taken)
+      await lifecycle([taken], "started")
     } else if ("exit" in step) {
       await exit(step.exit)
     } else if ("stderr" in step) {
@@ -232,14 +257,17 @@ const turn = async (messages: ReadonlyArray<UserMessage>) => {
       await assistant(last)
     }
   }
-  await result(last, uuids)
-  await write({ type: "system", subtype: "session_state_changed", state: "idle" })
+  await result(last, uuids())
+  await lifecycle(messages, "completed")
   return next()
 }
 
-const next = (): Promise<void> | undefined => {
-  running = false
-  if (queued.length === 0) return undefined
+/** Plays the queued messages' turn, or says idle when none are queued. */
+const next = (): Promise<void> => {
+  if (queued.length === 0) {
+    running = false
+    return write({ type: "system", subtype: "session_state_changed", state: "idle" })
+  }
   const taken = queued
   queued = []
   return turn(taken)
@@ -282,8 +310,10 @@ const control = async (id: string, request: Record<string, unknown>) => {
     case "interrupt": {
       const uuids = queued.flatMap((m) => (m.uuid === undefined ? [] : [m.uuid]))
       if (request.cancel_queued === true) {
+        const cancelled = queued
         queued = []
         await answer({ still_queued: [], cancelled: uuids })
+        await lifecycle(cancelled, "cancelled")
       } else {
         await answer({ still_queued: uuids })
       }
@@ -306,6 +336,7 @@ lines.on("line", (line) => {
     answers.get(message.response.request_id)?.(message.response.response)
     answers.delete(message.response.request_id)
   } else if (message.type === "user") {
+    void lifecycle([message], "queued")
     if (waiting !== undefined) waiting(message)
     else if (running) queued.push(message)
     else void turn([message])
