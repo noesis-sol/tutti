@@ -208,6 +208,14 @@ describe("error results", () => {
     expect(stateAfter(init, tasks({ id: "w", ambient: true }), errorResult())._tag).toBe("Failed")
   })
 
+  test("a failed turn with a turn queued behind it is Working until that one ends", () => {
+    const queued = errorResult({ queued_turn_count: 1 })
+    expect(stateAfter(init, queued)._tag).toBe("Working")
+    expect(stateAfter(init, queued, init, result())._tag).toBe("Idle")
+    const apiError = result({ is_error: true, result: "API Error: 500", queued_turn_count: 1 })
+    expect(stateAfter(init, apiError)._tag).toBe("Working")
+  })
+
   test("the turn after a failed one is Working again, and a second failure starts afresh", () => {
     expect(stateAfter(init, errorResult(), init)).toEqual(WorkerState.Working({ doing: "working" }))
     expect(stateAfter(init, errorResult(), running, errorResult())).toEqual(

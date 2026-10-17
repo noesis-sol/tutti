@@ -121,8 +121,8 @@ export type Turn = Data.TaggedEnum<{
   Ended: { readonly queued: number }
   /** The turn's result arrived with is_error on the usage limit. */
   Limited: Empty
-  /** The turn's result arrived with is_error for another reason: a failed turn. */
-  Failed: { readonly error: string; readonly interrupted: boolean }
+  /** The turn's result arrived with is_error for another reason: a failed turn; `queued` as Ended's. */
+  Failed: { readonly error: string; readonly interrupted: boolean; readonly queued: number }
 }>
 
 export const Turn = Data.taggedEnum<Turn>()
@@ -263,7 +263,8 @@ const onMessage = (worker: Worker, message: SDKMessage): Worker => {
           ? message.result
           : message.errors.join("\n") || message.subtype
       const interrupted = message.subtype === "error_during_execution"
-      return { ...ended, turn: Turn.Failed({ error, interrupted }) }
+      const queued = message.queued_turn_count ?? 0
+      return { ...ended, turn: Turn.Failed({ error, interrupted, queued }) }
     }
   }
   return next
@@ -312,7 +313,7 @@ const derive = (worker: Worker, now: number): WorkerState => {
       }
       return working()
     case "Failed":
-      if (worker.tasks.length === 0) {
+      if (worker.turn.queued === 0 && worker.tasks.length === 0) {
         return worker.state._tag === "Failed"
           ? worker.state
           : WorkerState.Failed({
