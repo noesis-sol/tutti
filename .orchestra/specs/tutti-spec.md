@@ -443,7 +443,7 @@ The reviewer's **Needs you** recommends rules for calls the classifier kept deny
 **What the UI shows.**
 
 - **On the card.** It turns red and shows the request's `title`, else the tool and a one-line summary of its input, then its buttons:
-  - for a permission: **Deny**, **Allow**, and **Allow for this run** (not when `suppressAlwaysAllowRule` is set, nor when the request's `suggestions` hold no `addRules`)
+  - for a permission: **Deny**, **Allow**, and **Allow for this run** (not when `suppressAlwaysAllowRule` is set, nor when the request's `suggestions` hold no `addRules` that allow)
   - for a question: each question's options
 - **In the worker view.** The same, with `description`, `decisionReason` and the full input.
 - **Not shown.** Whatever the card can't hold appears as **Answer in view**.
@@ -975,7 +975,7 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 | `Esc`, a click on `← Dashboard` | close an open box | leave the composer, then the view |
 | `d`, `Shift+D` | deny the target request; deny with a reason | the same |
 | `a` | allow the target request, only without `defaultToNo` (§4.5) | the same |
-| `r` | allow for this run (not with `suppressAlwaysAllowRule`, nor without suggested `addRules`) | the same |
+| `r` | allow for this run (not with `suppressAlwaysAllowRule`, nor without a suggested `addRules` that allows) | the same |
 | `1`–`4` inside a question | pick an option | pick an option |
 | `i`, a click on the composer | | focus the composer; `Enter` sends, `Alt+Enter` or `Ctrl+J` adds a new line |
 | `Ctrl+X` | | interrupt the worker's turn (asks first); the worker becomes steered |
