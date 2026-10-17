@@ -4,11 +4,18 @@
 // the worker left there can send it elsewhere. A passing check's FLAKY: lines are warnings naming the
 // ticket: it merges, but a test that passes only on a rerun is a bug nobody would see otherwise.
 // Interrupting the check kills its process group (Checks does), and nothing comes of it.
+//
+// A quit can cut that check short with the branch already rebased: the ticket stays waiting to
+// merge, for the next run (§ 4.8), but its branch is on top of the base then, so its merge would
+// fast-forward without checking it. So before tutti rebases a branch, the ticket is marked in
+// state.json as rebased and unchecked (`rebased_unchecked`), and a merge check passing on it
+// clears the mark: a branch on top of the base that is still marked is checked before it merges.
 import { join } from "node:path"
-import { Effect, type Scope } from "effect"
+import { Effect, type Schema, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { type CheckError, Checks, checkLogName, type RunOptions } from "../services/Checks.ts"
+import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { EventStream } from "./eventstream.ts"
 import { Log, line, Tag, ticketLine } from "./log.ts"
@@ -87,8 +94,74 @@ export const outputTo = (
     return { outputFile: "/dev/null" }
   })
 
-/** Runs the merge check in the ticket's worktree, its output in check.log, and says how it went. */
+/** The Store metadata key marking a ticket's branch as rebased by tutti and not checked since. */
+export const uncheckedKey = "rebased_unchecked"
+
+/** Where a branch marked rebased and unchecked was before tutti rebased it. */
+export interface Unchecked {
+  /** Where it left the base, for the setup (setup.ts). */
+  readonly fork: string
+  /** Its commit; "" when git couldn't say. */
+  readonly head: string
+}
+
+/**
+ * The mark `value` holds, or undefined when it holds none. state.json is anyone's to edit, so a
+ * value that isn't a mark is one with nothing of where, and only a commit hash is taken for one.
+ */
+export const uncheckedOf = (value: Schema.Json | undefined): Unchecked | undefined => {
+  if (value === undefined || value === null) return undefined
+  const fields: Readonly<Record<string, Schema.Json>> =
+    typeof value === "object" && !Array.isArray(value)
+      ? (value as Readonly<Record<string, Schema.Json>>)
+      : {}
+  const hash = (key: string) => {
+    const field = Object.hasOwn(fields, key) ? fields[key] : undefined
+    return typeof field === "string" && /^[0-9a-f]{7,64}$/.test(field) ? field : ""
+  }
+  return { fork: hash("fork"), head: hash("head") }
+}
+
+/**
+ * Marks the ticket's branch as rebased and unchecked, before tutti rebases it: a quit before its
+ * check passes leaves the mark for the next run. A Store that can't be written leaves it unmarked.
+ */
+export const markUnchecked = (
+  id: string,
+  unchecked: Unchecked,
+): Effect.Effect<void, never, Store> =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    yield* Effect.ignore(store.setMetadata(id, uncheckedKey, { ...unchecked }))
+  })
+
+/** The ticket's mark, if its branch was rebased and hasn't been checked since. */
+export const uncheckedMark = (id: string): Effect.Effect<Unchecked | undefined, never, Store> =>
+  Effect.gen(function* () {
+    const metadata = yield* (yield* Store).metadata(id)
+    return uncheckedOf(Object.hasOwn(metadata, uncheckedKey) ? metadata[uncheckedKey] : undefined)
+  })
+
+/** Clears the ticket's mark, its branch checked as it is now, if it has one. */
+const clearUnchecked = (id: string): Effect.Effect<void, never, Store> =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    if ((yield* uncheckedMark(id)) === undefined) return
+    yield* Effect.ignore(store.unsetMetadata(id, uncheckedKey))
+  })
+
+/**
+ * Runs the merge check in the ticket's worktree, its output in check.log, and says how it went. A
+ * check that passes, or that there is none of, clears the ticket's rebased-and-unchecked mark.
+ */
 export const runMergeCheck = (
+  ticket: CheckedTicket,
+): Effect.Effect<Checked, never, Checks | Worktrees | Store | Log | EventStream> =>
+  Effect.tap(checkOnce(ticket), (checked) =>
+    checked._tag === "Failed" ? Effect.void : clearUnchecked(ticket.id),
+  )
+
+const checkOnce = (
   ticket: CheckedTicket,
 ): Effect.Effect<Checked, never, Checks | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {

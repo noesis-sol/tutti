@@ -28,7 +28,7 @@ import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
 import type { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
-import { failedHow, runMergeCheck, saidOf } from "./check.ts"
+import { failedHow, markUnchecked, runMergeCheck, saidOf, uncheckedMark } from "./check.ts"
 import { type CheckStop, type Fixes, whyNotFix } from "./checkback.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
@@ -244,6 +244,11 @@ const rebaseAndCheck = (
     const before = yield* Effect.result(
       Effect.all({ head: git.revParse(repo, branch), own: git.log(repo, onto, branch) }),
     )
+    // Marked before git touches the branch: a quit before its check passes leaves the mark.
+    yield* markUnchecked(id, {
+      fork,
+      head: Result.isSuccess(before) ? before.success.head : "",
+    })
     const rebased = yield* Effect.result(
       git.rebase(worktree, base).pipe(Effect.onInterrupt(() => abandonRebase(worktree))),
     )
@@ -273,14 +278,40 @@ const rebaseAndCheck = (
       return false
     }
     yield* log.write(detail`rebased ${branch} onto ${base}, which moved on while it ran`)
+    return yield* setUpAndCheck(
+      ticket,
+      options,
+      memory,
+      fork,
+      onto,
+      Result.isSuccess(before) ? before.success.head : "",
+    )
+  })
+
+/**
+ * Sets up the ticket, its branch rebased from `fork` (its commit `head` then; "" when git couldn't
+ * say) onto the base at `onto`, if need be, and checks it: true when the check passed; false when
+ * either set it aside; the check stopped, when its failure is to be handed back to its worker.
+ */
+const setUpAndCheck = (
+  ticket: FinishedTicket,
+  options: MergeOptions,
+  memory: MergeMemory,
+  fork: string,
+  onto: string,
+  head: string,
+) =>
+  Effect.gen(function* () {
+    const { git, ledger, log } = yield* services
+    const { id, branch } = ticket
     const failed = (error: CheckError, output: string) =>
       Effect.gen(function* () {
-        const at = yield* Effect.result(git.revParse(repo, branch))
+        const at = yield* Effect.result(git.revParse(options.repo, branch))
         const stop: CheckStop = {
           ticket,
           onto,
           fork,
-          head: Result.isSuccess(before) ? before.success.head : "",
+          head,
           at: Result.isSuccess(at) ? at.success : "",
           error,
           output,
@@ -347,10 +378,12 @@ export const checksFailed = (
 
 /**
  * The part of the merge that may be interrupted: the ticket's worktree checked to be on its branch,
- * and, each time the base has moved on, rebased onto it, set up if need be and checked. Ready once
- * its branch is on top of the base; over when it was set aside (kept in the memory's rechecks when
- * its check failed), blocked or stopped the merges; HandBack when its rebase stopped on conflicts
- * its worker can take.
+ * and, each time the base has moved on, rebased onto it, set up if need be and checked; a branch on
+ * top of the base still marked as rebased and unchecked (check.ts), as a quit leaves one, is set up
+ * if need be and checked too. Ready once its branch is on top of the base, checked; over when it
+ * was set aside (kept in the memory's rechecks when its check failed), blocked or stopped the
+ * merges; HandBack when its rebase stopped on conflicts its worker can take; FixBack when its check
+ * failed in a way its worker can take.
  */
 export const prepare = (
   ticket: FinishedTicket,
@@ -358,7 +391,7 @@ export const prepare = (
   memory: MergeMemory,
 ): Effect.Effect<Prepared, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git } = yield* services
+    const { git, log } = yield* services
     const { id, branch, worktree } = ticket
     const { repo, base } = options
     const on = yield* offBranch(ticket)
@@ -373,6 +406,8 @@ export const prepare = (
       )
       return { _tag: "Over" } satisfies Prepared
     }
+    // A mark found and checked in this merge isn't checked again, even when the Store kept it.
+    let checkedMark = false
     for (let pass = 0; ; pass++) {
       const where = yield* Effect.result(
         Effect.all({ onto: git.revParse(repo, base), fork: git.mergeBase(repo, base, branch) }),
@@ -387,7 +422,25 @@ export const prepare = (
         return { _tag: "Over", stop } satisfies Prepared
       }
       const { onto, fork } = where.success
-      if (fork === onto) return { _tag: "Ready", onto } satisfies Prepared
+      if (fork === onto) {
+        const unchecked = checkedMark ? undefined : yield* uncheckedMark(id)
+        if (unchecked === undefined) return { _tag: "Ready", onto } satisfies Prepared
+        checkedMark = true
+        yield* log.write(
+          detail`${branch} is on top of ${base}, but its check didn't finish after tutti rebased it; checking it now`,
+        )
+        const checked = yield* setUpAndCheck(
+          ticket,
+          options,
+          memory,
+          unchecked.fork === "" ? onto : unchecked.fork,
+          onto,
+          unchecked.head,
+        )
+        if (checked === false) return { _tag: "Over" } satisfies Prepared
+        if (checked === true) continue
+        return { _tag: "FixBack", stop: checked } satisfies Prepared
+      }
       if (pass === maxPasses) {
         const text = ticketLine(
           Tag.mergeConflict,
