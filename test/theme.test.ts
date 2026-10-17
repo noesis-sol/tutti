@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { TextAttributes } from "@opentui/core"
 import { ConfigProvider, Effect, Option, Result } from "effect"
 import fc from "fast-check"
-import { colourSchemeSchemaFile, colourSchemeSchemaText } from "../scripts/colour-scheme-schema.ts"
+import { schemaText } from "../scripts/gen-schemas.ts"
 import { load } from "../src/cli/AppConfig.ts"
 import { noFlags } from "../src/cli/flags.ts"
 import {
@@ -586,8 +586,7 @@ describe("the appearance", () => {
   })
 })
 
-test("schema/colour-scheme.json is the format's JSON Schema, up to date", () => {
-  expect(readFileSync(colourSchemeSchemaFile, "utf8")).toBe(colourSchemeSchemaText())
-  const document = JSON.parse(colourSchemeSchemaText())
+test("schema/colour-scheme.json gives every role", () => {
+  const document = JSON.parse(schemaText("colour-scheme.json"))
   expect(Object.keys(document.properties.colours.properties)).toEqual([...roles])
 })

@@ -82,7 +82,7 @@ const Check = (timeout: string) =>
 
 /** A single issue type, as `bd ready --exclude-type` takes: bd splits its list at commas. */
 const IssueType = Schema.String.check(
-  Schema.isPattern(/^[^,\s]+$/, { expected: `an issue type such as "epic"` }),
+  Schema.isPattern(/^[^,\s]+$/u, { expected: `an issue type such as "epic"` }),
 )
 
 export const Settings = Schema.Struct({
@@ -150,7 +150,7 @@ export const Settings = Schema.Struct({
     /** The project's default colour scheme (§ 7.11); the user config's choice wins over it. */
     colour_scheme: Text.pipe(withDefault("orchestra")),
   }).pipe(withDefault({})),
-})
+}).annotate({ title: "tutti settings", description: "a project's .tutti/settings.json" })
 
 export type Settings = typeof Settings.Type
 

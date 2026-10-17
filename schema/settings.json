@@ -1,0 +1,373 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/settings.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "number",
+      "enum": [
+        1
+      ],
+      "default": 1
+    },
+    "concurrent": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16,
+      "default": 1
+    },
+    "checks": {
+      "type": "object",
+      "properties": {
+        "fast": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "timeout": {
+              "type": "string",
+              "pattern": "^(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+$",
+              "description": "a time such as \"30m\", \"2h\" or \"1h30m\"",
+              "default": "30m"
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "full": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "timeout": {
+              "type": "string",
+              "pattern": "^(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+$",
+              "description": "a time such as \"30m\", \"2h\" or \"1h30m\"",
+              "default": "60m"
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "setup": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": [
+                "package.json",
+                "package-lock.json",
+                "npm-shrinkwrap.json",
+                "yarn.lock",
+                "pnpm-lock.yaml",
+                "bun.lock",
+                "bun.lockb",
+                "go.mod",
+                "go.sum",
+                "Cargo.toml",
+                "Cargo.lock",
+                "pyproject.toml",
+                "poetry.lock",
+                "uv.lock",
+                "Pipfile",
+                "Pipfile.lock",
+                "requirements*.txt",
+                "Gemfile",
+                "Gemfile.lock",
+                "composer.json",
+                "composer.lock",
+                "mix.exs",
+                "mix.lock",
+                "pubspec.yaml",
+                "pubspec.lock"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "workers": {
+      "type": "object",
+      "properties": {
+        "mcp_servers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "permission_mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "default",
+            "acceptEdits"
+          ],
+          "default": "auto"
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "low"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "medium"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "high"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "xhigh"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "max"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ticket_limit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+$",
+              "description": "a time such as \"30m\", \"2h\" or \"1h30m\""
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ask_user_question": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "organs": {
+      "type": "object",
+      "properties": {
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "low"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "medium"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "high"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "xhigh"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "max"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "triage": {
+          "type": "boolean",
+          "default": true
+        },
+        "review": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "queue": {
+      "type": "object",
+      "properties": {
+        "exclude_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^,\\s]+$"
+          },
+          "default": [
+            "epic"
+          ]
+        },
+        "footprint": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "merge": {
+      "type": "object",
+      "properties": {
+        "resolve_conflicts": {
+          "type": "boolean",
+          "default": true
+        },
+        "resolve_timeout": {
+          "type": "string",
+          "pattern": "^(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+$",
+          "description": "a time such as \"30m\", \"2h\" or \"1h30m\"",
+          "default": "20m"
+        },
+        "check_hand_backs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "default": 2
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "environment_hold": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "default": 2
+        },
+        "window": {
+          "type": "string",
+          "pattern": "^(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+$",
+          "description": "a time such as \"30m\", \"2h\" or \"1h30m\"",
+          "default": "2m"
+        },
+        "probe": {
+          "type": "string",
+          "pattern": "^(?:0|(?:\\d+(?:\\.\\d+)?(?:ms|h|m|s))+)$",
+          "description": "a time such as \"30m\", \"2h\" or \"1h30m\", or \"0\"",
+          "default": "10m"
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "colour_scheme": {
+          "type": "string",
+          "minLength": 1,
+          "default": "orchestra"
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    }
+  },
+  "additionalProperties": false,
+  "title": "tutti settings",
+  "description": "a project's .tutti/settings.json"
+}

@@ -153,11 +153,17 @@ export const readConfigFile = <S extends Schema.Decoder<unknown>>(schema: S, fil
     return yield* decodeConfig(schema, file, json)
   })
 
-/** Builds a schema key with a default: absent, it decodes as `value` would (an encoded value). */
+/**
+ * Builds a schema key with a default: absent, it decodes as `value` would (an encoded value). The
+ * published JSON Schema gives the default, so editors show it.
+ */
 export const withDefault =
   <S extends Schema.Top>(value: S["Encoded"]) =>
   (schema: S) =>
-    schema.pipe(Schema.withDecodingDefaultKey(Effect.succeed(value)))
+    // annotateEncoded gives S["Rebuild"], the same schema as S's type says less precisely.
+    (Schema.annotateEncoded<S>({ default: value })(schema) as S).pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed(value)),
+    )
 
 const units = [
   ["h", 3_600_000],
@@ -195,18 +201,30 @@ export const formatDuration = (duration: Duration.Duration): string => {
 /**
  * A time such as "30m", decoded to a Duration; `positive` refuses "0". The text is checked before
  * it is decoded, with the other keys' types, so its problem is reported beside theirs: a struct
- * stops before its decoding step when one of its keys has the wrong type.
+ * stops before its decoding step when one of its keys has the wrong type. The JSON Schema gives the
+ * pattern, which doesn't refuse "0m": only "0" itself.
  */
 const DurationFromText = (positive: boolean) =>
   Schema.String.check(
-    Schema.makeFilter((text) =>
-      Option.match(parseDuration(text), {
-        onNone: () => `Expected a time such as "30m" or "2h", got ${JSON.stringify(text)}`,
-        onSome: (duration) =>
-          !positive ||
-          Duration.isGreaterThan(duration, Duration.zero) ||
-          `Expected a time longer than 0, such as "30m", got ${JSON.stringify(text)}`,
-      }),
+    Schema.makeFilter(
+      (text) =>
+        Option.match(parseDuration(text), {
+          onNone: () => `Expected a time such as "30m" or "2h", got ${JSON.stringify(text)}`,
+          onSome: (duration) =>
+            !positive ||
+            Duration.isGreaterThan(duration, Duration.zero) ||
+            `Expected a time longer than 0, such as "30m", got ${JSON.stringify(text)}`,
+        }),
+      {
+        description: positive
+          ? `a time such as "30m", "2h" or "1h30m"`
+          : `a time such as "30m", "2h" or "1h30m", or "0"`,
+        toJsonSchema: () => ({
+          pattern: positive
+            ? durationPattern.source
+            : `^(?:0|${durationPattern.source.slice(1, -1)})$`,
+        }),
+      },
     ),
   ).pipe(
     Schema.decodeTo(

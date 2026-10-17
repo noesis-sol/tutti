@@ -14,7 +14,7 @@ export const version = 1
 
 // RFC 3339 with fractional seconds, in local time, as orchestra writes `time` and `run`.
 const Timestamp = Schema.String.check(
-  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/),
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/u),
 )
 
 const pad = (n: number, width = 2): string => n.toString().padStart(width, "0")
@@ -392,7 +392,10 @@ export const kinds = {
 export type Kind = keyof typeof kinds
 
 /** A record of the event stream, of any kind. */
-export const EventRecord = Schema.Union(Object.values(kinds))
+export const EventRecord = Schema.Union(Object.values(kinds)).annotate({
+  title: "tutti event record",
+  description: "one line of .tutti/run/events.jsonl",
+})
 export type EventRecord = typeof EventRecord.Type
 
 /** A record without its head, as the run gives it to the EventStream, which stamps the rest. */

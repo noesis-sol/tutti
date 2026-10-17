@@ -134,17 +134,6 @@ export const ColourScheme = Schema.Struct({
 
 export type ColourScheme = typeof ColourScheme.Type
 
-/** The JSON Schema `schema/colour-scheme.json` holds, for editors. */
-export const colourSchemeJsonSchema = (): Record<string, unknown> => {
-  const document = Schema.toJsonSchemaDocument(ColourScheme, { onExcessProperty: "error" })
-  return {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/colour-scheme.json",
-    ...document.schema,
-    ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
-  }
-}
-
 /** A role's colour on each background. */
 export interface Variant {
   readonly light: Colour
