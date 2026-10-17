@@ -4,14 +4,12 @@
 import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
 import { Command } from "effect/cli"
-import pkg from "../package.json" with { type: "json" }
 import { tutti } from "./cli/commands.ts"
-
-export const version: string = pkg.version
+import { tuttiVersion } from "./cli/version.ts"
 
 if (import.meta.main) {
   BunRuntime.runMain(
-    Command.run(tutti, { version }).pipe(
+    Effect.flatMap(tuttiVersion, (version) => Command.run(tutti, { version })).pipe(
       // The command has said why on stderr.
       Effect.catchTag("CommandFailed", () =>
         Effect.sync(() => {
