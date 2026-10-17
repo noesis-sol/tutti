@@ -79,6 +79,11 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   over it, which `@opentui/react/test-utils` needs.
 - `scripts/test.sh` reruns each failed test once by name and prints `FLAKY: <file> <test>` for one
   that passes on its rerun; a flaky test doesn't fail the check.
+- The contract tests against the real Agent SDK, `test/contract/sdk.test.ts`, run only with
+  `TUTTI_LIVE=1` (`TUTTI_LIVE=1 scripts/test.sh test/contract/sdk.test.ts`), with the SDK's embedded
+  Claude Code and this machine's Claude login. They spend a few cents of real model turns. Run them
+  on every SDK bump (§ 13). Usage limits can't be reached on demand: `test/fixtures/usage-limit/`
+  holds their messages.
 - shellcheck is a pinned release fetched into `.cache/shellcheck/` (git-ignored) and checked against
   its sha256. Offline, the check says so and skips it.
 

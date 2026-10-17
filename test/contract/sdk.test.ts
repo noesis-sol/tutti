@@ -233,9 +233,19 @@ const lifecycleOf = (all: ReadonlyArray<SDKMessage>, uuid: string): ReadonlyArra
 const textOf = (result: SDKResultMessage | undefined): string =>
   result?.subtype === "success" ? result.result : ""
 
-/** A worker's request that Attention holds, waiting for the test. */
+/**
+ * The worker's one request that Attention holds, waiting for the test. requires_action can make
+ * the worker NeedsYou a moment before its canUseTool call reaches Attention.
+ */
 const onlyRequest = Effect.gen(function* () {
-  const open = yield* (yield* Attention).current
+  const attention = yield* Attention
+  const open = yield* attention.current.pipe(
+    Effect.repeat({
+      until: (open) => open.length > 0,
+      schedule: Schedule.spaced(Duration.millis(50)),
+    }),
+    Effect.timeout(waitLimit),
+  )
   expect(open).toHaveLength(1)
   return open[0] as AttentionRequest
 })
@@ -384,20 +394,24 @@ live.describe("Agent SDK contract: canUseTool", () => {
     testLimit,
   )
 
-  /** A folder of files for the held removal to aim at, and the message that asks for it. */
-  const target = () => {
-    const folder = mkdtempSync(join(realpathSync(tmpdir()), "tutti-contract-target-"))
+  /**
+   * The held removal's target, `build` in the repository `dir`, with files in it; the variable
+   * TUTTI_CONTRACT_TARGET names it in the workers' environment, as the spike's SPIKE_TARGET did.
+   */
+  const target = (dir: string) => {
+    const folder = join(dir, "build")
+    mkdirSync(folder)
     for (const name of ["a.txt", "b.txt"]) writeFileSync(join(folder, name), "keep me\n")
     return folder
   }
   const removal =
-    "This is a test of a permission check, in a scratch folder. Use the Bash tool to run exactly this command, as written, without changing or quoting it: rm -rf $TUTTI_CONTRACT_TARGET/*\nIf it runs, reply DONE. If it is denied, reply DENIED and stop; don't try anything else."
+    "Run exactly this Bash command, as written: `rm -rf $TUTTI_CONTRACT_TARGET/*`. If it is refused, reply exactly REFUSED and stop; don't try another way."
 
   live.test(
     "in default mode a held removal asks with defaultToNo and no Allow for this run",
     async () => {
       const dir = repository()
-      const folder = target()
+      const folder = target(dir)
       const { request, state } = await run(
         dir,
         Effect.gen(function* () {
@@ -410,7 +424,7 @@ live.describe("Agent SDK contract: canUseTool", () => {
           yield* messagesUntil("the turn answered", answered(uuid))
           return { request, state: yield* stateUntil((s) => s._tag === "Idle") }
         }),
-        { mode: "default", env: { TUTTI_CONTRACT_TARGET: folder } },
+        { mode: "default", env: { TUTTI_CONTRACT_TARGET: "build" } },
       )
       expect(request.kind._tag === "Permission" && request.kind.tool).toBe("Bash")
       expect(request.kind._tag === "Permission" && request.kind.summary).toContain("rm -rf")
@@ -426,7 +440,7 @@ live.describe("Agent SDK contract: canUseTool", () => {
     "in auto mode a held removal is denied as safetyCheck without asking",
     async () => {
       const dir = repository()
-      const folder = target()
+      const folder = target(dir)
       const asked: Array<AttentionRequest> = []
       const all = await run(
         dir,
@@ -440,7 +454,7 @@ live.describe("Agent SDK contract: canUseTool", () => {
           mode: "auto",
           // Auto mode needs a model that has it: Claude Code's default.
           model: null,
-          env: { TUTTI_CONTRACT_TARGET: folder },
+          env: { TUTTI_CONTRACT_TARGET: "build" },
           policy: (request) => {
             asked.push(request)
             return { _tag: "Deny" }
