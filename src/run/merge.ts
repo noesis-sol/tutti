@@ -37,8 +37,10 @@ import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { Cause, Detail } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
+import { unmergedLabel } from "./scope.ts"
 import { type SetUps, setUp } from "./setup.ts"
 import { ignoredFolders } from "./startup.ts"
+import { unlabel } from "./unmerged.ts"
 
 /** A ticket its worker finished: closed, committed, its worktree clean and on its branch. */
 export interface FinishedTicket {
@@ -496,7 +498,7 @@ const closeEpics = (id: string) =>
       const merged = children.every(
         (child) =>
           child.status === "closed" &&
-          !child.labels.includes("unmerged") &&
+          !child.labels.includes(unmergedLabel) &&
           (state.tickets.get(child.id)?.phase._tag ?? "Done") === "Done",
       )
       if (!merged) return
@@ -518,8 +520,8 @@ const closeEpics = (id: string) =>
 
 /**
  * The protected step: the base fast-forwarded to the ticket's branch, on top of it at `onto`, in
- * the main checkout, then the worktree and branch removed, the ticket Done and the epics above it
- * closed. Undefined when it merged; the stop when the main checkout or git kept it from merging.
+ * the main checkout, then the worktree and branch removed, the ticket Done, the `unmerged` label an
+ * earlier run gave it removed, and the epics above it closed. Undefined when it merged; the stop when the main checkout or git kept it from merging.
  */
 export const fastForward = (
   ticket: FinishedTicket,
@@ -527,7 +529,7 @@ export const fastForward = (
   onto: string,
 ): Effect.Effect<MergeStop | undefined, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, worktrees, ledger, log } = yield* services
+    const { git, worktrees, beads, ledger, log } = yield* services
     const { id, title, branch, worktree } = ticket
     const { repo, base } = options
     yield* ledger.refine(id, Detail.Step({ step: "fast-forward" }))
@@ -613,6 +615,10 @@ export const fastForward = (
       ],
     })
     yield* log.write(text)
+    // A carried-over ticket keeps its label until it merges: closeEpics takes a labelled
+    // subticket for one not merged.
+    const shown = yield* Effect.result(beads.show(id))
+    if (Result.isSuccess(shown) && shown.success.labels.includes(unmergedLabel)) yield* unlabel(id)
     yield* closeEpics(id)
     return undefined
   })

@@ -150,8 +150,11 @@ export interface LeftUnmerged {
 /** `<hash> <subject>`, the hash cut to 7, as the log names a commit. */
 const named = (commit: Commit) => line`${commit.hash.slice(0, 7)} ${commit.subject}`
 
-/** Removes the ticket's label, warning with LABEL_FAILED when bd can't. Whether it did. */
-const unlabel = (id: string) =>
+/**
+ * Removes the ticket's label, warning with LABEL_FAILED when bd can't: as the run starts, for one
+ * merged by hand, and as one carried over merges (merge.ts). Whether it did.
+ */
+export const unlabel = (id: string) =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const log = yield* Log
@@ -236,8 +239,9 @@ const label = (id: string, options: MergeOptions) =>
 /**
  * As the run ends, once its tickets have their last phases: each ticket it took up that is closed
  * in Beads and not merged (short of Done) is labelled `unmerged`, unless it is already; a ticket
- * still in progress isn't, since its worker ends with the run. One that merged in this run loses
- * the label an earlier run gave it. A ticket bd can't show is passed over.
+ * still in progress isn't, since its worker ends with the run. One that merged in this run and still
+ * has the label an earlier run gave it, which its merge couldn't remove, loses it. A ticket bd
+ * can't show is passed over.
  */
 export const labelAtEnd = (
   options: MergeOptions,

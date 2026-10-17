@@ -572,7 +572,7 @@ Conflict resolution and check fixes go to the ticket's worker as orchestra sends
 
 During this, a second signal abandons the merge, as orchestra's does: `<id>'s merge is under way; press Ctrl+C again to abandon it`. A third exits at once.
 
-**The `unmerged` label.** A ticket that is closed and not merged when the run ends is labelled `unmerged`, as orchestra labels it. orchestra also labels tickets whose workers it leaves running, since such a worker may close its ticket after orchestra exits. tutti's workers can't outlive it, so a ticket still in progress isn't labelled.
+**The `unmerged` label.** A ticket that is closed and not merged when the run ends is labelled `unmerged`, as orchestra labels it. orchestra also labels tickets whose workers it leaves running, since such a worker may close its ticket after orchestra exits. tutti's workers can't outlive it, so a ticket still in progress isn't labelled. A ticket an earlier run labelled, carried over and merged in this run, loses the label as it merges, as orchestra's does, before the epics above it are checked: an epic whose last subticket it is closes then. One bd can't unlabel is LABEL_FAILED, and the run's end tries again.
 
 **The next run.** It resumes each suspended worker with `resume: <session ID>` and a `client_composed` message saying it was interrupted and to carry on, with any per-start facts (§4.1). tutti sends it as the session starts, not after its `system/init`: a resumed session emits one only with a turn. A suspended worker counts toward no limit and takes a slot as a running ticket does.
 
