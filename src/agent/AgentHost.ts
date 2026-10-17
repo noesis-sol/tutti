@@ -18,6 +18,7 @@ import {
   Deferred,
   Effect,
   Equal,
+  Option,
   PubSub,
   Schema,
   type Scope,
@@ -25,10 +26,11 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import { detail, Log } from "../run/log.ts"
 import type { PermissionModeInEffect } from "./Account.ts"
 import { Attention } from "./Attention.ts"
 import { Transcripts } from "./Transcripts.ts"
-import { initial, step, type Worker, WorkerEvent, WorkerState } from "./WorkerState.ts"
+import { initial, reportWait, step, type Worker, WorkerEvent, WorkerState } from "./WorkerState.ts"
 
 /**
  * Who wrote a message: tutti (sent `client_composed`, delivered as written, § 4.1) or a person at
@@ -203,7 +205,8 @@ export interface Workers {
 
 /**
  * The workers of a host whose project's check commands are `checks` (they classify as testing).
- * Each worker's attention counter runs in the scope.
+ * Each worker's attention counter, and its wait for a finished task's report, runs in the scope. A
+ * report that doesn't come is written to the Log, when there is one, else logged as a warning.
  */
 export const makeWorkers = (
   checks: ReadonlyArray<string> = [],
@@ -215,14 +218,44 @@ export const makeWorkers = (
     const known = new Map<string, WorkerEntry>()
     // Folds are serialised, so the state set last is the one the last fold gave.
     const one = yield* Semaphore.make(1)
+    const log = yield* Effect.serviceOption(Log)
 
-    const fold = (entry: WorkerEntry, event: WorkerEvent) =>
+    const late = (ticket: string) => {
+      const text = `a background task ended and no turn came to report it within ${reportWait}; not waiting for it`
+      return Option.match(log, {
+        onNone: () => Effect.logWarning(`${ticket}: ${text}`),
+        onSome: (each) => each.write(detail`${ticket}: ${text}`),
+      })
+    }
+
+    const fold = (entry: WorkerEntry, event: WorkerEvent): Effect.Effect<void> =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
+        const before = yield* SubscriptionRef.get(entry.worker)
         const next = yield* SubscriptionRef.updateAndGet(entry.worker, (w) => step(w, event, now))
         const shown = yield* SubscriptionRef.get(entry.state)
         if (!Equal.equals(shown, next.state)) yield* SubscriptionRef.set(entry.state, next.state)
+        if (next.report !== null && next.report !== before.report) {
+          yield* awaitReport(entry, next.report)
+        }
       }).pipe(one.withPermit)
+
+    // A finished task's report to come, since `since` (§ 4.2): a turn starting ends the wait; if
+    // none starts within reportWait, the worker stops waiting for it and the log says so.
+    const awaitReport = (entry: WorkerEntry, since: number): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const reported = SubscriptionRef.changes(entry.worker).pipe(
+          Stream.takeUntil((w) => w.report !== since),
+          Stream.runDrain,
+        )
+        const waited = yield* Effect.sleep(reportWait).pipe(
+          Effect.as(true),
+          Effect.raceFirst(Effect.as(reported, false)),
+        )
+        if (!waited) return
+        yield* late(entry.ticket)
+        yield* fold(entry, WorkerEvent.ReportLate({ since }))
+      }).pipe(Effect.raceFirst(Deferred.await(entry.ended)), Effect.forkIn(scope), Effect.asVoid)
 
     const openCount = (ticket: string) =>
       Effect.map(attention.current, (all) => all.filter((r) => r.ticket === ticket).length)

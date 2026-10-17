@@ -65,6 +65,12 @@ const tasks = (...live: ReadonlyArray<Task>) =>
       ...(ambient === undefined ? {} : { ambient }),
     })),
   })
+// A task's end, as the CLI sends it: task_updated, then task_notification, before the set changes.
+const taskEnded = (id: string) => [
+  sdk({ type: "system", subtype: "task_updated", task_id: id, patch: { status: "completed" } }),
+  sdk({ type: "system", subtype: "task_notification", task_id: id, status: "completed" }),
+]
+const reportLate = (since: number) => WorkerEvent.ReportLate({ since })
 const rateLimit = (status: "allowed" | "allowed_warning" | "rejected", resetsAt?: number) =>
   sdk({
     type: "rate_limit_event",
@@ -138,17 +144,19 @@ describe("Idle", () => {
     expect(stateAfter(init, result({ queued_turn_count: 2 }), idle)._tag).toBe("Idle")
   })
 
-  test("a live background task keeps a worker Working; its end makes it Idle", () => {
+  test("a live background task keeps a worker Working; Idle after the turn reporting its end", () => {
     const live = [init, tasks({ id: "b1" }), result(), idle]
     expect(stateAfter(...live)).toEqual(WorkerState.Working({ doing: "working" }))
-    expect(stateAfter(...live, tasks())).toEqual(WorkerState.Idle({ at: 4 }))
+    expect(stateAfter(...live, tasks())).toEqual(WorkerState.Working({ doing: "working" }))
+    const reported = [...live, tasks(), running, init, result(), idle]
+    expect(stateAfter(...reported)).toEqual(WorkerState.Idle({ at: 8 }))
   })
 
   test("background_tasks_changed replaces the set each time", () => {
-    const events = [init, tasks({ id: "b1" }), tasks({ id: "b1" }, { id: "b2" }), result(), idle]
-    expect(stateAfter(...events)._tag).toBe("Working")
-    expect(stateAfter(...events, tasks({ id: "b2" }))._tag).toBe("Working")
-    expect(stateAfter(...events, tasks({ id: "b2" }), tasks())._tag).toBe("Idle")
+    const events = [init, tasks({ id: "b1" }), tasks({ id: "b1" }, { id: "b2" })]
+    expect(stateAfter(...events, result(), idle)._tag).toBe("Working")
+    expect(stateAfter(...events, tasks({ id: "b2" }), result(), idle)._tag).toBe("Working")
+    expect(stateAfter(...events, tasks({ id: "b2" }), tasks(), result(), idle)._tag).toBe("Idle")
   })
 
   test("ambient tasks never keep a worker Working", () => {
@@ -173,6 +181,103 @@ describe("Idle", () => {
   test("a new turn after Idle is Working again", () => {
     expect(stateAfter(init, result(), idle, running)).toEqual(
       WorkerState.Working({ doing: "working" }),
+    )
+  })
+})
+
+describe("a finished task's report", () => {
+  // The spike's order at a task's end, after idle: task_updated, task_notification, the emptied
+  // set, then running ~70 ms later and the turn the CLI starts by itself to report the task.
+  const watching = [init, tasks({ id: "b1" }), result(), idle]
+  const ends = [...taskEnded("b1"), tasks()]
+  const report = [running, init, preTool("Read"), postTool("Read"), result(), idle]
+
+  test("a task ending after idle keeps the worker Working through its report's turn", () => {
+    const states = [...watching, ...ends, ...report].map(
+      (_, n, all) => fold(all.slice(0, n + 1)).state._tag,
+    )
+    expect(states.slice(watching.length - 1)).toEqual([
+      "Working", // idle with the task live
+      "Working", // task_updated
+      "Working", // task_notification
+      "Working", // the emptied set, before running
+      "Working", // running
+      "Working",
+      "Working",
+      "Working",
+      "Working", // the report's result
+      "Idle",
+    ])
+    expect(fold([...watching, ...ends, ...report]).report).toBeNull()
+  })
+
+  test("the emptied set before running awaits the report from when it came", () => {
+    const worker = fold([...watching, ...ends])
+    expect(worker.report).toBe(watching.length + ends.length - 1)
+    expect(worker.state).toEqual(WorkerState.Working({ doing: "working" }))
+  })
+
+  test("a report that never comes: ReportLate ends the wait, and the worker settles", () => {
+    const since = watching.length + ends.length - 1
+    const events = [...watching, ...ends]
+    expect(stateAfter(...events, reportLate(since))).toEqual(WorkerState.Idle({ at: since + 1 }))
+    // A ReportLate for another wait leaves this one be.
+    expect(stateAfter(...events, reportLate(since - 1))._tag).toBe("Working")
+    // A ReportLate after the report came changes nothing.
+    expect(stateAfter(...events, ...report, reportLate(since))).toEqual(
+      WorkerState.Idle({ at: since + report.length }),
+    )
+  })
+
+  test("a failed worker whose report never comes settles as Failed", () => {
+    const events = [init, tasks({ id: "b1" }), errorResult(), idle, tasks()]
+    expect(stateAfter(...events)._tag).toBe("Working")
+    expect(stateAfter(...events, reportLate(4))._tag).toBe("Failed")
+  })
+
+  test("a Monitor watch live after idle keeps the worker Working however long it lives", () => {
+    const watch = sdk({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [{ task_id: "m1", task_type: "local_bash", description: "Monitor tutti.log" }],
+    })
+    const worker = [init, watch, result(), idle].reduce(
+      (w, event, n) => step(w, event, n * 60 * 60 * 1000),
+      initial(),
+    )
+    expect(worker.state).toEqual(WorkerState.Working({ doing: "working" }))
+    expect(step(worker, requests(0), 30 * 60 * 60 * 1000).state._tag).toBe("Working")
+    // Each event it sees starts a turn; the worker stays Working after it.
+    expect(fold([running, init, result(), idle], worker).state._tag).toBe("Working")
+  })
+
+  test("a task ending while a turn runs needs no report wait", () => {
+    expect(fold([init, tasks({ id: "b1" }), tasks(), result(), idle]).report).toBeNull()
+    expect(stateAfter(init, tasks({ id: "b1" }), tasks(), result(), idle)._tag).toBe("Idle")
+    // Between a result and idle, more turns may follow: idle comes after the task's report.
+    expect(stateAfter(init, tasks({ id: "b1" }), result(), tasks(), idle)._tag).toBe("Idle")
+  })
+
+  test("only a task that counted and ended awaits a report", () => {
+    const ambient = tasks({ id: "w", ambient: true })
+    expect(stateAfter(init, ambient, result(), idle, tasks())._tag).toBe("Idle")
+    // A task that becomes ambient hasn't ended.
+    const turned = tasks({ id: "b1", ambient: true })
+    expect(stateAfter(init, tasks({ id: "b1" }), result(), idle, turned)._tag).toBe("Idle")
+    // A new task starting after idle isn't one ending.
+    expect(fold([init, result(), idle, tasks({ id: "b2" })]).report).toBeNull()
+  })
+
+  test("a second task ending keeps the first wait's time", () => {
+    const two = [init, tasks({ id: "b1" }, { id: "b2" }), result(), idle]
+    const worker = fold([...two, tasks({ id: "b2" }), tasks()])
+    expect(worker.report).toBe(4)
+    expect(step(worker, reportLate(4), 6).state).toEqual(WorkerState.Idle({ at: 6 }))
+  })
+
+  test("a session that goes while a report is awaited is Gone", () => {
+    expect(stateAfter(...watching, ...ends, WorkerEvent.Ended({ why: "exited" }))).toEqual(
+      WorkerState.Gone({ why: "exited" }),
     )
   })
 })
@@ -287,7 +392,7 @@ describe("error results", () => {
   test("a live background task keeps a failed worker Working; its end makes it Failed", () => {
     const live = [init, tasks({ id: "b1" }), errorResult(), idle]
     expect(stateAfter(...live)._tag).toBe("Working")
-    expect(stateAfter(...live, tasks())._tag).toBe("Failed")
+    expect(stateAfter(...live, tasks(), reportLate(4))._tag).toBe("Failed")
     expect(stateAfter(init, tasks({ id: "w", ambient: true }), errorResult(), idle)._tag).toBe(
       "Failed",
     )
@@ -563,6 +668,34 @@ describe("properties", () => {
         const worker = fold([...events, init, tasks({ id: "b1" }), result(), idle])
         expect(settled(worker.state)).toBe(false)
       }),
+    )
+  })
+
+  test("a task ending after idle never lets a worker settle until a turn or ReportLate", () => {
+    fc.assert(
+      fc.property(
+        fc.array(anyEvent, { maxLength: 40 }),
+        fc.array(fc.constantFrom(requests(0), streamEvent, assistant(), idle, ...taskEnded("b1")), {
+          maxLength: 6,
+        }),
+        (events, between) => {
+          const end = [
+            requests(0),
+            init,
+            tasks({ id: "b1" }),
+            result({ user_message_uuids: [] }),
+            cancelled("u1"),
+            lifecycle("u2", "completed"),
+            idle,
+            tasks(),
+            ...between,
+          ]
+          const worker = fold([...events, ...end])
+          expect(settled(worker.state)).toBe(false)
+          const since = worker.report ?? -1
+          expect(settled(step(worker, reportLate(since), 999).state)).toBe(true)
+        },
+      ),
     )
   })
 

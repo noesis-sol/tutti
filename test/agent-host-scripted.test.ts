@@ -31,8 +31,10 @@ import {
   result,
   type Script,
   Sent,
+  selfStartedTurn,
   sessionState,
   sleep,
+  taskEnds,
   turn,
   wait,
 } from "../src/testing/AgentHost.ts"
@@ -220,7 +222,8 @@ describe("scripted cases", () => {
       result(),
       sessionState("idle"),
       sleep("1 minute"),
-      backgroundTasks({ id: "watch", ambient: true }),
+      ...taskEnds("b1", { id: "watch", ambient: true }),
+      ...selfStartedTurn(),
     ]
     const states = await run(
       { "t-1": [script] },
@@ -231,11 +234,14 @@ describe("scripted cases", () => {
         yield* host.send("t-1", "Go.", "clientComposed")
         yield* TestClock.adjust("30 seconds")
         expect(yield* host.current("t-1")).toEqual(working)
+        // b1 ends at 60 s; until the turn reporting it starts, 70 ms later, its report is to come.
         yield* TestClock.adjust("30 seconds")
+        expect(yield* host.current("t-1")).toEqual(working)
+        yield* TestClock.adjust("70 millis")
         return yield* Fiber.join(states)
       }),
     )
-    expect(states).toEqual([WorkerState.Starting(), working, WorkerState.Idle({ at: 60_000 })])
+    expect(states).toEqual([WorkerState.Starting(), working, WorkerState.Idle({ at: 60_070 })])
   })
 
   test("only ambient tasks: Idle as the turn ends", async () => {

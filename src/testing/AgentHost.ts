@@ -488,6 +488,42 @@ export const backgroundTasks = (
     })),
   })
 
+/**
+ * A background task's end, as the CLI sends it (docs/spikes/01-sdk-session.md, item 4):
+ * `task_updated` (completed), `task_notification`, then the live set without it, `left`.
+ */
+export const taskEnds = (
+  id: string,
+  ...left: ReadonlyArray<{ readonly id: string; readonly ambient?: boolean }>
+): ReadonlyArray<Step> => [
+  emit({ type: "system", subtype: "task_updated", task_id: id, patch: { status: "completed" } }),
+  emit({
+    type: "system",
+    subtype: "task_notification",
+    task_id: id,
+    status: "completed",
+    output_file: `/tmp/tasks/${id}.output`,
+    summary: `Background command "${id}" completed`,
+  }),
+  backgroundTasks(...left),
+]
+
+/**
+ * The turn the CLI starts by itself, with no send of tutti's: to report a finished task, about
+ * 70 ms after the set emptied (the spike saw 69), or for an event a Monitor watch saw.
+ */
+export const selfStartedTurn = (
+  steps: ReadonlyArray<Step> = [],
+  end: Step = result(),
+): ReadonlyArray<Step> => [
+  sleep("70 millis"),
+  sessionState("running"),
+  init(),
+  ...steps,
+  end,
+  sessionState("idle"),
+]
+
 /** `rate_limit_event`; `resetsAt` in seconds since the epoch, as the API's header has it. */
 export const rateLimit = (
   status: "allowed" | "allowed_warning" | "rejected",
@@ -626,6 +662,38 @@ export const asksPermission = (
   const input = call.input ?? { command: "rm -rf build" }
   return turn([canUseTool(name, input, call.options), ...tool(name, input)])
 }
+
+/**
+ * Runs Bash `command` in the background (task `b1`) and ends its turn while it runs: idle comes
+ * with the task live. After `runs` the task ends and the CLI starts a turn to report it, which
+ * reads its output; with `reported` false, no such turn comes.
+ */
+export const backgroundCommand = (
+  command: string,
+  runs: Duration.Input,
+  options: { readonly reported?: boolean } = {},
+): SessionScript => [
+  ...turn([...tool("Bash", { command, run_in_background: true }), backgroundTasks({ id: "b1" })]),
+  sleep(runs),
+  ...taskEnds("b1"),
+  ...(options.reported === false
+    ? []
+    : selfStartedTurn(tool("Read", { file_path: "/tmp/tasks/b1.output" }))),
+]
+
+/**
+ * Sets a Monitor watch (task `m1`, `local_bash` and not ambient, as the spike saw) and ends its
+ * turn while it watches. After `quiet` the watch sees an event, which starts a turn by itself; the
+ * watch is still live after it.
+ */
+export const monitorWatch = (quiet: Duration.Input): SessionScript => [
+  ...turn([
+    ...tool("Monitor", { command: "tail -f .tutti/tutti.log", description: "the run's log" }),
+    backgroundTasks({ id: "m1" }),
+  ]),
+  sleep(quiet),
+  ...selfStartedTurn([assistantText("A new line in the log.")]),
+]
 
 /**
  * Hits the usage limit: a rejected rate_limit_event resetting at `resetsAt` (seconds since the

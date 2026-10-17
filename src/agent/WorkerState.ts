@@ -7,7 +7,7 @@
 // stale state behind; only Idle's and Failed's `at` carries over, from the step that first made it
 // so.
 import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Data } from "effect"
+import { Data, type Duration } from "effect"
 
 /** What a working worker is doing, from its hook callbacks, as orchestra classifies it. */
 export type Doing = "testing" | "editing" | "reading" | "subagent" | "working"
@@ -19,7 +19,10 @@ type Empty = Record<never, never>
 export type WorkerState = Data.TaggedEnum<{
   /** The session is spawned and its first `system/init` hasn't arrived. */
   Starting: Empty
-  /** A turn is under way, more turns follow, a send of tutti's is outstanding, or a task is live. */
+  /**
+   * A turn is under way, more turns follow, a send of tutti's is outstanding, a task is live, or a
+   * finished task's report is still to come.
+   */
   Working: { readonly doing: Doing }
   /** An `api_retry` message, until the next message of the turn. `status` is null without a response. */
   Retrying: { readonly attempt: number; readonly max: number; readonly status: number | null }
@@ -29,7 +32,7 @@ export type WorkerState = Data.TaggedEnum<{
   UsageLimited: { readonly resetsAt: number | null }
   /**
    * The turns are over (`idle` after the last result, which was clean), none of tutti's sends is
-   * outstanding and no background task is live, since `at`.
+   * outstanding and no background task is live or report to come, since `at`.
    */
   Idle: { readonly at: number }
   /**
@@ -65,6 +68,11 @@ export type WorkerEvent = Data.TaggedEnum<{
   Cancelled: { readonly uuids: ReadonlyArray<string> }
   /** An in-process hook callback's input (PreToolUse, PostToolUse, SubagentStart, …). */
   Hook: { readonly input: HookInput }
+  /**
+   * No turn came within `reportWait` to report the task that ended at `since`: tutti stops waiting
+   * for that report.
+   */
+  ReportLate: { readonly since: number }
   /** How many of the worker's `canUseTool` calls and elicitations are open now. */
   Requests: { readonly pending: number }
   /** tutti closed the session on purpose. */
@@ -74,6 +82,9 @@ export type WorkerEvent = Data.TaggedEnum<{
 }>
 
 export const WorkerEvent = Data.taggedEnum<WorkerEvent>()
+
+/** How long a finished task's report has to start its turn before tutti stops waiting for it. */
+export const reportWait: Duration.Input = "30 seconds"
 
 // testRunner matches commands that run a test suite, for projects whose check command is not the
 // one being run: orchestra's pattern (internal/dispatch/activity.go), as it is.
@@ -156,6 +167,11 @@ export interface Worker {
   readonly end: { readonly closed: true } | { readonly closed: false; readonly why: string } | null
   /** The live background tasks that count: `background_tasks_changed`'s, but for ambient ones. */
   readonly tasks: ReadonlyArray<string>
+  /**
+   * When a task that counts left the live set after `idle`, so the CLI's turn to report it is still
+   * to come; null when no report is awaited. The next turn, or ReportLate, ends the wait.
+   */
+  readonly report: number | null
   /** Open `canUseTool` calls and elicitations. */
   readonly pending: number
   /** `session_state_changed: requires_action` came, and nothing since said it was answered. */
@@ -186,6 +202,7 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   outstanding: [],
   end: null,
   tasks: [],
+  report: null,
   pending: 0,
   requiresAction: false,
   retry: null,
@@ -204,6 +221,7 @@ const newTurn = (worker: Worker): Worker => ({
   ...worker,
   turn: Turn.Running(),
   idle: false,
+  report: null,
   retry: null,
   tool: null,
   subagents: [],
@@ -226,7 +244,7 @@ const lifecycleEnd = (message: SDKMessage): string | null => {
   return raw.state === "completed" || raw.state === "cancelled" ? raw.command_uuid : null
 }
 
-const onMessage = (worker: Worker, message: SDKMessage): Worker => {
+const onMessage = (worker: Worker, message: SDKMessage, now: number): Worker => {
   // A send's lifecycle isn't a message of the turn, so it leaves an api_retry be.
   if ((message as { readonly type: string }).type === "command_lifecycle") {
     const ended = lifecycleEnd(message)
@@ -266,13 +284,19 @@ const onMessage = (worker: Worker, message: SDKMessage): Worker => {
               status: message.error_status,
             },
           }
-        case "background_tasks_changed":
+        case "background_tasks_changed": {
+          const live = message.tasks.map((task) => task.task_id)
+          // A task that counted and has ended, between idle and the next running: the CLI starts a
+          // turn to report it, about 70 ms after this message (docs/spikes/01-sdk-session.md).
+          const ended = next.tasks.some((task) => !live.includes(task))
           return {
             ...next,
             tasks: message.tasks
               .filter((task) => task.ambient !== true)
               .map((task) => task.task_id),
+            report: next.idle && ended && next.report === null ? now : next.report,
           }
+        }
       }
       return next
     case "rate_limit_event": {
@@ -352,8 +376,13 @@ const derive = (worker: Worker, now: number): WorkerState => {
     WorkerState.Working({
       doing: worker.tool ?? (worker.subagents.length > 0 ? "subagent" : "working"),
     })
-  // The turns are over, none of tutti's sends is outstanding and no background task is live.
-  const over = worker.idle && worker.outstanding.length === 0 && worker.tasks.length === 0
+  // The turns are over, none of tutti's sends is outstanding, and no background task is live or
+  // report to come.
+  const over =
+    worker.idle &&
+    worker.outstanding.length === 0 &&
+    worker.tasks.length === 0 &&
+    worker.report === null
   switch (worker.turn._tag) {
     case "Limited":
       return WorkerState.UsageLimited({ resetsAt: worker.limit.resetsAt })
@@ -383,10 +412,11 @@ export const step = (worker: Worker, event: WorkerEvent, now: number): Worker =>
     return worker
   }
   const next = WorkerEvent.$match(event, {
-    Message: ({ message }) => onMessage(worker, message),
+    Message: ({ message }) => onMessage(worker, message, now),
     Sent: ({ uuid }) => ({ ...worker, outstanding: [...worker.outstanding, uuid] }),
     Cancelled: ({ uuids }) => done(worker, uuids),
     Hook: ({ input }) => onHook(worker, input),
+    ReportLate: ({ since }) => (worker.report === since ? { ...worker, report: null } : worker),
     Requests: ({ pending }) => ({ ...worker, pending: Math.max(0, pending) }),
     Closed: () => ({ ...worker, end: { closed: true as const } }),
     Ended: ({ why }) => ({ ...worker, end: { closed: false as const, why } }),
