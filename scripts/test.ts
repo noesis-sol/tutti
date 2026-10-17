@@ -5,6 +5,10 @@
 // follows § 13's fallback: run the suites once without --retry, rerun each failed test once by
 // name (-t), and print FLAKY: <file> <test> for each that passes on its rerun. A flaky test does
 // not fail the run; a test that fails twice does. Arguments are passed on to bun test.
+//
+// bunfig.toml defines process.env.NODE_ENV as "production" for React's production build, and bun
+// test reads it too. The suites define "test" over it, as bun test sets it, so they keep React's
+// development build: @opentui/react/test-utils needs its act, which the production build lacks.
 import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -105,7 +109,15 @@ const runBunTest = async (
   report: string,
 ): Promise<{ readonly code: number; readonly output: string }> => {
   const proc = Bun.spawn(
-    ["bun", "test", "--reporter=junit", `--reporter-outfile=${report}`, ...args],
+    [
+      "bun",
+      "test",
+      "--define",
+      'process.env.NODE_ENV:"test"',
+      "--reporter=junit",
+      `--reporter-outfile=${report}`,
+      ...args,
+    ],
     { stdin: "inherit", stdout: "pipe", stderr: "pipe" },
   )
   const [out, err, code] = await Promise.all([

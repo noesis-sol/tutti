@@ -67,13 +67,16 @@ bun install                 # dependencies, pinned exactly in package.json; bun.
 bun src/main.ts             # run tutti from the checkout
 scripts/check.sh            # the project's check: tsc, biome, the tests, shellcheck
 scripts/test.sh             # the tests only (bun test; arguments go to bun test)
-bun test test/<part>.test.ts   # one test file, while iterating
+scripts/test.sh test/<part>.test.ts   # one test file, while iterating (React's development build)
 TUTTI_SLOW=1 scripts/check.sh  # also the slow suites (real git); scripts/check-full.sh does this
 TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent SDK
 ```
 
 - `scripts/check-fast.sh` (orchestra's merge check) runs `scripts/check.sh`; `scripts/check-full.sh`
   runs it with `TUTTI_SLOW=1`.
+- Run tests through `scripts/test.sh`, not a bare `bun test`: `bunfig.toml` defines `NODE_ENV` as
+  `"production"` for React's production build (spec § 3.1), and `scripts/test.sh` defines `"test"`
+  over it, which `@opentui/react/test-utils` needs.
 - `scripts/test.sh` reruns each failed test once by name and prints `FLAKY: <file> <test>` for one
   that passes on its rerun; a flaky test doesn't fail the check.
 - shellcheck is a pinned release fetched into `.cache/shellcheck/` (git-ignored) and checked against

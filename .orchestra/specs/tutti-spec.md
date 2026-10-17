@@ -137,10 +137,18 @@ These are unchanged from orchestra unless marked otherwise.
 | Platform | `@effect/platform-bun` | 4.0.x | `BunRuntime.runMain`, `BunServices`, `BunChildProcessSpawner`, `BunFileSystem`, `BunPath` |
 | Agent | `@anthropic-ai/claude-agent-sdk` | 0.3.x | Streaming input mode; pinned exactly, since its protocol tracks Claude Code's |
 | UI | `@opentui/core`, `@opentui/react` | 0.6.6 | Pinned exactly and upgraded on purpose: still 0.x, and 0.6.0 broke custom renderables |
-| UI framework | React | ≥ 19.2 | Required by `@opentui/react` |
+| UI framework | React | ≥ 19.2 | Required by `@opentui/react`. Always its production build outside the tests (below) |
 | Markdown after the dashboard | a terminal Markdown renderer | chosen in M3 | The run report is printed after OpenTUI has gone (§7.1) |
 | Tests | `bun test --retry`, `TestClock`, `@opentui/react/test-utils`, `fast-check` | | §13 |
 | Lint and format | Biome | | Plus `tsc --noEmit` |
+
+**React's production build.** tutti runs React's production build in every way it runs. React 19.2's development build (`react-reconciler` 0.33) records a `performance.measure()` per component render ("Performance Tracks"), and Bun keeps every entry: 16 cards at 10 Hz grew memory by about 10 MB a minute, without bound and beyond the GC's reach (`docs/spikes/05-opentui-soak.md` § 2). Bun doesn't set `NODE_ENV`, so tutti defines it as `"production"` at parse time, never in the environment its children inherit:
+
+- `bunfig.toml`'s `[define]` does it for every `bun` run from the checkout (`bun src/main.ts`) and every `bun build` from there. Bun reads `bunfig.toml` from the current folder only: from another folder, run `bun --config=<checkout>/bunfig.toml <checkout>/src/main.ts`.
+- The compiled binary is built with `--define process.env.NODE_ENV:"production"` (§12). `--production` would do it too, but it also minifies.
+- The npm package (§12) ships a bundle built with the same define, not `src/`: a `bin` run from the user's project never reads tutti's `bunfig.toml`, and a shebang's `env -S` arguments are quoted differently from one OS to another.
+- The tests keep the development build. `bun test` reads `bunfig.toml` too, so `scripts/test.sh` defines `process.env.NODE_ENV` as `"test"` over it: `@opentui/react/test-utils` needs `act`, which React's production build lacks. A test fails under a bare `bun test` to say so.
+- `test/react-build.test.ts` checks the reconciler each of these loads.
 
 Several of these are pre-1.0 or marked unstable (OpenTUI, `effect/ai`, the Agent SDK). That is accepted (D17). The project tracks their releases and takes their breaking changes as they come; pinning exactly makes each upgrade a deliberate, tested step, not a reason to stay behind.
 
@@ -1452,7 +1460,7 @@ The orchestra skill's `jq` recipes carry over, with `.orchestra` replaced by `.t
 
 ## 12. Distribution and updates
 
-- **Builds.** `bun build --compile` for `bun-darwin-arm64`, `bun-darwin-x64`, `bun-linux-arm64` and `bun-linux-x64` (glibc; musl if OpenTUI's musl artifact proves out). OpenTUI's native library is embedded, as its docs describe for standalone executables.
+- **Builds.** `bun build --compile` for `bun-darwin-arm64`, `bun-darwin-x64`, `bun-linux-arm64` and `bun-linux-x64` (glibc; musl if OpenTUI's musl artifact proves out). OpenTUI's native library is embedded, as its docs describe for standalone executables. Each build passes `--define process.env.NODE_ENV:"production"`, for React's production build (§3.1).
 - **Claude Code itself is embedded, as the SDK's README describes.** Inside a compiled binary "the SDK cannot resolve the native CLI binary at runtime — `require.resolve` doesn't work from inside the compiled `$bunfs`".
   - The README's recipe: import the platform package's binary as a file (`import binPath from '@anthropic-ai/claude-agent-sdk-<platform>/claude' with { type: 'file' }`), extract it with `extractFromBunfs` (from `@anthropic-ai/claude-agent-sdk/extract`), and pass it as `pathToClaudeCodeExecutable`.
   - The SDK and the binary therefore always match.
@@ -1463,7 +1471,7 @@ The orchestra skill's `jq` recipes carry over, with `.orchestra` replaced by `.t
 - **Releases**, as orchestra's: GitHub Actions on a tag, the check first, archives `tutti_<ver>_<os>_<arch>.tar.gz` with `checksums.txt` signed by an ed25519 release key (`checksums.txt.sig`), and build provenance attested. Pre-release tags make pre-releases.
 - **Install.** `scripts/install.sh` installs into `/usr/local/bin` or `~/.local/bin`. It verifies the SHA-256 sum, and the signature where OpenSSL 3 is installed.
 - **`tutti update`** verifies the signature against the public keys built into the binary before trusting a sum. `--check` exits 1 when a release is out, and a release build checks once a day in the background (`TUTTI_NO_UPDATE_CHECK=1` turns this off). Key rotation follows orchestra's procedure.
-- **npm.** A scoped package (`@noesis-sol/tutti` if that scope is available; confirm) is published for development and agents (`bunx …`). It is not the recommended install.
+- **npm.** A scoped package (`@noesis-sol/tutti` if that scope is available; confirm) is published for development and agents (`bunx …`). It is not the recommended install. Its `bin` is a bundle built with `bun build --target=bun --define process.env.NODE_ENV:"production"`, for React's production build (§3.1).
 
 ---
 
@@ -1474,7 +1482,7 @@ The orchestra skill's `jq` recipes carry over, with `.orchestra` replaced by `.t
 ```
 bunx tsc --noEmit
 bunx biome check .
-scripts/test.sh                 # bun test --retry=1; prints FLAKY: <file> <test> for a test that passed only on its retry
+scripts/test.sh                 # bun test --retry=1; prints FLAKY: <file> <test> for a test that passed only on its retry; React's development build (§3.1)
 shellcheck on tracked shell scripts (pinned binary, as orchestra's)
 ```
 

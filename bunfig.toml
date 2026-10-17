@@ -1,0 +1,7 @@
+# React's production build for every bun run from the checkout (spec § 3.1). React 19.2's development
+# build records a performance.measure() per component render, and Bun keeps every entry, so a run's
+# memory grows without bound (docs/spikes/05-opentui-soak.md § 2). Bun reads this file from the
+# current folder only, and bun test reads it too: scripts/test.ts defines "test" over it, so the
+# suites keep the development build that @opentui/react/test-utils' act needs.
+[define]
+"process.env.NODE_ENV" = "\"production\""
