@@ -29,6 +29,7 @@ import { settingsFile } from "../project/settings.ts"
 import { Beads, type BeadsError } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { schemeNotices } from "../ui/theme.ts"
 import { type Line, start } from "./log.ts"
 
 /** The exit code of a run that can't start: a setup problem. */
@@ -393,7 +394,8 @@ export const memoryEstimate = (concurrency: number): string =>
 /**
  * The START block of a run that passed its checks: `START tutti <version> in <repo> on <base>`,
  * its scope and settings, then its billing, its permission mode in effect, its MCP servers when it
- * has none, the memory its workers take, and its warnings.
+ * has none, the memory its workers take, why its colour scheme isn't used (a line per notice), and
+ * its warnings.
  */
 export const startBlock = (started: Started, version: string): ReadonlyArray<Line> => {
   const { config } = started
@@ -418,6 +420,7 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
       permissionModeLine(started.account.permissionMode),
       ...(started.mcp.note === null ? [] : [started.mcp.note]),
       `memory: ${memoryEstimate(concurrency)}`,
+      ...schemeNotices(config.scheme),
       ...started.warnings,
     ],
   })
