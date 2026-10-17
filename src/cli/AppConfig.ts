@@ -91,7 +91,11 @@ export interface AppConfigValue {
   readonly worktrees: string
   readonly billing: (typeof billings)[number]
   readonly usageLimitWait: Duration.Duration
-  /** The Claude Code workers run with (--claude), as given; null for the embedded one. */
+  /**
+   * The Claude Code sessions run (--claude): as given, until the startup checks resolve it
+   * (src/agent/claudeBinary.ts) into the executable they pass as `pathToClaudeCodeExecutable`, the
+   * embedded one extracted in a compiled build; null for the SDK's own.
+   */
   readonly claude: string | null
   /** The colour scheme's name, in § 7.11's order. */
   readonly colourScheme: string

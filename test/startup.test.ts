@@ -120,6 +120,7 @@ const run = (repo: string, scenario: Scenario = {}) =>
                   TestAppConfig.appConfig((scenario.config ?? {}) as Partial<AppConfigValue>, top),
                 ),
           beads: () => scenario.beads ?? TestBeads.layer(),
+          claude: (given) => Effect.succeed({ path: given, warnings: [], problems: [] }),
           account: scenario.account ?? TestAccount.layer(),
         }),
       )

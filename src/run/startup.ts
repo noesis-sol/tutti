@@ -11,6 +11,7 @@ import { isAbsolute, join, relative, resolve as resolvePath, sep } from "node:pa
 import { type Cause, Effect, Exit, FileSystem, Layer, Option, Result, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { Account, type AccountProbe, billingLine, permissionModeLine } from "../agent/Account.ts"
+import { type Claude, resolveClaude } from "../agent/claudeBinary.ts"
 import { type ChosenServers, resolveServers } from "../agent/mcp.ts"
 import {
   AppConfig,
@@ -89,6 +90,8 @@ export interface Checking<R> {
   readonly config: (repo: string) => Effect.Effect<AppConfigValue, SetupProblem, R>
   /** bd in the main checkout `repo`. */
   readonly beads: (repo: string) => Layer.Layer<Beads, never, R>
+  /** The Claude Code sessions run, from --claude as given (claudeBinary.ts). */
+  readonly claude: (given: string | null) => Effect.Effect<Claude, never, R>
   /** The login probe, under the run's configuration. */
   readonly account: Layer.Layer<Account, never, AppConfig | R>
 }
@@ -319,7 +322,11 @@ export const check = <R>(checking: Checking<R>) =>
     }
     const { repo, linked } = found.success
     const configured = yield* collect(checking.config(repo))
-    const config = Option.getOrElse(configured.value, () => fallbackConfig(repo))
+    const given = Option.getOrElse(configured.value, () => fallbackConfig(repo))
+    // Sessions, the probe's first, run the Claude Code this resolves: in a compiled build, the
+    // embedded one, extracted.
+    const claude = yield* checking.claude(given.claude)
+    const config: AppConfigValue = { ...given, claude: claude.path }
     // A worker prompt of its own (--prompt) is enough to run in a project init hasn't set up, as
     // in orchestra; without one, such a project has no worker prompt to check.
     const ownPrompt = config.prompt !== resolvePath(repo, workerPromptFile)
@@ -351,12 +358,16 @@ export const check = <R>(checking: Checking<R>) =>
       ...(Result.isFailure(branch) ? [branch.failure] : []),
       ...tree,
       ...beads,
+      ...claude.problems,
       ...account.problems,
       ...configured.problems,
       ...mcp.problems,
       ...prompt.problems,
     ]
-    const warnings = leftWorkers.length > 0 ? [orchestraWarning(leftWorkers)] : []
+    const warnings = [
+      ...claude.warnings,
+      ...(leftWorkers.length > 0 ? [orchestraWarning(leftWorkers)] : []),
+    ]
     if (
       notSetUp ||
       problems.length > 0 ||
@@ -369,7 +380,7 @@ export const check = <R>(checking: Checking<R>) =>
       return yield* new StartupFailed({ notSetUp, problems, warnings })
     }
     return {
-      config: configured.value.value,
+      config: { ...configured.value.value, claude: claude.path },
       base: branch.success,
       prompt: prompt.value.value,
       mcp: mcp.value.value,
@@ -384,6 +395,7 @@ export const live = (cwd: string, flags: RunFlags) =>
     cwd,
     config: (repo) => load(flags, repo),
     beads: (repo) => Beads.layer({ cwd: repo }),
+    claude: (given) => resolveClaude(given, cwd),
     account: Account.layer,
   }) satisfies Checking<FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner>
 

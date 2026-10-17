@@ -4,6 +4,8 @@
 // of the live layers, which is disposed of, and the lock released, once the run's scope has closed.
 // Until the dashboard exists every run is plain (§ 7.6): log lines on stdout, with a line saying why
 // when the terminal couldn't show a dashboard anyway. SIGUSR1 winds the run down (§ 7.4).
+// A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
+// its Claude Code and then calls `main`.
 import { join } from "node:path"
 import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { Clock, Console, Effect, Layer, ManagedRuntime, Queue, Result } from "effect"
@@ -206,7 +208,8 @@ export const tutti = tuttiWith(
   (flags) => runFrom(process.cwd(), flags),
 )
 
-if (import.meta.main) {
+/** Runs tutti's command line, and exits when it is done. */
+export const main = (): void =>
   BunRuntime.runMain(
     Effect.flatMap(tuttiVersion, (shown) => Command.run(tutti, { version: shown })).pipe(
       // The command has said why on stderr.
@@ -218,4 +221,5 @@ if (import.meta.main) {
       Effect.provide(BunServices.layer),
     ),
   )
-}
+
+if (import.meta.main) main()
