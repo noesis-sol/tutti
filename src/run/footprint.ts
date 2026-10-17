@@ -560,6 +560,16 @@ export const readMentions = (
   repo: string,
   footprints: Iterable<Footprint>,
 ): Effect.Effect<Mentions, never, FileSystem.FileSystem> =>
+  Effect.map(readSources(repo, footprints), mentionsIn)
+
+/**
+ * The contents of the files the footprints work on, in the checkout at repo: up to `maxSource`
+ * bytes of each, never a file that resolves outside repo. A file that can't be read is left out.
+ */
+export const readSources = (
+  repo: string,
+  footprints: Iterable<Footprint>,
+): Effect.Effect<ReadonlyMap<string, string>, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const root = yield* fs.realPath(repo).pipe(Effect.orElseSucceed(() => repo))
@@ -580,7 +590,7 @@ export const readMentions = (
       ).pipe(Effect.orElseSucceed(() => Option.none<Uint8Array>()))
       if (Option.isSome(content)) contents.set(file, new TextDecoder().decode(content.value))
     }
-    return mentionsIn(contents)
+    return contents
   })
 
 /** Whether two function names can mean one function: the same name, and the same type when both give one. */
@@ -598,14 +608,23 @@ const takesIn = (fp: Footprint, p: string): boolean =>
 const holdsNamed = (p: string, files: ReadonlyArray<string>): boolean =>
   p.endsWith("/") && files.some((f) => !f.endsWith("/") && f.startsWith(p))
 
+/** A function both footprints name, as a names it, or "". */
+export const sharedFunc = (a: Footprint, b: Footprint): string =>
+  a.funcs.find((x) => b.funcs.some((y) => funcsMeet(x, y))) ?? ""
+
 /**
- * A file both footprints work on, or "". A ticket works on a file it names, one under a folder it
- * names and one its worktree changed (takesIn), and on one the other names that mentions a function
- * it names; a file both work on is shared unless both name functions it mentions: they are compared
- * by function instead. A folder both name is shared only when neither names a file in it (a new
- * folder): otherwise its files are compared one by one.
+ * A file both footprints work on, for which keep holds (any, without keep), or "". A ticket works
+ * on a file it names, one under a folder it names and one its worktree changed (takesIn), and on
+ * one the other names that mentions a function it names; a file both work on is shared unless both
+ * name functions it mentions: they are compared by function instead. A folder both name is shared
+ * only when neither names a file in it (a new folder): otherwise its files are compared one by one.
  */
-const sharedFile = (a: Footprint, b: Footprint, mentions: Mentions | undefined): string => {
+export const sharedFile = (
+  a: Footprint,
+  b: Footprint,
+  mentions: Mentions | undefined,
+  keep?: (file: string) => boolean,
+): string => {
   const namesIn = (fp: Footprint, p: string) =>
     mentions !== undefined && !p.endsWith("/") && fp.funcs.some((fn) => mentions(p, fn))
   const seen = new Set<string>()
@@ -614,7 +633,9 @@ const sharedFile = (a: Footprint, b: Footprint, mentions: Mentions | undefined):
     seen.add(p)
     const aIn = namesIn(a, p)
     const bIn = namesIn(b, p)
-    if ((aIn || takesIn(a, p)) && (bIn || takesIn(b, p)) && !(aIn && bIn)) return p
+    if ((aIn || takesIn(a, p)) && (bIn || takesIn(b, p)) && !(aIn && bIn) && (keep?.(p) ?? true)) {
+      return p
+    }
   }
   return ""
 }
@@ -627,8 +648,7 @@ const sharedFile = (a: Footprint, b: Footprint, mentions: Mentions | undefined):
 export const shared = (a: Footprint, b: Footprint, mentions?: Mentions): string => {
   const area = a.areas.find((x) => b.areas.includes(x))
   if (area !== undefined) return area
-  for (const x of a.funcs) if (b.funcs.some((y) => funcsMeet(x, y))) return x
-  return sharedFile(a, b, mentions)
+  return sharedFunc(a, b) || sharedFile(a, b, mentions)
 }
 
 /** Whether two footprints share a file, folder, function or area: their tickets don't run side by side. */

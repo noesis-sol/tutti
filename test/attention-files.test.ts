@@ -46,7 +46,7 @@ import {
   show,
   showJson,
 } from "../src/answer/answer.ts"
-import { CommandFailed, tuttiWith } from "../src/cli/commands.ts"
+import { CommandFailed, planServices, tuttiWith } from "../src/cli/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
@@ -824,10 +824,13 @@ describe("tutti answer", () => {
     }
 
     const cli = (repo: string, args: ReadonlyArray<string>, console: Console.Console) =>
-      Command.runWith(tuttiWith(Effect.succeed(repo)), { version: "test", renderErrors: false })([
-        "answer",
-        ...args,
-      ]).pipe(Effect.provide(BunServices.layer), Effect.provideService(Console.Console, console))
+      Command.runWith(tuttiWith(Effect.succeed(repo), planServices), {
+        version: "test",
+        renderErrors: false,
+      })(["answer", ...args]).pipe(
+        Effect.provide(BunServices.layer),
+        Effect.provideService(Console.Console, console),
+      )
 
     test("lists, as JSON too, and answers with --choice and --reason", async () => {
       const repo = tempRepo()
