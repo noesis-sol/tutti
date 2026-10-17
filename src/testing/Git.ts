@@ -771,6 +771,33 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               return base === undefined ? yield* refuse(1, "") : base
             }),
           ),
+        holds: (repo, base, branch) =>
+          operation(
+            "read",
+            "merge-tree",
+            repo,
+            ["merge-tree", "--write-tree", "--end-of-options", base, branch],
+            (refuse) =>
+              Effect.gen(function* () {
+                const checkout = yield* inRepo(refuse, repo)
+                const [ours, theirs] = [resolve(checkout, base), resolve(checkout, branch)]
+                if (ours === undefined || theirs === undefined) {
+                  return yield* refuse(
+                    128,
+                    `fatal: ${ours === undefined ? base : branch} - not something we can merge`,
+                  )
+                }
+                const since = mergeBaseOf(ours, theirs)
+                if (since === undefined)
+                  return yield* refuse(128, "fatal: refusing to merge unrelated histories")
+                // Merging changes nothing when base has each file as the branch changed it.
+                const kept = treeOf(ours)
+                const changed = treeOf(theirs)
+                return changedPaths(treeOf(since), changed).every(
+                  (path) => kept.get(path) === changed.get(path),
+                )
+              }),
+          ),
         fastForward,
         log: (repo, base, head = "HEAD") =>
           operation(

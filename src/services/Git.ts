@@ -206,6 +206,12 @@ export class Git extends Context.Service<
     rebaseInProgress(worktree: string): Effect.Effect<boolean, GitError>
     /** git merge-base: the best common ancestor of a and b, as a full hash. */
     mergeBase(repo: string, a: string, b: string): Effect.Effect<string, GitError>
+    /**
+     * Whether base holds branch's changes already: merging branch into it would change nothing, as
+     * after the branch was squash-merged or its commits cherry-picked onto base. git merge-tree
+     * --write-tree (git 2.38 and later); conflicts are false.
+     */
+    holds(repo: string, base: string, branch: string): Effect.Effect<boolean, GitError>
     /** git merge --ff-only: moves the branch checked out in repo up to `branch`, if that is a fast-forward. */
     fastForward(repo: string, branch: string): Effect.Effect<void, GitError>
     /** git log base..head: the commits on head (HEAD by default) that aren't on base, newest first. */
@@ -403,6 +409,27 @@ export class Git extends Context.Service<
           rebaseInProgress,
           mergeBase: (repo, a, b) =>
             Effect.map(read("merge-base", repo, ["merge-base", a, b]), (out) => out.trim()),
+          holds: (repo, base, branch) =>
+            Effect.gen(function* () {
+              const { shown, output } = yield* git(
+                "merge-tree",
+                repo,
+                ["merge-tree", "--write-tree", "--end-of-options", base, branch],
+                limits.read,
+                { GIT_OPTIONAL_LOCKS: "0" },
+              )
+              // The merged tree's hash is its first line; exit 1 is conflicts, a merge that changes base.
+              if (output.exitCode === 1) return false
+              if (output.exitCode !== 0) return yield* failed("merge-tree", shown, output)
+              const tree = yield* read("rev-parse", repo, [
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "--end-of-options",
+                `${base}^{tree}`,
+              ])
+              return (output.stdout.split("\n")[0] ?? "").trim() === tree.trim()
+            }),
           fastForward: (repo, branch) =>
             Effect.asVoid(
               write("merge --ff-only", repo, ["merge", "--ff-only", "--quiet", branch]),
