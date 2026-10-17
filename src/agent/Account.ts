@@ -17,11 +17,11 @@
 import type { ChildProcess } from "node:child_process"
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Context, Duration, Effect, Layer, Schema } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
-import type { efforts, permissionModes } from "../project/settings.ts"
+import type { permissionModes } from "../project/settings.ts"
 import { apiKeySet, apiKeyVariable, probeEnv } from "./env.ts"
-import { spawnInOwnProcessGroup } from "./options.ts"
+import { probeOptions } from "./options.ts"
 
 /** Not logged in to Claude, and no API key to use instead. */
 export class NotLoggedIn extends Schema.TaggedError<NotLoggedIn>()("NotLoggedIn", {}) {
@@ -304,13 +304,9 @@ export const assess = (
 
 /** The options of the probe session: the workers', with no MCP server and no key. */
 export interface ProbeOptions {
-  /** The main checkout, as the session's folder and its project settings' root. */
-  readonly repo: string
-  readonly permissionMode: (typeof permissionModes)[number]
-  readonly model: string | null
-  readonly effort: (typeof efforts)[number] | null
-  /** The Claude Code to run; null for the SDK's. */
-  readonly claude: string | null
+  /** The run's configuration, whose workers' settings the probe's session is started with. */
+  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
+  /** probeEnv()'s environment: the workers' without ANTHROPIC_API_KEY. */
   readonly env: Record<string, string>
 }
 
@@ -359,30 +355,19 @@ export const startProbe: StartProbe = (options) =>
       Effect.sync(() => {
         const abortController = new AbortController()
         const spawned: Spawned = { child: undefined, closed: undefined }
-        const spawn = spawnInOwnProcessGroup((data) => stderr.push(data))
         const session = query({
           prompt: nothing(abortController.signal),
-          options: {
-            cwd: options.repo,
-            projectConfigRoot: options.repo,
-            settingSources: ["user", "project", "local"],
-            permissionMode: options.permissionMode,
-            ...(options.model === null ? {} : { model: options.model }),
-            ...(options.effort === null ? {} : { effort: options.effort }),
-            mcpServers: {},
-            strictMcpConfig: true,
-            persistSession: false,
+          options: probeOptions({
+            config: options.config,
             env: options.env,
-            ...(options.claude === null ? {} : { pathToClaudeCodeExecutable: options.claude }),
-            spawnClaudeCodeProcess: (spawnOptions) => {
-              const child = spawn(spawnOptions)
+            stderr: (data) => stderr.push(data),
+            spawned: (child) => {
               spawned.child = child
               // "close" comes once the process has exited and its stdio has closed.
               spawned.closed = new Promise((resolve) => child.once("close", () => resolve()))
-              return child
             },
             abortController,
-          },
+          }),
         })
         return { session, abortController, spawned }
       }),
@@ -446,14 +431,7 @@ export class Account extends Context.Service<
         const config = yield* AppConfig
         const { workers } = config.settings
         const probe = Effect.gen(function* () {
-          const init = yield* start({
-            repo: config.repo,
-            permissionMode: workers.permission_mode,
-            model: workers.model,
-            effort: workers.effort,
-            claude: config.claude,
-            env: probeEnv({ env }),
-          })
+          const init = yield* start({ config, env: probeEnv({ env }) })
           return yield* assess(init, {
             keySet: apiKeySet(env),
             billing: config.billing,

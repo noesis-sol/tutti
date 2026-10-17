@@ -128,17 +128,59 @@ export const spawnInOwnProcessGroup =
     return child
   }
 
-/** A worker session's SDK options (§ 4.1). */
-export const workerOptions = (input: WorkerOptionsInput): Options => {
-  const { config, callbacks } = input
-  const workers = config.settings.workers
+/** What every session tutti starts with the workers' options is given: a worker's or the probe's. */
+interface SharedInput {
+  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
+  readonly env: Record<string, string>
+  readonly stderr: (data: string) => void
+  readonly abortController: AbortController
+  /** Told of Claude Code's process once the SDK has spawned it. */
+  readonly spawned?: (child: ChildProcessWithoutNullStreams) => void
+}
+
+/**
+ * The options a worker's session and the login probe's share (§ 4.13: the probe runs with the
+ * workers' options), so the two can't drift: the settings Claude Code reads, the permission mode,
+ * model and effort, strict MCP config, the environment, and the spawn into a process group.
+ */
+const sharedOptions = (input: SharedInput) => {
+  const workers = input.config.settings.workers
+  const spawn = spawnInOwnProcessGroup(input.stderr)
+  const spawned = input.spawned
   return {
-    cwd: input.worktree,
-    projectConfigRoot: config.repo,
+    projectConfigRoot: input.config.repo,
     settingSources: ["user", "project", "local"],
     permissionMode: workers.permission_mode,
     ...(workers.model === null ? {} : { model: workers.model }),
     ...(workers.effort === null ? {} : { effort: workers.effort }),
+    strictMcpConfig: true,
+    ...(workers.ask_user_question ? {} : { disallowedTools: [askUserQuestionTool] }),
+    stderr: input.stderr,
+    env: input.env,
+    ...(input.config.claude === null ? {} : { pathToClaudeCodeExecutable: input.config.claude }),
+    spawnClaudeCodeProcess:
+      spawned === undefined
+        ? spawn
+        : (options: SpawnOptions) => {
+            const child = spawn(options)
+            spawned(child)
+            return child
+          },
+    abortController: input.abortController,
+  } satisfies Options
+}
+
+/** A worker session's SDK options (§ 4.1). */
+export const workerOptions = (input: WorkerOptionsInput): Options => {
+  const { callbacks } = input
+  return {
+    ...sharedOptions({
+      config: input.config,
+      env: input.env,
+      stderr: callbacks.stderr,
+      abortController: input.abortController,
+    }),
+    cwd: input.worktree,
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
@@ -149,20 +191,37 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
       ? { sessionId: input.session.sessionId }
       : { resume: input.session.sessionId }),
     mcpServers: mcpServers(input.servers),
-    strictMcpConfig: true,
-    ...(workers.ask_user_question ? {} : { disallowedTools: [askUserQuestionTool] }),
     canUseTool: callbacks.canUseTool,
     onElicitation: callbacks.onElicitation,
     hooks: callbacks.hooks,
     forwardSubagentText: true,
     includePartialMessages: true,
-    stderr: callbacks.stderr,
-    env: input.env,
-    ...(config.claude === null ? {} : { pathToClaudeCodeExecutable: config.claude }),
-    spawnClaudeCodeProcess: spawnInOwnProcessGroup(callbacks.stderr),
-    abortController: input.abortController,
   }
 }
+
+/** What the login probe's options are made from. */
+export interface ProbeOptionsInput {
+  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
+  /** probeEnv()'s environment (§ 4.13): the workers' without ANTHROPIC_API_KEY. */
+  readonly env: Record<string, string>
+  /** Every line the probe's Claude Code writes to stderr. */
+  readonly stderr: (data: string) => void
+  /** Told of Claude Code's process once the SDK has spawned it, to wait for its exit. */
+  readonly spawned: (child: ChildProcessWithoutNullStreams) => void
+  readonly abortController: AbortController
+}
+
+/**
+ * The login probe's SDK options (§ 4.13): the workers' shared options, in the main checkout, with
+ * no MCP servers and no session saved. It is sent no prompt, so it has no ticket, standing rules,
+ * session ID, permission callbacks or hooks: nothing it could call them for.
+ */
+export const probeOptions = (input: ProbeOptionsInput): Options => ({
+  ...sharedOptions(input),
+  cwd: input.config.repo,
+  mcpServers: {},
+  persistSession: false,
+})
 
 /** The callbacks of `ticket`'s worker, from Attention and Transcripts, its hooks recording to `recorder`. */
 export const workerCallbacks = (ticket: string, recorder: Recorder) =>
