@@ -441,16 +441,18 @@ describe("the scope", () => {
   })
 
   test("a scoped scheduler dispatches nothing outside the scope", async () => {
-    const started = await run(
+    const [started, parent] = await run(
       tree,
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 8, scope: "r.2" })
         yield* schedule.fill
         yield* flush
-        return yield* started
+        return [yield* started, yield* phaseOf("r.2")] as const
       }),
     )
-    expect(started).toEqual(["r.2", "r.2.1"])
+    // r.2 waits for its subticket.
+    expect(started).toEqual(["r.2.1"])
+    expect(parent).toBe("HeldBack")
   })
 
   const endOf = (root: string, closed: ReadonlySet<string> = new Set()) =>

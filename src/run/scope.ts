@@ -86,7 +86,7 @@ export const descendants = (
 /** What the run knows of a scope's tickets beside Beads, to say why one isn't done. */
 export interface View {
   /** Why the ticket is closed but not merged, or undefined when it isn't. */
-  unmerged(issue: Issue): string | undefined
+  unmerged(issue: Pick<Issue, "id" | "status" | "labels">): string | undefined
   /** Whether the run set the ticket aside. */
   aside(id: string): boolean
   /** Whether the run closed the ticket, an epic, as its last subticket merged. */
