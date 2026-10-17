@@ -154,7 +154,8 @@ describe("the setup before the merge check", () => {
     expect(setup?.before).toBe("fast")
     expect(setup?.cwd).toBe(check?.cwd as string)
     expect(setup?.cwd).toEqual(expect.stringMatching(/\/a$/))
-    expect(setup?.outputFile).toMatch(/^\/dev\/fd\/\d+$/)
+    expect(setup?.outputFile).toBe(`${setup?.cwd}/.tutti/run/setup.log`)
+    expect(setup?.outputFd).toEqual(expect.any(Number))
     expectLog(ran, [
       "  rebased tutti/a onto main, which moved on while it ran",
       `  a: bun.lock changed in the rebase; running '${setupCommand}' before the check`,

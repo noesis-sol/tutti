@@ -187,8 +187,9 @@ describe("a clean merge", () => {
     expect(ran.checkRuns).toHaveLength(1)
     const run = ran.checkRuns[0]
     expect(run?.check).toBe("fast")
-    expect(run?.outputFile).toMatch(/^\/dev\/fd\/\d+$/)
     expect(run?.cwd).toEqual(expect.stringMatching(/\/a$/))
+    expect(run?.outputFile).toBe(`${run?.cwd}/.tutti/run/check.log`)
+    expect(run?.outputFd).toEqual(expect.any(Number))
     expectLog(ran, [
       "  rebased tutti/a onto main, which moved on while it ran",
       /^ {2}a closed \(.*\); merged into main, worktree and branch removed$/,

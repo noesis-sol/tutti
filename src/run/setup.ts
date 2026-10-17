@@ -19,7 +19,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { type CheckError, Checks, setupLogName } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { runFolder, type Worktrees } from "../services/Worktrees.ts"
-import { outputFile } from "./check.ts"
+import { outputTo } from "./check.ts"
 import { globMatch } from "./footprint.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log, line } from "./log.ts"
@@ -116,10 +116,8 @@ export const setUp = (
     const output = join(ticket.worktree, runFolder, setupLogName)
     const ran = yield* Effect.scoped(
       Effect.gen(function* () {
-        const file = yield* outputFile(ticket, setupLogName, "the setup's")
-        return yield* Effect.result(
-          checks.setup({ cwd: ticket.worktree, outputFile: file, before: "fast" }),
-        )
+        const to = yield* outputTo(ticket, setupLogName, "the setup's")
+        return yield* Effect.result(checks.setup({ cwd: ticket.worktree, ...to, before: "fast" }))
       }),
     )
     if (Result.isFailure(ran)) {

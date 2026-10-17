@@ -1,14 +1,14 @@
 // The merge check (§ 5 item 7, § 3.4): check_fast in a finished ticket's worktree, its branch rebased
 // onto the base, within its time limit. The whole output goes to the worktree's .tutti/run/check.log,
-// opened through the symlink guard (§ 9.1) and handed to the check as /dev/fd/<n>, so no link the
-// worker left there can send it elsewhere. A passing check's FLAKY: lines are warnings naming the
+// opened through the symlink guard (§ 9.1) and handed to the check as that descriptor, so no link
+// the worker left there can send it elsewhere. A passing check's FLAKY: lines are warnings naming the
 // ticket: it merges, but a test that passes only on a rerun is a bug nobody would see otherwise.
 // Interrupting the check kills its process group (Checks does), and nothing comes of it.
 import { join } from "node:path"
 import { Effect, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { type CheckError, Checks, checkLogName } from "../services/Checks.ts"
+import { type CheckError, Checks, checkLogName, type RunOptions } from "../services/Checks.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { EventStream } from "./eventstream.ts"
 import { Log, line, Tag, ticketLine } from "./log.ts"
@@ -56,31 +56,35 @@ export const saidOf = (error: CheckError): ReadonlyArray<string> =>
       : error.lastLines
 
 /**
- * The file a command run in the ticket's worktree writes its whole output to, for the scope: `name`
- * in its .tutti/run/, opened through the symlink guard and handed over as /dev/fd/<n>; /dev/null
- * when it can't be opened, and the log says why, `whose` naming the command's output.
+ * Where a command run in the ticket's worktree writes its whole output, for the scope: `name` in its
+ * .tutti/run/, opened through the symlink guard and handed over as its descriptor; /dev/null when it
+ * can't be opened, and the log says why, `whose` naming the command's output.
  */
-export const outputFile = (
+export const outputTo = (
   ticket: CheckedTicket,
   name: string,
   whose: string,
-): Effect.Effect<string, never, Worktrees | Log | Scope.Scope> =>
+): Effect.Effect<
+  Pick<RunOptions, "outputFile" | "outputFd">,
+  never,
+  Worktrees | Log | Scope.Scope
+> =>
   Effect.gen(function* () {
     const worktrees = yield* Worktrees
     const log = yield* Log
+    const output = join(ticket.worktree, runFolder, name)
     const opened = yield* Effect.result(
       worktrees.openRunFile(ticket.worktree, name, O.WRONLY | O.CREAT | O.TRUNC),
     )
-    if (opened._tag === "Success") return `/dev/fd/${opened.success}`
+    if (opened._tag === "Success") return { outputFile: output, outputFd: opened.success }
     const why =
       opened.failure._tag === "RunFilesOutside"
         ? line`a symbolic link stands at ${opened.failure.path}`
         : line`${opened.failure.message}`
-    const output = join(ticket.worktree, runFolder, name)
     yield* log.write(
       ticketLine(ticket.id)`${whose} whole output can't be kept in ${output}: ${why}`,
     )
-    return "/dev/null"
+    return { outputFile: "/dev/null" }
   })
 
 /** Runs the merge check in the ticket's worktree, its output in check.log, and says how it went. */
@@ -94,8 +98,8 @@ export const runMergeCheck = (
     const output = join(ticket.worktree, runFolder, checkLogName)
     return yield* Effect.scoped(
       Effect.gen(function* () {
-        const file = yield* outputFile(ticket, checkLogName, "the check's")
-        const ran = yield* Effect.result(checks.fast({ cwd: ticket.worktree, outputFile: file }))
+        const to = yield* outputTo(ticket, checkLogName, "the check's")
+        const ran = yield* Effect.result(checks.fast({ cwd: ticket.worktree, ...to }))
         if (ran._tag === "Failure") {
           return { _tag: "Failed", error: ran.failure, output } satisfies Checked
         }

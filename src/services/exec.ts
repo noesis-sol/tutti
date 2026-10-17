@@ -4,6 +4,7 @@
 // a grace) when it closes or the fiber is interrupted. Its time limit kills the group itself when
 // it expires: a fiber of its own sends the signals, so the limit holds even while the caller is
 // uninterruptible (§ 3.4).
+import { writeSync } from "node:fs"
 import { constants } from "node:os"
 import { Cause, Context, Duration, Effect, Exit, Fiber, FileSystem, Schema, Stream } from "effect"
 import type { PlatformError } from "effect/PlatformError"
@@ -32,6 +33,11 @@ export interface Command {
   readonly stdin?: string
   /** A file that receives the whole of stdout and stderr as they come, interleaved. */
   readonly outputFile?: string
+  /**
+   * An open descriptor that receives the whole output instead, as `outputFile` would: one opened
+   * through the symlink guard (§ 9.1), so no path is opened. exec writes to it and leaves it open.
+   */
+  readonly outputFd?: number
   /** Called with each chunk of stdout and stderr as it comes, before it reaches the file. */
   readonly onOutput?: (chunk: Uint8Array, from: "stdout" | "stderr") => void
   /** The bytes of stdout and of stderr kept in the result; past this, only the last ones. */
@@ -120,6 +126,17 @@ const signalExitCode = (cause: Cause.Cause<PlatformError>): number => {
   return 128 + (number ?? 0)
 }
 
+/** Writes the whole chunk to the descriptor, however many writes it takes. */
+const writeAllTo = (fd: number, chunk: Uint8Array): Effect.Effect<void, Error> =>
+  Effect.try({
+    try: () => {
+      for (let written = 0; written < chunk.length; ) {
+        written += writeSync(fd, chunk, written)
+      }
+    },
+    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+  })
+
 /**
  * Runs a command to its end and returns its exit code and output, whatever the code. Fails with
  * CommandTimedOut past its time limit, and with CommandNotRun when it can't be started.
@@ -129,7 +146,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
   const fs = yield* FileSystem.FileSystem
   const groups = yield* ProcessGroups
   const shown = showCommand(command)
-  const notRun = (error: PlatformError) =>
+  const notRun = (error: PlatformError | Error) =>
     new CommandNotRun({ command: shown, reason: error.message })
   const timeLimit = Duration.fromInputUnsafe(command.timeLimit)
   const grace = command.killGrace ?? defaultKillGrace
@@ -138,7 +155,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
   return yield* Effect.scoped(
     Effect.gen(function* () {
       const file =
-        command.outputFile === undefined
+        command.outputFile === undefined || command.outputFd !== undefined
           ? undefined
           : yield* fs.open(command.outputFile, { flag: "w" }).pipe(Effect.mapError(notRun))
       // Added before the spawn, so it runs after the spawner's finalizer has killed the group.
@@ -191,6 +208,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         Stream.runForEach(([tail, chunk, from]) => {
           tail.push(chunk)
           command.onOutput?.(chunk, from)
+          if (command.outputFd !== undefined) return writeAllTo(command.outputFd, chunk)
           return file === undefined ? Effect.void : file.writeAll(chunk)
         }),
         Effect.mapError(notRun),

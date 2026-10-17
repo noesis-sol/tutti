@@ -1,6 +1,7 @@
 // Checks (§ 3.3): runs the project's setup command, check_fast and check_full in a folder, each
 // through exec (a process group of its own) within its time limit from AppConfig. The whole output
-// goes to a file the caller names (check.log or setup.log in a worktree's .tutti/run/, § 9.1); in
+// goes to a file the caller names (check.log or setup.log in a worktree's .tutti/run/, § 9.1), or to
+// a descriptor the caller opened for it through the symlink guard; in
 // memory, only what is said of it is kept, each part bounded, as orchestra keeps it: its last lines,
 // the lines that say what failed, its FLAKY: lines and the suites its SUITE: lines name. A check
 // that loops printing until its time limit holds no more of tutti's memory than one that prints a
@@ -312,8 +313,13 @@ export type CheckResult = CheckPassed | NoCheckCommand
 export interface RunOptions {
   /** The folder the check runs in: a ticket's worktree, or the full check's. */
   readonly cwd: string
-  /** The file that receives the whole output; its folder must exist. */
+  /** The file that receives the whole output, and that errors name; its folder must exist. */
   readonly outputFile: string
+  /**
+   * That file, opened through the symlink guard (Worktrees.openRunFile): the output is written to it
+   * and `outputFile` is not opened, so no link left in its place can send the output elsewhere.
+   */
+  readonly outputFd?: number
 }
 
 export interface SetupOptions extends RunOptions {
@@ -323,7 +329,7 @@ export interface SetupOptions extends RunOptions {
 
 /**
  * Runs `command` with `sh -c` in `options.cwd` within `timeLimit`, the whole output going to
- * `options.outputFile`. Nothing runs when `command` is null.
+ * `options.outputFile` (or `options.outputFd`, when given). Nothing runs when `command` is null.
  */
 export const runCheck = Effect.fn("runCheck")(function* (
   check: CheckKind,
@@ -339,6 +345,7 @@ export const runCheck = Effect.fn("runCheck")(function* (
     timeLimit,
     cwd: options.cwd,
     outputFile: options.outputFile,
+    ...(options.outputFd === undefined ? {} : { outputFd: options.outputFd }),
     onOutput: (chunk, from) => output.write(chunk, from),
     // What is said of the output is kept by CheckOutput; exec need hold none of it.
     maxOutputBytes: 0,
