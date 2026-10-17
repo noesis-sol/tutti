@@ -871,6 +871,7 @@ Organs are written against `effect/ai`'s `LanguageModel` (D10, D16). `LanguageMo
   - The JSON Schema goes to the SDK as `outputFormat: { type: "json_schema", schema }`.
   - The result's structured output is returned as the text part `generateObject` decodes.
   - `error_max_structured_output_retries` becomes `OrganFailed{subtype}`.
+  - **A `success` result without `structured_output` is a structured-output failure too.** A model can decline the `StructuredOutput` tool that `outputFormat` adds: after one `[structured-output-enforce] You MUST call the StructuredOutput tool` message, the CLI accepts a text ending, with `subtype: "success"`, `stop_reason: "end_turn"` and no `structured_output`, and `MAX_STRUCTURED_OUTPUT_RETRIES` is never reached (docs/spikes/04-effect-ai.md § 4, Claude Code 2.1.301). The provider fails such a turn with `AiError`'s `StructuredOutputError` reason, the model's text as its `responseText` and the result's cost in its metadata, as it does for retries exhausted. Organs see it as `OrganFailed{subtype}`, with the subtype `success`.
 - **Isolation**, matching orchestra's organ isolation, with the SDK's own options:
   - `tools: []` ("Disable all built-in tools"); the scout's are in §6.3
   - `strictMcpConfig: true` and no `mcpServers`
