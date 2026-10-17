@@ -236,14 +236,18 @@ describe("a worker that filed a question ticket", () => {
     )
     expect(moved).toEqual([expect.objectContaining({ ticket: id, from: "Asked", to: "Working" })])
     expect(records(ran, "answered")).toEqual([
-      expect.objectContaining({ ticket: id, title: "One ticket", detail: question }),
+      expect.objectContaining({
+        ticket: id,
+        title: "One ticket",
+        detail: `${question}: Which way?`,
+      }),
     ])
     expect(records(ran, "resumed")).toEqual([
       expect.objectContaining({ ticket: id, why: "answered", session: started?.sessionId }),
     ])
     expectLog(ran, [
       /ASKED: t-1 waits on your answer/,
-      `  t-1's question ${question} is answered: Which way?`,
+      `  ANSWERED: ${question} (Which way?) is answered, so t-1 comes back`,
       new RegExp(
         `^ {2}RESUMED: t-1's question ${question} is answered; resuming its session \\S+ \\(worktree .*t-1\\)$`,
       ),

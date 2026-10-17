@@ -6,11 +6,11 @@
 //
 // The ready poll calls takeAnswers, one at a time. It reads each Asked ticket in Beads, and once no
 // open question blocks it (its question answered: closed), moves it Asked → Working (the `answered`
-// record) and resumes its session, keeping its ID, with a client_composed "your question is
-// answered" message (the `resumed` record, the RESUMED line). The resumed worker takes a slot,
-// counting toward no limit (the scheduler's carry), and its ticket goes on as a dispatched one does:
-// settled, read, and moved as its worker leaves it. A session that can't be resumed (its worktree
-// or transcript gone, the spawn failing) drops its ticket: WORKER_GONE, left for review. A
+// record, the ANSWERED line) and resumes its session, keeping its ID, with a client_composed "your
+// question is answered" message (the `resumed` record, the RESUMED line). The resumed worker takes
+// a slot, counting toward no limit (the scheduler's carry), and its ticket goes on as a dispatched
+// one does: settled, read, and moved as its worker leaves it. A session that can't be resumed (its
+// worktree or transcript gone, the spawn failing) drops its ticket: WORKER_GONE, left for review. A
 // ticket bd can't show waits for the next poll.
 import { Effect, Result } from "effect"
 import { Beads, type Issue } from "../services/Beads.ts"
@@ -18,7 +18,7 @@ import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, Log, line, Tag, ticketLine } from "./log.ts"
+import { Log, line, Tag, ticketLine } from "./log.ts"
 import { Cause } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"
 import { openQuestion, settle } from "./settle.ts"
@@ -66,9 +66,9 @@ export const takeAnswers = (
       if (Result.isFailure(issue) || openQuestion(issue.success) !== undefined) continue
       const { question } = phase
       const asked = titleOf(issue.success, question)
-      const text = detail`${id}'s question ${question} is answered: ${asked}`
+      const text = ticketLine(Tag.answered)`${question} (${asked}) is answered, so ${id} comes back`
       const moved = yield* ledger.transition(id, Cause.Answered(), {
-        beside: [{ kind: "answered", ticket: id, title, detail: question, text }],
+        beside: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
       })
       if (Result.isFailure(moved)) continue
       yield* logs.write(text)

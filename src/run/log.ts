@@ -51,6 +51,7 @@ export const Tag = {
   startFailed: "START_FAILED",
   deferFailed: "DEFER_FAILED",
   asked: "ASKED",
+  answered: "ANSWERED",
   waitsForMerge: "WAITS_FOR_MERGE",
   reopenFailed: "REOPEN_FAILED",
   paused: "PAUSED",
