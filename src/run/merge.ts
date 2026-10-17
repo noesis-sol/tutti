@@ -172,7 +172,7 @@ const offBranch = (ticket: FinishedTicket) =>
   })
 
 /** Puts the branch back after a rebase that didn't finish, if one is under way. */
-const abandonRebase = (worktree: string) =>
+export const abandonRebase = (worktree: string) =>
   Effect.gen(function* () {
     const { git } = yield* services
     if (yield* git.rebaseInProgress(worktree)) yield* git.abortRebase(worktree)

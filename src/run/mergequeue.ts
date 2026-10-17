@@ -24,6 +24,7 @@ import {
 import { RunFibers } from "./fibers.ts"
 import { Ledger } from "./ledger.ts"
 import {
+  abandonRebase,
   type FinishedTicket,
   fastForward,
   type MergeEnv,
@@ -118,11 +119,13 @@ export const make = (
         ),
       )
 
-    // A quit before the fast-forward: back at the head of the line, ToMerge. A ticket the merge
-    // had set aside or blocked just before stays as it was.
+    // A quit before the fast-forward: back at the head of the line, ToMerge, its branch put back
+    // from a rebase the quit cut short wherever it came (git's or the abort of a conflict's). A
+    // ticket the merge had set aside or blocked just before stays as it was.
     const backInLine = (ticket: FinishedTicket) =>
       lock.withPermit(
         Effect.gen(function* () {
+          yield* abandonRebase(ticket.worktree)
           const state = yield* SubscriptionRef.get(ref)
           const entry = (yield* ledger.current).tickets.get(ticket.id)
           if (entry?.phase._tag !== "Merging") {

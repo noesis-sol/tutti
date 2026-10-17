@@ -788,6 +788,51 @@ describe("an interrupt", () => {
     expect(tip).not.toBe("")
   })
 
+  test("as a conflict's rebase is being aborted still puts the branch back", async () => {
+    const aborting = Deferred.makeUnsafe<void>()
+    const gate = Deferred.makeUnsafe<void>()
+    let tip = ""
+    let worktree = ""
+    const ran = await interrupted(
+      { backlog: backlog().ticket("a").seeds },
+      (queue, close) =>
+        Effect.gen(function* () {
+          const git = yield* Git
+          const repository = yield* Repository
+          const a = yield* finished("a", { "a.txt": "a\n" })
+          tip = yield* repository.head(a.branch)
+          worktree = a.worktree
+          yield* moveMain({ "a.txt": "main's a\n" })
+          yield* queue.offer(a)
+          yield* Deferred.await(aborting)
+          yield* close
+          expect(yield* git.rebaseInProgress(a.worktree)).toBe(false)
+          expect(yield* repository.head(a.branch)).toBe(tip)
+        }),
+      (queue) =>
+        Effect.gen(function* () {
+          const git = yield* Git
+          let first = true
+          return yield* Effect.provideService(queue, Git, {
+            ...git,
+            // The first abort hangs, as git killed partway would never finish it.
+            abortRebase: (dir) =>
+              first
+                ? Effect.sync(() => {
+                    first = false
+                  }).pipe(
+                    Effect.andThen(Deferred.succeed(aborting, undefined)),
+                    Effect.andThen(Deferred.await(gate)),
+                    Effect.andThen(git.abortRebase(dir)),
+                  )
+                : git.abortRebase(dir),
+          })
+        }),
+    )
+    expect(resultOf(ran).a).toEqual(expect.objectContaining({ _tag: "ToMerge", place: 1 }))
+    expect(worktree).not.toBe("")
+  })
+
   test("as a ticket's turn starts puts it back in line, ToMerge", async () => {
     const inTurn = Deferred.makeUnsafe<void>()
     const gate = Deferred.makeUnsafe<void>()
