@@ -562,9 +562,14 @@ During this, a second signal abandons the merge, as orchestra's does: `<id>'s me
 
 **The `unmerged` label.** A ticket that is closed and not merged when the run ends is labelled `unmerged`, as orchestra labels it. orchestra also labels tickets whose workers it leaves running, since such a worker may close its ticket after orchestra exits. tutti's workers can't outlive it, so a ticket still in progress isn't labelled.
 
-**The next run.** It resumes each suspended worker with `resume: <session ID>` and a `client_composed` message saying it was interrupted and to carry on, with any per-start facts (§4.1). A suspended worker counts toward no limit and takes a slot as a running ticket does.
+**The next run.** It resumes each suspended worker with `resume: <session ID>` and a `client_composed` message saying it was interrupted and to carry on, with any per-start facts (§4.1). tutti sends it as the session starts, not after its `system/init`: a resumed session emits one only with a turn. A suspended worker counts toward no limit and takes a slot as a running ticket does.
 
-M0 tests the SDK's own support for this before tutti relies on that message. The SDK's types describe a turn that "continued one that a worker restart interrupted … the automatic re-run of the interrupted turn (`CLAUDE_CODE_RESUME_INTERRUPTED_TURN`), or one that goes on from the answer to the permission prompt the new worker took over", reported as `resume_reason`. If setting `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` (with `CLAUDE_CODE_RESUME_REASON=host_draining`) re-runs the interrupted turn and raises a pending permission request again, tutti uses it in place of its own message.
+**The carry-on message is tutti's own, after every ending.** M0 tested the SDK's re-run of an interrupted turn, `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` with `CLAUDE_CODE_RESUME_REASON=host_draining` (docs/spikes/02-sdk-lifecycle.md, § 6 and § 7, Claude Code 2.1.301). tutti doesn't set either variable.
+
+- **The re-run needs a turn that was cut off.** After `close()` alone (SIGTERM after the grace), a `kill -9` with the reaper, or a crash, it re-runs the turn with nothing sent, and raises a pending permission request again. After tutti's quit it never happens: step 2's `interrupt()` records the turn as ended by the user (`[Request interrupted by user for tool use]`), so nothing re-runs, with or without the variables. Dropping that interrupt to get the re-run would lose its receipt and the wait for results, and `close()` would cut the turn all the same.
+- **tutti's message works after every ending tried:** the clean quit, a crash that left a `tool_use` with no result, and a pending permission request. Each took one turn, which made the call that was cut off again. With the variable also set, the message was folded into the rescue turn, so it would add nothing: one mechanism is simpler to test.
+- **A permission request asked again is a new request.** The model makes the call again, so `canUseTool` is called with a new `toolUseID`, and Attention (§4.5) shows a new request. The old one went with the session that asked it; nothing waits for its ID.
+- **Turns are matched by the sends they list** (§4.2). The carry-on turn is the one whose `result` lists the message's `uuid` in `user_message_uuids`. Without the variables no rescue turn runs; one would carry `resume_reason: host_draining` and the interrupted prompt's `user_message_uuid`, which tutti doesn't wait for.
 
 **The other carry-over cases** are as orchestra has them, with "adopt the live worker" replaced by "resume the session":
 
@@ -1551,6 +1556,7 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
   - a held removal (`rm -rf $T/*`, `T` from the environment): in auto mode a `permission_denied` with `decision_reason_type` `safetyCheck` and no `canUseTool` call; in default mode a `canUseTool` call with `decisionReasonType: "safetyCheck"` and `suppressAlwaysAllowRule`
   - `interrupt()` and its receipt
   - `resume` with `sessionId`, and of a removed worktree: the spawn fails with no message and no result
+  - a session quit as §4.8 does (`interrupt()`, then `close()`), busy and at a pending permission request, resumed with the carry-on message: one turn makes the cut-off call again, a pending request coming back as a new `canUseTool` call with a new `toolUseID`
   - `strictMcpConfig` and the init's `mcp_servers`
   - the verifier in the foreground through the hook (§4.1): the Agent call's `tool_result` isn't `async_launched` and comes before the turn's one `result`
   - the probe on a temp repository never trusted, whose `.claude/settings.json` allows one command: its stderr has the line §4.13 matches
