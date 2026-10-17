@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `src/run/nothing.ts` says why a run has nothing to run (§ 5 item 4): `check` finds `✓ All done` (with `Still open: <ids> (bd close <ids>)` for epics) or `○ Nothing ready to run` with each reason and its command, as orchestra counts them, or `○ Nothing under <id> is ready to run` with each ticket of the scope not done; `box` draws it in a rounded box through a small `Styles` parameter (`themeStyles` gives the theme's `done`, `frame`, `live` and `emphasis` roles, `noStyles` none), `plainLines` as plain lines; `nothingToRun` records the `READY_EMPTY` done line and prints it, so the run ends with exit 0 and no dashboard.
+- `src/run/deferredFree.ts` lists the deferred tickets whose blockers have all merged (`DEFERRED_FREE`), as orchestra does: in the START block (`say`) and in the nothing-to-run box, each with the command that reopens it and the one that removes its empty worktree, or shows the uncommitted changes that keep it.
 - The project scaffold: Bun, Effect and OpenTUI, with `scripts/check.sh` (tsc, Biome, the tests and shellcheck) and `bun src/main.ts` printing the version.
 - `test/test-script.test.ts` runs `scripts/test.sh` on flaky and broken fixtures; `docs/spikes/08-bun-test-retry.md` reports why the script reruns failed tests by name rather than reading `--retry`.
 - `src/services/exec.ts` runs every external command in a process group of its own, with a time limit that kills the whole group (`CommandTimedOut`), interruption that does too, bounded output with an optional output file, and `CommandFailed { command, exitCode, stderr }`; `TimeLimit.read` (30 s) and `TimeLimit.write` (2 min) are orchestra's presets.

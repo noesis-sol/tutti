@@ -76,11 +76,13 @@ export class CommandNotRun extends Schema.TaggedError<CommandNotRun>()("CommandN
 
 const plainArg = /^[\w./=:@%+,-]+$/
 
+/** The word as a shell reads it back: as it is when plain, else in single quotes. */
+export const shellWord = (word: string): string =>
+  plainArg.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`
+
 /** The command as a person would type it into a shell, for errors and logs. */
 export const showCommand = (command: Pick<Command, "command" | "args">): string =>
-  [command.command, ...command.args]
-    .map((arg) => (plainArg.test(arg) ? arg : `'${arg.replaceAll("'", `'\\''`)}'`))
-    .join(" ")
+  [command.command, ...command.args].map(shellWord).join(" ")
 
 /** The last `max` bytes of a stream, decoded once at the end so no character is split mid-way. */
 class Tail {
