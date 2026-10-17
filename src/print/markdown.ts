@@ -116,8 +116,6 @@ const painter = (theme: Theme) => {
           ? label
           : [...label, ...words(" ", a), ...words(href, { ...plain, faint: true })]
       }
-      case "checkbox":
-        return words((token as Tokens.Checkbox).checked ? "[x] " : "[ ] ", a)
       case "html":
         return words((token as Tokens.HTML).text, a)
     }
@@ -197,10 +195,19 @@ const painter = (theme: Theme) => {
     l.items.forEach((item, i) => {
       if (i > 0 && l.loose) out.push("")
       const marker = markers[i] as string
-      const lines = blocks(item.tokens, width - lead, a, !item.loose)
-      const first = `${marker}${" ".repeat(lead - Bun.stringWidth(marker))}`
+      // A task's checkbox, a block of its own in marked's tokens, goes after the bullet, with
+      // the item's text beside it.
+      const box = item.tokens.find((token) => token.type === "checkbox") as
+        | Tokens.Checkbox
+        | undefined
+      const rest = item.tokens.filter((token) => token.type !== "checkbox")
+      const indent = lead + (box === undefined ? 0 : 4)
+      const lines = blocks(rest, width - indent, a, !item.loose)
+      const first =
+        `${marker}${" ".repeat(lead - Bun.stringWidth(marker))}` +
+        (box === undefined ? "" : box.checked ? "[x] " : "[ ] ")
       lines.forEach((line, n) => {
-        out.push(line === "" ? "" : `${n === 0 ? first : " ".repeat(lead)}${line}`)
+        out.push(line === "" ? "" : `${n === 0 ? first : " ".repeat(indent)}${line}`)
       })
       if (lines.length === 0) out.push(first.trimEnd())
     })

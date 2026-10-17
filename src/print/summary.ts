@@ -197,8 +197,10 @@ const parts = (theme: Theme, width: number) => {
     const idWidth = Math.min(
       Math.max(7, ...rows.map((row) => Bun.stringWidth(sanitizeLine(row.ticket)))),
       Math.max(Math.floor(w / 3), 7),
+      // Room left for the note's eight columns at the least, so the table is never wider than w.
+      w - 4 - (stateWidth + 2) - 2 - 2 - 8,
     )
-    const aboutWidth = Math.max(w - 4 - (stateWidth + 2) - (idWidth + 2) - 2, 8)
+    const aboutWidth = w - 4 - (stateWidth + 2) - (idWidth + 2) - 2
     const cells = rows.map((row) => {
       const look = rowLooks[row.word] ?? { style: "dim", faint: false }
       const style = styles[look.style]

@@ -111,6 +111,15 @@ describe("the summary", () => {
     expect(out).toContain(toMerge.paint("◷ to merge"))
   })
 
+  test("a long ticket ID never makes the table wider than the terminal", () => {
+    for (const width of [40, 41, 44, 60]) {
+      const out = strip(
+        summary(ended([row("tutti-nrg.5.11.long", "✓", "done", "x")]), theme, width),
+      )
+      for (const line of out.split("\n")) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(width)
+    }
+  })
+
   test("a long note is cut to the table", () => {
     const out = strip(summary(ended([row("tut-1", "↷", "deferred", "x".repeat(200))]), theme, 60))
     expect(out).toContain("x…")
@@ -313,6 +322,12 @@ describe("the report's Markdown", () => {
   test("lists: bullets, numbers from the list's start, nested items indented", () => {
     expect(strip(render("- a\n- b\n  - c\n\n3. three\n4. four"))).toBe(
       "• a\n• b\n  • c\n\n3. three\n4. four",
+    )
+  })
+
+  test("a task's checkbox goes after its bullet, its text beside it", () => {
+    expect(strip(render("- [ ] task\n- [x] done the task that wraps onto the next line", 30))).toBe(
+      "• [ ] task\n• [x] done the task that wraps\n      onto the next line",
     )
   })
 
