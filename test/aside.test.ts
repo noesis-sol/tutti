@@ -1,0 +1,78 @@
+import { describe, expect, test } from "bun:test"
+import { Effect, Layer } from "effect"
+import { leaveForReview, putAside } from "../src/run/aside.ts"
+import { Ledger } from "../src/run/ledger.ts"
+import { type Log, Tag, ticketLine } from "../src/run/log.ts"
+import { Cause } from "../src/run/phase.ts"
+import type { Beads } from "../src/services/Beads.ts"
+import { Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
+import { Captured } from "../src/testing/EventStream.ts"
+import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
+import { texts } from "../src/testing/Log.ts"
+
+/** Runs `body` on ticket t-1, Working, and gives back its notes, records, log and phase. */
+const aside = (body: Effect.Effect<unknown, never, Ledger | Beads | Log>) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const ledger = yield* Ledger
+      yield* ledger.transition("t-1", Cause.Ready(), { title: "One ticket" })
+      yield* ledger.transition("t-1", Cause.Dispatched())
+      yield* body
+      const issues = yield* (yield* Backlog).issues
+      return {
+        notes: issues.find((issue) => issue.id === "t-1")?.notes,
+        status: issues.find((issue) => issue.id === "t-1")?.status,
+        records: (yield* (yield* Captured).records).filter((record) => record.kind !== "phase"),
+        log: yield* texts,
+        phase: (yield* ledger.current).tickets.get("t-1")?.phase,
+      }
+    }).pipe(Effect.provide(Layer.mergeAll(ledgerLayer(), beadsLayer([{ id: "t-1" }])))),
+  )
+
+describe("setting a ticket aside", () => {
+  test("for review: its note, Review{why}, and its warn record with aside", async () => {
+    const text = ticketLine(Tag.closedWithoutCommit)`no commit on tutti/t-1 names t-1`
+    const left = await aside(
+      leaveForReview("t-1", {
+        why: Tag.closedWithoutCommit,
+        detail: "closed without a commit",
+        text,
+      }),
+    )
+    expect(left.notes).toBe("tutti: CLOSED_WITHOUT_COMMIT: no commit on tutti/t-1 names t-1")
+    expect(left.phase).toMatchObject({ _tag: "Review", why: "CLOSED_WITHOUT_COMMIT" })
+    expect(left.records).toEqual([
+      expect.objectContaining({
+        kind: "warn",
+        ticket: "t-1",
+        aside: true,
+        detail: "closed without a commit",
+        text,
+      }),
+    ])
+    expect(left.log).toContain(text)
+  })
+
+  test("deferred: its note, bd's deferral, Deferred and its deferred record", async () => {
+    const deferred = ticketLine("t-1")`set aside`
+    const left = await aside(
+      putAside(
+        { id: "t-1", title: "One ticket" },
+        {
+          note: "tutti: set aside.",
+          reason: "set aside",
+          detail: "set aside",
+          deferred,
+          failed: "t-1 set aside",
+          instead: "look at it",
+        },
+      ),
+    )
+    expect(left.notes).toMatch(/^tutti: set aside\.$/m)
+    expect(left.status).toBe("deferred")
+    expect(left.phase).toMatchObject({ _tag: "Deferred", why: "set aside" })
+    expect(left.records).toEqual([
+      expect.objectContaining({ kind: "deferred", ticket: "t-1", detail: "set aside" }),
+    ])
+  })
+})

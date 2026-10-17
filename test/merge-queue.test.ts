@@ -437,7 +437,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
       expect.objectContaining({ _tag: "Review", why: "CHECKS_FAILED" }),
     )
     expectLog(ran, [
-      `  CHECKS_FAILED: a closed, but 'scripts/check-fast.sh' fails on tutti/a rebased onto main; worktree ${worktree} left for review (output is in ${join(worktree, ".tutti/run/check.log")})`,
+      `  CHECKS_FAILED: a closed, but 'scripts/check-fast.sh' fails on tutti/a rebased onto main; worktree ${worktree} left for review (output is in ${join(worktree, ".tutti/run/check.log")}); checked once more if main moves on in this run`,
       "    error: a.test.ts: expected 1",
     ])
     expect(records(ran, "warn")[0]).toMatchObject({ aside: true, detail: "checks failed" })
@@ -626,15 +626,16 @@ describe("epics", () => {
   })
 
   test("stay open while a subticket is closed but not merged", async () => {
+    const inA = new CheckFailed({ ...failedCheck, failingLines: ["a.txt:1: expected 1"] })
     const seeds = backlog().epic("E", ["a", "b"]).seeds
     const ran = await scenario(
-      { backlog: seeds, checks: { fast: [failedCheck] } },
+      { backlog: seeds, checks: { fast: [inA] } },
       withQueue((queue) =>
         Effect.gen(function* () {
           const a = yield* finished("a", { "a.txt": "a\n" })
           const b = yield* finished("b", { "b.txt": "b\n" })
           yield* moveMain()
-          // a's check fails; b merges after it.
+          // a's check fails in its own a.txt, so it isn't checked again; b merges after it.
           yield* queue.offer(a)
           yield* queue.offer(b)
           yield* queue.settled

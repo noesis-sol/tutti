@@ -1,7 +1,12 @@
-// Setting a ticket aside (§ 5.1, Working → Deferred by tutti), as orchestra's putAside does: the
-// ticket's notes say what happened and how to bring it back, bd defers it, and its phase moves to
-// Deferred with a `deferred` record and its log line. A ticket bd can't defer is still kept out of
-// this run: DEFER_FAILED says so, in the log and in a `warn` record with `aside`.
+// Setting a ticket aside (§ 2, § 5.1), as orchestra does, either way with a note on the ticket:
+//
+// - deferred (Working → Deferred by tutti), as orchestra's putAside: the ticket's notes say what
+//   happened and how to bring it back, bd defers it, and its phase moves to Deferred with a
+//   `deferred` record and its log line. A ticket bd can't defer is still kept out of this run:
+//   DEFER_FAILED says so, in the log and in a `warn` record with `aside`.
+// - left for review (Working or Merging → Review{why}), as orchestra's leaveFor: the log's line goes
+//   in the ticket's notes too, and its phase moves to Review with a `warn` record with `aside`. A
+//   note bd can't add doesn't keep it from review.
 import { Effect, Result } from "effect"
 import { Beads } from "../services/Beads.ts"
 import { Ledger } from "./ledger.ts"
@@ -30,6 +35,35 @@ export interface Aside {
   /** What DEFER_FAILED says after `kept out of this run, `: what to do instead. */
   readonly instead: string
 }
+
+/** What leaving a ticket for review says, and where. */
+export interface Review {
+  /** The log's tag for it, as in CHECKS_FAILED: the Review phase's `why`. */
+  readonly why: string
+  /** Why, in a few words: the `warn` record's `detail`. */
+  readonly detail: string
+  /** The log's line, which the ticket's notes have too. */
+  readonly text: Line
+}
+
+/** The note a ticket left for review gets: the log's line, without its indent. */
+export const reviewNote = (text: Line): string => `tutti: ${text.trimStart()}`
+
+/** Leaves the ticket for review: its note, Review{why} by Aside with its `warn` record, its line. */
+export const leaveForReview = (
+  id: string,
+  review: Review,
+): Effect.Effect<void, never, Beads | Ledger | Log> =>
+  Effect.gen(function* () {
+    const beads = yield* Beads
+    const ledger = yield* Ledger
+    const logs = yield* Log
+    yield* Effect.ignore(beads.update(id, { appendNotes: reviewNote(review.text) }))
+    yield* ledger.transition(id, Cause.Aside({ why: review.why }), {
+      beside: [{ kind: "warn", ticket: id, aside: true, detail: review.detail, text: review.text }],
+    })
+    yield* logs.write(review.text)
+  })
 
 /** Sets the ticket aside; whether bd deferred it. */
 export const putAside = (

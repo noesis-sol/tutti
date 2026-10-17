@@ -23,7 +23,7 @@ import { Beads, type BeadsError, type Status } from "../services/Beads.ts"
 import type { GitError } from "../services/Git.ts"
 import type { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
-import { putAside } from "./aside.ts"
+import { leaveForReview, putAside } from "./aside.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
@@ -65,17 +65,6 @@ export interface WorkOptions {
 
 /** Its blockers, as the log names them: `a`, or `a, b`. */
 const named = (blockers: ReadonlyArray<string>): string => blockers.join(", ")
-
-/** Sets the ticket aside for review, Working → Review, with its warn record and log line. */
-const leaveFor = (id: string, why: string, short: string, text: Line) =>
-  Effect.gen(function* () {
-    const ledger = yield* Ledger
-    const logs = yield* Log
-    yield* ledger.transition(id, Cause.Aside({ why }), {
-      beside: [{ kind: "warn", ticket: id, aside: true, detail: short, text }],
-    })
-    yield* logs.write(text)
-  })
 
 /** Removes the ticket's worktree and branch: what the line saying so ends with. */
 const removeWorktree = (worker: StartedWorker, force: boolean) =>
@@ -217,34 +206,31 @@ export const conclude = (
         yield* noChange(ticket, worker, reading.why, reading.own)
         break
       case "NoCommit":
-        yield* leaveFor(
-          id,
-          Tag.closedWithoutCommit,
-          "closed without a commit",
-          ticketLine(
+        yield* leaveForReview(id, {
+          why: Tag.closedWithoutCommit,
+          detail: "closed without a commit",
+          text: ticketLine(
             Tag.closedWithoutCommit,
           )`no commit on ${branch} names ${id}; worktree ${path} left for review`,
-        )
+        })
         break
       case "Uncommitted":
-        yield* leaveFor(
-          id,
-          Tag.closedUncommitted,
-          "closed with uncommitted changes",
-          ticketLine(
+        yield* leaveForReview(id, {
+          why: Tag.closedUncommitted,
+          detail: "closed with uncommitted changes",
+          text: ticketLine(
             Tag.closedUncommitted,
           )`${id} closed (${reading.commit.hash.slice(0, 7)} ${reading.commit.subject}) but ${path} has uncommitted changes to ${reading.files}; worktree left for review`,
-        )
+        })
         break
       case "OffBranch":
-        yield* leaveFor(
-          id,
-          Tag.offBranch,
-          `worktree not on ${branch}`,
-          ticketLine(
+        yield* leaveForReview(id, {
+          why: Tag.offBranch,
+          detail: `worktree not on ${branch}`,
+          text: ticketLine(
             Tag.offBranch,
           )`${id} closed, but its worktree ${path} has ${reading.on}, not ${branch}; worktree left for review`,
-        )
+        })
         break
       case "WaitsForMerge":
         yield* waitsForMerge(ticket, worker, reading.blockers, reading.status)

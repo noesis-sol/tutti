@@ -11,6 +11,9 @@
 //
 // A merge that stops the merges (DIRTY_TREE, GIT_FAILED, MERGE_FAILED) is kept in the queue's state
 // for the run loop, and no ticket merges after it: those behind it stay ToMerge.
+//
+// A ticket set aside as its check failed is kept in the queue's rechecks, and after each merge the
+// ones whose base has moved on since are put back in line, ToMerge by RECHECK (recheck.ts).
 import {
   Effect,
   FiberSet,
@@ -33,6 +36,7 @@ import {
   prepare,
 } from "./merge.ts"
 import { Cause, Detail, type InvalidTransition, type TicketPhase } from "./phase.ts"
+import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
 
 export interface QueueState {
   /** The tickets waiting for their turn, next first. */
@@ -60,6 +64,13 @@ export interface MergeQueue {
   readonly changes: Stream.Stream<QueueState>
   /** Waits until no merge is under way and none waits, or the merges have stopped. */
   readonly settled: Effect.Effect<QueueState>
+  /** The tickets set aside for a failed check that may be checked once more in this run. */
+  readonly rechecks: Rechecks
+  /**
+   * Puts back in line, ToMerge by RECHECK, the tickets whose base has moved on since their check
+   * failed, as the queue does after each merge; the tickets it put back.
+   */
+  readonly recheck: Effect.Effect<ReadonlyArray<string>>
 }
 
 /** Whether nothing is left for the queue to do. */
@@ -76,8 +87,10 @@ export const make = (
     const context = yield* Effect.context<MergeEnv>()
     const line = yield* Queue.unbounded<FinishedTicket>()
     const ref = yield* SubscriptionRef.make(emptyQueue)
+    const rechecks = yield* makeRechecks
     // Changes to the line and the places it gives, one at a time.
     const lock = yield* Semaphore.make(1)
+    const state = SubscriptionRef.get(ref)
 
     // The places of the tickets waiting, from 1.
     const renumber = (waiting: ReadonlyArray<string>) =>
@@ -138,6 +151,10 @@ export const make = (
         }),
       )
 
+    const recheck = recheckDue(rechecks, { offer, state }, options).pipe(
+      Effect.provideContext(context),
+    )
+
     const merged = (stop: MergeStop | undefined) =>
       SubscriptionRef.update(ref, (state) => ({
         ...state,
@@ -151,13 +168,16 @@ export const make = (
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           if (!(yield* turn(ticket))) return
-          const prepared = yield* restore(prepare(ticket, options)).pipe(
+          const prepared = yield* restore(prepare(ticket, options, rechecks)).pipe(
             Effect.onInterrupt(() => backInLine(ticket)),
           )
           const stop =
             prepared._tag === "Over"
               ? prepared.stop
               : yield* fastForward(ticket, options, prepared.onto)
+          // A merge moves the base on, which may be what a ticket's failed check waits for: the
+          // tickets it puts back are in line before this merge is over, so `settled` waits for them.
+          if (stop === undefined) yield* Effect.exit(restore(recheck))
           yield* merged(stop)
         }),
       )
@@ -174,12 +194,14 @@ export const make = (
 
     return {
       offer,
-      state: SubscriptionRef.get(ref),
+      state,
       changes: SubscriptionRef.changes(ref),
       settled: SubscriptionRef.changes(ref).pipe(
         Stream.filter(isSettled),
         Stream.runHead,
         Effect.map((found) => (found._tag === "Some" ? found.value : emptyQueue)),
       ),
+      rechecks,
+      recheck,
     } satisfies MergeQueue
   })
