@@ -44,6 +44,17 @@ const unsettled: ReadonlySet<PhaseTag> = new Set([
 export const pending = (state: State): boolean =>
   [...state.tickets.values()].some((entry) => unsettled.has(entry.phase._tag))
 
+/**
+ * The tickets bd has closed and labelled `unmerged` (left so by an earlier run) that this run hasn't
+ * merged since: their code isn't on the base, so they hold back their parents and the tickets
+ * waiting on them, as the run's own do. The label is bd's; the run, once it merged one, knows better.
+ */
+export const leftUnmerged = <I extends Pick<Issue, "id">>(
+  state: State,
+  labelled: ReadonlyArray<I>,
+): ReadonlyArray<I> =>
+  labelled.filter((issue) => state.tickets.get(issue.id)?.phase._tag !== "Done")
+
 /** The run's tickets that may not have merged, whose parents wait for them. */
 export const unmerged = (state: State): ReadonlyArray<string> =>
   [...state.tickets.values()]
@@ -52,7 +63,8 @@ export const unmerged = (state: State): ReadonlyArray<string> =>
 
 /**
  * The tickets that wait for their subtickets: the parents of `open`, the tickets bd lists as not
- * closed, and of the run's tickets that may be closed and not merged (`parentOf` gives theirs).
+ * closed (and those left unmerged), and of the run's tickets that may be closed and not merged
+ * (`parentOf` gives theirs).
  */
 export const parentsWaiting = (
   open: ReadonlyArray<Pick<Issue, "parent">>,

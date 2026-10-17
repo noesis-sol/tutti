@@ -263,24 +263,68 @@ describe("a follow-up", () => {
     expect(lines).toContain("  f-1 waits: filed by s-1's worker; waiting for it to merge")
   })
 
-  test("waits for a source left unmerged by an earlier run", async () => {
+  test("waits for a source left unmerged by an earlier run, with nothing else running", async () => {
     const seeds: ReadonlyArray<Seed> = [
       { id: "s-1", status: "closed", labels: ["unmerged"] },
-      { id: "t-0", priority: 0 },
-      { id: "f-1", priority: 1, dependencies: [{ id: "s-1", type: "discovered-from" }] },
+      { id: "f-1", dependencies: [{ id: "s-1", type: "discovered-from" }] },
     ]
-    const [held, lines] = await run(
+    const [started, held, lines] = await run(
       seeds,
       Effect.gen(function* () {
-        const { schedule } = yield* scheduler({ concurrent: 2 })
+        const { schedule, started } = yield* scheduler({ concurrent: 2 })
         yield* schedule.fill
-        return [yield* phases("f-1"), yield* texts] as const
+        return [yield* started, yield* phases("f-1"), yield* texts] as const
       }),
     )
+    expect(started).toEqual([])
     expect(held).toEqual(["HeldBack:merge"])
     expect(lines).toContain(
       "  f-1 waits: filed by s-1's worker; s-1 closed but not merged (labelled unmerged)",
     )
+  })
+})
+
+describe("a ticket left unmerged by an earlier run", () => {
+  test("holds back the ticket it blocks, until the run merges it", async () => {
+    const seeds: ReadonlyArray<Seed> = [
+      { id: "b-1", status: "closed", labels: ["unmerged"] },
+      { id: "t-2", blockedBy: ["b-1"] },
+    ]
+    const steps = await run(
+      seeds,
+      Effect.gen(function* () {
+        const { schedule, started } = yield* scheduler({ concurrent: 2 })
+        yield* schedule.fill
+        const steps: Array<unknown> = [[yield* started, yield* phases("t-2")]]
+        // Carried over and merged by this run, though bd may still label it.
+        yield* transition("b-1", Cause.Unmerged({ place: 1 }))
+        yield* merged("b-1")
+        yield* schedule.fill
+        steps.push([yield* started, yield* phases("t-2")])
+        return steps
+      }),
+    )
+    expect(steps).toEqual([
+      [[], ["HeldBack:merge"]],
+      [["t-2"], ["Working"]],
+    ])
+  })
+
+  test("holds back its parent", async () => {
+    const seeds: ReadonlyArray<Seed> = [
+      { id: "p" },
+      { id: "p.1", parent: "p", status: "closed", labels: ["unmerged"] },
+    ]
+    const [started, held] = await run(
+      seeds,
+      Effect.gen(function* () {
+        const { schedule, started } = yield* scheduler({ concurrent: 2 })
+        yield* schedule.fill
+        return [yield* started, yield* phases("p")] as const
+      }),
+    )
+    expect(started).toEqual([])
+    expect(held).toEqual(["HeldBack:parent"])
   })
 })
 

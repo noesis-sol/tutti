@@ -47,6 +47,7 @@ import {
 import {
   type Held,
   isSolo,
+  leftUnmerged,
   likelyConflictLine,
   mergeHold,
   overlapHold,
@@ -64,7 +65,7 @@ import {
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { Cause, type Hold, TicketPhase } from "./phase.ts"
-import { ready } from "./scope.ts"
+import { ready, unmergedLabel } from "./scope.ts"
 
 /** How often bd ready is read while tickets run: tickets become ready mid-run. */
 export const readyPoll: Duration.Duration = Duration.seconds(30)
@@ -401,16 +402,21 @@ export const make = (
         }
         const queue = candidates.filter((issue) => !setAsideNow.includes(issue.id))
 
-        // The parents waiting for their subtickets: those of the tickets not closed, and of the
-        // run's tickets not merged yet. bd show gives the parent of one the run didn't dispatch.
+        // The parents waiting for their subtickets: those of the tickets not closed or left
+        // unmerged by an earlier run, and of the run's tickets not merged yet. bd show gives the
+        // parent of one the run didn't dispatch.
         const open = yield* beads.list()
+        const left = leftUnmerged(
+          yield* ledger.current,
+          yield* beads.list({ status: "closed", labels: [unmergedLabel] }),
+        )
         const openIds = new Set(open.map((issue) => issue.id))
         for (const id of unmerged(yield* ledger.current)) {
           if (parentOf.has(id) || openIds.has(id)) continue
           const read = yield* beads.show(id).pipe(Effect.result)
           if (Result.isSuccess(read)) parentOf.set(id, read.success.parent ?? "")
         }
-        const parents = parentsWaiting(open, yield* ledger.current, parentOf)
+        const parents = parentsWaiting([...open, ...left], yield* ledger.current, parentOf)
 
         // A ticket's links, as bd show gives them, read once a fill; null when bd couldn't.
         const shown = new Map<string, Issue | null>()
@@ -463,7 +469,7 @@ export const make = (
           Effect.gen(function* () {
             let held: Held | undefined
             if (parents.has(issue.id)) held = parentHold
-            else if (pending(state)) {
+            else if (left.length > 0 || pending(state)) {
               const links = yield* linksOf(issue.id)
               held = links === null ? unreadableHold : mergeHold(state, links)
             }
