@@ -6,10 +6,12 @@
 // closed, but their code isn't on the base until they merge. With a slot free, a ticket whose
 // footprint overlaps a running ticket's is skipped for the next. A solo ticket runs alone (the
 // scheduler's pick). The log says once why each ticket waits, and again only when that changes.
+//
+// What holds the whole run, its stop reasons and the exit codes they end it with, is below.
 import type { Dependency, Issue } from "../services/Beads.ts"
 import { type Footprint, type Mentions, shared } from "./footprint.ts"
 import type { State } from "./ledger.ts"
-import { detail, type Line } from "./log.ts"
+import { detail, type Line, line } from "./log.ts"
 import type { Hold, PhaseTag } from "./phase.ts"
 import { ledgerView } from "./scope.ts"
 
@@ -213,3 +215,120 @@ export const sayOnce = (): SayOnce => {
     },
   }
 }
+
+// The run's stops (§ 5 item 10): what holds the run, then ends it with an exit code. A stop holds
+// the run as it comes: no new tickets start, the running ones finish (`HOLD … no new tickets while
+// the N running finish`), and once nothing runs or merges the run ends with the first stop's line,
+// then `; also` and each of the others. The first decides the exit code, which is orchestra's: 4
+// covers Beads, git and the Agent SDK (AGENT_FAILED replaces TERMINAL_FAILED), and 8 is the usage
+// limit's.
+
+/** orchestra's exit codes, as tutti exits with them. */
+export const exitCodes = {
+  /** Nothing left to run, the limit reached, or wound down as asked. */
+  ok: 0,
+  /** A setup problem found before the run started. */
+  setup: 2,
+  /** A worker needs you: PAUSED, BLOCKED, TICKET_LIMIT. */
+  stuck: 3,
+  /** Beads, git or the Agent SDK failed, or a fiber panicked. */
+  tool: 4,
+  /** The main checkout has uncommitted changes, or left its branch. */
+  dirty: 5,
+  /** A finished ticket's branch doesn't fast-forward. */
+  merge: 6,
+  /** Workers kept failing at once, whatever ticket they had. */
+  environment: 7,
+  /** The account's usage limit held for longer than --usage-limit-wait (§ 4.12). */
+  usageLimit: 8,
+  /** Quit. */
+  interrupted: 130,
+} as const
+
+/** Each stop reason's word, as its line starts, and the exit code the run ends with for it. */
+export const stopCodes = {
+  PAUSED: exitCodes.stuck,
+  BLOCKED: exitCodes.stuck,
+  TICKET_LIMIT: exitCodes.stuck,
+  BEADS_FAILED: exitCodes.tool,
+  GIT_FAILED: exitCodes.tool,
+  AGENT_FAILED: exitCodes.tool,
+  WORKTREE_FAILED: exitCodes.tool,
+  STATE_UNWRITABLE: exitCodes.tool,
+  PANIC: exitCodes.tool,
+  DIRTY_TREE: exitCodes.dirty,
+  MERGE_FAILED: exitCodes.merge,
+  ENVIRONMENT: exitCodes.environment,
+  USAGE_LIMIT: exitCodes.usageLimit,
+  INTERRUPTED: exitCodes.interrupted,
+} as const
+
+export type StopWord = keyof typeof stopCodes
+
+/** A reason the run stops for. */
+export interface StopReason {
+  readonly why: StopWord
+  readonly code: number
+  /** The line the run ends with for it, starting with `why`: `PAUSED: …`. */
+  readonly text: Line
+  /** The ticket it stopped the run over, if any. */
+  readonly ticket?: string
+  /** What it keeps that ticket from merging for, in a few words, as a `stop` record says. */
+  readonly blocked?: string
+  /** Its `stop` record was written as it came, so the run's end needn't write it again. */
+  readonly recorded: boolean
+  /** Its HOLD line was said as it came. */
+  readonly held: boolean
+}
+
+/** The stop for `why`, its line `WHY: <text>`. */
+export const stopFor = (
+  why: StopWord,
+  text: string,
+  fields: Partial<Pick<StopReason, "ticket" | "blocked" | "recorded" | "held">> = {},
+): StopReason => ({
+  why,
+  code: stopCodes[why],
+  text: `${why}: ${line`${text}`}` as Line,
+  recorded: false,
+  held: false,
+  ...fields,
+})
+
+/** A stop given as its line (`WHY: …`, or `HOLD: WHY: …` as a hold says it), with its code. */
+export const stopOfLine = (
+  given: { readonly why: StopWord; readonly code: number; readonly line: Line },
+  fields: Partial<Pick<StopReason, "ticket" | "blocked" | "recorded" | "held">> = {},
+): StopReason => {
+  const hold = `HOLD: ${given.why}: `
+  const text = given.line.startsWith(hold) ? given.line.slice("HOLD: ".length) : given.line
+  return {
+    why: given.why,
+    code: given.code,
+    text: text as Line,
+    recorded: false,
+    held: false,
+    ...fields,
+  }
+}
+
+/** The stops so far: the first decides the exit code. */
+export interface Stops {
+  readonly first: StopReason | null
+  readonly others: ReadonlyArray<StopReason>
+}
+
+export const noStops: Stops = { first: null, others: [] }
+
+/** `stops` with `stop` added after them. */
+export const addStop = (stops: Stops, stop: StopReason): Stops =>
+  stops.first === null ? { first: stop, others: [] } : { ...stops, others: [...stops.others, stop] }
+
+/** The line the run ends with: the first stop's, then `; also` and each of the others. */
+export const stopsLine = (stops: Stops): Line =>
+  [stops.first, ...stops.others]
+    .flatMap((stop) => (stop === null ? [] : [stop.text]))
+    .join("; also ") as Line
+
+/** The exit code the stops end the run with: the first's, or 0 with none. */
+export const exitCodeOf = (stops: Stops): number => stops.first?.code ?? exitCodes.ok

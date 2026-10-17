@@ -11,7 +11,7 @@ import { plan } from "../plan/plan.ts"
 import { Beads } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
 import { layer as appConfigLayer } from "./AppConfig.ts"
-import { cliFlags, noFlags, runFlags } from "./flags.ts"
+import { cliFlags, noFlags, type RunFlags, runFlags } from "./flags.ts"
 import { login, runInTerminal } from "./login.ts"
 
 /** The main checkout of the repository `dir` is in: the first of its worktrees. */
@@ -186,19 +186,17 @@ export const loginCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
     ),
   )
 
-/** tutti and its subcommands, the main checkout found with `repo`; `tutti plan` reads it with `services`. */
-export const tuttiWith = <E extends { readonly message: string } | string, R, S>(
+/**
+ * tutti and its subcommands, the main checkout found with `repo`; `tutti plan` reads it with
+ * `services`. A bare `tutti` is `run` with its flags (src/main.ts gives it the run); without one, it
+ * prints the version.
+ */
+export const tuttiWith = <E extends { readonly message: string } | string, R, S, R2 = never>(
   repo: Effect.Effect<string, E, R>,
   services: (repo: string) => Layer.Layer<Beads | Git, never, S>,
+  run: (flags: RunFlags) => Effect.Effect<void, never, R2> = () => Console.log(pkg.version),
 ) =>
-  // Until the run is assembled, a bare `tutti` prints the version.
-  Command.make("tutti", cliFlags, () => Console.log(pkg.version)).pipe(
+  Command.make("tutti", cliFlags, run).pipe(
     Command.withDescription("runs Claude Code workers on a Beads backlog, one worktree per ticket"),
     Command.withSubcommands([answerCommand(repo), planCommand(repo, services), loginCommand(repo)]),
   )
-
-/** tutti's commands, each finding the main checkout from the folder it was started in. */
-export const tutti = tuttiWith(
-  Effect.suspend(() => mainCheckout(process.cwd())),
-  planServices,
-)

@@ -163,6 +163,10 @@ export interface Scheduler {
    * fails is tried again, up to `readTries` reads in all; then it fails with bd's error.
    */
   readonly run: Effect.Effect<never, BeadsError>
+  /** Fills once, a read that fails tried again as `run` tries it; then it fails with bd's error. */
+  readonly fillTrying: Effect.Effect<Filled, BeadsError>
+  /** Waits until a ticket's fiber has ended and freed its slot, for a caller that doesn't use `run`. */
+  readonly freed: Effect.Effect<void>
   /**
    * Runs a resumed or carried-over worker's `work` in a slot, counting toward no limit. With its
    * issue, its footprint, its parent and its solo label count as a dispatched ticket's do.
@@ -611,6 +615,8 @@ export const make = (
     return {
       fill,
       run,
+      fillTrying: fillTries(1),
+      freed: Queue.take(freed),
       carry: occupy,
       started: Effect.map(Ref.get(slots), (s) => s.started),
       running: Effect.map(Ref.get(slots), (s) => s.running),
