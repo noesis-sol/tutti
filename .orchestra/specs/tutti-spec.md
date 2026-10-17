@@ -558,7 +558,7 @@ Conflict resolution and check fixes go to the ticket's worker as orchestra sends
 
 1. Scheduling stops. The dashboard shows `Quitting…`, naming what it waits for.
 2. Every worker is interrupted at once (`interrupt()`), and their open requests are cancelled. tutti waits for their results, 10 seconds at most for all of them together. Messages still queued are cancelled with the interrupt, as below: closing the session doesn't drop them.
-3. A merge under way finishes its protected step (§3.4). A rebase in progress is aborted (`git rebase --abort`). A check or setup in progress is killed with its process group, and its ticket stays waiting to merge, for the next run.
+3. A merge under way finishes its protected step (§3.4). A rebase in progress is aborted (`git rebase --abort`). A check or setup in progress is killed with its process group, and its ticket stays waiting to merge, for the next run. Its branch may be rebased already, on top of the base: tutti marks a ticket in `state.json` before it rebases its branch and clears the mark once a check passes on it, so the next run checks a branch still marked before it merges.
 4. Organ calls in progress are aborted. Triage and the report are skipped, as orchestra skips them.
 5. Every session is closed (`close()`).
 6. `state.json` is written: each worker that wasn't merged or dropped is saved with its session ID and why it was suspended (`quit`, `PAUSED`, `TICKET_LIMIT`, `waiting on you`, …).
