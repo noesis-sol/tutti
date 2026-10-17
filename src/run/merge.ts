@@ -72,13 +72,13 @@ export type Prepared =
 export const maxPasses = 3
 
 /** What git said of its failure, in a few words. */
-const gitWhy = (error: GitError): string =>
+export const gitWhy = (error: GitError): string =>
   error._tag === "GitFailed"
     ? (error.stderr.trim().split("\n")[0] ?? "") || `exit code ${error.exitCode}`
     : `git took longer than ${formatDuration(error.timeLimit)}`
 
 /** What bd said of its failure, in a few words. */
-const beadsWhy = (error: BeadsError): string => {
+export const beadsWhy = (error: BeadsError): string => {
   switch (error._tag) {
     case "BeadsFailed":
       return (error.stderr.trim().split("\n")[0] ?? "") || `exit code ${error.exitCode}`
@@ -156,7 +156,7 @@ const stopOver = (ticket: FinishedTicket, why: StopWhy, blocked: string, reason:
   })
 
 /** What the worktree has checked out when it isn't the ticket's branch; undefined when it is. */
-const offBranch = (ticket: FinishedTicket) =>
+export const offBranch = (ticket: FinishedTicket) =>
   Effect.gen(function* () {
     const { git } = yield* services
     const on = yield* Effect.result(git.currentBranch(ticket.worktree))

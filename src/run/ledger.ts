@@ -55,6 +55,13 @@ export interface Entry {
   readonly row: number | null
   /** Checked once more after a failed check (§ 5.1's RECHECK), while it is ToMerge or Merging. */
   readonly rechecking: boolean
+  /**
+   * You have steered its worker, by a message from its composer or an interrupt, and not released
+   * it: tutti sends it nothing automatically (§ 4.3).
+   */
+  readonly steered: boolean
+  /** When you last sent its worker a message; its idle grace for PAUSED counts from then. */
+  readonly lastMessage: number | null
   readonly tallies: Tallies
 }
 
@@ -173,6 +180,8 @@ const newEntry = (ticket: string, title: string, phase: TicketPhase): Entry => (
   worker: null,
   row: null,
   rechecking: false,
+  steered: false,
+  lastMessage: null,
   tallies: emptyTallies,
 })
 
@@ -219,6 +228,13 @@ export class Ledger extends Context.Service<
       ticket: string,
       detail: Detail,
     ): Effect.Effect<Result.Result<TicketPhase, InvalidTransition>>
+    /**
+     * Marks `ticket`'s worker steered by you, by a message (its time noted for the idle grace) or an
+     * interrupt; a ticket not in the run has no worker to steer.
+     */
+    steer(ticket: string, by: "message" | "interrupt"): Effect.Effect<void>
+    /** Releases `ticket`'s worker: it is no longer steered. */
+    release(ticket: string): Effect.Effect<void>
     /** Adds `by` (1 by default) to one of `ticket`'s tallies; a ticket not in the run has none. */
     count(ticket: string, tally: TallyName, by?: number): Effect.Effect<void>
     /** Begins the wind-down, noting the tickets running now; nothing when it has begun. */
@@ -310,6 +326,28 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
         return { ...state, tickets }
       })
 
+    // `ticket`'s entry changed by `change`; a ticket not in the run is left out.
+    const updateEntry = (ticket: string, change: (entry: Entry, now: number) => Entry) =>
+      SubscriptionRef.updateEffect(ref, (state) =>
+        Effect.map(Clock.currentTimeMillis, (now) => {
+          const entry = state.tickets.get(ticket)
+          if (entry === undefined) return state
+          const tickets = new Map(state.tickets)
+          tickets.set(ticket, change(entry, now))
+          return { ...state, tickets }
+        }),
+      )
+
+    const steer: Ledger["Service"]["steer"] = (ticket, by) =>
+      updateEntry(ticket, (entry, now) => ({
+        ...entry,
+        steered: true,
+        lastMessage: by === "message" ? now : entry.lastMessage,
+      }))
+
+    const release: Ledger["Service"]["release"] = (ticket) =>
+      updateEntry(ticket, (entry) => ({ ...entry, steered: false }))
+
     const windDown = SubscriptionRef.updateEffect(ref, (state) =>
       state.windDown !== null
         ? Effect.succeed(state)
@@ -331,6 +369,8 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
     return Ledger.of({
       transition,
       refine,
+      steer,
+      release,
       count,
       windDown,
       windUp,

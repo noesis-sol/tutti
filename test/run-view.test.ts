@@ -183,6 +183,8 @@ describe("totals", () => {
           worker: 1,
           row: 0,
           rechecking: false,
+          steered: false,
+          lastMessage: null,
           tallies: emptyTallies,
         }
         const view = project(inputs({ ...emptyState, tickets: new Map([["t", entry]]) }))
