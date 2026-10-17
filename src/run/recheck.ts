@@ -5,8 +5,8 @@
 // (another ticket merged), it goes back in the merge queue, ToMerge by RECHECK, to be rebased and
 // checked once more: it merges if the check passes now, and is set aside again if it fails again.
 //
-// Each ticket is checked again at most once a run. One whose check failed in a folder its own
-// commits change isn't kept: another ticket's change won't fix that. Nor is one that something
+// Each ticket is checked again at most once a run, set up first if its setup failed (setup.ts). One
+// whose check failed in a folder its own commits change isn't kept: another ticket's change won't fix that. Nor is one that something
 // has touched since, as when you have taken it up: reopened, its worktree changed, its branch moved,
 // or its worker steered. None is checked again while the run winds down or the merges have
 // stopped. Its session stays open while it may be checked again (§ 4.8).
@@ -125,7 +125,8 @@ export const keepForRecheck = (
     const git = yield* Git
     const { id, branch } = ticket
     if (yield* rechecks.rechecked(id)) return ""
-    if (error._tag !== "CheckNotRun" && error.failingLines.length > 0) {
+    // A setup's output names none of the ticket's code.
+    if (error._tag !== "CheckNotRun" && error.check !== "setup" && error.failingLines.length > 0) {
       const changed = yield* Effect.result(git.changedFiles(options.repo, onto, branch))
       const folders = Result.isSuccess(changed) ? foldersOf(changed.success) : []
       const own = ownFailures(error.failingLines, folders)

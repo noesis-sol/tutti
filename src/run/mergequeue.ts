@@ -37,6 +37,7 @@ import {
 } from "./merge.ts"
 import { Cause, Detail, type InvalidTransition, type TicketPhase } from "./phase.ts"
 import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
+import { makeSetUps } from "./setup.ts"
 
 export interface QueueState {
   /** The tickets waiting for their turn, next first. */
@@ -88,6 +89,7 @@ export const make = (
     const line = yield* Queue.unbounded<FinishedTicket>()
     const ref = yield* SubscriptionRef.make(emptyQueue)
     const rechecks = yield* makeRechecks
+    const setUps = yield* makeSetUps
     // Changes to the line and the places it gives, one at a time.
     const lock = yield* Semaphore.make(1)
     const state = SubscriptionRef.get(ref)
@@ -168,7 +170,7 @@ export const make = (
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           if (!(yield* turn(ticket))) return
-          const prepared = yield* restore(prepare(ticket, options, rechecks)).pipe(
+          const prepared = yield* restore(prepare(ticket, options, { rechecks, setUps })).pipe(
             Effect.onInterrupt(() => backInLine(ticket)),
           )
           const stop =

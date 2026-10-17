@@ -5,7 +5,7 @@
 // ticket: it merges, but a test that passes only on a rerun is a bug nobody would see otherwise.
 // Interrupting the check kills its process group (Checks does), and nothing comes of it.
 import { join } from "node:path"
-import { Effect } from "effect"
+import { Effect, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { type CheckError, Checks, checkLogName } from "../services/Checks.ts"
@@ -28,15 +28,22 @@ export interface CheckedTicket {
   readonly worktree: string
 }
 
-/** How the check failed, for a line about it: `'<check>' fails`, or did not finish. */
+/**
+ * How the check, or the setup before it, failed, for a line about it: `'<check>' fails`, or did not
+ * finish; `the setup '<setup>', run before the check, fails`.
+ */
 export const failedHow = (error: CheckError): string => {
+  const what =
+    error.check === "setup"
+      ? line`the setup '${error.command}', run before the check,`
+      : line`'${error.command}'`
   switch (error._tag) {
     case "CheckFailed":
-      return line`'${error.command}' fails`
+      return `${what} fails`
     case "CheckTimedOut":
-      return line`'${error.command}' did not finish within ${formatDuration(error.timeLimit)}`
+      return `${what} did not finish within ${formatDuration(error.timeLimit)}`
     case "CheckNotRun":
-      return line`'${error.command}' could not be run (${error.reason})`
+      return `${what} could not be run (${line`${error.reason}`})`
   }
 }
 
@@ -48,34 +55,47 @@ export const saidOf = (error: CheckError): ReadonlyArray<string> =>
       ? error.failingLines
       : error.lastLines
 
+/**
+ * The file a command run in the ticket's worktree writes its whole output to, for the scope: `name`
+ * in its .tutti/run/, opened through the symlink guard and handed over as /dev/fd/<n>; /dev/null
+ * when it can't be opened, and the log says why, `whose` naming the command's output.
+ */
+export const outputFile = (
+  ticket: CheckedTicket,
+  name: string,
+  whose: string,
+): Effect.Effect<string, never, Worktrees | Log | Scope.Scope> =>
+  Effect.gen(function* () {
+    const worktrees = yield* Worktrees
+    const log = yield* Log
+    const opened = yield* Effect.result(
+      worktrees.openRunFile(ticket.worktree, name, O.WRONLY | O.CREAT | O.TRUNC),
+    )
+    if (opened._tag === "Success") return `/dev/fd/${opened.success}`
+    const why =
+      opened.failure._tag === "RunFilesOutside"
+        ? line`a symbolic link stands at ${opened.failure.path}`
+        : line`${opened.failure.message}`
+    const output = join(ticket.worktree, runFolder, name)
+    yield* log.write(
+      ticketLine(ticket.id)`${whose} whole output can't be kept in ${output}: ${why}`,
+    )
+    return "/dev/null"
+  })
+
 /** Runs the merge check in the ticket's worktree, its output in check.log, and says how it went. */
 export const runMergeCheck = (
   ticket: CheckedTicket,
 ): Effect.Effect<Checked, never, Checks | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const checks = yield* Checks
-    const worktrees = yield* Worktrees
     const log = yield* Log
     const events = yield* EventStream
     const output = join(ticket.worktree, runFolder, checkLogName)
     return yield* Effect.scoped(
       Effect.gen(function* () {
-        const opened = yield* Effect.result(
-          worktrees.openRunFile(ticket.worktree, checkLogName, O.WRONLY | O.CREAT | O.TRUNC),
-        )
-        let outputFile = "/dev/null"
-        if (opened._tag === "Success") {
-          outputFile = `/dev/fd/${opened.success}`
-        } else {
-          const why =
-            opened.failure._tag === "RunFilesOutside"
-              ? line`a symbolic link stands at ${opened.failure.path}`
-              : line`${opened.failure.message}`
-          yield* log.write(
-            ticketLine(ticket.id)`the check's whole output can't be kept in ${output}: ${why}`,
-          )
-        }
-        const ran = yield* Effect.result(checks.fast({ cwd: ticket.worktree, outputFile }))
+        const file = yield* outputFile(ticket, checkLogName, "the check's")
+        const ran = yield* Effect.result(checks.fast({ cwd: ticket.worktree, outputFile: file }))
         if (ran._tag === "Failure") {
           return { _tag: "Failed", error: ran.failure, output } satisfies Checked
         }

@@ -251,7 +251,10 @@ const partMatch = (pattern: string, name: string): boolean => {
 }
 
 /** Whether a path's parts match the pattern's: each as partMatch, but **, which matches any number. */
-const globMatch = (pattern: ReadonlyArray<string>, parts: ReadonlyArray<string>): boolean => {
+export const globMatch = (
+  pattern: ReadonlyArray<string>,
+  parts: ReadonlyArray<string>,
+): boolean => {
   const [first, ...rest] = pattern
   if (first === undefined) return parts.length === 0
   if (first === "**") {

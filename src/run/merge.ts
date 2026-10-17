@@ -4,16 +4,16 @@
 // - prepare, which may be interrupted: a worktree off its branch (OFF_BRANCH) is set aside before
 //   anything is done; when the base moved on while the ticket ran, a worktree with uncommitted
 //   changes (DIRTY_WORKTREE) is set aside, and the branch is rebased (a refusal is REBASE_FAILED,
-//   conflicts MERGE_CONFLICT) and checked again (CHECKS_FAILED). A rebase interrupted is aborted,
-//   putting the branch back; a check interrupted is killed.
+//   conflicts MERGE_CONFLICT), set up when the rebase changed a dependency file (setup.ts), and
+//   checked again (CHECKS_FAILED, a failing setup too). A rebase interrupted is aborted, putting the
+//   branch back; a setup or check interrupted is killed.
 // - fastForward, the step from the fast-forward to the end of its notes, which the merge queue runs
 //   protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE, GIT_FAILED), the base
 //   fast-forwarded (MERGE_FAILED), the worktree and branch removed, the epics the ticket was the last
 //   to merge under closed, up the tree. exec's time limits kill a command themselves, without
 //   interrupting its fiber, so each git command's limit holds in there too.
 //
-// Hand-backs (Resolving, Fixing) and the setup when setup_files changed come later: for now a
-// conflict is Blocked and a failing check is set aside for review, kept to be checked once more
+// Hand-backs (Resolving, Fixing) come later: for now a conflict is Blocked and a failing check is set aside for review, kept to be checked once more
 // once the base moves on (recheck.ts).
 import { Effect, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -30,6 +30,7 @@ import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { Cause, Detail } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
+import { type SetUps, setUp } from "./setup.ts"
 import { ignoredFolders } from "./startup.ts"
 
 /** A ticket its worker finished: closed, committed, its worktree clean and on its branch. */
@@ -175,14 +176,22 @@ export const abandonRebase = (worktree: string) =>
     if (yield* git.rebaseInProgress(worktree)) yield* git.abortRebase(worktree)
   }).pipe(Effect.ignore)
 
+/** What a merge keeps of each ticket for the run: the rechecks due, the setups done. */
+export interface MergeMemory {
+  readonly rechecks: Rechecks
+  readonly setUps: SetUps
+}
+
 /**
- * Rebases the ticket onto the base, which moved on to `onto`, and checks it; the merge is over when
- * either sets it aside. An interrupted rebase is aborted here too, whichever Git it ran on.
+ * Rebases the ticket, its branch off the base at `fork`, onto the base, which moved on to `onto`,
+ * sets it up if need be and checks it; the merge is over when any of them sets it aside. An
+ * interrupted rebase is aborted here too, whichever Git it ran on.
  */
 const rebaseAndCheck = (
   ticket: FinishedTicket,
   options: MergeOptions,
-  rechecks: Rechecks,
+  memory: MergeMemory,
+  fork: string,
   onto: string,
 ) =>
   Effect.gen(function* () {
@@ -244,6 +253,11 @@ const rebaseAndCheck = (
       return false
     }
     yield* log.write(detail`rebased ${branch} onto ${base}, which moved on while it ran`)
+    const setup = yield* setUp(ticket, options, memory.setUps, fork, onto)
+    if (setup._tag === "Failed") {
+      yield* checksFailed(ticket, options, memory.rechecks, onto, setup.error, setup.output)
+      return false
+    }
     yield* ledger.refine(id, Detail.Step({ step: "check" }))
     const checked = yield* runMergeCheck(ticket)
     switch (checked._tag) {
@@ -255,14 +269,21 @@ const rebaseAndCheck = (
       case "Passed":
         return true
       case "Failed":
-        yield* checksFailed(ticket, options, rechecks, onto, checked.error, checked.output)
+        yield* checksFailed(ticket, options, memory.rechecks, onto, checked.error, checked.output)
         return false
     }
   })
 
+/** The short why of a ticket set aside as its check, or the setup before it, failed. */
+export const checksFailedDetail = (error: CheckError): string => {
+  const what = error.check === "setup" ? "setup" : "checks"
+  return `${what} ${error._tag === "CheckTimedOut" ? "timed out" : "failed"}`
+}
+
 /**
- * Sets the ticket aside as its check failed on its branch rebased onto the base at `onto`, kept to
- * be checked once more once the base moves on, unless this was that once (recheck.ts).
+ * Sets the ticket aside as its check, or the setup before it, failed on its branch rebased onto the
+ * base at `onto`, kept to be checked once more once the base moves on, unless this was that once
+ * (recheck.ts).
  */
 const checksFailed = (
   ticket: FinishedTicket,
@@ -280,7 +301,7 @@ const checksFailed = (
     yield* aside(
       ticket,
       Tag.checksFailed,
-      `${error._tag === "CheckTimedOut" ? "checks timed out" : "checks failed"}${again}`,
+      `${checksFailedDetail(error)}${again}`,
       ticketLine(
         Tag.checksFailed,
       )`${ticket.id} closed, but ${failedHow(error)}${again} on ${ticket.branch} rebased onto ${options.base}; worktree ${ticket.worktree} left for review${where}${later}`,
@@ -291,14 +312,14 @@ const checksFailed = (
 
 /**
  * The part of the merge that may be interrupted: the ticket's worktree checked to be on its branch,
- * and, each time the base has moved on, rebased onto it and checked. Ready once its branch is on
- * top of the base; over when it was set aside (kept in `rechecks` when its check failed), blocked
- * or stopped the merges.
+ * and, each time the base has moved on, rebased onto it, set up if need be and checked. Ready once
+ * its branch is on top of the base; over when it was set aside (kept in the memory's rechecks when
+ * its check failed), blocked or stopped the merges.
  */
 export const prepare = (
   ticket: FinishedTicket,
   options: MergeOptions,
-  rechecks: Rechecks,
+  memory: MergeMemory,
 ): Effect.Effect<Prepared, never, MergeEnv> =>
   Effect.gen(function* () {
     const { git } = yield* services
@@ -350,7 +371,7 @@ export const prepare = (
         )
         return { _tag: "Over" } satisfies Prepared
       }
-      if (!(yield* rebaseAndCheck(ticket, options, rechecks, onto))) {
+      if (!(yield* rebaseAndCheck(ticket, options, memory, fork, onto))) {
         return { _tag: "Over" } satisfies Prepared
       }
     }
