@@ -131,6 +131,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
     Done({ outcome: Outcome.Merged({ commit: "abc123" }) }),
   ],
   [
+    "Merging → ToMerge (the run ended before the fast-forward, § 3.4)",
+    Merging({ step: "check" }),
+    Cause.MergeInterrupted({ place: 1 }),
+    ToMerge({ place: 1 }),
+  ],
+  [
     "Merging → Resolving",
     Merging({ step: "rebase" }),
     Cause.ConflictsHandedBack({ attempt: 1 }),
@@ -277,6 +283,7 @@ const causeOf: { readonly [C in CauseTag]: Extract<Cause, { readonly _tag: C }> 
   Reopened: Cause.Reopened(),
   ItsTurn: Cause.ItsTurn(),
   FastForwarded: Cause.FastForwarded({ commit: "abc" }),
+  MergeInterrupted: Cause.MergeInterrupted({ place: 1 }),
   ConflictsHandedBack: Cause.ConflictsHandedBack({ attempt: 1 }),
   CheckHandedBack: Cause.CheckHandedBack({ attempt: 1 }),
   Block: Cause.Block({ why: "GIT_FAILED" }),

@@ -144,6 +144,8 @@ export type Cause = Data.TaggedEnum<{
   ItsTurn: Empty
   /** Rebased, set up, checked and fast-forwarded to `commit`. */
   FastForwarded: { readonly commit: string }
+  /** The run ended during its rebase or check: the rebase put back, the check killed (§ 3.4). */
+  MergeInterrupted: { readonly place: number }
   /** The rebase stopped on conflicts, handed back to its worker. */
   ConflictsHandedBack: { readonly attempt: number }
   /** The check failed, handed back to its worker. */
@@ -337,6 +339,15 @@ export const transitions: ReadonlyArray<Transition> = [
     to: "Done",
     recorded: { kinds: ["closed"] },
     next: (_, { commit }) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) }),
+  }),
+  // § 3.4: a quit during the rebase or the check, before the fast-forward, leaves the ticket
+  // waiting to merge, and the run's end then stops it as one in the queue.
+  row({
+    from: "Merging",
+    when: "MergeInterrupted",
+    to: "ToMerge",
+    recorded: { kinds: ["phase"] },
+    next: (_, { place }) => TicketPhase.ToMerge({ place }),
   }),
   row({
     from: "Merging",
