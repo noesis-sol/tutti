@@ -124,6 +124,10 @@ describe("the scout's confinement", () => {
     expect(denied(decide("Read", null))).toBe(true)
   })
 
+  test("StructuredOutput, the tool the scout answers with, is allowed, with no decision", () => {
+    expect(decide("StructuredOutput", { suites: [], stack: [], note: "" })).toEqual({})
+  })
+
   test("whatever a model names, an allowed path lies in the repository", () => {
     const segment = fc.oneof(
       fc.constantFrom("..", ".", "src", "a.ts", "inner", "out", "secret", "~", "", "*", "**"),
@@ -211,7 +215,7 @@ describe("the scout's options", () => {
     )
   })
 
-  test("a session in the repository's root, which it leaves, its hook denying outside", async () => {
+  test("a session in the repository's root, which it leaves, its hook denying outside only", async () => {
     const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
     const dir = mkdtempSync(join(tmpdir(), "tutti-scout-fake-"))
     const log = join(dir, "fake.jsonl")
@@ -222,6 +226,9 @@ describe("the scout's options", () => {
           tool_name: "Read",
           tool_input: { file_path: "/etc/passwd" },
         },
+      },
+      {
+        hook: { hook_event_name: "PreToolUse", tool_name: "StructuredOutput", tool_input: canned },
       },
       { result: { structured_output: canned, result: "", stop_reason: "tool_use" } },
     ]
@@ -259,7 +266,8 @@ describe("the scout's options", () => {
     expect(started.args).toContain("--tools=Read,Glob,Grep")
     expect(started.args.join(" ")).toContain("--max-budget-usd=2")
     const answers = JSON.stringify(entries.flatMap((e) => (e.stdin === undefined ? [] : [e.stdin])))
-    expect(answers).toContain('"permissionDecision":"deny"')
+    // The Read is denied; the StructuredOutput call that answers is not.
+    expect(answers.split('"permissionDecision":"deny"')).toHaveLength(2)
   })
 })
 

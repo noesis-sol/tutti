@@ -10,8 +10,9 @@
 // evaluation order holds whatever the settings allow, as orchestra's --restricted did: a call
 // whose path argument, resolved from the root with `~` expanded and then through realpath, lies
 // outside the repository is denied, so a symlink inside that points out is denied too. A call the
-// hook can't read, or a tool it doesn't know, is denied as well. permissionPrompts none (§ 6.1)
-// denies whatever would prompt. It spends at most $2.00, for at most 5 minutes, and keeps no
+// hook can't read, or a tool it doesn't know, is denied as well, except StructuredOutput, the tool
+// outputFormat adds, which the scout answers with. permissionPrompts none (§ 6.1) denies whatever
+// would prompt. It spends at most $2.00, for at most 5 minutes, and keeps no
 // transcript. It runs nothing and changes nothing; what becomes of its answer is init's.
 import { realpathSync } from "node:fs"
 import { homedir } from "node:os"
@@ -101,6 +102,9 @@ export const tidy = (answer: Scouting): Scouting | string => {
 /** The scout's tools, listed explicitly: native builds may otherwise search with Bash. */
 export const scoutTools = ["Read", "Glob", "Grep"] as const
 
+/** The tool the SDK's outputFormat adds, which an organ gives its answer with. */
+export const answerTool = "StructuredOutput"
+
 /** The most the scout may spend, in US dollars. */
 export const scoutBudget = 2.0
 
@@ -177,6 +181,9 @@ export const outside = (
       const from = isAbsolute(base) || base.startsWith("~") ? base : join(path ?? ".", base)
       return check(path, "path") ?? check(from, "pattern")
     }
+    // The tool outputFormat adds, which the scout answers with: it reads nothing.
+    case answerTool:
+      return undefined
     default:
       return `${tool} isn't one of the scout's tools`
   }
