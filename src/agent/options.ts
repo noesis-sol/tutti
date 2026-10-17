@@ -14,13 +14,12 @@
 // outlive a kill -9 of tutti (docs/spikes/02-sdk-lifecycle.md § 4). That kill closes the reaper's
 // pipe too, and the reaper ends Claude Code's whole group: SIGTERM, then SIGKILL after a grace.
 // A worker that ends normally takes its reaper with it.
-import { type ChildProcess, spawn } from "node:child_process"
+import { type ChildProcess, type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { StringDecoder } from "node:string_decoder"
 import type {
   CanUseTool,
   OnElicitation,
   Options,
-  SpawnedProcess,
   SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
@@ -97,13 +96,14 @@ export const reap = (child: ChildProcess, grace: number = reapGrace): ChildProce
 }
 
 /**
- * The SDK's spawn for a worker: Claude Code detached into a process group of its own, with a
- * reaper (reap), its stderr decoded and passed to `stderr`. `signal`, the SDK's forwarded one,
- * fires only after its graceful close, so passing it to spawn is safe.
+ * The SDK's spawn for a worker or the login probe: Claude Code detached into a process group of
+ * its own, with a reaper (reap), its stderr decoded and passed to `stderr`. `signal`, the SDK's
+ * forwarded one, fires only after its graceful close, so passing it to spawn is safe. It returns
+ * the ChildProcess, whose `close` says its stderr has all been read.
  */
 export const spawnInOwnProcessGroup =
   (stderr: (data: string) => void) =>
-  (options: SpawnOptions): SpawnedProcess => {
+  (options: SpawnOptions): ChildProcessWithoutNullStreams => {
     const child = spawn(options.command, options.args, {
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       env: options.env,

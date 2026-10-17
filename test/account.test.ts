@@ -190,6 +190,7 @@ describe("readInitialization", () => {
           message: 'Invalid value. Expected one of: "acceptEdits", "auto"',
         },
       ],
+      untrustedFiles: [],
     })
   })
 
@@ -221,6 +222,7 @@ describe("readInitialization", () => {
       },
       permissionMode: null,
       settingsErrors: [{ file: null, path: "", message: "m" }],
+      untrustedFiles: [],
     })
   })
 

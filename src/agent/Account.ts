@@ -6,18 +6,22 @@
 //
 // From these and the run's billing choice it says how workers are billed: a subscription login,
 // with the key removed from their environment, or the key. No login, and settings files Claude Code
-// skipped (and with them your deny rules), are setup problems. When there are both, the probe
-// fails with both, side by side in its cause, so a startup check can report every problem at once.
+// skipped (and with them your deny rules), are setup problems, and so is an untrusted main
+// checkout, whose project allow rules Claude Code ignores. The probe fails with every one it finds,
+// side by side in its cause, so a startup check can report every problem at once.
 //
 // Claude Code 2.1.301 doesn't put the skipped settings files in its initialization result, as the
 // SDK's docs suggest: the session's settings (getSettings(), not in the SDK's types) list them. The
-// probe reads both.
+// probe reads both. Only its stderr says the main checkout isn't trusted, so the probe reads every
+// line of it until the session's process has exited.
+import type { ChildProcess } from "node:child_process"
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Context, Duration, Effect, Layer, Schema } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
 import type { efforts, permissionModes } from "../project/settings.ts"
 import { apiKeySet, apiKeyVariable, probeEnv } from "./env.ts"
+import { spawnInOwnProcessGroup } from "./options.ts"
 
 /** Not logged in to Claude, and no API key to use instead. */
 export class NotLoggedIn extends Schema.TaggedError<NotLoggedIn>()("NotLoggedIn", {}) {
@@ -60,6 +64,25 @@ export class SettingsUnreadable extends Schema.TaggedError<SettingsUnreadable>()
   }
 }
 
+/**
+ * The main checkout hasn't been trusted in Claude Code, which then ignores the permissions.allow
+ * rules in its project settings: workers would ask, or leave to auto mode, what the project allows.
+ */
+export class UntrustedCheckout extends Schema.TaggedError<UntrustedCheckout>()(
+  "UntrustedCheckout",
+  {
+    /** The main checkout. */
+    checkout: Schema.String,
+    /** The settings files whose allow rules are ignored, as Claude Code names them; null where it doesn't. */
+    files: Schema.Array(Schema.NullOr(Schema.String)),
+  },
+) {
+  override get message(): string {
+    const files = this.files.map((file) => file ?? "the project's settings").join(", ")
+    return `Claude Code ignores the permissions.allow rules in ${files}: ${this.checkout} isn't trusted. Run claude once in ${this.checkout} and accept the trust dialog, or run tutti init to mark it trusted.`
+  }
+}
+
 /** The probe session didn't start, or didn't say what it is, in time. */
 export class AccountProbeFailed extends Schema.TaggedError<AccountProbeFailed>()(
   "AccountProbeFailed",
@@ -70,7 +93,7 @@ export class AccountProbeFailed extends Schema.TaggedError<AccountProbeFailed>()
   }
 }
 
-export type AccountError = NotLoggedIn | SettingsUnreadable | AccountProbeFailed
+export type AccountError = NotLoggedIn | SettingsUnreadable | UntrustedCheckout | AccountProbeFailed
 
 /** The account a session is logged in to, as Claude Code reports it; null where it says nothing. */
 export interface AccountInfo {
@@ -91,6 +114,8 @@ export interface Initialization {
   readonly permissionMode: string | null
   /** The settings files it skipped, each once. */
   readonly settingsErrors: ReadonlyArray<SettingsFileError>
+  /** The settings files whose allow rules it ignores in an untrusted workspace, each once. */
+  readonly untrustedFiles: ReadonlyArray<string | null>
 }
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -116,10 +141,33 @@ const settingsErrorsIn = (value: unknown): Array<SettingsFileError> =>
     : []
 
 /**
- * Reads a session's initialization result and its settings (`getSettings()`'s answer), each as
- * Claude Code sent it. A field it leaves out, or sends with another type, reads as nothing.
+ * Whether a line of Claude Code's stderr says it ignores permissions.allow rules because the
+ * workspace hasn't been trusted: `permissions.allow` and `not been trusted` in it, whatever the
+ * count, file or punctuation (§ 4.13).
  */
-export const readInitialization = (init: unknown, settings: unknown): Initialization => {
+export const ignoresAllowRules = (line: string): boolean =>
+  line.includes("permissions.allow") && line.includes("not been trusted")
+
+/** The settings file such a line names (`… entry from <file>: …`), or null when it names none. */
+export const ignoredAllowFile = (line: string): string | null => {
+  const named = /\bfrom (.+?):\s/.exec(line.slice(line.indexOf("permissions.allow")))
+  return text(named?.[1]?.trim())
+}
+
+/** The files whose allow rules Claude Code's stderr, `stderr`, says it ignores, each once. */
+export const untrustedFilesIn = (stderr: string): Array<string | null> => [
+  ...new Set(stderr.split(/\r?\n/).filter(ignoresAllowRules).map(ignoredAllowFile)),
+]
+
+/**
+ * Reads a session's initialization result, its settings (`getSettings()`'s answer) and its stderr,
+ * each as Claude Code sent it. A field it leaves out, or sends with another type, reads as nothing.
+ */
+export const readInitialization = (
+  init: unknown,
+  settings: unknown,
+  stderr = "",
+): Initialization => {
   const result = record(init)
   const account = record(result.account)
   const seen = new Set<string>()
@@ -142,6 +190,7 @@ export const readInitialization = (init: unknown, settings: unknown): Initializa
     },
     permissionMode: text(result.current_permission_mode),
     settingsErrors,
+    untrustedFiles: untrustedFilesIn(stderr),
   }
 }
 
@@ -195,6 +244,8 @@ export interface Assessing {
   readonly keySet: boolean
   readonly billing: (typeof billings)[number]
   readonly requestedMode: (typeof permissionModes)[number]
+  /** The main checkout, the probe session's folder. */
+  readonly checkout: string
 }
 
 /** The login a probe run without the key found. */
@@ -213,12 +264,13 @@ const loginOf = (account: AccountInfo): Billing | null => {
 
 /**
  * The probe's findings from what a session run without the key said: its account, how workers are
- * billed, and the permission mode in effect; or no login, skipped settings files, or both.
+ * billed, and the permission mode in effect; or every setup problem it found: no login, skipped
+ * settings files, an untrusted main checkout.
  */
 export const assess = (
   init: Initialization,
   against: Assessing,
-): Effect.Effect<AccountProbe, NotLoggedIn | SettingsUnreadable> => {
+): Effect.Effect<AccountProbe, NotLoggedIn | SettingsUnreadable | UntrustedCheckout> => {
   const login = loginOf(init.account)
   const billing: Billing | null =
     login?._tag === "Subscription"
@@ -228,10 +280,13 @@ export const assess = (
       : against.keySet
         ? { _tag: "ApiKey" }
         : login
-  const failures: Array<NotLoggedIn | SettingsUnreadable> = []
+  const failures: Array<NotLoggedIn | SettingsUnreadable | UntrustedCheckout> = []
   if (billing === null) failures.push(new NotLoggedIn())
   if (init.settingsErrors.length > 0) {
     failures.push(new SettingsUnreadable({ errors: init.settingsErrors }))
+  }
+  if (init.untrustedFiles.length > 0) {
+    failures.push(new UntrustedCheckout({ checkout: against.checkout, files: init.untrustedFiles }))
   }
   if (failures.length > 0 || billing === null) {
     return Effect.failCause(Cause.fromReasons(failures.map(Cause.makeFailReason)))
@@ -272,60 +327,103 @@ async function* nothing(signal: AbortSignal): AsyncGenerator<never> {
   await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }))
 }
 
-/** The live probe: one Agent SDK session, closed once it has answered. */
+/** How long the probe's Claude Code has to exit once closed, before tutti kills its process group. */
+export const probeCloseLimit = Duration.seconds(10)
+
+/** The probe's Claude Code, once the SDK has spawned it, and when its stderr has closed. */
+interface Spawned {
+  child: ChildProcess | undefined
+  closed: Promise<void> | undefined
+}
+
+/** Kills `child`'s process group (it leads one); never a missing or bad PID. */
+const killGroup = (child: ChildProcess) =>
+  Effect.sync(() => {
+    const pid = child.pid
+    if (pid === undefined || !Number.isInteger(pid) || pid <= 1) return
+    try {
+      process.kill(-pid, "SIGKILL")
+    } catch {
+      // Already gone.
+    }
+  })
+
+/**
+ * The live probe: one Agent SDK session, closed once it has answered, its stderr read until its
+ * process has exited, since the stderr and the answers arrive on different pipes.
+ */
 export const startProbe: StartProbe = (options) =>
-  Effect.acquireUseRelease(
-    Effect.sync(() => {
-      const abortController = new AbortController()
-      const session = query({
-        prompt: nothing(abortController.signal),
-        options: {
-          cwd: options.repo,
-          projectConfigRoot: options.repo,
-          settingSources: ["user", "project", "local"],
-          permissionMode: options.permissionMode,
-          ...(options.model === null ? {} : { model: options.model }),
-          ...(options.effort === null ? {} : { effort: options.effort }),
-          mcpServers: {},
-          strictMcpConfig: true,
-          persistSession: false,
-          env: options.env,
-          ...(options.claude === null ? {} : { pathToClaudeCodeExecutable: options.claude }),
-          abortController,
-        },
-      })
-      return { session, abortController }
-    }),
-    ({ session }) =>
-      Effect.tryPromise({
-        try: async () => {
-          const init = await session.initializationResult()
-          // Not in the SDK's types: the session's settings, with the files it skipped.
-          const getSettings = (session as { getSettings?: () => Promise<unknown> }).getSettings
-          const settings = getSettings === undefined ? undefined : await getSettings.call(session)
-          return readInitialization(init, settings)
-        },
-        catch: (cause) =>
-          new AccountProbeFailed({
-            reason: cause instanceof Error ? cause.message : String(cause),
-          }),
-      }).pipe(
-        Effect.timeoutOrElse({
-          duration: probeTimeout,
-          orElse: () =>
-            Effect.fail(
-              new AccountProbeFailed({
-                reason: `no answer within ${Duration.format(probeTimeout)}`,
-              }),
-            ),
-        }),
-      ),
-    ({ session, abortController }) =>
+  Effect.gen(function* () {
+    const stderr: Array<string> = []
+    const answers = yield* Effect.acquireUseRelease(
       Effect.sync(() => {
-        session.close()
-        abortController.abort()
+        const abortController = new AbortController()
+        const spawned: Spawned = { child: undefined, closed: undefined }
+        const spawn = spawnInOwnProcessGroup((data) => stderr.push(data))
+        const session = query({
+          prompt: nothing(abortController.signal),
+          options: {
+            cwd: options.repo,
+            projectConfigRoot: options.repo,
+            settingSources: ["user", "project", "local"],
+            permissionMode: options.permissionMode,
+            ...(options.model === null ? {} : { model: options.model }),
+            ...(options.effort === null ? {} : { effort: options.effort }),
+            mcpServers: {},
+            strictMcpConfig: true,
+            persistSession: false,
+            env: options.env,
+            ...(options.claude === null ? {} : { pathToClaudeCodeExecutable: options.claude }),
+            spawnClaudeCodeProcess: (spawnOptions) => {
+              const child = spawn(spawnOptions)
+              spawned.child = child
+              // "close" comes once the process has exited and its stdio has closed.
+              spawned.closed = new Promise((resolve) => child.once("close", () => resolve()))
+              return child
+            },
+            abortController,
+          },
+        })
+        return { session, abortController, spawned }
       }),
-  )
+      ({ session }) =>
+        Effect.tryPromise({
+          try: async () => {
+            const init = await session.initializationResult()
+            // Not in the SDK's types: the session's settings, with the files it skipped.
+            const getSettings = (session as { getSettings?: () => Promise<unknown> }).getSettings
+            const settings = getSettings === undefined ? undefined : await getSettings.call(session)
+            return { init, settings }
+          },
+          catch: (cause) =>
+            new AccountProbeFailed({
+              reason: cause instanceof Error ? cause.message : String(cause),
+            }),
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: probeTimeout,
+            orElse: () =>
+              Effect.fail(
+                new AccountProbeFailed({
+                  reason: `no answer within ${Duration.format(probeTimeout)}`,
+                }),
+              ),
+          }),
+        ),
+      ({ session, abortController, spawned }) =>
+        Effect.gen(function* () {
+          session.close()
+          const { child, closed } = spawned
+          if (child !== undefined && closed !== undefined) {
+            yield* Effect.promise(() => closed).pipe(
+              Effect.timeoutOrElse({ duration: probeCloseLimit, orElse: () => killGroup(child) }),
+            )
+          }
+          abortController.abort()
+        }),
+    )
+    return readInitialization(answers.init, answers.settings, stderr.join(""))
+  })
 
 export class Account extends Context.Service<
   Account,
@@ -360,6 +458,7 @@ export class Account extends Context.Service<
             keySet: apiKeySet(env),
             billing: config.billing,
             requestedMode: workers.permission_mode,
+            checkout: config.repo,
           })
         })
         return Account.of({ probe })
