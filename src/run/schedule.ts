@@ -66,6 +66,7 @@ import {
 } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
+import { beadsWhy } from "./merge.ts"
 import { Cause, type Hold, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import { ready, unmergedLabel } from "./scope.ts"
@@ -443,9 +444,7 @@ export const make = (
             if (shown.has(id)) return shown.get(id) ?? null
             const read = yield* beads.show(id).pipe(Effect.result)
             if (Result.isFailure(read)) {
-              yield* logs.write(
-                detail`could not read ${id}'s links: ${read.failure.message || read.failure._tag}`,
-              )
+              yield* logs.write(detail`could not read ${id}'s links: ${beadsWhy(read.failure)}`)
             }
             const issue = Result.isSuccess(read) ? read.success : null
             shown.set(id, issue)
@@ -597,7 +596,7 @@ export const make = (
             ? Effect.fail(error)
             : Effect.gen(function* () {
                 yield* logs.write(
-                  line`could not read the queue (try ${tries} of ${readTries}), reading it again: ${error.message || error._tag}`,
+                  line`could not read the queue (try ${tries} of ${readTries}), reading it again: ${beadsWhy(error)}`,
                 )
                 yield* Effect.sleep(readAgainAfter)
                 return yield* fillTries(tries + 1)

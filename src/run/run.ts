@@ -135,8 +135,10 @@ const causeStop = (ticket: string, cause: Causes.Cause<WorkError>): StopReason |
 }
 
 /** The time a run took, to the second: `2m5s`, `45s`, `1h12m`. */
-export const runTime = (millis: number): string =>
-  formatDuration(Duration.seconds(Math.floor(Math.max(0, millis) / 1000)))
+export const runTime = (millis: number): string => {
+  const seconds = Math.floor(Math.max(0, millis) / 1000)
+  return seconds === 0 ? "0s" : formatDuration(Duration.seconds(seconds))
+}
 
 /** The run's summary as plain lines (§ 7.1): its title, its totals and every ticket's row. */
 export const summaryLines = (s: {

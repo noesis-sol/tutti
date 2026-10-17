@@ -21,7 +21,7 @@ import {
 } from "../src/run/holds.ts"
 import { type Line, line } from "../src/run/log.ts"
 import { errorStop, type Outcome, panicStop, run, runTime } from "../src/run/run.ts"
-import { BeadsFailed } from "../src/services/Beads.ts"
+import { Beads, BeadsFailed } from "../src/services/Beads.ts"
 import { Git, GitFailed } from "../src/services/Git.ts"
 import { StoreWriteFailed } from "../src/services/Store.ts"
 import {
@@ -145,7 +145,7 @@ describe("a plain run", () => {
     expectLog(ran, [
       "START tutti 0.1.0-test",
       "[1/40] t-1 dispatching: One ticket",
-      /^ {2}t-1 merged into main/,
+      /^ {2}t-1 closed \(.*\); merged into main/,
       /^tutti 0\.1\.0-test on main · \d/,
       "  Completed 1 · Set aside 0 · Needs you 0",
       /^ {2}✓ t-1 done: /,
@@ -254,7 +254,7 @@ describe("attention in plain mode", () => {
     expectLog(ran, [
       "  PERMISSION: t-1's worker asks: Bash(rm -rf build) (held by the safety check); answer with: tutti answer r1 allow --confirm | deny",
       "  PERMISSION: t-1's worker: Bash(rm -rf build) allowed, via tutti answer",
-      /^ {2}t-1 merged into main/,
+      /^ {2}t-1 closed \(.*\); merged into main/,
       "READY_EMPTY after 1 tickets",
     ])
     expect(recordsOf(ran, "attention_answered")).toEqual([
@@ -293,7 +293,7 @@ describe("the drain", () => {
     expectPhases(ran, { "t-1": "Done", "t-2": "Queued" })
     expectLog(ran, [
       "DRAIN: stopping after t-1 finishes: no new tickets will start, asked by SIGUSR1",
-      /^ {2}t-1 merged into main/,
+      /^ {2}t-1 closed \(.*\); merged into main/,
       "DRAINED after 1 tickets",
     ])
     expectEvents(ran, ["drain", "done", "end"])
@@ -302,7 +302,7 @@ describe("the drain", () => {
 
   test("the DRAIN line's words, as orchestra's", () => {
     expect(drainWords([])).toEqual(["stopping now, as nothing is running", "", ""])
-    expect(drainLine(["b", "a"], "from the dashboard")).toBe(
+    expect(String(drainLine(["b", "a"], "from the dashboard"))).toBe(
       "DRAIN: stopping after the 2 running tickets finish (a, b): no new tickets will start, asked from the dashboard",
     )
   })
@@ -327,11 +327,18 @@ describe("stops and exit codes", () => {
       INTERRUPTED: 130,
     })
     const stop = (error: Parameters<typeof errorStop>[1]) => errorStop("t-1", error)
-    expect(stop(new AgentGone({ why: "exit 1" }) as never)).toEqual(
+    expect(stop(new AgentGone({ ticket: "t-1", why: "exit 1" }))).toEqual(
       expect.objectContaining({ why: "AGENT_FAILED", code: 4, ticket: "t-1" }),
     )
     expect(
-      stop(new GitFailed({ op: "worktree add", exitCode: 128, stderr: "fatal: no\n" }) as never),
+      stop(
+        new GitFailed({
+          op: "worktree add",
+          command: "git worktree add",
+          exitCode: 128,
+          stderr: "fatal: no\n",
+        }),
+      ),
     ).toEqual(expect.objectContaining({ why: "GIT_FAILED", code: 4 }))
     expect(
       stop(new BeadsFailed({ command: "bd show", exitCode: 1, stderr: "x", noSuchIssue: false })),
@@ -354,7 +361,7 @@ describe("stops and exit codes", () => {
     const both = addStop(addStop(noStops, paused), dirty)
     expect(exitCodeOf(noStops)).toBe(0)
     expect(exitCodeOf(both)).toBe(3)
-    expect(stopsLine(both)).toBe(
+    expect(String(stopsLine(both))).toBe(
       "PAUSED: t-1 still in_progress; also DIRTY_TREE: uncommitted changes in /repo",
     )
   })
@@ -445,7 +452,6 @@ describe("stops and exit codes", () => {
       setup: { backlog: backlog().ticket("t-1").seeds, scripts: () => ({}) },
       around: (running) =>
         Effect.gen(function* () {
-          const { Beads } = yield* Effect.promise(() => import("../src/services/Beads.ts"))
           const beads = yield* Beads
           return yield* running.pipe(
             Effect.provideService(Beads, {
@@ -480,6 +486,7 @@ describe("stops and exit codes", () => {
   })
 
   test("the run's time, to the second", () => {
+    expect(runTime(0)).toBe("0s")
     expect(runTime(45_900)).toBe("45s")
     expect(runTime(125_000)).toBe("2m5s")
     expect(runTime(3_600_000 + 12 * 60_000)).toBe("1h12m")
