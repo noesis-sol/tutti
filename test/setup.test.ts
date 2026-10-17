@@ -263,7 +263,7 @@ describe("a setup that fails", () => {
     const output = join(worktree, ".tutti/run/setup.log")
     expectLog(ran, [
       `  a: bun.lock changed in the rebase; running '${setupCommand}' before the check`,
-      `  CHECKS_FAILED: a closed, but the setup '${setupCommand}', run before the check, fails on tutti/a rebased onto main; worktree ${worktree} left for review (output is in ${output}); checked once more if main moves on in this run`,
+      `  CHECKS_FAILED: a closed, but the setup '${setupCommand}', run before the check, fails on tutti/a rebased onto main; not handed back to its worker: its worker has no session to resume; worktree ${worktree} left for review (output is in ${output}); checked once more if main moves on in this run`,
       "    error: could not resolve left-pad",
     ])
     expect(ran.events.find((record) => record.kind === "warn")).toMatchObject({

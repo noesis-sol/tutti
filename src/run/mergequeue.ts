@@ -19,6 +19,10 @@
 // Resolving (handback.ts), and its merge is over for the queue, which goes on with the tickets behind
 // it. The hand-back runs in a fiber of its own, kept in the queue's state while it is under way; a
 // resolution verified puts the ticket back in line behind the others, ToMerge.
+//
+// So does a check that fails on the rebased branch in a way its worker can take, Merging → Fixing
+// (checkback.ts), as does one that fails on a resolution, Resolving → Fixing: a fix verified and
+// checked puts the ticket back in line, ToMerge.
 import {
   Effect,
   FiberSet,
@@ -29,6 +33,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from "./checkback.ts"
 import { RunFibers } from "./fibers.ts"
 import { type HandBacks, handOver, makeHandBacks, type RebaseStop, resolve } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
@@ -50,7 +55,10 @@ export interface QueueState {
   readonly waiting: ReadonlyArray<string>
   /** The ticket whose merge is under way. */
   readonly merging: string | null
-  /** The tickets whose conflicts are handed back to their workers, Resolving. */
+  /**
+   * The tickets whose conflicts or failed checks are handed back to their workers, Resolving or
+   * Fixing.
+   */
   readonly resolving: ReadonlyArray<string>
   /** What stopped the merges, if anything has. */
   readonly stop: MergeStop | null
@@ -105,6 +113,8 @@ export const make = (
     const rechecks = yield* makeRechecks
     const setUps = yield* makeSetUps
     const handBacks = yield* makeHandBacks
+    const fixes = yield* makeFixes
+    const memory = { rechecks, setUps, handBacks, fixes }
     // Changes to the line and the places it gives, one at a time.
     const lock = yield* Semaphore.make(1)
     const state = SubscriptionRef.get(ref)
@@ -181,12 +191,16 @@ export const make = (
         stop: state.stop ?? stop ?? null,
       }))
 
-    // Its conflicts handed back to its worker: Resolving, in a fiber of its own, its merge over for
-    // the queue. A resolution verified puts it back in line; the run's end stops one under way.
-    const handBack = (stop: RebaseStop) =>
+    // A hand-back to the ticket's worker, `handed` when the ledger took it: `work` in a fiber of
+    // its own, the ticket's merge over for the queue. Verified puts it back in line; the run's end
+    // stops one under way.
+    const underWay = (
+      id: string,
+      handed: boolean,
+      work: Effect.Effect<boolean, never, MergeEnv>,
+      ticket: FinishedTicket,
+    ) =>
       Effect.gen(function* () {
-        const { id } = stop.ticket
-        const handed = yield* handOver(stop, options, handBacks)
         yield* SubscriptionRef.update(ref, (state) => ({
           ...state,
           merging: null,
@@ -201,10 +215,41 @@ export const make = (
           handBacksSet,
           Effect.interruptible(
             Effect.gen(function* () {
-              if ((yield* resolve(stop, options)) === "verified") yield* offer(stop.ticket)
+              if (yield* work) yield* offer(ticket)
             }),
           ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
         )
+      })
+
+    // Its conflicts handed back to its worker, Resolving; a resolution whose check fails goes on to
+    // Fixing, or is blocked (checkback.ts).
+    const handBack = (stop: RebaseStop) =>
+      Effect.gen(function* () {
+        const handed = yield* handOver(stop, options, handBacks)
+        const work = Effect.gen(function* () {
+          const resolved = yield* resolve(stop, options)
+          if (resolved._tag === "CheckFailed") {
+            const fixed = yield* fixResolution(
+              stop,
+              resolved.error,
+              resolved.output,
+              options,
+              memory,
+            )
+            return fixed === "verified"
+          }
+          return resolved._tag === "Verified"
+        })
+        yield* underWay(stop.ticket.id, handed, work, stop.ticket)
+      })
+
+    // Its failed check handed back to its worker, Fixing. The ledger refusing (PHASE_BUG) leaves it
+    // as it is.
+    const fixBack = (stop: CheckStop) =>
+      Effect.gen(function* () {
+        const handed = yield* handOverFix(stop, options, fixes)
+        const work = Effect.map(fixCheck(stop, options, memory), (fixed) => fixed === "verified")
+        yield* underWay(stop.ticket.id, handed, work, stop.ticket)
       })
 
     // Its turn and its merge, under one mask: a quit as its turn starts finds it Merging, and puts
@@ -213,10 +258,11 @@ export const make = (
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           if (!(yield* turn(ticket))) return
-          const prepared = yield* restore(
-            prepare(ticket, options, { rechecks, setUps, handBacks }),
-          ).pipe(Effect.onInterrupt(() => backInLine(ticket)))
+          const prepared = yield* restore(prepare(ticket, options, memory)).pipe(
+            Effect.onInterrupt(() => backInLine(ticket)),
+          )
           if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
+          if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
           const stop =
             prepared._tag === "Over"
               ? prepared.stop

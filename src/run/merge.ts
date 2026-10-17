@@ -15,9 +15,9 @@
 //
 // A rebase that stops on conflicts is handed back to the ticket's worker when it can take it
 // (handback.ts): prepare is then over with the rebase left in progress, for the merge queue to hand
-// it over; one that can't be handed back is Blocked. Check hand-backs (Fixing) come later: for now
-// a failing check is set aside for review, kept to be checked once more once the base moves on
-// (recheck.ts).
+// it over; one that can't be handed back is Blocked. So is a check, or the setup before it, that
+// fails on the rebased branch (checkback.ts): one that can't be handed back is set aside for review,
+// kept to be checked once more once the base moves on (recheck.ts).
 import { Effect, Result } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -29,6 +29,7 @@ import type { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
 import { failedHow, runMergeCheck, saidOf } from "./check.ts"
+import { type CheckStop, type Fixes, whyNotFix } from "./checkback.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { type HandBacks, notHandedBack, type RebaseStop, whyNotHandBack } from "./handback.ts"
@@ -71,13 +72,15 @@ export interface MergeStop {
 }
 
 /**
- * What prepare leaves: the merge over (set aside, blocked or stopped), ready to fast-forward, or its
- * rebase stopped on conflicts its worker can take, to be handed back.
+ * What prepare leaves: the merge over (set aside, blocked or stopped), ready to fast-forward, its
+ * rebase stopped on conflicts its worker can take, or its check failed in a way its worker can take,
+ * to be handed back.
  */
 export type Prepared =
   | { readonly _tag: "Over"; readonly stop?: MergeStop }
   | { readonly _tag: "Ready"; readonly onto: string }
   | { readonly _tag: "HandBack"; readonly stop: RebaseStop }
+  | { readonly _tag: "FixBack"; readonly stop: CheckStop }
 
 /**
  * How many passes may find the base moved and rebase onto it. Only merges move it during a run,
@@ -201,13 +204,16 @@ export interface MergeMemory {
   readonly rechecks: Rechecks
   readonly setUps: SetUps
   readonly handBacks: HandBacks
+  /** The check hand-backs. */
+  readonly fixes: Fixes
 }
 
 /**
  * Rebases the ticket, its branch off the base at `fork`, onto the base, which moved on to `onto`,
  * sets it up if need be and checks it: true when it is on top of the base, checked; false when any
- * of them set it aside; the rebase stopped, when its conflicts are to be handed back to its worker.
- * An interrupted rebase is aborted here too, whichever Git it ran on.
+ * of them set it aside; the rebase stopped, when its conflicts are to be handed back to its worker;
+ * the check stopped, when its failure is. An interrupted rebase is aborted here too, whichever Git
+ * it ran on.
  */
 const rebaseAndCheck = (
   ticket: FinishedTicket,
@@ -267,11 +273,26 @@ const rebaseAndCheck = (
       return false
     }
     yield* log.write(detail`rebased ${branch} onto ${base}, which moved on while it ran`)
+    const failed = (error: CheckError, output: string) =>
+      Effect.gen(function* () {
+        const at = yield* Effect.result(git.revParse(repo, branch))
+        const stop: CheckStop = {
+          ticket,
+          onto,
+          fork,
+          head: Result.isSuccess(before) ? before.success.head : "",
+          at: Result.isSuccess(at) ? at.success : "",
+          error,
+          output,
+        }
+        const not = yield* whyNotFix(stop, yield* memory.fixes.count(id))
+        if (not === undefined) return stop
+        const tried = not === "" ? "" : line`; not handed back to its worker: ${not}`
+        yield* checksFailed(ticket, options, memory.rechecks, onto, error, output, tried)
+        return false
+      })
     const setup = yield* setUp(ticket, options, memory.setUps, fork, onto)
-    if (setup._tag === "Failed") {
-      yield* checksFailed(ticket, options, memory.rechecks, onto, setup.error, setup.output)
-      return false
-    }
+    if (setup._tag === "Failed") return yield* failed(setup.error, setup.output)
     yield* ledger.refine(id, Detail.Step({ step: "check" }))
     const checked = yield* runMergeCheck(ticket)
     switch (checked._tag) {
@@ -283,8 +304,7 @@ const rebaseAndCheck = (
       case "Passed":
         return true
       case "Failed":
-        yield* checksFailed(ticket, options, memory.rechecks, onto, checked.error, checked.output)
-        return false
+        return yield* failed(checked.error, checked.output)
     }
   })
 
@@ -297,16 +317,17 @@ export const checksFailedDetail = (error: CheckError): string => {
 /**
  * Sets the ticket aside as its check, or the setup before it, failed on its branch rebased onto the
  * base at `onto`, kept to be checked once more once the base moves on, unless this was that once
- * (recheck.ts).
+ * (recheck.ts). `tried` says what came of handing it back to its worker, if anything.
  */
-const checksFailed = (
+export const checksFailed = (
   ticket: FinishedTicket,
   options: MergeOptions,
   rechecks: Rechecks,
   onto: string,
   error: CheckError,
   output: string,
-) =>
+  tried = "",
+): Effect.Effect<void, never, MergeEnv> =>
   Effect.gen(function* () {
     const { log } = yield* services
     const where = error._tag === "CheckNotRun" ? "" : line` (output is in ${output})`
@@ -318,7 +339,7 @@ const checksFailed = (
       `${checksFailedDetail(error)}${again}`,
       ticketLine(
         Tag.checksFailed,
-      )`${ticket.id} closed, but ${failedHow(error)}${again} on ${ticket.branch} rebased onto ${options.base}; worktree ${ticket.worktree} left for review${where}${later}`,
+      )`${ticket.id} closed, but ${failedHow(error)}${again} on ${ticket.branch} rebased onto ${options.base}${tried}; worktree ${ticket.worktree} left for review${where}${later}`,
     )
     const said = saidOf(error)
     if (said.length > 0) yield* log.write(...said.map((each) => detail`  ${each}`))
@@ -388,7 +409,9 @@ export const prepare = (
       }
       const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto)
       if (rebased === false) return { _tag: "Over" } satisfies Prepared
-      if (rebased !== true) return { _tag: "HandBack", stop: rebased } satisfies Prepared
+      if (rebased === true) continue
+      if ("files" in rebased) return { _tag: "HandBack", stop: rebased } satisfies Prepared
+      return { _tag: "FixBack", stop: rebased } satisfies Prepared
     }
   })
 

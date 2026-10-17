@@ -87,7 +87,8 @@ export type SetUp =
 /**
  * Runs the setup command in the ticket's worktree, its branch just rebased onto the base at `onto`
  * from `fork`, when the base's commits since its dependencies were last set up change a file
- * checks.setup.files names, or git can't say whether they do; Merging{setup} while it runs.
+ * checks.setup.files names, or git can't say whether they do; Merging{setup} while it runs, unless
+ * `merging` is false (a fix checked again in Fixing).
  */
 export const setUp = (
   ticket: FinishedTicket,
@@ -95,6 +96,7 @@ export const setUp = (
   setUps: SetUps,
   fork: string,
   onto: string,
+  merging = true,
 ): Effect.Effect<SetUp, never, AppConfig | Checks | Git | Worktrees | Ledger | Log> =>
   Effect.gen(function* () {
     const { command, files } = (yield* AppConfig).settings.checks.setup
@@ -108,7 +110,7 @@ export const setUp = (
       if (hit.length === 0) return { _tag: "Unneeded" } satisfies SetUp
       what = line`${fileList(hit)} changed in the rebase`
     }
-    yield* (yield* Ledger).refine(ticket.id, Detail.Step({ step: "setup" }))
+    if (merging) yield* (yield* Ledger).refine(ticket.id, Detail.Step({ step: "setup" }))
     yield* (yield* Log).write(detail`${ticket.id}: ${what}; running '${command}' before the check`)
     const checks = yield* Checks
     const output = join(ticket.worktree, runFolder, setupLogName)

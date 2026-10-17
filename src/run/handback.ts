@@ -13,7 +13,8 @@
 // finished, the worktree clean and on its branch, the branch on top of the base it was rebased onto
 // with only the ticket's own commits, and the check passing. A resolution verified goes back in the
 // merge queue, ToMerge; one rejected, or not done in time, is Blocked (MERGE_CONFLICT), the branch
-// put back as the ticket closed it and the ticket's notes saying why.
+// put back as the ticket closed it and the ticket's notes saying why. One whose check fails goes on
+// to checkback.ts, which hands the failure back too, Fixing{afterResolution}, or blocks it.
 //
 // A conflict that can't be handed back is Blocked at once, its rebase aborted, and the MERGE_CONFLICT
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
@@ -25,6 +26,7 @@ import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
+import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { failedHow, runMergeCheck } from "./check.ts"
@@ -109,7 +111,7 @@ const inFiles = (files: ReadonlyArray<string>): Line =>
   files.length === 0 ? line`` : line` in ${files}`
 
 /** What a worker that can't take a hand-back is doing, for a line. */
-const away = (state: WorkerState): string | undefined => {
+export const away = (state: WorkerState): string | undefined => {
   switch (state._tag) {
     case "Idle":
     case "Failed":
@@ -147,9 +149,7 @@ export const whyNotHandBack = (
 ): Effect.Effect<NotHandedBack | undefined, never, AppConfig | AgentHost | Ledger | Store> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
-    const host = yield* AgentHost
     const ledger = yield* Ledger
-    const store = yield* Store
     const { id } = stop.ticket
     const not = (why: string, waits = false) => ({ why, waits }) satisfies NotHandedBack
     if (!config.settings.merge.resolve_conflicts) return not("resolving conflicts is turned off")
@@ -165,14 +165,25 @@ export const whyNotHandBack = (
     if ((yield* ledger.current).tickets.get(id)?.steered === true) {
       return not("you have steered its worker, so the hand-back waits in its view", true)
     }
+    const busy = yield* workerAway(id)
+    return busy === undefined ? undefined : not(busy)
+  })
+
+/**
+ * Why the ticket's worker can't take a hand-back, as it is now: undefined when it is Idle or
+ * Failed, or its session, closed by tutti in this run or an earlier one, can be resumed.
+ */
+export const workerAway = (
+  id: string,
+): Effect.Effect<string | undefined, never, AgentHost | Store> =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const store = yield* Store
     const state = yield* Effect.result(host.current(id))
-    if (Result.isSuccess(state)) {
-      const busy = away(state.success)
-      return busy === undefined ? undefined : not(busy)
-    }
+    if (Result.isSuccess(state)) return away(state.success)
     // No worker in this run: its session, closed by an earlier one, is resumed.
     const saved = yield* store.ticket(id)
-    return saved?.session === undefined ? not("its worker has no session to resume") : undefined
+    return saved?.session === undefined ? "its worker has no session to resume" : undefined
   })
 
 /** What the worker is asked to do with a rebase stopped on conflicts, as orchestra asks it. */
@@ -198,14 +209,21 @@ const conflictLine = (stop: RebaseStop, base: string, why: string): Line => {
   )`${id} closed, but ${branch} conflicts with ${base}${inFiles(stop.files)}, which moved on while it ran (${why}); worktree ${worktree} left for review (rebase onto ${base}, check, merge)`
 }
 
-/** Blocks the ticket on its conflicts (MERGE_CONFLICT), from Merging or Resolving, saying why. */
-const block = (stop: RebaseStop, base: string, why: string) =>
+/**
+ * Blocks the ticket on its conflicts (MERGE_CONFLICT), saying why: by Block from Merging or
+ * Resolving, by Aside from Fixing{afterResolution}.
+ */
+const block = (stop: RebaseStop, base: string, why: string, by: "Block" | "Aside" = "Block") =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const logs = yield* Log
     const { files } = stop
     const text = conflictLine(stop, base, why)
-    yield* ledger.transition(stop.ticket.id, Cause.Block({ why: Tag.mergeConflict }), {
+    const cause =
+      by === "Block"
+        ? Cause.Block({ why: Tag.mergeConflict })
+        : Cause.Aside({ why: Tag.mergeConflict })
+    yield* ledger.transition(stop.ticket.id, cause, {
       beside: [
         {
           kind: "warn",
@@ -284,16 +302,20 @@ const still = (state: WorkerState): string =>
   away(state) ?? (state._tag === "Closed" ? "its session is closed" : "its worker is idle")
 
 /**
- * Gives the worker the hand-back, resuming its session if tutti closed it, and waits until its send
- * is no longer outstanding and the worker has settled, within `limit` from the push. Why it wasn't
- * done; undefined when what it left is to be looked at.
+ * Gives the ticket's worker a hand-back, `prompt`, resuming its session if tutti closed it, and
+ * waits until its send is no longer outstanding and the worker has settled, within `limit` from the
+ * push. Why it wasn't done; undefined when what it left is to be looked at.
  */
-const give = (stop: RebaseStop, prompt: string, limit: Duration.Duration) =>
+export const give = (
+  ticket: FinishedTicket,
+  prompt: string,
+  limit: Duration.Duration,
+): Effect.Effect<string | undefined, never, AgentHost | Store> =>
   Effect.scoped(
     Effect.gen(function* () {
       const host = yield* AgentHost
       const store = yield* Store
-      const { id, worktree } = stop.ticket
+      const { id, worktree } = ticket
       const from: From = "clientComposed"
       const state = yield* Effect.result(host.current(id))
       let taken: Effect.Effect<void>
@@ -427,13 +449,49 @@ export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, M
     return line`${branch} was reset to ${short(to)}, where it was before the rebase (its worker's attempt is ${short(now)})`
   })
 
-/** How a hand-back ended: the resolution verified and checked, or the ticket blocked. */
-export type Resolved = "verified" | "blocked"
+/**
+ * How a hand-back ended: the resolution verified and checked, the ticket blocked, or the resolution
+ * verified but its check failing, for checkback.ts to hand back or block.
+ */
+export type Resolved =
+  | { readonly _tag: "Verified" }
+  | { readonly _tag: "Blocked" }
+  | { readonly _tag: "CheckFailed"; readonly error: CheckError; readonly output: string }
+
+/** Why a resolution whose check fails is rejected, for its lines and notes. */
+export const failedResolved = (stop: RebaseStop, error: CheckError, output: string): string => {
+  const where = error._tag === "CheckTimedOut" ? "" : line` (output is in ${output})`
+  return line`${failedHow(error)} on the resolved ${stop.ticket.branch}${where}`
+}
+
+/**
+ * Rejects the worker's resolution of `stop` for `why`: its branch put back as the ticket closed it,
+ * its notes saying why, and the ticket Blocked (MERGE_CONFLICT), by `by` (see block).
+ */
+export const rejectResolution = (
+  stop: RebaseStop,
+  options: MergeOptions,
+  why: string,
+  by: "Block" | "Aside" = "Block",
+): Effect.Effect<void, never, MergeEnv> =>
+  Effect.gen(function* () {
+    const beads = yield* Beads
+    const { id, branch } = stop.ticket
+    const { base } = options
+    const undone = yield* undoResolution(stop)
+    yield* Effect.ignore(
+      beads.update(id, {
+        appendNotes: `tutti: ${branch} conflicted with ${base} in ${stop.files.join(", ")}; its worker was asked to resolve the rebase, but ${why}, so ${id} was set aside for review; ${undone}.`,
+      }),
+    )
+    yield* block(stop, base, `handed back to its worker, but ${why}; ${undone}`, by)
+  })
 
 /**
  * The hand-back of `stop`'s conflicts to the ticket's worker, Resolving: the hand-back given, what
- * the worker left verified and checked. Verified: the caller puts it back in the merge queue. Else
- * it is Blocked here, its branch put back and its notes saying why.
+ * the worker left verified and checked. Verified: the caller puts it back in the merge queue; its
+ * check failing: the caller hands that back, or blocks it (checkback.ts). Else it is Blocked here,
+ * its branch put back and its notes saying why.
  */
 export const resolve = (
   stop: RebaseStop,
@@ -441,30 +499,23 @@ export const resolve = (
 ): Effect.Effect<Resolved, never, MergeEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
-    const beads = yield* Beads
     const logs = yield* Log
-    const { id, branch } = stop.ticket
+    const { id } = stop.ticket
     const { base } = options
     const check = config.settings.checks.fast.command ?? ""
     const limit = config.settings.merge.resolve_timeout
-    let why: string | undefined = yield* give(stop, resolvePrompt(stop, base, check), limit)
+    let why: string | undefined = yield* give(stop.ticket, resolvePrompt(stop, base, check), limit)
     if (why === undefined) why = yield* verifyResolved(stop, options)
     if (why === undefined) {
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
       const checked = yield* runMergeCheck(stop.ticket)
-      // A failing check is set aside with the conflict for now; tutti-nrg.7.2 hands it on to the
-      // worker as a check fix (Fixing{afterResolution}).
-      if (checked._tag !== "Failed") return "verified"
-      const where =
-        checked.error._tag === "CheckTimedOut" ? "" : line` (output is in ${checked.output})`
-      why = line`${failedHow(checked.error)} on the resolved ${branch}${where}`
+      if (checked._tag !== "Failed") return { _tag: "Verified" } satisfies Resolved
+      return {
+        _tag: "CheckFailed",
+        error: checked.error,
+        output: checked.output,
+      } satisfies Resolved
     }
-    const undone = yield* undoResolution(stop)
-    yield* Effect.ignore(
-      beads.update(id, {
-        appendNotes: `tutti: ${branch} conflicted with ${base} in ${stop.files.join(", ")}; its worker was asked to resolve the rebase, but ${why}, so ${id} was set aside for review; ${undone}.`,
-      }),
-    )
-    yield* block(stop, base, `handed back to its worker, but ${why}; ${undone}`)
-    return "blocked"
+    yield* rejectResolution(stop, options, why)
+    return { _tag: "Blocked" } satisfies Resolved
   })

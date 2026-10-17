@@ -437,7 +437,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
       expect.objectContaining({ _tag: "Review", why: "CHECKS_FAILED" }),
     )
     expectLog(ran, [
-      `  CHECKS_FAILED: a closed, but 'scripts/check-fast.sh' fails on tutti/a rebased onto main; worktree ${worktree} left for review (output is in ${join(worktree, ".tutti/run/check.log")}); checked once more if main moves on in this run`,
+      `  CHECKS_FAILED: a closed, but 'scripts/check-fast.sh' fails on tutti/a rebased onto main; not handed back to its worker: its worker has no session to resume; worktree ${worktree} left for review (output is in ${join(worktree, ".tutti/run/check.log")}); checked once more if main moves on in this run`,
       "    error: a.test.ts: expected 1",
     ])
     expect(records(ran, "warn")[0]).toMatchObject({ aside: true, detail: "checks failed" })

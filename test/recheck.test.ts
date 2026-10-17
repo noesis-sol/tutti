@@ -196,7 +196,7 @@ describe("a ticket set aside as its check failed", () => {
     )
     expectLog(ran, [
       /^ {2}RECHECK: a's check/,
-      /^ {2}CHECKS_FAILED: a closed, but 'scripts\/check-fast.sh' fails again on tutti\/a rebased onto main; worktree .* left for review \(output is in .*\)$/,
+      /^ {2}CHECKS_FAILED: a closed, but 'scripts\/check-fast.sh' fails again on tutti\/a rebased onto main; not handed back to its worker: its worker has no session to resume; worktree .* left for review \(output is in .*\)$/,
     ])
     expect(ran.log.filter((line) => line.includes("RECHECK"))).toHaveLength(1)
     // a's check, then once more; c, on top of main, merged unchecked.

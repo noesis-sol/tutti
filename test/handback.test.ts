@@ -428,7 +428,7 @@ describe("a resolution rejected", () => {
     ])
   })
 
-  test("a resolution whose check fails: Blocked, the branch reset", async () => {
+  test("a resolution whose check fails, not handed back: Blocked, the branch reset", async () => {
     const failed = new CheckFailed({
       check: "fast",
       command: check,
@@ -441,9 +441,18 @@ describe("a resolution rejected", () => {
       flaky: [],
       flakyCount: 0,
     })
-    const ran = await conflicted({ checks: { fast: [failed] } }, (world) => ({
-      a: [finishedSession(resolves(world, "a", { "a.txt": "both\n" }))],
-    }))
+    const ran = await conflicted(
+      {
+        checks: { fast: [failed] },
+        config: {
+          settings: {
+            ...withCheck.config.settings,
+            merge: { ...defaults.merge, check_hand_backs: 0 },
+          },
+        },
+      },
+      (world) => ({ a: [finishedSession(resolves(world, "a", { "a.txt": "both\n" }))] }),
+    )
     expect(resultOf(ran).phases.a).toEqual(
       expect.objectContaining({ _tag: "Blocked", why: "MERGE_CONFLICT" }),
     )
