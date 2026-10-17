@@ -6,7 +6,8 @@
 // and every process group exec started must be gone. A leak is cleaned up (its fibers interrupted,
 // its process groups killed) before the scenario fails, so it can't hold up the tests after it.
 //
-// Tty and Notifier join the environment with their test layers once those services exist.
+// Spinners and animations take their clock from Effect's Clock, which TestClock provides: a
+// scenario's frames move only as `advance` moves the clock.
 import { expect } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { type Duration, Effect, Exit, Layer, type Scope } from "effect"
@@ -25,8 +26,10 @@ import { Beads, type Issue } from "../src/services/Beads.ts"
 import type { Checks } from "../src/services/Checks.ts"
 import { ProcessGroups } from "../src/services/exec.ts"
 import type { Git, GitWriter } from "../src/services/Git.ts"
+import type { Notifier } from "../src/services/Notifier.ts"
 import type { RunLock } from "../src/services/RunLock.ts"
 import type { State, Store } from "../src/services/Store.ts"
+import type { Tty, TtyValue } from "../src/services/Tty.ts"
 import type { Worktrees } from "../src/services/Worktrees.ts"
 import { layer as accountLayer, accountProbe } from "../src/testing/Account.ts"
 import {
@@ -47,9 +50,11 @@ import {
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { type Seed as GitSeed, layer as gitLayer, Repository } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { Captured as Notices, layer as notifierLayer } from "../src/testing/Notifier.ts"
 import { type Held, layer as lockLayer } from "../src/testing/RunLock.ts"
 import { layer as storeLayer } from "../src/testing/Store.ts"
 import { type Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { layer as ttyLayer } from "../src/testing/Tty.ts"
 import {
   type WorktreeCall,
   type Options as WorktreesOptions,
@@ -77,6 +82,9 @@ export type Env =
   | Captured
   | Worktrees
   | RunLock
+  | Tty
+  | Notifier
+  | Notices
   | RunFibers
   | TestClock.TestClock
   | BunServices.BunServices
@@ -112,6 +120,8 @@ export interface Setup {
   /** Locks other processes hold. */
   readonly locks?: ReadonlyArray<Held>
   readonly worktrees?: WorktreesOptions
+  /** The terminal: `tty()`'s builder makes one; an 80×24 256-colour TTY by default. */
+  readonly tty?: TtyValue
 }
 
 /** What a run gives back: its exit code and each ticket's phase at the end. */
@@ -141,6 +151,8 @@ export interface Ran<A> {
   readonly worktreeCalls: ReadonlyArray<WorktreeCall>
   /** The backlog at the end, closed issues included. */
   readonly issues: ReadonlyArray<Issue>
+  /** The notifications shown, sanitised, in order. */
+  readonly notices: ReadonlyArray<string>
   readonly leaks: Leaks
 }
 
@@ -197,6 +209,8 @@ export const environment = (
         eventsLayer(),
         worktreesLayer(setup.worktrees, worktreeCalls),
         lockLayer(setup.locks),
+        ttyLayer(setup.tty),
+        notifierLayer,
         fibersLayer,
         BunServices.layer,
       ),
@@ -239,6 +253,7 @@ export const scenario = async <A, E>(
         checkRuns: [...checkRuns],
         worktreeCalls: [...worktreeCalls],
         issues: yield* (yield* Backlog).issues,
+        notices: yield* (yield* Notices).notices,
         leaks,
       } satisfies Ran<A>
     }).pipe(
@@ -284,6 +299,9 @@ export class BacklogBuilder {
 }
 
 export const backlog = (): BacklogBuilder => new BacklogBuilder()
+
+/** A terminal for `Setup.tty`: an 80×24 256-colour TTY, with `overrides` over it. */
+export { tty } from "../src/testing/Tty.ts"
 
 /** Moves TestClock on by `duration`, running whatever was waiting for that time. */
 export const advance = (duration: Duration.Input): Effect.Effect<void> => TestClock.adjust(duration)
