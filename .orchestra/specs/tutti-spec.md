@@ -1535,11 +1535,11 @@ The orchestra skill's `jq` recipes carry over, with `.orchestra` replaced by `.t
   - The README's recipe: import the platform package's binary as a file (`import binPath from '@anthropic-ai/claude-agent-sdk-<platform>/claude' with { type: 'file' }`), extract it with `extractFromBunfs` (from `@anthropic-ai/claude-agent-sdk/extract`), and pass it as `pathToClaudeCodeExecutable`.
   - The SDK and the binary therefore always match.
   - Each release build embeds one platform's binary.
+  - M0 measures the size.
 - **Cross-compiling.** `bun build --compile --target=bun-<target>` needs the target's `@anthropic-ai/claude-agent-sdk-<target>` (or the `claude` import doesn't resolve) and `@opentui/core-<target>` (or the binary builds but fails at render) in `node_modules`. Both declare `os` and `cpu`, so a normal install skips them. Each build therefore first runs `bun install --frozen-lockfile --os=<os> --cpu=<cpu>` for its target (docs/spikes/07-compile.md, § 4):
   - It installs the target's packages, glibc and musl for Linux, from `bun.lock` with its integrity hashes, in place of the host's, and leaves `bun.lock` unchanged.
   - Each build installs only its target's packages, since `bun build --compile` embeds every `@opentui/core-<platform>` installed. A build for the host after a cross build runs its own `bun install` first.
   - Not `npm install <package> --force --no-save`: each such install prunes the packages a previous one added, its versions must be given by hand, and npm doesn't check them against `bun.lock`.
-  - M0 measures the size.
 - **Another Claude Code.** `--claude <path>` (or `TUTTI_CLAUDE`) runs workers with another Claude Code, such as your installed one. tutti checks its version against the SDK's supported range and warns outside it.
 - **Licence check.** The SDK's package licence reads "© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements". The README documents embedding, but check those agreements before publishing release archives that contain the binary. If they don't allow it, the release downloads the platform package from npm on first run into `~/.cache/tutti/`, checking npm's integrity hash, instead of shipping it.
 - **Releases**, as orchestra's: GitHub Actions on a tag, the check first, archives `tutti_<ver>_<os>_<arch>.tar.gz` with `checksums.txt` signed by an ed25519 release key (`checksums.txt.sig`), and build provenance attested. Pre-release tags make pre-releases.
