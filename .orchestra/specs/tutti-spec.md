@@ -182,7 +182,7 @@ Each service has a live layer and a test layer. Names are illustrative. Errors a
 | `Git` | Worktrees, rebase (and `rebase --abort`), merge-base, fast-forward, log, status, diff, `ls-files`, branch | `GitFailed{op,stderr}`, `GitTimedOut`, `RebaseConflict{files}` | In-memory repository, and real git in a temp folder for the git-subject tests |
 | `GitWriter` | One writer at a time in the main repository (a `Semaphore(1)`) | none | The same |
 | `Worktrees` | A ticket's worktree and branch, its `.tutti/run/` files, `info/exclude`, the symlink guard (`RUN_FILES_OUTSIDE`) | `RunFilesOutside`, `BadTicketId` | Temp folders |
-| `AgentHost` | Starting, resuming, messaging, interrupting, closing and ending worker sessions. Exposes each worker's `WorkerState` stream (§4) | `AgentStartFailed{reason}`, `AgentGone`, `AgentProtocol` | A scripted session: emits a given SDK message sequence (including `canUseTool` calls) and records what it was sent |
+| `AgentHost` | Starting, resuming, messaging, interrupting, closing and ending worker sessions. Exposes each worker's `WorkerState` stream (§4) | `AgentStartFailed{reason, startupFailureReason?}`, `AgentGone`, `AgentProtocol` | A scripted session: emits a given SDK message sequence (including `canUseTool` calls) and records what it was sent |
 | `Account` | The login probe: account, billing, effective permission mode, settings errors (§4.13) | `NotLoggedIn`, `SettingsUnreadable` | A literal account |
 | `Attention` | Open permission requests and questions, their answers (from the screen or `tutti answer`), run-scoped allow rules, time limits (§4.5) | none | The same, plus a policy that answers automatically |
 | `UsageLimits` | Rate-limit events, the usage-limit hold, waking workers at reset (§4.12) | none | Scripted events |
@@ -260,7 +260,7 @@ const q = query({
 **`env` replaces the subprocess's environment.** The SDK's types say so: "it is not merged with `process.env`". `workerEnv()` therefore starts from `process.env` and adds:
 
 - `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`: `session_state_changed` messages (§4.2)
-- `CLAUDE_CODE_STARTUP_FAILURE_RESULTS=1`: a startup failure comes as a result with a `startup_failure_reason` (`cwd_unavailable`, `org_config_refused`, …), not just stderr
+- `CLAUDE_CODE_STARTUP_FAILURE_RESULTS=1`: a startup failure Claude Code itself detects comes as a result with a `startup_failure_reason` (`cwd_unavailable`, `org_config_refused`, …), not just stderr. A removed worktree gives none: the spawn fails before Claude Code runs (§4.8, Resume limits)
 - `CLAUDE_CODE_FORK_SUBAGENT=0`: no `fork` subagent type. A fork inherits the worker's context and always runs in the background, so workers don't get it. This variable doesn't keep the verifier in the foreground (below)
 - `CLAUDE_AGENT_SDK_CLIENT_APP=tutti/<version>`
 
@@ -307,7 +307,7 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 | `UsageLimited{resetsAt}` | the turn ended on the account's usage limit (§4.12) | `usage limit · resets 14:05` (yellow) |
 | `Idle{at}` | the turn ended: see below | `done` (green) |
 | `Closed` | tutti closed the session on purpose, keeping its ID (§4.8) | (no card) |
-| `Gone{why}` | the session's stream ended or failed without tutti closing it (the subprocess exited, a protocol error, a `startup_failure_reason`) | `gone` (red) |
+| `Gone{why}` | the session's stream ended or failed without tutti closing it (the subprocess exited or failed to spawn, a protocol error, a `startup_failure_reason`) | `gone` (red) |
 
 **When a turn has ended (`Idle`).** All of these must hold:
 
@@ -498,7 +498,11 @@ Conflict resolution and check fixes go to the ticket's worker as orchestra sends
 | set aside after a failed check that may be checked again | open until the run ends (a recheck may hand it a conflict) |
 | the worker stopped the run (`PAUSED`, `TICKET_LIMIT`), or still waits on you when the run ends | suspended as the run ends (below) |
 
-**Resume limits.** A session tutti closed on purpose may be resumed any number of times. A session that ended unexpectedly (`Gone`) is resumed once per ticket per run, as orchestra resumes a worker gone from its tab. Resuming fails when the transcript is gone or a `startup_failure_reason` is reported (`cwd_unavailable` when the worktree was removed). The ticket is then warned about (`WORKER_GONE`), noted, and dropped, as orchestra does without a session.
+**Resume limits.** A session tutti closed on purpose may be resumed any number of times. A session that ended unexpectedly (`Gone`) is resumed once per ticket per run, as orchestra resumes a worker gone from its tab. Resuming fails when the worktree is gone, the spawn fails, the transcript is gone, or Claude Code reports a `startup_failure_reason`. The ticket is then warned about (`WORKER_GONE`), noted, and dropped, as orchestra does without a session.
+
+- **A removed worktree is checked for, not reported.** Claude Code gives no `startup_failure_reason` for it, with or without `CLAUDE_CODE_STARTUP_FAILURE_RESULTS=1` (docs/spikes/02-sdk-lifecycle.md, § 3, Claude Code 2.1.301). The SDK's spawn can't enter the missing folder (`ENOENT`) and throws `Claude Code native binary at … exists but failed to launch. This usually means the binary does not match this system's libc …`. When the folder goes between the spawn and Claude Code's start, the embedded Bun prints `The current working directory was deleted …` and exits 1. Neither sends a message or a result. So `AgentHost` checks that the session's folder exists before it starts or resumes one, and fails `AgentStartFailed` (`its folder isn't there: <path>`) without spawning. This is the carry-over list's "a worktree gone: dropped" (below). A worktree re-created at the same path, even empty, resumes normally: transcripts are keyed by the path.
+- **A failed spawn is `AgentStartFailed`, not a libc mismatch.** The SDK words every spawn that fails as a libc mismatch, so tutti doesn't show its message as the reason: the reason is `Claude Code couldn't be launched`.
+- **`startup_failure_reason` is kept for the failures Claude Code itself reports** (`org_config_refused`, …). The reason is `Claude Code refused to start: <startup_failure_reason>`, and `AgentStartFailed`'s `startupFailureReason` carries the value.
 
 **Quitting.** This covers `q` in the quit box, a second Ctrl+C in the dashboard, and SIGINT, SIGTERM or SIGHUP in any mode. Steps, in order:
 
@@ -524,7 +528,7 @@ M0 tests the SDK's own support for this before tutti relies on that message. The
 - a ticket closed between runs: merged
 - a ticket deferred meanwhile: shown as deferred
 - a ticket deleted from Beads: dropped
-- a worktree gone: dropped
+- a worktree gone: dropped, found by the check before resuming (Resume limits)
 - a ticket that can't be checked: kept for the next run
 
 **The quit box's `s`** is orchestra's drain: no new tickets, the running ones finish and merge, and the run ends `DRAINED` (exit 0).
@@ -1493,7 +1497,7 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
   - `command_lifecycle` for each send, and `result`'s `user_message_uuids`
   - `canUseTool` for a call that needs asking, with `defaultToNo` on a held removal
   - `interrupt()` and its receipt
-  - `resume` with `sessionId`
+  - `resume` with `sessionId`, and of a removed worktree: the spawn fails with no message and no result
   - `strictMcpConfig` and the init's `mcp_servers`
   - the verifier in the foreground through the hook (§4.1): the Agent call's `tool_result` isn't `async_launched` and comes before the turn's one `result`
 
