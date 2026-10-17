@@ -287,6 +287,7 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 
 - `permissionMode` is always passed. Left out, Claude Code would pick the settings' `defaultMode` or `'auto'` on its own. tutti accepts `auto` (the default), `default` or `acceptEdits` from settings, and refuses `bypassPermissions` and `plan`.
 - `projectConfigRoot` makes project settings, hooks, `.mcp.json`, `.claude/agents` (the verifier) and skills come from the main checkout, not from the ticket's branch. A worker can't change its own permissions, or the next worker's, by editing `.claude/settings.json` on its branch. CLAUDE.md still comes from the worktree.
+- **Project allow rules need a trusted main checkout.** Claude Code reads the main checkout's settings through `projectConfigRoot`, but ignores their `permissions.allow` entries while that folder hasn't been trusted (its folder-trust dialog, never accepted there). Nothing in `system/init` or `initializationResult()` says so; only stderr does: `Ignoring 1 permissions.allow entry from .claude/settings.json: this workspace has not been trusted. …` (docs/spikes/01-sdk-session.md, item 6, Claude Code 2.1.301). Workers would then ask, or leave to auto mode, what your project allows. The probe catches it at startup, as a setup problem (§4.13).
 
 **Checking the first `system/init` of each session.** tutti reads it and acts on three things:
 
@@ -640,6 +641,10 @@ Every change of status is a `usage_limit` event (§10).
 - **`account`**: email, `subscriptionType`, `apiKeySource`, `apiProvider`. Without a login, the startup check fails: `Not logged in to Claude: run claude /login, or tutti login`. `tutti login` runs the embedded Claude Code's own login interactively; M0 confirms the exact command.
 - **Settings files skipped for errors** (`errors`). The SDK skips a settings file that doesn't parse, "and any rules it contained — including permission allow/deny lists — are not applied". Workers must not run without your deny rules, so this is a setup problem naming the file and the error.
 - **The permission mode in effect**, for the `START` block (§4.1).
+- **An untrusted main checkout** (§4.1), from the probe's stderr, not its initialization result. The probe passes `stderr` and reads every line the session wrote until its process has exited, since stderr and the initialization result arrive on different pipes. A line saying Claude Code ignores `permissions.allow` entries because the workspace "has not been trusted" is a setup problem: `Claude Code ignores the permissions.allow rules in <file>: <main checkout> isn't trusted. Run claude once in <main checkout> and accept the trust dialog, or run tutti init to mark it trusted.`
+  - **Claude Code's verdict, not tutti's.** tutti doesn't decide trust itself from `hasTrustDialogAccepted` in the user's `.claude.json`. That is Claude Code's internal state, and Claude Code applies its own rules to it. A checkout whose settings allow nothing prints no such line and isn't a problem. One that gains allow rules later is caught by the next startup's probe.
+  - **The wording is matched loosely**: `permissions.allow` and `not been trusted` in one line, whatever the count, file or punctuation. A contract test (§13) pins it for the embedded Claude Code, so an upgrade that rewords the line fails that test on the bump rather than letting the probe miss it.
+  - **Startup never writes `.claude.json`.** It only reports. `tutti init` offers the fix and asks first (§8.3).
 
 **The API key.** `ANTHROPIC_API_KEY` in the environment outranks the subscription login, for workers and organs alike, and would bill the API without a word.
 
@@ -1371,6 +1376,7 @@ The same two steps and flags as `orchestra init` (its `docs/setup.md`), with the
 - It writes `.tutti/` and `scripts/check-fast.sh` and `scripts/check-full.sh`. The runner format, the `SUITE:` and `FLAKY:` conventions and the `lock`/`unlock` helper are unchanged, so the runners orchestra wrote work as they are.
 - **Workers** asks the concurrency and the MCP servers, and offers `CHANGELOG.md merge=union`. It no longer asks or checks for a terminal (Herdr, tmux or cmux). It runs the login probe (§4.13), which also reports the account, billing and permission mode in its summary, and checks that `bd` is there, offering to install Beads as orchestra does. With `concurrent` above 1, it says how much memory that takes (about 1 GiB per worker).
 - **Checks** runs the scout (§6.3), then *use them as they are*, *create from scratch* (the create-check-suite skill) or *manual*. It also asks the setup command, the ticket prefix and the verifier.
+- **An untrusted main checkout.** When the probe finds one (§4.13), init explains that Claude Code ignores the project's allow rules there. It offers to mark it trusted, naming the file and the key it would set: `projects["<main checkout>"].hasTrustDialogAccepted: true` in the user's `.claude.json` (in `CLAUDE_CONFIG_DIR` when that is set), Claude Code's own suggested fix. It writes only after you say yes. It re-reads the file just before writing, changes that one key and leaves everything else, and replaces the file atomically (a temporary file in the same folder, renamed over it, with the same mode). Declined, it prints the other fix: run `claude` once in the main checkout and accept the trust dialog. After writing, it runs the probe again to confirm the line is gone.
 - Test-work tickets are labelled `tutti-tests`.
 - **Import.** In a project with `.orchestra/` and no `.tutti/`, init offers to import the worker prompt and the settings it understands (the checks, timeouts, concurrency, MCP names, `exclude_types`, footprint, `resolve_conflicts`, `check_hand_backs`, `environment_hold`, setup). It names what it can't import. An imported worker prompt keeps your changes but needs the changes in §4.11, which init lists. `.orchestra/` is left as it is.
 - The run lock is held while init changes the project, as `orchestra init` holds it.
@@ -1547,6 +1553,7 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
   - `resume` with `sessionId`, and of a removed worktree: the spawn fails with no message and no result
   - `strictMcpConfig` and the init's `mcp_servers`
   - the verifier in the foreground through the hook (§4.1): the Agent call's `tool_result` isn't `async_launched` and comes before the turn's one `result`
+  - the probe on a temp repository never trusted, whose `.claude/settings.json` allows one command: its stderr has the line §4.13 matches
 
   Run them on every SDK bump. Usage-limit behaviour can't be triggered on demand, so it is covered with recorded fixtures.
 - **Changelog.** Entries go in as new lines, with `CHANGELOG.md merge=union`.
@@ -1601,6 +1608,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | Auto mode's classifier unavailable, or refusing everything | Workers can't work | Auto mode's fallback is reported at startup (§4.1); a classifier refusing everything trips the environment hold, as orchestra's docs describe |
 | A single process: a crash or closed terminal ends work in flight | Lost turns; without a reaper, a busy worker would go on editing and committing with no tutti | Session IDs saved before each session starts; resume next run; SIGHUP quits cleanly (§4.8); each worker's and command's reaper ends its process group however tutti ends, `kill -9` included (§3.2) |
 | Subscription use through the SDK | The SDK's terms ask third-party products not to offer claude.ai login | tutti is a tool you run under your own login on your own machine; it never offers login to others. If it is distributed to others, document API-key use (`--billing api`) as the supported path |
+| Claude Code rewords the line saying an untrusted main checkout's allow rules are ignored | The probe misses it, and workers run without the project's allow rules | A contract test pins the line for the embedded Claude Code (§4.13, §13); a reworded line fails it on the bump |
 | Version skew between the SDK and Claude Code | Protocol errors | The embedded binary always matches (§12); `--claude` warns outside the supported range; contract tests on every bump |
 | Loss of the "real thing": you no longer see Claude Code's own screen | Less familiar | A worker view designed for reading and steering, with tool calls expandable and the composer; this was chosen knowingly (D3) |
 
