@@ -13,7 +13,9 @@
 //   result's stop_reason, fails with ContentPolicyError (organs see OrganRefused), even when the
 //   result says success.
 // - The session is isolated: no tools, no MCP servers, no settings, no prompts, no transcript, a
-//   fresh private temp folder removed afterwards, and a worker's environment (§ 4.13).
+//   fresh private temp folder removed afterwards, and a worker's environment (§ 4.13). An organ
+//   that reads the repository (the scout, § 6.3) names its read-only tools, the folder it reads,
+//   the hook that confines them to it and its budget, in OrganCall's `reads`.
 // - Interrupting the call aborts the SDK's abortController; the turn ends and Claude Code exits.
 // - Each result's cost goes to OrganCost as it arrives, whatever happens to the answer after:
 //   LanguageModel's own decoding errors don't carry it.
@@ -50,6 +52,20 @@ export interface OrganCallConfig {
   /** The model; Claude Code's default when absent. */
   readonly model?: string
   readonly effort?: EffortLevel
+  /** The read-only tools it reads the repository with, the scout's (§ 6.3); none when absent. */
+  readonly reads?: OrganReads
+}
+
+/** An organ's read-only tools, and how they are kept to the folder they read. */
+export interface OrganReads {
+  /** The tools, listed explicitly: `["Read", "Glob", "Grep"]`. */
+  readonly tools: ReadonlyArray<string>
+  /** The folder the session runs in, in place of a temp folder: the repository's root. */
+  readonly cwd: string
+  /** The hooks that confine the tools, PreToolUse coming first in the SDK's evaluation order. */
+  readonly hooks: NonNullable<Options["hooks"]>
+  /** The most the session may spend, in US dollars. */
+  readonly maxBudgetUsd: number
 }
 
 /** The organ making the calls in its scope: the organ framework provides it around each call. */
@@ -110,7 +126,7 @@ export interface OrganOptionsInput {
   /** The JSON Schema of a JSON response; undefined for text. */
   readonly jsonSchema: Record<string, unknown> | undefined
   readonly call: OrganCallConfig
-  /** The fresh private temp folder the session runs in. */
+  /** The folder the session runs in: a fresh private temp folder, or `call.reads`'s. */
   readonly cwd: string
   /** workerEnv()'s environment (§ 4.13). */
   readonly env: Record<string, string>
@@ -122,10 +138,16 @@ export interface OrganOptionsInput {
   readonly stderr: (data: string) => void
 }
 
-/** An organ session's SDK options (§ 6.1): isolated, in a temp folder, one turn. */
+/**
+ * An organ session's SDK options (§ 6.1): isolated, in a temp folder, one turn. An organ that reads
+ * (§ 6.3) gets its tools, its hooks and its budget.
+ */
 export const organOptions = (input: OrganOptionsInput): Options => ({
   systemPrompt: input.turn.systemPrompt,
-  tools: [],
+  tools: input.call.reads === undefined ? [] : [...input.call.reads.tools],
+  ...(input.call.reads === undefined
+    ? {}
+    : { hooks: input.call.reads.hooks, maxBudgetUsd: input.call.reads.maxBudgetUsd }),
   strictMcpConfig: true,
   settingSources: [],
   permissionPrompts: "none",
@@ -417,13 +439,15 @@ export const layer = (
         Stream.unwrap(
           Effect.gen(function* () {
             const call = yield* OrganCall
-            const cwd = yield* fs
-              .makeTempDirectoryScoped({ prefix: "tutti-organ-" })
-              .pipe(
-                Effect.mapError((error) =>
-                  fail(method, new AiError.UnknownError({ description: messageOf(error) })),
-                ),
-              )
+            const cwd =
+              call.reads?.cwd ??
+              (yield* fs
+                .makeTempDirectoryScoped({ prefix: "tutti-organ-" })
+                .pipe(
+                  Effect.mapError((error) =>
+                    fail(method, new AiError.UnknownError({ description: messageOf(error) })),
+                  ),
+                ))
             const abortController = new AbortController()
             let stderr = ""
             const q = query({

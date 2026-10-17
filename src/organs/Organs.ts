@@ -17,7 +17,7 @@ import { Context, Duration, Effect, Layer, Schema } from "effect"
 import { type AiError, LanguageModel } from "effect/ai"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type Line, Log, line, Tag } from "../run/log.ts"
-import { OrganCall, subtypeOf } from "./AgentSdkLanguageModel.ts"
+import { OrganCall, type OrganReads, subtypeOf } from "./AgentSdkLanguageModel.ts"
 import { evidenceId, fromTheRun, type InputPart, renderInput, systemPrompt } from "./evidence.ts"
 
 /** The organs, by the names their log lines and costs carry. */
@@ -48,6 +48,8 @@ export interface Organ<A> {
   /** Its effort, unless AppConfig's organs.effort overrides it. */
   readonly effort: EffortLevel
   readonly timeLimit: Duration.Duration
+  /** The read-only tools it reads the repository with: the scout's (§ 6.3). Others have none. */
+  readonly reads?: OrganReads
 }
 
 /** What an organ is made from. */
@@ -162,6 +164,7 @@ export class Organs extends Context.Service<
                   organ: organ.name,
                   effort: overrides.effort ?? organ.effort,
                   ...(overrides.model === null ? {} : { model: overrides.model }),
+                  ...(organ.reads === undefined ? {} : { reads: organ.reads }),
                 }),
                 Effect.mapError((error) => organError(organ.name, error)),
                 Effect.timeoutOrElse({
