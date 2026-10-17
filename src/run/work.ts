@@ -12,12 +12,12 @@
 //   its worktree and branch removed; back to Queued once the blocker merges (§ 5 item 9)
 // - still in progress after the nudges and the idle grace: Stopped, and the run holds with PAUSED
 // - left in any other status: set aside, deferred for review
+// - its worker gone and its session not resumed: Review (WORKER_GONE), dropped (sessions.ts)
 //
-// The session is closed once the ticket no longer needs it (§ 4.8): kept open while it waits to
-// merge, while it waits on its question (asked.ts closes it), and when it stopped the run (it is
-// suspended as the run ends).
+// The session is closed once the ticket no longer needs it (§ 4.8, sessions.ts): kept open while it
+// waits to merge, and when it stopped the run (it is suspended as the run ends); closed once asked,
+// its worker's turn over, to be resumed when the answer is in.
 import { Effect, Result } from "effect"
-import { AgentHost } from "../agent/AgentHost.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError, type Status } from "../services/Beads.ts"
 import type { GitError } from "../services/Git.ts"
@@ -30,6 +30,7 @@ import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause, type TicketPhase } from "./phase.ts"
+import { fit, workerGone } from "./sessions.ts"
 import { idleGrace, type Settled, type SettleEnv, settle, unmergedBlockers } from "./settle.ts"
 import { type StartError, type StartedWorker, type StartTicket, start } from "./start.ts"
 
@@ -179,12 +180,16 @@ export const conclude = (
   queue: MergeQueue,
 ): Effect.Effect<RunStop | null, never, SettleEnv> =>
   Effect.gen(function* () {
-    const host = yield* AgentHost
     const ledger = yield* Ledger
     const logs = yield* Log
     const { id, title } = ticket
     const { path, branch } = worker.worktree
     if (settled._tag === "Paused") return yield* paused(worker, settled.gone)
+    if (settled._tag === "Dropped") {
+      yield* workerGone(id, path, settled.why)
+      yield* fit(id)
+      return null
+    }
     const { reading } = settled
     switch (reading._tag) {
       case "Finished":
@@ -200,7 +205,7 @@ export const conclude = (
           beside: [{ kind: "asked", ticket: id, title, detail: `${q.id}: ${q.title}`, text }],
         })
         yield* logs.write(text)
-        return null
+        break
       }
       case "NoChange":
         yield* noChange(ticket, worker, reading.why, reading.own)
@@ -257,8 +262,8 @@ export const conclude = (
         break
       }
     }
-    // Nothing left for the session to do in this run (§ 4.8).
-    yield* host.close(id)
+    // Its session is closed once the ticket no longer needs it (§ 4.8).
+    yield* fit(id)
     return null
   })
 

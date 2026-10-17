@@ -8,7 +8,7 @@
 // ticket keeps its phase, and no record is written. A valid one writes a `phase` record to the
 // event stream, then the orchestra-era records the caller gives beside it (`dispatch`, `closed`,
 // …), all while the state is held, so records come out in the order the phases changed.
-import { Clock, Context, Effect, Layer, Result, type Stream, SubscriptionRef } from "effect"
+import { Clock, Context, Effect, Layer, Ref, Result, type Stream, SubscriptionRef } from "effect"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import * as log from "./log.ts"
@@ -235,6 +235,11 @@ export class Ledger extends Context.Service<
     steer(ticket: string, by: "message" | "interrupt"): Effect.Effect<void>
     /** Releases `ticket`'s worker: it is no longer steered. */
     release(ticket: string): Effect.Effect<void>
+    /**
+     * Claims `ticket`'s one resume of a session that ended unexpectedly (Gone) in this run (§ 4.8):
+     * true the first time, false after.
+     */
+    claimGoneResume(ticket: string): Effect.Effect<boolean>
     /** Adds `by` (1 by default) to one of `ticket`'s tallies; a ticket not in the run has none. */
     count(ticket: string, tally: TallyName, by?: number): Effect.Effect<void>
     /** Begins the wind-down, noting the tickets running now; nothing when it has begun. */
@@ -258,6 +263,8 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
     const logs = yield* Log
     const events = yield* EventStream
     const ref = yield* SubscriptionRef.make(emptyState)
+    // The tickets whose Gone session was resumed in this run.
+    const goneResumed = yield* Ref.make<ReadonlySet<string>>(new Set())
 
     // Logs `error` about `ticket` as PHASE_BUG, unless the same line was logged before.
     const bug = (state: State, ticket: string, error: InvalidTransition) => {
@@ -348,6 +355,11 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
     const release: Ledger["Service"]["release"] = (ticket) =>
       updateEntry(ticket, (entry) => ({ ...entry, steered: false }))
 
+    const claimGoneResume: Ledger["Service"]["claimGoneResume"] = (ticket) =>
+      Ref.modify(goneResumed, (resumed) =>
+        resumed.has(ticket) ? [false, resumed] : [true, new Set([...resumed, ticket])],
+      )
+
     const windDown = SubscriptionRef.updateEffect(ref, (state) =>
       state.windDown !== null
         ? Effect.succeed(state)
@@ -371,6 +383,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       refine,
       steer,
       release,
+      claimGoneResume,
       count,
       windDown,
       windUp,

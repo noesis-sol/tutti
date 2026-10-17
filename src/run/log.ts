@@ -54,6 +54,8 @@ export const Tag = {
   waitsForMerge: "WAITS_FOR_MERGE",
   reopenFailed: "REOPEN_FAILED",
   paused: "PAUSED",
+  resumed: "RESUMED",
+  workerGone: "WORKER_GONE",
   closedWithoutCommit: "CLOSED_WITHOUT_COMMIT",
   closedUncommitted: "CLOSED_UNCOMMITTED",
   mergeConflict: "MERGE_CONFLICT",

@@ -23,6 +23,9 @@
 // So does a check that fails on the rebased branch in a way its worker can take, Merging → Fixing
 // (checkback.ts), as does one that fails on a resolution, Resolving → Fixing: a fix verified and
 // checked puts the ticket back in line, ToMerge.
+//
+// Once a ticket's merge, or a hand-back to its worker, is over, its session is closed if its phase
+// no longer needs it (sessions.ts): merged, blocked, or set aside and not to be checked again.
 import {
   Effect,
   FiberSet,
@@ -48,6 +51,7 @@ import {
 } from "./merge.ts"
 import { Cause, Detail, type InvalidTransition, type TicketPhase } from "./phase.ts"
 import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
+import { fit } from "./sessions.ts"
 import { makeSetUps } from "./setup.ts"
 
 export interface QueueState {
@@ -206,7 +210,7 @@ export const make = (
           merging: null,
           resolving: handed ? [...state.resolving, id] : state.resolving,
         }))
-        if (!handed) return
+        if (!handed) return yield* fit(id, rechecks)
         const done = SubscriptionRef.update(ref, (state) => ({
           ...state,
           resolving: state.resolving.filter((each) => each !== id),
@@ -216,6 +220,7 @@ export const make = (
           Effect.interruptible(
             Effect.gen(function* () {
               if (yield* work) yield* offer(ticket)
+              yield* fit(id, rechecks)
             }),
           ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
         )
@@ -271,6 +276,7 @@ export const make = (
           // tickets it puts back are in line before this merge is over, so `settled` waits for them.
           if (stop === undefined) yield* Effect.exit(restore(recheck))
           yield* merged(stop)
+          yield* fit(ticket.id, rechecks)
         }),
       )
 

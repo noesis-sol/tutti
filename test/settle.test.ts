@@ -505,16 +505,24 @@ describe("the continue nudge and PAUSED", () => {
     expect(sentTexts(ran)).toHaveLength(1)
   })
 
-  test("a worker gone with its ticket in progress can't be nudged: PAUSED at once", async () => {
+  test("a worker gone again after its resume can't be nudged: PAUSED at once", async () => {
     const root = worktreesRoot()
     const ran = await working({
       root,
       backlog: tiny.seeds,
-      scripts: scripts(root, (c) => [...turn([run(c.claim)]).slice(0, -2), gone("exit 1")]),
+      scripts: (world) => ({
+        [id]: [
+          [...turn([run(commands(world, root).claim)]).slice(0, -2), gone("exit 1")],
+          [gone("exit 1")],
+        ],
+      }),
     })
     expect(phaseOf(ran)).toEqual(expect.objectContaining({ _tag: "Stopped", why: "PAUSED" }))
-    expect(sentTexts(ran)).toHaveLength(1)
-    expectLog(ran, [/HOLD: PAUSED: t-1 still in_progress, its worker is gone \(exit 1\)/])
+    // The first message, then the carry-on message of its one resume.
+    expect(sentTexts(ran)).toHaveLength(2)
+    expectLog(ran, [
+      /HOLD: PAUSED: t-1 still in_progress, its worker is gone \(exit 1\); its session was resumed once in this run already/,
+    ])
   })
 
   test("a worker that needs you has not settled: its ticket isn't read until you answer", async () => {
