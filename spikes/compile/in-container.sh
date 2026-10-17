@@ -17,7 +17,7 @@ cp -R /src/spikes/compile /w/app/spikes/
 cd /w/app
 start=$(date +%s)
 bun install --frozen-lockfile --os="$os" --cpu="$cpu" >/w/install.log 2>&1 || { cat /w/install.log; exit 1; }
-echo "RESULT install {\"os\":\"$os\",\"cpu\":\"$cpu\",\"seconds\":$(($(date +%s) - start)),\"packages\":\"$(ls node_modules/@anthropic-ai node_modules/@opentui | tr '\n' ' ')\"}"
+echo "RESULT install {\"os\":\"$os\",\"cpu\":\"$cpu\",\"seconds\":$(($(date +%s) - start)),\"packages\":\"$(printf '%s ' node_modules/@anthropic-ai/* node_modules/@opentui/*)\"}"
 bun spikes/compile/build.ts --out /w/out "$target"
 case $then in
   run) TMPDIR=/tmp /w/out/tutti-spike-"$target" all ;;
