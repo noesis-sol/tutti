@@ -300,7 +300,12 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 - **The first user message** holds everything specific to this start: the ticket's ID, the time it has (`--ticket-limit`), the `--ticket` scope line, a pointer to the rules, and what an earlier attempt left on the branch (`git log <base>..HEAD`, `git status`). It is sent in the protocol, with no `prompt.md` file and no paste. `PROMPT_AT_LAUNCH`, paste recovery and `PROMPT_FAILED` disappear.
 - **Every message tutti composes** (the first message, continue nudges, hand-backs, "your question is answered", "carry on") is sent with `client_composed: true`. These messages embed text tutti doesn't control: ticket titles, file names, check output. A `client_composed` message is delivered "as written, with no `@path` file-mention expansion and no slash-command dispatch". The cost is that its turn starts without the CLI's turn-start attachments, which arrive after the first tool call instead.
 - **Messages you type** in a worker's composer are sent without `client_composed` and with `origin: { kind: "human" }`, as the SDK asks hosts to stamp keyboard input.
-- **Queueing.** Follow-ups are pushed into the inbox queue. The SDK queues them if a turn is under way.
+- **Queueing.** Follow-ups are pushed into the inbox queue as they come. A send isn't a turn of its own. The CLI decides where it runs (docs/spikes/01-sdk-session.md, item 1, Claude Code 2.1.301):
+  - **It may join the running turn.** A send pushed during a tool call is folded into the turn between tool rounds. That turn ends with one `result` for every send folded into it.
+  - **It may share a later turn.** A send pushed while the model writes its final answer waits for a later turn. Queued sends of the same kind (both `client_composed`, or both typed by you) may be coalesced into one turn. A typed and a composed send weren't coalesced in the spike, but tutti doesn't rely on that.
+  - **A turn may answer none of them.** The CLI starts a turn by itself to report a finished background task (§4.2).
+
+  So tutti never matches results to sends by counting results. A `result`'s `user_message_uuids` lists every send its turn consumed, and `command_lifecycle` tracks each send, folded or queued (§4.2). The turn that answers a send is the one whose `result` lists its `uuid`. That turn may also have answered other sends, yours or tutti's. `result.user_message_uuid` (singular) isn't used: with three sends folded together it named the first, not the last as the types say. Every rule that counts turns per message counts sends instead, and waits for each one by its `uuid`: the continue nudges and steering (§4.3), hand-backs (§4.7), and the composer's `queued` (§7.5).
 
 ### 4.2 Worker state
 
@@ -357,6 +362,8 @@ Exact state removes these orchestra mechanisms. Each was a guess about a termina
 These stay, as orchestra has them:
 
 - **The continue nudge.** A worker `Idle` with its ticket still in progress, with no question and no deferral, is told to continue, at most twice. Then, after a 10-minute idle grace, the run holds with `PAUSED`.
+  - The two are nudges sent, not turns. After each nudge, the per-ticket fiber waits until that nudge is no longer outstanding (§4.2) and the worker has settled again, then reads the ticket. It doesn't matter whether the nudge ran as a turn of its own or shared one (§4.1).
+  - A turn the CLI starts by itself, to report a background task, answers no nudge and uses none up.
 - **`TICKET_LIMIT`.** A worker still going this long after dispatch holds the run. The worker isn't interrupted: it goes on, and so does its view. The drain doesn't wait for it, and when the run ends it is suspended (§4.8). The next run resumes it, with its limit counted afresh, as orchestra's `RESUMED` does.
 - **`LONG_RUNNING`** is logged once at 2 h without a limit.
 - **`BLOCKED`.** An attention request unanswered for 4 minutes holds the run with `BLOCKED >4min: <id> needs you: <what>`. Answering every open request lifts the hold (`HOLD lifted: <id>'s requests were answered`), since what held the run is gone. This differs from orchestra, where nobody was there to answer.
@@ -367,6 +374,7 @@ These stay, as orchestra has them:
 
 - **tutti sends a steered worker nothing automatically:** no continue nudges, no hand-backs, no "carry on".
 - **A hand-back due to it waits.** It appears in its view as a notice with **Hand it the conflict now**.
+- **A message you type may join a turn of tutti's.** Sent while a nudge or hand-back runs, it can be folded into that turn (§4.1), and one turn then answers both. The worker is steered from your send. tutti sends nothing after that turn, but it still reads the ticket and verifies what a hand-back left (§4.7): reading and verifying send nothing.
 - **The idle grace for `PAUSED` counts from your last message.**
 - **Releasing a worker** (**Release** in its view, or `Ctrl+R`) makes it unsteered. Leaving its view doesn't release it.
 - **Recording.** The card shows `steered` beside the status. The log records `STEERED: <id>` and `RELEASED: <id>`.
@@ -489,6 +497,7 @@ What the check accepts, from that spike:
 Conflict resolution and check fixes go to the ticket's worker as orchestra sends them, with the same instructions, limits (`resolve_timeout` 20 m, `check_hand_backs` 2) and verification of what the worker left. Each is a `client_composed` message pushed into the worker's inbox.
 
 - The worker must be `Idle` and not steered (§4.3). One that is working, needs you or is steered isn't handed anything, and the `MERGE_CONFLICT` or `CHECKS_FAILED` line says why, as orchestra's does.
+- A hand-back is under way from its push until its send is no longer outstanding (§4.2) and the worker has settled. Only then does tutti verify what the worker left. `resolve_timeout` counts from the push. Its turn may be shared with a message you typed meanwhile (§4.3), so tutti waits for the hand-back's `uuid`, not for the next `result`.
 - A worker whose session tutti closed (§4.8) is resumed for the hand-back. That doesn't count toward "resumed once in this run", which counts only sessions that ended unexpectedly (`Gone`).
 
 ### 4.8 Sessions: lifetime, quitting and carry-over
@@ -1006,7 +1015,7 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
   - Thinking is hidden.
 - **Attention.** Open requests show as a panel above the composer, with the same buttons and rules as the card (§4.5). A pending hand-back for a steered worker shows there too (§4.3).
 - **The composer** sends your message into the worker's inbox (§4.1). The worker becomes steered.
-  - While a turn is under way, the message is queued and shown as `queued` until the SDK takes it.
+  - While a turn is under way, the message is shown as `queued` until the CLI reports it `started` in `command_lifecycle`, or a `result` lists it. It may be folded into the running turn or start a later one, perhaps with another message (§4.1).
   - Your messages are logged without their text (`MESSAGE: you → <id> (212 characters)`) and tallied for the reviewer.
 - **Ctrl+X** interrupts the turn (after a confirmation) and cancels messages still queued where the CLI supports it. The SDK's interrupt also ends the worker's background tasks: tutti declares no per-task stop control (`perTaskStopAffordance`).
 - **Bounded rendering.**
@@ -1492,6 +1501,7 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
   - `rate_limit_event`, `api_retry` and `is_error` results
   - `background_tasks_changed` with ambient tasks, a Monitor watch live after `idle`, and a task ending after `idle` with the turn the CLI starts to report it, including the moment between the emptied set and `running`, and a report that never comes
   - interrupts, resumes and gone sessions
+  - sends folded into the running turn and sends coalesced into one turn, each `result` listing every send it consumed in `user_message_uuids`, and a `result` that lists none
 
   `Beads` and `Git` are in memory. Git-subject scenarios use real git in a temp folder and are marked slow. Spinners and animations take their clock from a test service, so frames are deterministic.
 - **Leaks fail tests**, as goleak does in orchestra. Effect 4 has no `Supervisor`. Every fiber the run forks belongs to a `FiberSet` in the run's scope, and each scenario asserts that every set is empty and no child process is left once the scope closes.
@@ -1503,6 +1513,7 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
   - `session_state_changed`, with `idle` only after the last queued turn, `client_composed` sends among them
   - `idle` with a background task live, and the turn the CLI starts when the task ends, after the set empties
   - `command_lifecycle` for each send, and `result`'s `user_message_uuids`
+  - a follow-up pushed during a tool call folded into the running turn, and queued sends of one kind sharing a turn, each named in the one `result`'s `user_message_uuids`
   - `canUseTool` for a call that needs asking, with `defaultToNo` on a held removal
   - `interrupt()` and its receipt
   - `resume` with `sessionId`, and of a removed worktree: the spawn fails with no message and no result

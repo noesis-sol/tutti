@@ -143,8 +143,9 @@ export class AgentHost extends Context.Service<
       message: Message,
     ): Effect.Effect<string, AgentStartFailed>
     /**
-     * Pushes a message into the worker's inbox: the SDK queues it if a turn is under way. Its
-     * uuid, which the session's results and an interrupt's receipt name it by.
+     * Pushes a message into the worker's inbox: the CLI may fold it into the running turn or queue
+     * it, alone or sharing a turn with another (§ 4.1). Its uuid, which the session's results and
+     * an interrupt's receipt name it by.
      */
     send(ticket: string, text: string, from: From): Effect.Effect<string, AgentGone>
     /** Interrupts the worker's turn; open requests are withdrawn. The receipt. */

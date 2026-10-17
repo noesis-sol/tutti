@@ -1,9 +1,9 @@
 // AgentHost's live layer (§ 4.1, § 4.2, § 4.4, § 3.2): one Agent SDK query() per open worker
 // session, in streaming input mode. A session's inbox is an Effect Queue the SDK reads as its
-// prompt, an AsyncIterable<SDKUserMessage>; a message pushed while a turn is under way waits in the
-// CLI's own queue. Every message the session sends is recorded in Transcripts and folded into the
-// worker's state (makeWorkers); its hook callbacks are folded in too, and its stderr goes to the
-// transcript's stderr.log (workerOptions).
+// prompt, an AsyncIterable<SDKUserMessage>; a message pushed while a turn is under way joins that
+// turn or waits in the CLI's own queue (§ 4.1). Every message the session sends is recorded in
+// Transcripts and folded into the worker's state (makeWorkers); its hook callbacks are folded in
+// too, and its stderr goes to the transcript's stderr.log (workerOptions).
 //
 // Each session's first system/init is checked (§ 4.1): the permission mode in effect, logged once
 // and kept for the START block when it isn't the one asked for; the MCP servers, where any the
