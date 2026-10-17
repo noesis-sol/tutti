@@ -12,6 +12,9 @@
 // isn't starved. With every slot taken the tickets wait for a slot anyway, and none is held for an
 // overlap or a solo ticket.
 //
+// A Queued or HeldBack ticket that bd ready no longer lists, closed, deferred or blocked outside the
+// run, leaves the ledger, so the In queue total counts only what may still start.
+//
 // The ledger's phases keep a ticket from being taken twice: only a ticket the run hasn't taken up,
 // or one still Queued or HeldBack, is a candidate. --limit counts the tickets this run starts; a
 // resumed or carried-over worker takes a slot (carry) but counts toward nothing. A ticket whose ID
@@ -379,10 +382,16 @@ export const make = (
         const candidates = found.filter((issue) => candidate(before, issue.id))
         const ids = candidates.map((issue) => issue.id)
         const setAsideNow: Array<string> = []
-        // A ticket held back that bd ready no longer lists has nothing to wait for in the queue.
+        // A ticket waiting in the queue that bd ready no longer lists (closed, deferred or blocked
+        // outside the run) leaves it; it is queued anew if it is ready again.
         for (const entry of before.tickets.values()) {
-          if (entry.phase._tag === "HeldBack" && !ids.includes(entry.ticket)) {
-            yield* settle(entry.ticket, undefined, ids)
+          if (waiting(before, entry.ticket) && !ids.includes(entry.ticket)) {
+            const solo = soloState(yield* Ref.get(slots))
+            yield* ledger.transition(entry.ticket, Cause.Unready(), {
+              beside: [{ kind: "queue", ...counts(before, ids, solo) }],
+            })
+            waitSaid.forget(entry.ticket)
+            skipSaid.forget(entry.ticket)
           }
         }
         // Each new candidate enters the ledger as Queued; one with an unusable ID is set aside.

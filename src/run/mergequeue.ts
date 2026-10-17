@@ -79,7 +79,7 @@ export interface MergeQueue {
   offer(
     ticket: FinishedTicket,
     cause?: (place: number) => Cause,
-  ): Effect.Effect<Result.Result<TicketPhase, InvalidTransition>>
+  ): Effect.Effect<Result.Result<TicketPhase | null, InvalidTransition>>
   readonly state: Effect.Effect<QueueState>
   /** The state now, then each new one. */
   readonly changes: Stream.Stream<QueueState>

@@ -68,7 +68,7 @@ const phasesOf = (state: State): Record<string, TicketPhase> =>
 /** The phases the ticket moved through, from its `phase` records. */
 const pathOf = (ran: Ran<unknown>, id: string): ReadonlyArray<string> =>
   ran.events.flatMap((record) =>
-    record.kind === "phase" && record.ticket === id ? [record.to] : [],
+    record.kind === "phase" && record.ticket === id ? [record.to ?? "outside"] : [],
   )
 
 /** Waits until the ticket is in `tag`. */

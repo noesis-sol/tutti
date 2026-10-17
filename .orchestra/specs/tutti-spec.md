@@ -776,6 +776,8 @@ stateDiagram-v2
     [*] --> Queued: ready in bd
     Queued --> HeldBack: overlap · parent · merge · solo
     HeldBack --> Queued: what held it is gone
+    Queued --> [*]: gone from bd ready
+    HeldBack --> [*]: gone from bd ready
     Queued --> Working: dispatched
     Working --> ToMerge: closed, committed, verified
     Working --> Done: closed with nothing to merge
@@ -814,6 +816,7 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | ready in `bd ready` | `Queued` | the ready poll finds it | `queue` |
 | `Queued` | `HeldBack` | its footprint overlaps a running ticket's; its subtickets aren't all closed and merged; a blocker, or the ticket it was filed from, isn't merged; a solo ticket runs or is next | the log's `skipping …` or `… waits: …`; `queue` |
 | `HeldBack` | `Queued` | what held it is gone | `queue` |
+| `Queued`, `HeldBack` | out of the run | `bd ready` no longer lists it: closed, deferred or blocked outside the run. It leaves the ledger, and counts nowhere; the ready poll queues it anew if it is ready again | `queue` |
 | `Queued` | `Working` | a slot is free and it is the highest-priority ticket not held back | `dispatch` |
 | `Working` | `ToMerge` | its worker settled with the ticket closed, a commit naming it, and its worktree clean and on its branch | `phase` |
 | `Working` | `Done{noChange}` | closed with no commits of its own and a clean worktree, or with commits that together change nothing | `closed` (`no change to merge`) |
@@ -846,7 +849,7 @@ Merging a ticket rebases it again if more landed meanwhile, so a ticket can go f
 
 #### How the phases are shown
 
-- **One row per ticket**, from the moment the run picks it up until the run ends. The row keeps its place in the tickets table and changes as the phase does. A ticket that comes back, such as `Waiting` → `Queued` → `Working`, keeps its row.
+- **One row per ticket**, from the moment the run picks it up until the run ends. The row keeps its place in the tickets table and changes as the phase does. A ticket that comes back, such as `Waiting` → `Queued` → `Working`, keeps its row. One that leaves `bd ready` while `Queued` again leaves the run, and its row with it.
 - **Cards** exist for the phases with work under way: `Working`, `Resolving`, `Fixing`, `ToMerge`, `Merging`. A `Review{CHECKS_FAILED}` ticket checked once more has a card again while it is `ToMerge` and `Merging`, its action line reading `checking again: <base> moved on since its check failed`.
 - **Motion means a worker at work.** The spinner turns in `Working` while the worker works, and in `Resolving` and `Fixing`. Otherwise a static mark replaces it: `◷` in `ToMerge`, `◆` in `Merging`, `•` once a worker's turn has ended.
 - **The totals count phases**, as the table above says. `ToMerge` and `Merging` count as completed only once they reach `Done`.
@@ -1491,7 +1494,7 @@ It is `flock(LOCK_EX|LOCK_NB)` on `<git-common-dir>/tutti.lock`, so the system r
 
 | `kind` | New or changed | Fields |
 |---|---|---|
-| `phase` | new: a ticket moved from one phase to another (§5.1) | `ticket`, `from`, `to`, `cause`, and the phase's details where it has them (`place`, `step`, `attempt`, `why`) |
+| `phase` | new: a ticket moved from one phase to another (§5.1) | `ticket`, `from` (absent as it enters the run), `to` (absent as it leaves it, gone from `bd ready`), `cause`, and the phase's details where it has them (`place`, `step`, `attempt`, `why`) |
 | `attention` | new: a worker waits on you | `ticket`, `request` (ID), `type` (`permission`, `question`, `elicitation`), `tool` and `summary` (permission) or `questions` (question), `default_to_no` |
 | `attention_answered` | new | `ticket`, `request`, `answer` (`allow`, `deny`, `allow_run`, or the chosen labels), `via` (`screen` or `answer_command`), `after_ms`; `cancelled: true` when the SDK withdrew it |
 | `denied` | new: the classifier, the safety check, a rule or the mode denied a tool call | `ticket`, `tool`, `reason_type` (`classifier`, `safetyCheck`, `mode`, `rule`, or another the SDK gives), `reason` |

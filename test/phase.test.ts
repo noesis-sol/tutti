@@ -39,27 +39,31 @@ const {
   Stopped,
 } = TicketPhase
 
-const ok = (result: Result.Result<TicketPhase, InvalidTransition>): TicketPhase => {
+const ok = (result: Result.Result<TicketPhase | null, InvalidTransition>): TicketPhase | null => {
   if (Result.isFailure(result)) {
     throw new Error(`expected a phase, got ${result.failure.message}`)
   }
   return result.success
 }
 
-const rejected = (result: Result.Result<TicketPhase, InvalidTransition>): InvalidTransition => {
+const rejected = (
+  result: Result.Result<TicketPhase | null, InvalidTransition>,
+): InvalidTransition => {
   if (Result.isSuccess(result)) {
-    throw new Error(`expected InvalidTransition, got ${result.success._tag}`)
+    throw new Error(`expected InvalidTransition, got ${result.success?._tag ?? "outside"}`)
   }
   return result.failure
 }
 
 // § 5.1's transition table, row by row, written out here rather than read from the code: the
-// phase a ticket leaves (null: outside the machine), the cause, and the phase it reaches. The
-// carry-over entries of "The next run" follow it.
-const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPhase]> = [
+// phase a ticket leaves (null: outside the machine), the cause, and the phase it reaches (null:
+// outside, leaving the run). The carry-over entries of "The next run" follow it.
+const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPhase | null]> = [
   ["ready in bd ready → Queued", null, Cause.Ready(), Queued()],
   ["Queued → HeldBack", Queued(), Cause.Held({ why: "overlap" }), HeldBack({ why: "overlap" })],
   ["HeldBack → Queued", HeldBack({ why: "solo" }), Cause.Released(), Queued()],
+  ["Queued → gone from bd ready", Queued(), Cause.Unready(), null],
+  ["HeldBack → gone from bd ready", HeldBack({ why: "merge" }), Cause.Unready(), null],
   ["Queued → Working", Queued(), Cause.Dispatched(), Working({ activity: "starting" })],
   [
     "Working → ToMerge",
@@ -237,7 +241,7 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
 ]
 
 // The (from, to) pairs § 5.1 lists, by tag; From and To joined as "From>To", "" for outside.
-const listed = new Set(table.map(([, from, , to]) => `${from?._tag ?? ""}>${to._tag}`))
+const listed = new Set(table.map(([, from, , to]) => `${from?._tag ?? ""}>${to?._tag ?? ""}`))
 
 // A phase of every tag, with both sides of each condition the table puts on a phase's fields.
 const phases: ReadonlyArray<TicketPhase | null> = [
@@ -267,6 +271,7 @@ const phases: ReadonlyArray<TicketPhase | null> = [
 // A cause of every tag: the type makes sure none is missing.
 const causeOf: { readonly [C in CauseTag]: Extract<Cause, { readonly _tag: C }> } = {
   Ready: Cause.Ready(),
+  Unready: Cause.Unready(),
   Held: Cause.Held({ why: "merge" }),
   Released: Cause.Released(),
   Dispatched: Cause.Dispatched(),
@@ -300,7 +305,7 @@ describe("transition", () => {
   })
 
   test("the code's table lists § 5.1's pairs and no others", () => {
-    expect(new Set(transitions.map((row) => `${row.from ?? ""}>${row.to}`))).toEqual(listed)
+    expect(new Set(transitions.map((row) => `${row.from ?? ""}>${row.to ?? ""}`))).toEqual(listed)
   })
 
   test("every pair the table doesn't list is rejected", () => {
@@ -309,11 +314,12 @@ describe("transition", () => {
       for (const cause of causes) {
         const result = transition(from, cause)
         if (Result.isSuccess(result)) {
-          taken.add(`${from?._tag ?? ""}>${result.success._tag}`)
+          taken.add(`${from?._tag ?? ""}>${result.success?._tag ?? ""}`)
         }
       }
     }
-    // Of the 15 × 14 pairs of a phase (or outside) and a phase, the listed ones and no others.
+    // Of the 15 × 15 pairs of a phase (or outside) and a phase (or outside), the listed ones and
+    // no others.
     expect(taken).toEqual(listed)
   })
 
@@ -338,6 +344,17 @@ describe("transition", () => {
     expect(rejected(transition(null, Cause.Dispatched())).phaseBug("tut-9a1")).toBe(
       "PHASE_BUG: tut-9a1 outside → Working (Dispatched)",
     )
+    expect(rejected(transition(Working({ activity: "working" }), Cause.Unready())).message).toBe(
+      "Working → outside (Unready)",
+    )
+  })
+
+  test("only a ticket waiting in the queue leaves the machine, and only as bd ready drops it", () => {
+    const leaving = transitions.filter((row) => row.to === null)
+    expect(leaving.map((row) => [row.from, row.when])).toEqual([
+      ["Queued", "Unready"],
+      ["HeldBack", "Unready"],
+    ])
   })
 
   test("every cause leads somewhere in the table", () => {
@@ -375,6 +392,7 @@ const phaseArb: fc.Arbitrary<TicketPhase> = fc.oneof(
 const causeArb: fc.Arbitrary<Cause> = fc.oneof(
   fc.constantFrom(
     Cause.Ready(),
+    Cause.Unready(),
     Cause.Released(),
     Cause.Dispatched(),
     Cause.NoChange(),
@@ -416,8 +434,8 @@ describe("transition, driven by random causes", () => {
               continue
             }
             const next = result.success
-            expect(listed.has(`${phase?._tag ?? ""}>${next._tag}`)).toBe(true)
-            if (next._tag === "Done" && next.outcome._tag === "Merged") {
+            expect(listed.has(`${phase?._tag ?? ""}>${next?._tag ?? ""}`)).toBe(true)
+            if (next?._tag === "Done" && next.outcome._tag === "Merged") {
               expect(phase?._tag).toBe("Merging")
             }
             phase = next

@@ -4,10 +4,11 @@
 // semaphore) that also publishes each new state, for RunView to project.
 //
 // Every phase change goes through transition(), which asks the state machine (phase.ts) for the
-// next phase. A change the machine doesn't have is a bug: it is logged once as PHASE_BUG, the
-// ticket keeps its phase, and no record is written. A valid one writes a `phase` record to the
-// event stream, then the orchestra-era records the caller gives beside it (`dispatch`, `closed`,
-// …), all while the state is held, so records come out in the order the phases changed.
+// next phase; a ticket that leaves the machine leaves the ledger. A change the machine doesn't have
+// is a bug: it is logged once as PHASE_BUG, the ticket keeps its phase, and no record is written. A
+// valid one writes a `phase` record to the event stream, then the orchestra-era records the caller
+// gives beside it (`dispatch`, `closed`, …), all while the state is held, so records come out in
+// the order the phases changed.
 import { Clock, Context, Effect, Layer, Ref, Result, type Stream, SubscriptionRef } from "effect"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
@@ -135,19 +136,21 @@ const details = (
   return {}
 }
 
-/** The `phase` record for `ticket` moving from `from` (null: entering the run) to `to`. */
+/**
+ * The `phase` record for `ticket` moving from `from` (null: entering the run) to `to` (null:
+ * leaving it).
+ */
 export const phaseRecord = (
   ticket: string,
   from: TicketPhase | null,
-  to: TicketPhase,
+  to: TicketPhase | null,
   cause: Cause,
 ): Event => ({
   kind: "phase",
   ticket,
   ...(from === null ? {} : { from: from._tag }),
-  to: to._tag,
+  ...(to === null ? {} : { to: to._tag, ...details(to) }),
   cause: cause._tag,
-  ...details(to),
 })
 
 /** `entry` moved to `phase` by `cause` at `now`: its row and its worker's number follow. */
@@ -192,10 +195,10 @@ const refines: Record<Detail["_tag"], PhaseTag> = {
   Step: "Merging",
 }
 
-// What a change returns, and the state it leaves.
-type Changed = readonly [Result.Result<TicketPhase, InvalidTransition>, State]
+// What a change returns (a transition's null: the ticket left the machine), and the state it leaves.
+type Changed<P> = readonly [Result.Result<P, InvalidTransition>, State]
 
-const changed = (result: Result.Result<TicketPhase, InvalidTransition>, state: State): Changed => [
+const changed = <P>(result: Result.Result<P, InvalidTransition>, state: State): Changed<P> => [
   result,
   state,
 ]
@@ -215,14 +218,14 @@ export class Ledger extends Context.Service<
     /**
      * Moves `ticket` by `cause`, as the state machine says, and writes its `phase` record, then
      * `beside` (the orchestra-era records its row names). `title` sets its title, as a ticket
-     * entering the run needs. An invalid change logs PHASE_BUG once, writes nothing, and leaves
-     * the ticket as it was.
+     * entering the run needs; a ticket leaving it (null) leaves the ledger. An invalid change logs
+     * PHASE_BUG once, writes nothing, and leaves the ticket as it was.
      */
     transition(
       ticket: string,
       cause: Cause,
       options?: { readonly title?: string; readonly beside?: ReadonlyArray<Event> },
-    ): Effect.Effect<Result.Result<TicketPhase, InvalidTransition>>
+    ): Effect.Effect<Result.Result<TicketPhase | null, InvalidTransition>>
     /** Changes a detail of `ticket`'s phase (its activity, place or step), not the phase. */
     refine(
       ticket: string,
@@ -271,7 +274,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       const text = log.phaseBug({
         id: ticket,
         from: error.from ?? "outside",
-        to: error.to,
+        to: error.to ?? "outside",
         cause: error.when,
       })
       if (state.bugs.includes(text)) return Effect.succeed(state)
@@ -287,13 +290,18 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
           if (Result.isFailure(next)) {
             return changed(next, yield* bug(state, ticket, next.failure))
           }
-          const now = yield* Clock.currentTimeMillis
-          const base = entry ?? newEntry(ticket, options.title ?? "", next.success)
-          const titled = options.title === undefined ? base : { ...base, title: options.title }
           yield* events.emit(phaseRecord(ticket, from, next.success, cause))
           yield* Effect.forEach(options.beside ?? [], (event) => events.emit(event), {
             discard: true,
           })
+          if (next.success === null) {
+            const tickets = new Map(state.tickets)
+            tickets.delete(ticket)
+            return changed(next, { ...state, tickets })
+          }
+          const now = yield* Clock.currentTimeMillis
+          const base = entry ?? newEntry(ticket, options.title ?? "", next.success)
+          const titled = options.title === undefined ? base : { ...base, title: options.title }
           return changed(next, moved(state, titled, next.success, cause, now))
         }),
       )

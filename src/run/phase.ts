@@ -112,6 +112,8 @@ void sameTags
 export type Cause = Data.TaggedEnum<{
   /** The ready poll found it. */
   Ready: Empty
+  /** bd ready no longer lists it: closed, deferred or blocked outside the run. */
+  Unready: Empty
   /** Its footprint overlaps a running ticket's, its subtickets or a blocker aren't merged, or solo. */
   Held: { readonly why: Hold }
   /** What held it back is gone. */
@@ -173,6 +175,10 @@ type CauseOf<C extends CauseTag> = Extract<Cause, { readonly _tag: C }>
 export type From = PhaseTag | null
 type FromPhase<F extends From> = F extends PhaseTag ? PhaseOf<F> : null
 
+/** Where a transition ends: a phase, or null for outside the machine (leaving the run). */
+export type To = PhaseTag | null
+type ToPhase<T extends To> = T extends PhaseTag ? PhaseOf<T> : null
+
 /** What a transition writes beside its `phase` record: the table's Recorded as. */
 export interface Recorded {
   /** The event stream's records. */
@@ -187,7 +193,7 @@ export interface Recorded {
 export interface Transition<
   F extends From = From,
   C extends CauseTag = CauseTag,
-  T extends PhaseTag = PhaseTag,
+  T extends To = To,
 > {
   readonly from: F
   readonly when: C
@@ -195,12 +201,12 @@ export interface Transition<
   readonly recorded: Recorded
   /** A condition on the phase it leaves, besides its tag. */
   only?(phase: FromPhase<F>): boolean
-  next(phase: FromPhase<F>, cause: CauseOf<C>): PhaseOf<T>
+  next(phase: FromPhase<F>, cause: CauseOf<C>): ToPhase<T>
 }
 
 // A row, typed by its phases and cause, as a row of the table. The table finds a row by its from,
 // when and only before it calls them, so they are only ever given the phase and cause they take.
-const row = <const F extends From, const C extends CauseTag, const T extends PhaseTag>(
+const row = <const F extends From, const C extends CauseTag, const T extends To>(
   transition: Transition<F, C, T>,
 ): Transition => transition as unknown as Transition
 
@@ -211,7 +217,7 @@ const blocked = { kinds: ["warn"], detail: "blocked" } as const
 /**
  * The transition table: § 5.1's, row by row, with its rows for several causes split by cause, and
  * the carry-over of § 5.1's "The next run" as entries from outside. A transition it doesn't list
- * doesn't happen.
+ * doesn't happen. A ticket waiting in the queue that bd ready no longer lists leaves the machine.
  */
 export const transitions: ReadonlyArray<Transition> = [
   row({
@@ -234,6 +240,20 @@ export const transitions: ReadonlyArray<Transition> = [
     to: "Queued",
     recorded: { kinds: ["queue"] },
     next: () => TicketPhase.Queued(),
+  }),
+  row({
+    from: "Queued",
+    when: "Unready",
+    to: null,
+    recorded: { kinds: ["queue"] },
+    next: () => null,
+  }),
+  row({
+    from: "HeldBack",
+    when: "Unready",
+    to: null,
+    recorded: { kinds: ["queue"] },
+    next: () => null,
   }),
   row({
     from: "Queued",
@@ -475,18 +495,19 @@ export const transitions: ReadonlyArray<Transition> = [
 
 /**
  * A phase change the table doesn't list: a bug. The run logs it once as `PHASE_BUG`, and the
- * ticket keeps its phase. `to` is the phase the cause leads to elsewhere in the table.
+ * ticket keeps its phase. `to` is the phase the cause leads to elsewhere in the table (null:
+ * outside the machine).
  */
 export class InvalidTransition extends Schema.TaggedError<InvalidTransition>()(
   "InvalidTransition",
   {
     from: Schema.NullOr(Schema.Literals(phaseNames)),
-    to: Schema.Literals(phaseNames),
+    to: Schema.NullOr(Schema.Literals(phaseNames)),
     when: Schema.String,
   },
 ) {
   override get message(): string {
-    return `${this.from ?? "outside"} → ${this.to} (${this.when})`
+    return `${this.from ?? "outside"} → ${this.to ?? "outside"} (${this.when})`
   }
 
   /** The log's line for it: `PHASE_BUG: <id> <from> → <to> (<cause>)`. */
@@ -495,9 +516,11 @@ export class InvalidTransition extends Schema.TaggedError<InvalidTransition>()(
   }
 }
 
-// Every cause has a row, so each leads somewhere: the first row's phase for it.
-const leadsTo = (cause: CauseTag): PhaseTag =>
-  transitions.find((transition) => transition.when === cause)?.to ?? "Queued"
+// Every cause has a row, so each leads somewhere: the first row's phase for it, or outside.
+const leadsTo = (cause: CauseTag): To => {
+  const found = transitions.find((transition) => transition.when === cause)
+  return found === undefined ? "Queued" : found.to
+}
 
 /** The table's row that `cause` takes from `phase` (null: outside the machine), if any. */
 export const rowFor = (phase: TicketPhase | null, cause: Cause): Transition | undefined =>
@@ -510,12 +533,12 @@ export const rowFor = (phase: TicketPhase | null, cause: Cause): Transition | un
 
 /**
  * The phase `cause` moves a ticket in `phase` to, or InvalidTransition when the table doesn't
- * list it. `phase` null is a ticket entering the run.
+ * list it. `phase` null is a ticket entering the run; a result of null, one leaving it.
  */
 export const transition = (
   phase: TicketPhase | null,
   cause: Cause,
-): Result.Result<TicketPhase, InvalidTransition> => {
+): Result.Result<TicketPhase | null, InvalidTransition> => {
   const found = rowFor(phase, cause)
   if (found === undefined) {
     return Result.fail(

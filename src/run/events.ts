@@ -233,7 +233,8 @@ export const Phase = Schema.Struct({
   ticket: Schema.String,
   /** Absent as the ticket enters the machine, ready in bd. */
   from: optional(Schema.Literals(phaseNames)),
-  to: Schema.Literals(phaseNames),
+  /** Absent as the ticket leaves the machine, no longer in bd ready. */
+  to: optional(Schema.Literals(phaseNames)),
   cause: Schema.String,
   /** ToMerge: its place in the merge queue, 1 for next. */
   place: optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
