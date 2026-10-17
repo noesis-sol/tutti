@@ -658,6 +658,56 @@ export const tool = (
 export const bash = (command: string, effect?: Effect.Effect<void>) =>
   tool("Bash", { command }, effect)
 
+/** What the CLI tells the worker when the safety check denies a held removal in auto mode. */
+export const heldRemovalMessage =
+  "Only a person may approve such a removal, and no person did (the permission prompt timed out, or this session cannot prompt)"
+
+/**
+ * A tool call Claude Code denies without asking, as the spike saw it in auto mode
+ * (docs/spikes/01-sdk-session.md): the assistant's tool_use, a `permission_denied` naming what
+ * denied it (`decision_reason_type`, left out when `by` is undefined) and why, and the tool_result
+ * with the refusal it tells the worker, `message`. No canUseTool call, and no hooks.
+ */
+export const deniedTool = (
+  name: string,
+  input: Record<string, unknown>,
+  denial: {
+    readonly by: string | undefined
+    readonly reason?: string
+    readonly message?: string
+    readonly agentId?: string
+  },
+): ReadonlyArray<Step> => {
+  const id = `toolu_s${++toolIds}`
+  const message = denial.message ?? `Permission to use ${name} has been denied.`
+  return [
+    emit({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "tool_use", id, name, input }] },
+      parent_tool_use_id: null,
+    }),
+    emit({
+      type: "system",
+      subtype: "permission_denied",
+      tool_name: name,
+      tool_use_id: id,
+      ...(denial.agentId === undefined ? {} : { agent_id: denial.agentId }),
+      ...(denial.by === undefined ? {} : { decision_reason_type: denial.by }),
+      ...(denial.reason === undefined ? {} : { decision_reason: denial.reason }),
+      message,
+      uuid: `00000000-0000-4000-8000-d${String(toolIds).padStart(11, "0")}`,
+    }),
+    emit({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: id, content: message, is_error: true }],
+      },
+      parent_tool_use_id: null,
+    }),
+  ]
+}
+
 /**
  * A turn: it waits for a message, then system/init and running, `steps`, `end` (a clean result by
  * default) and idle.

@@ -12,7 +12,8 @@
 // suggested destinations, `localSettings` and `projectSettings`, which resolve in the worktree.
 //
 // Every request and answer is a PERMISSION or QUESTION log line and an `attention` or
-// `attention_answered` event, and is tallied per ticket.
+// `attention_answered` event, and is tallied per ticket. So is each call Claude Code denied without
+// asking (`permission_denied`): a DENIED line and a `denied` event, tallied by what denied it.
 import { randomBytes } from "node:crypto"
 import type {
   CanUseTool,
@@ -21,6 +22,7 @@ import type {
   OnElicitation,
   PermissionResult,
   PermissionUpdate,
+  SDKPermissionDeniedMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import {
   Clock,
@@ -167,7 +169,15 @@ export interface Tally {
   readonly declined: number
   /** Withdrawn by the SDK before an answer. */
   readonly cancelled: number
+  /**
+   * Calls Claude Code denied without asking, by the SDK's `decision_reason_type`: `classifier`,
+   * `safetyCheck`, `mode`, `rule`, or another as given.
+   */
+  readonly deniedBy: Readonly<Record<string, number>>
 }
+
+/** The tallies counted one request or answer at a time. */
+type Counted = Exclude<keyof Tally, "deniedBy">
 
 export const emptyTally: Tally = {
   permissions: 0,
@@ -180,6 +190,7 @@ export const emptyTally: Tally = {
   answered: 0,
   declined: 0,
   cancelled: 0,
+  deniedBy: {},
 }
 
 /** The message a denial sends the worker, before the reason typed with it. */
@@ -410,6 +421,15 @@ export class Attention extends Context.Service<
     readonly open: Stream.Stream<ReadonlyArray<AttentionRequest>>
     /** The ticket's worker's open requests, oldest first: now, then on each change. */
     openFor(ticket: string): Stream.Stream<ReadonlyArray<AttentionRequest>>
+    /**
+     * Records a call Claude Code denied the ticket's worker without asking: its `permission_denied`,
+     * and the call's input when the worker's messages gave it.
+     */
+    denial(
+      ticket: string,
+      message: SDKPermissionDeniedMessage,
+      input?: Readonly<Record<string, unknown>>,
+    ): Effect.Effect<void>
     /** The ticket's requests and answers so far. */
     tally(ticket: string): Effect.Effect<Tally>
   }
@@ -464,13 +484,11 @@ export const make = (
     // so a request's answer is never recorded before the request itself.
     const one = yield* Semaphore.make(1)
 
-    const count = (ticket: string, field: keyof Tally) =>
-      Ref.update(tallies, (all) => {
-        const next = new Map(all)
-        const tally = all.get(ticket) ?? emptyTally
-        next.set(ticket, { ...tally, [field]: tally[field] + 1 })
-        return next
-      })
+    const change = (ticket: string, f: (tally: Tally) => Tally) =>
+      Ref.update(tallies, (all) => new Map(all).set(ticket, f(all.get(ticket) ?? emptyTally)))
+
+    const count = (ticket: string, field: Counted) =>
+      change(ticket, (tally) => ({ ...tally, [field]: tally[field] + 1 }))
 
     const requests = (all: ReadonlyArray<Open>) => all.map((o) => o.request)
 
@@ -747,6 +765,27 @@ export const make = (
         return outcome._tag === "Cancelled" ? withdrawn : permissionResult(request, outcome)
       })
 
+    const denial = (
+      ticket: string,
+      message: SDKPermissionDeniedMessage,
+      input?: Readonly<Record<string, unknown>>,
+    ) =>
+      Effect.gen(function* () {
+        const tool = sanitizeLine(message.tool_name)
+        const by = sanitizeLine(message.decision_reason_type ?? log.unknownDenier)
+        const reason = sanitizeLine(message.decision_reason ?? message.message)
+        yield* change(ticket, (tally) => ({
+          ...tally,
+          deniedBy: {
+            ...tally.deniedBy,
+            [by]: (Object.hasOwn(tally.deniedBy, by) ? (tally.deniedBy[by] ?? 0) : 0) + 1,
+          },
+        }))
+        const what = input === undefined ? tool : `${tool}(${summarize(input)})`
+        yield* logs.write(log.denied({ id: ticket, what, by, reason }))
+        yield* events.emit({ kind: "denied", ticket, tool, reason_type: by, reason })
+      })
+
     const onElicitation = (
       ticket: string,
       sdk: ElicitationRequest,
@@ -798,6 +837,7 @@ export const make = (
             (a, b) => a.length === b.length && a.every((r, i) => r.id === b[i]?.id),
           ),
         ),
+      denial,
       tally: (ticket) => Effect.map(Ref.get(tallies), (all) => all.get(ticket) ?? emptyTally),
     })
   })

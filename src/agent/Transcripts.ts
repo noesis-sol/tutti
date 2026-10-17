@@ -6,7 +6,8 @@
 // session, or the next run, appends to the same file, numbering on from its last line.
 //
 // In memory, each worker keeps its last 200 items for its view, the live item partial messages are
-// folded into while its view is open, and the latest action its card shows. Reading back goes to the
+// folded into while its view is open, and the latest action its card shows: a call Claude Code
+// denied (`permission_denied`, § 4.5) is that for 10 seconds. Reading back goes to the
 // file, 200 items at a time, for the view's scrolling and for triage.
 //
 // Nothing here fails: a file that can't be opened or written is warned about once per worker, and
@@ -17,6 +18,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Clock, Context, Effect, Layer, PubSub, Result, Schema, type Scope, Stream } from "effect"
 import { close, LibcError, O, openUnder } from "../native/libc.ts"
 import { terminalSafe, timestamp } from "../run/events.ts"
+import { denier, unknownDenier } from "../run/log.ts"
 import { ticketIdProblem } from "../services/Worktrees.ts"
 
 /** The folder of the workers' transcripts, relative to the main checkout's top level (§ 9.1). */
@@ -34,6 +36,9 @@ export const pageSize = 200
 
 /** The latest action is cut to this many characters, an ellipsis included. */
 export const actionLimit = 200
+
+/** How long a denied call is the latest action (§ 4.5), in milliseconds. */
+export const deniedShownFor = 10_000
 
 /** The version of the transcript's lines this tutti writes. */
 export const transcriptVersion = 1
@@ -198,16 +203,28 @@ interface Activity {
   readonly pending: Map<string, string>
   /** The last line of its own last assistant text. */
   text: string | undefined
+  /** The last call Claude Code denied, as the card shows it, and when (epoch milliseconds). */
+  denied: { readonly text: string; readonly at: number } | undefined
 }
 
 // follow folds one message into the activity behind the latest action (§ 4.4). Only the worker's
 // own messages count, not a subagent's: while one works, its Agent call is the current one. A
 // turn's start (system/init) and end (result) leave no call current: one interrupted is never
-// answered.
-const follow = (activity: Activity, message: SDKMessage): void => {
+// answered. A denial counts whoever's call it was, a subagent's named by its tool alone; `at` is
+// when the message came.
+const follow = (activity: Activity, message: SDKMessage, at: number): void => {
   const m = message as unknown as Readonly<Record<string, unknown>>
   if (m.type === "result" || (m.type === "system" && m.subtype === "init")) {
     activity.pending.clear()
+    return
+  }
+  if (m.type === "system" && m.subtype === "permission_denied") {
+    const id = asString(m.tool_use_id)
+    const call = (id === undefined ? undefined : activity.pending.get(id)) ?? asString(m.tool_name)
+    const by = asString(m.decision_reason_type) ?? unknownDenier
+    if (call !== undefined) {
+      activity.denied = { text: cut(`${call} denied by ${denier(by)}`, actionLimit), at }
+    }
     return
   }
   if (m.parent_tool_use_id !== null && m.parent_tool_use_id !== undefined) return
@@ -234,8 +251,15 @@ const follow = (activity: Activity, message: SDKMessage): void => {
   }
 }
 
-/** The latest action: the current tool call, else the last line of assistant text (§ 4.4). */
-const latestOf = (activity: Activity): string | undefined => {
+/**
+ * The latest action at `now`: a call denied in the last `deniedShownFor`, else the current tool
+ * call, else the last line of assistant text (§ 4.4, § 4.5).
+ */
+const latestOf = (activity: Activity, now: number): string | undefined => {
+  const denied = activity.denied
+  if (denied !== undefined && now >= denied.at && now - denied.at < deniedShownFor) {
+    return denied.text
+  }
   let current: string | undefined
   for (const call of activity.pending.values()) current = call
   return current ?? activity.text
@@ -392,8 +416,8 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
       // A worker seen before, in an earlier session or run, numbers on from its file's last line,
       // and starts its memory and latest action from the file's last items.
       const ring = readBack(storage, id, undefined, ringSize).map(({ item }) => item)
-      const activity: Activity = { pending: new Map(), text: undefined }
-      for (const item of ring) follow(activity, item.message)
+      const activity: Activity = { pending: new Map(), text: undefined, denied: undefined }
+      for (const item of ring) follow(activity, item.message, Date.parse(item.time))
       const worker: Worker = {
         seq: ring.at(-1)?.seq ?? 0,
         ring,
@@ -432,13 +456,13 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
       publish(worker, { _tag: "Live", parent, live: shown(after) })
     }
 
-    const append = (id: string, worker: Worker, item: Item): void => {
+    const append = (id: string, worker: Worker, item: Item, now: number): void => {
       const line = encodeItem(item)
       if (line !== undefined) storage.append(id, `${line}\n`)
       worker.seq = item.seq
       worker.ring.push(item)
       if (worker.ring.length > ringSize) worker.ring.splice(0, worker.ring.length - ringSize)
-      follow(worker.activity, item.message)
+      follow(worker.activity, item.message, now)
       // The SDK sends each content block complete as it ends, as an assistant message of its own:
       // it replaces what the live message had built. The live message goes on, for the next block.
       if (item.message.type === "assistant") {
@@ -460,18 +484,20 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
               Effect.sync(() => {
                 const worker = workerOf(id)
                 const time = timestamp(new Date(now))
-                append(id, worker, {
-                  v: transcriptVersion,
-                  seq: worker.seq + 1,
-                  session,
-                  time,
-                  message,
-                })
+                append(
+                  id,
+                  worker,
+                  { v: transcriptVersion, seq: worker.seq + 1, session, time, message },
+                  now,
+                )
               }),
             ),
       stderr: (id) => (data) => storage.stderr(id, data),
       recent: (id) => Effect.sync(() => [...workerOf(id).ring]),
-      latestAction: (id) => Effect.sync(() => latestOf(workerOf(id).activity)),
+      latestAction: (id) =>
+        Effect.flatMap(Clock.currentTimeMillis, (now) =>
+          Effect.sync(() => latestOf(workerOf(id).activity, now)),
+        ),
       view: (id) =>
         Effect.gen(function* () {
           const worker = workerOf(id)

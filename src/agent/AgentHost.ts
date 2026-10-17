@@ -5,13 +5,21 @@
 // of its sessions' raw SDK messages, in the shape Transcripts records them. The host itself records
 // every message in Transcripts, so a reader that subscribes late misses nothing from the file.
 //
+// A call Claude Code denies without asking comes as a `permission_denied` (§ 4.5), which names the
+// call's tool use but not its input: each worker keeps its last calls' inputs, from its assistant
+// messages, so Attention can log the denial as `Bash(rm -rf build)`, record it and tally it.
+//
 // The caller draws each new session's ID and saves it before starting it (§ 4.8). A resumed
 // session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so resume
 // takes the message that carries it on.
 //
 // The live layer is src/agent/AgentHostLive.ts (over the Agent SDK); the test layer is
 // src/testing/AgentHost.ts, which replays scripted sessions and records what it was sent.
-import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import type {
+  SDKMessage,
+  SDKPermissionDeniedMessage,
+  SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk"
 import {
   Clock,
   Context,
@@ -180,7 +188,46 @@ export interface WorkerEntry {
   readonly messages: PubSub.PubSub<SessionMessage>
   /** Done when the worker is ended: its streams end with it. */
   readonly ended: Deferred.Deferred<void>
+  /** The inputs of its last `callsKept` tool calls, its subagents' too, by tool use ID. */
+  readonly calls: Map<string, Readonly<Record<string, unknown>>>
 }
+
+/** How many of a worker's last tool calls keep their input, for the denials that name them. */
+export const callsKept = 64
+
+/** The tool calls in an assistant message, its subagents' too: each one's ID and input. */
+const toolUses = (
+  message: SDKMessage,
+): ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]> => {
+  if (message.type !== "assistant") return []
+  const content: unknown = message.message.content
+  if (!Array.isArray(content)) return []
+  return content.flatMap((block: unknown) => {
+    const b = block as { readonly type?: unknown; readonly id?: unknown; readonly input?: unknown }
+    return b.type === "tool_use" &&
+      typeof b.id === "string" &&
+      typeof b.input === "object" &&
+      b.input !== null
+      ? [[b.id, b.input as Readonly<Record<string, unknown>>] as const]
+      : []
+  })
+}
+
+/** Keeps the message's tool calls' inputs in `calls`, the oldest going past `callsKept`. */
+const keepCalls = (calls: WorkerEntry["calls"], message: SDKMessage): void => {
+  for (const [id, input] of toolUses(message)) {
+    calls.delete(id)
+    calls.set(id, input)
+  }
+  for (const id of calls.keys()) {
+    if (calls.size <= callsKept) break
+    calls.delete(id)
+  }
+}
+
+/** Whether `message` is a `permission_denied`: a call Claude Code denied without asking. */
+const isDenial = (message: SDKMessage): message is SDKPermissionDeniedMessage =>
+  message.type === "system" && message.subtype === "permission_denied"
 
 /** The workers a host knows, and how their state moves: what the live and test layers share. */
 export interface Workers {
@@ -192,7 +239,10 @@ export interface Workers {
   readonly get: (ticket: string) => Effect.Effect<WorkerEntry, AgentGone>
   /** Folds `event` into the worker's state, at the clock's time. */
   readonly fold: (entry: WorkerEntry, event: WorkerEvent) => Effect.Effect<void>
-  /** A message of the session `session`: recorded in Transcripts, published and folded in. */
+  /**
+   * A message of the session `session`: recorded in Transcripts, published and folded in; a
+   * `permission_denied` is recorded through Attention too.
+   */
   readonly emit: (entry: WorkerEntry, session: string, message: SDKMessage) => Effect.Effect<void>
   /** Waits until the worker's state counts every one of its open attention requests. */
   readonly counted: (entry: WorkerEntry) => Effect.Effect<void>
@@ -268,6 +318,7 @@ export const makeWorkers = (
           state: yield* SubscriptionRef.make<WorkerState>(WorkerState.Starting()),
           messages: yield* PubSub.unbounded<SessionMessage>(),
           ended: yield* Deferred.make<void>(),
+          calls: new Map(),
         }
         // Counts its open requests into its state, until it is ended; it has counted the requests
         // open now before the entry is handed out, so none is missed.
@@ -320,6 +371,10 @@ export const makeWorkers = (
           yield* transcripts.record(entry.ticket, session, message)
           yield* PubSub.publish(entry.messages, { session, message })
           yield* fold(entry, WorkerEvent.Message({ message }))
+          keepCalls(entry.calls, message)
+          if (isDenial(message)) {
+            yield* attention.denial(entry.ticket, message, entry.calls.get(message.tool_use_id))
+          }
         }),
       counted: (entry) =>
         Effect.gen(function* () {

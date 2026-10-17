@@ -245,12 +245,20 @@ export const allowedByRule = (id: string, what: string): Line =>
 /** What denied a tool call, from the SDK's `decision_reason_type`. */
 export type DeniedBy = "classifier" | "safetyCheck" | "mode" | "rule"
 
+/** What stands for the SDK's `decision_reason_type` when a denial comes without one. */
+export const unknownDenier = "unknown"
+
 const deniers: Record<string, string> = {
   classifier: "the classifier",
   safetyCheck: "the safety check",
   mode: "the permission mode",
   rule: "a rule",
+  [unknownDenier]: "Claude Code",
 }
+
+/** What denied a tool call, in words: `the safety check`; a type tutti doesn't know, as given. */
+export const denier = (by: DeniedBy | (string & {})): string =>
+  Object.hasOwn(deniers, by) ? (deniers[by] ?? by) : by
 
 /** DENIED: the classifier, the safety check, the mode or a rule refused a worker's tool call (§ 4.5). */
 export const denied = (d: {
@@ -259,10 +267,7 @@ export const denied = (d: {
   /** A `decision_reason_type` tutti doesn't know is named as given. */
   readonly by: DeniedBy | (string & {})
   readonly reason: string
-}): Line => {
-  const by = Object.hasOwn(deniers, d.by) ? (deniers[d.by] ?? d.by) : d.by
-  return ticketLine(Tag.denied)`${d.id}'s worker: ${d.what}, by ${by}: ${d.reason}`
-}
+}): Line => ticketLine(Tag.denied)`${d.id}'s worker: ${d.what}, by ${denier(d.by)}: ${d.reason}`
 
 /** STEERED: you sent the worker a message or interrupted it (§ 4.3). */
 export const steered = (id: string): Line => ticketLine(Tag.steered)`${id}`
