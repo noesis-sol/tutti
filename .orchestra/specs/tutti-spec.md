@@ -408,7 +408,13 @@ These stay, as orchestra has them:
 
 - an ID drawn by tutti; the ticket; the SDK's `toolUseID`; the subagent's `agentID`, if a subagent asked
 - its kind: `Permission{tool, input, suggestions}`, or `Question{questions}` for `AskUserQuestion`
-- the SDK's display fields: `title` ("Claude wants to read foo.txt"), `displayName`, `description`, `decisionReason` and `blockedPath`
+- the SDK's display fields, each optional: `displayName`, `description`, `decisionReason`, `blockedPath` and `title`. What arrives (SDK 0.3.301, Claude Code 2.1.301; docs/spikes/01-sdk-session.md, item 2):
+  - `displayName`, on every request: the tool's name (`Bash`, `Write`, `Read`, `Monitor`, `AskUserQuestion`)
+  - `description`: the tool call's own description for Bash and Monitor (`Create empty file made-by-bash.txt`), the file name or path for Write and Read; none for `AskUserQuestion`
+  - `decisionReason`, on some asks only: a Read outside the folder (`Path is outside allowed working directories`), the safety check's text
+  - `blockedPath`: the file a Bash or Monitor call writes, even inside the working directory
+  - `title` ("Claude wants to read foo.txt") never arrives from an SDK host: the CLI sets it only from a host-supplied permission display (a `PreToolUse` `permissionDisplay`, internal to Claude Desktop). tutti keeps it and uses it if it comes, and relies on it nowhere
+  - `AskUserQuestion` also carries `requiresUserInteraction: true`, which isn't in the SDK's types. tutti doesn't read it: the tool's name already makes the request a question
 - its two flags: **`defaultToNo`** ("must not be approvable by a single stray keystroke … offer no one-key approve shortcut") and **`suppressAlwaysAllowRule`** ("must not offer a persistent don't ask again choice"). `defaultToNo` is also set on a request whose `decisionReasonType` is `safetyCheck`, since the CLI doesn't set it there (below)
 - its creation time
 
@@ -443,7 +449,7 @@ The reviewer's **Needs you** recommends rules for calls the classifier kept deny
 
 **What the UI shows.**
 
-- **On the card.** It turns red and shows the request's `title`, else the tool and a one-line summary of its input, then its buttons:
+- **On the card.** It turns red and shows the request's line, then its buttons. For a permission, the line is the request's `title` if it has one; else `displayName` and `description` (`Bash: Create empty file made-by-bash.txt`), the tool's name standing in for a missing `displayName` and a one-line summary of the input (the command, or the file or pattern it names: `Bash: touch made-by-bash.txt`) for a missing `description`. Under it, faint, comes the input's summary when the line doesn't already hold it: a Bash or Monitor `description` is the model's own account of the call, and the summary is what will run. For a question, the line is its question. The buttons:
   - for a permission: **Deny**, **Allow**, and **Allow for this run** (not when `suppressAlwaysAllowRule` is set, nor when the request's `suggestions` hold no `addRules` that allow)
   - for a question: each question's options
 - **In the worker view.** The same, with `description`, `decisionReason` and the full input.
@@ -1231,7 +1237,7 @@ As orchestra draws it:
   - `♪ tutti is ready.` `organ` bold; `♪ Almost ready: fix what's missing above.` `notice`; `Cancelled; nothing was changed.` `notice`
 - **A newer release**: the line `notice`, its command `emphasis` bold.
 - **What is new in tutti**:
-  - **Attention cards**: framed `needsYou`. The request's title is in the default text colour, its reason faint. The buttons are in the form roles: the focused one `formAccentText` on `formAccent`, the others `formText` on `formButton`. With `defaultToNo`, Deny is the focused one.
+  - **Attention cards**: framed `needsYou`. The request's line (§ 4.5) is in the default text colour, the input's summary and the reason under it faint. The buttons are in the form roles: the focused one `formAccentText` on `formAccent`, the others `formText` on `formButton`. With `defaultToNo`, Deny is the focused one.
   - **The highlight** (`Tab` between cards) keeps the card's frame role and draws it bold in OpenTUI's `heavy` border style, so the state's colour is never replaced. Cards are otherwise `rounded`.
   - **A classifier denial** on a card's action line: `notice`, for its 10 seconds.
   - **The worker view**:
