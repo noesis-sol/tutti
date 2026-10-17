@@ -13,10 +13,13 @@
 // gets its command_lifecycle (`queued` when pushed, `started` when a Wait takes it, `completed`
 // after the result of the turn that took it), a result lists in `user_message_uuids` the sends
 // taken since the last result unless the script lists them itself, and an `idle` is held back
-// while a send waits untaken, as the CLI sends `idle` only after the last queued turn. Everything the layer is sent is recorded, in order: starts, resumes,
-// messages as the SDK would get them (client_composed or origin human), interrupts and their
-// receipts, the answers to permission requests and elicitations, closes and ends. Recording reads
-// them back.
+// while a send waits untaken, as the CLI sends `idle` only after the last queued turn. An interrupt
+// cancels the sends still queued (§ 4.8): in its receipt, as `interrupt({ cancelQueued: true })`
+// does, or one by one with `cancel_async_message`, as on a CLI without `interrupt_cancel_queued_v1`.
+// Everything the layer is sent is recorded, in order: starts, resumes, messages as the SDK would get
+// them (client_composed or origin human), interrupts and their receipts, cancel_async_message
+// requests and their answers, the answers to permission requests and elicitations, closes and ends.
+// Recording reads them back.
 import type {
   CanUseTool,
   ElicitationRequest,
@@ -108,6 +111,16 @@ export type Sent = Data.TaggedEnum<{
   Resumed: { readonly ticket: string; readonly session: Session }
   /** A message, as the SDK would get it: `client_composed`, or `origin: { kind: "human" }`. */
   Message: { readonly ticket: string; readonly message: SDKUserMessage }
+  /**
+   * A `cancel_async_message` request, sent after an interrupt for a message still queued, and its
+   * answer: whether the message was dropped, or null when the CLI refused the request.
+   */
+  CancelAsync: {
+    readonly ticket: string
+    readonly uuid: string
+    readonly cancelled: boolean | null
+  }
+  /** The interrupt's receipt, with the messages cancel_async_message cancelled under `cancelled`. */
   Interrupted: { readonly ticket: string; readonly receipt: Receipt }
   /** A canUseTool call's answer. */
   Answered: {
@@ -171,9 +184,16 @@ export interface Options {
   /**
    * Whether an interrupt cancels the queued messages, as `interrupt({ cancelQueued: true })` does
    * where the CLI advertises `interrupt_cancel_queued_v1` (§ 4.8): the receipt lists them under
-   * `cancelled`, not `still_queued`, and they never run. False by default.
+   * `cancelled`, not `still_queued`, and they never run. False by default: the host cancels each
+   * one with `cancel_async_message` instead, answered as `cancelAsync` says.
    */
   readonly cancelQueued?: boolean
+  /**
+   * How the CLI answers `cancel_async_message`: by default it drops the message (`cancelled:
+   * true`), which never runs; "refuse" fails the request, and "notQueued" answers `cancelled:
+   * false`, as for a message its turn has already taken. A message not dropped stays queued and runs.
+   */
+  readonly cancelAsync?: "refuse" | "notQueued"
 }
 
 /**
@@ -421,11 +441,23 @@ export const layer = (
           Effect.gen(function* () {
             const playing = yield* session(ticket)
             const queued = yield* Ref.get(playing.queued)
-            const cancelQueued = options.cancelQueued === true
-            if (cancelQueued) yield* Ref.set(playing.queued, [])
-            const receipt: Receipt = cancelQueued
-              ? { stillQueued: [], cancelled: queued }
-              : { stillQueued: queued, cancelled: [] }
+            const withdrawn: Array<string> = []
+            if (options.cancelQueued === true) withdrawn.push(...queued)
+            else {
+              for (const uuid of queued) {
+                const cancelled =
+                  options.cancelAsync === "refuse" ? null : options.cancelAsync !== "notQueued"
+                yield* record(Sent.CancelAsync({ ticket, uuid, cancelled }))
+                if (cancelled === true) withdrawn.push(uuid)
+              }
+            }
+            yield* Ref.update(playing.queued, (uuids) =>
+              uuids.filter((u) => !withdrawn.includes(u)),
+            )
+            const receipt: Receipt = {
+              stillQueued: queued.filter((uuid) => !withdrawn.includes(uuid)),
+              cancelled: withdrawn,
+            }
             for (const uuid of receipt.cancelled) {
               playing.cancelled.add(uuid)
               yield* lifecycle(playing, uuid, "cancelled")

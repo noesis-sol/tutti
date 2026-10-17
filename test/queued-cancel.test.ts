@@ -1,0 +1,448 @@
+// Queued messages are cancelled, not left to the close (§ 4.8): an interrupt cancels the messages
+// queued behind the turn, with `interrupt({ cancelQueued: true })` where the CLI advertises
+// `interrupt_cancel_queued_v1`, else one by one with `cancel_async_message`; a message cancelled
+// either way is no longer outstanding (§ 4.2), and one the CLI won't cancel runs. The scripted
+// AgentHost, the live host over the fake Claude Code (test/fixtures/fake-claude/claude.ts), and
+// § 13's contract tests against the real SDK.
+import { describe, expect, test } from "bun:test"
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
+import {
+  type CanUseTool,
+  query,
+  type SDKMessage,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk"
+import { BunServices } from "@effect/platform-bun"
+import { Duration, Effect, Layer, Schedule, Stream } from "effect"
+import { TestClock } from "effect/testing"
+import { AgentHost } from "../src/agent/AgentHost.ts"
+import { layer as liveLayer, queuedControls } from "../src/agent/AgentHostLive.ts"
+import type { Attention } from "../src/agent/Attention.ts"
+import { workerEnv } from "../src/agent/env.ts"
+import { noServersNote } from "../src/agent/mcp.ts"
+import type { Transcripts } from "../src/agent/Transcripts.ts"
+import type { WorkerState } from "../src/agent/WorkerState.ts"
+import { defaultSettings } from "../src/cli/AppConfig.ts"
+import type { EventStream } from "../src/run/eventstream.ts"
+import type { Log } from "../src/run/log.ts"
+import {
+  awaitInterrupt,
+  coalescedTurn,
+  layer as hostLayer,
+  init,
+  interruptedResult,
+  type Options,
+  Recording,
+  type Script,
+  sessionState,
+  wait,
+} from "../src/testing/AgentHost.ts"
+import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
+import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
+import { layer as eventsLayer } from "../src/testing/EventStream.ts"
+import { layer as logLayer } from "../src/testing/Log.ts"
+import { Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { live } from "./gates.ts"
+
+type Env = AgentHost | Attention | Transcripts | Files | Log | EventStream
+
+/** Waits, at most 10 s, for the ticket's worker to reach a state with `tag`; the states seen. */
+const reaches = (ticket: string, tag: WorkerState["_tag"]) =>
+  Effect.flatMap(AgentHost, (host) =>
+    host.state(ticket).pipe(
+      Stream.takeUntil((s) => s._tag === tag),
+      Stream.runCollect,
+      Effect.timeoutOrElse({
+        duration: Duration.seconds(10),
+        orElse: () => Effect.die(`${ticket} never reached ${tag}`),
+      }),
+    ),
+  )
+
+/** The transcript's results' sends, and its command_lifecycle `cancelled` sends. */
+const transcript = Effect.gen(function* () {
+  const raw = (yield* (yield* Files).messages("t-1")).map(
+    (item) => item.message as unknown as Record<string, unknown>,
+  )
+  return {
+    results: raw.filter((m) => m.type === "result").map((m) => m.user_message_uuids),
+    cancelled: raw
+      .filter((m) => m.type === "command_lifecycle" && m.state === "cancelled")
+      .map((m) => m.command_uuid),
+  }
+})
+
+// The scripted AgentHost.
+
+/** Runs `effect` with the scripted host playing `scripts`, under TestClock. */
+const scripted = <A, E>(
+  scripts: Readonly<Record<string, Script>>,
+  effect: Effect.Effect<A, E, Env | Recording>,
+  options: Options = {},
+): Promise<A> =>
+  Effect.runPromise(
+    effect.pipe(
+      Effect.provide(
+        hostLayer(scripts, options).pipe(
+          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer())),
+          Layer.provideMerge(TestClock.layer()),
+        ),
+      ),
+    ),
+  )
+
+/** A turn interrupted with two messages queued behind it, then the turn they share if they run. */
+const interrupted = [
+  wait,
+  init(),
+  sessionState("running"),
+  awaitInterrupt,
+  interruptedResult,
+  sessionState("idle"),
+  ...coalescedTurn([]),
+]
+
+/** Starts t-1, queues two messages behind its first turn, and interrupts it. */
+const queueTwoAndInterrupt = (settled: WorkerState["_tag"]) =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    yield* host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" })
+    yield* host.send("t-1", "Go.", "clientComposed")
+    yield* reaches("t-1", "Working")
+    const b = yield* host.send("t-1", "And this.", "human")
+    const c = yield* host.send("t-1", "And that.", "human")
+    const receipt = yield* host.interrupt("t-1")
+    const states = yield* reaches("t-1", settled)
+    return {
+      b,
+      c,
+      receipt,
+      states: states.map((s) => s._tag),
+      sent: (yield* (yield* Recording).sentTo("t-1")).map((s) =>
+        s._tag === "CancelAsync" ? [s._tag, s.uuid, s.cancelled] : [s._tag],
+      ),
+      ...(yield* transcript),
+    }
+  })
+
+describe("the scripted AgentHost: an interrupt without cancelQueued", () => {
+  test("cancels each message still queued with cancel_async_message; none runs", async () => {
+    const done = await scripted({ "t-1": [interrupted] }, queueTwoAndInterrupt("Failed"))
+    expect(done.receipt).toEqual({ stillQueued: [], cancelled: [done.b, done.c] })
+    expect(done.sent).toEqual([
+      ["Started"],
+      ["Message"],
+      ["Message"],
+      ["Message"],
+      ["CancelAsync", done.b, true],
+      ["CancelAsync", done.c, true],
+      ["Interrupted"],
+    ])
+    // No longer outstanding, they leave the interrupted worker to settle, Failed.
+    expect(done.states.at(-1)).toBe("Failed")
+    expect(done.cancelled).toEqual([done.b, done.c])
+    expect(done.results).toEqual([[expect.any(String)]])
+  })
+
+  test("a message it answers cancelled: false for stays queued, outstanding, and runs", async () => {
+    const done = await scripted({ "t-1": [interrupted] }, queueTwoAndInterrupt("Idle"), {
+      cancelAsync: "notQueued",
+    })
+    expect(done.receipt).toEqual({ stillQueued: [done.b, done.c], cancelled: [] })
+    expect(done.sent.slice(4)).toEqual([
+      ["CancelAsync", done.b, false],
+      ["CancelAsync", done.c, false],
+      ["Interrupted"],
+    ])
+    expect(done.states).not.toContain("Failed")
+    expect(done.results).toEqual([[expect.any(String)], [done.b, done.c]])
+  })
+
+  test("with cancelQueued, the receipt cancels them and no cancel_async_message is sent", async () => {
+    const done = await scripted({ "t-1": [interrupted] }, queueTwoAndInterrupt("Failed"), {
+      cancelQueued: true,
+    })
+    expect(done.receipt).toEqual({ stillQueued: [], cancelled: [done.b, done.c] })
+    expect(done.sent.map(([tag]) => tag)).not.toContain("CancelAsync")
+    expect(done.results).toEqual([[expect.any(String)]])
+  })
+})
+
+// The live host over the fake Claude Code.
+
+const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
+
+/** The control requests the fake read, from its log. */
+const requestsRead = (file: string): ReadonlyArray<Record<string, unknown>> =>
+  existsSync(file)
+    ? readFileSync(file, "utf8")
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => JSON.parse(l))
+        .filter((e) => e.stdin?.type === "control_request")
+        .map((e) => e.stdin.request)
+    : []
+
+/** Waits, at most 10 s, until the fake has read `n` user messages. */
+const fakeRead = (file: string, n: number) =>
+  Effect.sync(() =>
+    existsSync(file)
+      ? readFileSync(file, "utf8")
+          .split("\n")
+          .filter((l) => l.includes('"type":"user"')).length
+      : 0,
+  ).pipe(
+    Effect.repeat({ until: (k) => k >= n, schedule: Schedule.spaced(Duration.millis(20)) }),
+    Effect.timeout(Duration.seconds(10)),
+  )
+
+/** Runs `effect` with the live host over the fake, playing `scenario`, in a fresh folder. */
+const overFake = <A, E>(
+  scenario: Record<string, unknown>,
+  effect: (log: string) => Effect.Effect<A, E, Env>,
+): Promise<A> => {
+  const dir = mkdtempSync(join(tmpdir(), "tutti-queued-cancel-"))
+  const log = join(dir, "fake.jsonl")
+  const host = liveLayer({
+    prompt: { text: "Work on TICKET_ID.", file: null },
+    servers: { servers: [], note: noServersNote },
+    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
+    env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log }) },
+  })
+  return Effect.runPromise(
+    effect(log).pipe(
+      Effect.provide(
+        host.pipe(
+          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(
+              logLayer(),
+              eventsLayer(),
+              configLayer(appConfig({ claude: fake, settings: defaultSettings }, dir)),
+              BunServices.layer,
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+/** A CLI with interrupt receipts and without interrupt_cancel_queued_v1, as `--claude` may be. */
+const noCancelQueued = { init: { capabilities: ["interrupt_receipt_v1"] } }
+
+/** Starts t-1 over the fake, queues two of your messages behind a hanging turn, interrupts it. */
+const liveQueueTwoAndInterrupt = (log: string, settled: WorkerState["_tag"]) =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    yield* host.start("t-1", {
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      cwd: join(log, ".."),
+    })
+    yield* host.send("t-1", "Go.", "clientComposed")
+    yield* reaches("t-1", "Working")
+    const b = yield* host.send("t-1", "And this.", "human")
+    const c = yield* host.send("t-1", "And that.", "human")
+    yield* fakeRead(log, 3)
+    const receipt = yield* host.interrupt("t-1")
+    const states = yield* reaches("t-1", settled)
+    return {
+      b,
+      c,
+      receipt,
+      states: states.map((s) => s._tag),
+      requests: requestsRead(log).filter((r) => r.subtype !== "initialize"),
+      ...(yield* transcript),
+    }
+  })
+
+describe("the live AgentHost: an interrupt on a CLI without interrupt_cancel_queued_v1", () => {
+  test("cancels each message still queued with cancel_async_message, at once; none runs", async () => {
+    const done = await overFake(
+      // The interrupted turn ends 300 ms after the receipt: the cancels land before the next turn.
+      { ...noCancelQueued, turns: [[{ hang: true }]], interruptLag: 300 },
+      (log) => liveQueueTwoAndInterrupt(log, "Failed"),
+    )
+    expect(done.receipt).toEqual({ stillQueued: [], cancelled: [done.b, done.c] })
+    expect(done.requests).toEqual([
+      { subtype: "interrupt" },
+      { subtype: "cancel_async_message", message_uuid: done.b },
+      { subtype: "cancel_async_message", message_uuid: done.c },
+    ])
+    expect(done.states.at(-1)).toBe("Failed")
+    expect(done.cancelled).toEqual([done.b, done.c])
+    expect(done.results).toEqual([[expect.any(String)]])
+  })
+
+  test("a message it answers cancelled: false for runs, and the worker waits for it", async () => {
+    const done = await overFake(
+      { ...noCancelQueued, turns: [[{ hang: true }]], cancelAsync: "notQueued" },
+      (log) => liveQueueTwoAndInterrupt(log, "Idle"),
+    )
+    expect(done.receipt).toEqual({ stillQueued: [done.b, done.c], cancelled: [] })
+    expect(done.states).not.toContain("Failed")
+    expect(done.results).toEqual([[expect.any(String)], [done.b, done.c]])
+  })
+
+  test("a message whose cancel the CLI refuses runs", async () => {
+    const done = await overFake(
+      { ...noCancelQueued, turns: [[{ hang: true }]], cancelAsync: "refuse" },
+      (log) => liveQueueTwoAndInterrupt(log, "Idle"),
+    )
+    expect(done.receipt).toEqual({ stillQueued: [done.b, done.c], cancelled: [] })
+    expect(done.results).toEqual([[expect.any(String)], [done.b, done.c]])
+  })
+
+  test("where the CLI advertises it, the interrupt cancels them and no cancel is sent", async () => {
+    const done = await overFake({ turns: [[{ hang: true }]] }, (log) =>
+      liveQueueTwoAndInterrupt(log, "Failed"),
+    )
+    expect(done.receipt).toEqual({ stillQueued: [], cancelled: [done.b, done.c] })
+    expect(done.requests).toEqual([{ subtype: "interrupt", cancel_queued: true }])
+    expect(done.results).toEqual([[expect.any(String)]])
+  })
+})
+
+// § 13's contract tests, against the real SDK and Claude Code (docs/spikes/02-sdk-lifecycle.md § 1).
+
+/** A session over the real SDK in a fresh git folder, its messages collected as they come. */
+const realSession = () => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-queued-cancel-")))
+  Bun.spawnSync(["git", "init", "-q", repo])
+  // Claude Code's Bash tool refuses a standalone long `sleep`, so the long turn runs this.
+  writeFileSync(join(repo, "wait.sh"), 'sleep "$1"\n', { mode: 0o755 })
+  const pending: Array<SDKUserMessage> = []
+  let wake: () => void = () => {}
+  let closed = false
+  const inbox = async function* (): AsyncGenerator<SDKUserMessage> {
+    while (!closed) {
+      const next = pending.shift()
+      if (next !== undefined) yield next
+      else await new Promise<void>((resolve) => (wake = resolve))
+    }
+  }
+  const canUseTool: CanUseTool = async (tool, input) =>
+    tool === "Bash" && String(input.command ?? "").startsWith("./wait.sh ")
+      ? { behavior: "allow", updatedInput: input }
+      : { behavior: "deny", message: "This test allows only ./wait.sh." }
+  const session = query({
+    prompt: inbox(),
+    options: {
+      cwd: repo,
+      projectConfigRoot: repo,
+      settingSources: ["project", "local"],
+      permissionMode: "default",
+      model: "haiku",
+      canUseTool,
+      mcpServers: {},
+      strictMcpConfig: true,
+      persistSession: false,
+      env: workerEnv({ subscription: false, billing: "subscription" }),
+    },
+  })
+  const messages: Array<SDKMessage> = []
+  const reading = (async () => {
+    for await (const message of session) messages.push(message)
+  })()
+  /** Sends `text`; its uuid. */
+  const send = (text: string): string => {
+    const uuid = crypto.randomUUID()
+    pending.push({
+      type: "user",
+      message: { role: "user", content: text },
+      parent_tool_use_id: null,
+      uuid: uuid as SDKUserMessage["uuid"] & string,
+    })
+    wake()
+    return uuid
+  }
+  /** Waits, at most `seconds`, until a message `matches`, from the `from`th on; its index or -1. */
+  const seen = async (matches: (m: SDKMessage) => boolean, seconds: number, from = 0) => {
+    const deadline = Date.now() + seconds * 1000
+    while (Date.now() < deadline) {
+      const at = messages.findIndex((m, i) => i >= from && matches(m))
+      if (at !== -1) return at
+      await Bun.sleep(50)
+    }
+    return -1
+  }
+  const close = async () => {
+    closed = true
+    wake()
+    session.close()
+    await reading.catch(() => {})
+  }
+  return { session, messages, send, seen, close }
+}
+
+const isBash = (m: SDKMessage) =>
+  m.type === "assistant" &&
+  (m.message.content as ReadonlyArray<{ type: string; name?: string }>).some(
+    (block) => block.type === "tool_use" && block.name === "Bash",
+  )
+const isResult = (m: SDKMessage) => m.type === "result"
+const listed = (m: SDKMessage): ReadonlyArray<string> =>
+  m.type === "result"
+    ? ((m as { user_message_uuids?: ReadonlyArray<string> }).user_message_uuids ?? [])
+    : []
+
+const longTurn = (seconds: number, word: string) =>
+  "Use the Bash tool to run exactly this command, with no changes and not in the background: " +
+  `./wait.sh ${seconds}\nWhen it has finished, reply with the single word ${word} and nothing else.`
+
+live.describe("queued messages against the real SDK", () => {
+  test(
+    "interrupt({ cancelQueued: true }) with two queued: both under cancelled, no turn after",
+    async () => {
+      const real = realSession()
+      try {
+        real.send(longTurn(40, "ALPHA"))
+        expect(await real.seen(isBash, 120)).toBeGreaterThanOrEqual(0)
+        await Bun.sleep(1500)
+        const b = real.send("Reply with the single word BRAVO.")
+        const c = real.send("Reply with the single word CHARLIE.")
+        await Bun.sleep(800)
+        const before = real.messages.length
+        const receipt = await queuedControls(real.session).interrupt({ cancelQueued: true })
+        expect(receipt?.still_queued ?? []).toEqual([])
+        expect(receipt?.cancelled ?? []).toEqual(expect.arrayContaining([b, c]))
+        const stopped = await real.seen(isResult, 30, before)
+        expect(stopped).toBeGreaterThanOrEqual(0)
+        // Survivors would start their turn within milliseconds; none comes.
+        await Bun.sleep(15_000)
+        expect(real.messages.slice(stopped + 1).filter(isResult)).toEqual([])
+      } finally {
+        await real.close()
+      }
+    },
+    { timeout: 240_000 },
+  )
+
+  test(
+    "cancel_async_message on a message queued behind a running turn: cancelled, never runs",
+    async () => {
+      const real = realSession()
+      try {
+        real.send(longTurn(8, "ALPHA"))
+        expect(await real.seen(isBash, 120)).toBeGreaterThanOrEqual(0)
+        await Bun.sleep(1000)
+        const b = real.send("Reply with the single word BRAVO.")
+        await Bun.sleep(800)
+        expect(await queuedControls(real.session).cancelAsyncMessage(b)).toBe(true)
+        const done = await real.seen(isResult, 120)
+        expect(done).toBeGreaterThanOrEqual(0)
+        // A message still queued would run as the next turn, at once; it doesn't.
+        await Bun.sleep(15_000)
+        const results = real.messages.filter(isResult)
+        expect(results.length).toBe(1)
+        expect(results.flatMap(listed)).not.toContain(b)
+      } finally {
+        await real.close()
+      }
+    },
+    { timeout: 240_000 },
+  )
+})

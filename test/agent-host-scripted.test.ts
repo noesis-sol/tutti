@@ -440,7 +440,7 @@ describe("what it was sent", () => {
     expect(answered?._tag === "Answered" && answered.result?.behavior).toBe("deny")
   })
 
-  test("without cancelQueued, the messages still queued run after the interrupted turn", async () => {
+  test("a message still queued that the CLI won't cancel runs after the interrupted turn", async () => {
     const script = [
       wait,
       init(),
@@ -471,6 +471,8 @@ describe("what it was sent", () => {
           transcript: yield* (yield* Files).messages("t-1"),
         }
       }),
+      waitForTest,
+      { cancelAsync: "refuse" },
     )
     expect(done.receipt).toEqual({ stillQueued: [done.queued], cancelled: [] })
     // The queued message is outstanding through the interrupted turn: Working, never Failed.

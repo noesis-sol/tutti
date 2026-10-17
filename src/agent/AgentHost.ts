@@ -60,7 +60,8 @@ export interface Session {
 
 /**
  * An interrupt's receipt (§ 4.8): the messages, by uuid, still queued, which will run, and those
- * the interrupt cancelled, where the CLI advertises `interrupt_cancel_queued_v1`.
+ * cancelled, by the interrupt where the CLI advertises `interrupt_cancel_queued_v1`, else one by one
+ * with `cancel_async_message`.
  */
 export interface Receipt {
   readonly stillQueued: ReadonlyArray<string>
@@ -158,7 +159,10 @@ export class AgentHost extends Context.Service<
      * an interrupt's receipt name it by.
      */
     send(ticket: string, text: string, from: From): Effect.Effect<string, AgentGone>
-    /** Interrupts the worker's turn; open requests are withdrawn. The receipt. */
+    /**
+     * Interrupts the worker's turn and cancels the messages queued behind it (§ 4.8); open requests
+     * are withdrawn. The receipt.
+     */
     interrupt(ticket: string): Effect.Effect<Receipt, AgentGone | AgentProtocol>
     /**
      * Closes the worker's session on purpose, keeping its ID for a resume: its state is Closed.

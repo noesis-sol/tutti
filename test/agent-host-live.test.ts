@@ -27,6 +27,8 @@ interface Scenario {
   readonly init?: Record<string, unknown>
   readonly startupFailure?: string
   readonly turns?: ReadonlyArray<ReadonlyArray<object>>
+  readonly interruptLag?: number
+  readonly cancelAsync?: "refuse" | "notQueued"
 }
 
 interface Setup {
@@ -501,11 +503,12 @@ describe("AgentHost live: interrupt", () => {
     expect(state).toMatchObject({ _tag: "Failed", interrupted: true })
   })
 
-  test("leaves them queued where it doesn't, and they run", async () => {
+  test("where it doesn't, a message the CLI won't cancel stays queued and runs", async () => {
     const { receipt, queued, request } = await run(
       {
         init: { capabilities: ["interrupt_receipt_v1"] },
         turns: [[{ hang: true }]],
+        cancelAsync: "refuse",
       },
       ({ dir, log }) =>
         Effect.gen(function* () {

@@ -2,10 +2,10 @@
 // started by the Agent SDK in place of the real one (pathToClaudeCodeExecutable), it speaks the
 // SDK's stream-json protocol on stdin and stdout, with the message shapes
 // docs/spikes/01-sdk-session.md and 02-sdk-lifecycle.md recorded
-// (SDK 0.3.301, Claude Code 2.1.301). It answers the SDK's initialize and interrupt control
-// requests, plays one turn per message it is sent (a message sent during a turn waits in its queue
-// and runs as the next turn, with those of its kind waiting behind it, or a wait step folds it into
-// the running turn), and ends when its stdin closes, which it logs as `{ closed: true }`. Each
+// (SDK 0.3.301, Claude Code 2.1.301). It answers the SDK's initialize, interrupt and
+// cancel_async_message control requests, plays one turn per message it is sent (a message sent
+// during a turn waits in its queue and runs as the next turn, with those of its kind waiting behind
+// it, or a wait step folds it into the running turn), and ends when its stdin closes, which it logs as `{ closed: true }`. Each
 // message gets its command_lifecycle (queued, started, then completed or cancelled), each result
 // lists in `user_message_uuids` every message its turn took, `idle` comes only after the last
 // queued turn, and `queued_turn_count` counts only queued messages sent without `client_composed`,
@@ -66,6 +66,17 @@ interface Scenario {
   readonly env?: ReadonlyArray<string>
   /** Reads stdin's end only once the running turns are over, as Claude Code does, then ends. */
   readonly eofAfterTurn?: boolean
+  /**
+   * How long, in ms, an interrupted turn takes to end after the interrupt's receipt: a
+   * `cancel_async_message` sent at once lands before the next turn takes the queue. 0 by default.
+   */
+  readonly interruptLag?: number
+  /**
+   * How `cancel_async_message` is answered: by default it drops the message if it is still queued
+   * (`cancelled: true`, then its command_lifecycle `cancelled`), else `cancelled: false`;
+   * "refuse" fails the request, and "notQueued" answers `cancelled: false` and leaves it queued.
+   */
+  readonly cancelAsync?: "refuse" | "notQueued"
 }
 
 interface UserMessage {
@@ -355,6 +366,8 @@ const next = async (): Promise<void> => {
 const control = async (id: string, request: Record<string, unknown>) => {
   const answer = (response: object) =>
     write({ type: "control_response", response: { subtype: "success", request_id: id, response } })
+  const refuse = (error: string) =>
+    write({ type: "control_response", response: { subtype: "error", request_id: id, error } })
   switch (request.subtype) {
     case "initialize": {
       hookIds = Object.fromEntries(
@@ -396,7 +409,21 @@ const control = async (id: string, request: Record<string, unknown>) => {
       } else {
         await answer({ still_queued: uuids })
       }
+      const lag = scenario.interruptLag ?? 0
+      if (lag > 0) await new Promise((resolve) => setTimeout(resolve, lag))
       interrupted?.()
+      return
+    }
+    case "cancel_async_message": {
+      if (scenario.cancelAsync === "refuse") return refuse("cancel_async_message refused")
+      const at = queued.findIndex((m) => m.uuid === request.message_uuid)
+      if (at === -1 || scenario.cancelAsync === "notQueued") {
+        await answer({ cancelled: false })
+        return
+      }
+      const [dropped] = queued.splice(at, 1)
+      await answer({ cancelled: true })
+      await lifecycle(dropped === undefined ? [] : [dropped], "cancelled")
       return
     }
     default:
