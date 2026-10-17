@@ -3,7 +3,8 @@
 // you, from the run's evidence, gathered as orchestra gathers it: the final line, the run's log,
 // the commits merged, the tickets closed, set aside and still in progress, the tickets still ready,
 // and what the organs cost before it. In place of orchestra's hook tallies, it is given each
-// ticket's tallies of attention requests, answers, denials and your messages, and whether a person
+// ticket's tallies of attention requests and their answers (Attention's), the calls Claude Code
+// denied without asking, by type, your messages and its compactions, and whether a person
 // steered it, with the requests and denials as the log has them, from which its Needs you section
 // recommends rules for the calls that kept being asked about or denied.
 //
@@ -15,6 +16,7 @@
 // run to its end skips it. Ctrl+C, which interrupts it, skips it too.
 import { join } from "node:path"
 import { Clock, Effect, FileSystem } from "effect"
+import { Attention, type Tally } from "../agent/Attention.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type InputPart, type Section, section } from "../organs/evidence.ts"
 import { dollars, OrganCost } from "../organs/OrganCost.ts"
@@ -72,6 +74,7 @@ export type ReportEnv =
   | Organs
   | OrganCost
   | Ledger
+  | Attention
   | Log
   | Beads
   | Git
@@ -174,16 +177,61 @@ export const phaseSaid = (phase: TicketPhase): string => {
   }
 }
 
+/** The order Claude Code's denials are said in, by type; another type comes after, by name. */
+const denierOrder = ["classifier", "safetyCheck", "mode", "rule"]
+
+const denierRank = (by: string): number => {
+  const rank = denierOrder.indexOf(by)
+  return rank === -1 ? denierOrder.length : rank
+}
+
 /**
- * A ticket's tallies and steering, one line: `tut-1 (Done (merged in abc)): 3 attention requests,
- * 2 answers, 1 denial, 2 of your messages, compacted once; steered by you.`
+ * A ticket's attention tallies, in words: its requests by kind, their answers, the calls a rule
+ * you allowed for this run allowed, and the calls Claude Code denied without asking, by type.
  */
-export const talliesLine = (entry: Entry, steered: boolean): string => {
+export const attentionSaid = (t: Tally): ReadonlyArray<string> => {
+  const kinds = [
+    ...(t.permissions > 0 ? [counted(t.permissions, "permission")] : []),
+    ...(t.questions > 0 ? [counted(t.questions, "question")] : []),
+    ...(t.elicitations > 0 ? [counted(t.elicitations, "elicitation")] : []),
+  ]
+  const requests = t.permissions + t.questions + t.elicitations
+  const answers: ReadonlyArray<readonly [number, string]> = [
+    [t.allowed, "allowed"],
+    [t.allowedForRun, "allowed for this run"],
+    [t.answered, "answered"],
+    [t.denied, "denied by you"],
+    [t.declined, "declined"],
+    [t.cancelled, "withdrawn"],
+  ]
+  const denials = Object.entries(t.deniedBy)
+    .filter(([, n]) => n > 0)
+    .sort(([a], [b]) => denierRank(a) - denierRank(b) || a.localeCompare(b))
+  const denied = denials.reduce((sum, [, n]) => sum + n, 0)
+  return [
+    ...(requests > 0 ? [`${counted(requests, "attention request")} (${kinds.join(", ")})`] : []),
+    ...answers.flatMap(([n, verdict]) => (n > 0 ? [`${n} ${verdict}`] : [])),
+    ...(t.allowedByRule > 0
+      ? [`${counted(t.allowedByRule, "call")} allowed by a rule you allowed for this run`]
+      : []),
+    ...(denied > 0
+      ? [
+          `${counted(denied, "call")} Claude Code denied without asking (` +
+            `${denials.map(([by, n]) => `${n} by ${log.denier(by)}`).join(", ")})`,
+        ]
+      : []),
+  ]
+}
+
+/**
+ * A ticket's tallies and steering, one line: `tut-1 (Done (merged in abc)): 3 attention requests
+ * (3 permissions), 2 allowed, 1 denied by you, 1 call Claude Code denied without asking (1 by the
+ * safety check), 2 of your messages, compacted once; steered by you.`
+ */
+export const talliesLine = (entry: Entry, attention: Tally, steered: boolean): string => {
   const t = entry.tallies
   const said = [
-    ...(t.requests > 0 ? [counted(t.requests, "attention request")] : []),
-    ...(t.answers > 0 ? [counted(t.answers, "answer")] : []),
-    ...(t.denials > 0 ? [counted(t.denials, "denial")] : []),
+    ...attentionSaid(attention),
     ...(t.messages > 0 ? [counted(t.messages, "of your messages", "of your messages")] : []),
     ...(t.compactions > 0 ? [`compacted ${times(t.compactions)}`] : []),
   ]
@@ -245,10 +293,11 @@ export const gather = (
 ): Effect.Effect<
   ReadonlyArray<InputPart>,
   never,
-  AppConfig | OrganCost | Ledger | Log | Beads | Git
+  AppConfig | OrganCost | Ledger | Attention | Log | Beads | Git
 > =>
   Effect.gen(function* () {
     const config = yield* AppConfig
+    const attention = yield* Attention
     const beads = yield* Beads
     const git = yield* Git
     const logLines = yield* (yield* Log).lines
@@ -304,7 +353,11 @@ export const gather = (
     const tallies =
       entries.length === 0
         ? "None: the run took up no tickets."
-        : entries.map((entry) => talliesLine(entry, steeredInRun(entry, logLines))).join("\n")
+        : (yield* Effect.forEach(entries, (entry) =>
+            Effect.map(attention.tally(entry.ticket), (tally) =>
+              talliesLine(entry, tally, steeredInRun(entry, logLines)),
+            ),
+          )).join("\n")
 
     const cost = yield* (yield* OrganCost).total
     const costSaid =
@@ -336,8 +389,9 @@ export const gather = (
       section("Tickets in progress when the run stopped", runningText.join("\n\n")),
       section("Tickets still ready", ready),
       section(
-        "Each ticket's attention requests, their answers and denials, your messages to its worker, " +
-          "its compactions, and whether you steered it",
+        "Each ticket's attention requests and their answers, the calls Claude Code denied its " +
+          "worker without asking, your messages to its worker, its compactions, and whether you " +
+          "steered it",
         tallies,
       ),
       section(

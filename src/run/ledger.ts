@@ -26,18 +26,17 @@ import {
   transition as transitionPhase,
 } from "./phase.ts"
 
-/** What the ledger counts for each ticket, for triage and the reviewer. */
-export const tallyNames = ["requests", "answers", "denials", "messages", "compactions"] as const
+/**
+ * What the ledger counts for each ticket, for triage and the reviewer. Its attention requests,
+ * their answers and Claude Code's denials are Attention's to count (Attention.tally).
+ */
+export const tallyNames = ["messages", "compactions"] as const
 export type TallyName = (typeof tallyNames)[number]
 
-/** A ticket's tallies: its attention requests, their answers and denials, your messages to its
- * worker, and its worker's compactions. */
+/** A ticket's tallies: your messages to its worker, and its worker's compactions. */
 export type Tallies = { readonly [K in TallyName]: number }
 
 export const emptyTallies: Tallies = {
-  requests: 0,
-  answers: 0,
-  denials: 0,
   messages: 0,
   compactions: 0,
 }

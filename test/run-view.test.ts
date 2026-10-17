@@ -405,14 +405,14 @@ describe("transitions", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         yield* go("a", ...dispatched)
-        yield* ledger.count("a", "requests")
-        yield* ledger.count("a", "requests")
+        yield* ledger.count("a", "compactions")
+        yield* ledger.count("a", "compactions")
         yield* ledger.count("a", "messages", 3)
-        yield* ledger.count("unknown", "denials")
+        yield* ledger.count("unknown", "messages")
         return (yield* current).tickets.get("a")?.tallies
       }),
     )
-    expect(tallies).toEqual({ requests: 2, answers: 0, denials: 0, messages: 3, compactions: 0 })
+    expect(tallies).toEqual({ messages: 3, compactions: 2 })
   })
 })
 

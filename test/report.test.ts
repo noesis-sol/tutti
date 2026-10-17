@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { SDKPermissionDeniedMessage } from "@anthropic-ai/claude-agent-sdk"
 import { BunFileSystem } from "@effect/platform-bun"
 import { Effect, Fiber, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { lexer, type Token } from "marked"
+import { Attention, type Policy } from "../src/agent/Attention.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { section } from "../src/organs/evidence.ts"
 import { OrganCost } from "../src/organs/OrganCost.ts"
@@ -28,6 +30,7 @@ import {
   type talliesLine,
 } from "../src/run/report.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
+import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { type Seed as BeadsSeed, layer as beadsLayer } from "../src/testing/Beads.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as gitLayer, Repository } from "../src/testing/Git.ts"
@@ -45,6 +48,34 @@ const seeds: ReadonlyArray<BeadsSeed> = [
   { id: "t-3", title: "Write the docs", status: "in_progress" },
   { id: "t-4", title: "Ready for later", status: "open" },
 ]
+
+/** Answers a question with its first option, denies a Write and allows any other call. */
+const policy: Policy = (request) => {
+  switch (request.kind._tag) {
+    case "Question":
+      return {
+        _tag: "Choose",
+        answers: request.kind.questions.map((q) => q.options[0]?.label ?? ""),
+      }
+    case "Permission":
+      return request.kind.tool === "Write" ? { _tag: "Deny" } : { _tag: "Allow" }
+    case "Elicitation":
+      return { _tag: "Accept" }
+  }
+}
+
+/** A call Claude Code denied `ticket`'s worker without asking, by `by`. */
+const denial = (by: string): SDKPermissionDeniedMessage => ({
+  type: "system",
+  subtype: "permission_denied",
+  tool_name: "Bash",
+  tool_use_id: "toolu_1",
+  decision_reason_type: by,
+  decision_reason: "held",
+  message: "Permission to use Bash has been denied.",
+  uuid: "00000000-0000-4000-8000-000000000001",
+  session_id: "s-1",
+})
 
 interface Setup {
   readonly answers?: Answers
@@ -74,9 +105,12 @@ const report = async (setup: Setup = {}) => {
     BunFileSystem.layer,
     Layer.succeed(OrganHold, { held: Effect.succeed(setup.held ?? false) }),
   ).pipe(Layer.provideMerge(shared))
-  const services = Layer.mergeAll(Organs.layer, OrganCost.layer, Ledger.layer).pipe(
-    Layer.provideMerge(deps),
-  )
+  const services = Layer.mergeAll(
+    Organs.layer,
+    OrganCost.layer,
+    Ledger.layer,
+    attentionLayer(policy),
+  ).pipe(Layer.provideMerge(deps))
   const lines = await Effect.runPromise(
     Effect.gen(function* () {
       const git = yield* Repository
@@ -95,9 +129,19 @@ const report = async (setup: Setup = {}) => {
       yield* ledger.transition("t-1", Cause.ItsTurn())
       yield* ledger.transition("t-1", Cause.FastForwarded({ commit: "abc123" }))
       yield* ledger.transition("t-2", Cause.Defer({ why: "deferred by its worker" }))
-      yield* ledger.count("t-1", "requests", 3)
-      yield* ledger.count("t-1", "answers", 2)
-      yield* ledger.count("t-1", "denials", 1)
+      // t-1's worker asks twice and is denied once, and Claude Code denies it three calls.
+      const attention = yield* Attention
+      const ask = yield* attention.request("t-1")
+      const sdk = { signal: new AbortController().signal, toolUseID: "toolu_1", requestId: "req" }
+      const question = {
+        questions: [{ question: "Which?", options: [{ label: "This" }], multiSelect: false }],
+      }
+      yield* Effect.promise(() => ask("Bash", { command: "ffprobe in.mp4" }, sdk))
+      yield* Effect.promise(() => ask("Write", { file_path: "/work/a.ts" }, sdk))
+      yield* Effect.promise(() => ask("AskUserQuestion", question, sdk))
+      for (const by of ["safetyCheck", "classifier", "safetyCheck"]) {
+        yield* attention.denial("t-1", denial(by))
+      }
       yield* ledger.count("t-2", "messages", 2)
       yield* ledger.count("t-2", "compactions")
       yield* ledger.steer("t-2", "message")
@@ -172,7 +216,9 @@ describe("the report's evidence", () => {
     expect(call?.system).toBe(reviewer.system)
     const input = call?.input ?? ""
     expect(input).toContain(
-      "t-1 (Done (merged in abc123)): 3 attention requests, 2 answers, 1 denial; not steered.",
+      "t-1 (Done (merged in abc123)): 3 attention requests (2 permissions, 1 question), " +
+        "1 allowed, 1 answered, 1 denied by you, 3 calls Claude Code denied without asking " +
+        "(1 by the classifier, 2 by the safety check); not steered.",
     )
     expect(input).toContain(
       "t-2 (Deferred (deferred by its worker)): 2 of your messages, compacted once; steered by you.",
@@ -298,7 +344,7 @@ describe("steering and tallies", () => {
     rechecking: false,
     steered: false,
     lastMessage: null,
-    tallies: { requests: 0, answers: 0, denials: 0, messages: 0, compactions: 0 },
+    tallies: { messages: 0, compactions: 0 },
   } as unknown as Parameters<typeof talliesLine>[0]
 
   test("a ticket is steered by a message, a steer now, or a STEERED line, but not another's", () => {
