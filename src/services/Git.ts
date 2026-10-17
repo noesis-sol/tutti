@@ -204,6 +204,11 @@ export class Git extends Context.Service<
     abortRebase(worktree: string): Effect.Effect<void, GitError>
     /** Whether a rebase has stopped in worktree and not been finished or aborted. */
     rebaseInProgress(worktree: string): Effect.Effect<boolean, GitError>
+    /**
+     * git reset --hard: moves what worktree has checked out to `to`, its index and working tree
+     * with it; untracked files stay.
+     */
+    resetBranch(worktree: string, to: string): Effect.Effect<void, GitError>
     /** git merge-base: the best common ancestor of a and b, as a full hash. */
     mergeBase(repo: string, a: string, b: string): Effect.Effect<string, GitError>
     /**
@@ -313,6 +318,9 @@ export class Git extends Context.Service<
         const abortRebase = (worktree: string) =>
           Effect.asVoid(write("rebase --abort", worktree, ["rebase", "--abort"]))
 
+        const resetBranch = (worktree: string, to: string) =>
+          Effect.asVoid(write("reset --hard", worktree, ["reset", "--hard", "--quiet", to]))
+
         const rebaseInProgress = (worktree: string) =>
           Effect.gen(function* () {
             for (const name of ["rebase-merge", "rebase-apply"]) {
@@ -407,6 +415,7 @@ export class Git extends Context.Service<
           rebase,
           abortRebase,
           rebaseInProgress,
+          resetBranch,
           mergeBase: (repo, a, b) =>
             Effect.map(read("merge-base", repo, ["merge-base", a, b]), (out) => out.trim()),
           holds: (repo, base, branch) =>

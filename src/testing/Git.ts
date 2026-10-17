@@ -756,6 +756,24 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             (refuse) =>
               Effect.map(inRepo(refuse, worktree), (checkout) => checkout.rebase !== undefined),
           ),
+        resetBranch: (worktree, to) =>
+          operation(
+            "write",
+            "reset --hard",
+            worktree,
+            ["reset", "--hard", "--quiet", to],
+            (refuse) =>
+              Effect.gen(function* () {
+                const checkout = yield* inRepo(refuse, worktree)
+                const target = resolve(checkout, to)
+                if (target === undefined) {
+                  return yield* refuse(128, `fatal: ambiguous argument '${to}': unknown revision`)
+                }
+                if ("branch" in checkout.head) branches.set(checkout.head.branch, target)
+                else checkout.head = { detached: target }
+                switchTo(checkout, treeOf(target))
+              }),
+          ),
         mergeBase: (repo, a, b) =>
           operation("read", "merge-base", repo, ["merge-base", a, b], (refuse) =>
             Effect.gen(function* () {

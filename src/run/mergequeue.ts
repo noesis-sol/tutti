@@ -14,6 +14,11 @@
 //
 // A ticket set aside as its check failed is kept in the queue's rechecks, and after each merge the
 // ones whose base has moved on since are put back in line, ToMerge by RECHECK (recheck.ts).
+//
+// A ticket whose rebase stopped on conflicts its worker can take is handed back to it, Merging →
+// Resolving (handback.ts), and its merge is over for the queue, which goes on with the tickets behind
+// it. The hand-back runs in a fiber of its own, kept in the queue's state while it is under way; a
+// resolution verified puts the ticket back in line behind the others, ToMerge.
 import {
   Effect,
   FiberSet,
@@ -25,6 +30,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import { RunFibers } from "./fibers.ts"
+import { type HandBacks, handOver, makeHandBacks, type RebaseStop, resolve } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import {
   abandonRebase,
@@ -44,11 +50,13 @@ export interface QueueState {
   readonly waiting: ReadonlyArray<string>
   /** The ticket whose merge is under way. */
   readonly merging: string | null
+  /** The tickets whose conflicts are handed back to their workers, Resolving. */
+  readonly resolving: ReadonlyArray<string>
   /** What stopped the merges, if anything has. */
   readonly stop: MergeStop | null
 }
 
-export const emptyQueue: QueueState = { waiting: [], merging: null, stop: null }
+export const emptyQueue: QueueState = { waiting: [], merging: null, resolving: [], stop: null }
 
 export interface MergeQueue {
   /**
@@ -63,10 +71,15 @@ export interface MergeQueue {
   readonly state: Effect.Effect<QueueState>
   /** The state now, then each new one. */
   readonly changes: Stream.Stream<QueueState>
-  /** Waits until no merge is under way and none waits, or the merges have stopped. */
+  /**
+   * Waits until no merge is under way, and none waits or is handed back to its worker, or the
+   * merges have stopped.
+   */
   readonly settled: Effect.Effect<QueueState>
   /** The tickets set aside for a failed check that may be checked once more in this run. */
   readonly rechecks: Rechecks
+  /** The run's conflict hand-backs: each ticket's count, and those waiting on a steered worker. */
+  readonly handBacks: HandBacks
   /**
    * Puts back in line, ToMerge by RECHECK, the tickets whose base has moved on since their check
    * failed, as the queue does after each merge; the tickets it put back.
@@ -76,7 +89,8 @@ export interface MergeQueue {
 
 /** Whether nothing is left for the queue to do. */
 export const isSettled = (state: QueueState): boolean =>
-  state.merging === null && (state.waiting.length === 0 || state.stop !== null)
+  state.merging === null &&
+  ((state.waiting.length === 0 && state.resolving.length === 0) || state.stop !== null)
 
 /** The merge queue, its consumer forked into a FiberSet of the caller's scope. */
 export const make = (
@@ -90,6 +104,7 @@ export const make = (
     const ref = yield* SubscriptionRef.make(emptyQueue)
     const rechecks = yield* makeRechecks
     const setUps = yield* makeSetUps
+    const handBacks = yield* makeHandBacks
     // Changes to the line and the places it gives, one at a time.
     const lock = yield* Semaphore.make(1)
     const state = SubscriptionRef.get(ref)
@@ -153,6 +168,8 @@ export const make = (
         }),
       )
 
+    const handBacksSet = yield* fibers.make("hand-backs")
+
     const recheck = recheckDue(rechecks, { offer, state }, options).pipe(
       Effect.provideContext(context),
     )
@@ -164,15 +181,42 @@ export const make = (
         stop: state.stop ?? stop ?? null,
       }))
 
+    // Its conflicts handed back to its worker: Resolving, in a fiber of its own, its merge over for
+    // the queue. A resolution verified puts it back in line; the run's end stops one under way.
+    const handBack = (stop: RebaseStop) =>
+      Effect.gen(function* () {
+        const { id } = stop.ticket
+        const handed = yield* handOver(stop, options, handBacks)
+        yield* SubscriptionRef.update(ref, (state) => ({
+          ...state,
+          merging: null,
+          resolving: handed ? [...state.resolving, id] : state.resolving,
+        }))
+        if (!handed) return
+        const done = SubscriptionRef.update(ref, (state) => ({
+          ...state,
+          resolving: state.resolving.filter((each) => each !== id),
+        }))
+        yield* FiberSet.run(
+          handBacksSet,
+          Effect.interruptible(
+            Effect.gen(function* () {
+              if ((yield* resolve(stop, options)) === "verified") yield* offer(stop.ticket)
+            }),
+          ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
+        )
+      })
+
     // Its turn and its merge, under one mask: a quit as its turn starts finds it Merging, and puts
     // it back in line.
     const merge = (ticket: FinishedTicket) =>
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           if (!(yield* turn(ticket))) return
-          const prepared = yield* restore(prepare(ticket, options, { rechecks, setUps })).pipe(
-            Effect.onInterrupt(() => backInLine(ticket)),
-          )
+          const prepared = yield* restore(
+            prepare(ticket, options, { rechecks, setUps, handBacks }),
+          ).pipe(Effect.onInterrupt(() => backInLine(ticket)))
+          if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
           const stop =
             prepared._tag === "Over"
               ? prepared.stop
@@ -204,6 +248,7 @@ export const make = (
         Effect.map((found) => (found._tag === "Some" ? found.value : emptyQueue)),
       ),
       rechecks,
+      handBacks,
       recheck,
     } satisfies MergeQueue
   })

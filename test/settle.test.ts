@@ -7,6 +7,7 @@ import fc from "fast-check"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { Attention } from "../src/agent/Attention.ts"
 import type { EventRecord } from "../src/run/events.ts"
+import { makeHandBacks } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
@@ -63,6 +64,7 @@ const lineOnly = (offered: Array<FinishedTicket>): Effect.Effect<MergeQueue, nev
       changes: undefined as never,
       settled: Effect.succeed(emptyQueue),
       rechecks: yield* makeRechecks,
+      handBacks: yield* makeHandBacks,
       recheck: Effect.succeed([]),
     } satisfies MergeQueue
   })

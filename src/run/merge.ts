@@ -13,19 +13,25 @@
 //   to merge under closed, up the tree. exec's time limits kill a command themselves, without
 //   interrupting its fiber, so each git command's limit holds in there too.
 //
-// Hand-backs (Resolving, Fixing) come later: for now a conflict is Blocked and a failing check is set aside for review, kept to be checked once more
-// once the base moves on (recheck.ts).
+// A rebase that stops on conflicts is handed back to the ticket's worker when it can take it
+// (handback.ts): prepare is then over with the rebase left in progress, for the merge queue to hand
+// it over; one that can't be handed back is Blocked. Check hand-backs (Fixing) come later: for now
+// a failing check is set aside for review, kept to be checked once more once the base moves on
+// (recheck.ts).
 import { Effect, Result } from "effect"
+import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError } from "../services/Beads.ts"
 import type { CheckError, Checks } from "../services/Checks.ts"
 import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
+import type { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
 import { failedHow, runMergeCheck, saidOf } from "./check.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
+import { type HandBacks, notHandedBack, type RebaseStop, whyNotHandBack } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { Cause, Detail } from "./phase.ts"
@@ -64,10 +70,14 @@ export interface MergeStop {
   readonly line: Line
 }
 
-/** What prepare leaves: the merge over (set aside, blocked or stopped), or ready to fast-forward. */
+/**
+ * What prepare leaves: the merge over (set aside, blocked or stopped), ready to fast-forward, or its
+ * rebase stopped on conflicts its worker can take, to be handed back.
+ */
 export type Prepared =
   | { readonly _tag: "Over"; readonly stop?: MergeStop }
   | { readonly _tag: "Ready"; readonly onto: string }
+  | { readonly _tag: "HandBack"; readonly stop: RebaseStop }
 
 /**
  * How many passes may find the base moved and rebase onto it. Only merges move it during a run,
@@ -116,7 +126,17 @@ export const allMerged = (n: number): string =>
   n === 1 ? "its 1 subticket is merged" : `all ${n} subtickets are merged`
 
 /** Every service a merge uses. */
-export type MergeEnv = AppConfig | Git | Worktrees | Beads | Ledger | Log | EventStream | Checks
+export type MergeEnv =
+  | AppConfig
+  | Git
+  | Worktrees
+  | Beads
+  | Ledger
+  | Log
+  | EventStream
+  | Checks
+  | AgentHost
+  | Store
 
 const services = Effect.all({
   config: AppConfig,
@@ -176,16 +196,18 @@ export const abandonRebase = (worktree: string) =>
     if (yield* git.rebaseInProgress(worktree)) yield* git.abortRebase(worktree)
   }).pipe(Effect.ignore)
 
-/** What a merge keeps of each ticket for the run: the rechecks due, the setups done. */
+/** What a merge keeps of each ticket for the run: rechecks due, setups done, hand-backs. */
 export interface MergeMemory {
   readonly rechecks: Rechecks
   readonly setUps: SetUps
+  readonly handBacks: HandBacks
 }
 
 /**
  * Rebases the ticket, its branch off the base at `fork`, onto the base, which moved on to `onto`,
- * sets it up if need be and checks it; the merge is over when any of them sets it aside. An
- * interrupted rebase is aborted here too, whichever Git it ran on.
+ * sets it up if need be and checks it: true when it is on top of the base, checked; false when any
+ * of them set it aside; the rebase stopped, when its conflicts are to be handed back to its worker.
+ * An interrupted rebase is aborted here too, whichever Git it ran on.
  */
 const rebaseAndCheck = (
   ticket: FinishedTicket,
@@ -197,7 +219,7 @@ const rebaseAndCheck = (
   Effect.gen(function* () {
     const { git, ledger, log } = yield* services
     const { id, branch, worktree } = ticket
-    const { base } = options
+    const { repo, base } = options
     const status = yield* Effect.result(git.status(worktree))
     const dirty = Result.isSuccess(status) ? uncommitted(status.success) : []
     if (dirty.length > 0) {
@@ -212,34 +234,26 @@ const rebaseAndCheck = (
       return false
     }
     yield* ledger.refine(id, Detail.Step({ step: "rebase" }))
+    // Where the branch was and what it had, for a hand-back to verify its worker's resolution by.
+    const before = yield* Effect.result(
+      Effect.all({ head: git.revParse(repo, branch), own: git.log(repo, onto, branch) }),
+    )
     const rebased = yield* Effect.result(
       git.rebase(worktree, base).pipe(Effect.onInterrupt(() => abandonRebase(worktree))),
     )
     if (Result.isFailure(rebased)) {
       const error = rebased.failure
       if (error._tag === "RebaseConflict") {
-        // Not handed back to its worker (that comes later): the branch is put back as it closed.
-        yield* abandonRebase(worktree)
-        const files = error.files
-        const text = ticketLine(
-          Tag.mergeConflict,
-        )`${id} closed, but ${branch} conflicts with ${base} in ${files}, which moved on while it ran; worktree ${worktree} left for review (rebase onto ${base}, check, merge)`
-        yield* block(
+        const stop: RebaseStop = {
           ticket,
-          Tag.mergeConflict,
-          {
-            kind: "warn",
-            ticket: id,
-            aside: true,
-            detail: `conflicts with ${base}`,
-            blocked:
-              files.length === 0
-                ? `merge conflict with ${base}`
-                : `merge conflict in ${files.join(", ")}`,
-            text,
-          },
-          text,
-        )
+          onto,
+          head: Result.isSuccess(before) ? before.success.head : "",
+          own: Result.isSuccess(before) ? before.success.own.length : -1,
+          files: error.files,
+        }
+        const not = yield* whyNotHandBack(stop, yield* memory.handBacks.count(id))
+        if (not === undefined) return stop
+        yield* notHandedBack(stop, options, not, memory.handBacks)
         return false
       }
       yield* aside(
@@ -314,7 +328,8 @@ const checksFailed = (
  * The part of the merge that may be interrupted: the ticket's worktree checked to be on its branch,
  * and, each time the base has moved on, rebased onto it, set up if need be and checked. Ready once
  * its branch is on top of the base; over when it was set aside (kept in the memory's rechecks when
- * its check failed), blocked or stopped the merges.
+ * its check failed), blocked or stopped the merges; HandBack when its rebase stopped on conflicts
+ * its worker can take.
  */
 export const prepare = (
   ticket: FinishedTicket,
@@ -371,9 +386,9 @@ export const prepare = (
         )
         return { _tag: "Over" } satisfies Prepared
       }
-      if (!(yield* rebaseAndCheck(ticket, options, memory, fork, onto))) {
-        return { _tag: "Over" } satisfies Prepared
-      }
+      const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto)
+      if (rebased === false) return { _tag: "Over" } satisfies Prepared
+      if (rebased !== true) return { _tag: "HandBack", stop: rebased } satisfies Prepared
     }
   })
 

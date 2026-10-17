@@ -413,7 +413,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
       expect.objectContaining({ _tag: "Blocked", why: "MERGE_CONFLICT" }),
     )
     expectLog(ran, [
-      `  MERGE_CONFLICT: a closed, but tutti/a conflicts with main in a.txt, which moved on while it ran; worktree ${worktree} left for review (rebase onto main, check, merge)`,
+      `  MERGE_CONFLICT: a closed, but tutti/a conflicts with main in a.txt, which moved on while it ran (not handed back to its worker: there is no check command in .tutti/settings.json to check a resolution with); worktree ${worktree} left for review (rebase onto main, check, merge)`,
     ])
     expect(records(ran, "warn")[0]).toMatchObject({
       ticket: "a",
@@ -847,7 +847,12 @@ describe("an interrupt", () => {
           yield* Effect.yieldNow
           yield* Deferred.succeed(gate, undefined)
           yield* Fiber.join(closing)
-          expect(yield* queue.state).toEqual({ waiting: ["a"], merging: null, stop: null })
+          expect(yield* queue.state).toEqual({
+            waiting: ["a"],
+            merging: null,
+            resolving: [],
+            stop: null,
+          })
         }),
       (queue) =>
         Effect.gen(function* () {
