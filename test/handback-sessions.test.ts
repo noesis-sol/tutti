@@ -67,10 +67,14 @@ const failing = (said: string) =>
     flakyCount: 0,
   })
 
-/** What a scenario hands back: each ticket's phase, and how often a's session was resumed. */
+/**
+ * What a scenario hands back: each ticket's phase, how often a's session was resumed, and whether
+ * a's one Gone resume of the run is used.
+ */
 interface Ended {
   readonly phases: Readonly<Record<string, TicketPhase>>
   readonly resumes: number
+  readonly goneResumed: boolean
 }
 
 const resultOf = <A>(ran: Ran<A>): A => {
@@ -200,6 +204,7 @@ const handedBack = (
       return {
         phases: phasesOf(yield* (yield* Ledger).current),
         resumes: (yield* (yield* Store).ticket("a"))?.resumes ?? 0,
+        goneResumed: yield* (yield* Ledger).goneResumed("a"),
       } satisfies Ended
     }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<Ended, unknown, Env | Scope.Scope>,
   )
@@ -222,6 +227,8 @@ describe("a hand-back to a session tutti closed", () => {
     const ended = resultOf(ran)
     expect(ended.phases.a).toEqual(expect.objectContaining({ _tag: "Done" }))
     expect(ended.resumes).toBe(1)
+    // A session tutti closed counts toward no resume limit.
+    expect(ended.goneResumed).toBe(false)
     expect(records(ran, "resumed")).toEqual([
       expect.objectContaining({ ticket: "a", session: "session-a", why: "hand_back" }),
     ])
@@ -238,6 +245,7 @@ describe("a hand-back to a session tutti closed", () => {
     const ended = resultOf(ran)
     expect(ended.phases.a).toEqual(expect.objectContaining({ _tag: "Done" }))
     expect(ended.resumes).toBe(1)
+    expect(ended.goneResumed).toBe(false)
     expect(records(ran, "resumed")).toEqual([
       expect.objectContaining({ ticket: "a", why: "hand_back" }),
     ])
@@ -257,6 +265,8 @@ describe("a hand-back to a worker that is gone (Gone)", () => {
     const ended = resultOf(ran)
     expect(ended.phases.a).toEqual(expect.objectContaining({ _tag: "Done" }))
     expect(ended.resumes).toBe(1)
+    // The hand-back's resume is the ticket's one Gone resume of the run.
+    expect(ended.goneResumed).toBe(true)
     expect(sentTags(ran)).toEqual(["Started", "Resumed", "Message", "Closed"])
     expect(records(ran, "resumed")).toEqual([
       expect.objectContaining({ ticket: "a", session: "session-a", why: "gone" }),
@@ -273,7 +283,9 @@ describe("a hand-back to a worker that is gone (Gone)", () => {
       "gone",
       { landed: { "b.txt": "b\n" } },
     )
-    expect(resultOf(ran).phases.a).toEqual(expect.objectContaining({ _tag: "Done" }))
+    const ended = resultOf(ran)
+    expect(ended.phases.a).toEqual(expect.objectContaining({ _tag: "Done" }))
+    expect(ended.goneResumed).toBe(true)
     expect(records(ran, "resumed")).toEqual([expect.objectContaining({ ticket: "a", why: "gone" })])
   })
 
