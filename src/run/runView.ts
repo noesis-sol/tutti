@@ -321,6 +321,8 @@ export const stateStatus = (
         : `usage limit · resets ${clock(state.resetsAt)}`
     case "Idle":
       return "done"
+    case "Failed":
+      return state.interrupted ? "stopped" : "failed"
     case "Closed":
       return "closed"
     case "Gone":

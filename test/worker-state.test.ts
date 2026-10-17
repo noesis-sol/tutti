@@ -167,18 +167,52 @@ describe("Idle", () => {
 })
 
 describe("error results", () => {
-  test("a success result with is_error true is not Idle", () => {
+  test("a success result with is_error true is Failed and settled, from when it came", () => {
     const apiError = result({ is_error: true, api_error_status: 500, result: "API Error: 500" })
     const worker = fold([init, apiError, idle])
-    expect(worker.state._tag).toBe("Working")
-    expect(settled(worker.state)).toBe(false)
+    expect(worker.state).toEqual(
+      WorkerState.Failed({ at: 1, error: "API Error: 500", interrupted: false }),
+    )
+    expect(settled(worker.state)).toBe(true)
     expect(failure(worker)).toBe("API Error: 500")
   })
 
-  test("an error subtype with is_error is a failed turn", () => {
-    const worker = fold([init, errorResult({ errors: ["boom"] })])
-    expect(settled(worker.state)).toBe(false)
-    expect(failure(worker)).toBe("boom")
+  test("an interrupted turn (error_during_execution) is Failed and interrupted", () => {
+    const interrupted = errorResult({ errors: ["[ede_diagnostic] stop_reason=tool_use"] })
+    expect(stateAfter(init, preTool("Bash"), interrupted)).toEqual(
+      WorkerState.Failed({
+        at: 2,
+        error: "[ede_diagnostic] stop_reason=tool_use",
+        interrupted: true,
+      }),
+    )
+  })
+
+  test("another error subtype is Failed, not interrupted; its subtype says why without errors", () => {
+    const maxTurns = errorResult({ subtype: "error_max_turns", errors: [] })
+    expect(stateAfter(init, maxTurns)).toEqual(
+      WorkerState.Failed({ at: 1, error: "error_max_turns", interrupted: false }),
+    )
+  })
+
+  test("Failed keeps the time it began", () => {
+    expect(stateAfter(init, errorResult(), idle, requests(0))).toEqual(
+      WorkerState.Failed({ at: 1, error: "error_during_execution", interrupted: true }),
+    )
+  })
+
+  test("a live background task keeps a failed worker Working; its end makes it Failed", () => {
+    const live = [init, tasks({ id: "b1" }), errorResult()]
+    expect(stateAfter(...live)._tag).toBe("Working")
+    expect(stateAfter(...live, tasks())._tag).toBe("Failed")
+    expect(stateAfter(init, tasks({ id: "w", ambient: true }), errorResult())._tag).toBe("Failed")
+  })
+
+  test("the turn after a failed one is Working again, and a second failure starts afresh", () => {
+    expect(stateAfter(init, errorResult(), init)).toEqual(WorkerState.Working({ doing: "working" }))
+    expect(stateAfter(init, errorResult(), running, errorResult())).toEqual(
+      WorkerState.Failed({ at: 3, error: "error_during_execution", interrupted: true }),
+    )
   })
 
   test("a clean result after a failed turn is Idle", () => {
@@ -211,18 +245,16 @@ describe("UsageLimited", () => {
     expect(stateAfter(init, rateLimit("rejected", 1_700_000_000), apiError)._tag).toBe(
       "UsageLimited",
     )
-    expect(stateAfter(init, rateLimit("allowed_warning"), apiError)._tag).toBe("Working")
+    expect(stateAfter(init, rateLimit("allowed_warning"), apiError)._tag).toBe("Failed")
     expect(stateAfter(rateLimit("rejected"), rateLimit("allowed"), init, apiError)._tag).toBe(
-      "Working",
+      "Failed",
     )
   })
 
   test("an assistant message with the rate_limit error marks the turn's error result", () => {
     const apiError = result({ is_error: true, result: "API Error" })
     expect(stateAfter(init, assistant({ error: "rate_limit" }), apiError)._tag).toBe("UsageLimited")
-    expect(stateAfter(init, assistant({ error: "rate_limit" }), init, apiError)._tag).toBe(
-      "Working",
-    )
+    expect(stateAfter(init, assistant({ error: "rate_limit" }), init, apiError)._tag).toBe("Failed")
   })
 
   test("a clean result is never UsageLimited", () => {
@@ -345,6 +377,7 @@ describe("settled", () => {
     [WorkerState.NeedsYou({ requests: 1 }), false],
     [WorkerState.UsageLimited({ resetsAt: null }), false],
     [WorkerState.Idle({ at: 0 }), true],
+    [WorkerState.Failed({ at: 0, error: "API Error: 500", interrupted: false }), true],
     [WorkerState.Closed(), true],
     [WorkerState.Gone({ why: "exited" }), true],
   ] as const)("%o is settled: %p", (state, expected) => {

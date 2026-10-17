@@ -457,14 +457,14 @@ describe("AgentHost live: interrupt", () => {
           const queued = yield* host.send("t-1", "second", "human")
           yield* logShows(log, (l) => usersIn(l).length === 2)
           const receipt = yield* host.interrupt("t-1")
-          // The interrupted turn's result is an error, so the worker isn't Idle; nothing else runs.
-          const state = yield* until("t-1", (s) => s._tag === "Working")
+          // The interrupted turn's result is an error, so the worker is Failed; nothing else runs.
+          const state = yield* until("t-1", (s) => s._tag === "Failed")
           return { receipt, queued, state, request: interruptIn(readLog(log)) }
         }),
     )
     expect(receipt).toEqual({ stillQueued: [], cancelled: [queued] })
     expect(request).toEqual({ subtype: "interrupt", cancel_queued: true })
-    expect(state._tag).toBe("Working")
+    expect(state).toMatchObject({ _tag: "Failed", interrupted: true })
   })
 
   test("leaves them queued where it doesn't, and they run", async () => {

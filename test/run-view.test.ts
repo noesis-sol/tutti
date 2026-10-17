@@ -266,6 +266,27 @@ describe("identity", () => {
   })
 })
 
+describe("a failed turn's card", () => {
+  test("shows stopped for an interrupt and failed for another error", async () => {
+    const statuses = await run(
+      Effect.gen(function* () {
+        yield* go("a", ...dispatched)
+        yield* go("b", ...dispatched)
+        const workers = new Map([
+          ["a", WorkerState.Failed({ at: 0, error: "interrupted", interrupted: true })],
+          ["b", WorkerState.Failed({ at: 0, error: "API Error: 401", interrupted: false })],
+        ])
+        const view = project(inputs(yield* current, { workers }))
+        return view.cards.map((c) => [c.ticket, c.status])
+      }),
+    )
+    expect(statuses).toEqual([
+      ["a", "stopped"],
+      ["b", "failed"],
+    ])
+  })
+})
+
 describe("the 30 Hz throttle", () => {
   test("writes the first change at once and the latest of a burst after the interval", async () => {
     const result = await run(

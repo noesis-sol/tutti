@@ -4,7 +4,8 @@
 //
 // The reducer keeps a Worker: the state and what it is derived from. Each step updates the facts
 // the event changes, then derives the state from them afresh, so no order of events can leave a
-// stale state behind; only Idle's `at` carries over, from the step that first made it Idle.
+// stale state behind; only Idle's and Failed's `at` carries over, from the step that first made it
+// so.
 import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Data } from "effect"
 
@@ -28,6 +29,11 @@ export type WorkerState = Data.TaggedEnum<{
   UsageLimited: { readonly resetsAt: number | null }
   /** The turn ended cleanly, nothing is queued and no background task is live, since `at`. */
   Idle: { readonly at: number }
+  /**
+   * The turn ended on an error other than the usage limit, nothing is queued and no background
+   * task is live, since `at`; `interrupted` when it was cut off (`error_during_execution`).
+   */
+  Failed: { readonly at: number; readonly error: string; readonly interrupted: boolean }
   /** tutti closed the session on purpose, keeping its ID (§ 4.8). */
   Closed: Empty
   /** The session's stream ended or failed without tutti closing it. */
@@ -36,9 +42,12 @@ export type WorkerState = Data.TaggedEnum<{
 
 export const WorkerState = Data.taggedEnum<WorkerState>()
 
-/** Whether a worker in `state` has settled: Idle, Closed or Gone, never anything else. */
+/** Whether a worker in `state` has settled: Idle, Failed, Closed or Gone, never anything else. */
 export const settled = (state: WorkerState): boolean =>
-  state._tag === "Idle" || state._tag === "Closed" || state._tag === "Gone"
+  state._tag === "Idle" ||
+  state._tag === "Failed" ||
+  state._tag === "Closed" ||
+  state._tag === "Gone"
 
 /** What reaches the reducer: an SDK message, a hook callback, attention, or the session's end. */
 export type WorkerEvent = Data.TaggedEnum<{
@@ -113,7 +122,7 @@ export type Turn = Data.TaggedEnum<{
   /** The turn's result arrived with is_error on the usage limit. */
   Limited: Empty
   /** The turn's result arrived with is_error for another reason: a failed turn. */
-  Failed: { readonly error: string }
+  Failed: { readonly error: string; readonly interrupted: boolean }
 }>
 
 export const Turn = Data.taggedEnum<Turn>()
@@ -253,7 +262,8 @@ const onMessage = (worker: Worker, message: SDKMessage): Worker => {
         message.subtype === "success"
           ? message.result
           : message.errors.join("\n") || message.subtype
-      return { ...ended, turn: Turn.Failed({ error }) }
+      const interrupted = message.subtype === "error_during_execution"
+      return { ...ended, turn: Turn.Failed({ error, interrupted }) }
     }
   }
   return next
@@ -301,8 +311,18 @@ const derive = (worker: Worker, now: number): WorkerState => {
         return worker.state._tag === "Idle" ? worker.state : WorkerState.Idle({ at: now })
       }
       return working()
+    case "Failed":
+      if (worker.tasks.length === 0) {
+        return worker.state._tag === "Failed"
+          ? worker.state
+          : WorkerState.Failed({
+              at: now,
+              error: worker.turn.error,
+              interrupted: worker.turn.interrupted,
+            })
+      }
+      return working()
   }
-  // Under way, or failed: a failed turn isn't Idle (§ 4.2), and the worker's model says why.
   return working()
 }
 

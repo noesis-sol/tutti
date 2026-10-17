@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect"
+import { Deferred, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost, type SessionMessage, userMessage } from "../src/agent/AgentHost.ts"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
@@ -173,7 +173,8 @@ describe("the helper scripts drive WorkerState", () => {
 })
 
 describe("scripted cases", () => {
-  test("an is_error result is a failed turn, not Idle", async () => {
+  test("an is_error result is a failed turn: Failed, not Idle", async () => {
+    const failed = WorkerState.Failed({ at: 0, error: "API Error: 500", interrupted: false })
     const script = turn([apiRetry(2, 500)], apiErrorResult("API Error: 500", 500))
     const done = await run(
       { "t-1": [script] },
@@ -186,9 +187,9 @@ describe("scripted cases", () => {
       WorkerState.Starting(),
       working,
       WorkerState.Retrying({ attempt: 2, max: 10, status: 500 }),
-      working,
+      failed,
     ])
-    expect(done.now).toEqual(working)
+    expect(done.now).toEqual(failed)
   })
 
   test("a live background task keeps it Working; ambient ones don't count", async () => {
@@ -378,9 +379,9 @@ describe("what it was sent", () => {
         )
         const queued = yield* host.send("t-1", "And then this.", "human")
         const receipt = yield* host.interrupt("t-1")
-        yield* host.state("t-1").pipe(
-          Stream.takeUntil((s) => s._tag === "Working"),
-          Stream.runDrain,
+        const stopped = yield* host.state("t-1").pipe(
+          Stream.takeUntil((s) => s._tag === "Failed"),
+          Stream.runLast,
         )
         const open = yield* attention.current
         yield* host.close("t-1")
@@ -388,6 +389,7 @@ describe("what it was sent", () => {
         return {
           queued,
           receipt,
+          stopped,
           open,
           now: yield* host.current("t-1"),
           sent: yield* (yield* Recording).sentTo("t-1"),
@@ -395,6 +397,7 @@ describe("what it was sent", () => {
       }),
     )
     expect(done.receipt).toEqual({ stillQueued: [done.queued], cancelled: [] })
+    expect(Option.getOrNull(done.stopped)).toMatchObject({ _tag: "Failed", interrupted: true })
     expect(done.open).toEqual([])
     expect(done.now).toEqual(WorkerState.Closed())
     expect(done.sent.map((s) => s._tag)).toEqual([

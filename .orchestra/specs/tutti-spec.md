@@ -319,16 +319,27 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 | `NeedsYou{requests}` | one or more pending `canUseTool` calls or elicitations, or `session_state_changed: requires_action` | `permission — waiting for you` or `question — waiting for you`, with a count when there are several (red border) |
 | `UsageLimited{resetsAt}` | the turn ended on the account's usage limit (§4.12) | `usage limit · resets 14:05` (yellow) |
 | `Idle{at}` | the turn ended: see below | `done` (green) |
+| `Failed{at, error, interrupted}` | the turn ended on an error that isn't the usage limit: see below | `stopped` (yellow) when `interrupted`, else `failed` (red) |
 | `Closed` | tutti closed the session on purpose, keeping its ID (§4.8) | (no card) |
 | `Gone{why}` | the session's stream ended or failed without tutti closing it (the subprocess exited or failed to spawn, a protocol error, a `startup_failure_reason`) | `gone` (red) |
 
 **When a turn has ended (`Idle`).** All of these must hold:
 
 - **The turns are over: `session_state_changed: idle` arrived** after the last `result`. The CLI sends `idle` once, after the last queued turn has run, and not between queued turns, whichever way the queued messages were sent. Until it comes, the worker is `Working`: a `result` alone ends a turn, not the worker's work. `idle` says only that no turn is running or queued. It doesn't say the worker's background work is done: it comes right after the `result` even while a background task is live (docs/spikes/01-sdk-session.md, item 4), so the next two conditions are checked as well.
-- **The last `result` isn't an error.** `is_error` isn't set. A `success` result with `is_error: true` is an API error ending the turn: a rate limit goes to §4.12, and anything else is a failed turn.
+- **The last `result` isn't an error.** `is_error` isn't set. A `success` result with `is_error: true` is an API error ending the turn: a rate limit goes to §4.12, and anything else is a failed turn (`Failed`, below).
 - **None of tutti's sends is outstanding.** tutti gives each message it pushes into the inbox a `uuid`, and the CLI reports it in `command_lifecycle` messages (`{ type: "command_lifecycle", command_uuid, state: "queued" | "started" | "completed" }`, one set per send, whether it ran as a turn of its own, shared one or was folded into the running turn). A send is outstanding from its push until its `completed`, or until a `result`'s `user_message_uuids` lists it, or an interrupt's receipt reports it `cancelled` (§4.8). This covers a message pushed just as the last turn ends, before the CLI says `running` again. `command_lifecycle` isn't in the SDK's `SDKMessage` union, so tutti decodes it from the raw message, and `user_message_uuids` alone suffices when it is missing.
 - **No background task is live.** The live set comes from `background_tasks_changed`, whose payload replaces the set each time, and must be empty of tasks that aren't `ambient`. Tasks marked `ambient` (live-update watchers, which the SDK says hosts "should exclude … from activity indicators") don't count. Counting them would keep a worker `Working` forever and its ticket would never merge. A Bash `run_in_background` command and a Monitor watch count: neither is `ambient` (docs/spikes/01-sdk-session.md, item 4).
 - **No finished task's report is still to come.** When a task that isn't `ambient` ends between `idle` and the next `running`, the CLI starts a turn by itself to report it: `task_notification`, `background_tasks_changed` without the task, then `running`, `system/init`, a `result` and `idle`, with no send of tutti's behind it. The set empties about 70 ms before `running` arrives, so for that moment the conditions above all hold although a turn is coming. A task leaving the live set in that interval therefore keeps the worker `Working` until the next `idle`. If no `running` follows within 30 s, tutti logs it and stops waiting for that report, so a task that ends without a report can't keep a worker `Working`. A task that ends while a turn is running needs nothing more: its report is folded into that turn or queued behind it, and `idle` comes after it.
+
+**When a turn has failed (`Failed`).** The last `result` has `is_error` set and isn't the usage limit (§4.12), and the other conditions for `Idle` hold: the turns are over, none of tutti's sends is outstanding, and no background task is live or report to come. Until they hold, the worker is `Working`, as it would be after a clean result. A failed turn is:
+
+- **an interrupt**, yours (Ctrl+X, §4.3) or tutti's quit (§4.8): an `error_during_execution` result (docs/spikes/02-sdk-lifecycle.md, § 1). `interrupted` is true for that subtype, and the card shows `stopped`, not `working`;
+- **an API error** the retries didn't get past (authentication, billing, a server error after its `api_retry`s): a `success` result with `is_error: true` and its `api_error_status`;
+- **a turn cut short** by Claude Code's own limits (`error_max_turns`, `error_max_budget_usd`, …).
+
+`error` is the result's text for a `success` result, else its `errors` joined, else its subtype. `at` is when the worker first became `Failed`, as `Idle`'s is. A worker that failed one turn and ends the next cleanly is `Idle`.
+
+`Failed` settles, as orchestra's `StopFailure` hook ends the turn with its failure recorded. Leaving it unsettled would hide such a worker from the per-ticket fiber: an interrupted worker would show `working` while it waits for you, and a worker whose every turn fails on an authentication error would never reach the continue nudge, `PAUSED` or the environment hold, only `TICKET_LIMIT`. Once it settles, the per-ticket fiber reads the ticket as for `Idle` (§4.3, §5 item 6): a ticket still in progress gets the continue nudges, unless the worker is steered, which your interrupt makes it; and a ticket settled `Failed` within 2 minutes with nothing done counts toward the environment hold (§5 item 11), as a worker failing at once on a broken machine or account should. The error is shown in the worker's view and given to triage (§6.2).
 
 **A Monitor watch keeps its worker `Working`.** A Monitor call starts a background task (`task_type: "local_bash"`, not `ambient`) that lives until its source ends or it expires (30 minutes in the spike; the worker may re-arm it), and each event it sees starts a turn. A worker that set a watch and ended its turn is waiting for those events, not done. Counting it as `Idle` would settle it: the per-ticket fiber would read a ticket still in progress and send a continue nudge into a worker that is only waiting, and after two nudges and the idle grace the run would hold with `PAUSED` (§4.3). So a watch counts as a live task like any other, however long it lives. `TICKET_LIMIT` bounds it, as it bounds a long turn, and closing or suspending the session ends it (§4.8). While no turn runs and only background tasks are live, `doing` is `working`.
 
@@ -346,7 +357,7 @@ The callbacks also record compactions, for triage and the reviewer.
 
 **Hook callbacks must be cheap.** They run while the tool call waits. They return at once with no decision (`{}`), record asynchronously, and never fail. The verifier's `PreToolUse` callback (§4.1) is the one that returns something, an `updatedInput`, and it too returns at once. An error inside one is logged and swallowed, as orchestra's hooks always exit 0.
 
-**Settled.** A worker has settled when it is `Idle`, `Closed` or `Gone`. `NeedsYou`, `Retrying` and `UsageLimited` are never settled. Settling is what the per-ticket fiber waits for before it reads the ticket in Beads, as orchestra's settle step does.
+**Settled.** A worker has settled when it is `Idle`, `Failed`, `Closed` or `Gone`. `NeedsYou`, `Retrying` and `UsageLimited` are never settled. Settling is what the per-ticket fiber waits for before it reads the ticket in Beads, as orchestra's settle step does.
 
 ### 4.3 What disappears, what stays, and steering
 
@@ -361,7 +372,7 @@ Exact state removes these orchestra mechanisms. Each was a guess about a termina
 
 These stay, as orchestra has them:
 
-- **The continue nudge.** A worker `Idle` with its ticket still in progress, with no question and no deferral, is told to continue, at most twice. Then, after a 10-minute idle grace, the run holds with `PAUSED`.
+- **The continue nudge.** A worker `Idle` or `Failed` (§4.2) with its ticket still in progress, with no question and no deferral, is told to continue, at most twice. Then, after a 10-minute idle grace, the run holds with `PAUSED`.
   - The two are nudges sent, not turns. After each nudge, the per-ticket fiber waits until that nudge is no longer outstanding (§4.2) and the worker has settled again, then reads the ticket. It doesn't matter whether the nudge ran as a turn of its own or shared one (§4.1).
   - A turn the CLI starts by itself, to report a background task, answers no nudge and uses none up.
 - **`TICKET_LIMIT`.** A worker still going this long after dispatch holds the run. The worker isn't interrupted: it goes on, and so does its view. The drain doesn't wait for it, and when the run ends it is suspended (§4.8). The next run resumes it, with its limit counted afresh, as orchestra's `RESUMED` does.
@@ -505,7 +516,7 @@ What the check accepts, from that spike:
 
 Conflict resolution and check fixes go to the ticket's worker as orchestra sends them, with the same instructions, limits (`resolve_timeout` 20 m, `check_hand_backs` 2) and verification of what the worker left. Each is a `client_composed` message pushed into the worker's inbox.
 
-- The worker must be `Idle` and not steered (§4.3). One that is working, needs you or is steered isn't handed anything, and the `MERGE_CONFLICT` or `CHECKS_FAILED` line says why, as orchestra's does.
+- The worker must be `Idle` or `Failed` (§4.2) and not steered (§4.3). One that is working, needs you or is steered isn't handed anything, and the `MERGE_CONFLICT` or `CHECKS_FAILED` line says why, as orchestra's does.
 - A hand-back is under way from its push until its send is no longer outstanding (§4.2) and the worker has settled. Only then does tutti verify what the worker left. `resolve_timeout` counts from the push. Its turn may be shared with a message you typed meanwhile (§4.3), so tutti waits for the hand-back's `uuid`, not for the next `result`.
 - A worker whose session tutti closed (§4.8) is resumed for the hand-back. That doesn't count toward "resumed once in this run", which counts only sessions that ended unexpectedly (`Gone`).
 
@@ -1171,7 +1182,7 @@ As orchestra draws it:
 - **Worker cards** (rounded): framed `live` while the worker runs, `needsYou` when it, or any worker in a compact box, waits for you.
   - The number `emphasis` bold; the ticket ID `live` bold; the elapsed time and the latest action faint.
   - The mark: the spinner `live` bold while it works, `◷` `toMerge`, `◆` `merging`, `•` `done`.
-  - Statuses: `working`, `editing`, `reading`, `subagent` `live` bold; `testing` `notice` bold; `idle`, `unknown`, `resolving`, `fixing check`, `retrying 3/10 (529)`, `usage limit · resets 14:05` `notice`; `blocked — waiting for you` and `permission — waiting for you` `needsYou` bold; `done` `done`; `to merge (2nd)` `toMerge`; `merging` `merging` bold; `steered` beside a status `emphasis`.
+  - Statuses: `working`, `editing`, `reading`, `subagent` `live` bold; `testing` `notice` bold; `idle`, `unknown`, `resolving`, `fixing check`, `retrying 3/10 (529)`, `usage limit · resets 14:05`, `stopped` `notice`; `blocked — waiting for you` and `permission — waiting for you` `needsYou` bold; `failed`, `gone` `needsYou`; `done` `done`; `to merge (2nd)` `toMerge`; `merging` `merging` bold; `steered` beside a status `emphasis`.
   - The box with no worker (`picking the next ticket…`, `stopping…`): framed `frame`, the spinner `live`, the text faint.
 - **The wind-down line**: one `■` per ticket, `windingDown` while it runs, `done` once merged, `needsYou` (not bold) once set aside or waiting on you; `Winding down` `windingDown` bold; the rest faint.
 - **The stop question**: framed `notice`; the question `notice` bold; `y` and `n` `emphasis` bold; `/` faint.
