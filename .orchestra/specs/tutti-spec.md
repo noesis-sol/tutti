@@ -1028,7 +1028,7 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 
 ### 7.4 Terminal lifecycle and signals
 
-**OpenTUI is configured** with `exitOnCtrlC: false` and `exitSignals: []`. tutti handles every signal itself through the Effect runtime. Left at its defaults, OpenTUI would destroy the renderer and exit on SIGINT, SIGTERM and SIGABRT, before tutti could suspend the workers.
+**OpenTUI is configured** with `exitOnCtrlC: false` and `exitSignals: []`. tutti handles every signal itself through the Effect runtime. Left at its defaults, OpenTUI would destroy the renderer on SIGINT, SIGTERM, SIGQUIT, SIGABRT, SIGHUP, SIGPIPE, SIGBREAK and SIGBUS, and on Ctrl+C, before tutti could suspend the workers. Its handler only calls `renderer.destroy()`: the process exits only if nothing else keeps the event loop alive, so tutti would carry on without its screen. `exitSignals: []` turns all eight off.
 
 **Clean-up on any exit.** `uncaughtException`, `unhandledRejection` and the Effect runtime's fatal path all call `renderer.destroy()` before printing anything. OpenTUI's own handlers report errors but "do not destroy the renderer".
 
