@@ -50,7 +50,7 @@ export const sourceCommit = (root: string) =>
     const [revs, status] = yield* Effect.all(
       [
         git(root, ["rev-parse", "--show-toplevel", "HEAD"]),
-        git(root, ["status", "--porcelain", "-z"]),
+        git(root, ["--no-optional-locks", "status", "--porcelain", "-z"]),
       ],
       { concurrency: 2 },
     )
