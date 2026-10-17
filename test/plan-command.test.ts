@@ -166,7 +166,7 @@ describe("compareIds", () => {
     const id = fc.stringMatching(/^[a-z0-9]{0,3}(\.[a-z0-9]{0,3}){0,3}$/)
     fc.assert(
       fc.property(id, id, id, (a, b, c) => {
-        expect(compareIds(a, b)).toBe(-compareIds(b, a))
+        expect(compareIds(a, b)).toBe(-compareIds(b, a) || 0)
         expect(compareIds(a, b) === 0).toBe(a === b)
         if (compareIds(a, b) <= 0 && compareIds(b, c) <= 0) {
           expect(compareIds(a, c)).toBeLessThanOrEqual(0)
