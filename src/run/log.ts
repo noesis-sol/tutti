@@ -67,6 +67,7 @@ export const Tag = {
   flaky: "FLAKY",
   cleanupFailed: "CLEANUP_FAILED",
   labelFailed: "LABEL_FAILED",
+  notifyFailed: "NOTIFY_FAILED",
   dirtyTree: "DIRTY_TREE",
   gitFailed: "GIT_FAILED",
   mergeFailed: "MERGE_FAILED",
