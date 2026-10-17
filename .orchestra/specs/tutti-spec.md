@@ -244,7 +244,7 @@ const q = query({
     mcpServers: chosenServers,         // definitions resolved by name (§4.6)
     strictMcpConfig: true,             // no other MCP server loads
     canUseTool: attention.request(ticketId),   // §4.5
-    hooks: activityHooks(ticketId),    // in-process callbacks (§4.2)
+    hooks: activityHooks(ticketId),    // in-process callbacks (§4.2), the verifier's foreground hook
     onElicitation: attention.elicitation(ticketId),
     forwardSubagentText: true,         // subagents' text, for the nested transcript (§7.5)
     includePartialMessages: true,      // live text for an open worker view (§4.4)
@@ -261,10 +261,19 @@ const q = query({
 
 - `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`: `session_state_changed` messages (§4.2)
 - `CLAUDE_CODE_STARTUP_FAILURE_RESULTS=1`: a startup failure comes as a result with a `startup_failure_reason` (`cwd_unavailable`, `org_config_refused`, …), not just stderr
-- `CLAUDE_CODE_FORK_SUBAGENT=0`: kept from orchestra so the verifier subagent can run in the foreground. Verify in M0 that the SDK honours it, or use `AgentDefinition.background: false` or the tool's `run_in_background: false`
+- `CLAUDE_CODE_FORK_SUBAGENT=0`: no `fork` subagent type. A fork inherits the worker's context and always runs in the background, so workers don't get it. This variable doesn't keep the verifier in the foreground (below)
 - `CLAUDE_AGENT_SDK_CLIENT_APP=tutti/<version>`
 
 It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
+
+**The verifier runs in the foreground, through a hook.** Agents a session's main thread launches run in the background by default. The parent's turn then ends with a `result` while the verifier is still running, and a second turn follows its `task_notification`. Neither `CLAUDE_CODE_FORK_SUBAGENT=0` nor `AgentDefinition.background: false` (in `agents` or the agent's frontmatter) changes that: `background` only ever turns the background on (docs/spikes/03-sdk-mcp-subagents.md, § 2, Claude Code 2.1.301). So `activityHooks` adds one `PreToolUse` callback with matcher `Agent`. When the call's `subagent_type` is `verifier`, the name the worker prompt gives it (§4.11), it returns `updatedInput`: the call's input with `run_in_background: false`. Otherwise it returns `{}`.
+
+- It holds whether or not the model passes the flag. The worker prompt's "run it in the foreground" stays as guidance.
+- It sets no `permissionDecision`, so `canUseTool` and auto mode decide the call as before.
+- It touches only the verifier. Other subagents and background Bash still run in the background, and `background_tasks_changed` keeps a worker `Working` while they do (§4.2).
+- The stream's `assistant` message still shows the model's input, without `run_in_background`. The transcript shows what the model asked for, not what ran.
+
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` would also keep the verifier in the foreground, with no hook, but tutti doesn't set it. It turns off every background task in the session: other subagents, and background Bash. "Checks in the foreground" (§4.11) stays a rule of the worker prompt, not a switch.
 
 **Permission mode and settings.**
 
@@ -319,7 +328,7 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 
 The callbacks also record compactions, for triage and the reviewer.
 
-**Hook callbacks must be cheap.** They run while the tool call waits. They return at once with no decision (`{}`), record asynchronously, and never fail. An error inside one is logged and swallowed, as orchestra's hooks always exit 0.
+**Hook callbacks must be cheap.** They run while the tool call waits. They return at once with no decision (`{}`), record asynchronously, and never fail. The verifier's `PreToolUse` callback (§4.1) is the one that returns something, an `updatedInput`, and it too returns at once. An error inside one is logged and swallowed, as orchestra's hooks always exit 0.
 
 **Settled.** A worker has settled when it is `Idle`, `Closed` or `Gone`. `NeedsYou`, `Retrying` and `UsageLimited` are never settled. Settling is what the per-ticket fiber waits for before it reads the ticket in Beads, as orchestra's settle step does.
 
@@ -1482,6 +1491,7 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
   - `interrupt()` and its receipt
   - `resume` with `sessionId`
   - `strictMcpConfig` and the init's `mcp_servers`
+  - the verifier in the foreground through the hook (§4.1): the Agent call's `tool_result` isn't `async_launched` and comes before the turn's one `result`
 
   Run them on every SDK bump. Usage-limit behaviour can't be triggered on demand, so it is covered with recorded fixtures.
 - **Changelog.** Entries go in as new lines, with `CHANGELOG.md merge=union`.
@@ -1566,7 +1576,8 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | | held removals named in the log | Kept, through `defaultToNo` (§4.5) |
 | | compactions noted | Kept |
 | | subagents: a turn doesn't end while one runs | Kept, through `background_tasks_changed` (§4.2) |
-| | `CLAUDE_CODE_FORK_SUBAGENT=0` | Kept, verified in M0 |
+| | `CLAUDE_CODE_FORK_SUBAGENT=0` | Kept, for forks only: it doesn't keep the verifier in the foreground (M0) |
+| | the verifier in the foreground | Changed: a `PreToolUse` hook sets `run_in_background: false` on its Agent call (§4.1) |
 | | MCP servers by name, resolution order, connectors refused, `--strict-mcp-config` | Kept: `strictMcpConfig`, checked at each session's start (§4.6) |
 | | no `mcp_servers` → every server | Changed: no servers (Q5) |
 | | resume a worker gone from its tab, once per run | Changed: resume a gone session once; closed sessions any number of times (§4.8) |
