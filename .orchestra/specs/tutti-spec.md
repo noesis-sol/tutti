@@ -1064,7 +1064,8 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
 - **Bounded rendering.**
   - At most the last 200 items are mounted, with `stickyScroll` to the bottom while you're at the bottom.
   - Scrolling past the top loads older items from tutti's transcript of the worker (§4.4), 200 at a time, unmounting the newest beyond 600 in all.
-  - Why: OpenTUI's `scrollbox` culls but still lays out every child, and native memory grows with many frequently updated texts (#1493).
+  - Why: OpenTUI's `scrollbox` culls but still lays out every child, and OpenTUI's native memory grows with the mounted items (#1493). With OpenTUI 0.6.6, frequently updated texts (16 cards at 10 Hz, a streamed message) leave it flat. What grows it is each mounted transcript item once drawn: about 0.75 MB an item, 0.12 MB when an item is on screen only briefly. Unmounting gives it back: going from 600 items to 200 dropped it from 389 to 166 MB within a minute. So the bounds hold it: 200 items level off at about 170 MB of native memory, 600 at about 470 MB, while unbounded it grows 46 MB a minute (docs/spikes/05-opentui-soak.md, §§ 1–3).
+  - Scrolled back, 600 items cost about 300 MB more than the view at the bottom, and native memory still creeps about 3 MB a minute after 30 minutes. That is acceptable for a view you only visit: once the view is back to 200 items, the memory goes back to the system.
   - Collapsed items have a fixed height, which avoids `stickyScroll`'s pull back to the bottom after the layout shrinks (#1514).
 - **Branding** (the Agent SDK's guidelines): no Claude Code-branded ASCII art or "visual elements that mimic Claude Code". The view uses tutti's own glyphs and layout, and the colour scheme's colours (§7.11; `orchestra` by default). The SDK's guidelines allow "Claude" in a menu already labelled "Agents" and "Powered by Claude", and forbid naming the product "Claude Code". tutti's chrome names neither.
 
@@ -1615,7 +1616,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 |---|---|---|
 | The Agent SDK misbehaves under Bun (it documents Node 18+) | The runtime choice is blocked | M0 spike first; the SDK documents `bun build --compile`, which is encouraging; the fallback is Node ≥ 26.4 with `--experimental-ffi` for OpenTUI, or running the SDK in a Node child process behind a small RPC |
 | OpenTUI is 0.x and its roadmap "might break public interfaces"; `effect/ai` is marked unstable; the Agent SDK is 0.x | Upgrades cost work (accepted: D17) | Pin exactly and upgrade deliberately; keep OpenTUI behind tutti's own components; snapshot and contract tests catch regressions. Where a young package lacks something tutti needs, prefer contributing upstream or a small local workaround over replacing the package |
-| OpenTUI memory growth with large streaming text (#1493) | Long runs degrade | Bounded rendering (§7.5); the M0 soak test |
+| OpenTUI's native memory grows with mounted transcript items, about 0.75 MB each once drawn (#1493) | Long runs degrade | Bounded rendering (§7.5): 200 items level off at ~170 MB, 600 at ~470 MB; the M0 soak (docs/spikes/05-opentui-soak.md) |
 | Memory: about 1 GiB per live session | `-c 16` needs a large machine | Sessions closed when not needed (§4.8); `init` and the startup line state the estimate; concurrency default 1, as orchestra's |
 | Usage limits on a subscription with many workers | Runs stall for hours | The usage-limit hold waits and resumes by itself (§4.12); the warning shows early |
 | Auto mode's classifier unavailable, or refusing everything | Workers can't work | Auto mode's fallback is reported at startup (§4.1); a classifier refusing everything trips the environment hold, as orchestra's docs describe |
