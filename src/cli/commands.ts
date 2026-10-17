@@ -4,12 +4,15 @@
 import { Console, Effect, Layer, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
+import { Account } from "../agent/Account.ts"
 import { answerWords } from "../agent/attentionFiles.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import { plan } from "../plan/plan.ts"
 import { Beads } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
-import { cliFlags } from "./flags.ts"
+import { layer as appConfigLayer } from "./AppConfig.ts"
+import { cliFlags, noFlags, runFlags } from "./flags.ts"
+import { login, runInTerminal } from "./login.ts"
 
 /** The main checkout of the repository `dir` is in: the first of its worktrees. */
 export const mainCheckout = (dir: string) =>
@@ -147,6 +150,42 @@ export const planCommand = <E extends { readonly message: string } | string, R, 
     ),
   )
 
+/**
+ * `tutti login`, its probe run in the main checkout `repo` finds, or in the folder it was started
+ * in outside a repository: the login is the user's, not the project's.
+ */
+export const loginCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
+  Command.make(
+    "login",
+    {
+      claude: runFlags.claude.flag.pipe(
+        Flag.withDescription(
+          `log in with this Claude Code instead of the embedded one [${runFlags.claude.variable}]`,
+        ),
+      ),
+    },
+    (given) =>
+      Effect.gen(function* () {
+        const top = yield* Effect.orElseSucceed(repo, () => process.cwd())
+        yield* login(runInTerminal).pipe(
+          Effect.provide(Account.layer),
+          Effect.provide(appConfigLayer({ ...noFlags, claude: given.claude }, top)),
+          Effect.catch((error) =>
+            Effect.andThen(
+              Effect.forEach(error.message.split("\n"), (problem) =>
+                Console.error(`tutti login: ${problem}`),
+              ),
+              Effect.fail(new CommandFailed({ command: "login" })),
+            ),
+          ),
+        )
+      }),
+  ).pipe(
+    Command.withDescription(
+      "log in to Claude with Claude Code's own login (claude auth login), then say which account and billing workers get",
+    ),
+  )
+
 /** tutti and its subcommands, the main checkout found with `repo`; `tutti plan` reads it with `services`. */
 export const tuttiWith = <E extends { readonly message: string } | string, R, S>(
   repo: Effect.Effect<string, E, R>,
@@ -155,7 +194,7 @@ export const tuttiWith = <E extends { readonly message: string } | string, R, S>
   // Until the run is assembled, a bare `tutti` prints the version.
   Command.make("tutti", cliFlags, () => Console.log(pkg.version)).pipe(
     Command.withDescription("runs Claude Code workers on a Beads backlog, one worktree per ticket"),
-    Command.withSubcommands([answerCommand(repo), planCommand(repo, services)]),
+    Command.withSubcommands([answerCommand(repo), planCommand(repo, services), loginCommand(repo)]),
   )
 
 /** tutti's commands, each finding the main checkout from the folder it was started in. */

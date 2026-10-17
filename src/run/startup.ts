@@ -112,7 +112,7 @@ export const report = (failed: {
 }
 
 /** The problems of the failures in `cause`, each once: a SetupProblem's each, else its message. */
-const failures = <E extends { readonly message: string }>(cause: Cause.Cause<E>) => [
+export const failures = <E extends { readonly message: string }>(cause: Cause.Cause<E>) => [
   ...new Set(
     cause.reasons.flatMap((reason) =>
       reason._tag !== "Fail"
