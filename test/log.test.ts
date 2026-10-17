@@ -280,6 +280,15 @@ describe("the tags' lines", () => {
     expect<unknown>(
       denied({ id: "tut-9a1", what: "Bash(rm -rf build)", by: "classifier", reason: "too wide" }),
     ).toBe("  DENIED: tut-9a1's worker: Bash(rm -rf build), by the classifier: too wide")
+    expect<unknown>(
+      denied({ id: "tut-9a1", what: "Bash(rm -rf $T/*)", by: "safetyCheck", reason: "held" }),
+    ).toBe("  DENIED: tut-9a1's worker: Bash(rm -rf $T/*), by the safety check: held")
+    expect<unknown>(
+      denied({ id: "tut-9a1", what: "Bash(ls)", by: "sandbox\u001b[2J", reason: "no" }),
+    ).toBe("  DENIED: tut-9a1's worker: Bash(ls), by sandbox: no")
+    expect<unknown>(
+      denied({ id: "tut-9a1", what: "Bash(ls)", by: "constructor", reason: "no" }),
+    ).toBe("  DENIED: tut-9a1's worker: Bash(ls), by constructor: no")
     expect<unknown>(steered("tut-9a1")).toBe("  STEERED: tut-9a1")
     expect<unknown>(released("tut-9a1")).toBe("  RELEASED: tut-9a1")
     expect<unknown>(message("tut-9a1", "x".repeat(212))).toBe(

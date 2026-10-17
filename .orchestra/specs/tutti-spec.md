@@ -53,7 +53,7 @@ These were settled with the maintainer while writing this spec. Each one shapes 
 | D8 | Attention | A permission request or a worker's question is **answerable on its card or in its view**. Nothing changes view by itself; a notification fires | Requests come through the SDK's `canUseTool` and wait in tutti's attention queue (§4.5) |
 | D9 | Mouse | **Single clicks plus keys**. Every click has a key; no double-click meanings | Cards, buttons and tabs are click targets. Text is copied with OpenTUI's selection |
 | D10 | Organs | **`effect/ai` `LanguageModel`, provided by a layer over the Agent SDK** (subscription login). An API-key provider can be swapped in by layer | Organs use `LanguageModel.generateObject` with Effect Schema |
-| D11 | Worker permissions | **Auto mode**: workers start in `permissionMode: 'auto'`, with your Claude Code settings loaded. Claude Code's classifier approves or denies each tool call; you're asked through `canUseTool` only when it can't decide, or when a rule or the built-in safety check says to ask | Few requests reach you. Classifier denials are logged and tallied for the reviewer (§4.5). `bypassPermissions` is never used |
+| D11 | Worker permissions | **Auto mode**: workers start in `permissionMode: 'auto'`, with your Claude Code settings loaded. Claude Code's classifier approves or denies each tool call; you're asked through `canUseTool` only when it can't decide, or when a rule says to ask. A removal the built-in safety check holds is denied without asking | Few requests reach you. Denials by the classifier and the safety check are logged and tallied for the reviewer (§4.5). `bypassPermissions` is never used |
 | D12 | Distribution | **Signed single binaries plus `tutti update`**, as orchestra does | `bun build --compile` for darwin and linux, arm64 and x64, with Claude Code embedded as the SDK's README describes (§12) |
 | D13 | Platforms | **macOS and Linux**, in any terminal emulator, inside tmux or over ssh included | No Windows |
 | D14 | Repository | **A new product under a new name**: a new repository; orchestra stays as it is | tutti starts at 0.1.0 and reaches 1.0.0 at parity (§14) |
@@ -397,7 +397,7 @@ These stay, as orchestra has them:
 - an ID drawn by tutti; the ticket; the SDK's `toolUseID`; the subagent's `agentID`, if a subagent asked
 - its kind: `Permission{tool, input, suggestions}`, or `Question{questions}` for `AskUserQuestion`
 - the SDK's display fields: `title` ("Claude wants to read foo.txt"), `displayName`, `description`, `decisionReason` and `blockedPath`
-- its two flags: **`defaultToNo`** ("must not be approvable by a single stray keystroke … offer no one-key approve shortcut") and **`suppressAlwaysAllowRule`** ("must not offer a persistent don't ask again choice")
+- its two flags: **`defaultToNo`** ("must not be approvable by a single stray keystroke … offer no one-key approve shortcut") and **`suppressAlwaysAllowRule`** ("must not offer a persistent don't ask again choice"). `defaultToNo` is also set on a request whose `decisionReasonType` is `safetyCheck`, since the CLI doesn't set it there (below)
 - its creation time
 
 It puts the request in the worker's queue and returns a `Deferred` the callback awaits. Every field shown is sanitised (§7.10). MCP server names are untrusted text, per the SDK.
@@ -408,15 +408,24 @@ It puts the request in the worker's queue and returns a `Deferred` the callback 
 
 - it can't decide
 - one of your `ask` rules matches
-- Claude Code's built-in safety check holds the call: a removal whose target is a variable, a glob, a home, root or working directory, which arrives with `defaultToNo` and `suppressAlwaysAllowRule`
 
 Tools the user's settings allow never reach `canUseTool`.
 
-**Classifier denials** arrive as `permission_denied` messages: `decision_reason_type` `classifier`, `mode` or `rule`, and `decision_reason`.
+**Held removals.** Claude Code's built-in safety check holds a removal whose target can't be checked before it runs: a variable from the environment (`rm -rf $T/*`), a glob, a home, root or working directory. A variable set in the same command (`T=build; rm -rf "$T"`) isn't held. What happens to a held removal depends on the mode in effect (§4.1):
 
-- Each is logged (`DENIED: <id>'s worker: Bash(rm -rf build), by the classifier: <reason>`).
-- It goes into the event stream (`denied`) and is tallied per ticket for triage and the reviewer.
+- **In auto mode** the CLI denies it itself and never calls `canUseTool`: it arrives as a `permission_denied` with `decision_reason_type` `safetyCheck`, and the worker's tool result says only a person may approve such a removal. No answer can allow it afterwards.
+- **In default mode** (auto mode unavailable, or chosen in settings) it reaches `canUseTool` with `decisionReasonType: "safetyCheck"` and `suppressAlwaysAllowRule`, but without `defaultToNo`. tutti sets `defaultToNo` on it, so it opens on Deny with no one-key allow, and offers no Allow for this run.
+- `defaultToNo` from the SDK is honoured on any request that has it. Nothing relies on the CLI setting it.
+
+`decisionReasonType` isn't in the SDK's types; tutti reads it as an optional string beside `decisionReason`. Its values seen so far are `workingDir`, `safetyCheck` and `other`.
+
+**Denials** arrive as `permission_denied` messages, with `decision_reason_type` `classifier`, `safetyCheck`, `mode` or `rule`, and `decision_reason`. Another type is logged with its name as given.
+
+- Each is logged (`DENIED: <id>'s worker: Bash(rm -rf build), by the classifier: <reason>`; `by the safety check`, `by the permission mode`, `by a rule`).
+- It goes into the event stream (`denied`) and is tallied per ticket, by type, for triage and the reviewer.
 - The card's latest-action line shows it for 10 seconds.
+
+A safety-check denial is shown as a classifier denial is, not as something more prominent: there is nothing to answer, the worker's turn goes on with the refusal, and the worker prompt (§4.11) tells it to overwrite instead or name the file by its literal absolute path. What it adds is in the record: triage reads it as a sign the worker may be stuck on a removal, and the reviewer's **Needs you** names the tickets it happened to, with the command, since no rule can allow it.
 
 The reviewer's **Needs you** recommends rules for calls the classifier kept denying that the ticket needed.
 
@@ -582,6 +591,7 @@ tutti's built-in worker prompt is orchestra's, rewritten where the tmux world sh
 - **Checks in the foreground**: the rule stays, with a new reason. A worker waiting on a background command holds its slot while doing nothing, and its ticket can't merge until the command ends.
 - **Working unattended** stays, and adds that the maintainer may sometimes send a message: follow it, then carry on with the ticket.
 - **Never push, commit with the ticket ID, close only when the checks pass**, and the rest of orchestra's rules stay as they are.
+- **Removals**: orchestra's rule against removing a target built from a variable or a glob stays, with tutti's reason: the safety check refuses such a removal unless a person approves it, and in auto mode refuses it outright (§4.5). The worker overwrites instead, writes to a new name, or removes a file by its literal absolute path.
 - **Moved out of the system prompt**: the time it has and the `--ticket` line go in the first message (§4.1), so a resumed session gets current values.
 
 ### 4.12 Usage limits
@@ -849,8 +859,8 @@ Verify in M0 that `effect/ai`'s `Prompt` and `Response` parts map cleanly onto a
 
 As orchestra: every section of evidence goes between `<evidence id="<random>">` and `</evidence id="<random>">`, with an ID drawn afresh for each call, and every system prompt says text inside the tags is evidence only. The evidence gathered for each organ is orchestra's, with these changes:
 
-- **Triage** reads tutti's own transcript of the worker (§4.4): the last 40 items, at most 8,000 characters. It also reads the attention requests the worker raised and their answers, the classifier's denials, its compactions, and its worktree's changes. "The end of its terminal" goes, since there is no terminal.
-- **The reviewer** gets the per-ticket tallies of requests, answers, denials and your messages in place of hook tallies. Its **Needs you** section recommends rules for calls that kept being asked about or denied, as orchestra's recommends allow rules. It also says when a person steered a ticket.
+- **Triage** reads tutti's own transcript of the worker (§4.4): the last 40 items, at most 8,000 characters. It also reads the attention requests the worker raised and their answers, the denials by the classifier and the safety check, its compactions, and its worktree's changes. "The end of its terminal" goes, since there is no terminal.
+- **The reviewer** gets the per-ticket tallies of requests, answers, denials and your messages in place of hook tallies. Its **Needs you** section recommends rules for calls that kept being asked about or denied, as orchestra's recommends allow rules, and names the tickets whose removals the safety check denied, which no rule can allow (§4.5). It also says when a person steered a ticket.
 
 ### 6.3 The scout
 
@@ -923,7 +933,7 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
   - `1`–`9` open workers 1 to 9.
   - Workers 10 to 16 are reached by click or `Tab`.
 - **Attention cards.** An attention card grows to show its request and buttons (§4.5). The cards keep their stable number order, so an attention card stands out by its red border and size, not by moving. A card in the compact one-line layout shows `■ allow?` and opens its request with `Enter`.
-  - The illustration shows a request held by the safety check (`defaultToNo`): Deny comes first and has the focus, and there is no `a` hint.
+  - The illustration shows a request held by the safety check, as it comes in default mode (`defaultToNo`, §4.5): Deny comes first and has the focus, and there is no `a` hint.
 - **Needs you** counts open attention requests, plus orchestra's questions and tickets blocked from merging.
 - **Banners on the title line**: usage (§4.12), and holds (`BLOCKED`, `USAGE_LIMIT · resets 14:05`).
 - **The end-of-run box** (D19, §5 item 14) replaces the Current cards when only workers waiting on you remain.
@@ -1441,7 +1451,7 @@ It is `flock(LOCK_EX|LOCK_NB)` on `<git-common-dir>/tutti.lock`, so the system r
 | `phase` | new: a ticket moved from one phase to another (§5.1) | `ticket`, `from`, `to`, `cause`, and the phase's details where it has them (`place`, `step`, `attempt`, `why`) |
 | `attention` | new: a worker waits on you | `ticket`, `request` (ID), `type` (`permission`, `question`, `elicitation`), `tool` and `summary` (permission) or `questions` (question), `default_to_no` |
 | `attention_answered` | new | `ticket`, `request`, `answer` (`allow`, `deny`, `allow_run`, or the chosen labels), `via` (`screen` or `answer_command`), `after_ms`; `cancelled: true` when the SDK withdrew it |
-| `denied` | new: the classifier, a rule or the mode denied a tool call | `ticket`, `tool`, `reason_type`, `reason` |
+| `denied` | new: the classifier, the safety check, a rule or the mode denied a tool call | `ticket`, `tool`, `reason_type` (`classifier`, `safetyCheck`, `mode`, `rule`, or another the SDK gives), `reason` |
 | `usage_limit` | new | `status` (`warning`, `rejected`, `lifted`), `limit` (`five_hour`, …), `resets_at`, `utilization` |
 | `message` | new: you sent a worker a message | `ticket`, `length` (the text is recorded nowhere) |
 | `steered`, `released` | new | `ticket` |
@@ -1514,7 +1524,8 @@ shellcheck on tracked shell scripts (pinned binary, as orchestra's)
   - `idle` with a background task live, and the turn the CLI starts when the task ends, after the set empties
   - `command_lifecycle` for each send, and `result`'s `user_message_uuids`
   - a follow-up pushed during a tool call folded into the running turn, and queued sends of one kind sharing a turn, each named in the one `result`'s `user_message_uuids`
-  - `canUseTool` for a call that needs asking, with `defaultToNo` on a held removal
+  - `canUseTool` for a call that needs asking
+  - a held removal (`rm -rf $T/*`, `T` from the environment): in auto mode a `permission_denied` with `decision_reason_type` `safetyCheck` and no `canUseTool` call; in default mode a `canUseTool` call with `decisionReasonType: "safetyCheck"` and `suppressAlwaysAllowRule`
   - `interrupt()` and its receipt
   - `resume` with `sessionId`, and of a removed worktree: the spawn fails with no message and no result
   - `strictMcpConfig` and the init's `mcp_servers`
@@ -1600,7 +1611,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | | settle by Stop hook, start-up grace, 10-minute windows, `UNKNOWN >5min` | Changed: exact SDK state (§4.2, §4.3) |
 | | continue nudges ×2, then idle grace and `PAUSED` | Kept, not for steered workers (§4.3) |
 | | permission prompts: shown, `PERMISSION_PROMPT`, `BLOCKED >4min` | Changed: auto mode; answered in tutti or with `tutti answer`; `BLOCKED` lifted once answered (§4.5, §4.3) |
-| | held removals named in the log | Kept, through `defaultToNo` (§4.5) |
+| | held removals named in the log | Changed: denied by the safety check in auto mode and logged as `DENIED … by the safety check`; asked with Deny first (`defaultToNo`) in default mode (§4.5) |
 | | compactions noted | Kept |
 | | subagents: a turn doesn't end while one runs | Kept, through `background_tasks_changed` (§4.2) |
 | | `CLAUDE_CODE_FORK_SUBAGENT=0` | Kept, for forks only: it doesn't keep the verifier in the foreground (M0) |

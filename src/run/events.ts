@@ -291,12 +291,12 @@ export const AttentionAnswered = Schema.Struct({
   text: optional(Schema.String),
 })
 
-/** The classifier, a rule or the mode denied a tool call. */
+/** The classifier, the safety check, a rule or the mode denied a tool call. */
 export const Denied = Schema.Struct({
   ...head("denied"),
   ticket: Schema.String,
   tool: Schema.String,
-  /** The SDK's `decision_reason_type`: `classifier`, `mode` or `rule`. */
+  /** The SDK's `decision_reason_type`: `classifier`, `safetyCheck`, `mode`, `rule`, or another. */
   reason_type: Schema.String,
   reason: Schema.String,
   text: optional(Schema.String),

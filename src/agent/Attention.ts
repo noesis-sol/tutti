@@ -688,6 +688,11 @@ export const make = (
         )
       })
 
+    // A removal the safety check holds comes without defaultToNo in default mode, so tutti sets it
+    // (§ 4.5). decisionReasonType isn't in the SDK's types.
+    const heldBySafetyCheck = (options: Parameters<CanUseTool>[2]) =>
+      (options as { readonly decisionReasonType?: unknown }).decisionReasonType === "safetyCheck"
+
     const display = (options: Parameters<CanUseTool>[2]) => ({
       ...sanitizedOptional("title", options.title),
       ...sanitizedOptional("displayName", options.displayName, sanitizeLine),
@@ -729,7 +734,7 @@ export const make = (
           ...(sdk.agentID === undefined ? {} : { agentID: sdk.agentID }),
           kind,
           ...display(sdk),
-          defaultToNo: sdk.defaultToNo ?? false,
+          defaultToNo: sdk.defaultToNo === true || heldBySafetyCheck(sdk),
           suppressAlwaysAllowRule: sdk.suppressAlwaysAllowRule ?? false,
           createdAt: yield* Clock.currentTimeMillis,
         }

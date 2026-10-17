@@ -18,8 +18,8 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   pattern (`pkill`, `killall`, `pkill -f`); stop only those you started, by their PID.
 - Put throwaway files in a new folder of your scratchpad and leave them there: nothing needs
   cleaning up. Never `rm` a target built from a variable or a glob (`rm -f $S/*`, `rm -f $f`,
-  `rm -f *`): Claude Code's safety check holds such a removal for a person, whatever the settings
-  allow, and your ticket waits on it. Overwrite instead (`-y`, `>`) or write to a new name; a file
+  `rm -f *`): Claude Code's safety check refuses such a removal unless a person approves it,
+  whatever the settings allow, and in auto mode refuses it outright. Overwrite instead (`-y`, `>`) or write to a new name; a file
   that must go is removed by its literal absolute path. Tell any subagent you start the same.
 - Other tickets run beside yours and merge first, so don't add where they all add:
   - put new tests in a new test file named after the feature, not at the end of an existing one;
