@@ -4,7 +4,9 @@
 // session or for an interrupt, sleeps on the Clock (so TestClock moves it), runs an Effect (to
 // change an in-memory Beads or Git as the worker would), or ends the session as gone. A session whose
 // steps run out stays open, idle, until it is closed. Run under TestClock, a script plays the same
-// way every time.
+// way every time. Sends are taken as the CLI takes them (§ 4.1): one to a turn (Wait), folded into
+// the running turn (Fold), several of one kind sharing a turn (Coalesce), or none, for a turn the
+// CLI starts by itself.
 //
 // Every message is recorded in Transcripts and folded into the worker's state as the live layer
 // does it (makeWorkers). The layer speaks for the CLI where a script can't know the uuids: each send
@@ -24,7 +26,18 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Context, Data, type Duration, Effect, Fiber, Layer, Queue, Ref, Semaphore } from "effect"
+import {
+  Context,
+  Data,
+  type Duration,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Semaphore,
+} from "effect"
 import {
   AgentGone,
   AgentHost,
@@ -59,6 +72,17 @@ export type Step = Data.TaggedEnum<{
   Elicit: { readonly request: ElicitationRequest }
   /** Waits for a message sent to the session (by start's caller, resume or send) and takes it. */
   Wait: Record<never, never>
+  /**
+   * Folds the messages waiting into the running turn, as the CLI does between tool rounds: waits
+   * for one, then takes every other one waiting, of either kind.
+   */
+  Fold: Record<never, never>
+  /**
+   * Takes queued messages of one kind for a turn to share, as the CLI coalesces them: waits for
+   * one, then takes those waiting behind it up to the first of the other kind (client_composed or
+   * typed by you), which waits for a later turn.
+   */
+  Coalesce: Record<never, never>
   /** Waits for an interrupt not yet waited for. */
   AwaitInterrupt: Record<never, never>
   Sleep: { readonly duration: Duration.Input }
@@ -117,6 +141,8 @@ interface Running {
   readonly sessionId: string
   readonly entry: WorkerEntry
   readonly inbox: Queue.Queue<SDKUserMessage>
+  /** A message taken from the inbox and left for a later turn: the next to be taken. */
+  readonly putBack: Array<SDKUserMessage>
   /** The uuids of the messages sent and not yet taken by a Wait: an interrupt's still_queued. */
   readonly queued: Ref.Ref<ReadonlyArray<string>>
   /** The uuids of the messages taken by a Wait since the last result: the next one's sends. */
@@ -128,6 +154,9 @@ interface Running {
   readonly controller: Ref.Ref<AbortController>
   fiber?: Fiber.Fiber<void>
 }
+
+// Whether a message is client_composed, or typed by you: queued messages coalesce by kind.
+const composed = (message: SDKUserMessage) => message.client_composed === true
 
 // A message's uuid, as the SDK's UUID type has them: the nth is ...-000000000001 and so on.
 const uuidOf = (n: number): SDKUserMessage["uuid"] & string =>
@@ -205,6 +234,41 @@ export const layer = (
           if (!held) yield* emitIn(session, message)
         })
 
+      // The next message not cancelled, waiting for one.
+      const next = (session: Running): Effect.Effect<SDKUserMessage> =>
+        Effect.flatMap(
+          Effect.suspend(() => {
+            const back = session.putBack.shift()
+            return back === undefined ? Queue.take(session.inbox) : Effect.succeed(back)
+          }),
+          (message) =>
+            session.cancelled.has(message.uuid ?? "") ? next(session) : Effect.succeed(message),
+        )
+
+      // The next message not cancelled, if one is waiting.
+      const waiting = (session: Running): Effect.Effect<SDKUserMessage | undefined> =>
+        Effect.flatMap(
+          Effect.suspend(() => {
+            const back = session.putBack.shift()
+            return back === undefined
+              ? Effect.map(Queue.poll(session.inbox), Option.getOrUndefined)
+              : Effect.succeed(back)
+          }),
+          (message) =>
+            message !== undefined && session.cancelled.has(message.uuid ?? "")
+              ? waiting(session)
+              : Effect.succeed(message),
+        )
+
+      // The turn takes the message: it is no longer queued, and the next result lists it.
+      const take = (session: Running, message: SDKUserMessage) =>
+        Effect.gen(function* () {
+          const uuid = message.uuid ?? ""
+          yield* Ref.update(session.queued, (uuids) => uuids.filter((u) => u !== uuid))
+          yield* Ref.update(session.taken, (uuids) => [...uuids, uuid])
+          yield* lifecycle(session, uuid, "started")
+        })
+
       const play = (ticket: string, session: Running, step: Step): Effect.Effect<void> =>
         Step.$match(step, {
           Emit: ({ message }) => emitScripted(session, message),
@@ -236,16 +300,26 @@ export const layer = (
               yield* record(Sent.Elicited({ ticket, result }))
               yield* workers.counted(session.entry)
             }),
-          Wait: () =>
+          Wait: () => Effect.flatMap(next(session), (message) => take(session, message)),
+          Fold: () =>
             Effect.gen(function* () {
-              let message = yield* Queue.take(session.inbox)
-              while (session.cancelled.has(message.uuid ?? "")) {
-                message = yield* Queue.take(session.inbox)
+              yield* take(session, yield* next(session))
+              let message = yield* waiting(session)
+              while (message !== undefined) {
+                yield* take(session, message)
+                message = yield* waiting(session)
               }
-              const uuid = message.uuid ?? ""
-              yield* Ref.update(session.queued, (uuids) => uuids.filter((u) => u !== uuid))
-              yield* Ref.update(session.taken, (uuids) => [...uuids, uuid])
-              yield* lifecycle(session, uuid, "started")
+            }),
+          Coalesce: () =>
+            Effect.gen(function* () {
+              const first = yield* next(session)
+              yield* take(session, first)
+              let message = yield* waiting(session)
+              while (message !== undefined && composed(message) === composed(first)) {
+                yield* take(session, message)
+                message = yield* waiting(session)
+              }
+              if (message !== undefined) session.putBack.unshift(message)
             }),
           AwaitInterrupt: () => Queue.take(session.interrupts),
           Sleep: ({ duration }) => Effect.sleep(duration),
@@ -298,6 +372,7 @@ export const layer = (
             sessionId: session.sessionId,
             entry,
             inbox: yield* Queue.unbounded<SDKUserMessage>(),
+            putBack: [],
             queued: yield* Ref.make<ReadonlyArray<string>>([]),
             taken: yield* Ref.make<ReadonlyArray<string>>([]),
             cancelled: new Set(),
@@ -400,6 +475,8 @@ export const canUseTool = (
 ): Step => Step.CanUseTool({ toolName, input, options })
 export const elicit = (request: ElicitationRequest): Step => Step.Elicit({ request })
 export const wait: Step = Step.Wait()
+export const fold: Step = Step.Fold()
+export const coalesce: Step = Step.Coalesce()
 export const awaitInterrupt: Step = Step.AwaitInterrupt()
 export const sleep = (duration: Duration.Input): Step => Step.Sleep({ duration })
 export const run = (effect: Effect.Effect<void>): Step => Step.Do({ effect })
@@ -592,6 +669,12 @@ export const turn = (steps: ReadonlyArray<Step>, end: Step = result()): SessionS
   ...steps,
   end,
   sessionState("idle"),
+]
+
+/** A turn the queued messages of one kind share (Coalesce); its result lists them all. */
+export const coalescedTurn = (steps: ReadonlyArray<Step>, end: Step = result()): SessionScript => [
+  coalesce,
+  ...turn(steps, end).slice(1),
 ]
 
 // The common scripts: one session each. A ticket's script is a list of them, one per start or

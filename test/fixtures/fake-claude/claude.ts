@@ -3,10 +3,13 @@
 // stdout, with the message shapes docs/spikes/01-sdk-session.md and 02-sdk-lifecycle.md recorded
 // (SDK 0.3.301, Claude Code 2.1.301). It answers the SDK's initialize and interrupt control
 // requests, plays one turn per message it is sent (a message sent during a turn waits in its queue
-// and runs, with the others waiting, as the next turn), and ends when its stdin closes, which it
-// logs as `{ closed: true }`. Each message gets its command_lifecycle (queued, started, then
-// completed or cancelled), `idle` comes only after the last queued turn, and `queued_turn_count`
-// counts only queued messages sent without `client_composed`, as the spike saw them.
+// and runs as the next turn, with those of its kind waiting behind it, or a wait step folds it into
+// the running turn), and ends when its stdin closes, which it logs as `{ closed: true }`. Each
+// message gets its command_lifecycle (queued, started, then completed or cancelled), each result
+// lists in `user_message_uuids` every message its turn took, `idle` comes only after the last
+// queued turn, and `queued_turn_count` counts only queued messages sent without `client_composed`,
+// as the spike saw them. A background step's task ends after `idle`, and the fake starts a turn by
+// itself to report it, whose result lists no message.
 //
 // What it does is the scenario in FAKE_CLAUDE_SCENARIO, as JSON. It appends its arguments and every
 // line it reads to the scenario's log, one JSON line each, for the test to read back.
@@ -19,8 +22,13 @@ type Step =
   | { readonly text: string }
   /** Waits until the turn is interrupted. */
   | { readonly hang: true }
-  /** Waits for a message and takes it, rather than queueing it for the next turn. */
+  /**
+   * Folds the messages queued into the running turn, as the CLI does between tool rounds: takes
+   * them all, or waits for one when none is queued.
+   */
   | { readonly wait: true }
+  /** A background task with this ID, live until the turns are over; then it ends and is reported. */
+  | { readonly background: string }
   /** The process exits with this code, mid-turn. */
   | { readonly exit: number }
   /** Writes this to stderr. */
@@ -106,6 +114,8 @@ const ask = (request: object) =>
 let queued: Array<UserMessage> = []
 let turns = 0
 let running = false
+/** The background tasks live, ending once the turns are over, each reported in a turn of its own. */
+const tasks: Array<string> = []
 /** Ends the running turn's hang, when it is interrupted. */
 let interrupted: (() => void) | undefined
 /** Takes the next message, for a turn waiting for one. */
@@ -171,7 +181,12 @@ const turn = async (first: ReadonlyArray<UserMessage>) => {
   const uuids = () => messages.flatMap((m) => (m.uuid === undefined ? [] : [m.uuid]))
   await lifecycle(messages, "started")
   const steps = scenario.turns?.[turns++] ?? [
-    { text: `ECHO: ${messages.map((m) => textOf(m.message.content)).join("\n")}` },
+    {
+      text:
+        messages.length === 0
+          ? "REPORTED"
+          : `ECHO: ${messages.map((m) => textOf(m.message.content)).join("\n")}`,
+    },
   ]
   await write({ type: "system", subtype: "session_state_changed", state: "running" })
   await write({
@@ -224,12 +239,21 @@ const turn = async (first: ReadonlyArray<UserMessage>) => {
       await lifecycle(messages, "completed")
       return next()
     } else if ("wait" in step) {
-      const taken = await new Promise<UserMessage>((resolve) => {
-        waiting = resolve
-      })
+      const taken =
+        queued.length > 0
+          ? queued
+          : [
+              await new Promise<UserMessage>((resolve) => {
+                waiting = resolve
+              }),
+            ]
+      queued = []
       waiting = undefined
-      messages.push(taken)
-      await lifecycle([taken], "started")
+      messages.push(...taken)
+      await lifecycle(taken, "started")
+    } else if ("background" in step) {
+      tasks.push(step.background)
+      await backgroundTasks()
     } else if ("exit" in step) {
       await exit(step.exit)
     } else if ("stderr" in step) {
@@ -262,14 +286,42 @@ const turn = async (first: ReadonlyArray<UserMessage>) => {
   return next()
 }
 
-/** Plays the queued messages' turn, or says idle when none are queued. */
-const next = (): Promise<void> => {
-  if (queued.length === 0) {
-    running = false
-    return write({ type: "system", subtype: "session_state_changed", state: "idle" })
+const backgroundTasks = () =>
+  write({
+    type: "system",
+    subtype: "background_tasks_changed",
+    tasks: tasks.map((id) => ({ task_id: id, task_type: "local_bash", description: id })),
+    session_id: sessionId,
+  })
+
+/**
+ * Plays the turn the queued messages of the first one's kind share, or says idle when none are
+ * queued; then a live background task ends, and a turn of the fake's own reports it.
+ */
+const next = async (): Promise<void> => {
+  const first = queued[0]
+  if (first === undefined) {
+    const task = tasks.shift()
+    // With no report to come, a message sent from now starts a turn of its own.
+    if (task === undefined) running = false
+    await write({ type: "system", subtype: "session_state_changed", state: "idle" })
+    if (task === undefined) return
+    await write({
+      type: "system",
+      subtype: "task_notification",
+      task_id: task,
+      status: "completed",
+      output_file: `/tmp/tasks/${task}.output`,
+      summary: `Background command "${task}" completed`,
+      session_id: sessionId,
+    })
+    await backgroundTasks()
+    return turn([])
   }
-  const taken = queued
-  queued = []
+  const kind = (m: UserMessage) => m.client_composed === true
+  const other = queued.findIndex((m) => kind(m) !== kind(first))
+  const taken = other === -1 ? queued : queued.slice(0, other)
+  queued = other === -1 ? [] : queued.slice(other)
   return turn(taken)
 }
 
