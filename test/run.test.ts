@@ -373,7 +373,10 @@ describe("stops and exit codes", () => {
         backlog: backlog().ticket("t-1").seeds,
         scripts: (world, root) => {
           const c = commands(world, root, "t-1")
-          return { "t-1": [[...turn([step(c.claim)]).slice(0, -2), gone("exit 1")]] }
+          // Gone, resumed once, and gone again.
+          return {
+            "t-1": [[...turn([step(c.claim)]).slice(0, -2), gone("exit 1")], [gone("exit 1")]],
+          }
         },
       },
     })
