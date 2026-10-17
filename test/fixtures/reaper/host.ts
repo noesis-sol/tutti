@@ -7,7 +7,8 @@
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
-import { reap, spawnInOwnProcessGroup } from "../../../src/agent/options.ts"
+import { spawnInOwnProcessGroup } from "../../../src/agent/options.ts"
+import { reap } from "../../../src/services/reaper.ts"
 
 const [mode, dir] = process.argv.slice(2)
 if (dir === undefined) throw new Error("usage: host.ts spawn|stubborn|exit <dir>")

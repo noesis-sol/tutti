@@ -3,12 +3,15 @@
 // terminal's signals reach tutti alone. Its scope kills the whole group (SIGTERM, then SIGKILL after
 // a grace) when it closes or the fiber is interrupted. Its time limit kills the group itself when
 // it expires: a fiber of its own sends the signals, so the limit holds even while the caller is
-// uninterruptible (§ 3.4).
+// uninterruptible (§ 3.4). A kill -9 of tutti runs neither, so the group also has a reaper
+// (src/services/reaper.ts) that ends it then, with the same grace; the reaper goes with the group.
+import type { ChildProcess as Reaper } from "node:child_process"
 import { writeSync } from "node:fs"
 import { constants } from "node:os"
 import { Cause, Context, Duration, Effect, Exit, Fiber, FileSystem, Schema, Stream } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { startReaper, stopReaper } from "./reaper.ts"
 
 /** orchestra's limits: 30 s for a read, 2 min for a git write or a `bd` update. Checks pass their own. */
 export const TimeLimit = {
@@ -160,8 +163,10 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
           : yield* fs.open(command.outputFile, { flag: "w" }).pipe(Effect.mapError(notRun))
       // Added before the spawn, so it runs after the spawner's finalizer has killed the group.
       let group: number | undefined
+      let reaper: Reaper | undefined
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
+          stopReaper(reaper)
           if (group !== undefined) groups.delete(group)
         }),
       )
@@ -185,6 +190,10 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         .pipe(Effect.mapError(notRun))
       group = handle.pid
       groups.add(group)
+      const leader = group
+      reaper = yield* Effect.sync(() =>
+        startReaper(leader, Duration.toSeconds(Duration.fromInputUnsafe(grace))),
+      )
       const kill = Effect.ignore(handle.kill({ killSignal: "SIGTERM", forceKillAfter: grace }))
 
       // A leader still running at the limit has timed out, whatever code it exits with once killed.

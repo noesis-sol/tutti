@@ -1,11 +1,11 @@
-// A worker's reaper (src/agent/options.ts, § 3.2): a kill -9 of tutti ends its busy workers, and a
+// A worker's reaper (src/services/reaper.ts, § 3.2): a kill -9 of tutti ends its busy workers, and a
 // worker that ends normally takes its reaper with it.
 import { describe, expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { reap } from "../src/agent/options.ts"
+import { reap } from "../src/services/reaper.ts"
 
 const host = join(import.meta.dir, "fixtures/reaper/host.ts")
 

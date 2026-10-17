@@ -13,8 +13,8 @@
 // tutti. Claude Code reads its own stdin's EOF only once a turn is over, so a busy worker would
 // outlive a kill -9 of tutti (docs/spikes/02-sdk-lifecycle.md § 4). That kill closes the reaper's
 // pipe too, and the reaper ends Claude Code's whole group: SIGTERM, then SIGKILL after a grace.
-// A worker that ends normally takes its reaper with it.
-import { type ChildProcess, type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
+// A worker that ends normally takes its reaper with it. The reaper is src/services/reaper.ts's.
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { StringDecoder } from "node:string_decoder"
 import type {
   CanUseTool,
@@ -25,6 +25,7 @@ import type {
 import { Effect } from "effect"
 import type { AppConfigValue } from "../cli/AppConfig.ts"
 import { askUserQuestionTool, forTicket, type WorkerPrompt } from "../project/prompt.ts"
+import { reap } from "../services/reaper.ts"
 import { Attention } from "./Attention.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
 import { type ChosenServers, mcpServers } from "./mcp.ts"
@@ -61,38 +62,6 @@ export interface WorkerOptionsInput {
   /** workerEnv()'s environment (§ 4.13). */
   readonly env: Record<string, string>
   readonly abortController: AbortController
-}
-
-/** How long a reaped group has between the reaper's SIGTERM and its SIGKILL, in whole seconds. */
-export const reapGrace = 10
-
-// The reaper's script: $1 is the group, $2 the grace. `read` returns once tutti's end of the pipe
-// closes; the group is then given its SIGTERM, and its SIGKILL if it is still there after the grace.
-const reaperScript =
-  'read _; kill -TERM -"$1" 2>/dev/null; i=0; while [ "$i" -lt "$2" ] && kill -0 -"$1" 2>/dev/null; do sleep 1; i=$((i + 1)); done; kill -KILL -"$1" 2>/dev/null'
-
-/**
- * Starts the reaper of the process group `child` leads, and returns it, or undefined when `child`
- * has no PID to reap. The reaper is killed when `child` exits; it holds no reference to tutti's
- * event loop.
- */
-export const reap = (child: ChildProcess, grace: number = reapGrace): ChildProcess | undefined => {
-  const group = child.pid
-  if (group === undefined || !Number.isInteger(group) || group <= 1) return undefined
-  const reaper = spawn("/bin/sh", ["-c", reaperScript, "reaper", String(group), String(grace)], {
-    stdio: ["pipe", "ignore", "ignore"],
-    detached: true,
-    windowsHide: true,
-  })
-  reaper.on("error", () => {})
-  reaper.stdin?.on("error", () => {})
-  reaper.unref()
-  const done = () => {
-    if (reaper.exitCode === null && reaper.signalCode === null) reaper.kill("SIGKILL")
-  }
-  if (child.exitCode !== null || child.signalCode !== null) done()
-  else child.once("exit", done)
-  return reaper
 }
 
 /**
