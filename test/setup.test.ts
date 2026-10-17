@@ -324,6 +324,25 @@ describe("a setup that fails", () => {
     ])
   })
 
+  test("is checked once more though its output names a file the ticket's commits change", async () => {
+    const naming = new CheckFailed({
+      check: "setup",
+      command: setupCommand,
+      exitCode: 1,
+      outputFile: "/dev/fd/9",
+      ...saidNothing,
+      failingLines: ["a.ts:1:1: cannot resolve left-pad"],
+    })
+    const ran = await mergeA(
+      { "a.ts": "a\n" },
+      { "bun.lock": "v2\n" },
+      { checks: { setup: [naming] } },
+    )
+    expectLog(ran, [
+      /^ {2}CHECKS_FAILED: a closed, but the setup .*; checked once more if main moves on in this run$/,
+    ])
+  })
+
   test("one that passed isn't run again on the recheck when no setup file changed since", async () => {
     const checkFailed = new CheckFailed({
       check: "fast",
