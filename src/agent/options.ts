@@ -42,7 +42,7 @@ export interface WorkerCallbacks {
   readonly canUseTool: CanUseTool
   /** Attention's elicitation(ticket). */
   readonly onElicitation: OnElicitation
-  /** activityHooks(ticket) (§ 4.2). */
+  /** activityHooks(ticket) (§ 4.2), with the verifier's foreground hook (§ 4.1). */
   readonly hooks: Hooks
   /** Transcripts' stderr(ticket) (§ 4.4). */
   readonly stderr: (data: string) => void

@@ -277,13 +277,14 @@ const signal = { signal: new AbortController().signal }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 
 describe("activityHooks", () => {
-  test("covers § 4.2's events, each with one callback", async () => {
+  test("covers § 4.2's events, each with one callback for every tool", async () => {
     const hooks = await Effect.runPromise(
       activityHooks("t", { activity: () => Effect.void, compaction: () => Effect.void }),
     )
     expect(Object.keys(hooks).sort()).toEqual([...activityEvents].sort())
     for (const event of activityEvents) {
-      expect(hooks[event]).toHaveLength(1)
+      // PreToolUse has the verifier's matcher besides (test/verifier-foreground.test.ts).
+      expect(hooks[event]).toHaveLength(event === "PreToolUse" ? 2 : 1)
       expect(hooks[event]?.[0]?.hooks).toHaveLength(1)
       expect(hooks[event]?.[0]?.matcher).toBeUndefined()
     }

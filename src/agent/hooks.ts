@@ -3,11 +3,19 @@
 // run while the tool call waits, so each returns at once with no decision ({}), records in a fiber
 // of its own, and never fails: an error inside one, thrown or failed, is logged and swallowed, as
 // orchestra's hooks always exit 0.
+//
+// One more PreToolUse callback, matcher Agent, keeps the verifier in the foreground (§ 4.1): agents
+// the main thread launches run in the background by default, and neither an agent definition's
+// `background: false` nor CLAUDE_CODE_FORK_SUBAGENT=0 changes that. For a call whose
+// `subagent_type` is the verifier it returns `updatedInput`, the call's input with
+// `run_in_background: false`, and {} for any other. It sets no permissionDecision, so canUseTool
+// and auto mode decide the call as before. It too returns at once and never fails.
 import type {
   HookCallback,
   HookCallbackMatcher,
   HookEvent,
   HookInput,
+  HookJSONOutput,
   PreCompactHookInput,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Effect } from "effect"
@@ -20,6 +28,37 @@ export const activityEvents = [
   "SubagentStop",
   "PreCompact",
 ] as const satisfies ReadonlyArray<HookEvent>
+
+/** The verifier's subagent type: the name the worker prompt gives it (§ 4.11). */
+export const verifierAgent = "verifier"
+
+/**
+ * What the verifier's PreToolUse callback returns for `input`: for an Agent call to the verifier,
+ * its input with `run_in_background: false`; for anything else, or input it can't read, {}.
+ */
+export const foregroundVerifier = (input: HookInput): HookJSONOutput => {
+  try {
+    if (input.hook_event_name !== "PreToolUse") return {}
+    const toolInput = input.tool_input
+    if (typeof toolInput !== "object" || toolInput === null || Array.isArray(toolInput)) return {}
+    if ((toolInput as { subagent_type?: unknown }).subagent_type !== verifierAgent) return {}
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        updatedInput: { ...(toolInput as Record<string, unknown>), run_in_background: false },
+      },
+    }
+  } catch {
+    // Nothing a hook does may fail its tool call.
+    return {}
+  }
+}
+
+/** The verifier's PreToolUse callback, on Agent calls only. */
+export const verifierMatcher: HookCallbackMatcher = {
+  matcher: "Agent",
+  hooks: [async (input) => foregroundVerifier(input)],
+}
 
 /** The SDK's hooks option. */
 export type Hooks = Partial<Record<HookEvent, Array<HookCallbackMatcher>>>
@@ -37,8 +76,9 @@ export const hookFailed = (ticket: string, event: string, cause: string): string
   `${ticket}'s ${event} hook failed to record: ${cause}`
 
 /**
- * The hook callbacks of `ticket`'s worker, recording to `recorder` in the current context. `warn`
- * is told of a failure to record; Effect's logger is by default.
+ * The hook callbacks of `ticket`'s worker, recording to `recorder` in the current context, with
+ * the verifier's PreToolUse callback after its activity one. `warn` is told of a failure to
+ * record; Effect's logger is by default.
  */
 export const activityHooks = (
   ticket: string,
@@ -66,7 +106,9 @@ export const activityHooks = (
       }
       return {}
     }
-    return Object.fromEntries(
+    const hooks: Hooks = Object.fromEntries(
       activityEvents.map((event) => [event, [{ hooks: [callback] }]]),
-    ) satisfies Hooks
+    )
+    hooks.PreToolUse?.push(verifierMatcher)
+    return hooks
   })
