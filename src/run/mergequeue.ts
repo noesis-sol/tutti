@@ -142,9 +142,12 @@ export const make = (
         stop: state.stop ?? stop ?? null,
       }))
 
+    // Its turn and its merge, under one mask: a quit as its turn starts finds it Merging, and puts
+    // it back in line.
     const merge = (ticket: FinishedTicket) =>
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
+          if (!(yield* turn(ticket))) return
           const prepared = yield* restore(prepare(ticket, options)).pipe(
             Effect.onInterrupt(() => backInLine(ticket)),
           )
@@ -159,7 +162,7 @@ export const make = (
     const consume = Effect.forever(
       Effect.gen(function* () {
         const ticket = yield* Queue.take(line)
-        if (yield* turn(ticket)) yield* merge(ticket)
+        yield* merge(ticket)
       }),
     ).pipe(Effect.provideContext(context))
 

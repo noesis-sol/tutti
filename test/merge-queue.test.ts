@@ -788,6 +788,40 @@ describe("an interrupt", () => {
     expect(tip).not.toBe("")
   })
 
+  test("as a ticket's turn starts puts it back in line, ToMerge", async () => {
+    const inTurn = Deferred.makeUnsafe<void>()
+    const gate = Deferred.makeUnsafe<void>()
+    const ran = await interrupted(
+      { backlog: backlog().ticket("a").seeds },
+      (queue, close) =>
+        Effect.gen(function* () {
+          yield* queue.offer(yield* finished("a", { "a.txt": "a\n" }))
+          yield* Deferred.await(inTurn)
+          const closing = yield* Effect.forkChild(close)
+          yield* Effect.yieldNow
+          yield* Deferred.succeed(gate, undefined)
+          yield* Fiber.join(closing)
+          expect(yield* queue.state).toEqual({ waiting: ["a"], merging: null, stop: null })
+        }),
+      (queue) =>
+        Effect.gen(function* () {
+          const ledger = yield* Ledger
+          return yield* Effect.provideService(queue, Ledger, {
+            ...ledger,
+            transition: (ticket, cause, transitionOptions) =>
+              cause._tag === "ItsTurn"
+                ? Deferred.succeed(inTurn, undefined).pipe(
+                    Effect.andThen(Deferred.await(gate)),
+                    Effect.andThen(ledger.transition(ticket, cause, transitionOptions)),
+                  )
+                : ledger.transition(ticket, cause, transitionOptions),
+          })
+        }),
+    )
+    expect(resultOf(ran).a).toEqual(expect.objectContaining({ _tag: "ToMerge", place: 1 }))
+    expect(ran.checkRuns).toEqual([])
+  })
+
   test("during the fast-forward waits for the merge to finish", async () => {
     const started = Deferred.makeUnsafe<void>()
     const gate = Deferred.makeUnsafe<void>()
