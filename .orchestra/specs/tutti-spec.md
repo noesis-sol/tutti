@@ -301,7 +301,7 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 - **Every message tutti composes** (the first message, continue nudges, hand-backs, "your question is answered", "carry on") is sent with `client_composed: true`. These messages embed text tutti doesn't control: ticket titles, file names, check output. A `client_composed` message is delivered "as written, with no `@path` file-mention expansion and no slash-command dispatch". The cost is that its turn starts without the CLI's turn-start attachments, which arrive after the first tool call instead.
 - **Messages you type** in a worker's composer are sent without `client_composed` and with `origin: { kind: "human" }`, as the SDK asks hosts to stamp keyboard input.
 - **Queueing.** Follow-ups are pushed into the inbox queue as they come. A send isn't a turn of its own. The CLI decides where it runs (docs/spikes/01-sdk-session.md, item 1, Claude Code 2.1.301):
-  - **It may join the running turn.** A send pushed during a tool call is folded into the turn between tool rounds. That turn ends with one `result` for every send folded into it.
+  - **It may join the running turn.** A send pushed during a tool call is folded into the turn between tool rounds. That turn ends with a single `result`, whose `user_message_uuids` lists every send folded into it.
   - **It may share a later turn.** A send pushed while the model writes its final answer waits for a later turn. Queued sends of the same kind (both `client_composed`, or both typed by you) may be coalesced into one turn. A typed and a composed send weren't coalesced in the spike, but tutti doesn't rely on that.
   - **A turn may answer none of them.** The CLI starts a turn by itself to report a finished background task (§4.2).
 
@@ -1015,7 +1015,7 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
   - Thinking is hidden.
 - **Attention.** Open requests show as a panel above the composer, with the same buttons and rules as the card (§4.5). A pending hand-back for a steered worker shows there too (§4.3).
 - **The composer** sends your message into the worker's inbox (§4.1). The worker becomes steered.
-  - While a turn is under way, the message is shown as `queued` until the CLI reports it `started` in `command_lifecycle`, or a `result` lists it. It may be folded into the running turn or start a later one, perhaps with another message (§4.1).
+  - While a turn is under way, the message is shown as `queued` until the CLI reports it `started` in `command_lifecycle`, or a `result` lists it. An interrupt's receipt that reports it `cancelled` removes the mark (Ctrl+X, below). It may be folded into the running turn or start a later one, perhaps with another message (§4.1).
   - Your messages are logged without their text (`MESSAGE: you → <id> (212 characters)`) and tallied for the reviewer.
 - **Ctrl+X** interrupts the turn (after a confirmation) and cancels messages still queued where the CLI supports it. The SDK's interrupt also ends the worker's background tasks: tutti declares no per-task stop control (`perTaskStopAffordance`).
 - **Bounded rendering.**
