@@ -43,7 +43,6 @@ import {
   type RepoFiles,
   readMentions,
   repoFiles,
-  ticketFootprint,
   withChanges,
   worktreeChanges,
 } from "./footprint.ts"
@@ -68,6 +67,7 @@ import {
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { Cause, type Hold, TicketPhase } from "./phase.ts"
+import { footprintOf, type Predictor } from "./predict.ts"
 import { ready, unmergedLabel } from "./scope.ts"
 
 /** How often bd ready is read while tickets run: tickets become ready mid-run. */
@@ -136,6 +136,11 @@ export interface Options {
   readonly taking?: Effect.Effect<boolean>
   /** Where tickets work, with the queue's `footprint` on; without it, no ticket overlaps another. */
   readonly footprints?: Footprints
+  /**
+   * Guesses the files of the ready tickets naming nothing, in the background (predict.ts), when
+   * footprints are on: its guesses join their footprints as they come in.
+   */
+  readonly predictor?: Predictor
 }
 
 /** What one fill did. */
@@ -446,6 +451,12 @@ export const make = (
         // The repository's files and the running tickets' changes, read once a fill.
         const footprints = options.footprints
         const repo = footprints === undefined ? undefined : yield* footprints.repo
+        // The ready tickets naming nothing go to the predictor; its guesses so far join footprints.
+        const predictor = options.predictor
+        if (predictor !== undefined && repo !== undefined) yield* predictor.queue(queue, repo)
+        const predicted: ReadonlyMap<string, ReadonlyArray<string>> = predictor === undefined
+          ? new Map()
+          : yield* predictor.predicted
         const changes = new Map<string, ReadonlyArray<string>>()
         const changedIn = (id: string) =>
           Effect.gen(function* () {
@@ -498,10 +509,13 @@ export const make = (
             }
             const running = new Map<string, Footprint>()
             for (const [id, issue] of s.issues) {
-              running.set(id, withChanges(ticketFootprint(issue, repo), yield* changedIn(id), repo))
+              const fp = footprintOf(issue, repo, predicted)
+              running.set(id, withChanges(fp, yield* changedIn(id), repo))
             }
             const asked = issues.filter((issue) => !isSolo(issue))
-            const mine = new Map(asked.map((issue) => [issue.id, ticketFootprint(issue, repo)]))
+            const mine = new Map(
+              asked.map((issue) => [issue.id, footprintOf(issue, repo, predicted)]),
+            )
             const mentions = yield* footprints.mentions([...mine.values(), ...running.values()])
             for (const issue of asked) {
               const held = overlapHold(mine.get(issue.id) as Footprint, running, mentions)
