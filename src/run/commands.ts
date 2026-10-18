@@ -21,6 +21,8 @@ export type UiCommand = Data.TaggedEnum<{
   Interrupt: { readonly ticket: string }
   /** Hand a steered worker back to the run (§ 4.3). */
   Release: { readonly ticket: string }
+  /** Hand the ticket's steered worker the conflict waiting for it now (§ 4.3). */
+  HandBackNow: { readonly ticket: string }
   /** Stop after the current tickets: wind down. */
   Drain: Record<never, never>
   /** Take tickets again. */
@@ -100,6 +102,9 @@ export const resolve = (command: UiCommand, current: Current): Result.Result<Res
     case "Interrupt":
     case "Release":
       return withWorker(command, command.ticket, current)
+    case "HandBackNow":
+      // Its worker may wait outside a phase that holds one: the run checks the hand-back waits.
+      return Result.succeed({ command, ticket: command.ticket })
     case "CloseWorker":
     case "Drain":
     case "Undrain":

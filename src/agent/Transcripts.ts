@@ -183,15 +183,23 @@ const summaryField: Readonly<Record<string, string>> = {
   Skill: "skill",
 }
 
-/** A tool call as the card shows it: `Bash(scripts/check-fast.sh)`, or `TodoWrite`. */
-export const toolCall = (name: string, input: unknown): string => {
+/**
+ * What a call of tool `name` is about, on one line: its command, its file, its pattern, or its first
+ * string field; empty for none. The worker view shows it beside the tool's name (§ 7.5).
+ */
+export const toolSummary = (name: string, input: unknown): string => {
   const fields = asRecord(input) ?? {}
   const field = summaryField[name]
   const value =
     field === undefined
       ? Object.values(fields).find((v): v is string => typeof v === "string" && v.trim() !== "")
       : asString(fields[field])
-  const summary = value === undefined ? "" : firstLine(value)
+  return value === undefined ? "" : firstLine(value)
+}
+
+/** A tool call as the card shows it: `Bash(scripts/check-fast.sh)`, or `TodoWrite`. */
+export const toolCall = (name: string, input: unknown): string => {
+  const summary = toolSummary(name, input)
   return cut(summary === "" ? name : `${name}(${summary})`, actionLimit)
 }
 

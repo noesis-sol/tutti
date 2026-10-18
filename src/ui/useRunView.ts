@@ -18,6 +18,7 @@ import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
 import type { Appearance, Theme } from "./theme.ts"
+import type { TranscriptFeed } from "./transcriptItems.ts"
 
 /** A value outside React, for useSyncExternalStore: the latest, and a way to hear of the next. */
 export interface External<A> {
@@ -81,6 +82,10 @@ export interface ShellValue {
   readonly now?: () => number
   /** Where a drag's selection is copied (§ 7.3); nothing is copied when left out. */
   readonly clipboard?: Clipboard
+  /** Where a worker view reads its transcript; the view shows none when left out. */
+  readonly transcripts?: TranscriptFeed
+  /** The tickets whose steered worker has a conflict hand-back waiting (§ 4.3); none when left out. */
+  readonly handBacks?: External<ReadonlyArray<string>>
 }
 
 export const ShellContext = createContext<ShellValue | null>(null)
@@ -99,6 +104,19 @@ export const useRunView = (): RunView => useExternal(useShell().view)
 
 /** The RunView now, for a handler: newer than the last render's when it changed since. */
 export const useLatestRunView = (): (() => RunView) => useShell().view.get
+
+/** Where the worker view reads transcripts, if the shell has them. */
+export const useTranscripts = (): TranscriptFeed | undefined => useShell().transcripts
+
+const none: ReadonlyArray<string> = []
+const noHandBacks: External<ReadonlyArray<string>> = {
+  get: () => none,
+  subscribe: () => () => {},
+}
+
+/** The tickets whose steered worker has a hand-back waiting, re-rendering on each change. */
+export const useHandBacks = (): ReadonlyArray<string> =>
+  useExternal(useShell().handBacks ?? noHandBacks)
 
 /** The shell's clock, in epoch milliseconds: Date.now when it has none. */
 export const useClock = (): (() => number) => useShell().now ?? Date.now

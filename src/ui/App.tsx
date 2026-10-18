@@ -1,10 +1,10 @@
 // The React tree in the command's renderer (§ 7.1): one screen at a time, routed by the run's
-// Screen (the dashboard, a worker's view, the interview). The worker view and the interview are
-// placeholders here, which their own code replaces.
+// Screen (the dashboard, a worker's view, the interview). The interview is a placeholder here,
+// which its own code replaces.
 //
 // dashboard() is the Dashboard a run shows (src/run/screen.ts): it bridges the run's RunView and
-// Screen into React (useRunView.ts) and mounts the tree into the renderer until the run's scope
-// closes.
+// Screen into React (useRunView.ts), and the workers' transcripts for their views
+// (transcriptItems.ts), and mounts the tree into the renderer until the run's scope closes.
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import type { ReactNode } from "react"
@@ -15,14 +15,9 @@ import { Input } from "./Input.tsx"
 import { styled } from "./line.tsx"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
-import {
-  bridge,
-  ShellContext,
-  type ShellValue,
-  useRunView,
-  useScreen,
-  useTheme,
-} from "./useRunView.ts"
+import { transcriptFeed } from "./transcriptItems.ts"
+import { bridge, ShellContext, type ShellValue, useScreen, useTheme } from "./useRunView.ts"
+import { WorkerView } from "./WorkerView.tsx"
 
 /** A screen still to be drawn: its name, and a line under it. */
 const Placeholder = ({ name, detail }: { readonly name: string; readonly detail: string }) => {
@@ -36,16 +31,6 @@ const Placeholder = ({ name, detail }: { readonly name: string; readonly detail:
   )
 }
 
-const WorkerScreen = ({ worker }: { readonly worker: number }) => {
-  const card = useRunView().cards.find((each) => each.worker === worker)
-  return (
-    <Placeholder
-      name={`Worker ${worker}`}
-      detail={card === undefined ? "no worker" : `${card.ticket} ${card.status}`}
-    />
-  )
-}
-
 /** The screen the run shows now. */
 export const App = () => {
   const screen = useScreen()
@@ -53,7 +38,8 @@ export const App = () => {
     case "Dashboard":
       return <Dashboard />
     case "Worker":
-      return <WorkerScreen worker={screen.worker} />
+      // Keyed by the worker, so that switching workers opens the other's transcript afresh.
+      return <WorkerView key={screen.worker} worker={screen.worker} />
     case "Interview":
       return <Placeholder name="Interview" detail="a new feature" />
   }
@@ -91,6 +77,7 @@ export const dashboard =
         commands: inputs.commands,
         appearance: shell.appearance,
         themeOf,
+        transcripts: yield* transcriptFeed(inputs.transcripts),
         ...(clipboard === undefined ? {} : { clipboard }),
       }
       const root = yield* Effect.acquireRelease(

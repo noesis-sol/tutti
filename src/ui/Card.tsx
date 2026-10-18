@@ -124,7 +124,13 @@ const steeredOf = (card: Card, theme: Theme): Segments =>
   card.steered ? [seg("  "), seg("steered", roleLook(theme, "emphasis"))] : []
 
 /** The card's first line: its number, mark, ticket, status and elapsed time. */
-const headOf = (card: Card, theme: Theme, now: number, spin: string, status: Segments) => {
+export const headOf = (
+  card: Card,
+  theme: Theme,
+  now: number,
+  spin: string,
+  status: Segments,
+): Segments => {
   const { styles } = theme
   return [
     seg(String(card.worker), styles.key),

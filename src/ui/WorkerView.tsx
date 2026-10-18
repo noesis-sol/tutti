@@ -1,0 +1,809 @@
+// The worker view (§ 7.5, § 7.3, § 7.11): tutti's transcript of one worker, drawn by tutti, under
+// orchestra-style chrome: `← Dashboard`, then the worker's card head (number, mark, ticket, status,
+// elapsed time) and its title, over a rule. Below the transcript, the attention panel shows the
+// worker's open requests with the card's buttons and rules (attentionKeys.ts), each with its
+// description, its reason and its whole input, and a conflict hand-back waiting for a steered
+// worker (§ 4.3) as a notice with Hand it the conflict now. The composer goes under it (§ 7.5).
+//
+// The items (transcriptItems.ts): assistant text as Markdown (<markdown>, in the theme's heading,
+// code and link roles); each tool call one line, `Tool  summary`, its result at the end of it (`✓`,
+// an error's first line, `+N −M`); Enter or a click expands one: an edit's diff (<diff>), a
+// command's output (<code>), a read's range, an Agent call's subagent work behind a faint `│`.
+// Thinking is hidden. While the view is open, its transcript's open flag is set, and partial text
+// shows as it streams.
+//
+// Bounded rendering: the window of the transcript mounted is at most the last 200 items, sticking
+// to the bottom while you're there; scrolling past the top (the wheel, PgUp, `g`) loads 200 older
+// from the file, letting the newest beyond 600 go, and keeps your place. Collapsed items are one
+// line tall, a fixed height (#1514).
+//
+// The keys, in the view's layer: `Tab`, `Shift+Tab` and the arrows move between the items and the
+// panel's requests, and between a request's buttons; `Enter` expands or collapses the selected item
+// or presses the focused button; `1`–`9` switch workers (or pick a question's option); `d`,
+// `Shift+D`, `a` and `r` answer the selected request, or the oldest; PgUp/PgDn and `g`/`G` scroll;
+// `Esc` and a click on `← Dashboard` go back to the dashboard.
+//
+// Branding (§ 7.5): tutti's own glyphs and layout, and the scheme's colours; the chrome names
+// neither Claude nor its product.
+import { type MouseEvent, RGBA, type ScrollBoxRenderable, SyntaxStyle } from "@opentui/core"
+import { useRenderer, useTerminalDimensions } from "@opentui/react"
+import {
+  createContext,
+  memo,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react"
+import type { AttentionRequest } from "../agent/Attention.ts"
+import { UiCommand } from "../run/commands.ts"
+import type { Card } from "../run/runView.ts"
+import { AttentionLines, answerBindings, type ButtonSegment } from "./AttentionCard.tsx"
+import { buttonsOf, optionKeys, picksOptions, requestText, useAnswering } from "./attentionKeys.ts"
+import { headOf, statusLook } from "./Card.tsx"
+import { Hint, hintSegments } from "./Hint.tsx"
+import { type KeyBinding, useLayer } from "./keys.ts"
+import { boxed, cut, Line, padded, roleLook, type Segments, seg, styled, widthOf } from "./line.tsx"
+import { sanitize, sanitizeLine } from "./sanitize.ts"
+import type { Role, Theme } from "./theme.ts"
+import {
+  bounded,
+  type Entry,
+  emptyTranscript,
+  entriesOf,
+  expansionOf,
+  type Mark,
+  markOf,
+  mounted,
+  type OpenTranscript,
+  type ToolEntry,
+  type TranscriptState,
+} from "./transcriptItems.ts"
+import {
+  external,
+  useCommand,
+  useHandBacks,
+  useNow,
+  useRunView,
+  useSpinner,
+  useTheme,
+  useTranscripts,
+} from "./useRunView.ts"
+
+/** The most lines of a command's output an expanded item shows. */
+export const outputLines = 400
+
+/** The most lines of a request's input the panel shows. */
+export const inputLines = 8
+
+/** The most requests the panel shows whole; the rest are counted under them. */
+export const panelRequests = 2
+
+/** The id of an entry's renderable in the scrollbox, to find it by. */
+export const entryId = (key: string): string => `entry-${key}`
+
+/** The selection key of a request in the panel, and of the hand-back notice. */
+const requestKey = (request: AttentionRequest): string => `request:${request.id}`
+const handBackKey = "handback"
+
+/** The Markdown and code styles, from the theme's roles (§ 7.11 "Markdown"). */
+interface Looks {
+  readonly theme: Theme
+  readonly markdown: SyntaxStyle
+  /** A command's output, faint; and an error's, `needsYou`. */
+  readonly output: SyntaxStyle
+  readonly error: SyntaxStyle
+}
+
+const LooksContext = createContext<Looks | null>(null)
+
+const useLooks = (): Looks => {
+  const looks = useContext(LooksContext)
+  if (looks === null) throw new Error("a transcript item is drawn outside its worker view")
+  return looks
+}
+
+/** The syntax styles of `theme`, made in the renderer's native scene and freed with it. */
+const useSyntaxStyles = (theme: Theme): Looks => {
+  const renderer = useRenderer()
+  const looks = useMemo(() => {
+    const role = (name: Role) => ({ fg: theme.rgba(name, "fg") })
+    const make = (styles: Parameters<typeof SyntaxStyle.fromStyles>[0]) =>
+      SyntaxStyle.fromStyles(styles, renderer.nativeScene)
+    return {
+      theme,
+      markdown: make({
+        default: {},
+        "markup.heading.1": { ...role("heading1"), bold: true },
+        "markup.heading.2": { ...role("heading2"), bold: true },
+        "markup.heading": { ...role("heading3"), bold: true },
+        "markup.raw": role("code"),
+        "markup.raw.block": role("code"),
+        "markup.link": { dim: true },
+        "markup.link.label": role("link"),
+        "markup.link.url": { dim: true },
+        "markup.strong": { bold: true },
+        "markup.italic": { italic: true },
+        "markup.quote": { dim: true, italic: true },
+        "markup.list": {},
+        conceal: { dim: true },
+      }),
+      output: make({ default: { dim: true } }),
+      error: make({ default: role("needsYou") }),
+    }
+  }, [renderer, theme])
+  useEffect(
+    () => () => {
+      looks.markdown.destroy()
+      looks.output.destroy()
+      looks.error.destroy()
+    },
+    [looks],
+  )
+  return looks
+}
+
+/** A collapsed tool call's mark, at the end of its line (§ 7.11's worker view). */
+const markSegments = (mark: Mark, theme: Theme, room: number): Segments => {
+  switch (mark._tag) {
+    case "Pending":
+      return []
+    case "Done":
+      return [seg("✓", roleLook(theme, "done"))]
+    case "Error":
+      return cut([seg(mark.line, roleLook(theme, "needsYou"))], Math.max(room, 1))
+    case "Edit":
+      return [
+        seg(`+${mark.added}`, roleLook(theme, "added")),
+        seg(" "),
+        seg(`−${mark.removed}`, roleLook(theme, "removed")),
+      ]
+  }
+}
+
+/** What goes before an item's line: `▸ ` when it is selected. */
+const gutter = (selected: boolean, theme: Theme): Segments => [
+  seg(selected ? "▸ " : "  ", theme.styles.key),
+]
+
+/** A tool call's line, `width` wide: `▸ Bash  scripts/check-fast.sh` and its mark at the end. */
+export const toolLine = (
+  tool: ToolEntry,
+  theme: Theme,
+  width: number,
+  selected: boolean,
+): Segments => {
+  const head: Segments = [
+    ...gutter(selected, theme),
+    seg(tool.name, theme.styles.key),
+    ...(tool.summary === "" ? [] : [seg("  "), seg(tool.summary)]),
+    ...(tool.live ? [seg("  …", theme.styles.dim)] : []),
+  ]
+  const mark = markSegments(markOf(tool), theme, Math.floor(width / 2))
+  if (mark.length === 0) return cut(head, width)
+  const room = Math.max(width - widthOf(mark) - 2, 0)
+  return [...padded(cut(head, room), room), seg("  "), ...mark]
+}
+
+/** A message sent to the worker, on one line: `› Carry on with the ticket …`. */
+const promptLine = (text: string, theme: Theme, width: number, selected: boolean): Segments => {
+  const lines = text.split("\n").filter((line) => line.trim() !== "")
+  const first = sanitizeLine(lines[0] ?? "")
+  return cut(
+    [
+      ...gutter(selected, theme),
+      seg("› ", theme.styles.dim),
+      seg(first),
+      ...(lines.length > 1 ? [seg(" …", theme.styles.dim)] : []),
+    ],
+    width,
+  )
+}
+
+/** What an entry is drawn with besides itself. */
+interface EntryProps {
+  readonly entry: Entry
+  readonly width: number
+  readonly selected: string | null
+  readonly expanded: ReadonlySet<string>
+  /** Selects the entry, and expands or collapses it, as a click does. */
+  readonly click: (key: string) => void
+}
+
+/** A one-line, fixed-height row that a click selects and expands. */
+const ClickLine = ({
+  segments,
+  onClick,
+}: {
+  readonly segments: Segments
+  readonly onClick: () => void
+}) => (
+  // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's; Enter is its key
+  <box
+    height={1}
+    flexShrink={0}
+    onMouseDown={(event: MouseEvent) => {
+      if (event.button !== 0) return
+      event.stopPropagation()
+      onClick()
+    }}
+  >
+    <Line segments={segments} />
+  </box>
+)
+
+/** Entries one under the other, `width` wide. */
+const EntryList = ({
+  entries,
+  ...props
+}: Omit<EntryProps, "entry"> & { readonly entries: ReadonlyArray<Entry> }) => (
+  <>
+    {entries.map((entry) => (
+      <EntryView key={entry.key} entry={entry} {...props} />
+    ))}
+  </>
+)
+
+/** An Agent call's subagent work, or a group of it, behind a faint `│`. */
+const Children = ({
+  entries,
+  width,
+  ...props
+}: Omit<EntryProps, "entry"> & { readonly entries: ReadonlyArray<Entry> }) => {
+  const { theme } = useLooks()
+  return (
+    <box
+      flexDirection="column"
+      flexShrink={0}
+      marginLeft={2}
+      paddingLeft={1}
+      border={["left"]}
+      borderStyle="single"
+      borderColor={theme.rgba("frame")}
+    >
+      {entries.length === 0 ? (
+        <Line segments={[seg("nothing yet", theme.styles.dim)]} />
+      ) : (
+        <EntryList entries={entries} width={Math.max(width - 3, 1)} {...props} />
+      )}
+    </box>
+  )
+}
+
+/** A transparent colour, for what <diff> would otherwise fill. */
+const clear = RGBA.fromValues(0, 0, 0, 0)
+
+/** `role`'s colour, faint, behind a diff's added or removed lines; nothing under NO_COLOR. */
+const tint = (theme: Theme, role: Role): RGBA => {
+  if (theme.noColor) return clear
+  const colour = theme.rgba(role, "fg")
+  return RGBA.fromValues(colour.r, colour.g, colour.b, 0.18)
+}
+
+/** `text` with at most `limit` lines, and a faint count of the rest. */
+const capped = (text: string, limit: number): { readonly text: string; readonly more: number } => {
+  const lines = text.split("\n")
+  return lines.length <= limit
+    ? { text, more: 0 }
+    : { text: lines.slice(0, limit).join("\n"), more: lines.length - limit }
+}
+
+/** What an expanded tool call shows under its line. */
+const Expanded = ({ tool, ...props }: Omit<EntryProps, "entry"> & { readonly tool: ToolEntry }) => {
+  const looks = useLooks()
+  const { theme } = looks
+  const expansion = expansionOf(tool)
+  switch (expansion._tag) {
+    case "Children":
+      return <Children entries={tool.children} {...props} />
+    case "Diff":
+      return (
+        <box paddingLeft={4} flexShrink={0}>
+          <diff
+            diff={expansion.diff}
+            view="unified"
+            showLineNumbers={false}
+            syntaxStyle={looks.markdown}
+            wrapMode="char"
+            addedSignColor={theme.rgba("added", "fg")}
+            removedSignColor={theme.rgba("removed", "fg")}
+            addedBg={tint(theme, "added")}
+            removedBg={tint(theme, "removed")}
+            contextBg={clear}
+            addedContentBg={tint(theme, "added")}
+            removedContentBg={tint(theme, "removed")}
+            contextContentBg={clear}
+          />
+        </box>
+      )
+    case "Output": {
+      const shown = capped(expansion.text, outputLines)
+      return (
+        <box paddingLeft={4} flexDirection="column" flexShrink={0}>
+          <code
+            content={shown.text}
+            filetype="text"
+            wrapMode="char"
+            syntaxStyle={expansion.error ? looks.error : looks.output}
+          />
+          {shown.more > 0 ? (
+            <Line segments={[seg(`… ${shown.more} more lines`, theme.styles.dim)]} />
+          ) : null}
+        </box>
+      )
+    }
+    case "Range":
+      return (
+        <box paddingLeft={4} height={1} flexShrink={0}>
+          <Line segments={[seg(expansion.text, theme.styles.dim)]} />
+        </box>
+      )
+    case "Nothing":
+      return (
+        <box paddingLeft={4} height={1} flexShrink={0}>
+          <Line
+            segments={[seg(tool.result === null ? "no result yet" : "no output", theme.styles.dim)]}
+          />
+        </box>
+      )
+  }
+}
+
+/** One entry of the transcript, and what it shows expanded. */
+const EntryView = memo(({ entry, ...props }: EntryProps) => {
+  const looks = useLooks()
+  const { theme } = looks
+  const { width, selected, expanded, click } = props
+  const open = expanded.has(entry.key)
+  const isSelected = selected === entry.key
+  switch (entry._tag) {
+    case "Text":
+      return (
+        <box id={entryId(entry.key)} paddingLeft={2} flexShrink={0}>
+          <markdown
+            content={entry.text}
+            syntaxStyle={looks.markdown}
+            conceal
+            streaming={entry.live}
+          />
+        </box>
+      )
+    case "Prompt":
+      return (
+        <box id={entryId(entry.key)} flexDirection="column" flexShrink={0}>
+          <ClickLine
+            segments={promptLine(entry.text, theme, width, isSelected)}
+            onClick={() => click(entry.key)}
+          />
+          {open ? (
+            <box paddingLeft={4} flexShrink={0}>
+              <text wrapMode="word" {...styled(theme.styles.dim)}>
+                {sanitize(entry.text)}
+              </text>
+            </box>
+          ) : null}
+        </box>
+      )
+    case "Nested":
+      return (
+        <box id={entryId(entry.key)} flexDirection="column" flexShrink={0}>
+          <ClickLine
+            segments={cut(
+              [
+                ...gutter(isSelected, theme),
+                seg("Agent", theme.styles.key),
+                seg("  "),
+                seg("subagent work of an earlier call", theme.styles.dim),
+              ],
+              width,
+            )}
+            onClick={() => click(entry.key)}
+          />
+          {open ? <Children entries={entry.children} {...props} /> : null}
+        </box>
+      )
+    case "Tool":
+      return (
+        <box id={entryId(entry.key)} flexDirection="column" flexShrink={0}>
+          <ClickLine
+            segments={toolLine(entry, theme, width, isSelected)}
+            onClick={() => click(entry.key)}
+          />
+          {open ? <Expanded tool={entry} {...props} /> : null}
+        </box>
+      )
+  }
+})
+
+/** Whether the selection can rest on `entry`: one that expands. */
+const selectable = (entry: Entry): boolean => entry._tag !== "Text"
+
+/** A request's input, as the panel shows it whole (§ 7.5): its JSON, its questions, its form. */
+export const inputOf = (request: AttentionRequest): ReadonlyArray<string> => {
+  const kind = request.kind
+  const lines = (text: string) => sanitize(text).split("\n")
+  switch (kind._tag) {
+    case "Permission":
+      return lines(JSON.stringify(kind.input, null, 2) ?? "")
+    case "Question":
+      return kind.questions.flatMap((question) => [
+        ...lines(question.question),
+        ...question.options.map(
+          (option, i) =>
+            `  ${i + 1} ${sanitizeLine(option.label)}${option.description ? ` — ${sanitizeLine(option.description)}` : ""}`,
+        ),
+      ])
+    case "Elicitation": {
+      const fields = Object.keys(
+        (kind.requestedSchema?.properties as Record<string, unknown> | undefined) ?? {},
+      )
+      return [
+        ...lines(kind.message),
+        ...(fields.length === 0 ? [] : [`fields: ${fields.map(sanitizeLine).join(", ")}`]),
+      ]
+    }
+  }
+}
+
+/**
+ * A request's lines in the panel, `width` wide, framed `needsYou`, heavy when it is selected: the
+ * request's line, its description and reason faint, its input faint (at most `inputLines`), and
+ * its buttons, `focus` the focused one.
+ */
+export const panelLines = (
+  request: AttentionRequest,
+  theme: Theme,
+  options: { readonly width: number; readonly selected: boolean; readonly focus: number | null },
+): ReadonlyArray<Segments> => {
+  const { styles } = theme
+  const text = requestText(request)
+  const faint = (line: string): Segments => [seg(line, styles.dim)]
+  const description =
+    request.description === undefined || text.line.includes(sanitizeLine(request.description))
+      ? []
+      : sanitize(request.description).split("\n")
+  const reason =
+    request.decisionReason === undefined ? [] : sanitize(request.decisionReason).split("\n")
+  const input = inputOf(request)
+  const shownInput =
+    input.length <= inputLines
+      ? input
+      : [...input.slice(0, inputLines - 1), `… ${input.length - inputLines + 1} more lines`]
+  const button = (label: string, index: number): ButtonSegment => ({
+    text: `[ ${label} ]`,
+    look: index === options.focus ? theme.form.focusedButton : theme.form.button,
+    button: index,
+  })
+  const buttons = buttonsOf(request).map((each, i) => button(each.label, i))
+  const rows: ReadonlyArray<Segments> = picksOptions(request)
+    ? buttons.map((each) => [each])
+    : [buttons.flatMap((each, i) => (i === 0 ? [each] : [seg("  "), each]))]
+  return boxed(
+    [
+      [seg(text.line)],
+      ...description.map(faint),
+      ...reason.map(faint),
+      ...shownInput.map(faint),
+      ...rows,
+    ],
+    options.width,
+    roleLook(theme, "needsYou"),
+    options.selected ? "heavy" : "rounded",
+  )
+}
+
+/** The hand-back notice's lines (§ 4.3): a conflict waits for the steered worker. */
+export const handBackLines = (
+  theme: Theme,
+  options: { readonly width: number; readonly selected: boolean },
+): ReadonlyArray<Segments> => {
+  const press: ButtonSegment = {
+    text: "[ Hand it the conflict now ]",
+    look: options.selected ? theme.form.focusedButton : theme.form.button,
+    button: 0,
+  }
+  return boxed(
+    [
+      [seg("A merge conflict waits for this worker", theme.styles.deferred)],
+      [seg("You steered it, so it wasn't handed over.", theme.styles.dim)],
+      [press],
+    ],
+    options.width,
+    roleLook(theme, "notice"),
+    options.selected ? "heavy" : "rounded",
+  )
+}
+
+/** The worker view's hint: the keys there are. */
+const hintKeys = (requests: boolean) => [
+  { keys: "Esc", does: "dashboard" },
+  { keys: "↑↓", does: "select" },
+  { keys: "Enter", does: "expand" },
+  ...(requests ? [{ keys: "d", does: "deny" }] : []),
+  { keys: "PgUp/PgDn", does: "scroll" },
+  { keys: "g/G", does: "top/end" },
+  { keys: "1–9", does: "workers" },
+]
+
+/** The store a view without a transcript reads. */
+const noTranscript = external<TranscriptState>(emptyTranscript)
+
+/** The view of worker `worker`, while the run shows it. */
+export const WorkerView = ({ worker }: { readonly worker: number }) => {
+  const view = useRunView()
+  const theme = useTheme()
+  const looks = useSyntaxStyles(theme)
+  const renderer = useRenderer()
+  const now = useNow()
+  const command = useCommand()
+  const feed = useTranscripts()
+  const handBacks = useHandBacks()
+  const { width, height } = useTerminalDimensions()
+  const found = view.cards.find((each) => each.worker === worker)
+  // The card last seen, so that the view still shows a worker that has just finished.
+  const last = useRef<Card | undefined>(found)
+  if (found !== undefined) last.current = found
+  const card = found ?? last.current
+  const ticket = card?.ticket
+  const spin = useSpinner(card?.motion === "spinner")
+
+  // The transcript, open while the view shows this ticket.
+  const [transcript, setTranscript] = useState<OpenTranscript | null>(null)
+  useEffect(() => {
+    if (feed === undefined || ticket === undefined) return
+    const opened = feed.open(ticket)
+    setTranscript(opened)
+    return () => {
+      opened.close()
+      setTranscript(null)
+    }
+  }, [feed, ticket])
+  const store = transcript?.state ?? noTranscript
+  const state = useSyncExternalStore(store.subscribe, store.get)
+  const window = state.window
+  const entries = useMemo(() => entriesOf(window.items, state.live), [window.items, state.live])
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const shown = bounded(entries, expanded, window.following)
+  const flat = mounted(shown, expanded)
+
+  // The panel: the worker's open requests, each as a card of its own for the card's answering.
+  const requests = card === undefined ? [] : view.requests.filter((r) => r.ticket === card.ticket)
+  const requestCards: ReadonlyArray<Card> =
+    card === undefined ? [] : requests.map((request) => ({ ...card, requests: [request] }))
+  const answering = useAnswering(requestCards)
+  const handBack = ticket !== undefined && handBacks.includes(ticket)
+
+  // The selection names an entry, a request or the hand-back; with none chosen, the oldest request
+  // is the target. Kept in a ref, so that keys arriving together each see the one before them.
+  const chosen = useRef<string | null>(null)
+  const [, redraw] = useState(0)
+  const selectables = [
+    ...flat.filter(selectable).map((entry) => entry.key),
+    ...(handBack ? [handBackKey] : []),
+    ...requests.map(requestKey),
+  ]
+  const current = (): string | null => {
+    if (chosen.current !== null && selectables.includes(chosen.current)) return chosen.current
+    const oldest = requests[0]
+    return oldest !== undefined ? requestKey(oldest) : null
+  }
+  const selected = current()
+  const scroll = useRef<ScrollBoxRenderable>(null)
+  const choose = (key: string | null) => {
+    chosen.current = key
+    redraw((n) => n + 1)
+    if (key !== null && !key.startsWith("request:") && key !== handBackKey) {
+      scroll.current?.scrollChildIntoView(entryId(key))
+    }
+  }
+  const toggle = (key: string) =>
+    setExpanded((open) => {
+      const next = new Set(open)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
+  const click = (key: string) => {
+    choose(key)
+    toggle(key)
+  }
+  const selectedCard = (): Card | undefined => {
+    const key = current()
+    return requestCards.find((each) => each.requests[0] && requestKey(each.requests[0]) === key)
+  }
+
+  // Scrolling: past the top loads older items, keeping your place; the bottom follows the worker.
+  const anchor = useRef<string | null>(null)
+  const atTop = () => (scroll.current?.scrollTop ?? 0) <= 0
+  const atEnd = () => {
+    const box = scroll.current
+    return box === null || box.scrollTop >= box.scrollHeight - box.viewport.height - 1
+  }
+  const older = () => {
+    if (transcript === null || state.loading || window.start) return
+    anchor.current = shown[0]?.key ?? null
+    transcript.older()
+  }
+  const settled = () => {
+    if (transcript === null) return
+    if (atEnd()) transcript.follow()
+    else transcript.scrolledBack()
+  }
+  const firstSeq = window.items[0]?.seq
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the place is kept once the older items are in
+  useEffect(() => {
+    const key = anchor.current
+    if (key === null) return
+    anchor.current = null
+    let tries = 0
+    const keep = () => {
+      const box = scroll.current
+      if (box === null || box.isDestroyed) return
+      const child = box.content.getChildren().find((each) => each.id === entryId(key))
+      const offset = child === undefined ? 0 : child.y - box.content.y
+      if (offset > 0) box.scrollTop = offset
+      else if (tries++ < 10) renderer.requestAnimationFrame(keep)
+    }
+    renderer.requestAnimationFrame(keep)
+  }, [firstSeq])
+  const page = (step: 1 | -1) => {
+    const box = scroll.current
+    if (box === null) return
+    if (step === -1 && atTop()) older()
+    box.scrollBy(step * Math.max(box.viewport.height - 1, 1))
+    settled()
+  }
+
+  const move = (step: 1 | -1) => {
+    if (selectables.length === 0) return
+    // From none, the newest item: you're at the bottom.
+    const at = selectables.indexOf(current() ?? "")
+    const next =
+      at === -1 ? selectables.length - 1 : Math.min(Math.max(at + step, 0), selectables.length - 1)
+    answering.reset()
+    choose(selectables[next] ?? null)
+  }
+  const stepOrMove = (step: 1 | -1) => {
+    const target = selectedCard()
+    if (target !== undefined && answering.step(target, step)) return
+    move(step)
+  }
+  const handBackNow = () => {
+    if (ticket !== undefined) command(UiCommand.HandBackNow({ ticket }))
+  }
+  const enter = () => {
+    const key = current()
+    if (key === null) return
+    if (key === handBackKey) return handBackNow()
+    const target = selectedCard()
+    if (target !== undefined) {
+      answering.pressFocused(target)
+      return
+    }
+    toggle(key)
+  }
+  const number = (n: number) => () => {
+    const target = selectedCard()
+    if (target !== undefined && n <= optionKeys && answering.pick(target, n)) return
+    if (n !== worker && view.cards.some((each) => each.worker === n)) {
+      command(UiCommand.OpenWorker({ worker: n }))
+    }
+  }
+  const targetCard = () => selectedCard() ?? requestCards[0]
+  const close = () => command(UiCommand.CloseWorker())
+  const bindings: ReadonlyArray<KeyBinding> = [
+    { key: "escape", run: close },
+    { key: "down", run: () => move(1) },
+    { key: "up", run: () => move(-1) },
+    ...["tab", "right"].map((key) => ({ key, run: () => stepOrMove(1) })),
+    ...["shift+tab", "left"].map((key) => ({ key, run: () => stepOrMove(-1) })),
+    ...["return", "enter"].map((key) => ({ key, run: enter })),
+    ...answerBindings(answering, targetCard),
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ key: String(n), run: number(n) })),
+    { key: "pageup", run: () => page(-1) },
+    { key: "pagedown", run: () => page(1) },
+    {
+      key: "g",
+      run: () => {
+        if (atTop()) older()
+        scroll.current?.scrollTo(0)
+        settled()
+      },
+    },
+    {
+      key: "shift+g",
+      run: () => {
+        transcript?.follow()
+        const box = scroll.current
+        box?.scrollTo(box.scrollHeight)
+      },
+    },
+  ]
+  useLayer("view", bindings)
+
+  const inner = Math.max(width, 1)
+  const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
+  const head: Segments =
+    card === undefined
+      ? [seg(`no worker ${worker}`, theme.styles.dim)]
+      : [
+          ...headOf(card, theme, now, spin, [seg(card.status, statusLook(card, theme))]),
+          seg("   "),
+          seg(sanitizeLine(card.title)),
+        ]
+  const dashboardLink = " ← Dashboard"
+  const panelWidth = Math.max(inner - 2, 8)
+  const panel = requests.slice(0, panelRequests)
+  const more = requests.length - panel.length
+  return (
+    <LooksContext.Provider value={looks}>
+      <box flexDirection="column" width={width} height={height}>
+        <box flexDirection="row" height={1} flexShrink={0}>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: a terminal's text, not the DOM's; Esc is its key */}
+          <text
+            wrapMode="none"
+            height={1}
+            {...styled(theme.styles.key)}
+            onMouseDown={(event: MouseEvent) => {
+              if (event.button !== 0) return
+              event.stopPropagation()
+              close()
+            }}
+          >
+            {dashboardLink}
+          </text>
+          <Line segments={cut([seg("   "), ...head], Math.max(inner - dashboardLink.length, 0))} />
+        </box>
+        <Line segments={rule} />
+        <scrollbox
+          ref={scroll}
+          flexGrow={1}
+          stickyScroll
+          stickyStart="bottom"
+          scrollbarOptions={{ visible: false }}
+          onMouseScroll={(event: MouseEvent) => {
+            if (event.scroll?.direction === "up" && atTop()) older()
+            queueMicrotask(settled)
+          }}
+        >
+          {state.loading ? (
+            <box height={1} flexShrink={0}>
+              <Line segments={[seg("  loading earlier items…", theme.styles.dim)]} />
+            </box>
+          ) : null}
+          <EntryList
+            entries={shown}
+            width={inner}
+            selected={selected}
+            expanded={expanded}
+            click={click}
+          />
+        </scrollbox>
+        {handBack ? (
+          <AttentionLines
+            lines={handBackLines(theme, { width: panelWidth, selected: selected === handBackKey })}
+            press={handBackNow}
+          />
+        ) : null}
+        {panel.map((request, i) => {
+          const at = requestCards[i]
+          return at === undefined ? null : (
+            <AttentionLines
+              key={request.id}
+              lines={panelLines(request, theme, {
+                width: panelWidth,
+                selected: selected === requestKey(request),
+                focus: answering.focusOf(at),
+              })}
+              press={(index) => answering.press(at, index)}
+            />
+          )
+        })}
+        {more > 0 ? <Line segments={[seg(`  +${more} more requests`, theme.styles.dim)]} /> : null}
+        <Line segments={rule} />
+        <Hint segments={hintSegments(hintKeys(requests.length > 0), theme, inner)} />
+      </box>
+    </LooksContext.Provider>
+  )
+}

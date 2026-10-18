@@ -33,6 +33,8 @@ export interface ScreenInputs {
   readonly view: SubscriptionRef.SubscriptionRef<RunView>
   readonly screen: SubscriptionRef.SubscriptionRef<Screen>
   readonly commands: Commands
+  /** The workers' transcripts, which a worker view reads its own from (§ 3.5, § 7.5). */
+  readonly transcripts: Transcripts["Service"]
 }
 
 /** A dashboard: shows `inputs` until the scope closes. */
@@ -133,7 +135,8 @@ export const sources = (
 
 /**
  * Shows `dashboard` for the rest of the scope: RunView projected from the run's sources, `status`
- * now and on each change among them, the screen at the dashboard, and an empty command queue.
+ * now and on each change among them, the screen at the dashboard, an empty command queue, and the
+ * transcripts.
  */
 export const show = (
   dashboard: Dashboard,
@@ -144,6 +147,7 @@ export const show = (
       view: yield* makeView(yield* sources(status)),
       screen: yield* SubscriptionRef.make<Screen>(Screen.Dashboard()),
       commands: yield* makeCommands,
+      transcripts: yield* Transcripts,
     }
     yield* dashboard(inputs)
     return inputs
