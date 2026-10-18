@@ -97,6 +97,12 @@ const useExternal = <A>(store: External<A>): A => useSyncExternalStore(store.sub
 /** The run's RunView now. */
 export const useRunView = (): RunView => useExternal(useShell().view)
 
+/** The RunView now, for a handler: newer than the last render's when it changed since. */
+export const useLatestRunView = (): (() => RunView) => useShell().view.get
+
+/** The shell's clock, in epoch milliseconds: Date.now when it has none. */
+export const useClock = (): (() => number) => useShell().now ?? Date.now
+
 /** Which screen the run shows: the dashboard, a worker's view, the interview. */
 export const useScreen = (): Screen => useExternal(useShell().screen)
 

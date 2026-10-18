@@ -12,11 +12,19 @@
 // opens the card under it, each as an OpenWorker command naming the worker's stable number; `s`
 // opens the stop question. With the key help open, `?` and `Esc` close it and the other keys do
 // nothing.
+//
+// Attention cards (§ 4.5, AttentionCard.tsx): with no card chosen, the card of the oldest open
+// request is highlighted, and its request is the target. Inside a highlighted attention card, `Tab`,
+// `Shift+Tab`, `→` and `←` move between its buttons before moving on, `Enter` presses the focused
+// one and `1`–`4` pick a question's option; `d`, `Shift+D`, `a` and `r` answer the highlighted
+// card's request. On a compact line, `Enter` opens the Answer box.
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { Card } from "../run/runView.ts"
-import { Cards, layoutOf, sectionLines } from "./Card.tsx"
+import { answerBindings } from "./AttentionCard.tsx"
+import { optionKeys, useAnswering } from "./attentionKeys.ts"
+import { Cards, type CardsLayout, grows, layoutOf, sectionLines } from "./Card.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
@@ -74,8 +82,11 @@ export const Dashboard = () => {
   const [, redraw] = useState<number | null>(null)
   const [help, setHelp] = useState(false)
   const cards = view.cards
+  // With none chosen, the card of the oldest open request is the target, and highlighted (§ 4.5).
+  const oldest = view.requests[0]
+  const target = cards.find((card) => card.ticket === oldest?.ticket)?.worker ?? null
   const current = () =>
-    cards.some((card) => card.worker === chosen.current) ? chosen.current : null
+    cards.some((card) => card.worker === chosen.current) ? chosen.current : target
   const highlighted = current()
   const choose = (worker: number | null) => {
     chosen.current = worker
@@ -83,6 +94,15 @@ export const Dashboard = () => {
   }
   const spin = useSpinner(cards.length === 0 || cards.some((card) => card.motion === "spinner"))
   const open = useCallback((worker: number) => command(UiCommand.OpenWorker({ worker })), [command])
+  const answering = useAnswering(cards)
+
+  const small = width < minWidth || height < minHeight
+  const totals = totalsLines(view.totals, theme, width, small)
+  const warnings = warningLines(view.warnings, theme, width)
+  const foot = footLines + warnings.length
+  const table = showsTable(height, totals.length, view.totals.slots, foot)
+  const room = height - titleLines - totals.length - (table ? tableLines(height) : 0) - foot
+  const layout: CardsLayout = small ? { _tag: "Compact" } : layoutOf(cards, width, room)
 
   // The view's keys, as bound: a key does nothing while the key help is open, but close it.
   const { box } = useInput()
@@ -93,41 +113,60 @@ export const Dashboard = () => {
   }
   const key = (keys: ReadonlyArray<string>, run: () => void): ReadonlyArray<KeyBinding> =>
     keys.map((each) => ({ key: each, run: () => (helpOpen.current ? undefined : run()) }))
+  const highlightedCard = () => cards.find((card) => card.worker === current())
+  // The attention card highlighted, with its buttons drawn: the one Tab, Enter and 1–4 work in.
+  const inCard = () => {
+    const card = highlightedCard()
+    return card !== undefined && grows(card) && layout._tag === "Cards" ? card : undefined
+  }
+  const step = (by: 1 | -1, buttons: boolean) => {
+    const card = buttons ? inCard() : undefined
+    if (card !== undefined && answering.step(card, by)) return
+    answering.reset()
+    choose(moveHighlight(cards, current(), by))
+  }
   const enter = () => {
-    const worker = current()
-    if (worker !== null) open(worker)
+    const card = highlightedCard()
+    if (card === undefined) return
+    if (grows(card) && layout._tag !== "Cards") box.set(Box.Answer({ worker: card.worker }))
+    else if (inCard() === undefined || !answering.pressFocused(card)) open(card.worker)
   }
   const number = (worker: number) => () => {
+    const card = inCard()
+    if (card !== undefined && worker <= optionKeys && answering.pick(card, worker)) return
     if (cards.some((card) => card.worker === worker)) open(worker)
+  }
+  const targetCard = () => {
+    const card = highlightedCard()
+    return card !== undefined && grows(card) ? card : undefined
   }
   useLayer("view", [
     { key: "?", run: () => showHelp(!helpOpen.current) },
     { key: "escape", run: () => showHelp(false) },
     // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
     ...key(["s"], () => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
-    ...key(["tab", "right", "down"], () => choose(moveHighlight(cards, current(), 1))),
-    ...key(["shift+tab", "left", "up"], () => choose(moveHighlight(cards, current(), -1))),
+    // Tab and → move between an attention card's buttons, and on to the next card; ↓ and ↑ from
+    // card to card.
+    ...key(["tab", "right"], () => step(1, true)),
+    ...key(["shift+tab", "left"], () => step(-1, true)),
+    ...key(["down"], () => step(1, false)),
+    ...key(["up"], () => step(-1, false)),
     ...key(["return", "enter"], enter),
+    ...answerBindings(answering, targetCard).flatMap((binding) => key([binding.key], binding.run)),
     ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((worker) => key([String(worker)], number(worker))),
   ])
 
   const hint = hintSegments(view.hint, theme, width)
-  if (width < minWidth || height < minHeight) {
+  if (small) {
     return (
       <box flexDirection="column" width={width} height={height}>
-        <Totals lines={totalsLines(view.totals, theme, width, true)} />
+        <Totals lines={totals} />
         <box flexGrow={1} />
         <Hint segments={hint} />
         {help ? <KeyHelp theme={theme} width={width} height={height} /> : null}
       </box>
     )
   }
-  const totals = totalsLines(view.totals, theme, width, false)
-  const warnings = warningLines(view.warnings, theme, width)
-  const foot = footLines + warnings.length
-  const table = showsTable(height, totals.length, view.totals.slots, foot)
-  const room = height - titleLines - totals.length - (table ? tableLines(height) : 0) - foot
-  const layout = layoutOf(cards, width, room)
   return (
     <box flexDirection="column" width={width} height={height}>
       <TitleLine width={width} />
@@ -146,6 +185,8 @@ export const Dashboard = () => {
           stopping={view.title.stopping || view.windDown !== null}
           highlighted={highlighted}
           open={open}
+          focusOf={answering.focusOf}
+          press={answering.press}
         />
       </box>
       <box flexGrow={1} />

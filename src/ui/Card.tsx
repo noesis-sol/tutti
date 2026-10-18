@@ -9,9 +9,11 @@
 // otherwise; the highlighted one keeps its colour, bold in the heavy border style. From 120 columns
 // the cards go two to a row, every one as tall as the tallest. When the pane can't hold a card each,
 // they go one line each in a single compact box, framed `needsYou` when any of them waits for you.
+// A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
 import { type MouseEvent, TextAttributes } from "@opentui/core"
 import type { Card } from "../run/runView.ts"
+import { AttentionLines, attentionInside, attentionLines } from "./AttentionCard.tsx"
 import {
   type Border,
   boxed,
@@ -257,21 +259,36 @@ export type CardsLayout =
       readonly _tag: "Cards"
       /** Cards a row: 1, or 2 from 120 columns. */
       readonly across: number
-      /** The lines inside each card: as many as the tallest's. */
+      /** The lines inside each card but an attention card: as many as the tallest's. */
       readonly inside: number
+      /** Each row's lines, frames included: its tallest card's, an attention card's own. */
+      readonly rows: ReadonlyArray<number>
     }
   | { readonly _tag: "Compact" }
 
-/** The Current section's layout: full cards when they fit `room` lines, else the compact box. */
+/** Whether the card grows to show its worker's oldest request: an attention card (§ 7.2). */
+export const grows = (card: Card): boolean => card.requests.length > 0
+
+/**
+ * The Current section's layout: full cards when they fit `room` lines, else the compact box. The
+ * cards are as tall as the tallest, but an attention card is as tall as its request needs.
+ */
 export const layoutOf = (cards: ReadonlyArray<Card>, width: number, room: number): CardsLayout => {
   if (cards.length === 0) return { _tag: "Idle" }
   const across = width >= twoUpWidth ? 2 : 1
   const inside = Math.max(
-    ...cards.map((card) => (card.action !== null || card.latest !== null ? 3 : 2)),
+    2,
+    ...cards
+      .filter((card) => !grows(card))
+      .map((card) => (card.action !== null || card.latest !== null ? 3 : 2)),
   )
-  const rows = Math.ceil(cards.length / across)
-  return labelLines + rows * (inside + 2) <= room
-    ? { _tag: "Cards", across, inside }
+  const rows: Array<number> = []
+  for (let i = 0; i < cards.length; i += across) {
+    const row = cards.slice(i, i + across)
+    rows.push(2 + Math.max(...row.map((card) => (grows(card) ? attentionInside(card) : inside))))
+  }
+  return labelLines + rows.reduce((sum, lines) => sum + lines, 0) <= room
+    ? { _tag: "Cards", across, inside, rows }
     : { _tag: "Compact" }
 }
 
@@ -288,7 +305,7 @@ export const sectionLines = (layout: CardsLayout, count: number): number => {
     case "Compact":
       return labelLines + count + 2
     case "Cards":
-      return labelLines + Math.ceil(count / layout.across) * (layout.inside + 2)
+      return labelLines + layout.rows.reduce((sum, lines) => sum + lines, 0)
   }
 }
 
@@ -303,6 +320,8 @@ export const Cards = ({
   stopping,
   highlighted,
   open,
+  focusOf,
+  press,
 }: {
   readonly cards: ReadonlyArray<Card>
   readonly theme: Theme
@@ -313,6 +332,10 @@ export const Cards = ({
   readonly stopping: boolean
   readonly highlighted: number | null
   readonly open: (worker: number) => void
+  /** The focused button of an attention card. */
+  readonly focusOf: (card: Card) => number | null
+  /** Presses an attention card's button. */
+  readonly press: (card: Card, index: number) => void
 }) => {
   const label = <Lines lines={[[seg("  "), seg("Current", theme.styles.picked)]]} />
   switch (layout._tag) {
@@ -353,32 +376,48 @@ export const Cards = ({
       return (
         <box flexDirection="column" flexShrink={0}>
           {label}
-          {rows.map((row) => (
-            <box key={row[0]?.ticket ?? ""} flexDirection="row" height={layout.inside + 2}>
-              {row.map((card, i) => {
-                const w = i === 0 ? first : width - first
-                return (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's
-                  <box
-                    key={card.ticket}
-                    width={w}
-                    height={layout.inside + 2}
-                    onMouseDown={clicked(() => open(card.worker))}
-                  >
-                    <Lines
-                      lines={cardLines(card, theme, {
-                        now,
-                        spin,
-                        width: w,
-                        inside: layout.inside,
-                        highlighted: card.worker === highlighted,
-                      })}
-                    />
-                  </box>
-                )
-              })}
-            </box>
-          ))}
+          {rows.map((row, r) => {
+            const tall = layout.rows[r] ?? layout.inside + 2
+            return (
+              <box key={row[0]?.ticket ?? ""} flexDirection="row" height={tall}>
+                {row.map((card, i) => {
+                  const w = i === 0 ? first : width - first
+                  const lit = card.worker === highlighted
+                  return (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's
+                    <box
+                      key={card.ticket}
+                      width={w}
+                      height={tall}
+                      onMouseDown={clicked(() => open(card.worker))}
+                    >
+                      {grows(card) ? (
+                        <AttentionLines
+                          lines={attentionLines(
+                            card,
+                            theme,
+                            contentOf(card, theme, now, spin).slice(0, 2),
+                            { width: w, highlighted: lit, focus: focusOf(card) },
+                          )}
+                          press={(index) => press(card, index)}
+                        />
+                      ) : (
+                        <Lines
+                          lines={cardLines(card, theme, {
+                            now,
+                            spin,
+                            width: w,
+                            inside: layout.inside,
+                            highlighted: lit,
+                          })}
+                        />
+                      )}
+                    </box>
+                  )
+                })}
+              </box>
+            )
+          })}
         </box>
       )
     }

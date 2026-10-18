@@ -446,7 +446,7 @@ describe("the Current section", () => {
       requests: [permission("r1", "tut-b7c")],
     })
     expect(layoutOf(view.cards, 80, 12)._tag).toBe("Compact")
-    expect(layoutOf(view.cards, 80, 21)._tag).toBe("Cards")
+    expect(layoutOf(view.cards, 80, 22)._tag).toBe("Cards")
     expect(currentOf(await draw(view, { width: 80, height: 24 }))).toMatchInlineSnapshot(`
       "
         Current
@@ -454,12 +454,13 @@ describe("the Current section", () => {
       │ 1 ◆  tut-kco  merging  1m07s  Title of tut-kco                               │
       │ 2 ⣯  tut-zq4  testing  1m07s  Title of tut-zq4                               │
       │ 3 ◷  tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                        │
-      │ 4 •  tut-b7c  ■ allow?  1m07s  Title of tut-b7c                              │
+      ┃ 4 •  tut-b7c  ■ allow?  1m07s  Title of tut-b7c                              │
       ╰──────────────────────────────────────────────────────────────────────────────╯
         Tab select · 1–4 open · d deny · a allow · s stop after current · ? keys
       "
     `)
-    // Any worker in the box waiting for you frames it needsYou.
+    // The card of the oldest request is highlighted, with none chosen (§ 4.5). Any worker in the
+    // box waiting for you frames it needsYou.
     const lines = compactLines(view.cards, theme, { now, spin, width: 80, highlighted: 2 })
     sameLook(lookOf(lines, `╭${"─".repeat(78)}╮`), roleLook(theme, "needsYou"))
     expect(lines[2]?.[0]?.text).toBe("┃")

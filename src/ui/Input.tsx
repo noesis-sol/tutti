@@ -1,12 +1,14 @@
 // The input layers around the screen (§ 7.3): the renderer's keymap, the guards in front of it
 // (split mouse reports, unterminated pastes), the keys every view has (Ctrl+C, Ctrl+Z) and what
-// they open over the view: the box open, and the toasts. A drag's selection is drawn in the
-// theme's selection roles and copied on release (clipboard.ts).
+// they open over the view: the box open (the quit box, the stop question, the Answer and reason
+// boxes of attention cards), and the toasts. A drag's selection is drawn in the theme's selection
+// roles and copied on release (clipboard.ts).
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { UiCommand } from "../run/commands.ts"
+import { AnswerBox, ReasonBox, ReasonKeys } from "./AttentionCard.tsx"
 import { useCopyOnSelect } from "./clipboard.ts"
 import {
   Box,
@@ -59,6 +61,11 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
       return <QuitBox />
     case "Stop":
       return <StopQuestion windingDown={box.windingDown} />
+    case "Answer":
+      // The Answer box is mounted throughout, its keys bound before it opens: it draws itself.
+      return null
+    case "Reason":
+      return <ReasonBox requestId={box.requestId} ticket={box.ticket} />
   }
 }
 
@@ -100,6 +107,8 @@ export const Input = ({
           <GlobalKeys />
           <QuitKeys />
           <StopKeys />
+          <ReasonKeys />
+          <AnswerBox />
           <CopyOnSelect input={input} />
           <OpenBox input={input} />
           <Toasts store={input.toasts} />
