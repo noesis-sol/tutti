@@ -9,11 +9,16 @@
 // one's exit code (holds.ts). A drain (drain.ts) does the same without a stop, and the run ends
 // DRAINED with exit 0.
 //
+// Before its first dispatch the run checks the tickets earlier runs left labelled `unmerged`
+// (unmerged.ts): one merged since by hand loses its label; bd failing to list them stops the run,
+// BEADS_FAILED.
+//
 // The end (§ 5 item 14): nothing left to start or merge. The tickets still in a phase a run can't
 // end in are Stopped and their sessions suspended (§ 4.8), as are the sessions of those that
-// stopped the run; then the summary lines, the closing line (the stops', or READY_EMPTY,
-// LIMIT_REACHED or DRAINED, with a scoped run's SCOPE_ part), the full check when the run ended by
-// itself having merged a ticket (fullcheck.ts), and the end record. In plain mode
+// stopped the run; each ticket closed and not merged is labelled `unmerged`; then the summary
+// lines, the closing line (the stops', or READY_EMPTY, LIMIT_REACHED or DRAINED, with a scoped
+// run's SCOPE_ part), the full check when the run ended by itself having merged a ticket
+// (fullcheck.ts), and the end record. In plain mode
 // (§ 7.6) every line goes to stdout as the Log writes it; a worker's attention request is a
 // PERMISSION or QUESTION line naming the `tutti answer` command, served from the attention files.
 // When Tty says the terminal can draw the dashboard and main gave the run one, the run shows it
@@ -68,6 +73,7 @@ import { emptyStatus, project, type Row, type Totals } from "./runView.ts"
 import { make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, show } from "./screen.ts"
+import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -281,6 +287,18 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       taking,
     })
 
+    // The tickets earlier runs left unmerged, checked before the first dispatch: one merged by hand
+    // since loses its label, so the tickets it blocks can start.
+    const loaded = yield* Effect.result(loadUnmerged({ repo: config.repo, base }))
+    if (Result.isFailure(loaded)) {
+      yield* stopped(
+        stopFor(
+          "BEADS_FAILED",
+          `could not read the tickets left unmerged: ${beadsWhy(loaded.failure)}`,
+        ),
+      )
+    }
+
     // The ready poll, the merge queue's changes and drain requests each wake the run.
     const watchers = yield* fibers.make("run")
     yield* FiberSet.run(watchers, Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp)))
@@ -334,6 +352,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       if (stopsAtEnd(entry.phase)) yield* suspend(entry.ticket, why, true)
       else if (entry.phase._tag === "Stopped") yield* suspend(entry.ticket, entry.phase.why, false)
     }
+    yield* labelAtEnd({ repo: config.repo, base })
 
     const state = yield* ledger.current
     const view = project({

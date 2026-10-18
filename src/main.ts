@@ -29,6 +29,7 @@ import { detail, Log, logFile, type Sink } from "./run/log.ts"
 import { noHolds, nothingToRun, type Output, themeStyles } from "./run/nothing.ts"
 import { run } from "./run/run.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
+import { stillUnmerged } from "./run/unmerged.ts"
 import { Beads } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
 import { Git, GitWriter } from "./services/Git.ts"
@@ -162,18 +163,23 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               width: (yield* tty.size).columns,
               styles: themeStyles(themeOf(yield* outputAppearance(config.appearance, null))),
             }
-      const nothing = yield* nothingToRun(
-        {
-          scope: config.ticket,
-          filter: { excludeTypes: config.settings.queue.exclude_types },
-          repo: config.repo,
-          base,
-          carried: new Set(),
-          unmerged: new Set(),
-          held: noHolds,
-        },
-        output,
-      )
+      // bd failing to list the tickets left unmerged is something to run: the run lists them again,
+      // and stops on it.
+      const unmerged = yield* Effect.result(stillUnmerged({ repo: config.repo, base }))
+      const nothing =
+        Result.isSuccess(unmerged) &&
+        (yield* nothingToRun(
+          {
+            scope: config.ticket,
+            filter: { excludeTypes: config.settings.queue.exclude_types },
+            repo: config.repo,
+            base,
+            carried: new Set(),
+            unmerged: unmerged.success,
+            held: noHolds,
+          },
+          output,
+        ))
       if (nothing) {
         yield* events.emit({ kind: "end", code: exitCodes.ok })
         return exitCodes.ok

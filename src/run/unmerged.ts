@@ -147,6 +147,23 @@ export interface LeftUnmerged {
   readonly branch?: string
 }
 
+/**
+ * The tickets earlier runs left labelled `unmerged` that haven't merged since, as loadUnmerged
+ * would hand them back, but only read: what the Nothing to run box counts, before the run.
+ */
+export const stillUnmerged = (
+  options: MergeOptions,
+): Effect.Effect<ReadonlySet<string>, BeadsError, Git | Beads> =>
+  Effect.gen(function* () {
+    const beads = yield* Beads
+    const labelled = yield* beads.list({ status: "closed", labels: [unmergedLabel] })
+    const left = new Set<string>()
+    for (const issue of labelled) {
+      if ((yield* mergedSince(issue, options)).merged === undefined) left.add(issue.id)
+    }
+    return left
+  })
+
 /** `<hash> <subject>`, the hash cut to 7, as the log names a commit. */
 const named = (commit: Commit) => line`${commit.hash.slice(0, 7)} ${commit.subject}`
 
