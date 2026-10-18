@@ -405,6 +405,54 @@ describe("quitting", () => {
     expect(quitOf(ran).state.tickets["t-2"]).toMatchObject({ suspended: "PANIC" })
   })
 
+  test("a panic in the run's loop: the workers suspended; PANIC, exit 4", async () => {
+    let armed = false
+    const ran = await quitting({
+      tickets: ["t-1"],
+      setup: {
+        backlog: backlog().ticket("t-1").ticket("t-2").seeds,
+        config: { settings: { ...appConfig().settings, concurrent: 2 } },
+        scripts: (world, root) => ({
+          "t-1": [
+            atWork(world, root, "t-1", [
+              step(
+                Effect.sync(() => {
+                  armed = true
+                }),
+              ),
+            ]),
+          ],
+        }),
+      },
+      // The next fill's bd list dies, once.
+      around: (running) =>
+        Effect.gen(function* () {
+          const beads = yield* Beads
+          return yield* running.pipe(
+            Effect.provideService(Beads, {
+              ...beads,
+              list: (filter) => {
+                if (!armed) return beads.list(filter)
+                armed = false
+                return Effect.die(new Error("loop boom"))
+              },
+            }),
+          )
+        }),
+      during: () =>
+        Effect.gen(function* () {
+          for (let i = 0; i < 20; i++) {
+            for (let j = 0; j < 200; j++) yield* Effect.yieldNow
+            yield* advance("10 seconds")
+          }
+        }),
+    })
+    expectExitCode(ran, 4)
+    expectLog(ran, [/^PANIC in the run: loop boom$/, /^PANIC: the run's loop: loop boom/])
+    expect(sentTo(ran, "t-1")).toEqual(["Started", "Message", "Interrupted", "Closed"])
+    expect(quitOf(ran).state.tickets["t-1"]).toMatchObject({ suspended: "PANIC" })
+  })
+
   test("a quit while the full check runs stops it, and the run ends INTERRUPTED, 130", async () => {
     const offered = Effect.runSync(Ref.make<Queue.Queue<QuitRequest> | null>(null))
     const hanging: Scripted = Effect.gen(function* () {

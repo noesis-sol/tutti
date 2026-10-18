@@ -675,7 +675,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         yield* say([])
       })
 
-    const quit = yield* Effect.raceFirst(Effect.as(loop, null), Deferred.await(quitting))
+    // A panic in the loop quits the run as one in its other fibers does.
+    const guardedLoop = Effect.catchDefect(Effect.as(loop, null), (defect) =>
+      Effect.andThen(
+        panicked("the run", stopFor("PANIC", `the run's loop: ${firstLine(defect)}`), defect),
+        Effect.never,
+      ),
+    )
+    const quit = yield* Effect.raceFirst(guardedLoop, Deferred.await(quitting))
     yield* Ref.set(ending, true)
     if (quit !== null) yield* quitNow(quit)
     yield* mergeStop(yield* queue.state)
@@ -785,6 +792,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const said = [...summary, closing]
     const command = config.settings.checks.full.command
     let exitCode = exitCodeOf(all)
+    // The stop of a quit, or a panic, after the loop: `when` it came.
+    const lateStop = (late: Quitting, when: string): StopReason =>
+      "panic" in late ? late.panic : stopFor("INTERRUPTED", `quit ${late.request.how} ${when}`)
     // A request to quit, or a panic, while it runs stops it (FULL_CHECK_SKIPPED), and the run ends
     // INTERRUPTED (130), or PANIC (4), after all.
     if (fullCheckDue(command, all.first !== null, Object.values(phases))) {
@@ -794,16 +804,19 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       )
       if ("done" in checked) said.push(checked.done.text)
       else {
-        const quit = checked.quit
-        const stop =
-          "panic" in quit
-            ? quit.panic
-            : stopFor("INTERRUPTED", `quit ${quit.request.how} during the full check`)
+        const stop = lateStop(checked.quit, "during the full check")
         yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
         yield* logs.write(stop.text)
         said.push(stop.text)
         exitCode = stop.code
       }
+    } else if (quit === null && (yield* Deferred.isDone(quitting))) {
+      // Asked to quit as the run ended: it ended all the same, INTERRUPTED.
+      const stop = lateStop(yield* Deferred.await(quitting), "as the run ended")
+      yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
+      yield* logs.write(stop.text)
+      said.push(stop.text)
+      exitCode = stop.code
     }
     yield* events.emit({ kind: "end", code: exitCode })
     return { exitCode, phases, ending: said } satisfies Outcome
