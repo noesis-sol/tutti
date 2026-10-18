@@ -9,6 +9,7 @@ import {
   realpathSync,
   statSync,
   symlinkSync,
+  truncateSync,
   utimesSync,
   writeFileSync,
 } from "node:fs"
@@ -189,5 +190,44 @@ describe("other versions' copies", () => {
     const ran = Bun.spawnSync([process.execPath, "--eval", script], { timeout: 10_000 })
     expect(ran.exitCode).toBe(0)
     expect(Date.now() - started).toBeLessThan(10_000)
+  })
+})
+
+describe("a compiled build's start", () => {
+  test("runs the copy already extracted, found by its target's checksum, not extracted again", () => {
+    // In a process of its own, as a compiled build's entry runs: embed() is the module's state.
+    const { file } = embedded()
+    const known = knownFor("darwin-arm64")
+    if (known === null) throw new Error("the manifest has no darwin-arm64")
+    const tmp = folder("claude-tmp")
+    const base = join(tmp, `claude-${uid}`)
+    const version = join(base, `claude-agent-sdk-${known.checksum.slice(0, 16)}`)
+    mkdirSync(version, { recursive: true, mode: 0o700 })
+    chmodSync(base, 0o700)
+    const copy = join(version, "claude-abc123.")
+    writeFileSync(copy, "")
+    truncateSync(copy, known.size)
+    chmodSync(file, 0o000)
+    const root = join(import.meta.dir, "..")
+    const script = `
+      import { Effect } from "effect"
+      import { BunServices } from "@effect/platform-bun"
+      import { embed, resolveClaude } from ${JSON.stringify(join(root, "src/agent/claudeBinary.ts"))}
+      embed(${JSON.stringify(file)}, "darwin-arm64")
+      const claude = await Effect.runPromise(
+        resolveClaude(null, process.cwd()).pipe(Effect.provide(BunServices.layer)),
+      )
+      console.log(JSON.stringify(claude))
+    `
+    try {
+      const ran = Bun.spawnSync([process.execPath, "--eval", script], {
+        cwd: root,
+        env: { ...process.env, CLAUDE_CODE_TMPDIR: tmp },
+      })
+      expect(ran.stderr.toString()).toBe("")
+      expect(JSON.parse(ran.stdout.toString())).toEqual({ path: copy, warnings: [], problems: [] })
+    } finally {
+      chmodSync(file, 0o644)
+    }
   })
 })
