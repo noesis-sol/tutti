@@ -24,6 +24,7 @@ import {
 } from "../src/run/quit.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { Beads } from "../src/services/Beads.ts"
+import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
 import {
@@ -350,6 +351,68 @@ describe("quitting", () => {
     )
     expect(ran.issues.find((issue) => issue.id === "t-2")?.labels).toContain("unmerged")
     expect(ran.issues.find((issue) => issue.id === "t-1")?.labels).not.toContain("unmerged")
+    expect(quitOf(ran).state.tickets["t-2"]).toMatchObject({ suspended: "quit", phase: "Stopped" })
+  })
+
+  test("a merge whose check fails while quitting waits is put back in line, not handed back", async () => {
+    const offered = Effect.runSync(Ref.make<Queue.Queue<QuitRequest> | null>(null))
+    // t-2's check asks to quit, then fails a second later, while quitting waits for t-1's worker.
+    const failing: Scripted = Effect.gen(function* () {
+      const quits = yield* Ref.get(offered)
+      if (quits !== null) yield* Queue.offer(quits, ctrlC)
+      yield* Effect.sleep("1 second")
+      return yield* new CheckFailed({
+        check: "fast",
+        command: "scripts/check-fast.sh",
+        exitCode: 1,
+        outputFile: "/dev/fd/9",
+        failingLines: ["error: a.test.ts: expected 1"],
+        lastLines: ["1 fail"],
+        suites: [],
+        suite: null,
+        flaky: [],
+        flakyCount: 0,
+      })
+    })
+    const ran = await quitting({
+      tickets: ["t-1", "t-2"],
+      setup: {
+        config: { settings: { ...appConfig().settings, concurrent: 2 } },
+        backlog: backlog().ticket("t-1").ticket("t-2").seeds,
+        checks: { fast: [failing] },
+        scripts: (world, root, quits) => {
+          Effect.runSync(Ref.set(offered, quits))
+          return {
+            "t-1": [
+              turn([
+                ...bash("bd update t-1 --claim", commands(world, root, "t-1").claim),
+                sleep("1 hour"),
+              ]),
+            ],
+            "t-2": [claimsAndCloses("t-2", commands(world, root, "t-2"))],
+          }
+        },
+      },
+      before: () =>
+        Effect.gen(function* () {
+          const repository = yield* Repository
+          yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
+        }),
+      during: () =>
+        Effect.gen(function* () {
+          yield* until(interrupted("t-1"))
+          yield* advance("1 second")
+          for (let i = 0; i < 200; i++) yield* Effect.yieldNow
+          yield* advance("10 seconds")
+        }),
+    })
+    expectExitCode(ran, 130)
+    expectPhases(ran, { "t-1": "Stopped", "t-2": "Stopped" })
+    expect(sentTo(ran, "t-2")).toEqual(["Started", "Message", "Interrupted", "Closed"])
+    expect(ran.log.some((each) => /FIXING|PHASE_BUG|CHECKS_FAILED/.test(each))).toBe(false)
+    expect(ran.events).toContainEqual(
+      expect.objectContaining({ kind: "phase", ticket: "t-2", cause: "MergeInterrupted" }),
+    )
     expect(quitOf(ran).state.tickets["t-2"]).toMatchObject({ suspended: "quit", phase: "Stopped" })
   })
 

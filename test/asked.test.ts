@@ -80,7 +80,7 @@ const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* 
     rechecks: yield* makeRechecks,
     handBacks: yield* makeHandBacks,
     recheck: Effect.succeed([]),
-    stopHandBacks: Effect.void,
+    hold: Effect.void,
     stopMerges: Effect.void,
   } satisfies MergeQueue
 })

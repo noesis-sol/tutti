@@ -30,6 +30,7 @@ import {
   Effect,
   FiberSet,
   Queue,
+  Ref,
   Result,
   type Scope,
   Semaphore,
@@ -99,10 +100,12 @@ export interface MergeQueue {
    */
   readonly recheck: Effect.Effect<ReadonlyArray<string>>
   /**
-   * Stops the hand-backs under way, as quitting does (quit.ts): their tickets stay Resolving or
-   * Fixing, their rebases or fixes left as they are, for the run's end to stop them.
+   * Holds the queue as quitting begins (quit.ts): no ticket takes its turn and none is handed back
+   * from now on (a merge under way that would hand its ticket back puts it back in line instead,
+   * ToMerge), and the hand-backs under way stop, their tickets left Resolving or Fixing, their
+   * rebases or fixes as they are, for the run's end to stop them.
    */
-  readonly stopHandBacks: Effect.Effect<void>
+  readonly hold: Effect.Effect<void>
   /**
    * Stops the merges, as quitting does: one in its protected step finishes it first; one before it
    * has its rebase aborted or its check killed, and is back at the head of the line, ToMerge.
@@ -131,6 +134,8 @@ export const make = (
     const line = yield* Queue.unbounded<FinishedTicket>()
     const ref = yield* SubscriptionRef.make(emptyQueue)
     const rechecks = yield* makeRechecks
+    // Set as quitting begins: no more turns or hand-backs.
+    const held = yield* Ref.make(false)
     const setUps = yield* makeSetUps
     const handBacks = yield* makeHandBacks
     const fixes = yield* makeFixes
@@ -168,7 +173,7 @@ export const make = (
         Effect.uninterruptible(
           Effect.gen(function* () {
             const state = yield* SubscriptionRef.get(ref)
-            if (state.stop !== null) return false
+            if (state.stop !== null || (yield* Ref.get(held))) return false
             const waiting = state.waiting.filter((id) => id !== ticket.id)
             const moved = yield* ledger.transition(ticket.id, Cause.ItsTurn())
             yield* renumber(waiting)
@@ -289,6 +294,8 @@ export const make = (
           const prepared = yield* restore(prepare(ticket, options, memory)).pipe(
             Effect.onError(() => backInLine(ticket)),
           )
+          const handingBack = prepared._tag === "HandBack" || prepared._tag === "FixBack"
+          if (handingBack && (yield* Ref.get(held))) return yield* backInLine(ticket)
           if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
           if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
           if (prepared._tag === "Unchanged") yield* closeUnchanged(ticket, options, prepared)
@@ -328,7 +335,7 @@ export const make = (
       rechecks,
       handBacks,
       recheck,
-      stopHandBacks: FiberSet.clear(handBacksSet),
+      hold: Effect.andThen(Ref.set(held, true), FiberSet.clear(handBacksSet)),
       stopMerges: FiberSet.clear(set),
     } satisfies MergeQueue
   })

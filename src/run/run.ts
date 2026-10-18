@@ -665,7 +665,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           yield* logs.write(text)
         }
         yield* scheduler.interrupt
-        yield* queue.stopHandBacks
+        yield* queue.hold
         const unanswered = yield* interruptWorkers(workers)
         if (unanswered.length > 0) yield* logs.write(unansweredLine(unanswered))
         const merging = (yield* queue.state).merging
