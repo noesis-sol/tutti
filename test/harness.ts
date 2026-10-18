@@ -16,6 +16,7 @@ import type { Account, AccountError, AccountProbe } from "../src/agent/Account.t
 import type { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Attention, Policy } from "../src/agent/Attention.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
+import type { UsageLimits } from "../src/agent/UsageLimits.ts"
 import type { AppConfig, AppConfigValue } from "../src/cli/AppConfig.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
@@ -55,6 +56,7 @@ import { type Held, layer as lockLayer } from "../src/testing/RunLock.ts"
 import { layer as storeLayer } from "../src/testing/Store.ts"
 import { type Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { layer as ttyLayer } from "../src/testing/Tty.ts"
+import { type Reported, layer as usageLayer } from "../src/testing/UsageLimits.ts"
 import {
   type WorktreeCall,
   type Options as WorktreesOptions,
@@ -85,6 +87,8 @@ export type Env =
   | Tty
   | Notifier
   | Notices
+  | UsageLimits
+  | Reported
   | RunFibers
   | TestClock.TestClock
   | BunServices.BunServices
@@ -195,7 +199,7 @@ export const environment = (
       : hostLayer(scripts, { checks })
   return host.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(attentionLayer(setup.policy ?? allowAll), transcriptsLayer()),
+      Layer.mergeAll(attentionLayer(setup.policy ?? allowAll), transcriptsLayer(), usageLayer),
     ),
     Layer.provideMerge(
       Layer.mergeAll(

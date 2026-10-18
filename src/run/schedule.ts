@@ -177,6 +177,11 @@ export interface Scheduler {
   readonly started: Effect.Effect<number>
   /** The tickets holding a slot now. */
   readonly running: Effect.Effect<ReadonlySet<string>>
+  /**
+   * Interrupts every ticket's fiber, freeing its slot: for a run that ends while its workers wait,
+   * as for the usage limit's reset (§ 4.12).
+   */
+  readonly interrupt: Effect.Effect<void>
   /** Whether the run has started as many tickets as --limit allows. */
   readonly limitReached: Effect.Effect<boolean>
 }
@@ -619,6 +624,7 @@ export const make = (
       carry: occupy,
       started: Effect.map(Ref.get(slots), (s) => s.started),
       running: Effect.map(Ref.get(slots), (s) => s.running),
+      interrupt: FiberSet.clear(tickets),
       limitReached: Effect.map(Ref.get(slots), (s) => s.started >= options.limit),
     }
   })

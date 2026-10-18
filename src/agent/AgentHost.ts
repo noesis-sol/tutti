@@ -7,7 +7,9 @@
 //
 // A call Claude Code denies without asking comes as a `permission_denied` (§ 4.5), which names the
 // call's tool use but not its input: each worker keeps its last calls' inputs, from its assistant
-// messages, so Attention can log the denial as `Bash(rm -rf build)`, record it and tally it.
+// messages, so Attention can log the denial as `Bash(rm -rf build)`, record it and tally it. The
+// account's rate-limit events, and which workers are UsageLimited, go to UsageLimits, for the
+// usage-limit hold (§ 4.12).
 //
 // The caller draws each new session's ID and saves it before starting it (§ 4.8). A resumed
 // session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so resume
@@ -39,6 +41,7 @@ import { detail, Log } from "../run/log.ts"
 import type { PermissionModeInEffect } from "./Account.ts"
 import { Attention } from "./Attention.ts"
 import { Transcripts } from "./Transcripts.ts"
+import { UsageLimits } from "./UsageLimits.ts"
 import { initial, reportWait, step, type Worker, WorkerEvent, WorkerState } from "./WorkerState.ts"
 
 /**
@@ -260,11 +263,15 @@ export interface Workers {
    */
   readonly open: (ticket: string) => Effect.Effect<WorkerEntry>
   readonly get: (ticket: string) => Effect.Effect<WorkerEntry, AgentGone>
-  /** Folds `event` into the worker's state, at the clock's time. */
+  /**
+   * Folds `event` into the worker's state, at the clock's time; UsageLimits, when there is one, is
+   * told when it becomes UsageLimited or stops being so.
+   */
   readonly fold: (entry: WorkerEntry, event: WorkerEvent) => Effect.Effect<void>
   /**
    * A message of the session `session`: recorded in Transcripts, published and folded in; a
-   * `permission_denied` is recorded through Attention too.
+   * `permission_denied` is recorded through Attention too, and a `rate_limit_event`'s info is
+   * reported to UsageLimits, when there is one (§ 4.12).
    */
   readonly emit: (entry: WorkerEntry, session: string, message: SDKMessage) => Effect.Effect<void>
   /** Waits until the worker's state counts every one of its open attention requests. */
@@ -292,6 +299,7 @@ export const makeWorkers = (
     // Folds are serialised, so the state set last is the one the last fold gave.
     const one = yield* Semaphore.make(1)
     const log = yield* Effect.serviceOption(Log)
+    const usage = yield* Effect.serviceOption(UsageLimits)
 
     const late = (ticket: string) => {
       const text = `a background task ended and no turn came to report it within ${reportWait}; not waiting for it`
@@ -307,7 +315,16 @@ export const makeWorkers = (
         const before = yield* SubscriptionRef.get(entry.worker)
         const next = yield* SubscriptionRef.updateAndGet(entry.worker, (w) => step(w, event, now))
         const shown = yield* SubscriptionRef.get(entry.state)
-        if (!Equal.equals(shown, next.state)) yield* SubscriptionRef.set(entry.state, next.state)
+        if (!Equal.equals(shown, next.state)) {
+          yield* SubscriptionRef.set(entry.state, next.state)
+          if (Option.isSome(usage)) {
+            const { state } = next
+            yield* usage.value.limited(
+              entry.ticket,
+              state._tag === "UsageLimited" ? state.resetsAt : undefined,
+            )
+          }
+        }
         if (next.report !== null && next.report !== before.report) {
           yield* awaitReport(entry, next.report)
         }
@@ -398,6 +415,9 @@ export const makeWorkers = (
           if (isDenial(message)) {
             yield* attention.denial(entry.ticket, message, entry.calls.get(message.tool_use_id))
           }
+          if (message.type === "rate_limit_event" && Option.isSome(usage)) {
+            yield* usage.value.report(message.rate_limit_info)
+          }
         }),
       counted: (entry) =>
         Effect.gen(function* () {
@@ -412,6 +432,7 @@ export const makeWorkers = (
           const found = known.get(ticket)
           if (found === undefined) return
           known.delete(ticket)
+          if (Option.isSome(usage)) yield* usage.value.limited(ticket, undefined)
           yield* Deferred.succeed(found.ended, undefined)
         }),
       current: (ticket) => Effect.flatMap(get(ticket), (entry) => SubscriptionRef.get(entry.state)),

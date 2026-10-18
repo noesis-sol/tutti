@@ -18,6 +18,7 @@ import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
+import { UsageLimits } from "./agent/UsageLimits.ts"
 import { AppConfig } from "./cli/AppConfig.ts"
 import { mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
 import type { RunFlags } from "./cli/flags.ts"
@@ -51,9 +52,11 @@ import {
 import { run } from "./run/run.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
+import { organHold } from "./run/usageLimit.ts"
 import { Beads } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
 import { Git, GitWriter } from "./services/Git.ts"
+import { layer as notifierLayer } from "./services/Notifier.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
@@ -93,22 +96,25 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     EventStream.layer({ repo, run: at }),
     Store.layer({ repo, run: { pid: process.pid, started: at, version } }),
     Transcripts.layer({ repo }),
+    UsageLimits.layer,
     fibersLayer,
   )
   const second = Layer.mergeAll(
     Checks.layer,
     Worktrees.layer({ repo, root: config.worktrees, base: started.base }),
     Attention.layer,
+    notifierLayer.pipe(Layer.provide(ttyLayer)),
   )
   const host = agentHostLayer({
     prompt: started.prompt,
     servers: started.mcp,
     account: started.account,
   })
-  // The organs, over the Agent SDK, their costs logged.
+  // The organs, over the Agent SDK, their costs logged, skipped while the usage limit holds.
   const organs = Organs.layer.pipe(
     Layer.provideMerge(languageModelLayer({ account: started.account })),
     Layer.provideMerge(OrganCost.layer),
+    Layer.provide(organHold),
   )
   return Layer.mergeAll(host, organs).pipe(
     Layer.provideMerge(second),

@@ -20,6 +20,7 @@ import {
 import type { AttentionRequest } from "../agent/Attention.ts"
 import type { LatestAction } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
+import { formatDuration } from "../project/configFile.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import type { Entry, State } from "./ledger.ts"
@@ -30,12 +31,18 @@ export interface RunHold {
   readonly word: string
   /** When it lifts by itself, in epoch milliseconds; null when nothing says. */
   readonly resetsAt: number | null
+  /** The run waits for it with nothing else running: its banner counts down to `resetsAt`. */
+  readonly waiting?: true
 }
 
 /** The account's usage (§ 4.12): how much of its limit is used, 0 to 1, and when it resets. */
 export interface Usage {
   readonly utilization: number
   readonly resetsAt: number | null
+  /** The limit's name, as in `five-hour`. */
+  readonly limit?: string
+  /** Overage is in use. */
+  readonly overage?: true
 }
 
 /** The solo ticket (§ 5): running alone, or next, with no new ticket starting until it runs. */
@@ -172,8 +179,8 @@ export interface Card {
 
 /** A banner on the title line. */
 export type Banner = Data.TaggedEnum<{
-  Usage: { readonly utilization: number; readonly resetsAt: number | null }
-  Hold: { readonly word: string; readonly resetsAt: number | null }
+  Usage: Usage
+  Hold: RunHold
 }>
 
 export const Banner = Data.taggedEnum<Banner>()
@@ -313,6 +320,10 @@ export const clock = (millis: number): string => {
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
+
+/** The time from `now` to `at`, rounded up to the minute, as a countdown gives it: `2h5m`, `1m`. */
+export const countdown = (at: number, now: number): string =>
+  formatDuration(Duration.minutes(Math.max(1, Math.ceil((at - now) / 60_000))))
 
 /** A row's mark and word for `phase`, as § 5.1's table gives them. */
 export const rowStatus = (phase: TicketPhase): { readonly mark: string; readonly word: string } => {
@@ -644,7 +655,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const banners: Array<Banner> = []
   if (status.usage !== null) banners.push(Banner.Usage(status.usage))
   for (const hold of status.holds) {
-    banners.push(Banner.Hold({ word: sanitizeLine(hold.word), resetsAt: hold.resetsAt }))
+    banners.push(Banner.Hold({ ...hold, word: sanitizeLine(hold.word) }))
   }
 
   const heading: TitleView = {

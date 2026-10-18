@@ -257,8 +257,9 @@ describe("the environment hold", () => {
   })
 
   test("a usage-limited worker doesn't count", async () => {
+    // The limit resets an hour into the run (TestClock starts at the epoch): the run waits for it.
     const limited: SessionScript = [
-      ...hitsUsageLimit(2_000_000_000),
+      ...hitsUsageLimit(3600),
       step(Effect.promise(() => Bun.sleep(20))),
       gone("its session ended"),
     ]
@@ -269,6 +270,8 @@ describe("the environment hold", () => {
         "t-2": [givesUp],
         "t-3": [finishes(world, root, "t-3")],
       }),
+      during: () =>
+        Effect.andThen(untilLogged(/^USAGE_LIMIT: nothing else runs/), advance("2 hours")),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Deferred", "t-2": "Deferred", "t-3": "Done" })

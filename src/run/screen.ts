@@ -121,7 +121,7 @@ export const latestActions: Effect.Effect<
  * requests, `status`.
  */
 export const sources = (
-  status: Status,
+  status: Stream.Stream<Status>,
 ): Effect.Effect<Sources, never, Ledger | AgentHost | Attention | Transcripts | Scope.Scope> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
@@ -130,18 +130,18 @@ export const sources = (
       ledger: ledger.changes,
       workers: yield* workerStates,
       requests: attention.open,
-      status: Stream.succeed(status),
+      status,
       actions: yield* latestActions,
     }
   })
 
 /**
- * Shows `dashboard` for the rest of the scope: RunView projected from the run's sources, the
- * screen at the dashboard, and an empty command queue.
+ * Shows `dashboard` for the rest of the scope: RunView projected from the run's sources, `status`
+ * now and on each change among them, the screen at the dashboard, and an empty command queue.
  */
 export const show = (
   dashboard: Dashboard,
-  status: Status,
+  status: Stream.Stream<Status>,
 ): Effect.Effect<ScreenInputs, never, Ledger | AgentHost | Attention | Transcripts | Scope.Scope> =>
   Effect.gen(function* () {
     const inputs: ScreenInputs = {

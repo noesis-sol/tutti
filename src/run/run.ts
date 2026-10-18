@@ -36,6 +36,7 @@ import {
   Result,
   type Scope,
   Stream,
+  SubscriptionRef,
 } from "effect"
 import {
   type AgentGone,
@@ -46,9 +47,11 @@ import {
 import type { Attention } from "../agent/Attention.ts"
 import { serve } from "../agent/attentionFiles.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
+import type { UsageLimits } from "../agent/UsageLimits.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
+import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
@@ -72,11 +75,12 @@ import { detail, hold, type Line, Log, line } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
-import { emptyStatus, project, type Row, type Totals } from "./runView.ts"
+import { emptyStatus, project, type Row, type Status, type Totals } from "./runView.ts"
 import { make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, show } from "./screen.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
+import { make as makeUsageHold, holdWord as usageHoldWord } from "./usageLimit.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -101,7 +105,14 @@ export interface RunOptions {
 }
 
 /** Every service the run uses; it makes its own Ledger. */
-export type RunEnv = Exclude<WorkEnv, Ledger> | Attention | RunFibers | Transcripts | Tty
+export type RunEnv =
+  | Exclude<WorkEnv, Ledger>
+  | Attention
+  | RunFibers
+  | Transcripts
+  | Tty
+  | UsageLimits
+  | Notifier
 
 /** The errors the Agent SDK fails with. */
 type AgentError = AgentStartFailed | AgentGone | AgentProtocol
@@ -207,17 +218,20 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     if (options.start !== undefined && options.start.length > 0) yield* logs.write(...options.start)
     yield* serve({ repo: config.repo })
+    // What the dashboard says of the run, beside its tickets: the holds change it as they come.
+    const notices = schemeNotices(config.scheme)
+    const status = yield* SubscriptionRef.make<Status>({
+      ...emptyStatus,
+      version: options.version,
+      branch: base,
+      scope: config.ticket,
+      began: begun,
+      concurrency: config.settings.concurrent,
+      warnings: notices,
+    })
     const dashboard = options.dashboard
     if (dashboard !== undefined && outputMode(yield* Tty, config.plain)._tag === "Dashboard") {
-      yield* show(dashboard, {
-        ...emptyStatus,
-        version: options.version,
-        branch: base,
-        scope: config.ticket,
-        began: begun,
-        concurrency: config.settings.concurrent,
-        warnings: schemeNotices(config.scheme),
-      })
+      yield* show(dashboard, SubscriptionRef.changes(status))
     }
 
     const stops = yield* Ref.make<Stops>(noStops)
@@ -247,6 +261,21 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // Workers failing at once hold the run, as a stop does, until the probe (environment.ts).
     const environment = yield* makeEnvironmentHold({ onHold: stopped })
+
+    // The account's usage limit holds the run until it resets, without a stop (usageLimit.ts).
+    const usage = yield* makeUsageHold({
+      wakeUp,
+      show: (view) =>
+        SubscriptionRef.update(status, (now) => ({
+          ...now,
+          usage: view.usage,
+          holds: [
+            ...now.holds.filter((each) => each.word !== usageHoldWord),
+            ...(view.hold === null ? [] : [view.hold]),
+          ],
+          warnings: [...notices, ...(view.notice === null ? [] : [view.notice])],
+        })),
+    })
 
     const queue = yield* makeQueue({ repo: config.repo, base })
     // The merge that stopped the merges, taken up once, by its watcher or by the end.
@@ -286,8 +315,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       )
 
     const taking = Effect.map(
-      Effect.all([Ref.get(stops), Ref.get(ending)]),
-      ([all, ended]) => all.first === null && !ended,
+      Effect.all([Ref.get(stops), Ref.get(ending), usage.held]),
+      ([all, ended, held]) => all.first === null && !ended && !held,
     )
     const scheduler = yield* makeScheduler({
       concurrent: config.settings.concurrent,
@@ -339,9 +368,35 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }
       return (yield* scheduler.running).size === 0 && isSettled(yield* queue.state)
     })
+    // Whether nothing runs but workers waiting for the usage limit.
+    const limitedOnly = Effect.gen(function* () {
+      const limited = yield* usage.limited
+      const others = [...(yield* ledger.current).tickets.values()].some(
+        (entry) =>
+          running.has(entry.phase._tag) &&
+          !(entry.phase._tag === "Working" && limited.has(entry.ticket)),
+      )
+      return !others && isSettled(yield* queue.state)
+    })
+    // Waits until nothing is left. With the usage-limit hold on, the run waits for its reset
+    // instead, unless a stop ends it anyway; it ends USAGE_LIMIT when it can't wait for it: whether
+    // it does.
+    const settle = Effect.gen(function* () {
+      for (;;) {
+        const left = yield* nothingLeft
+        const limit = yield* usage.look(yield* limitedOnly)
+        if (limit !== null) {
+          yield* scheduler.interrupt
+          yield* stopped(limit)
+          return true
+        }
+        if (left && ((yield* Ref.get(stops)).first !== null || !(yield* usage.held))) return false
+        yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
+      }
+    })
     // Nothing left: a hold for the environment probes the machine, and goes on or ends the run.
     for (;;) {
-      while (!(yield* nothingLeft)) yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
+      if (yield* settle) break
       const probed = yield* environment.probe(yield* Ref.get(stops))
       if (probed._tag === "Ends") break
       if (probed._tag === "Failed") {
