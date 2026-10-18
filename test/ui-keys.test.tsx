@@ -12,6 +12,7 @@ import { emptyView, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import {
+  escapeHold,
   guardPaste,
   isTextField,
   mouseFilter,
@@ -68,8 +69,8 @@ const tags = (value: ShellValue) => sent(value).map((command) => command._tag)
 
 const frameOf = async (rendered: Rendered) => (await rendered.capture()).chars
 
-/** How long a lone ESC waits to be a key: the stdin parser's 20 ms, and some. */
-const escWait = 40
+/** How long a lone ESC waits to be a key: the stdin parser's 20 ms, the Esc hold, and some. */
+const escWait = 40 + escapeHold
 
 /**
  * Presses `keys`, one after another with no wait for React: a character, `tab`, `ctrl+<k>`, or

@@ -24,6 +24,7 @@ import {
   stepFocus,
 } from "../src/ui/attentionKeys.ts"
 import { layoutOf } from "../src/ui/Card.tsx"
+import { escapeHold } from "../src/ui/keys.ts"
 import type { Look, Segments } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
@@ -206,8 +207,8 @@ const where = (frame: Frame, text: string): { readonly x: number; readonly y: nu
   return { x: (lines[y] ?? "").indexOf(text), y }
 }
 
-/** How long a lone ESC waits to be a key: the stdin parser's 20 ms, and some. */
-const escWait = 40
+/** How long a lone ESC waits to be a key: the stdin parser's 20 ms, the Esc hold, and some. */
+const escWait = 40 + escapeHold
 
 const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
   rendered.input(async (setup) => {

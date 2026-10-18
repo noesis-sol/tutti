@@ -8,9 +8,16 @@
 // while a box is open: the box is modal. A binding runs the handler of the latest render, never a
 // closure of an earlier one (OpenTUI #1660).
 //
-// Two guards sit in front of the input: mouse reports split by a late read (OpenTUI #1661) are kept
-// from becoming keys, and a bracketed paste left unterminated (#1270) is ended after `pasteLimit`.
-import { type CliRenderer, type KeyEvent, type Renderable, TextareaRenderable } from "@opentui/core"
+// Three guards sit in front of the input: mouse reports split by a late read (OpenTUI #1661) are
+// kept from becoming keys, a lone Esc waits `escapeHold` in case it is a split report's start, and
+// a bracketed paste left unterminated (#1270) is ended after `pasteLimit`.
+import {
+  type CliRenderer,
+  type KeyEvent,
+  parseKeypress,
+  type Renderable,
+  TextareaRenderable,
+} from "@opentui/core"
 import type { Keymap, ReactiveMatcher } from "@opentui/keymap"
 import { useBindings } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
@@ -205,6 +212,83 @@ export const filterMouse = (keymap: Keymap<Renderable, KeyEvent>): (() => void) 
   return keymap.intercept("raw", ({ sequence, stop }) => {
     if (filter(sequence)) stop()
   })
+}
+
+/** How long a lone Esc is held, in ms, for the rest of a mouse report it may have started. */
+export const escapeHold = 30
+
+/** A held Esc: the key, and what to do with it. */
+export interface EscapeHolder {
+  /** Whether the key `sequence` is held, a lone Esc; a key while one is held presses that first. */
+  readonly key: (sequence: string) => boolean
+  /** Bytes read from stdin, before the renderer's parser reads them. */
+  readonly read: (bytes: string) => void
+  /** Drops a held Esc, and holds no more. */
+  readonly stop: () => void
+}
+
+/**
+ * Holds a lone Esc (OpenTUI #1661): when an SGR mouse report arrives in two reads, split after its
+ * ESC, and the second comes after the parser's 20 ms timeout, the ESC becomes an Esc key and the
+ * parser joins the rest (`[<64;87;26M`) to it as the mouse event. The Esc would close an open box
+ * or leave the composer. A lone Esc waits `hold` ms: it is dropped when the next bytes read start
+ * the rest of a report (`[<`, or `[M` in X10), the test the parser makes, and `press`ed when other
+ * bytes or another key come first, or when the wait ends.
+ */
+export const escapeHolder = (press: () => void, hold: number = escapeHold): EscapeHolder => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  // The bytes read since the Esc: a lone `[` waits for the next read.
+  let rest = ""
+  const release = (pressed: boolean) => {
+    if (timer === undefined) return
+    clearTimeout(timer)
+    timer = undefined
+    rest = ""
+    if (pressed) press()
+  }
+  return {
+    key: (sequence) => {
+      release(true)
+      if (sequence !== "\x1b") return false
+      timer = setTimeout(() => release(true), hold)
+      return true
+    },
+    read: (bytes) => {
+      if (timer === undefined) return
+      const so = rest + bytes
+      if (so.startsWith("[<") || so.startsWith("[M")) release(false)
+      else if (so === "[") rest = so
+      else release(true)
+    },
+    stop: () => release(false),
+  }
+}
+
+/**
+ * Holds `keymap`'s lone Esc keys for `hold` ms, dropping one that starts a mouse report
+ * (`escapeHolder`), and presses those it keeps on `renderer`. Reads `renderer`'s stdin before the
+ * parser does. The returned function stops it.
+ */
+export const holdEscape = (
+  keymap: Keymap<Renderable, KeyEvent>,
+  renderer: CliRenderer,
+  hold: number = escapeHold,
+): (() => void) => {
+  const holder = escapeHolder(() => {
+    const key = parseKeypress("\x1b")
+    if (key !== null) renderer.keyInput.processParsedKey(key)
+  }, hold)
+  const onData = (chunk: Buffer | string) =>
+    holder.read(typeof chunk === "string" ? chunk : chunk.toString("latin1"))
+  renderer.stdin.prependListener("data", onData)
+  const unintercept = keymap.intercept("raw", ({ sequence, stop }) => {
+    if (holder.key(sequence)) stop()
+  })
+  return () => {
+    unintercept()
+    renderer.stdin.off("data", onData)
+    holder.stop()
+  }
 }
 
 /** How long a bracketed paste may go without its end, in ms, before what arrived is inserted. */
