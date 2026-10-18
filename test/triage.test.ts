@@ -667,7 +667,13 @@ describe("triage in a run", () => {
   test("verdicts blaming the environment for 2 tickets in a row hold the run: ENVIRONMENT, exit 7", async () => {
     const ran = await runs({
       tickets: ["t-1", "t-2"],
-      organs: { triage: verdict() },
+      // Each verdict takes a while, as a model's does: the run waits for it before it ends.
+      organs: {
+        triage: Effect.as(
+          Effect.promise(() => Bun.sleep(100)),
+          verdict(),
+        ),
+      },
       settings: {
         environment_hold: { ...appConfig().settings.environment_hold, probe: Duration.zero },
       },
