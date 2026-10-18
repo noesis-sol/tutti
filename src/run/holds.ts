@@ -7,11 +7,19 @@
 // footprint overlaps a running ticket's is skipped for the next. A solo ticket runs alone (the
 // scheduler's pick). The log says once why each ticket waits, and again only when that changes.
 //
-// What holds the whole run, its stop reasons and the exit codes they end it with, is below.
-import type { Dependency, Issue } from "../services/Beads.ts"
+// What holds the whole run, its stop reasons and the exit codes they end it with, is below, then
+// the holds that come with time: TICKET_LIMIT, LONG_RUNNING and BLOCKED.
+import { Clock, Duration, Effect, Option, Stream } from "effect"
+import { AgentHost } from "../agent/AgentHost.ts"
+import { type AttentionRequest, describe } from "../agent/Attention.ts"
+import type { WorkerState } from "../agent/WorkerState.ts"
+import { AppConfig } from "../cli/AppConfig.ts"
+import { formatDuration } from "../project/configFile.ts"
+import { Beads, type Dependency, type Issue } from "../services/Beads.ts"
+import { EventStream } from "./eventstream.ts"
 import { type Footprint, type Mentions, shared } from "./footprint.ts"
 import type { State } from "./ledger.ts"
-import { detail, type Line, line } from "./log.ts"
+import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import type { Hold, PhaseTag } from "./phase.ts"
 import { ledgerView } from "./scope.ts"
 
@@ -324,6 +332,14 @@ export const noStops: Stops = { first: null, others: [] }
 export const addStop = (stops: Stops, stop: StopReason): Stops =>
   stops.first === null ? { first: stop, others: [] } : { ...stops, others: [...stops.others, stop] }
 
+/** `stops` without those `lifted` picks: the first left decides the exit code. */
+export const liftStops = (stops: Stops, lifted: (stop: StopReason) => boolean): Stops => {
+  const kept = [stops.first, ...stops.others].flatMap((stop) =>
+    stop === null || lifted(stop) ? [] : [stop],
+  )
+  return { first: kept[0] ?? null, others: kept.slice(1) }
+}
+
 /** The line the run ends with: the first stop's, then `; also` and each of the others. */
 export const stopsLine = (stops: Stops): Line =>
   [stops.first, ...stops.others]
@@ -332,3 +348,141 @@ export const stopsLine = (stops: Stops): Line =>
 
 /** The exit code the stops end the run with: the first's, or 0 with none. */
 export const exitCodeOf = (stops: Stops): number => stops.first?.code ?? exitCodes.ok
+
+// The holds that come with time (§ 4.3, § 4.5). A worker still going --ticket-limit after its
+// dispatch holds the run with TICKET_LIMIT: it isn't interrupted and goes on, the run doesn't wait
+// for it to end, and the run's end suspends it (§ 4.8). Without a limit, one still going after
+// longRunning is said once, LONG_RUNNING. As orchestra's overTime, the time a worker waits for the
+// usage limit to reset (UsageLimited, § 4.12) doesn't count. An attention request unanswered for
+// Attention's blockedAfter holds the run with BLOCKED, for its ticket; once that ticket has no
+// request open, the hold is lifted, as what held the run is gone. run.ts keeps these stops.
+
+/** How long a worker may go on, without a ticket limit, before the log says LONG_RUNNING. */
+export const longRunning: Duration.Duration = Duration.hours(2)
+
+/** The TICKET_LIMIT stop of `id`'s worker, still going `limit` after its dispatch. */
+export const ticketLimitStop = (id: string, limit: string, worktree: string): StopReason =>
+  stopFor(
+    "TICKET_LIMIT",
+    `${id} still working after ${limit} (worktree ${worktree}); its worker goes on, and is suspended when the run ends`,
+    { ticket: id },
+  )
+
+/** `  LONG_RUNNING: …`, said once of a worker going on without a ticket limit. */
+export const longRunningLine = (id: string): Line =>
+  ticketLine(
+    Tag.longRunning,
+  )`${id} still working after ${formatDuration(longRunning)}; still waiting on it, as no ticket limit is set (--ticket-limit)`
+
+/** The BLOCKED stop of `id`'s worker, its request `what` unanswered: `BLOCKED >4min: …`. */
+export const blockedStop = (id: string, what: string): StopReason => ({
+  why: "BLOCKED",
+  code: stopCodes.BLOCKED,
+  text: line`${Tag.blocked} >4min: ${id} needs you: ${what}`,
+  ticket: id,
+  recorded: false,
+  held: false,
+})
+
+/** The line of a BLOCKED hold lifted, `id`'s requests answered. */
+export const blockedLifted = (id: string): Line =>
+  line`${Tag.hold} lifted: ${id}'s requests were answered`
+
+/** Whether `stop` is the BLOCKED stop of ticket `id`. */
+export const isBlockedOn = (stop: StopReason, id: string): boolean =>
+  stop.why === "BLOCKED" && stop.ticket === id
+
+/**
+ * What the open requests, oldest first, say of the BLOCKED holds at `now`: the tickets with one
+ * open past `after`, each with its oldest such request, and the tickets held (`blocked`) that have
+ * none open any longer.
+ */
+export const blockedAt = (
+  requests: ReadonlyArray<AttentionRequest>,
+  blocked: ReadonlySet<string>,
+  now: number,
+  after: Duration.Duration,
+): {
+  readonly trips: ReadonlyArray<{ readonly ticket: string; readonly what: string }>
+  readonly lifts: ReadonlyArray<string>
+} => {
+  const trips = new Map<string, string>()
+  for (const request of requests) {
+    if (now - request.createdAt < Duration.toMillis(after)) continue
+    if (blocked.has(request.ticket) || trips.has(request.ticket)) continue
+    trips.set(request.ticket, describe(request))
+  }
+  const open = new Set(requests.map((request) => request.ticket))
+  return {
+    trips: [...trips].map(([ticket, what]) => ({ ticket, what })),
+    lifts: [...blocked].filter((ticket) => !open.has(ticket)),
+  }
+}
+
+/** Waits until `ticket`'s worker is in a state `wanted` picks; never, once its session has gone. */
+const until = (ticket: string, wanted: (state: WorkerState) => boolean) =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const seen = yield* host.state(ticket).pipe(
+      Stream.filter(wanted),
+      Stream.runHead,
+      Effect.orElseSucceed(() => Option.none<WorkerState>()),
+    )
+    if (Option.isNone(seen)) return yield* Effect.never
+  })
+
+/**
+ * Waits until `ticket`'s worker has gone on for `span` since `since`, the time it was UsageLimited
+ * not counted.
+ */
+export const goneOn = (
+  ticket: string,
+  span: Duration.Duration,
+  since: number,
+): Effect.Effect<void, never, AgentHost> =>
+  Effect.gen(function* () {
+    let left = Duration.toMillis(span) - ((yield* Clock.currentTimeMillis) - since)
+    for (;;) {
+      const from = yield* Clock.currentTimeMillis
+      const limited = yield* Effect.raceFirst(
+        Effect.as(Effect.sleep(Duration.millis(Math.max(0, left))), false),
+        Effect.as(
+          until(ticket, (state) => state._tag === "UsageLimited"),
+          true,
+        ),
+      )
+      if (!limited) return
+      left -= (yield* Clock.currentTimeMillis) - from
+      yield* until(ticket, (state) => state._tag !== "UsageLimited")
+    }
+  })
+
+/**
+ * The time hold of `ticket`'s worker, dispatched at `since`, its worktree at `worktree`: once it
+ * has gone on --ticket-limit, its ticket is noted and `onLimit` given its TICKET_LIMIT stop;
+ * without a limit, LONG_RUNNING is said once it has gone on longRunning. Run for as long as the
+ * worker goes on, and interrupted once it has settled.
+ */
+export const timeLimit = (
+  ticket: string,
+  worktree: string,
+  since: number,
+  onLimit: (stop: StopReason) => Effect.Effect<void>,
+): Effect.Effect<void, never, AppConfig | AgentHost | Beads | Log | EventStream> =>
+  Effect.gen(function* () {
+    const limit = (yield* AppConfig).settings.workers.ticket_limit
+    yield* goneOn(ticket, limit ?? longRunning, since)
+    if (limit === null) {
+      const text = longRunningLine(ticket)
+      yield* (yield* EventStream).emit({ kind: "warn", ticket, text })
+      yield* (yield* Log).write(text)
+      return
+    }
+    const after = formatDuration(limit)
+    yield* Effect.ignore(
+      (yield* Beads).update(ticket, {
+        appendNotes: `tutti: its worker was still working after the ${after} ticket limit (worktree ${worktree}).`,
+      }),
+    )
+    yield* onLimit(ticketLimitStop(ticket, after, worktree))
+  })

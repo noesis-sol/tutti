@@ -28,6 +28,7 @@ import { Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview, putAside } from "./aside.ts"
 import { type Settling, settlingOf } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
+import { type StopReason, timeLimit } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
@@ -72,6 +73,8 @@ export interface WorkOptions {
   readonly queue: MergeQueue
   /** The run's triage, which each ticket set aside as its worker settles is handed to. */
   readonly triage?: Triage
+  /** Takes the TICKET_LIMIT stop of a worker still going --ticket-limit after its dispatch. */
+  readonly onTicketLimit?: (stop: StopReason) => Effect.Effect<void>
 }
 
 /** Its blockers, as the log names them: `a`, or `a, b`. */
@@ -297,6 +300,13 @@ export const work = (
       const [settled, limited] = yield* Effect.scoped(
         Effect.gen(function* () {
           const limited = yield* watchLimit(ticket.id)
+          // TICKET_LIMIT or LONG_RUNNING while it goes on (holds.ts); the worker isn't interrupted.
+          yield* timeLimit(
+            ticket.id,
+            worker.worktree.path,
+            dispatched,
+            options.onTicketLimit ?? (() => Effect.void),
+          ).pipe(Effect.forkScoped({ startImmediately: true }))
           return [yield* settle(worker, options.base), yield* Ref.get(limited)] as const
         }),
       )

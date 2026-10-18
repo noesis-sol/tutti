@@ -11,6 +11,10 @@
 // nothing runs, the probe either lifts that stop, and the run takes tickets again, or ends the run.
 // Given Organs, the run triages each ticket set aside in the background (triage.ts), its verdicts
 // counting toward that hold, and doesn't end while a ticket waits for its verdict.
+// The holds that come with time (holds.ts): a worker past --ticket-limit stops the run with
+// TICKET_LIMIT and goes on, and the run neither waits for it nor drains it: the end suspends it. A
+// request unanswered for 4 minutes stops the run with BLOCKED, lifted once its ticket has no request
+// open; its banner is on the title line while it holds.
 //
 // Before its first dispatch the run checks the tickets earlier runs left labelled `unmerged`
 // (unmerged.ts): one merged since by hand loses its label; bd failing to list them stops the run,
@@ -38,6 +42,7 @@ import {
   Ref,
   Result,
   type Scope,
+  Semaphore,
   Stream,
   SubscriptionRef,
 } from "effect"
@@ -47,7 +52,7 @@ import {
   type AgentProtocol,
   type AgentStartFailed,
 } from "../agent/AgentHost.ts"
-import type { Attention } from "../agent/Attention.ts"
+import { Attention, blockedAfter } from "../agent/Attention.ts"
 import { serve } from "../agent/attentionFiles.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import type { UsageLimits } from "../agent/UsageLimits.ts"
@@ -66,7 +71,12 @@ import { RunFibers } from "./fibers.ts"
 import { fullCheck, fullCheckDue } from "./fullcheck.ts"
 import {
   addStop,
+  blockedAt,
+  blockedLifted,
+  blockedStop,
   exitCodeOf,
+  isBlockedOn,
+  liftStops,
   noStops,
   type StopReason,
   type Stops,
@@ -75,7 +85,7 @@ import {
   stopsLine,
 } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
-import { detail, hold, type Line, Log, line } from "./log.ts"
+import { detail, hold, type Line, Log, line, Tag } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
@@ -134,9 +144,18 @@ const running: ReadonlySet<PhaseTag> = new Set([
   "Fixing",
 ])
 
-/** How many of the run's tickets are still running. */
-const runningIn = (state: State): number =>
-  [...state.tickets.values()].filter((entry) => running.has(entry.phase._tag)).length
+/**
+ * Whether the ticket `entry` is one the run waits for: running, and not a worker it stopped for
+ * TICKET_LIMIT (`over`) still at it, which goes on until the run ends.
+ */
+const waitedFor = (
+  entry: { readonly ticket: string; readonly phase: TicketPhase },
+  over: ReadonlySet<string>,
+) => running.has(entry.phase._tag) && !(entry.phase._tag === "Working" && over.has(entry.ticket))
+
+/** How many of the run's tickets are still running, those over their ticket limit left out. */
+const runningIn = (state: State, over: ReadonlySet<string>): number =>
+  [...state.tickets.values()].filter((entry) => waitedFor(entry, over)).length
 
 /** The stop a ticket's fiber failing with `error` stops the run for (§ 5 item 10). */
 export const errorStop = (ticket: string, error: WorkError | AgentError): StopReason => {
@@ -216,6 +235,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const beads = yield* Beads
     const host = yield* AgentHost
     const store = yield* Store
+    const attention = yield* Attention
     const ledger = yield* Ledger
     const logs = yield* Log
     const events = yield* EventStream
@@ -243,18 +263,21 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     }
 
     const stops = yield* Ref.make<Stops>(noStops)
+    // The tickets whose workers went on past --ticket-limit: the run doesn't wait for them.
+    const overLimit = yield* Ref.make<ReadonlySet<string>>(new Set())
     // Set once the run ends, so that nothing starts after it.
     const ending = yield* Ref.make(false)
     // Wakes the run to look again: a merge, a stop, a drain request, the ready poll.
     const wake = yield* Queue.sliding<void>(1)
     const wakeUp = Queue.offer(wake, undefined)
 
-    // A stop holds the run: said as it comes while tickets still run, unless its line was.
+    // A stop holds the run: said as it comes while tickets still run, unless its line was. A worker
+    // past its ticket limit goes on, so its hold is said even with nothing else running.
     const stopped = (stop: StopReason) =>
       Effect.gen(function* () {
         yield* Ref.update(stops, (all) => addStop(all, stop))
-        const now = runningIn(yield* ledger.current)
-        if (!stop.held && now > 0) {
+        const now = runningIn(yield* ledger.current, yield* Ref.get(overLimit))
+        if (!stop.held && (now > 0 || stop.why === "TICKET_LIMIT")) {
           const text = hold(stop.text, now)
           yield* events.emit({
             kind: "hold",
@@ -312,7 +335,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // A ticket's fiber: its work, and the stop it ended with, if any.
     const ticketFiber = (issue: Issue): Effect.Effect<void> =>
-      work(issue, { base, queue, triage }).pipe(
+      work(issue, {
+        base,
+        queue,
+        triage,
+        onTicketLimit: (stop) =>
+          Effect.andThen(
+            Ref.update(overLimit, (over) => new Set([...over, issue.id])),
+            stopped(stop),
+          ),
+      }).pipe(
         Effect.matchCauseEffect({
           onSuccess: (worked) =>
             Effect.andThen(
@@ -378,6 +410,63 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       )
     }
 
+    // A request unanswered for blockedAfter holds the run with BLOCKED, for its ticket; once that
+    // ticket has none open, the hold is lifted (holds.ts). Each request is looked at again as it
+    // reaches its time, and every request open at each change.
+    const blocked = yield* Ref.make<ReadonlySet<string>>(new Set())
+    const oneLook = yield* Semaphore.make(1)
+    const lookBlocked = oneLook.withPermits(1)(
+      Effect.gen(function* () {
+        if (yield* Ref.get(ending)) return
+        const held = yield* Ref.get(blocked)
+        const now = yield* Clock.currentTimeMillis
+        const { trips, lifts } = blockedAt(yield* attention.current, held, now, blockedAfter)
+        if (trips.length === 0 && lifts.length === 0) return
+        yield* Ref.set(
+          blocked,
+          new Set([
+            ...[...held].filter((ticket) => !lifts.includes(ticket)),
+            ...trips.map((trip) => trip.ticket),
+          ]),
+        )
+        const holding = (yield* Ref.get(blocked)).size > 0
+        yield* SubscriptionRef.update(status, (was) => ({
+          ...was,
+          holds: [
+            ...was.holds.filter((each) => each.word !== Tag.blocked),
+            ...(holding ? [{ word: Tag.blocked, resetsAt: null }] : []),
+          ],
+        }))
+        for (const ticket of lifts) {
+          yield* Ref.update(stops, (all) => liftStops(all, (stop) => isBlockedOn(stop, ticket)))
+          const text = blockedLifted(ticket)
+          yield* events.emit({ kind: "hold", ticket, lifted: true, text })
+          yield* logs.write(text)
+        }
+        for (const trip of trips) yield* stopped(blockedStop(trip.ticket, trip.what))
+        yield* wakeUp
+      }),
+    )
+    const timed = new Set<string>()
+    yield* FiberSet.run(
+      watchers,
+      Stream.runForEach(attention.open, (requests) =>
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis
+          for (const request of requests) {
+            if (timed.has(request.id)) continue
+            timed.add(request.id)
+            const left = request.createdAt + Duration.toMillis(blockedAfter) - now
+            yield* FiberSet.run(
+              watchers,
+              Effect.andThen(Effect.sleep(Duration.millis(Math.max(0, left))), lookBlocked),
+            )
+          }
+          yield* lookBlocked
+        }),
+      ),
+    )
+
     // Fills the free slots, then says whether nothing runs or waits to merge.
     const nothingLeft = Effect.gen(function* () {
       yield* requeueWaiting
@@ -390,19 +479,21 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           )
         }
       }
-      return (
-        (yield* scheduler.running).size === 0 &&
-        isSettled(yield* queue.state) &&
-        (yield* triage.pending) === 0
-      )
+      const now = yield* ledger.current
+      const over = yield* Ref.get(overLimit)
+      const busy = [...(yield* scheduler.running)].filter((ticket) => {
+        const entry = now.tickets.get(ticket)
+        return entry === undefined || !over.has(ticket) || entry.phase._tag !== "Working"
+      })
+      return busy.length === 0 && isSettled(yield* queue.state) && (yield* triage.pending) === 0
     })
     // Whether nothing runs but workers waiting for the usage limit.
     const limitedOnly = Effect.gen(function* () {
       const limited = yield* usage.limited
+      const over = yield* Ref.get(overLimit)
       const others = [...(yield* ledger.current).tickets.values()].some(
         (entry) =>
-          running.has(entry.phase._tag) &&
-          !(entry.phase._tag === "Working" && limited.has(entry.ticket)),
+          waitedFor(entry, over) && !(entry.phase._tag === "Working" && limited.has(entry.ticket)),
       )
       return !others && isSettled(yield* queue.state)
     })
@@ -436,9 +527,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* Ref.set(ending, true)
     yield* mergeStop(yield* queue.state)
 
-    // The end: the tickets a run can't end in Stopped, and every stopped ticket's session suspended.
+    // The end: the tickets a run can't end in Stopped, and every stopped ticket's session suspended;
+    // a worker past its ticket limit is still at it, its fiber stopped first.
     const all = yield* Ref.get(stops)
-    const why = all.first?.why ?? "run ended"
+    const over = yield* Ref.get(overLimit)
+    if (over.size > 0) yield* scheduler.interrupt
+    const whyOf = (entry: { readonly ticket: string; readonly phase: TicketPhase }) =>
+      entry.phase._tag === "Working" && over.has(entry.ticket)
+        ? "TICKET_LIMIT"
+        : (all.first?.why ?? "run ended")
     const suspend = (ticket: string, because: string, move: boolean) =>
       Effect.gen(function* () {
         const session = (yield* store.ticket(ticket))?.session
@@ -453,7 +550,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         yield* host.close(ticket)
       })
     for (const entry of (yield* ledger.current).tickets.values()) {
-      if (stopsAtEnd(entry.phase)) yield* suspend(entry.ticket, why, true)
+      if (stopsAtEnd(entry.phase)) yield* suspend(entry.ticket, whyOf(entry), true)
       else if (entry.phase._tag === "Stopped") yield* suspend(entry.ticket, entry.phase.why, false)
     }
     yield* labelAtEnd({ repo: config.repo, base })
