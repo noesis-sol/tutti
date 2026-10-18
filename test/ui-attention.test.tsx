@@ -546,6 +546,19 @@ describe("defaultToNo", () => {
     })
   })
 
+  test("r doesn't allow it for this run either, though it offers the button", async () => {
+    const asked = permission("r1", "t-1", { defaultToNo: true, suggestions: [runRule] })
+    expect(keyAnswer(asked, "r")).toBeNull()
+    expect(buttonsOf(asked).map((b) => b.label)).toEqual(["Deny", "Allow", "Allow for this run"])
+    await scene([asked], async ({ commands, clock, rendered }) => {
+      clock.pass(settle)
+      await press(rendered, "r", "a")
+      expect(taken(commands)).toEqual([])
+      await press(rendered, "right", "right", "enter")
+      expect(taken(commands)).toEqual([answerOf("r1", { _tag: "AllowForRun" })])
+    })
+  })
+
   test("Allow is never the focused default, whatever the request", () => {
     for (const request of [
       permission("r", "t"),

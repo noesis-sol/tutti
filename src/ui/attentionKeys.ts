@@ -124,7 +124,8 @@ export type AnswerKey = "d" | "a" | "r"
 
 /**
  * What `key` answers `request` with, or null when it answers nothing: `d` denies (declines an
- * elicitation), `a` allows a permission without `defaultToNo`, `r` allows one for this run.
+ * elicitation), `a` allows a permission without `defaultToNo`, `r` allows one for this run. With
+ * `defaultToNo` neither key allows: you move to the button and press Enter, or click it.
  */
 export const keyAnswer = (request: AttentionRequest, key: AnswerKey): Answer | null => {
   switch (key) {
@@ -133,7 +134,7 @@ export const keyAnswer = (request: AttentionRequest, key: AnswerKey): Answer | n
     case "a":
       return request.kind._tag === "Permission" && !request.defaultToNo ? { _tag: "Allow" } : null
     case "r":
-      return allowsForRun(request) ? { _tag: "AllowForRun" } : null
+      return allowsForRun(request) && !request.defaultToNo ? { _tag: "AllowForRun" } : null
   }
 }
 
