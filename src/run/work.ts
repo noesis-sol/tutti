@@ -7,7 +7,8 @@
 // - closed without a commit naming it while it has changes, with uncommitted changes, or off its
 //   branch: Review, `warn` with `aside`
 // - a question it filed that blocks it: Asked (asked.ts takes it from there)
-// - deferred by its worker: Deferred
+// - deferred by its worker: Deferred, and handed to triage (triage.ts) unless its worker reached the
+//   usage limit in its attempt; so is a ticket tutti defers for a worker that left it unfinished
 // - stopped with nothing done, having linked a blocker that hasn't merged: Waiting (WAITS_FOR_MERGE),
 //   its worktree and branch removed; back to Queued once the blocker merges (§ 5 item 9)
 // - still in progress after the nudges and the idle grace: Stopped, and the run holds with PAUSED
@@ -35,6 +36,7 @@ import { Cause, type TicketPhase } from "./phase.ts"
 import { fit, workerGone } from "./sessions.ts"
 import { idleGrace, type Settled, type SettleEnv, settle, unmergedBlockers } from "./settle.ts"
 import { type StartError, type StartedWorker, type StartTicket, start } from "./start.ts"
+import type { Deferral, Triage } from "./triage.ts"
 
 /** A ticket that stopped the run, and the exit code the run ends with for it (§ 5 item 10). */
 export interface RunStop {
@@ -68,6 +70,8 @@ export interface WorkOptions {
   /** Where finished tickets land. */
   readonly base: string
   readonly queue: MergeQueue
+  /** The run's triage, which each ticket set aside as its worker settles is handed to. */
+  readonly triage?: Triage
 }
 
 /** Its blockers, as the log names them: `a`, or `a, b`. */
@@ -297,6 +301,7 @@ export const work = (
         }),
       )
       stop = yield* conclude(ticket, worker, settled, options.queue)
+      if (!limited) yield* toTriage(worker, settled, options.triage)
       settling = yield* settlingOf({
         worker,
         settled,
@@ -309,10 +314,52 @@ export const work = (
   })
 
 /**
- * Whether the ticket's worker has been UsageLimited (§ 4.12) since now, watched for the rest of
- * the scope: such a worker never counts toward the environment hold.
+ * What triage is told of a ticket set aside as its worker settled, as conclude set it aside:
+ * deferred by its worker, or by tutti for a worker that left it unfinished; undefined otherwise.
  */
-const watchLimit = (ticket: string) =>
+export const deferralOf = (worker: StartedWorker, settled: Settled): Deferral | undefined => {
+  if (settled._tag !== "Read") return undefined
+  const { reading, state } = settled
+  const left = (status: Status) =>
+    `the worker settled with the ticket still '${status}', so tutti deferred it`
+  const how =
+    reading._tag === "Deferred"
+      ? "the worker deferred it"
+      : reading._tag === "InProgress"
+        ? left("in_progress")
+        : reading._tag === "Unfinished"
+          ? left(reading.status)
+          : undefined
+  if (how === undefined) return undefined
+  return {
+    ticket: worker.ticket,
+    how,
+    worktree: worker.worktree.path,
+    ...(state._tag === "Failed" ? { failed: state.error } : {}),
+  }
+}
+
+/**
+ * Hands the ticket to `triage` when conclude set it aside (§ 5 item 13). The caller leaves out a
+ * ticket whose worker was UsageLimited in its attempt (§ 4.12).
+ */
+export const toTriage = (
+  worker: StartedWorker,
+  settled: Settled,
+  triage: Triage | undefined,
+): Effect.Effect<void, never, Ledger> =>
+  Effect.gen(function* () {
+    const deferral = deferralOf(worker, settled)
+    if (triage === undefined || deferral === undefined) return
+    const phase = (yield* (yield* Ledger).current).tickets.get(worker.ticket)?.phase
+    if (phase?._tag === "Deferred") yield* triage.deferred(deferral)
+  })
+
+/**
+ * Whether the ticket's worker has been UsageLimited (§ 4.12) since now, watched for the rest of
+ * the scope: such a worker never counts toward the environment hold, and isn't triaged.
+ */
+export const watchLimit = (ticket: string) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const limited = yield* Ref.make(false)

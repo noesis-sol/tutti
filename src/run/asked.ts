@@ -12,7 +12,7 @@
 // one does: settled, read, and moved as its worker leaves it. A session that can't be resumed (its
 // worktree or transcript gone, the spawn failing) drops its ticket: WORKER_GONE, left for review. A
 // ticket bd can't show waits for the next poll.
-import { Effect, Result } from "effect"
+import { Effect, Ref, Result } from "effect"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
@@ -23,7 +23,15 @@ import { Cause } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"
 import { openQuestion, settle } from "./settle.ts"
 import type { StartedWorker } from "./start.ts"
-import { conclude, type WorkEnv, type WorkError, type Worked, type WorkOptions } from "./work.ts"
+import {
+  conclude,
+  toTriage,
+  type WorkEnv,
+  type WorkError,
+  type Worked,
+  type WorkOptions,
+  watchLimit,
+} from "./work.ts"
 
 /** What a worker whose question is answered is told as its session is resumed. */
 export const answeredText = (id: string, question: string, title: string): string =>
@@ -108,8 +116,14 @@ export const takeAnswers = (
       yield* options.carry(
         id,
         Effect.gen(function* () {
-          const settled = yield* settle(worker, options.base)
+          const [settled, limited] = yield* Effect.scoped(
+            Effect.gen(function* () {
+              const limited = yield* watchLimit(id)
+              return [yield* settle(worker, options.base), yield* Ref.get(limited)] as const
+            }),
+          )
           const stop = yield* conclude(ticket, worker, settled, options.queue)
+          if (!limited) yield* toTriage(worker, settled, options.triage)
           return { phase: (yield* ledger.current).tickets.get(id)?.phase, stop }
         }).pipe(Effect.provideContext(context)),
       )

@@ -9,6 +9,8 @@
 // one's exit code (holds.ts). A drain (drain.ts) does the same without a stop, and the run ends
 // DRAINED with exit 0. Workers failing at once hold the run with ENVIRONMENT (environment.ts): once
 // nothing runs, the probe either lifts that stop, and the run takes tickets again, or ends the run.
+// Given Organs, the run triages each ticket set aside in the background (triage.ts), its verdicts
+// counting toward that hold, and doesn't end while a ticket waits for its verdict.
 //
 // Before its first dispatch the run checks the tickets earlier runs left labelled `unmerged`
 // (unmerged.ts): one merged since by hand loses its label; bd failing to list them stops the run,
@@ -31,6 +33,7 @@ import {
   Duration,
   Effect,
   FiberSet,
+  Option,
   Queue,
   Ref,
   Result,
@@ -49,6 +52,7 @@ import { serve } from "../agent/attentionFiles.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import type { UsageLimits } from "../agent/UsageLimits.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
+import { Organs } from "../organs/Organs.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
 import type { Notifier } from "../services/Notifier.ts"
@@ -79,6 +83,7 @@ import { emptyStatus, project, type Row, type Status, type Totals } from "./runV
 import { make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, show } from "./screen.ts"
+import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold, holdWord as usageHoldWord } from "./usageLimit.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, work } from "./work.ts"
@@ -104,7 +109,10 @@ export interface RunOptions {
   readonly dashboard?: Dashboard
 }
 
-/** Every service the run uses; it makes its own Ledger. */
+/**
+ * Every service the run uses; it makes its own Ledger. Given Organs as well, it triages the tickets
+ * set aside (triage.ts), unless triage is off.
+ */
 export type RunEnv =
   | Exclude<WorkEnv, Ledger>
   | Attention
@@ -277,6 +285,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         })),
     })
 
+    // Triage in the background, when the run has organs: each verdict wakes the run, which doesn't
+    // end while a ticket waits for one.
+    const organs = yield* Effect.serviceOption(Organs)
+    const triage = Option.isNone(organs)
+      ? triageOff
+      : yield* makeTriage({ base, hold: environment, done: wakeUp }).pipe(
+          Effect.provideService(Organs, organs.value),
+        )
+
     const queue = yield* makeQueue({ repo: config.repo, base })
     // The merge that stopped the merges, taken up once, by its watcher or by the end.
     const mergeStopSeen = yield* Ref.make(false)
@@ -295,7 +312,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // A ticket's fiber: its work, and the stop it ended with, if any.
     const ticketFiber = (issue: Issue): Effect.Effect<void> =>
-      work(issue, { base, queue }).pipe(
+      work(issue, { base, queue, triage }).pipe(
         Effect.matchCauseEffect({
           onSuccess: (worked) =>
             Effect.andThen(
@@ -341,6 +358,13 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // The ready poll, the merge queue's changes and drain requests each wake the run.
     const watchers = yield* fibers.make("run")
+    // Triage's verdicts go on their tickets' rows as they come in.
+    yield* FiberSet.run(
+      watchers,
+      Stream.runForEach(triage.verdicts, (verdicts) =>
+        SubscriptionRef.update(status, (now) => ({ ...now, verdicts })),
+      ),
+    )
     yield* FiberSet.run(watchers, Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp)))
     yield* FiberSet.run(
       watchers,
@@ -366,7 +390,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           )
         }
       }
-      return (yield* scheduler.running).size === 0 && isSettled(yield* queue.state)
+      return (
+        (yield* scheduler.running).size === 0 &&
+        isSettled(yield* queue.state) &&
+        (yield* triage.pending) === 0
+      )
     })
     // Whether nothing runs but workers waiting for the usage limit.
     const limitedOnly = Effect.gen(function* () {
