@@ -371,7 +371,7 @@ describe("the report's title", () => {
           base,
           scope,
           body: "Done.",
-          cost: { calls: 0, costUsd: 0, turns: 0 },
+          cost: { calls: 0, costUsd: 0, turns: 0, unknown: 0 },
         })
         const [title, ...rest] = written.split("\n")
         expect(rest.join("\n")).toBe("\nDone.\n")

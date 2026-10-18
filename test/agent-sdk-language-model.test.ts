@@ -345,7 +345,7 @@ describe("AgentSdkLanguageModel", () => {
     expect(error.reason._tag).toBe("StructuredOutputError")
     expect(subtypeOf(error)).toBe("error_max_structured_output_retries")
     // The failed call's cost still counts.
-    expect(sum).toEqual({ calls: 1, costUsd: 0.002, turns: 6, durationMs: 9000 })
+    expect(sum).toEqual({ calls: 1, costUsd: 0.002, turns: 6, durationMs: 9000, unknown: 0 })
   })
 
   test("a success without structured output is a StructuredOutputError, subtype success", async () => {

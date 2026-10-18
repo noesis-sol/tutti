@@ -19,7 +19,7 @@ import { Clock, Effect, FileSystem } from "effect"
 import { Attention, type Tally } from "../agent/Attention.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type InputPart, type Section, section } from "../organs/evidence.ts"
-import { dollars, OrganCost } from "../organs/OrganCost.ts"
+import { dollars, OrganCost, type Total } from "../organs/OrganCost.ts"
 import { type OrganError, OrganHold, type Organs, skippedLine } from "../organs/Organs.ts"
 import { review } from "../organs/reviewer.ts"
 import { printReport } from "../print/markdown.ts"
@@ -405,13 +405,18 @@ export const gather = (
     ]
   })
 
-/** The run's organ costs: `$0.0456 in 3 organ calls, 4 turns in all`. */
-export const costTotal = (cost: {
-  readonly calls: number
-  readonly costUsd: number
-  readonly turns: number
-}): string =>
-  `${dollars(cost.costUsd)} in ${counted(cost.calls, "organ call")}, ${counted(cost.turns, "turn")} in all`
+/** What the report says of the run's organ calls. */
+type OrganTotal = Pick<Total, "calls" | "costUsd" | "turns" | "unknown">
+
+/**
+ * The run's organ costs: `$0.0456 in 3 organ calls, 4 turns in all`, naming the calls whose cost
+ * it leaves out: `$0.0456 in 7 organ calls, 9 turns in all; 1 call's cost unknown`.
+ */
+export const costTotal = (cost: OrganTotal): string => {
+  const known = `${dollars(cost.costUsd)} in ${counted(cost.calls, "organ call")}, ${counted(cost.turns, "turn")} in all`
+  if (cost.unknown === 0) return known
+  return `${known}; ${cost.unknown === 1 ? "1 call's" : `${cost.unknown} calls'`} cost unknown`
+}
 
 /**
  * The report as written and printed: its title, the reviewer's words, and the organs' cost total,
@@ -424,7 +429,7 @@ export const compose = (p: {
   readonly base: string
   readonly scope: string | null
   readonly body: string
-  readonly cost: { readonly calls: number; readonly costUsd: number; readonly turns: number }
+  readonly cost: OrganTotal
 }): string => {
   const text = (untrusted: string) => escapeMarkdown(sanitizeLine(untrusted))
   const scope = p.scope === null ? "" : ` · ${text(p.scope)}`

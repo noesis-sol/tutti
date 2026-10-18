@@ -18,7 +18,9 @@
 //   the hook that confines them to it and its budget, in OrganCall's `reads`.
 // - Interrupting the call aborts the SDK's abortController; the turn ends and Claude Code exits.
 // - Each result's cost goes to OrganCost as it arrives, whatever happens to the answer after:
-//   LanguageModel's own decoding errors don't carry it.
+//   LanguageModel's own decoding errors don't carry it. A call that ends without a result (its
+//   time limit interrupts it, or its session fails first) goes to OrganCost as it ends, as a call
+//   of unknown cost with the time it ran.
 //
 // Which organ is calling, and its model and effort, the organ framework says with OrganCall.
 import {
@@ -29,7 +31,7 @@ import {
   type SDKResultMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Context, Effect, FileSystem, Layer, Stream } from "effect"
+import { Clock, Context, Effect, FileSystem, Layer, Stream } from "effect"
 import {
   AiError,
   AnthropicStructuredOutput,
@@ -428,7 +430,7 @@ export const layer = (
       /**
        * The session's messages up to its result, its cost recorded as the result arrives. The
        * stream's end, or its interruption, aborts the session if it hasn't ended, and removes its
-       * folder.
+       * folder; with no result, it records a call of unknown cost.
        */
       const messages = (
         method: string,
@@ -449,6 +451,7 @@ export const layer = (
                   ),
                 ))
             const abortController = new AbortController()
+            const startedAt = yield* Clock.currentTimeMillis
             let stderr = ""
             const q = query({
               prompt: (async function* () {
@@ -470,9 +473,12 @@ export const layer = (
             })
             let ended = false
             yield* Effect.addFinalizer(() =>
-              Effect.sync(() => {
+              Effect.gen(function* () {
                 if (!ended) abortController.abort()
                 q.close()
+                if (ended) return
+                const endedAt = yield* Clock.currentTimeMillis
+                yield* costs.recordUnknown({ organ: call.organ, durationMs: endedAt - startedAt })
               }),
             )
             const failed = (error: unknown) => {
