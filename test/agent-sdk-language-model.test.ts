@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Duration, Effect, Layer, Schema, Stream } from "effect"
+import { Duration, Effect, Layer, Schedule, Schema, Stream } from "effect"
 import { type AiError, LanguageModel, Prompt } from "effect/ai"
 import fc from "fast-check"
 import {
@@ -54,11 +54,13 @@ type Steps = ReadonlyArray<object>
 /**
  * Runs `effect` with the provider over the fake, whose sessions (one per call) each play `steps`,
  * with a subscription login and an API key in tutti's environment. It gives the effect's exit and
- * what the fake logged.
+ * what the fake logged; `effect` may be a function of the fake's log file.
  */
 const run = async <A, E>(
   steps: Steps,
-  effect: Effect.Effect<A, E, LanguageModel.LanguageModel | OrganCost | Log>,
+  effect:
+    | Effect.Effect<A, E, LanguageModel.LanguageModel | OrganCost | Log>
+    | ((log: string) => Effect.Effect<A, E, LanguageModel.LanguageModel | OrganCost | Log>),
 ) => {
   const dir = mkdtempSync(join(tmpdir(), "tutti-organ-test-"))
   const log = join(dir, "fake.jsonl")
@@ -69,7 +71,7 @@ const run = async <A, E>(
     env: ["ANTHROPIC_API_KEY", "CLAUDE_AGENT_SDK_CLIENT_APP"],
   }
   const exit = await Effect.runPromiseExit(
-    effect.pipe(
+    (typeof effect === "function" ? effect(log) : effect).pipe(
       Effect.provide(
         layer({
           account: { subscription: true },
@@ -395,13 +397,19 @@ describe("AgentSdkLanguageModel", () => {
   })
 
   test("interrupting the call aborts the session and removes its folder", async () => {
-    const { exit, logged } = await run(
-      [{ hang: true }],
+    // The call is interrupted once the fake has started, however long that takes on a loaded
+    // machine, rather than after a fixed time.
+    const fakeStarted = (log: string) =>
+      Effect.suspend(() =>
+        readLog(log).started.length > 0 ? Effect.void : Effect.fail("not yet"),
+      ).pipe(Effect.retry(Schedule.spaced(Duration.millis(20))))
+    const { exit, logged } = await run([{ hang: true }], (log) =>
       LanguageModel.generateText({ prompt: "Hang." }).pipe(
-        Effect.timeoutOption(Duration.millis(500)),
+        Effect.as("answered"),
+        Effect.raceFirst(fakeStarted(log).pipe(Effect.as("interrupted"))),
       ),
     )
-    expect(value(exit)._tag).toBe("None")
+    expect(value(exit)).toBe("interrupted")
     const [started] = logged.started
     if (started === undefined) throw new Error("the fake didn't start")
     expect(existsSync(started.cwd)).toBe(false)
