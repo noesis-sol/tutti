@@ -16,6 +16,7 @@
 // The live layer is src/agent/AgentHostLive.ts (over the Agent SDK); the test layer is
 // src/testing/AgentHost.ts, which replays scripted sessions and records what it was sent.
 import type {
+  McpSdkServerConfigWithInstance,
   SDKMessage,
   SDKPermissionDeniedMessage,
   SDKUserMessage,
@@ -61,6 +62,19 @@ export interface Session {
    * prompt, in the main checkout.
    */
   readonly probe?: true
+  /**
+   * The feature interview's session (§ 4.10), in the main checkout: its instructions and tutti's
+   * own MCP server in place of the worker prompt and the workers' servers.
+   */
+  readonly interview?: InterviewSetup
+}
+
+/** What an interview's session is given beside the workers' options (§ 4.10). */
+export interface InterviewSetup {
+  /** The interview's instructions, appended to the claude_code preset. */
+  readonly prompt: string
+  /** tutti's in-process MCP server, with tickets_list, ticket_show and file_feature. */
+  readonly server: McpSdkServerConfigWithInstance
 }
 
 /**

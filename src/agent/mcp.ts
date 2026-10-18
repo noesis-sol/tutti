@@ -18,10 +18,13 @@ import { SetupProblem } from "../cli/AppConfig.ts"
 /** The config scopes a name is resolved from, in Claude Code's order. */
 export type Scope = "local" | "project" | "user"
 
-/** A server workers get: its name, the scope its definition came from, and the definition. */
+/**
+ * A server workers get: its name, the scope its definition came from (`sdk` for an in-process
+ * server of tutti's own, the interview's), and the definition.
+ */
 export interface ChosenServer {
   readonly name: string
-  readonly scope: Scope
+  readonly scope: Scope | "sdk"
   readonly definition: McpServerConfig
 }
 
@@ -37,6 +40,12 @@ export const noServersNote = "workers get no MCP servers: workers.mcp_servers is
 
 /** No servers at all: the environment probe's (§ 4.9). */
 export const noServers: ChosenServers = { servers: [], note: null }
+
+/** One in-process server of tutti's own, `name`, made by createSdkMcpServer: the interview's (§ 4.10). */
+export const inProcess = (name: string, definition: McpServerConfig): ChosenServers => ({
+  servers: [{ name, scope: "sdk", definition }],
+  note: null,
+})
 
 /** A claude.ai connector's name starts with this, in system/init and the user's .claude.json. */
 export const connectorPrefix = "claude.ai "

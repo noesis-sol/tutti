@@ -61,8 +61,9 @@ import {
 } from "./AgentHost.ts"
 import type { Attention } from "./Attention.ts"
 import { workerEnv } from "./env.ts"
-import { type ChosenServers, checkInit, noServers } from "./mcp.ts"
-import { type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
+import { serverName } from "./interviewTools.ts"
+import { type ChosenServers, checkInit, inProcess, noServers } from "./mcp.ts"
+import { interviewOptions, type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
 import type { Transcripts } from "./Transcripts.ts"
 import { WorkerEvent } from "./WorkerState.ts"
 
@@ -119,7 +120,7 @@ export interface LiveOptions {
 interface Open {
   readonly ticket: string
   readonly sessionId: string
-  /** The MCP servers it was given: the workers', or none for the probe. */
+  /** The MCP servers it was given: the workers', none for the probe, tutti's for the interview. */
   readonly servers: ChosenServers
   readonly entry: WorkerEntry
   readonly inbox: Queue.Queue<SDKUserMessage, Cause.Done>
@@ -367,18 +368,34 @@ export const layer = (
           )
           const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
           const abort = new AbortController()
-          const servers = session.probe === true ? noServers : options.servers
-          const sdkOptions: Options = workerOptions({
-            config,
-            ticket,
-            worktree: session.cwd,
-            prompt: session.probe === true ? null : options.prompt,
-            servers,
-            callbacks,
-            session: how,
-            env,
-            abortController: abort,
-          })
+          const setup = session.interview
+          const servers =
+            setup !== undefined
+              ? inProcess(serverName, setup.server)
+              : session.probe === true
+                ? noServers
+                : options.servers
+          const sdkOptions: Options =
+            setup !== undefined
+              ? interviewOptions({
+                  config,
+                  setup,
+                  callbacks,
+                  session: how,
+                  env,
+                  abortController: abort,
+                })
+              : workerOptions({
+                  config,
+                  ticket,
+                  worktree: session.cwd,
+                  prompt: session.probe === true ? null : options.prompt,
+                  servers,
+                  callbacks,
+                  session: how,
+                  env,
+                  abortController: abort,
+                })
           const spawn = sdkOptions.spawnClaudeCodeProcess
           const spawned: Open["spawned"] = { child: undefined }
           const opened: Open = {

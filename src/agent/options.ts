@@ -2,6 +2,8 @@
 // ticket, its worktree, the worker prompt, the chosen MCP servers, the session's callbacks, its
 // environment and its session ID: `sessionId` for a new session, `resume` for a resumed one, never
 // both (claude refuses the pair, docs/spikes/02-sdk-lifecycle.md).
+// The login probe's (§ 4.13) and the feature interview's (§ 4.10) are made from the same shared
+// options.
 //
 // Claude Code is started detached, the leader of a process group of its own, so the SIGINT a
 // terminal sends tutti's group on Ctrl+C doesn't reach it mid-turn (the spike's § 5). The SDK's
@@ -18,6 +20,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { StringDecoder } from "node:string_decoder"
 import type {
   CanUseTool,
+  HookCallbackMatcher,
   OnElicitation,
   Options,
   SpawnOptions,
@@ -26,8 +29,10 @@ import { Effect } from "effect"
 import type { AppConfigValue } from "../cli/AppConfig.ts"
 import { askUserQuestionTool, forTicket, type WorkerPrompt } from "../project/prompt.ts"
 import { reap } from "../services/reaper.ts"
+import type { InterviewSetup } from "./AgentHost.ts"
 import { Attention } from "./Attention.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
+import { qualifiedToolNames, serverName } from "./interviewTools.ts"
 import { type ChosenServers, mcpServers } from "./mcp.ts"
 import { Transcripts } from "./Transcripts.ts"
 
@@ -191,6 +196,85 @@ export const probeOptions = (input: ProbeOptionsInput): Options => ({
   mcpServers: {},
   persistSession: false,
 })
+
+/** The built-in tools an interview's session has (§ 4.10): the whole set, so there's nothing to deny. */
+export const interviewBuiltins: ReadonlyArray<string> = [
+  "Read",
+  "Grep",
+  "Glob",
+  "Agent",
+  "AskUserQuestion",
+]
+
+/**
+ * The interview's PreToolUse hook that allows its own tools without asking: they read Beads, or file
+ * what the user agreed to. A hook rather than allowedTools, whose bare names make the SDK warn on
+ * stderr, under the renderer, that canUseTool is shadowed for them.
+ */
+export const allowOwnTools: HookCallbackMatcher = {
+  matcher: qualifiedToolNames.join("|"),
+  hooks: [
+    async () => ({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        permissionDecisionReason: "one of tutti's own interview tools",
+      },
+    }),
+  ],
+}
+
+/** What an interview's options are made from. */
+export interface InterviewOptionsInput {
+  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
+  readonly setup: InterviewSetup
+  /** The interview's callbacks, as a worker's (workerCallbacks): AskUserQuestion goes to Attention. */
+  readonly callbacks: WorkerCallbacks
+  readonly session: SessionStart
+  /** workerEnv()'s environment (§ 4.13). */
+  readonly env: Record<string, string>
+  readonly abortController: AbortController
+}
+
+/**
+ * The feature interview's SDK options (§ 4.10): the workers' shared options, in the main checkout,
+ * its settings loaded. Its tools are enforced: interviewBuiltins is the whole built-in set (a
+ * subagent inherits it), and tutti's in-process server is its one MCP server, its three tools
+ * allowed without asking (allowOwnTools). The interview's instructions are appended to the claude_code preset.
+ */
+export const interviewOptions = (input: InterviewOptionsInput): Options => {
+  const { callbacks } = input
+  // The workers' ask_user_question setting is theirs: the interview always has AskUserQuestion.
+  const { disallowedTools: _, ...shared } = sharedOptions({
+    config: input.config,
+    env: input.env,
+    stderr: callbacks.stderr,
+    abortController: input.abortController,
+  })
+  return {
+    ...shared,
+    cwd: input.config.repo,
+    tools: [...interviewBuiltins],
+    systemPrompt: {
+      type: "preset",
+      preset: "claude_code",
+      append: input.setup.prompt,
+      snapshot: true,
+    },
+    ...(input.session._tag === "New"
+      ? { sessionId: input.session.sessionId }
+      : { resume: input.session.sessionId }),
+    mcpServers: { [serverName]: input.setup.server },
+    canUseTool: callbacks.canUseTool,
+    onElicitation: callbacks.onElicitation,
+    hooks: {
+      ...callbacks.hooks,
+      PreToolUse: [...(callbacks.hooks.PreToolUse ?? []), allowOwnTools],
+    },
+    forwardSubagentText: true,
+    includePartialMessages: true,
+  }
+}
 
 /** The callbacks of `ticket`'s worker, from Attention and Transcripts, its hooks recording to `recorder`. */
 export const workerCallbacks = (ticket: string, recorder: Recorder) =>
