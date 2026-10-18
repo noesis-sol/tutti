@@ -28,6 +28,7 @@ import { Duration, Effect, Layer, Option, Schedule, Stream } from "effect"
 import { AgentHost } from "../../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../../src/agent/AgentHostLive.ts"
 import { Attention, type AttentionRequest, type Policy } from "../../src/agent/Attention.ts"
+import { paneVariable } from "../../src/agent/env.ts"
 import type { ChosenServers } from "../../src/agent/mcp.ts"
 import { noServersNote } from "../../src/agent/mcp.ts"
 import type { Transcripts } from "../../src/agent/Transcripts.ts"
@@ -91,11 +92,15 @@ const repository = (): string => {
   return dir
 }
 
-/** tutti's environment without the variables of a Claude Code session the tests may run under. */
+/**
+ * tutti's environment without the variables of a Claude Code session the tests may run under, or
+ * of the terminal pane it runs in (paneVariable): sessions with those report to the terminal as the
+ * pane's agent, and Herdr then drops the name of the worker running the tests (tutti-y0e).
+ */
 const hostEnv = (): Record<string, string | undefined> =>
   Object.fromEntries(
     Object.entries(process.env).filter(
-      ([name]) => !/^CLAUDE(CODE$|_CODE_|_PID$|_EFFORT$)/.test(name),
+      ([name]) => !/^CLAUDE(CODE$|_CODE_|_PID$|_EFFORT$)/.test(name) && !paneVariable(name),
     ),
   )
 

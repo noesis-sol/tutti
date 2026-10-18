@@ -1,12 +1,22 @@
 // The environment of the Claude Code processes tutti starts (§ 4.1, § 4.13). The SDK's `env`
 // replaces the subprocess's environment rather than merging with it, so workerEnv starts from the
 // whole of tutti's own, adds tutti's variables, and then keeps or removes ANTHROPIC_API_KEY: the
-// key outranks a subscription login and would bill the API without a word.
+// key outranks a subscription login and would bill the API without a word. It leaves out the
+// variables naming the terminal pane tutti runs in, which its sessions don't own.
 import pkg from "../../package.json" with { type: "json" }
 import type { billings } from "../cli/flags.ts"
 
 /** The variable that holds an Anthropic API key. */
 export const apiKeyVariable = "ANTHROPIC_API_KEY"
+
+/**
+ * Whether `name` names the terminal pane tutti runs in: Herdr's HERDR_*, cmux's CMUX_*, and tmux's
+ * TMUX and TMUX_PANE. A Claude Code session that has them, with the user's settings loaded, reports
+ * itself as that pane's agent through the terminal's hooks: Herdr then takes the pane's agent as
+ * replaced and drops its name, which orchestra finds its workers by (tutti-y0e).
+ */
+export const paneVariable = (name: string): boolean =>
+  name.startsWith("HERDR_") || name.startsWith("CMUX_") || name === "TMUX" || name === "TMUX_PANE"
 
 /**
  * What tutti adds to every worker's environment:
@@ -42,13 +52,13 @@ export interface WorkerEnvOptions {
 
 /**
  * A worker's (or an organ's) environment: `env` with tutti's variables laid over it, without
- * ANTHROPIC_API_KEY when there is a subscription login and billing isn't api. Unset variables are
- * left out.
+ * ANTHROPIC_API_KEY when there is a subscription login and billing isn't api. Unset variables and
+ * the terminal pane's (paneVariable) are left out.
  */
 export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => {
   const result: Record<string, string> = {}
   for (const [name, value] of Object.entries(options.env ?? process.env)) {
-    if (value !== undefined) result[name] = value
+    if (value !== undefined && !paneVariable(name)) result[name] = value
   }
   Object.assign(result, workerVariables(options.version))
   if (options.subscription && options.billing !== "api") delete result[apiKeyVariable]

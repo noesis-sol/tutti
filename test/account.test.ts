@@ -53,6 +53,36 @@ describe("workerEnv", () => {
     expect(result.CLAUDE_AGENT_SDK_CLIENT_APP).toBe("tutti/1.2.3")
   })
 
+  test("leaves out the terminal pane's variables: Herdr's, cmux's and tmux's", () => {
+    const pane = {
+      HERDR_ENV: "1",
+      HERDR_PANE_ID: "w1:p1",
+      HERDR_SOCKET_PATH: "/tmp/herdr.sock",
+      CMUX_SURFACE_ID: "s1",
+      TMUX: "/tmp/tmux-501/default,1,0",
+      TMUX_PANE: "%1",
+    }
+    expect(
+      workerEnv({
+        env: { ...env, ...pane, TMUX_TMPDIR: "/tmp", MY_HERDR_NOTE: "kept" },
+        subscription: false,
+        billing: "subscription",
+        version: "1.2.3",
+      }),
+    ).toEqual({
+      PATH: "/usr/bin",
+      HOME: "/home/me",
+      TMUX_TMPDIR: "/tmp",
+      MY_HERDR_NOTE: "kept",
+      ...tuttiVariables,
+    })
+    expect(probeEnv({ env: { ...env, ...pane }, version: "1.2.3" })).toEqual({
+      PATH: "/usr/bin",
+      HOME: "/home/me",
+      ...tuttiVariables,
+    })
+  })
+
   test("names package.json's version as the client app by default", () => {
     expect(workerVariables().CLAUDE_AGENT_SDK_CLIENT_APP).toMatch(/^tutti\/\d+\.\d+\.\d+/)
   })
