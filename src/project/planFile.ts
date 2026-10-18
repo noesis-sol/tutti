@@ -16,8 +16,7 @@
 import { posix } from "node:path"
 import { Effect, Result, Schema } from "effect"
 import { soloLabel } from "../run/holds.ts"
-import { beadsWhy } from "../run/merge.ts"
-import { Beads, type BeadsError, MetadataKey } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, MetadataKey } from "../services/Beads.ts"
 
 /** The types a planned ticket can have. */
 export const ticketTypes = ["task", "feature", "bug", "chore"] as const

@@ -52,9 +52,12 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { Repository } from "../src/testing/Git.ts"
+import { texts } from "../src/testing/Log.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import {
+  advance,
   backlog,
+  type Env,
   expectExitCode,
   expectLog,
   expectPhases,
@@ -365,6 +368,16 @@ describe("what triage is handed", () => {
   })
 })
 
+/** Waits, in real time, until a log line matches `pattern`. */
+const untilLogged = (pattern: RegExp) =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 2000; i++) {
+      if ((yield* texts).some((text) => pattern.test(text))) return
+      yield* Effect.promise(() => Bun.sleep(2))
+    }
+    throw new Error(`no log line matched ${pattern}`)
+  })
+
 /** Organs over canned `answers`, every call recorded in `calls`. */
 const organsLayer = (answers: Answers, calls: Array<OrganCallRecord>) =>
   Organs.layer.pipe(Layer.provide(cannedLayer(answers, calls)))
@@ -606,6 +619,8 @@ describe("triage in a run", () => {
     readonly calls?: Array<OrganCallRecord>
     readonly settings?: Partial<ReturnType<typeof appConfig>["settings"]>
     readonly scripts: (world: World) => Readonly<Record<string, ReadonlyArray<SessionScript>>>
+    /** Runs beside the run, before it is joined. */
+    readonly during?: Effect.Effect<void, unknown, Env>
   }) => {
     const repo = folder("repo")
     const root = folder("worktrees")
@@ -615,7 +630,11 @@ describe("triage in a run", () => {
       for (const id of plan.tickets) {
         yield* git.addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
       }
-      return yield* run({ version: "0.1.0-test", base: "main", start: [line`START tutti`] })
+      const fiber = yield* Effect.forkChild(
+        run({ version: "0.1.0-test", base: "main", start: [line`START tutti`] }),
+      )
+      if (plan.during !== undefined) yield* plan.during
+      return yield* Fiber.join(fiber)
     })
     return scenario(
       {
@@ -692,8 +711,9 @@ describe("triage in a run", () => {
 
   test("not a ticket whose worker reached the usage limit in its attempt", async () => {
     const calls: Array<OrganCallRecord> = []
+    // The limit resets an hour into the run (TestClock starts at the epoch): the run waits for it.
     const limited: SessionScript = [
-      ...hitsUsageLimit(2_000_000_000),
+      ...hitsUsageLimit(3600),
       step(Effect.promise(() => Bun.sleep(20))),
       gone("its session ended"),
     ]
@@ -702,6 +722,7 @@ describe("triage in a run", () => {
       organs: { triage: verdict({ cause: "problem", confidence: "low" }) },
       calls,
       scripts: (world) => ({ "t-1": [limited], "t-2": [defersDenied(world, "t-2")] }),
+      during: Effect.andThen(untilLogged(/^USAGE_LIMIT: nothing else runs/), advance("2 hours")),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Deferred", "t-2": "Deferred" })

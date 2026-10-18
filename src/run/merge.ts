@@ -25,7 +25,7 @@ import { Effect, Result } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads, type BeadsError } from "../services/Beads.ts"
+import { Beads, beadsWhy } from "../services/Beads.ts"
 import type { CheckError, Checks } from "../services/Checks.ts"
 import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
 import type { Store } from "../services/Store.ts"
@@ -117,17 +117,9 @@ export const gitWhy = (error: GitError): string =>
     ? (error.stderr.trim().split("\n")[0] ?? "") || `exit code ${error.exitCode}`
     : `git took longer than ${formatDuration(error.timeLimit)}`
 
-/** What bd said of its failure, in a few words. */
-export const beadsWhy = (error: BeadsError): string => {
-  switch (error._tag) {
-    case "BeadsFailed":
-      return (error.stderr.trim().split("\n")[0] ?? "") || `exit code ${error.exitCode}`
-    case "BeadsTimedOut":
-      return `bd took longer than ${formatDuration(error.timeLimit)}`
-    case "BeadsUnreadable":
-      return error.reason
-  }
-}
+// What bd said of its failure lives with BeadsError, where the agent layer can read it without the
+// run's modules; it is said from here too, as the run's other failures are.
+export { beadsWhy }
 
 /** Whether `path` is `folder` or inside it. */
 const under = (path: string, folder: string): boolean =>

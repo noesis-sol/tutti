@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -21,6 +21,10 @@ import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
+
+// Each call starts the fake as a Claude Code process, about 3 s on an idle machine: bun's 5 s
+// default fails them when other checks run beside this one.
+setDefaultTimeout(30_000)
 
 /** What the fake logged at its start: its arguments, PID, folder and the variables asked for. */
 interface Started {

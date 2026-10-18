@@ -30,8 +30,7 @@ import {
   ticketTypes,
   validatePlan,
 } from "../project/planFile.ts"
-import { beadsWhy } from "../run/merge.ts"
-import { Beads, type Issue } from "../services/Beads.ts"
+import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 
 /** The interview's MCP server's name: its tools are `mcp__tutti__<name>` to Claude Code. */

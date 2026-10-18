@@ -13,6 +13,7 @@ import {
   Schema,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
+import { formatDuration } from "../project/configFile.ts"
 import { type Command, exec, type Output, showCommand, TimeLimit } from "./exec.ts"
 
 /** bd's built-in statuses; a project may configure more, so any other string can come back too. */
@@ -106,6 +107,18 @@ export class BeadsUnreadable extends Schema.TaggedError<BeadsUnreadable>()("Bead
 }) {}
 
 export type BeadsError = BeadsFailed | BeadsTimedOut | BeadsUnreadable
+
+/** What bd said of its failure, in a few words. */
+export const beadsWhy = (error: BeadsError): string => {
+  switch (error._tag) {
+    case "BeadsFailed":
+      return (error.stderr.trim().split("\n")[0] ?? "") || `exit code ${error.exitCode}`
+    case "BeadsTimedOut":
+      return `bd took longer than ${formatDuration(error.timeLimit)}`
+    case "BeadsUnreadable":
+      return error.reason
+  }
+}
 
 // bd's JSON, as far as tutti reads it. Unknown keys are dropped, and a missing or null text is "".
 const Text = Schema.optionalKey(Schema.NullOr(Schema.String))
