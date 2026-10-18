@@ -213,7 +213,7 @@ describe("the report's evidence", () => {
     expect(calls).toHaveLength(1)
     const [call] = calls
     expect(call?.call.organ).toBe("reviewer")
-    expect(call?.system).toBe(reviewer.system)
+    expect(call?.system).toBe(`\n\n${reviewer.system}`)
     const input = call?.input ?? ""
     expect(input).toContain(
       "t-1 (Done (merged in abc123)): 3 attention requests (2 permissions, 1 question), " +

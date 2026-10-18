@@ -162,7 +162,7 @@ describe("Organs", () => {
   test("an organ's answer is decoded from its structured output", async () => {
     const { exit, calls } = await run({}, ask(organ()))
     expect(exit).toMatchObject({ _tag: "Success", value: answer })
-    expect(calls[0]?.system).toBe(organ().system)
+    expect(calls[0]?.system).toBe(`\n\n${organ().system}`)
     expect(calls[0]?.input).toBe("What became of t-1?\n\n")
   })
 

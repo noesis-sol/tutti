@@ -193,7 +193,7 @@ describe("AgentSdkLanguageModel", () => {
       string,
       unknown
     >
-    expect(initialize.systemPrompt).toEqual(["You are the triage organ."])
+    expect(initialize.systemPrompt).toEqual(["\n\nYou are the triage organ."])
     expect(initialize.jsonSchema).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -447,7 +447,7 @@ describe("toTurn", () => {
               },
             ]),
           )
-          expect(turn).toEqual({ systemPrompt: systems.join("\n\n"), userText: user })
+          expect(turn).toEqual({ systemPrompt: `\n\n${systems.join("\n\n")}`, userText: user })
         },
       ),
     )

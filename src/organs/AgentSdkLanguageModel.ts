@@ -1,9 +1,10 @@
 // AgentSdkLanguageModel (§ 6.1): the effect/ai LanguageModel organs are written against, over the
 // Agent SDK, one SDK session per call, as the M0 report recommends (docs/spikes/04-effect-ai.md).
 //
-// - The prompt's system messages become the SDK's systemPrompt, a plain string, and its one user
-//   message the session's one user message. Anything else (history, a second user message, a file
-//   part, tools) doesn't fit one fresh turn and is refused with InvalidUserInputError.
+// - The prompt's system messages become the SDK's systemPrompt, a plain string that starts with a
+//   blank line (Claude Code puts its identity line in front of it with no separator), and its one
+//   user message the session's one user message. Anything else (history, a second user message, a
+//   file part, tools) doesn't fit one fresh turn and is refused with InvalidUserInputError.
 // - For a JSON response, the schema goes through effect/ai's AnthropicStructuredOutput codec
 //   transformer, and its JSON Schema to the SDK as outputFormat json_schema. The result's
 //   structured_output comes back as the text part generateObject decodes. Retries exhausted, and a
@@ -87,7 +88,7 @@ export interface Turn {
 }
 
 /**
- * The prompt as one turn: its system messages, joined with a blank line, and then one user message
+ * The prompt as one turn: its system messages, each after a blank line, and then one user message
  * of text. Anything else is what doesn't fit, as a phrase.
  */
 export const toTurn = (prompt: Prompt.Prompt): Turn | string => {
@@ -116,7 +117,7 @@ export const toTurn = (prompt: Prompt.Prompt): Turn | string => {
     }
   }
   if (userText === undefined) return "no user message"
-  return { systemPrompt: systems.join("\n\n"), userText }
+  return { systemPrompt: `\n\n${systems.join("\n\n")}`, userText }
 }
 
 // ---------------------------------------------------------------------------------------------

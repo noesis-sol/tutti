@@ -3,7 +3,8 @@
 // names. Each organ's answers are played in order, the last repeated; an organ with none fails with
 // UnknownError. A canned answer is the answer's JSON, as the SDK's structured output would give it,
 // or an Effect giving one: one that fails with an AiError, or sleeps on the Clock, or never ends.
-// Every call is recorded, with its system prompt, its input and how the organ ran.
+// Every call is recorded, with its system prompt as the SDK gets it, its input and how the organ
+// ran.
 import { Effect, Layer, Stream } from "effect"
 import { AiError, AnthropicStructuredOutput, LanguageModel, type Response } from "effect/ai"
 import { OrganCall, type OrganCallConfig, toTurn } from "../organs/AgentSdkLanguageModel.ts"
