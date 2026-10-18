@@ -322,11 +322,12 @@ describe("Ctrl+Z", () => {
         const span = line?.spans.find((each) => each.text.includes("can't be suspended"))
         expect((span?.attributes ?? 0) & TextAttributes.DIM).toBe(TextAttributes.DIM)
         expect(tags(value)).toEqual([])
-        await rendered.input(() => Bun.sleep(80))
+        await rendered.input(() => Bun.sleep(700))
         expect(await frameOf(rendered)).not.toContain(suspendToast)
       },
       emptyView,
-      { toastLife: 40 },
+      // Long enough to outlast the press and capture on a loaded machine, in real time.
+      { toastLife: 500 },
     )
   })
 
