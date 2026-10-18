@@ -9,6 +9,7 @@ import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import type { ReactNode } from "react"
 import type { Dashboard as RunDashboard } from "../run/screen.ts"
+import type { Clipboard } from "./clipboard.ts"
 import { Dashboard } from "./Dashboard.tsx"
 import { Input } from "./Input.tsx"
 import { styled } from "./line.tsx"
@@ -76,9 +77,12 @@ export const Root = ({
   </ShellContext.Provider>
 )
 
-/** The dashboard a run shows in `shell`'s renderer, drawn in the theme `themeOf` makes. */
+/**
+ * The dashboard a run shows in `shell`'s renderer, drawn in the theme `themeOf` makes, copying a
+ * drag's selection with `clipboard`.
+ */
 export const dashboard =
-  (shell: Shell, themeOf: (appearance: Appearance) => Theme): RunDashboard =>
+  (shell: Shell, themeOf: (appearance: Appearance) => Theme, clipboard?: Clipboard): RunDashboard =>
   (inputs) =>
     Effect.gen(function* () {
       const value: ShellValue = {
@@ -87,6 +91,7 @@ export const dashboard =
         commands: inputs.commands,
         appearance: shell.appearance,
         themeOf,
+        ...(clipboard === undefined ? {} : { clipboard }),
       }
       const root = yield* Effect.acquireRelease(
         Effect.sync(() => createRoot(shell.renderer)),

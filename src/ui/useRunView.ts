@@ -16,6 +16,7 @@ import {
 import { type Commands, offer, type UiCommand } from "../run/commands.ts"
 import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
+import type { Clipboard } from "./clipboard.ts"
 import type { Appearance, Theme } from "./theme.ts"
 
 /** A value outside React, for useSyncExternalStore: the latest, and a way to hear of the next. */
@@ -78,6 +79,8 @@ export interface ShellValue {
   readonly themeOf: (appearance: Appearance) => Theme
   /** The time, in epoch milliseconds, for elapsed times; Date.now when left out. */
   readonly now?: () => number
+  /** Where a drag's selection is copied (§ 7.3); nothing is copied when left out. */
+  readonly clipboard?: Clipboard
 }
 
 export const ShellContext = createContext<ShellValue | null>(null)

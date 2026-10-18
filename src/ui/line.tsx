@@ -1,7 +1,8 @@
 // A line of the dashboard as segments of text, each in a style of the theme's, measured and cut to
 // the pane's width before it is drawn, so that no line wraps (§ 7.2). Frames are drawn as text too,
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
-import { TextAttributes } from "@opentui/core"
+import { type RGBA, TextAttributes } from "@opentui/core"
+import { createContext, useContext } from "react"
 import type { Role, Style, Theme } from "./theme.ts"
 
 /** What a segment is drawn in: a style's colours and attributes. */
@@ -72,9 +73,32 @@ export const padded = (segments: Segments, width: number): Segments => {
   return short > 0 ? [...segments, seg(" ".repeat(short))] : segments
 }
 
+/** What selected text is drawn in: the props a <text> takes for it. */
+export interface SelectionColours {
+  readonly selectionBg?: RGBA
+  readonly selectionFg?: RGBA
+}
+
+/**
+ * Selected text in the theme's `selection` and `selectionText` roles (§ 7.11). A role left to the
+ * terminal's default colour, as every role is under NO_COLOR, is left to OpenTUI, so that what is
+ * selected still shows.
+ */
+export const selectionLookOf = (theme: Theme): SelectionColours => {
+  const given = (role: "selection" | "selectionText") =>
+    !theme.noColor && theme.scheme.colours[role][theme.appearance]._tag !== "Default"
+  return {
+    ...(given("selection") ? { selectionBg: theme.rgba("selection") } : {}),
+    ...(given("selectionText") ? { selectionFg: theme.rgba("selectionText") } : {}),
+  }
+}
+
+/** The selection colours of the lines drawn under it; OpenTUI's own outside it. */
+export const SelectionLook = createContext<SelectionColours>({})
+
 /** One line, never wrapped: what doesn't fit the box is clipped. */
 export const Line = ({ segments }: { readonly segments: Segments }) => (
-  <text wrapMode="none" height={1}>
+  <text wrapMode="none" height={1} {...useContext(SelectionLook)}>
     {segments.map((each, i) =>
       each.look === null ? (
         // biome-ignore lint/suspicious/noArrayIndexKey: a line's segments are drawn anew in order

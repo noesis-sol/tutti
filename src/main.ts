@@ -59,6 +59,7 @@ import { Store } from "./services/Store.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard } from "./ui/App.tsx"
+import { liveClipboard } from "./ui/clipboard.ts"
 import { planConfirmation, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
 import { open as openRenderer } from "./ui/renderer.ts"
@@ -334,9 +335,16 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               return { _tag: "Nothing", nothing: nothing.success } as const
             }
           }
+          const clipboard = yield* liveClipboard(shell.renderer)
           const ran = yield* Effect.scoped(
             scoped(
-              run({ version, base, start: start(), drains, dashboard: dashboard(shell, themeOf) }),
+              run({
+                version,
+                base,
+                start: start(),
+                drains,
+                dashboard: dashboard(shell, themeOf, clipboard),
+              }),
             ),
           )
           return { _tag: "Ran", ...ran } as const

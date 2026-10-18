@@ -1,11 +1,13 @@
 // The input layers around the screen (§ 7.3): the renderer's keymap, the guards in front of it
 // (split mouse reports, unterminated pastes), the keys every view has (Ctrl+C, Ctrl+Z) and what
-// they open over the view: the box open, and the toasts.
+// they open over the view: the box open, and the toasts. A drag's selection is drawn in the
+// theme's selection roles and copied on release (clipboard.ts).
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
+import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { UiCommand } from "../run/commands.ts"
+import { useCopyOnSelect } from "./clipboard.ts"
 import {
   Box,
   filterMouse,
@@ -15,10 +17,11 @@ import {
   useInput,
   useLayer,
 } from "./keys.ts"
+import { SelectionLook, selectionLookOf } from "./line.tsx"
 import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
 import { makeToasts, suspendToast, Toasts } from "./Toasts.tsx"
-import { external, useCommand } from "./useRunView.ts"
+import { external, useCommand, useTheme } from "./useRunView.ts"
 
 /** Ctrl+C and Ctrl+Z, over every layer, in every view. */
 const GlobalKeys = () => {
@@ -41,6 +44,12 @@ const GlobalKeys = () => {
   return null
 }
 
+/** A drag's selection, copied on release (§ 7.3). */
+const CopyOnSelect = ({ input }: { readonly input: InputState }) => {
+  useCopyOnSelect(input.toasts)
+  return null
+}
+
 /** The box open over the view. */
 const OpenBox = ({ input }: { readonly input: InputState }) => {
   const box = useSyncExternalStore(input.box.subscribe, input.box.get)
@@ -54,8 +63,8 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
 }
 
 /**
- * `children` with the input layers: a keymap on the renderer, its guards, the global keys, the box
- * open and the toasts. `pasteLimit` and `toastLife` are the tests'.
+ * `children` with the input layers: a keymap on the renderer, its guards, the global keys, copying
+ * a drag's selection, the box open and the toasts. `pasteLimit` and `toastLife` are the tests'.
  */
 export const Input = ({
   children,
@@ -67,6 +76,8 @@ export const Input = ({
   readonly toastLife?: number
 }) => {
   const renderer = useRenderer()
+  const theme = useTheme()
+  const selection = useMemo(() => selectionLookOf(theme), [theme])
   const [keymap] = useState(() => createDefaultOpenTuiKeymap(renderer))
   const [input] = useState<InputState>(() => ({
     box: external<Box | null>(null),
@@ -84,12 +95,15 @@ export const Input = ({
   return (
     <KeymapProvider keymap={keymap}>
       <InputContext.Provider value={input}>
-        {children}
-        <GlobalKeys />
-        <QuitKeys />
-        <StopKeys />
-        <OpenBox input={input} />
-        <Toasts store={input.toasts} />
+        <SelectionLook.Provider value={selection}>
+          {children}
+          <GlobalKeys />
+          <QuitKeys />
+          <StopKeys />
+          <CopyOnSelect input={input} />
+          <OpenBox input={input} />
+          <Toasts store={input.toasts} />
+        </SelectionLook.Provider>
       </InputContext.Provider>
     </KeymapProvider>
   )
