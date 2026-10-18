@@ -162,6 +162,17 @@ describe("compareIds", () => {
     expect([...ids].sort(compareIds)).toEqual(["d.3", "e", "e.02", "e.2", "e.2.1", "e.10", "e.a"])
   })
 
+  test("orders IDs with empty segments, and gives 0 for equal ones both ways", () => {
+    const ids = ["a.", ".", "00", "", "a", "0"]
+    expect([...ids].sort(compareIds)).toEqual(["0", "00", "", ".", "a", "a."])
+    for (const a of ids) {
+      expect(compareIds(a, a)).toBe(0)
+      for (const b of ids.filter((b) => b !== a)) {
+        expect(compareIds(a, b)).toBe(-compareIds(b, a))
+      }
+    }
+  })
+
   test("is a total order", () => {
     const id = fc.stringMatching(/^[a-z0-9]{0,3}(\.[a-z0-9]{0,3}){0,3}$/)
     fc.assert(
