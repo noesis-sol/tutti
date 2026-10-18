@@ -72,7 +72,14 @@ const leaderAndGrandchild = (pidFile: string, prelude = "") =>
 describe("exec", () => {
   test("returns a command's stdout, stderr and exit code", async () => {
     const exit = await runExit(exec(sh("echo out; echo err >&2; exit 3")))
-    expect(exit).toEqual(Exit.succeed({ exitCode: 3, stdout: "out\n", stderr: "err\n" }))
+    expect(exit).toEqual(
+      Exit.succeed({
+        exitCode: 3,
+        stdout: "out\n",
+        stderr: "err\n",
+        truncated: { stdout: false, stderr: false },
+      }),
+    )
   })
 
   test("feeds stdin, sets the environment over tutti's, and runs in cwd", async () => {
@@ -94,7 +101,14 @@ describe("exec", () => {
     const exit = await runExit(
       exec(sh("echo first; echo second >&2; echo third", { outputFile: file, maxOutputBytes: 6 })),
     )
-    expect(exit).toEqual(Exit.succeed({ exitCode: 0, stdout: "third\n", stderr: "econd\n" }))
+    expect(exit).toEqual(
+      Exit.succeed({
+        exitCode: 0,
+        stdout: "third\n",
+        stderr: "econd\n",
+        truncated: { stdout: true, stderr: true },
+      }),
+    )
     const lines = readFileSync(file, "utf8").split("\n").filter(Boolean).sort()
     expect(lines).toEqual(["first", "second", "third"])
   })
@@ -135,7 +149,14 @@ describe("run", () => {
     const exit = await runExit(
       run({ command: "printf", args: ["%s", "a b"], timeLimit: "5 seconds" }),
     )
-    expect(exit).toEqual(Exit.succeed({ exitCode: 0, stdout: "a b", stderr: "" }))
+    expect(exit).toEqual(
+      Exit.succeed({
+        exitCode: 0,
+        stdout: "a b",
+        stderr: "",
+        truncated: { stdout: false, stderr: false },
+      }),
+    )
   })
 
   test("fails with CommandFailed carrying the command, exit code and stderr", async () => {
@@ -226,7 +247,12 @@ describe("signals", () => {
     ])
     expect(err).toContain("SIGINT")
     expect(code).toBe(0)
-    expect(JSON.parse(out)).toEqual({ exitCode: 0, stdout: "done\n", stderr: "" })
+    expect(JSON.parse(out)).toEqual({
+      exitCode: 0,
+      stdout: "done\n",
+      stderr: "",
+      truncated: { stdout: false, stderr: false },
+    })
   }, 15000)
 })
 

@@ -52,6 +52,8 @@ export interface Output {
   readonly exitCode: number
   readonly stdout: string
   readonly stderr: string
+  /** Which of stdout and stderr ran past `maxOutputBytes`, so that only their last bytes are kept. */
+  readonly truncated: { readonly stdout: boolean; readonly stderr: boolean }
 }
 
 /**
@@ -97,6 +99,8 @@ export const showCommand = (command: Pick<Command, "command" | "args">): string 
 class Tail {
   private chunks: Array<Uint8Array> = []
   private size = 0
+  /** Some of the stream has been dropped. */
+  cut = false
 
   constructor(private readonly max: number) {}
 
@@ -107,6 +111,7 @@ class Tail {
       const first = this.chunks[0]
       if (first === undefined) break
       const excess = this.size - this.max
+      this.cut = true
       if (first.length <= excess) {
         this.chunks.shift()
         this.size -= first.length
@@ -233,7 +238,12 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       if (timedOut) {
         return yield* new CommandTimedOut({ command: shown, timeLimit, stderr: stderr.text() })
       }
-      return { exitCode, stdout: stdout.text(), stderr: stderr.text() } satisfies Output
+      return {
+        exitCode,
+        stdout: stdout.text(),
+        stderr: stderr.text(),
+        truncated: { stdout: stdout.cut, stderr: stderr.cut },
+      } satisfies Output
     }),
   )
 })

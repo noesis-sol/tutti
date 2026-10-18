@@ -16,9 +16,19 @@ import {
   Semaphore,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
-import { type Command, exec, type Output, showCommand, TimeLimit } from "./exec.ts"
+import {
+  type Command,
+  defaultMaxOutputBytes,
+  exec,
+  type Output,
+  showCommand,
+  TimeLimit,
+} from "./exec.ts"
 
-/** git exited with a code other than 0, or couldn't be started (127). */
+/**
+ * git exited with a code other than 0, couldn't be started (127), or wrote more than a read can
+ * keep (`maxOutputBytes`), with its exit code.
+ */
 export class GitFailed extends Schema.TaggedError<GitFailed>()("GitFailed", {
   /** What was asked of git: `rebase`, `worktree add`, `merge --ff-only`, … */
   op: Schema.String,
@@ -245,11 +255,15 @@ export class Git extends Context.Service<
     currentBranch(dir: string): Effect.Effect<Option.Option<string>, GitError>
   }
 >()("tutti/services/Git") {
-  /** git, with every write taking GitWriter. `command` and `timeLimits` are there for tests. */
+  /**
+   * git, with every write taking GitWriter. `command`, `timeLimits` and `maxOutputBytes` (exec's
+   * cap on the output kept) are there for tests.
+   */
   static readonly layer = (
     options: {
       readonly command?: string
       readonly timeLimits?: { readonly read: Duration.Input; readonly write: Duration.Input }
+      readonly maxOutputBytes?: number
     } = {},
   ) =>
     Layer.effect(
@@ -262,6 +276,7 @@ export class Git extends Context.Service<
         >()
         const bin = options.command ?? "git"
         const limits = options.timeLimits ?? TimeLimit
+        const maxOutputBytes = options.maxOutputBytes ?? defaultMaxOutputBytes
 
         // Runs git in dir and returns its output whatever its exit code.
         const git = (
@@ -276,6 +291,7 @@ export class Git extends Context.Service<
             args,
             timeLimit,
             cwd: dir,
+            maxOutputBytes,
             // No prompt for credentials or an editor can hold a command until its time limit.
             env: { GIT_TERMINAL_PROMPT: "0", GIT_EDITOR: "true", ...env },
           }
@@ -305,12 +321,26 @@ export class Git extends Context.Service<
               : Effect.fail(failed(op, shown, output))
 
         // A read takes no optional lock (the index's, as status refreshes it), so it can't make a
-        // worker's own git command fail on a lock held for a moment.
-        const read = (op: string, dir: string, args: ReadonlyArray<string>) =>
+        // worker's own git command fail on a lock held for a moment. Its output past exec's cap
+        // would have lost its start, a partial first field and the entries before it, so it fails.
+        const gitRead = (op: string, dir: string, args: ReadonlyArray<string>) =>
           Effect.flatMap(
             git(op, dir, args, limits.read, { GIT_OPTIONAL_LOCKS: "0" }),
-            succeeded(op),
+            ({ shown, output }) =>
+              output.truncated.stdout
+                ? Effect.fail(
+                    new GitFailed({
+                      op,
+                      command: shown,
+                      exitCode: output.exitCode,
+                      stderr: `its output ran past ${maxOutputBytes} bytes, and only the last were kept\n${output.stderr}`,
+                    }),
+                  )
+                : Effect.succeed({ shown, output }),
           )
+
+        const read = (op: string, dir: string, args: ReadonlyArray<string>) =>
+          Effect.flatMap(gitRead(op, dir, args), succeeded(op))
 
         const write = (op: string, dir: string, args: ReadonlyArray<string>) =>
           writer.withLock(Effect.flatMap(git(op, dir, args, limits.write), succeeded(op)))
@@ -420,13 +450,13 @@ export class Git extends Context.Service<
             Effect.map(read("merge-base", repo, ["merge-base", a, b]), (out) => out.trim()),
           holds: (repo, base, branch) =>
             Effect.gen(function* () {
-              const { shown, output } = yield* git(
+              const { shown, output } = yield* gitRead("merge-tree", repo, [
                 "merge-tree",
-                repo,
-                ["merge-tree", "--write-tree", "--end-of-options", base, branch],
-                limits.read,
-                { GIT_OPTIONAL_LOCKS: "0" },
-              )
+                "--write-tree",
+                "--end-of-options",
+                base,
+                branch,
+              ])
               // The merged tree's hash is its first line; exit 1 is conflicts, a merge that changes base.
               if (output.exitCode === 1) return false
               if (output.exitCode !== 0) return yield* failed("merge-tree", shown, output)
@@ -497,15 +527,7 @@ export class Git extends Context.Service<
             ),
           currentBranch: (dir) =>
             Effect.flatMap(
-              git(
-                "symbolic-ref",
-                dir,
-                ["symbolic-ref", "--quiet", "--short", "HEAD"],
-                limits.read,
-                {
-                  GIT_OPTIONAL_LOCKS: "0",
-                },
-              ),
+              gitRead("symbolic-ref", dir, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
               ({ shown, output }) =>
                 // --quiet: exit 1, saying nothing, is HEAD naming no branch.
                 output.exitCode === 0

@@ -246,7 +246,7 @@ const recording = (
             stderr: "no notification server\n",
           })
         }
-        return { exitCode: 0, stdout: "", stderr: "" }
+        return { exitCode: 0, stdout: "", stderr: "", truncated: { stdout: false, stderr: false } }
       }),
     write: (text) => Effect.sync(() => void written.push(text)),
   }
