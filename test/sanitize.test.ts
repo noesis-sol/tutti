@@ -192,15 +192,17 @@ const unescapeMarkdown = (markdown: string): string =>
   )
 
 // literal is whether markdown has no character Markdown would act on: no indentation before text,
-// none of \ ` * _ ~ [ ] < > & | anywhere, and none of # > + = - or a number with . or ) at a line's
-// start, unless escaped. Indentation written as character references is not indentation.
+// none of \ ` * _ ~ [ ] < > & | @ anywhere, no http://, https://, ftp:// or www. a bare link starts
+// with, and none of # > + = - or a number with . or ) at a line's start, unless escaped.
+// Indentation written as character references is not indentation.
 const literal = (markdown: string): boolean => {
   for (const whole of markdown.split(/\r\n|\r|\n/)) {
     const line = whole.replace(/^(&#32;|&#9;)*/, "")
     if (/^[ \t]+[^ \t]/.test(line) || /^([#>+=-]|\d+[.)])/.test(line)) return false
+    if (/(https?|ftp):\/\/|www\./i.test(line)) return false
     for (let i = 0; i < line.length; i++) {
       if (line[i] === "\\") i++
-      else if ("\\`*_~[]<>&|".includes(line[i] ?? "")) return false
+      else if ("\\`*_~[]<>&|@".includes(line[i] ?? "")) return false
     }
   }
   return true
@@ -217,7 +219,7 @@ describe("escapeMarkdown", () => {
     ["- item\n+ item\n12. item\n3) item", "\\- item\n\\+ item\n12\\. item\n3\\) item"],
     ["title\n===", "title\n\\==="],
     ["*bold* _it_ ~~gone~~ `code`", "\\*bold\\* \\_it\\_ \\~\\~gone\\~\\~ \\`code\\`"],
-    ["[link](https://x) ![img](y)", "\\[link\\](https://x) !\\[img\\](y)"],
+    ["[link](https://x) ![img](y)", "\\[link\\](https\\://x) !\\[img\\](y)"],
     ["<b>html</b> &amp; a|b", "\\<b\\>html\\</b\\> \\&amp; a\\|b"],
     ["C:\\path", "C:\\\\path"],
     ["tutti-nrg.2.2 is 1.5 - 2", "tutti-nrg.2.2 is 1.5 - 2"],

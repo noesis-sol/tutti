@@ -86,8 +86,11 @@ export const sanitizeLine = (text: string): string => sanitize(text).replace(/[\
 
 // Characters that mean something in Markdown anywhere on a line: escapes, code, emphasis,
 // strikethrough, links and images (whose ! and parentheses mean nothing without the brackets),
-// HTML, autolinks, entities and table cells.
-const inlineSpecial = /[\\`*_~[\]<>&|]/g
+// HTML, autolinks, entities, table cells and the @ of an email address, which GFM links bare.
+const inlineSpecial = /[\\`*_~[\]<>&|@]/g
+
+// What starts a link GFM finds in bare text: the : of http://, https:// or ftp:// and the . of www.
+const bareLink = /(?<=https?|ftp)(?=:\/\/)|(?<=www)(?=\.)/gi
 
 // The start of a line with text on it: its indentation, which would make the line code, where
 // escapes are shown rather than read, and what starts a heading, a block quote, a list item or a
@@ -101,6 +104,7 @@ const lineStart = /^([ \t]*)(?=[^ \t\n\r])([#>+=-]|\d+[.)])?/gm
 export const escapeMarkdown = (text: string): string =>
   text
     .replace(inlineSpecial, "\\$&")
+    .replace(bareLink, "\\")
     .replace(lineStart, (_, indent: string, marker: string | undefined) => {
       const references = indent.replace(/ /g, "&#32;").replace(/\t/g, "&#9;")
       return marker ? `${references}${marker.slice(0, -1)}\\${marker.slice(-1)}` : references
