@@ -47,12 +47,21 @@ export const reportFatal = (error: unknown): void => {
   process.exit(exitCodes.tool)
 }
 
-/** The handler for an error nothing caught: destroys `renderer`, then `report`s the error. */
+/** How long a fatal error's report waits for the renderer to close, in ms. */
+export const closeLimit = 1000
+
+/**
+ * The handler for an error nothing caught: destroys `renderer`, waits until it has closed (the
+ * terminal back on the main screen, out of raw mode; OpenTUI closes it a microtask after destroy())
+ * or `closeLimit` has passed, then `report`s the error. The promise is done once it has reported.
+ */
 export const fatalHandler =
   (renderer: CliRenderer, report: (error: unknown) => void) =>
-  (error: unknown): void => {
+  (error: unknown): Promise<void> => {
     renderer.destroy()
-    report(error)
+    return Promise.race([renderer.closed.catch(() => undefined), Bun.sleep(closeLimit)]).then(() =>
+      report(error),
+    )
   }
 
 /** The process events a fatal handler listens to. */

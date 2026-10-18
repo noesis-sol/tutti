@@ -231,13 +231,17 @@ describe("the renderer", () => {
     })
   })
 
-  test("an error nothing caught destroys the renderer before it is reported", async () => {
+  test("an error nothing caught is reported once the renderer has closed", async () => {
     const { renderer } = await testRenderer()
-    let destroyedFirst: boolean | undefined
-    fatalHandler(renderer, () => {
-      destroyedFirst = renderer.isDestroyed
+    let closed = false
+    void renderer.closed.then(() => {
+      closed = true
+    })
+    let closedFirst: boolean | undefined
+    await fatalHandler(renderer, () => {
+      closedFirst = renderer.isDestroyed && closed
     })(new Error("boom"))
-    expect(destroyedFirst).toBe(true)
+    expect(closedFirst).toBe(true)
   })
 
   test("listens for uncaught exceptions and rejections while it is open, and only then", async () => {
@@ -250,10 +254,10 @@ describe("the renderer", () => {
       listeners(event).filter((listener) => !before[i]?.has(listener)),
     )
     expect(added.map((listeners) => listeners.length)).toEqual([1, 1])
-    const handler = added[0]?.[0] as (error: unknown) => void
+    const handler = added[0]?.[0] as (error: unknown) => Promise<void>
     expect(added[1]?.[0]).toBe(handler)
     const error = new Error("thrown outside any fiber")
-    handler(error)
+    await handler(error)
     expect(reported).toEqual([{ error, destroyed: true }])
     expect(renderer.isDestroyed).toBe(true)
     await Effect.runPromise(Scope.close(scope, Exit.void))
