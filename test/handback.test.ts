@@ -594,6 +594,7 @@ describe("the prompt", () => {
     const stop: RebaseStop = {
       ticket: { id: "a", title: "A", branch: "tutti/a", worktree: "/w/a" },
       onto: "abc",
+      fork: "123",
       head: "def",
       own: 1,
       files: ["a.ts", "b.ts"],

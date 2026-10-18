@@ -14,7 +14,7 @@
 // push until its send is no longer outstanding and the worker has settled, within resolve_timeout
 // from the push. Then tutti looks at what the worker left without taking its word for it: the rebase
 // finished, the worktree clean and on its branch, the branch on top of the base it was rebased onto
-// with only the ticket's own commits, and the check passing. A resolution verified goes back in the
+// with only the ticket's own commits, and, set up if need be (setup.ts), the check passing. A resolution verified goes back in the
 // merge queue, ToMerge; one rejected, or not done in time, is Blocked (MERGE_CONFLICT), the branch
 // put back as the ticket closed it and the ticket's notes saying why. One whose check fails goes on
 // to checkback.ts, which hands the failure back too, Fixing{afterResolution}, or blocks it.
@@ -48,6 +48,7 @@ import {
 import { Cause } from "./phase.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
 import { answers, namesTicket, untilSettled } from "./settle.ts"
+import { type SetUps, setUp } from "./setup.ts"
 
 /** How many times a ticket's rebase conflicts are handed back to its worker in a run. */
 export const maxHandBacks = 2
@@ -57,6 +58,8 @@ export interface RebaseStop {
   readonly ticket: FinishedTicket
   /** The base's commit the branch was being rebased onto. */
   readonly onto: string
+  /** Where the branch left the base before the rebase, for the setup (setup.ts). */
+  readonly fork: string
   /** The branch's commit before the rebase; "" when git couldn't say. */
   readonly head: string
   /** How many commits of its own the branch had then; -1 when git couldn't say. */
@@ -508,7 +511,7 @@ export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, M
 
 /**
  * How a hand-back ended: the resolution verified and checked, the ticket blocked, or the resolution
- * verified but its check failing, for checkback.ts to hand back or block.
+ * verified but its check, or the setup before it, failing, for checkback.ts to hand back or block.
  */
 export type Resolved =
   | { readonly _tag: "Verified" }
@@ -546,13 +549,15 @@ export const rejectResolution = (
 
 /**
  * The hand-back of `stop`'s conflicts to the ticket's worker, Resolving: the hand-back given, what
- * the worker left verified and checked. Verified: the caller puts it back in the merge queue; its
- * check failing: the caller hands that back, or blocks it (checkback.ts). Else it is Blocked here,
- * its branch put back and its notes saying why.
+ * the worker left verified, set up if need be (`setUps`, setup.ts) and checked. Verified: the
+ * caller puts it back in the merge queue; its setup or check failing: the caller hands that back,
+ * or blocks it (checkback.ts). Else it is Blocked here, its branch put back and its notes saying
+ * why.
  */
 export const resolve = (
   stop: RebaseStop,
   options: MergeOptions,
+  setUps: SetUps,
 ): Effect.Effect<Resolved, never, MergeEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -566,7 +571,8 @@ export const resolve = (
     if (why === undefined) why = yield* verifyResolved(stop, options)
     if (why === undefined) {
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
-      const checked = yield* runMergeCheck(stop.ticket)
+      const setup = yield* setUp(stop.ticket, options, setUps, stop.fork, stop.onto, false)
+      const checked = setup._tag === "Failed" ? setup : yield* runMergeCheck(stop.ticket)
       if (checked._tag !== "Failed") return { _tag: "Verified" } satisfies Resolved
       return {
         _tag: "CheckFailed",

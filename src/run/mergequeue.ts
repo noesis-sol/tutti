@@ -233,7 +233,7 @@ export const make = (
       Effect.gen(function* () {
         const handed = yield* handOver(stop, options, handBacks)
         const work = Effect.gen(function* () {
-          const resolved = yield* resolve(stop, options)
+          const resolved = yield* resolve(stop, options, memory.setUps)
           if (resolved._tag === "CheckFailed") {
             const fixed = yield* fixResolution(
               stop,

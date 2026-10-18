@@ -399,9 +399,10 @@ export const fixCheck = (
   })
 
 /**
- * The resolution of `rebase`'s conflicts verified, but its check failing (`error`, its output in
- * `output`): handed back to the worker, Resolving → Fixing{afterResolution}, and the fix taken as
- * fixCheck does; or, when it can't be, the resolution rejected, Blocked, the line saying why.
+ * The resolution of `rebase`'s conflicts verified, but its check, or the setup before it, failing
+ * (`error`, its output in `output`): handed back to the worker, Resolving → Fixing{afterResolution},
+ * and the fix set up and checked as fixCheck does; or, when it can't be, the resolution rejected,
+ * Blocked, the line saying why.
  */
 export const fixResolution = (
   rebase: RebaseStop,
@@ -416,8 +417,7 @@ export const fixResolution = (
     const stop: CheckStop = {
       ticket: rebase.ticket,
       onto: rebase.onto,
-      // The resolution's check ran without a setup, as resolve has it: so do its fixes'.
-      fork: rebase.onto,
+      fork: rebase.fork,
       head: rebase.head,
       at: Result.isSuccess(at) ? at.success : "",
       error,

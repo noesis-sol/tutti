@@ -298,6 +298,7 @@ const rebaseAndCheck = (
         const stop: RebaseStop = {
           ticket,
           onto,
+          fork,
           head: Result.isSuccess(before) ? before.success.head : "",
           own: Result.isSuccess(before) ? before.success.own.length : -1,
           files: error.files,
