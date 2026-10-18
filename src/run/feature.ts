@@ -9,24 +9,20 @@
 // the exit code: 2 for a request rejected, unclear, unscreened or unplanned, or no terminal to ask
 // on without --yes; 4 when bd failed; 0 when the plan was declined; 130 when Ctrl+C or the end of
 // input stopped it before filing. The organs' steps are organ lines on stdout, a spinner beside
-// each while it runs (print/organLine.ts).
+// each while it runs (print/organLine.ts). With the dashboard, the confirmation is asked in the
+// command's one renderer (inRenderer): the organ lines stay on the main screen before it opens,
+// and what the run says once it is open is said there after it has gone.
 import { Data, Effect, type FileSystem, Option, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { OrganError, Organs } from "../organs/Organs.ts"
 import { gatherFeature, planFeature, readReadme } from "../organs/plan.ts"
 import { screenRequest } from "../organs/screen.ts"
-import type { Printer } from "../print/organLine.ts"
+import type { Out, Printer } from "../print/organLine.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { type FeaturePlan, filePlan, filingFailedLines, needsAnswers } from "../project/planFile.ts"
 import type { Beads } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
-import {
-  type FormCancelled,
-  fileQuestion,
-  type Plan,
-  paintLine,
-  planLines,
-} from "../ui/questions.ts"
+import { FormCancelled, fileQuestion, type Plan, paintLine, planLines } from "../ui/questions.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
 import { exitCodes } from "./holds.ts"
@@ -43,8 +39,8 @@ export interface FeatureRequest {
   readonly yes: boolean
 }
 
-/** Where the feature run talks. */
-export interface FeatureIO {
+/** Where the feature run talks; `E`, how asking can fail besides being cancelled. */
+export interface FeatureIO<E = never> {
   /** stdout: the organ lines, the plan and what was filed. */
   readonly printer: Printer
   /** The theme the plan is shown in. */
@@ -56,8 +52,74 @@ export interface FeatureIO {
    * aren't a terminal to ask on.
    */
   readonly confirm: Option.Option<
-    (plan: Plan, question: string) => Effect.Effect<boolean, FormCancelled>
+    (plan: Plan, question: string) => Effect.Effect<boolean, FormCancelled | E>
   >
+}
+
+/** --feature's talk with the renderer inRenderer opens. */
+export interface InRenderer<S, E> {
+  /** stdout on the main screen until the renderer opens; held from then on. */
+  readonly out: Out
+  /** stderr on the main screen until the renderer opens; held from then on. */
+  readonly error: (text: string) => Effect.Effect<void>
+  /** Shows the plan and asks the question in the renderer, opening it if it isn't open. */
+  readonly confirm: (plan: Plan, question: string) => Effect.Effect<boolean, FormCancelled | E>
+  /** The renderer, opened the first time it is asked for. */
+  readonly shell: Effect.Effect<S, E>
+  /** Says what was held on the main screen, in the order it was said: once the renderer is gone. */
+  readonly release: Effect.Effect<void>
+}
+
+/**
+ * --feature's talk with the dashboard (§ 7.1): the organ lines and errors go to `out` and `error`
+ * on the main screen until the confirmation opens the command's one renderer with `open`, and asks
+ * there with `ask`. The renderer is opened once, and kept for the dashboard. What is said while it
+ * is open can't go to the main screen, so it is held until `release`.
+ */
+export const inRenderer = <S, E>(options: {
+  readonly out: Out
+  readonly error: (text: string) => Effect.Effect<void>
+  readonly open: Effect.Effect<S, E>
+  readonly ask: (shell: S, plan: Plan, question: string) => Effect.Effect<boolean, FormCancelled>
+}): InRenderer<S, E> => {
+  let opened: Option.Option<S> = Option.none()
+  const held: Array<{ readonly to: "out" | "error"; readonly text: string }> = []
+  const shell = Effect.suspend(() =>
+    Option.isSome(opened)
+      ? Effect.succeed(opened.value)
+      : Effect.tap(options.open, (made) =>
+          Effect.sync(() => {
+            opened = Option.some(made)
+          }),
+        ),
+  )
+  return {
+    out: {
+      ...options.out,
+      write: (text) => {
+        if (Option.isNone(opened)) options.out.write(text)
+        else held.push({ to: "out", text })
+      },
+    },
+    error: (text) =>
+      Effect.suspend(() => {
+        if (Option.isNone(opened)) return options.error(text)
+        held.push({ to: "error", text })
+        return Effect.void
+      }),
+    confirm: (plan, question) => Effect.flatMap(shell, (made) => options.ask(made, plan, question)),
+    shell,
+    release: Effect.suspend(() =>
+      Effect.forEach(
+        held.splice(0),
+        (said) =>
+          said.to === "out"
+            ? Effect.sync(() => options.out.write(said.text))
+            : options.error(said.text),
+        { discard: true },
+      ),
+    ),
+  }
 }
 
 /** How the feature run ended: its epic filed, or stopped with an exit code, having said why. */
@@ -112,12 +174,13 @@ const nothingFiled = "tutti: stopped before filing; nothing was filed."
 
 /**
  * Screens, plans, shows, confirms and files the feature `feature` asks for: Filed with the epic's
- * ID, which the run is then scoped to, or Stopped with the exit code, having said why.
+ * ID, which the run is then scoped to, or Stopped with the exit code, having said why. Fails as
+ * the confirmation does when it fails other than by being cancelled, having filed nothing.
  */
-export const planAndFile = (
+export const planAndFile = <E = never>(
   feature: FeatureRequest,
-  io: FeatureIO,
-): Effect.Effect<FeatureOutcome, never, Organs | Beads | Git | Log | FileSystem.FileSystem> =>
+  io: FeatureIO<E>,
+): Effect.Effect<FeatureOutcome, E, Organs | Beads | Git | Log | FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const log = yield* Log
     const stopped = (exitCode: number) => FeatureOutcome.Stopped({ exitCode })
@@ -201,6 +264,8 @@ export const planAndFile = (
       }
       const confirmed = yield* io.confirm.value(shown, fileQuestion(shown)).pipe(Effect.result)
       if (Result.isFailure(confirmed)) {
+        if (!(confirmed.failure instanceof FormCancelled))
+          return yield* Effect.fail(confirmed.failure)
         yield* io.error(nothingFiled)
         return stopped(exitCodes.interrupted)
       }

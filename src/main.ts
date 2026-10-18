@@ -12,7 +12,7 @@
 // its Claude Code and then calls `main`.
 import { join } from "node:path"
 import { BunRuntime, BunServices } from "@effect/platform-bun"
-import { Clock, Console, Effect, Layer, ManagedRuntime, Option, Queue, Result } from "effect"
+import { Clock, Console, Effect, Layer, ManagedRuntime, Option, Queue, Result, Scope } from "effect"
 import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
@@ -25,7 +25,7 @@ import { tuttiVersion } from "./cli/version.ts"
 import { layer as languageModelLayer } from "./organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
-import { makePrinter, stdout } from "./print/organLine.ts"
+import { makePrinter, type Out, stdout } from "./print/organLine.ts"
 import {
   asking,
   askLines,
@@ -35,7 +35,7 @@ import {
 } from "./run/choose.ts"
 import { bySignal, type DrainRequest } from "./run/drain.ts"
 import { EventStream } from "./run/eventstream.ts"
-import { planAndFile, scopedTo } from "./run/feature.ts"
+import { type FeatureIO, inRenderer, planAndFile, scopedTo } from "./run/feature.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
 import { detail, Log, logFile, type Sink } from "./run/log.ts"
@@ -60,11 +60,18 @@ import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/
 import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard } from "./ui/App.tsx"
 import { liveClipboard } from "./ui/clipboard.ts"
+import { askPlan } from "./ui/PlanConfirmation.tsx"
 import { planConfirmation, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
-import { open as openRenderer } from "./ui/renderer.ts"
+import { open as openRenderer, type RendererFailed } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
-import { type Appearance, appearanceOf, makeTheme, outputAppearance } from "./ui/theme.ts"
+import {
+  type Appearance,
+  appearanceOf,
+  makeTheme,
+  outputAppearance,
+  type Theme,
+} from "./ui/theme.ts"
 
 export const version: string = pkg.version
 
@@ -211,6 +218,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         yield* events.emit({ kind: "end", code: exitCodes.ok })
         return true
       })
+      /** Nothing to run, to report once the renderer has gone; null when there is something. */
+      const nothingYet = Effect.gen(function* () {
+        const nothing = Result.isSuccess(unmerged)
+          ? yield* Effect.result(checkNothing(nothingOptions()))
+          : Result.succeed(null)
+        return Result.isSuccess(nothing) && nothing.success !== null
+          ? ({ _tag: "Nothing", nothing: nothing.success } as const)
+          : null
+      })
       const count = asks === "no" ? TicketCount.Unknown() : yield* ticketCount(nothingOptions())
 
       /** The run begins on `work`: the feature chosen named in the lock, and the start event. */
@@ -242,40 +258,34 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       })
 
       // --feature: the screen and the plan, the plan confirmed and filed, then the run scoped to
-      // its epic. The confirmation asks a line at a time, before the renderer opens. The exit code
-      // when it stopped the run.
-      const planFeature = Effect.gen(function* () {
-        if (config.feature === null) return undefined
-        const theme = themeOf(yield* outputAppearance(config.appearance, null))
-        const featured = yield* planAndFile(
-          { request: config.feature, repo: config.repo, yes: config.yes },
-          {
-            printer: makePrinter(stdout, theme),
-            theme,
-            error: (text) => Console.error(text),
-            confirm:
-              tty.stdinIsTty && tty.stdoutIsTty
-                ? Option.some((plan, question) =>
-                    Effect.scoped(
-                      Effect.flatMap(streamInput(process.stdin), (input) =>
-                        planConfirmation(
-                          { input, write: (text) => process.stdout.write(text), theme },
-                          plan,
-                          question,
-                        ),
-                      ),
-                    ),
-                  )
-                : Option.none(),
-          },
-        )
-        if (featured._tag === "Stopped") {
-          yield* events.emit({ kind: "end", code: featured.exitCode })
-          return featured.exitCode
-        }
-        scope = featured.epic
-        return undefined
-      })
+      // its epic. The organ lines go to `out` and the errors to `error`; `confirm` asks, in the
+      // plan's theme. The exit code when it stopped the run.
+      const planFeature = <E>(io: {
+        readonly out: Out
+        readonly error: FeatureIO<E>["error"]
+        readonly confirm: (theme: Theme) => FeatureIO<E>["confirm"]
+      }) =>
+        Effect.gen(function* () {
+          if (config.feature === null) return undefined
+          const theme = themeOf(yield* outputAppearance(config.appearance, null))
+          const featured = yield* planAndFile(
+            { request: config.feature, repo: config.repo, yes: config.yes },
+            {
+              printer: makePrinter(io.out, theme),
+              theme,
+              error: io.error,
+              confirm: io.confirm(theme),
+            },
+          )
+          if (featured._tag === "Stopped") {
+            yield* events.emit({ kind: "end", code: featured.exitCode })
+            return featured.exitCode
+          }
+          scope = featured.epic
+          return undefined
+        })
+      const canAsk = tty.stdinIsTty && tty.stdoutIsTty
+      const error = (text: string) => Console.error(text)
       const scoped = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         scope === null ? effect : scopedTo(scope)(effect)
 
@@ -305,7 +315,25 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         if (Result.isFailure(asked)) return yield* cancelled
         yield* begin(asked.success)
         if (asked.success._tag === "Feature") return yield* interview
-        const stopped = yield* planFeature
+        // The plan confirmation, a line at a time.
+        const stopped = yield* planFeature<never>({
+          out: stdout,
+          error,
+          confirm: (theme) =>
+            canAsk
+              ? Option.some((plan, question) =>
+                  Effect.scoped(
+                    Effect.flatMap(streamInput(process.stdin), (input) =>
+                      planConfirmation(
+                        { input, write: (text) => process.stdout.write(text), theme },
+                        plan,
+                        question,
+                      ),
+                    ),
+                  ),
+                )
+              : Option.none(),
+        })
         if (stopped !== undefined) return stopped
         if (yield* nothingReported) return exitCodes.ok
         return (yield* Effect.scoped(scoped(run({ version, base, start: start(), drains }))))
@@ -313,27 +341,44 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       }
       if (asks === "no") {
         yield* begin(Work.Tickets())
-        const stopped = yield* planFeature
-        if (stopped !== undefined) return stopped
-        if (yield* nothingReported) return exitCodes.ok
+        if (config.feature === null && (yield* nothingReported)) return exitCodes.ok
       }
-      // The renderer, from the start question through the dashboard, destroyed once the run's
-      // scope and then its own have closed. What follows it goes to the main screen.
+      // The renderer, from the start question or --feature's plan confirmation through the
+      // dashboard, destroyed once the run's scope and then its own have closed. What follows it goes
+      // to the main screen, after what --feature said while it was open.
       const shown = yield* Effect.scoped(
         Effect.gen(function* () {
-          const shell = yield* openRenderer({ chosen: config.appearance, mouse: config.mouse })
+          const opened = yield* Effect.scope
+          const screen = inRenderer({
+            out: stdout,
+            error,
+            open: openRenderer({ chosen: config.appearance, mouse: config.mouse }).pipe(
+              Scope.provide(opened),
+            ),
+            ask: (shell, plan, question) => askPlan(shell, themeOf, plan, question),
+          })
+          // Added before the renderer opens, so it runs once the renderer has closed.
+          yield* Effect.addFinalizer(() => screen.release)
+          if (config.feature !== null) {
+            // The organ lines on the main screen, the confirmation in the renderer.
+            const stopped = yield* planFeature<RendererFailed>({
+              out: screen.out,
+              error: screen.error,
+              confirm: () => (canAsk ? Option.some(screen.confirm) : Option.none()),
+            })
+            if (stopped !== undefined) return { _tag: "Stopped", exitCode: stopped } as const
+            const nothing = yield* nothingYet
+            if (nothing !== null) return nothing
+          }
+          const shell = yield* screen.shell
           if (asks !== "no") {
             const asked = yield* Effect.result(askStart(shell, themeOf, count))
             if (Result.isFailure(asked)) return { _tag: "Cancelled" } as const
             const work = asked.success
             yield* begin(work)
             if (work._tag === "Feature") return { _tag: "Feature", work } as const
-            const nothing = Result.isSuccess(unmerged)
-              ? yield* Effect.result(checkNothing(nothingOptions()))
-              : Result.succeed(null)
-            if (Result.isSuccess(nothing) && nothing.success !== null) {
-              return { _tag: "Nothing", nothing: nothing.success } as const
-            }
+            const nothing = yield* nothingYet
+            if (nothing !== null) return nothing
           }
           const clipboard = yield* liveClipboard(shell.renderer)
           const ran = yield* Effect.scoped(
@@ -357,6 +402,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       switch (ended._tag) {
         case "Cancelled":
           return yield* cancelled
+        case "Stopped":
+          return ended.exitCode
         case "Feature":
           yield* Console.log(chosenLines(ended.work).join("\n"))
           return yield* interview
