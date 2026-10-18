@@ -239,15 +239,19 @@ describe("Transcripts in files", () => {
       Effect.gen(function* () {
         yield* recordAll(range(1, 20).map((i) => text(`${i} ${"y".repeat(100)}`)))
         const t = yield* Transcripts
-        const size = (encodeItem((yield* t.recent(worker))[0] as Item) ?? "").length
+        // The last three lines' exact length: a line's length varies with its time's milliseconds.
+        const lastThree = (yield* t.recent(worker))
+          .slice(-3)
+          .reduce((sum, item) => sum + (encodeItem(item) ?? "").length, 0)
         return yield* Effect.all([
           t.tail(worker, { items: 5, characters: 1_000_000 }),
-          t.tail(worker, { items: 10, characters: size * 3 + 10 }),
+          t.tail(worker, { items: 10, characters: lastThree }),
+          t.tail(worker, { items: 10, characters: lastThree - 1 }),
           t.tail(worker, { items: 10, characters: 0 }),
         ])
       }),
     )
-    expect(value.map(seqs)).toEqual([range(16, 20), range(18, 20), []])
+    expect(value.map(seqs)).toEqual([range(16, 20), range(18, 20), range(19, 20), []])
   })
 
   test("a link in the transcripts' path is refused, warned about once, and nothing goes through it", async () => {
