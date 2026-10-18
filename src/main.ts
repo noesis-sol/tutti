@@ -11,7 +11,7 @@
 // its Claude Code and then calls `main`.
 import { join } from "node:path"
 import { BunRuntime, BunServices } from "@effect/platform-bun"
-import { Clock, Console, Effect, Layer, ManagedRuntime, Queue, Result } from "effect"
+import { Clock, Console, Effect, Layer, ManagedRuntime, Option, Queue, Result } from "effect"
 import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
@@ -21,8 +21,13 @@ import { AppConfig } from "./cli/AppConfig.ts"
 import { mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
 import type { RunFlags } from "./cli/flags.ts"
 import { tuttiVersion } from "./cli/version.ts"
+import { layer as languageModelLayer } from "./organs/AgentSdkLanguageModel.ts"
+import { OrganCost } from "./organs/OrganCost.ts"
+import { Organs } from "./organs/Organs.ts"
+import { makePrinter, stdout } from "./print/organLine.ts"
 import { bySignal, type DrainRequest } from "./run/drain.ts"
 import { EventStream } from "./run/eventstream.ts"
+import { planAndFile, scopedTo } from "./run/feature.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
 import { detail, Log, logFile, type Sink } from "./run/log.ts"
@@ -38,6 +43,7 @@ import { Store } from "./services/Store.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard } from "./ui/App.tsx"
+import { planConfirmation, streamInput } from "./ui/plain/forms.ts"
 import { open as openRenderer } from "./ui/renderer.ts"
 import { type Appearance, makeTheme, outputAppearance } from "./ui/theme.ts"
 
@@ -73,7 +79,12 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     servers: started.mcp,
     account: started.account,
   })
-  return host.pipe(
+  // The organs, over the Agent SDK, their costs logged.
+  const organs = Organs.layer.pipe(
+    Layer.provideMerge(languageModelLayer({ account: started.account })),
+    Layer.provideMerge(OrganCost.layer),
+  )
+  return Layer.mergeAll(host, organs).pipe(
     Layer.provideMerge(second),
     Layer.provideMerge(first),
     Layer.provideMerge(BunServices.layer),
@@ -163,6 +174,43 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               width: (yield* tty.size).columns,
               styles: themeStyles(themeOf(yield* outputAppearance(config.appearance, null))),
             }
+
+      // --feature: the screen and the plan, the plan confirmed and filed, then the run scoped to
+      // its epic. The confirmation asks a line at a time, before the renderer opens.
+      let scope = config.ticket
+      if (config.feature !== null) {
+        const theme = themeOf(yield* outputAppearance(config.appearance, null))
+        const featured = yield* planAndFile(
+          { request: config.feature, repo: config.repo, yes: config.yes },
+          {
+            printer: makePrinter(stdout, theme),
+            theme,
+            error: (text) => Console.error(text),
+            confirm:
+              tty.stdinIsTty && tty.stdoutIsTty
+                ? Option.some((plan, question) =>
+                    Effect.scoped(
+                      Effect.flatMap(streamInput(process.stdin), (input) =>
+                        planConfirmation(
+                          { input, write: (text) => process.stdout.write(text), theme },
+                          plan,
+                          question,
+                        ),
+                      ),
+                    ),
+                  )
+                : Option.none(),
+          },
+        )
+        if (featured._tag === "Stopped") {
+          yield* events.emit({ kind: "end", code: featured.exitCode })
+          return featured.exitCode
+        }
+        scope = featured.epic
+      }
+      const scoped =
+        scope === null ? <A, E, R>(effect: Effect.Effect<A, E, R>) => effect : scopedTo(scope)
+
       // bd failing to list the tickets left unmerged is something to run: the run lists them again,
       // and stops on it.
       const unmerged = yield* Effect.result(stillUnmerged({ repo: config.repo, base }))
@@ -170,7 +218,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         Result.isSuccess(unmerged) &&
         (yield* nothingToRun(
           {
-            scope: config.ticket,
+            scope,
             filter: { excludeTypes: config.settings.queue.exclude_types },
             repo: config.repo,
             base,
@@ -197,18 +245,18 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       )
       const why = mode._tag === "Plain" ? plainReasonLine(mode.reason, tty.term) : undefined
       const start = [
-        ...startBlock(started, version),
+        ...startBlock({ ...started, config: { ...config, ticket: scope } }, version),
         ...(why === undefined ? [] : [detail`${why}`]),
       ]
       if (mode._tag === "Plain") {
-        return (yield* Effect.scoped(run({ version, base, start, drains }))).exitCode
+        return (yield* Effect.scoped(scoped(run({ version, base, start, drains })))).exitCode
       }
       // The renderer, destroyed once the run's scope and then its own have closed.
       const shown = yield* Effect.scoped(
         Effect.gen(function* () {
           const shell = yield* openRenderer({ chosen: config.appearance })
           return yield* Effect.scoped(
-            run({ version, base, start, drains, dashboard: dashboard(shell, themeOf) }),
+            scoped(run({ version, base, start, drains, dashboard: dashboard(shell, themeOf) })),
           )
         }),
       ).pipe(Effect.result)

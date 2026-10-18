@@ -418,7 +418,10 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
     version,
     repo: config.repo,
     base: started.base,
-    ...(config.ticket === null ? {} : { scope: `ticket ${config.ticket}` }),
+    // A --feature run is scoped to the epic it filed, as orchestra's ScopeLabel says.
+    ...(config.ticket === null
+      ? {}
+      : { scope: `${config.feature === null ? "ticket" : "feature"} ${config.ticket}` }),
     settings: [
       ["limit", String(config.limit)],
       ["concurrent", String(concurrency)],

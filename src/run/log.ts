@@ -85,6 +85,7 @@ export const Tag = {
   released: "RELEASED",
   message: "MESSAGE",
   organ: "ORGAN",
+  feature: "FEATURE",
   usage: "USAGE",
   usageLimit: "USAGE_LIMIT",
   phaseBug: "PHASE_BUG",
