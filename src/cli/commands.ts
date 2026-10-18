@@ -11,7 +11,9 @@ import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import { plan } from "../plan/plan.ts"
 import { Beads } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
+import * as Tty from "../services/Tty.ts"
 import { layer as appConfigLayer } from "./AppConfig.ts"
+import { colours } from "./colours.ts"
 import { cliFlags, noFlags, type RunFlags, runFlags } from "./flags.ts"
 import { login, runInTerminal } from "./login.ts"
 
@@ -189,6 +191,42 @@ export const loginCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
   )
 
 /**
+ * `tutti colours`, reading the settings of the main checkout `repo` finds, or only the user's
+ * outside a repository: it previews the scheme named, else the one in use by default.
+ */
+export const coloursCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
+  Command.make(
+    "colours",
+    {
+      name: Argument.String("name").pipe(
+        Argument.withDescription("the scheme to preview (default: the one in use)"),
+        Argument.optional,
+      ),
+    },
+    (given) =>
+      Effect.gen(function* () {
+        const top = yield* Effect.orElseSucceed(repo, () => process.cwd())
+        yield* colours.pipe(
+          Effect.provide(appConfigLayer({ ...noFlags, colourScheme: given.name }, top)),
+          Effect.provide(Tty.layer),
+          Effect.catch((error) =>
+            Effect.andThen(
+              Effect.forEach(
+                (typeof error === "string" ? error : error.message).split("\n"),
+                (problem) => Console.error(`tutti colours: ${problem}`),
+              ),
+              Effect.fail(new CommandFailed({ command: "colours" })),
+            ),
+          ),
+        )
+      }),
+  ).pipe(
+    Command.withDescription(
+      "preview a colour scheme, the one in use by default: every role's colour and where it comes from, a mock of the dashboard, and anything that keeps the scheme from being used, which exits 1",
+    ),
+  )
+
+/**
  * tutti and its subcommands, the main checkout found with `repo`; `tutti plan` reads it with
  * `services`. A bare `tutti` is `run` with its flags (src/main.ts gives it the run); without one, it
  * prints the version.
@@ -200,5 +238,10 @@ export const tuttiWith = <E extends { readonly message: string } | string, R, S,
 ) =>
   Command.make("tutti", cliFlags, run).pipe(
     Command.withDescription("runs Claude Code workers on a Beads backlog, one worktree per ticket"),
-    Command.withSubcommands([answerCommand(repo), planCommand(repo, services), loginCommand(repo)]),
+    Command.withSubcommands([
+      answerCommand(repo),
+      planCommand(repo, services),
+      loginCommand(repo),
+      coloursCommand(repo),
+    ]),
   )
