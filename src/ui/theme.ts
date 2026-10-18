@@ -518,6 +518,38 @@ export const styleSpecs: { readonly [S in StyleName]: StyleSpec } = {
   title: spec("pillText", { bg: "pill", bold: true }),
 }
 
+/** The form styles' names, as `huh`'s Charm theme draws its fields (§ 7.11's form roles). */
+export const formStyleNames = [
+  "option",
+  "fieldTitle",
+  "selector",
+  "selected",
+  "selectedMark",
+  "error",
+  "description",
+  "placeholder",
+  "bar",
+  "focusedButton",
+  "button",
+] as const
+
+export type FormStyleName = (typeof formStyleNames)[number]
+
+/** The forms' styles: the start question, the init form, the confirmations, the buttons. */
+export const formStyleSpecs: { readonly [S in FormStyleName]: StyleSpec } = {
+  option: spec("formText"),
+  fieldTitle: spec("formTitle", { bold: true }),
+  selector: spec("formAccent"),
+  selected: spec("formSelected"),
+  selectedMark: spec("formSelectedMark"),
+  error: spec("formError"),
+  description: spec("formMuted"),
+  placeholder: spec("formPlaceholder"),
+  bar: spec("formFrame"),
+  focusedButton: spec("formAccentText", { bg: "formAccent" }),
+  button: spec("formText", { bg: "formButton" }),
+}
+
 /** A style drawn: for OpenTUI, and as ANSI for output outside the renderer. */
 export interface Style {
   readonly fg: RGBA | undefined
@@ -539,6 +571,8 @@ export interface Theme {
   readonly depth: ColourDepth
   readonly noColor: boolean
   readonly styles: { readonly [S in StyleName]: Style }
+  /** The forms' styles, from the form roles. */
+  readonly form: { readonly [S in FormStyleName]: Style }
   /** A role's colour for OpenTUI. */
   readonly rgba: (role: Role, layer?: Layer) => RGBA
   /** A role's colour as an ANSI sequence; empty under NO_COLOR. */
@@ -610,5 +644,8 @@ export const makeTheme = (
   const styles = Object.fromEntries(
     styleNames.map((name) => [name, style(styleSpecs[name])]),
   ) as Theme["styles"]
-  return { scheme, appearance, depth, noColor, styles, rgba, ansi }
+  const form = Object.fromEntries(
+    formStyleNames.map((name) => [name, style(formStyleSpecs[name])]),
+  ) as Theme["form"]
+  return { scheme, appearance, depth, noColor, styles, form, rgba, ansi }
 }
