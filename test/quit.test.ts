@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Exit, Fiber, Queue, Ref, type Scope } from "effect"
+import { Duration, Effect, Exit, Fiber, Queue, Ref, type Scope } from "effect"
+import { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Line } from "../src/run/log.ts"
 import { line } from "../src/run/log.ts"
 import {
@@ -39,6 +40,7 @@ import {
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Scripted } from "../src/testing/Checks.ts"
 import { Repository } from "../src/testing/Git.ts"
+import { texts } from "../src/testing/Log.ts"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
@@ -401,6 +403,100 @@ describe("quitting", () => {
     expectLog(ran, [/^PANIC in t-1's fiber: boom$/, /^ {2}at /, /^PANIC: t-1's fiber: boom/])
     expect(sentTo(ran, "t-2")).toContain("Interrupted")
     expect(quitOf(ran).state.tickets["t-2"]).toMatchObject({ suspended: "PANIC" })
+  })
+
+  test("a quit while the full check runs stops it, and the run ends INTERRUPTED, 130", async () => {
+    const offered = Effect.runSync(Ref.make<Queue.Queue<QuitRequest> | null>(null))
+    const hanging: Scripted = Effect.gen(function* () {
+      const quits = yield* Ref.get(offered)
+      if (quits !== null) yield* Queue.offer(quits, ctrlC)
+      return yield* Effect.never
+    })
+    const { settings } = appConfig()
+    const ran = await quitting({
+      tickets: ["t-1"],
+      setup: {
+        config: {
+          settings: {
+            ...settings,
+            checks: {
+              ...settings.checks,
+              full: { command: "scripts/check-full.sh", timeout: Duration.minutes(60) },
+            },
+          },
+        },
+        backlog: backlog().ticket("t-1").seeds,
+        checks: { full: [hanging] },
+        scripts: (world, root, quits) => {
+          Effect.runSync(Ref.set(offered, quits))
+          return { "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }
+        },
+      },
+    })
+    expectExitCode(ran, 130)
+    expectPhases(ran, { "t-1": "Done" })
+    expectLog(ran, [
+      "READY_EMPTY after 1 tickets",
+      /^ {2}FULL_CHECK_SKIPPED: /,
+      "INTERRUPTED: quit with Ctrl+C during the full check",
+    ])
+    expect(ran.events.at(-1)).toMatchObject({ kind: "end", code: 130 })
+  })
+
+  test("a panic in the merge queue: the ticket back in line, Stopped; PANIC, exit 4", async () => {
+    const ran = await quitting({
+      tickets: ["t-1"],
+      setup: {
+        backlog: backlog().ticket("t-1").seeds,
+        checks: { fast: [Effect.die(new Error("merge boom"))] },
+        scripts: (world, root) => ({
+          "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))],
+        }),
+      },
+      before: () =>
+        Effect.gen(function* () {
+          const repository = yield* Repository
+          yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
+        }),
+    })
+    expectExitCode(ran, 4)
+    expectPhases(ran, { "t-1": "Stopped" })
+    expectLog(ran, [
+      /^PANIC in the merge queue: merge boom$/,
+      /^PANIC: the merge queue: merge boom/,
+    ])
+    expect(quitOf(ran).state.tickets["t-1"]).toMatchObject({ suspended: "PANIC" })
+  })
+
+  test("an interrupt the CLI never answers counts toward the 10 s", async () => {
+    const ran = await quitting({
+      tickets: ["t-1"],
+      setup: {
+        backlog: backlog().ticket("t-1").seeds,
+        scripts: (world, root, quits) => ({
+          "t-1": [atWork(world, root, "t-1", [step(Effect.asVoid(Queue.offer(quits, ctrlC)))])],
+        }),
+      },
+      around: (running) =>
+        Effect.gen(function* () {
+          const host = yield* AgentHost
+          return yield* running.pipe(
+            Effect.provideService(AgentHost, { ...host, interrupt: () => Effect.never }),
+          )
+        }),
+      during: () =>
+        Effect.gen(function* () {
+          yield* until(Effect.map(texts, (log) => log.some((each) => each.startsWith("QUIT"))))
+          for (let i = 0; i < 200; i++) yield* Effect.yieldNow
+          yield* advance("10 seconds")
+        }),
+    })
+    expectExitCode(ran, 130)
+    expectLog(ran, [
+      /^QUIT with Ctrl\+C/,
+      "  the workers of t-1 did not end their turns within 10s; closing their sessions",
+    ])
+    expect(sentTo(ran, "t-1")).toEqual(["Started", "Message", "Closed"])
   })
 })
 

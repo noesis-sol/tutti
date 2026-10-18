@@ -368,7 +368,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           Effect.provideService(Organs, organs.value),
         )
 
-    const queue = yield* makeQueue({ repo: config.repo, base })
+    const queue = yield* makeQueue({ repo: config.repo, base }, (where, defect) =>
+      panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
+    )
     // The merge that stopped the merges, taken up once, by its watcher or by the end.
     const mergeStopSeen = yield* Ref.make(false)
     const mergeStop = (state: QueueState) =>
@@ -782,10 +784,27 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     for (const entry of state.tickets.values()) phases[entry.ticket] = entry.phase
     const said = [...summary, closing]
     const command = config.settings.checks.full.command
+    let exitCode = exitCodeOf(all)
+    // A request to quit, or a panic, while it runs stops it (FULL_CHECK_SKIPPED), and the run ends
+    // INTERRUPTED (130), or PANIC (4), after all.
     if (fullCheckDue(command, all.first !== null, Object.values(phases))) {
-      said.push((yield* fullCheck({ base, started: begun })).text)
+      const checked = yield* Effect.raceFirst(
+        Effect.map(fullCheck({ base, started: begun }), (done) => ({ done })),
+        Effect.map(Deferred.await(quitting), (quit) => ({ quit })),
+      )
+      if ("done" in checked) said.push(checked.done.text)
+      else {
+        const quit = checked.quit
+        const stop =
+          "panic" in quit
+            ? quit.panic
+            : stopFor("INTERRUPTED", `quit ${quit.request.how} during the full check`)
+        yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
+        yield* logs.write(stop.text)
+        said.push(stop.text)
+        exitCode = stop.code
+      }
     }
-    const exitCode = exitCodeOf(all)
     yield* events.emit({ kind: "end", code: exitCode })
     return { exitCode, phases, ending: said } satisfies Outcome
   }).pipe(Effect.provide(Ledger.layer))

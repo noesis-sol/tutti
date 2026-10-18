@@ -115,9 +115,14 @@ export const isSettled = (state: QueueState): boolean =>
   state.merging === null &&
   ((state.waiting.length === 0 && state.resolving.length === 0) || state.stop !== null)
 
-/** The merge queue, its consumer forked into a FiberSet of the caller's scope. */
+/**
+ * The merge queue, its consumer forked into a FiberSet of the caller's scope. A defect in the
+ * consumer or a hand-back goes to `onPanic`, naming where it came from, when one is given (the run
+ * then quits, PANIC); the ticket whose merge it cut short before the fast-forward is back in line.
+ */
 export const make = (
   options: MergeOptions,
+  onPanic?: (where: string, defect: unknown) => Effect.Effect<void>,
 ): Effect.Effect<MergeQueue, never, MergeEnv | RunFibers | Scope.Scope> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
@@ -194,6 +199,10 @@ export const make = (
       )
 
     const handBacksSet = yield* fibers.make("hand-backs")
+    const guarded = <A, E, R>(where: string, effect: Effect.Effect<A, E, R>) =>
+      onPanic === undefined
+        ? effect
+        : Effect.catchDefect(effect, (defect) => onPanic(where, defect))
 
     const recheck = recheckDue(rechecks, { offer, state }, options).pipe(
       Effect.provideContext(context),
@@ -228,12 +237,15 @@ export const make = (
         }))
         yield* FiberSet.run(
           handBacksSet,
-          Effect.interruptible(
-            Effect.gen(function* () {
-              if (yield* work) yield* offer(ticket)
-              yield* fit(id, rechecks)
-            }),
-          ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
+          guarded(
+            `${id}'s hand-back`,
+            Effect.interruptible(
+              Effect.gen(function* () {
+                if (yield* work) yield* offer(ticket)
+                yield* fit(id, rechecks)
+              }),
+            ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
+          ),
         )
       })
 
@@ -269,13 +281,13 @@ export const make = (
       })
 
     // Its turn and its merge, under one mask: a quit as its turn starts finds it Merging, and puts
-    // it back in line.
+    // it back in line, as does a defect before the fast-forward.
     const merge = (ticket: FinishedTicket) =>
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           if (!(yield* turn(ticket))) return
           const prepared = yield* restore(prepare(ticket, options, memory)).pipe(
-            Effect.onInterrupt(() => backInLine(ticket)),
+            Effect.onError(() => backInLine(ticket)),
           )
           if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
           if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
@@ -302,7 +314,7 @@ export const make = (
     ).pipe(Effect.provideContext(context))
 
     const set = yield* fibers.make("merge queue")
-    yield* FiberSet.run(set, consume)
+    yield* FiberSet.run(set, guarded("the merge queue", consume))
 
     return {
       offer,

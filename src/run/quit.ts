@@ -163,7 +163,7 @@ const answered = (state: WorkerState): boolean => settled(state) || state._tag =
 
 /**
  * Interrupts the workers of `tickets` at once and waits for their results, `wait` at most for all
- * of them together: the tickets whose workers hadn't answered by then.
+ * of them together, the interrupts included: the tickets whose workers hadn't answered by then.
  */
 export const interruptWorkers = (
   tickets: ReadonlyArray<string>,
@@ -172,22 +172,17 @@ export const interruptWorkers = (
   Effect.gen(function* () {
     const host = yield* AgentHost
     const waiting = yield* Ref.make<ReadonlySet<string>>(new Set(tickets))
-    yield* Effect.forEach(tickets, (ticket) => Effect.ignore(host.interrupt(ticket)), {
-      concurrency: "unbounded",
-      discard: true,
-    })
-    const result = (ticket: string) =>
-      host
-        .state(ticket)
-        .pipe(
-          Stream.filter(answered),
-          Stream.runHead,
-          Effect.ignore,
-          Effect.andThen(
-            Ref.update(waiting, (left) => new Set([...left].filter((t) => t !== ticket))),
-          ),
-        )
-    yield* Effect.forEach(tickets, result, { concurrency: "unbounded", discard: true }).pipe(
+    // Each interrupt and its result within `wait`: a CLI that never answers the interrupt's control
+    // request holds quitting no longer than one that never ends its turn.
+    const one = (ticket: string) =>
+      Effect.ignore(host.interrupt(ticket)).pipe(
+        Effect.andThen(host.state(ticket).pipe(Stream.filter(answered), Stream.runHead)),
+        Effect.ignore,
+        Effect.andThen(
+          Ref.update(waiting, (left) => new Set([...left].filter((t) => t !== ticket))),
+        ),
+      )
+    yield* Effect.forEach(tickets, one, { concurrency: "unbounded", discard: true }).pipe(
       Effect.timeoutOption(wait),
     )
     return [...(yield* Ref.get(waiting))]
