@@ -199,6 +199,11 @@ export class AgentHost extends Context.Service<
     state(ticket: string): Stream.Stream<WorkerState, AgentGone>
     /** Its sessions' messages, from now on, until it is ended. */
     messages(ticket: string): Stream.Stream<SessionMessage, AgentGone>
+    /**
+     * The tickets of the workers the host knows, from each one's first start until it is ended:
+     * now, then on each change.
+     */
+    readonly workers: Stream.Stream<ReadonlySet<string>>
     /** What the sessions' first system/init said of the setup, so far. */
     readonly setup: Effect.Effect<SetupFindings>
   }
@@ -281,6 +286,8 @@ export interface Workers {
   readonly current: (ticket: string) => Effect.Effect<WorkerState, AgentGone>
   readonly state: (ticket: string) => Stream.Stream<WorkerState, AgentGone>
   readonly messages: (ticket: string) => Stream.Stream<SessionMessage, AgentGone>
+  /** The tickets of the workers it knows: now, then on each change. */
+  readonly workers: Stream.Stream<ReadonlySet<string>>
 }
 
 /**
@@ -296,6 +303,8 @@ export const makeWorkers = (
     const transcripts = yield* Transcripts
     const scope = yield* Effect.scope
     const known = new Map<string, WorkerEntry>()
+    // Set as `known` changes, for the streams of the workers it knows.
+    const knownTickets = yield* SubscriptionRef.make<ReadonlySet<string>>(new Set())
     // Folds are serialised, so the state set last is the one the last fold gave.
     const one = yield* Semaphore.make(1)
     const log = yield* Effect.serviceOption(Log)
@@ -383,6 +392,7 @@ export const makeWorkers = (
         if (found === undefined) {
           const entry = yield* make(ticket)
           known.set(ticket, entry)
+          yield* SubscriptionRef.set(knownTickets, new Set(known.keys()))
           return entry
         }
         const pending = yield* openCount(ticket)
@@ -432,6 +442,7 @@ export const makeWorkers = (
           const found = known.get(ticket)
           if (found === undefined) return
           known.delete(ticket)
+          yield* SubscriptionRef.set(knownTickets, new Set(known.keys()))
           if (Option.isSome(usage)) yield* usage.value.limited(ticket, undefined)
           yield* Deferred.succeed(found.ended, undefined)
         }),
@@ -444,5 +455,6 @@ export const makeWorkers = (
         Stream.unwrap(
           Effect.map(get(ticket), (entry) => until(entry, Stream.fromPubSub(entry.messages))),
         ),
+      workers: SubscriptionRef.changes(knownTickets),
     }
   })

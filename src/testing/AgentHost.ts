@@ -479,6 +479,7 @@ export const layer = (
         current: workers.current,
         state: workers.state,
         messages: workers.messages,
+        workers: workers.workers,
         setup: Effect.succeed(options.setup ?? noFindings),
       })
 

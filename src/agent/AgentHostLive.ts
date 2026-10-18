@@ -540,6 +540,7 @@ export const layer = (
         current: workers.current,
         state: workers.state,
         messages: workers.messages,
+        workers: workers.workers,
         setup: Ref.get(findings),
       })
     }),

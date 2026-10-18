@@ -2,11 +2,12 @@
 // projected from, and how it hands both to a dashboard. A run shows the dashboard when Tty says the
 // terminal can draw one and main gave it one (run.ts); otherwise its output is plain (§ 7.6).
 //
-// The workers' states come from AgentHost, one stream per worker: a fiber follows the ledger and
-// starts following each ticket's worker once its phase holds one, and forgets it once its stream
-// ends (the worker ended, or was never started). Their latest actions come from Transcripts, read
-// for each ticket whose phase holds a worker every `actionPoll`: a tool call starts and ends without
-// changing the worker's state, and a denied call stops being the latest action after its 10 s.
+// The workers' states come from AgentHost, one stream per worker: a fiber follows the workers the
+// host knows and starts following each one's state once the host knows it (from its first start,
+// which comes after the ledger moves its ticket to Working), and forgets it once its stream ends
+// (the worker ended). Their latest actions come from Transcripts, read for each ticket whose phase
+// holds a worker every `actionPoll`: a tool call starts and ends without changing the worker's
+// state, and a denied call stops being the latest action after its 10 s.
 import { Data, Duration, Effect, type Scope, Stream, SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
@@ -41,43 +42,38 @@ export type Dashboard = (inputs: ScreenInputs) => Effect.Effect<void, never, Sco
 export const workerStates: Effect.Effect<
   Stream.Stream<ReadonlyMap<string, WorkerState>>,
   never,
-  Ledger | AgentHost | Scope.Scope
+  AgentHost | Scope.Scope
 > = Effect.gen(function* () {
-  const ledger = yield* Ledger
   const host = yield* AgentHost
   const states = yield* SubscriptionRef.make<ReadonlyMap<string, WorkerState>>(new Map())
   const followed = new Set<string>()
-  const follow = (ticket: string) =>
+  const ensure = (ticket: string): Effect.Effect<void, never, Scope.Scope> =>
+    Effect.suspend(() => {
+      if (followed.has(ticket)) return Effect.void
+      followed.add(ticket)
+      return Effect.asVoid(Effect.forkScoped(follow(ticket)))
+    })
+  // Once its stream ends, a worker the host still knows was started again: it is followed anew.
+  const follow = (ticket: string): Effect.Effect<void, never, Scope.Scope> =>
     host.state(ticket).pipe(
       Stream.runForEach((state) =>
         SubscriptionRef.update(states, (all) => new Map(all).set(ticket, state)),
       ),
       Effect.ignore,
-      Effect.andThen(
-        Effect.suspend(() => {
-          followed.delete(ticket)
-          return SubscriptionRef.update(states, (all) => {
+      Effect.andThen(Effect.sync(() => followed.delete(ticket))),
+      Effect.andThen(host.current(ticket)),
+      Effect.matchEffect({
+        onSuccess: () => ensure(ticket),
+        onFailure: () =>
+          SubscriptionRef.update(states, (all) => {
             const left = new Map(all)
             left.delete(ticket)
             return left
-          })
-        }),
-      ),
-    )
-  yield* ledger.changes.pipe(
-    Stream.runForEach((state) =>
-      Effect.forEach(
-        [...state.tickets.values()].filter(
-          (entry) => holdsWorker(entry.phase) && !followed.has(entry.ticket),
-        ),
-        (entry) =>
-          Effect.suspend(() => {
-            followed.add(entry.ticket)
-            return Effect.forkScoped(follow(entry.ticket))
           }),
-        { discard: true },
-      ),
-    ),
+      }),
+    )
+  yield* host.workers.pipe(
+    Stream.runForEach((tickets) => Effect.forEach(tickets, ensure, { discard: true })),
     Effect.forkScoped,
   )
   return SubscriptionRef.changes(states)
