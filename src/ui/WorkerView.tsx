@@ -46,7 +46,18 @@ import { headOf, statusLook } from "./Card.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { type KeyBinding, useLayer } from "./keys.ts"
-import { boxed, cut, Line, padded, roleLook, type Segments, seg, styled, widthOf } from "./line.tsx"
+import {
+  boxed,
+  cut,
+  Line,
+  Lines,
+  padded,
+  roleLook,
+  type Segments,
+  seg,
+  styled,
+  widthOf,
+} from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import type { Role, Theme } from "./theme.ts"
 import {
@@ -76,8 +87,8 @@ import {
 /** The most lines of a command's output an expanded item shows. */
 export const outputLines = 400
 
-/** The most lines of a request's input the panel shows. */
-export const inputLines = 8
+/** The fewest lines a request's input scrolls in; it gets a quarter of the pane when that's more. */
+export const inputLines = 3
 
 /** The most requests the panel shows whole; the rest are counted under them. */
 export const panelRequests = 2
@@ -454,16 +465,24 @@ export const inputOf = (request: AttentionRequest): ReadonlyArray<string> => {
   }
 }
 
+/** A request's box in the panel: its lines over its input, its input, and its frame's foot. */
+export interface PanelParts {
+  readonly head: ReadonlyArray<Segments>
+  /** Its whole input, one framed line a line, scrolled within the box when it is long. */
+  readonly input: ReadonlyArray<Segments>
+  readonly foot: ReadonlyArray<Segments>
+}
+
 /**
- * A request's lines in the panel, `width` wide, framed `needsYou`, heavy when it is selected: the
- * request's line, its description and reason faint, its input faint (at most `inputLines`), and
- * its buttons, `focus` the focused one.
+ * A request's box in the panel, `width` wide, framed `needsYou`, heavy when it is selected: the
+ * request's line, its description and reason faint, its buttons (`focus` the focused one), then
+ * its whole input faint, under the buttons so that a long one never hides them.
  */
-export const panelLines = (
+export const panelParts = (
   request: AttentionRequest,
   theme: Theme,
   options: { readonly width: number; readonly selected: boolean; readonly focus: number | null },
-): ReadonlyArray<Segments> => {
+): PanelParts => {
   const { styles } = theme
   const text = requestText(request)
   const faint = (line: string): Segments => [seg(line, styles.dim)]
@@ -474,10 +493,6 @@ export const panelLines = (
   const reason =
     request.decisionReason === undefined ? [] : sanitize(request.decisionReason).split("\n")
   const input = inputOf(request)
-  const shownInput =
-    input.length <= inputLines
-      ? input
-      : [...input.slice(0, inputLines - 1), `… ${input.length - inputLines + 1} more lines`]
   const button = (label: string, index: number): ButtonSegment => ({
     text: `[ ${label} ]`,
     look: index === options.focus ? theme.form.focusedButton : theme.form.button,
@@ -487,19 +502,44 @@ export const panelLines = (
   const rows: ReadonlyArray<Segments> = picksOptions(request)
     ? buttons.map((each) => [each])
     : [buttons.flatMap((each, i) => (i === 0 ? [each] : [seg("  "), each]))]
-  return boxed(
-    [
-      [seg(text.line)],
-      ...description.map(faint),
-      ...reason.map(faint),
-      ...shownInput.map(faint),
-      ...rows,
-    ],
+  const above = [[seg(text.line)], ...description.map(faint), ...reason.map(faint), ...rows]
+  const lines = boxed(
+    [...above, ...input.map(faint)],
     options.width,
     roleLook(theme, "needsYou"),
     options.selected ? "heavy" : "rounded",
   )
+  return {
+    head: lines.slice(0, 1 + above.length),
+    input: lines.slice(1 + above.length, -1),
+    foot: lines.slice(-1),
+  }
 }
+
+/** A request's box in the panel: its input scrolls in at most `room` lines; buttons are pressed. */
+const PanelBox = ({
+  parts,
+  room,
+  press,
+}: {
+  readonly parts: PanelParts
+  readonly room: number
+  readonly press: (index: number) => void
+}) => (
+  <box flexDirection="column" flexShrink={0}>
+    <AttentionLines lines={parts.head} press={press} />
+    {parts.input.length === 0 ? null : (
+      <scrollbox
+        height={Math.min(parts.input.length, room)}
+        flexShrink={0}
+        scrollbarOptions={{ visible: false }}
+      >
+        <Lines lines={parts.input} />
+      </scrollbox>
+    )}
+    <Lines lines={parts.foot} />
+  </box>
+)
 
 /** The hand-back notice's lines (§ 4.3): a conflict waits for the steered worker. */
 export const handBackLines = (
@@ -593,8 +633,12 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   const shown = bounded(entries, expanded, window.following)
   const flat = mounted(shown, expanded)
 
-  // The panel: the worker's open requests, each as a card of its own for the card's answering.
-  const requests = card === undefined ? [] : view.requests.filter((r) => r.ticket === card.ticket)
+  // The panel: the worker's oldest open requests, each as a card of its own for the card's
+  // answering. Only those drawn can be selected or answered; the rest are counted under them, and
+  // each comes in as one before it is answered.
+  const waiting = card === undefined ? [] : view.requests.filter((r) => r.ticket === card.ticket)
+  const requests = waiting.slice(0, panelRequests)
+  const more = waiting.length - requests.length
   const requestCards: ReadonlyArray<Card> =
     card === undefined ? [] : requests.map((request) => ({ ...card, requests: [request] }))
   const answering = useAnswering(requestCards)
@@ -772,8 +816,7 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
         ]
   const dashboardLink = " ← Dashboard"
   const panelWidth = Math.max(inner - 2, 8)
-  const panel = requests.slice(0, panelRequests)
-  const more = requests.length - panel.length
+  const inputRoom = Math.max(inputLines, Math.floor(height / 4))
   return (
     <LooksContext.Provider value={looks}>
       <box flexDirection="column" width={width} height={height}>
@@ -824,16 +867,17 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
             press={handBackNow}
           />
         ) : null}
-        {panel.map((request, i) => {
+        {requests.map((request, i) => {
           const at = requestCards[i]
           return at === undefined ? null : (
-            <AttentionLines
+            <PanelBox
               key={request.id}
-              lines={panelLines(request, theme, {
+              parts={panelParts(request, theme, {
                 width: panelWidth,
                 selected: selected === requestKey(request),
                 focus: answering.focusOf(at),
               })}
+              room={inputRoom}
               press={(index) => answering.press(at, index)}
             />
           )

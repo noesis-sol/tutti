@@ -693,11 +693,11 @@ describe("the attention panel", () => {
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
           ┃ Bash: Remove the build cache                                               ┃
           ┃ Path is outside allowed working directories                                ┃
+          ┃ [ Deny ]  [ Allow ]                                                        ┃
           ┃ {                                                                          ┃
           ┃   "command": "rm -rf build",                                               ┃
           ┃   "description": "Remove the build cache"                                  ┃
           ┃ }                                                                          ┃
-          ┃ [ Deny ]  [ Allow ]                                                        ┃
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           ────────────────────────────────────────────────────────────────────────────────
             Esc dashboard · ↑↓ select · Enter expand · ? keys · d deny · PgUp/PgDn scroll…
@@ -758,6 +758,60 @@ describe("the attention panel", () => {
         ])
       },
       { requests: [permission("r1")] },
+    )
+  })
+
+  test("only the requests drawn can be selected or answered; the rest are counted under them", async () => {
+    const third = permission("r3", {
+      description: "Hidden third request",
+      kind: {
+        _tag: "Permission",
+        tool: "Bash",
+        input: { command: "rm -rf ~" },
+        suggestions: [],
+        summary: "rm -rf ~",
+      },
+    })
+    await scene(
+      itemsOf([said("Three things to do.")]),
+      async ({ rendered, commands }) => {
+        const frame = await rendered.capture()
+        expect(frame.chars).toContain("+1 more requests")
+        expect(frame.chars).not.toContain("Hidden third request")
+        clock.pass(settle)
+        // ↓ from the oldest goes to the second and no further: the third isn't drawn.
+        await press(rendered, "down", "down", "down", "a")
+        expect(taken(commands)).toEqual([
+          UiCommand.Answer({ requestId: "r2", answer: { _tag: "Allow" } }),
+        ])
+      },
+      { requests: [permission("r1"), permission("r2"), third] },
+    )
+  })
+
+  test("a long input is there whole, scrolled under the buttons, which stay in view", async () => {
+    const input = Object.fromEntries(
+      Array.from({ length: 30 }, (_, i) => [`field${i + 1}`, `value ${i + 1}`]),
+    )
+    const long = permission("r1", {
+      kind: { _tag: "Permission", tool: "Bash", input, suggestions: [], summary: "a long one" },
+    })
+    await scene(
+      itemsOf([said("Long input ahead.")]),
+      async ({ rendered }) => {
+        const frame = await rendered.capture()
+        expect(frame.chars).toContain("[ Deny ]")
+        expect(frame.chars).toContain('"field1"')
+        expect(frame.chars).not.toContain('"field30"')
+        const y = linesOf(frame).findIndex((line) => line.includes('"field1"'))
+        await rendered.input(async (setup) => {
+          for (let i = 0; i < 40; i++) await setup.mockMouse.scroll(10, y, "down")
+        })
+        const scrolled = await rendered.capture()
+        expect(scrolled.chars).toContain('"field30"')
+        expect(scrolled.chars).toContain("[ Deny ]")
+      },
+      { requests: [long], size: { width: 80, height: 40 } },
     )
   })
 
