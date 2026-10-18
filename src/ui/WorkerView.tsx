@@ -44,6 +44,7 @@ import { AttentionLines, answerBindings, type ButtonSegment } from "./AttentionC
 import { buttonsOf, optionKeys, picksOptions, requestText, useAnswering } from "./attentionKeys.ts"
 import { headOf, statusLook } from "./Card.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
+import { KeyHelp } from "./KeyHelp.tsx"
 import { type KeyBinding, useLayer } from "./keys.ts"
 import { boxed, cut, Line, padded, roleLook, type Segments, seg, styled, widthOf } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
@@ -266,7 +267,7 @@ const Children = ({
       {entries.length === 0 ? (
         <Line segments={[seg("nothing yet", theme.styles.dim)]} />
       ) : (
-        <EntryList entries={entries} width={Math.max(width - 3, 1)} {...props} />
+        <EntryList entries={entries} width={Math.max(width - 4, 1)} {...props} />
       )}
     </box>
   )
@@ -304,7 +305,13 @@ const Expanded = ({ tool, ...props }: Omit<EntryProps, "entry"> & { readonly too
           <diff
             diff={expansion.diff}
             view="unified"
-            showLineNumbers={false}
+            // The gutter holds each line's sign, so that colour isn't the only one (§ 7.11); its
+            // numbers count from the replacement's first line (editOf).
+            showLineNumbers
+            lineNumberFg={theme.rgba("frame", "fg")}
+            lineNumberBg={clear}
+            addedLineNumberBg={clear}
+            removedLineNumberBg={clear}
             syntaxStyle={looks.markdown}
             wrapMode="char"
             addedSignColor={theme.rgba("added", "fg")}
@@ -521,10 +528,28 @@ const hintKeys = (requests: boolean) => [
   { keys: "Esc", does: "dashboard" },
   { keys: "↑↓", does: "select" },
   { keys: "Enter", does: "expand" },
+  { keys: "?", does: "keys" },
   ...(requests ? [{ keys: "d", does: "deny" }] : []),
   { keys: "PgUp/PgDn", does: "scroll" },
   { keys: "g/G", does: "top/end" },
   { keys: "1–9", does: "workers" },
+]
+
+/** The worker view's keys, for its key help (§ 7.3's table). */
+export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
+  ["Tab, Shift+Tab, arrows", "move between items; between a request's buttons"],
+  ["Enter, a click", "expand or collapse the item; press the focused button"],
+  ["1–9", "switch to that worker"],
+  ["Esc, ← Dashboard", "back to the dashboard"],
+  ["d, Shift+D", "deny the request; deny with a reason"],
+  ["a", "allow the request, unless it opens on Deny"],
+  ["r", "allow for this run"],
+  ["1–4 in a question", "pick an option"],
+  ["the wheel, PgUp/PgDn", "scroll; past the top loads earlier items"],
+  ["g, G", "jump to the top or the end"],
+  ["Ctrl+C", "quit: stop after current, or quit now"],
+  ["a drag", "select text and copy it"],
+  ["?", "these keys"],
 ]
 
 /** The store a view without a transcript reads. */
@@ -692,8 +717,14 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   }
   const targetCard = () => selectedCard() ?? requestCards[0]
   const close = () => command(UiCommand.CloseWorker())
-  const bindings: ReadonlyArray<KeyBinding> = [
-    { key: "escape", run: close },
+  // With the key help open, `?` and `Esc` close it and the other keys do nothing.
+  const [help, setHelp] = useState(false)
+  const helpOpen = useRef(false)
+  const showHelp = (shown: boolean) => {
+    helpOpen.current = shown
+    setHelp(shown)
+  }
+  const keys: ReadonlyArray<KeyBinding> = [
     { key: "down", run: () => move(1) },
     { key: "up", run: () => move(-1) },
     ...["tab", "right"].map((key) => ({ key, run: () => stepOrMove(1) })),
@@ -720,7 +751,14 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
       },
     },
   ]
-  useLayer("view", bindings)
+  useLayer("view", [
+    { key: "?", run: () => showHelp(!helpOpen.current) },
+    { key: "escape", run: () => (helpOpen.current ? showHelp(false) : close()) },
+    ...keys.map((binding) => ({
+      key: binding.key,
+      run: () => (helpOpen.current ? undefined : binding.run()),
+    })),
+  ])
 
   const inner = Math.max(width, 1)
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
@@ -803,6 +841,9 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
         {more > 0 ? <Line segments={[seg(`  +${more} more requests`, theme.styles.dim)]} /> : null}
         <Line segments={rule} />
         <Hint segments={hintSegments(hintKeys(requests.length > 0), theme, inner)} />
+        {help ? (
+          <KeyHelp theme={theme} width={width} height={height} keys={workerViewKeys} />
+        ) : null}
       </box>
     </LooksContext.Provider>
   )

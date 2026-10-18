@@ -304,14 +304,15 @@ export const lineDiff = (
         i++
         j++
       } else if (
-        j < b.length &&
-        (i >= a.length || (lengths[i * width + j + 1] ?? 0) >= (lengths[(i + 1) * width + j] ?? 0))
+        i < a.length &&
+        (j >= b.length || (lengths[(i + 1) * width + j] ?? 0) >= (lengths[i * width + j + 1] ?? 0))
       ) {
-        middle.push({ op: "+", line: b[j] ?? "" })
-        j++
-      } else {
+        // A removal before an addition, as unified diffs show them.
         middle.push({ op: "-", line: a[i] ?? "" })
         i++
+      } else {
+        middle.push({ op: "+", line: b[j] ?? "" })
+        j++
       }
     }
   }

@@ -398,6 +398,17 @@ const fixedFeed = (by: Readonly<Record<string, ReadonlyArray<Item>>>) => {
   return { feed, opened, closed }
 }
 
+/** The shell's clock, which the tests move past the panel's guard. */
+const clock = (() => {
+  const start = began + 67_000
+  let at = start
+  return {
+    now: () => at,
+    pass: (millis: number) => (at += millis),
+    reset: () => (at = start),
+  }
+})()
+
 const shellOf = (
   view: Settable<RunView>,
   commands: Commands,
@@ -409,7 +420,7 @@ const shellOf = (
   commands,
   appearance: external<Appearance>("dark"),
   themeOf,
-  now: () => began + 67_000,
+  now: clock.now,
   transcripts: feed,
   ...extra,
 })
@@ -480,6 +491,7 @@ const scene = async (
     readonly extra?: Partial<ShellValue>
   } = {},
 ) => {
+  clock.reset()
   const view = external(viewOf(options.requests))
   const commands = Effect.runSync(makeCommands)
   const feed = fixedFeed({ "t-1": items, "t-2": itemsOf([said("Worker two here.")]) })
@@ -508,7 +520,7 @@ describe("the worker view", () => {
           The undo stack now records edits in groups. See the spec (https://x.test/spec)
           .
         ────────────────────────────────────────────────────────────────────────────────
-          Esc dashboard · ↑↓ select · Enter expand · PgUp/PgDn scroll · g/G top/end · 1…
+          Esc dashboard · ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll · g/G to…
         "
       `)
     })
@@ -529,10 +541,10 @@ describe("the worker view", () => {
         ▸ Read  internal/history/undo.ts                                               ✓
             lines 40–42
           Edit  internal/history/undo.ts                                           +2 −1
-            const stack: Array<Group> = []
-            const stack = []
-            export const undo = () => stack.pop()
-            export const group = () => {}
+             1 - const stack = []
+             1 + const stack: Array<Group> = []
+             2   export const undo = () => stack.pop()
+             3 + export const group = () => {}
           Bash  scripts/check-fast.sh                                                  ✓
             SUITE: unit
             ✓ 214 tests (3.1s)
@@ -543,7 +555,7 @@ describe("the worker view", () => {
           The undo stack now records edits in groups. See the spec (https://x.test/spec)
           .
         ────────────────────────────────────────────────────────────────────────────────
-          Esc dashboard · ↑↓ select · Enter expand · PgUp/PgDn scroll · g/G top/end · 1…
+          Esc dashboard · ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll · g/G to…
         "
       `)
       // Enter again collapses it, back to its one line.
@@ -586,9 +598,9 @@ describe("the worker view", () => {
         ────────────────────────────────────────────────────────────────────────────────
         ▸ Agent  Find the callers                                                      ✓
           │   Looking for callers.
-          │   Grep  undo
+          │   Grep  undo                                                               ✓
         ────────────────────────────────────────────────────────────────────────────────
-          Esc dashboard · ↑↓ select · Enter expand · PgUp/PgDn scroll · g/G top/end · 1…
+          Esc dashboard · ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll · g/G to…
         "
       `)
     })
@@ -613,6 +625,19 @@ describe("the worker view", () => {
         UiCommand.OpenWorker({ worker: 2 }),
         UiCommand.CloseWorker(),
       ])
+    })
+  })
+
+  test("? shows the view's keys, and while it is open only ? and Esc work", async () => {
+    await scene(itemsOf(work), async ({ rendered, commands }) => {
+      await press(rendered, "?")
+      const frame = await rendered.capture()
+      expect(frame.chars).toContain("switch to that worker")
+      await press(rendered, "2", "escape")
+      expect(taken(commands)).toEqual([])
+      expect((await rendered.capture()).chars).not.toContain("switch to that worker")
+      await press(rendered, "escape")
+      expect(taken(commands)).toEqual([UiCommand.CloseWorker()])
     })
   })
 
@@ -675,7 +700,7 @@ describe("the attention panel", () => {
           ┃ [ Deny ]  [ Allow ]                                                        ┃
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           ────────────────────────────────────────────────────────────────────────────────
-            Esc dashboard · ↑↓ select · Enter expand · d deny · PgUp/PgDn scroll · g/G to…
+            Esc dashboard · ↑↓ select · Enter expand · ? keys · d deny · PgUp/PgDn scroll…
           "
         `)
       },
@@ -689,7 +714,7 @@ describe("the attention panel", () => {
       async ({ rendered, commands }) => {
         await press(rendered, "a")
         expect(taken(commands)).toEqual([])
-        await Bun.sleep(settle + 50)
+        clock.pass(settle)
         await press(rendered, "a")
         expect(taken(commands)).toEqual([
           UiCommand.Answer({ requestId: "r1", answer: { _tag: "Allow" } }),
@@ -707,7 +732,7 @@ describe("the attention panel", () => {
     await scene(
       itemsOf([said("I'll clean the build.")]),
       async ({ rendered, commands }) => {
-        await Bun.sleep(settle + 50)
+        clock.pass(settle)
         await press(rendered, "a")
         expect(taken(commands)).toEqual([])
         await press(rendered, "tab", "enter")
@@ -723,7 +748,7 @@ describe("the attention panel", () => {
     await scene(
       itemsOf([said("I'll clean the build.")]),
       async ({ rendered, commands }) => {
-        await Bun.sleep(settle + 50)
+        clock.pass(settle)
         const frame = await rendered.capture()
         const y = linesOf(frame).findIndex((line) => line.includes("[ Allow ]"))
         const x = (linesOf(frame)[y] ?? "").indexOf("[ Allow ]")
@@ -769,15 +794,15 @@ describe("bounded rendering", () => {
     return { transcripts, feed, scope }
   }
 
-  /** How many transcript entries are mounted in the view. */
-  const mountedIn = (rendered: Rendered): number => {
-    let count = 0
+  /** How many transcript entries are mounted in the view, and the keys of the first and last. */
+  const mountedIn = (rendered: Rendered) => {
+    const keys: Array<string> = []
     const walk = (node: { readonly id: string; getChildren(): ReadonlyArray<unknown> }) => {
-      if (node.id.startsWith(entryId(""))) count++
+      if (node.id.startsWith(entryId(""))) keys.push(node.id.slice(entryId("").length))
       for (const child of node.getChildren()) walk(child as typeof node)
     }
     walk(rendered.setup.renderer.root as never)
-    return count
+    return { count: keys.length, first: keys[0], last: keys.at(-1) }
   }
 
   test("mounts the last 200, loads 200 older past the top, and never more than 600", async () => {
@@ -789,29 +814,39 @@ describe("bounded rendering", () => {
       { width: 60, height: 20 },
       async (rendered) => {
         await until(rendered, has("item 1000"))
-        expect(mountedIn(rendered)).toBe(atBottom)
-        const counts: Array<number> = []
-        for (let i = 0; i < 6; i++) {
-          await press(rendered, "g")
-          await press(rendered, "g")
-          await until(rendered, () => mountedIn(rendered) !== counts.at(-1))
-          counts.push(mountedIn(rendered))
+        expect(mountedIn(rendered)).toEqual({ count: atBottom, first: "801:0", last: "1000:0" })
+        // `g` jumps to the top; at the top, it loads the page before it, as the wheel does.
+        const seen: Array<ReturnType<typeof mountedIn>> = []
+        for (let i = 0; i < 5; i++) {
+          await press(rendered, "g", "g")
+          await rendered.input(() => Bun.sleep(30))
+          seen.push(mountedIn(rendered))
+          if (i === 0) {
+            // Your place is kept: what was the top before the load is still in view after it.
+            const kept = await until(rendered, has("item 801 "))
+            expect(kept.chars).toContain("item 801 ")
+            expect(kept.chars).not.toContain("item 601 ")
+          }
         }
-        expect(Math.max(...counts)).toBeLessThanOrEqual(mountLimit)
-        expect(counts.slice(0, 2)).toEqual([400, 600])
-        // The oldest are in, and your place is kept: the items above the old top aren't jumped to.
-        const top = await until(rendered, has("item 1 "))
-        expect(top.chars).toContain("item 1")
+        expect(seen).toEqual([
+          { count: 400, first: "601:0", last: "1000:0" },
+          { count: 600, first: "401:0", last: "1000:0" },
+          { count: 600, first: "201:0", last: "800:0" },
+          { count: 600, first: "1:0", last: "600:0" },
+          { count: 600, first: "1:0", last: "600:0" },
+        ])
         // A new item while scrolled back waits; G goes back to the latest 200, following.
-        await Effect.runPromise(transcripts.record("t-1", session, said("item 1001")))
+        await rendered.input(() =>
+          Effect.runPromise(transcripts.record("t-1", session, said("item 1001"))),
+        )
+        expect(mountedIn(rendered).last).toBe("600:0")
         await press(rendered, "G")
-        const bottom = await until(rendered, has("item 1001"))
-        expect(bottom.chars).toContain("item 1001")
-        expect(mountedIn(rendered)).toBe(atBottom)
+        await until(rendered, has("item 1001"))
+        expect(mountedIn(rendered)).toEqual({ count: atBottom, first: "802:0", last: "1001:0" })
       },
     )
     Effect.runSync(Scope.close(scope, Exit.void))
-  })
+  }, 30_000)
 
   test("while the view is open its partial text shows as it streams", async () => {
     const { feed, transcripts, scope } = transcriptsWith(3)
@@ -828,26 +863,30 @@ describe("bounded rendering", () => {
       { width: 60, height: 20 },
       async (rendered) => {
         await until(rendered, has("item 3"))
-        await Effect.runPromise(
-          Effect.gen(function* () {
-            yield* event({ type: "message_start", message: {} })
-            yield* event({
-              type: "content_block_start",
-              index: 0,
-              content_block: { type: "text", text: "" },
-            })
-            yield* event({
-              type: "content_block_delta",
-              index: 0,
-              delta: { type: "text_delta", text: "Streaming " },
-            })
-            yield* event({
-              type: "content_block_delta",
-              index: 0,
-              delta: { type: "text_delta", text: "words" },
-            })
-          }),
-        )
+        // The view hears of them through its stream, so they land inside act() after a moment.
+        await rendered.input(async () => {
+          await Effect.runPromise(
+            Effect.gen(function* () {
+              yield* event({ type: "message_start", message: {} })
+              yield* event({
+                type: "content_block_start",
+                index: 0,
+                content_block: { type: "text", text: "" },
+              })
+              yield* event({
+                type: "content_block_delta",
+                index: 0,
+                delta: { type: "text_delta", text: "Streaming " },
+              })
+              yield* event({
+                type: "content_block_delta",
+                index: 0,
+                delta: { type: "text_delta", text: "words" },
+              })
+            }),
+          )
+          await Bun.sleep(30)
+        })
         const frame = await until(rendered, has("Streaming words"))
         expect(frame.chars).toContain("Streaming words")
       },

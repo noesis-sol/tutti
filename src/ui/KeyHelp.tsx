@@ -1,6 +1,6 @@
-// The key-help overlay (§ 7.2, § 7.3): `?` opens it over the dashboard, and `?` or `Esc` closes it.
-// It lists the dashboard's keys and mouse, as § 7.3's table gives them, each key `emphasis` bold
-// and its words faint, in a rounded `frame` box in the middle of the pane.
+// The key-help overlay (§ 7.2, § 7.3): `?` opens it over the dashboard or a worker view, and `?` or
+// `Esc` closes it. It lists the view's keys and mouse, as § 7.3's table gives them, each key
+// `emphasis` bold and its words faint, in a rounded `frame` box in the middle of the pane.
 import { RGBA } from "@opentui/core"
 import { boxed, cut, frameLook, Lines, padded, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
@@ -21,20 +21,24 @@ export const dashboardKeys: ReadonlyArray<readonly [string, string]> = [
   ["?", "these keys"],
 ]
 
-/** The overlay's lines, at most `width` wide. */
-export const keyHelpLines = (theme: Theme, width: number): ReadonlyArray<Segments> => {
+/** The overlay's lines for `keys`, the dashboard's when left out, at most `width` wide. */
+export const keyHelpLines = (
+  theme: Theme,
+  width: number,
+  keys: ReadonlyArray<readonly [string, string]> = dashboardKeys,
+): ReadonlyArray<Segments> => {
   const { styles } = theme
-  const keyWidth = Math.max(...dashboardKeys.map(([keys]) => Bun.stringWidth(keys)))
-  const natural = Math.max(...dashboardKeys.map(([, does]) => keyWidth + 2 + Bun.stringWidth(does)))
+  const keyWidth = Math.max(...keys.map(([each]) => Bun.stringWidth(each)))
+  const natural = Math.max(...keys.map(([, does]) => keyWidth + 2 + Bun.stringWidth(does)))
   const boxWidth = Math.min(natural + 4, width)
   const inner = Math.max(boxWidth - 4, 0)
   return boxed(
     [
       [seg("Keys", styles.tickets)],
       [],
-      ...dashboardKeys.map(([keys, does]) =>
+      ...keys.map(([each, does]) =>
         cut(
-          [...padded([seg(keys, styles.key)], keyWidth), seg("  "), seg(does, styles.dim)],
+          [...padded([seg(each, styles.key)], keyWidth), seg("  "), seg(does, styles.dim)],
           inner,
         ),
       ),
@@ -46,17 +50,19 @@ export const keyHelpLines = (theme: Theme, width: number): ReadonlyArray<Segment
   )
 }
 
-/** The overlay, drawn over the pane `width` by `height`, in its middle. */
+/** The overlay of `keys` (the dashboard's when left out), over the pane `width` by `height`. */
 export const KeyHelp = ({
   theme,
   width,
   height,
+  keys,
 }: {
   readonly theme: Theme
   readonly width: number
   readonly height: number
+  readonly keys?: ReadonlyArray<readonly [string, string]>
 }) => {
-  const lines = keyHelpLines(theme, width)
+  const lines = keyHelpLines(theme, width, keys)
   const boxWidth = Math.max(...lines.map(widthOf))
   return (
     <box

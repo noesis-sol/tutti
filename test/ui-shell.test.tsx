@@ -175,7 +175,7 @@ describe("the bridge", () => {
     const setup = await draw(<Root value={shellValue(view, { screen })} />)
     expect(setup.captureCharFrame()).toContain("Completed")
     await act(async () => screen.set(Screen.Worker({ worker: 2 })))
-    await setup.waitForFrame((frame) => frame.includes("Worker 2"))
+    await setup.waitForFrame((frame) => frame.includes("← Dashboard"))
     await act(async () => screen.set(Screen.Interview()))
     await setup.waitForFrame((frame) => frame.includes("Interview"))
   })
