@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import {
   chmodSync,
   mkdirSync,
@@ -34,6 +34,10 @@ import * as TestBeads from "../src/testing/Beads.ts"
 import * as TestGit from "../src/testing/Git.ts"
 
 const root = join(import.meta.dir, "..")
+
+// resolveClaude's tests start processes: a fake Claude Code's --version, a bun. Under load they
+// outlast bun's 5 s default, whose timeout kills them with SIGTERM: "--version exited with 143".
+setDefaultTimeout(30_000)
 
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-${name}-`)))
 
