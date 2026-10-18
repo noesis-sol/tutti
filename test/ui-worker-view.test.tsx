@@ -17,6 +17,7 @@ import { Screen } from "../src/run/screen.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
+import { escapeHold } from "../src/ui/keys.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
   appended,
@@ -448,7 +449,8 @@ const has = (text: string) => (frame: Frame) => frame.chars.includes(text)
 /** The commands sent since the last call. */
 const taken = (commands: Commands) => Effect.runSync(Queue.clear(commands))
 
-const escWait = 40
+/** How long a lone ESC waits to be a key: the stdin parser's 20 ms, the Esc hold, and some. */
+const escWait = 40 + escapeHold
 
 const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
   rendered.input(async (setup) => {
