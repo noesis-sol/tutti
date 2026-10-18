@@ -8,7 +8,8 @@
 // scope or feature, `"init": true` for init), orchestra.lock what orchestra writes there (pid,
 // started, version as `tutti <version>`, branch), so an orchestra started meanwhile refuses naming
 // tutti's PID. A file is opened without O_TRUNC and rewritten only once locked: truncating first
-// would wipe the holder's JSON from a file someone else holds.
+// would wipe the holder's JSON from a file someone else holds. Once held, tutti.lock can be
+// rewritten, for a feature chosen at the start question after the lock was taken.
 import { ftruncateSync, readFileSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Context, Effect, Exit, Layer, Schema, Scope } from "effect"
@@ -150,6 +151,12 @@ export const orchestraLockText = (holder: Holder): string =>
     2,
   )}\n`
 
+/** The locks a run holds: tutti.lock's holder can be rewritten while it holds them. */
+export interface HeldLock {
+  /** Rewrites tutti.lock to name `holder`. */
+  readonly rewrite: (holder: Holder) => Effect.Effect<void, LockFailed>
+}
+
 /** How often a held lock is tried before the run is refused, and how long apart. */
 const lockAttempts = 5
 const lockRetryDelay = "25 millis"
@@ -160,12 +167,17 @@ const failed = (file: string) => (error: unknown) =>
 /**
  * Takes the flock on `<commonDir>/<program's file>` and writes `text` to it, for the scope. On
  * release the file is emptied before its descriptor closes, so it never names a run that ended.
+ * Gives what writes the file again, with another text.
  */
 const take = (
   request: LockRequest,
   program: Program,
   text: string,
-): Effect.Effect<void, AlreadyRunning | LockFailed, Scope.Scope> => {
+): Effect.Effect<
+  (text: string) => Effect.Effect<void, LockFailed>,
+  AlreadyRunning | LockFailed,
+  Scope.Scope
+> => {
   const file = join(request.commonDir, lockFiles[program])
   return Effect.gen(function* () {
     const fd = yield* Effect.acquireRelease(
@@ -190,13 +202,16 @@ const take = (
       return yield* new AlreadyRunning({ program, repo: request.repo, holder: parseHolder(said) })
     }
     yield* Effect.addFinalizer(() => Effect.ignore(Effect.try(() => ftruncateSync(fd, 0))))
-    yield* Effect.try({
-      try: () => {
-        ftruncateSync(fd, 0)
-        writeSync(fd, text, 0)
-      },
-      catch: failed(file),
-    })
+    const write = (text: string) =>
+      Effect.try({
+        try: () => {
+          ftruncateSync(fd, 0)
+          writeSync(fd, text, 0)
+        },
+        catch: failed(file),
+      })
+    yield* write(text)
+    return write
   })
 }
 
@@ -207,7 +222,7 @@ export class RunLock extends Context.Service<
      * Takes tutti.lock and then orchestra.lock in `request.commonDir`, held until the scope
      * closes. Fails with AlreadyRunning when another process holds either, holding neither then.
      */
-    acquire(request: LockRequest): Effect.Effect<void, AlreadyRunning | LockFailed, Scope.Scope>
+    acquire(request: LockRequest): Effect.Effect<HeldLock, AlreadyRunning | LockFailed, Scope.Scope>
   }
 >()("tutti/services/RunLock") {
   static readonly layer = Layer.succeed(
@@ -220,8 +235,11 @@ export class RunLock extends Context.Service<
             // first at once, whatever the caller's scope does with the failure.
             const scope = yield* Scope.fork(yield* Scope.Scope)
             const both = Effect.gen(function* () {
-              yield* take(request, "tutti", tuttiLockText(request.holder))
+              const write = yield* take(request, "tutti", tuttiLockText(request.holder))
               yield* take(request, "orchestra", orchestraLockText(request.holder))
+              return {
+                rewrite: (holder: Holder) => write(tuttiLockText(holder)),
+              } satisfies HeldLock
             })
             const exit = yield* Effect.exit(Scope.provide(scope)(both))
             if (Exit.isFailure(exit)) yield* Scope.close(scope, exit)

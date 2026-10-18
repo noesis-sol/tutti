@@ -1,8 +1,14 @@
 // The RunLock's test layer (§ 3.3): the locks in memory, by git folder. A run takes both as the
 // live layer does, refused with the same AlreadyRunning while another run in the layer holds
-// either, and releases both when its scope closes.
+// either, and releases both when its scope closes. A rewrite names its new holder in tutti's.
 import { Effect, Layer, Ref } from "effect"
-import { AlreadyRunning, type Program, RunLock, type SeenHolder } from "../services/RunLock.ts"
+import {
+  AlreadyRunning,
+  type HeldLock,
+  type Program,
+  RunLock,
+  type SeenHolder,
+} from "../services/RunLock.ts"
 
 /** A lock held from the start, as if by another process: an orchestra running, say. */
 export interface Held {
@@ -49,6 +55,12 @@ export const layer = (held: ReadonlyArray<Held> = []) =>
                   return next
                 }),
               )
+              return {
+                rewrite: (holder) =>
+                  Ref.update(locks, (current) =>
+                    new Map(current).set(key(request.commonDir, "tutti"), holder),
+                  ),
+              } satisfies HeldLock
             }),
           ),
       })

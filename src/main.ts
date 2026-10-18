@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 // tutti's entry point: the command line (src/cli/commands.ts), and a bare `tutti`'s run (§ 5): the
-// startup checks (exit 2), the run lock (§ 9.2), then the run (src/run/run.ts) on a ManagedRuntime
-// of the live layers, which is disposed of, and the lock released, once the run's scope has closed.
-// When Tty says the terminal can draw the dashboard, the run shows it in the command's one OpenTUI
-// renderer (src/ui/renderer.ts), the log goes to its file alone, and the run's summary and closing
-// lines are printed once the renderer is gone. Otherwise the run is plain (§ 7.6): log lines on
-// stdout, with a line saying why when the terminal couldn't show a dashboard. SIGUSR1 winds the
-// run down (§ 7.4).
+// startup checks (exit 2), the run lock (§ 9.2), the start question (src/run/choose.ts), then the
+// run (src/run/run.ts) on a ManagedRuntime of the live layers, which is disposed of, and the lock
+// released, once the run's scope has closed. When Tty says the terminal can draw the dashboard,
+// the run asks the start question and shows the dashboard in the command's one OpenTUI renderer
+// (src/ui/renderer.ts), the log goes to its file alone, and the run's summary and closing lines
+// are printed once the renderer is gone. Otherwise the run is plain (§ 7.6): the start question as
+// lines, log lines on stdout, with a line saying why when the terminal couldn't show a dashboard.
+// SIGUSR1 winds the run down (§ 7.4).
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`.
 import { join } from "node:path"
@@ -25,27 +26,44 @@ import { layer as languageModelLayer } from "./organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { makePrinter, stdout } from "./print/organLine.ts"
+import {
+  asking,
+  askLines,
+  cancelledMessage,
+  interviewUnavailable,
+  ticketCount,
+} from "./run/choose.ts"
 import { bySignal, type DrainRequest } from "./run/drain.ts"
 import { EventStream } from "./run/eventstream.ts"
 import { planAndFile, scopedTo } from "./run/feature.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
 import { detail, Log, logFile, type Sink } from "./run/log.ts"
-import { noHolds, nothingToRun, type Output, themeStyles } from "./run/nothing.ts"
+import {
+  check as checkNothing,
+  type Options as NothingOptions,
+  noHolds,
+  nothingToRun,
+  type Output,
+  report as reportNothing,
+  themeStyles,
+} from "./run/nothing.ts"
 import { run } from "./run/run.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { Beads } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
 import { Git, GitWriter } from "./services/Git.ts"
-import { RunLock } from "./services/RunLock.ts"
+import { type Holder, RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard } from "./ui/App.tsx"
 import { planConfirmation, streamInput } from "./ui/plain/forms.ts"
+import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
 import { open as openRenderer } from "./ui/renderer.ts"
-import { type Appearance, makeTheme, outputAppearance } from "./ui/theme.ts"
+import { askStart } from "./ui/StartQuestion.tsx"
+import { type Appearance, appearanceOf, makeTheme, outputAppearance } from "./ui/theme.ts"
 
 export const version: string = pkg.version
 
@@ -113,22 +131,21 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     if (Result.isFailure(commonDir)) {
       return yield* cannotStart(`tutti cannot find the git folder of ${config.repo}`)
     }
+    const holder: Holder = {
+      pid: process.pid,
+      started: at,
+      version,
+      branch: base,
+      ...(config.ticket === null ? {} : { scope: config.ticket }),
+      ...(config.feature === null ? {} : { feature: config.feature }),
+    }
     const locked = yield* Effect.result(
       Effect.flatMap(RunLock, (lock) =>
-        lock.acquire({
-          repo: config.repo,
-          commonDir: commonDir.success,
-          holder: {
-            pid: process.pid,
-            started: at,
-            version,
-            branch: base,
-            ...(config.ticket === null ? {} : { scope: config.ticket }),
-          },
-        }),
+        lock.acquire({ repo: config.repo, commonDir: commonDir.success, holder }),
       ).pipe(Effect.provide(RunLock.layer)),
     )
     if (Result.isFailure(locked)) return yield* cannotStart(locked.failure.message)
+    const lock = locked.success
 
     const terminal = yield* Effect.provide(
       Effect.gen(function* () {
@@ -137,6 +154,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       ttyLayer,
     )
     const mode = outputMode(terminal, config.plain)
+    const asks = asking(terminal, config, mode)
     const runtime = yield* Effect.acquireRelease(
       Effect.sync(() =>
         ManagedRuntime.make(liveLayers(started, at, mode._tag === "Plain" ? "stdout" : "none")),
@@ -151,34 +169,82 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     return yield* Effect.gen(function* () {
       const events = yield* EventStream
       const tty = yield* Tty
-      yield* events.emit({
-        kind: "start",
-        version,
-        repo: config.repo,
-        branch: base,
-        ...(config.ticket === null ? {} : { scope: config.ticket }),
-        ...(config.feature === null ? {} : { feature: config.feature }),
-        concurrency: config.settings.concurrent,
-        billing: config.billing,
-        permission_mode: started.account.permissionMode.inEffect,
-      })
 
       const depth = tty.colourDepth === "truecolor" ? "truecolor" : "256"
       const themeOf = (appearance: Appearance) =>
         makeTheme(config.scheme.scheme, { appearance, depth, noColor: config.noColor })
+      // The main screen's theme: the box's, and the line form's. A dumb terminal isn't asked for
+      // its background.
+      const mainTheme =
+        mode._tag === "Dashboard" || asks === "lines"
+          ? themeOf(
+              tty.dumb
+                ? appearanceOf(config.appearance, null)
+                : yield* outputAppearance(config.appearance, null),
+            )
+          : undefined
       const output: Output =
-        mode._tag === "Plain"
+        mainTheme === undefined || mode._tag === "Plain"
           ? { _tag: "Plain" }
-          : {
-              _tag: "Box",
-              width: (yield* tty.size).columns,
-              styles: themeStyles(themeOf(yield* outputAppearance(config.appearance, null))),
-            }
+          : { _tag: "Box", width: (yield* tty.size).columns, styles: themeStyles(mainTheme) }
+
+      // The run's scope: --ticket's, or the epic --feature filed.
+      let scope = config.ticket
+      // bd failing to list the tickets left unmerged is something to run: the run lists them again,
+      // and stops on it.
+      const unmerged = yield* Effect.result(stillUnmerged({ repo: config.repo, base }))
+      const nothingOptions = (): NothingOptions => ({
+        scope,
+        filter: { excludeTypes: config.settings.queue.exclude_types },
+        repo: config.repo,
+        base,
+        carried: new Set(),
+        unmerged: Result.isSuccess(unmerged) ? unmerged.success : new Set(),
+        held: noHolds,
+      })
+      /** Whether there is nothing to run, which it then reports on the main screen. */
+      const nothingReported = Effect.gen(function* () {
+        if (Result.isFailure(unmerged) || !(yield* nothingToRun(nothingOptions(), output))) {
+          return false
+        }
+        yield* events.emit({ kind: "end", code: exitCodes.ok })
+        return true
+      })
+      const count = asks === "no" ? TicketCount.Unknown() : yield* ticketCount(nothingOptions())
+
+      /** The run begins on `work`: the feature chosen named in the lock, and the start event. */
+      const begin = (work: Work) =>
+        Effect.gen(function* () {
+          const feature = work._tag === "Feature" ? work.description : config.feature
+          // The lock is held all the same if its holder can't be rewritten.
+          if (work._tag === "Feature") {
+            yield* Effect.ignore(lock.rewrite({ ...holder, feature: work.description }))
+          }
+          yield* events.emit({
+            kind: "start",
+            version,
+            repo: config.repo,
+            branch: base,
+            ...(config.ticket === null ? {} : { scope: config.ticket }),
+            ...(feature === null ? {} : { feature }),
+            concurrency: config.settings.concurrent,
+            billing: config.billing,
+            permission_mode: started.account.permissionMode.inEffect,
+          })
+        })
+      const cancelled = Effect.as(Console.error(cancelledMessage), exitCodes.interrupted)
+      /** The new feature's interview (tutti-nrg.9.8 builds it); for now the run ends there. */
+      const interview = Effect.gen(function* () {
+        yield* Console.error(interviewUnavailable)
+        yield* events.emit({ kind: "end", code: exitCodes.ok })
+        return exitCodes.ok
+      })
 
       // --feature: the screen and the plan, the plan confirmed and filed, then the run scoped to
-      // its epic. The confirmation asks a line at a time, before the renderer opens.
-      let scope = config.ticket
-      if (config.feature !== null) {
+      // its epic. The confirmation asks a line at a time, before the renderer opens. The exit code
+      // when it stopped the run.
+      const planFeature = Effect.gen(function* () {
+        if (config.feature === null) return undefined
         const theme = themeOf(yield* outputAppearance(config.appearance, null))
         const featured = yield* planAndFile(
           { request: config.feature, repo: config.repo, yes: config.yes },
@@ -207,31 +273,10 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           return featured.exitCode
         }
         scope = featured.epic
-      }
-      const scoped =
-        scope === null ? <A, E, R>(effect: Effect.Effect<A, E, R>) => effect : scopedTo(scope)
-
-      // bd failing to list the tickets left unmerged is something to run: the run lists them again,
-      // and stops on it.
-      const unmerged = yield* Effect.result(stillUnmerged({ repo: config.repo, base }))
-      const nothing =
-        Result.isSuccess(unmerged) &&
-        (yield* nothingToRun(
-          {
-            scope,
-            filter: { excludeTypes: config.settings.queue.exclude_types },
-            repo: config.repo,
-            base,
-            carried: new Set(),
-            unmerged: unmerged.success,
-            held: noHolds,
-          },
-          output,
-        ))
-      if (nothing) {
-        yield* events.emit({ kind: "end", code: exitCodes.ok })
-        return exitCodes.ok
-      }
+        return undefined
+      })
+      const scoped = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        scope === null ? effect : scopedTo(scope)(effect)
 
       // SIGUSR1 winds the run down, as orchestra's drain.
       const drains = yield* Queue.unbounded<DrainRequest>()
@@ -244,27 +289,77 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         (drain) => Effect.sync(() => process.off("SIGUSR1", drain)),
       )
       const why = mode._tag === "Plain" ? plainReasonLine(mode.reason, tty.term) : undefined
-      const start = [
+      const start = () => [
         ...startBlock({ ...started, config: { ...config, ticket: scope } }, version),
         ...(why === undefined ? [] : [detail`${why}`]),
       ]
+
       if (mode._tag === "Plain") {
-        return (yield* Effect.scoped(scoped(run({ version, base, start, drains })))).exitCode
+        const asked =
+          asks === "lines" && mainTheme !== undefined
+            ? yield* Effect.result(
+                askLines(process.stdin, (text) => process.stdout.write(text), mainTheme, count),
+              )
+            : Result.succeed(Work.Tickets())
+        if (Result.isFailure(asked)) return yield* cancelled
+        yield* begin(asked.success)
+        if (asked.success._tag === "Feature") return yield* interview
+        const stopped = yield* planFeature
+        if (stopped !== undefined) return stopped
+        if (yield* nothingReported) return exitCodes.ok
+        return (yield* Effect.scoped(scoped(run({ version, base, start: start(), drains }))))
+          .exitCode
       }
-      // The renderer, destroyed once the run's scope and then its own have closed.
+      if (asks === "no") {
+        yield* begin(Work.Tickets())
+        const stopped = yield* planFeature
+        if (stopped !== undefined) return stopped
+        if (yield* nothingReported) return exitCodes.ok
+      }
+      // The renderer, from the start question through the dashboard, destroyed once the run's
+      // scope and then its own have closed. What follows it goes to the main screen.
       const shown = yield* Effect.scoped(
         Effect.gen(function* () {
           const shell = yield* openRenderer({ chosen: config.appearance, mouse: config.mouse })
-          return yield* Effect.scoped(
-            scoped(run({ version, base, start, drains, dashboard: dashboard(shell, themeOf) })),
+          if (asks !== "no") {
+            const asked = yield* Effect.result(askStart(shell, themeOf, count))
+            if (Result.isFailure(asked)) return { _tag: "Cancelled" } as const
+            const work = asked.success
+            yield* begin(work)
+            if (work._tag === "Feature") return { _tag: "Feature", work } as const
+            const nothing = Result.isSuccess(unmerged)
+              ? yield* Effect.result(checkNothing(nothingOptions()))
+              : Result.succeed(null)
+            if (Result.isSuccess(nothing) && nothing.success !== null) {
+              return { _tag: "Nothing", nothing: nothing.success } as const
+            }
+          }
+          const ran = yield* Effect.scoped(
+            scoped(
+              run({ version, base, start: start(), drains, dashboard: dashboard(shell, themeOf) }),
+            ),
           )
+          return { _tag: "Ran", ...ran } as const
         }),
       ).pipe(Effect.result)
       if (Result.isFailure(shown)) {
         return yield* cannotStart(`tutti cannot open its screen: ${shown.failure.message}`)
       }
-      yield* Console.log(shown.success.ending.join("\n"))
-      return shown.success.exitCode
+      const ended = shown.success
+      switch (ended._tag) {
+        case "Cancelled":
+          return yield* cancelled
+        case "Feature":
+          yield* Console.log(chosenLines(ended.work).join("\n"))
+          return yield* interview
+        case "Nothing":
+          yield* reportNothing(ended.nothing, output)
+          yield* events.emit({ kind: "end", code: exitCodes.ok })
+          return exitCodes.ok
+        case "Ran":
+          yield* Console.log(ended.ending.join("\n"))
+          return ended.exitCode
+      }
     }).pipe(Effect.provideContext(services.success), Effect.provide(ttyLayer))
   }).pipe(
     Effect.scoped,
