@@ -1,0 +1,132 @@
+// The one OpenTUI renderer of a command (§ 7.1, § 7.4): made once, in the alternate screen, and
+// destroyed once, when the scope it was opened in closes. A second renderer after destroy() is
+// unproven (OpenTUI #1533), so everything after it goes to the main screen as plain ANSI.
+//
+// Signals are tutti's: `exitOnCtrlC: false` and `exitSignals: []` keep OpenTUI from destroying the
+// renderer on Ctrl+C or any of its eight default signals, so the Effect runtime decides what each
+// one does. Whatever ends the process, the renderer is destroyed before anything is printed:
+// uncaughtException and unhandledRejection destroy it first and then report, and the Effect
+// runtime's fatal path closes the scope, and with it the renderer, before runMain prints the cause.
+//
+// Terminal.app leaves the rightmost column stale after a resize (OpenTUI #1110), so each resize
+// repaints the whole screen. The appearance (§ 7.11) is the user's choice, else the terminal's
+// theme mode, waited for up to 250 ms at start, else dark; it follows the terminal's theme_mode
+// events from then on.
+import { type CliRenderer, type CliRendererConfig, createCliRenderer } from "@opentui/core"
+import { Effect, Schema, type Scope } from "effect"
+import { exitCodes } from "../run/holds.ts"
+import { type Appearance, appearanceOf } from "./theme.ts"
+import { type External, external } from "./useRunView.ts"
+
+/** How the renderer is made: the alternate screen, every signal left to tutti. */
+export const rendererConfig = {
+  screenMode: "alternate-screen",
+  exitOnCtrlC: false,
+  exitSignals: [],
+} as const satisfies CliRendererConfig
+
+/** How long the renderer waits for the terminal to say its theme mode at start, in ms. */
+export const themeModeLimit = 250
+
+/** The renderer couldn't be made: OpenTUI's native library, or the terminal, refused. */
+export class RendererFailed extends Schema.TaggedError<RendererFailed>()("RendererFailed", {
+  message: Schema.String,
+}) {}
+
+/** The renderer open, and the appearance it draws in, which can change as it runs. */
+export interface Shell {
+  readonly renderer: CliRenderer
+  readonly appearance: External<Appearance>
+}
+
+/** Says a fatal error on stderr, the renderer gone, and exits as a panic does (exit 4). */
+export const reportFatal = (error: unknown): void => {
+  process.stderr.write(
+    `tutti: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+  )
+  process.exit(exitCodes.tool)
+}
+
+/** The handler for an error nothing caught: destroys `renderer`, then `report`s the error. */
+export const fatalHandler =
+  (renderer: CliRenderer, report: (error: unknown) => void) =>
+  (error: unknown): void => {
+    renderer.destroy()
+    report(error)
+  }
+
+/** The process events a fatal handler listens to. */
+export const fatalEvents = ["uncaughtException", "unhandledRejection"] as const
+
+// The renderer's flag for a full repaint on its next frame. OpenTUI sets it for its own reasons
+// (a resume, the split footer), but not after a resize in the alternate screen.
+interface Repaintable {
+  forceFullRepaintRequested: boolean
+}
+
+/** Repaints the whole screen on the renderer's next frame, not only the cells that changed. */
+export const repaintFully = (renderer: CliRenderer): void => {
+  if ("forceFullRepaintRequested" in renderer) {
+    ;(renderer as unknown as Repaintable).forceFullRepaintRequested = true
+  }
+  renderer.requestRender()
+}
+
+/**
+ * The appearance `renderer` draws in: `chosen` when the user chose one, else the terminal's theme
+ * mode, waited for up to `themeModeLimit`, else dark; following the terminal's theme_mode events
+ * when nothing was chosen. The returned function stops following them.
+ */
+export const followAppearance = (
+  renderer: CliRenderer,
+  chosen: "auto" | "light" | "dark",
+): Effect.Effect<readonly [External<Appearance>, () => void]> =>
+  Effect.gen(function* () {
+    if (chosen !== "auto") return [external<Appearance>(chosen), () => {}] as const
+    const detected = yield* Effect.promise(() => renderer.waitForThemeMode(themeModeLimit))
+    const appearance = external(appearanceOf(chosen, detected))
+    const onMode = (mode: Appearance) => appearance.set(mode)
+    renderer.on("theme_mode", onMode)
+    return [appearance, () => renderer.off("theme_mode", onMode)] as const
+  })
+
+/**
+ * Opens the command's renderer in the caller's scope, which destroys it when it closes. `make`
+ * makes it (OpenTUI's, on this terminal, by default; a test renderer in the tests), and `report`
+ * says an error nothing caught once the renderer is gone (reportFatal by default).
+ */
+export const open = (options: {
+  readonly chosen: "auto" | "light" | "dark"
+  readonly make?: () => Promise<CliRenderer>
+  readonly report?: (error: unknown) => void
+}): Effect.Effect<Shell, RendererFailed, Scope.Scope> => {
+  const make = options.make ?? (() => createCliRenderer(rendererConfig))
+  const report = options.report ?? reportFatal
+  return Effect.acquireRelease(
+    Effect.gen(function* () {
+      const renderer = yield* Effect.tryPromise({
+        try: make,
+        catch: (error) =>
+          new RendererFailed({ message: error instanceof Error ? error.message : String(error) }),
+      })
+      const onFatal = fatalHandler(renderer, report)
+      for (const event of fatalEvents) process.on(event, onFatal)
+      const onResize = () => repaintFully(renderer)
+      renderer.on("resize", onResize)
+      const [appearance, unfollow] = yield* followAppearance(renderer, options.chosen)
+      const stop = () => {
+        unfollow()
+        renderer.off("resize", onResize)
+        for (const event of fatalEvents) process.off(event, onFatal)
+      }
+      return { shell: { renderer, appearance } satisfies Shell, stop }
+    }),
+    ({ shell, stop }) =>
+      Effect.promise(async () => {
+        shell.renderer.destroy()
+        stop()
+        // The terminal is back on the main screen once it settles, before anything is printed.
+        await shell.renderer.closed.catch(() => undefined)
+      }),
+  ).pipe(Effect.map(({ shell }) => shell))
+}

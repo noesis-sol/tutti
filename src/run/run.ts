@@ -15,6 +15,9 @@
 // LIMIT_REACHED or DRAINED, with a scoped run's SCOPE_ part), and the end record. In plain mode
 // (§ 7.6) every line goes to stdout as the Log writes it; a worker's attention request is a
 // PERMISSION or QUESTION line naming the `tutti answer` command, served from the attention files.
+// When Tty says the terminal can draw the dashboard and main gave the run one, the run shows it
+// (screen.ts) from its start to its end instead, and hands back the summary and closing lines for
+// main to print once the renderer is gone (§ 7.1).
 import {
   Cause as Causes,
   Clock,
@@ -39,6 +42,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
+import { outputMode, Tty } from "../services/Tty.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
@@ -60,12 +64,15 @@ import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
 import { emptyStatus, project, type Row, type Totals } from "./runView.ts"
 import { make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
+import { type Dashboard, show } from "./screen.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
 export interface Outcome {
   readonly exitCode: number
   readonly phases: Readonly<Record<string, TicketPhase>>
+  /** The summary and closing lines the run wrote at its end. */
+  readonly ending: ReadonlyArray<Line>
 }
 
 export interface RunOptions {
@@ -77,10 +84,12 @@ export interface RunOptions {
   readonly start?: ReadonlyArray<Line>
   /** Requests to wind down or to take tickets again, such as SIGUSR1's. */
   readonly drains?: Queue.Dequeue<DrainRequest>
+  /** The dashboard to show when Tty says the terminal can draw one; the run is plain without it. */
+  readonly dashboard?: Dashboard
 }
 
 /** Every service the run uses; it makes its own Ledger. */
-export type RunEnv = Exclude<WorkEnv, Ledger> | Attention | RunFibers
+export type RunEnv = Exclude<WorkEnv, Ledger> | Attention | RunFibers | Tty
 
 /** The errors the Agent SDK fails with. */
 type AgentError = AgentStartFailed | AgentGone | AgentProtocol
@@ -186,6 +195,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     if (options.start !== undefined && options.start.length > 0) yield* logs.write(...options.start)
     yield* serve({ repo: config.repo })
+    const dashboard = options.dashboard
+    if (dashboard !== undefined && outputMode(yield* Tty, config.plain)._tag === "Dashboard") {
+      yield* show(dashboard, {
+        ...emptyStatus,
+        branch: base,
+        concurrency: config.settings.concurrent,
+      })
+    }
 
     const stops = yield* Ref.make<Stops>(noStops)
     // Set once the run ends, so that nothing starts after it.
@@ -319,21 +336,22 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       status: { ...emptyStatus, branch: base, concurrency: config.settings.concurrent },
     })
     const now = yield* Clock.currentTimeMillis
-    yield* logs.write(
-      ...summaryLines({
-        version: options.version,
-        base,
-        scope: config.ticket,
-        took: now - begun,
-        totals: view.totals,
-        rows: view.rows,
-      }),
-    )
+    const summary = summaryLines({
+      version: options.version,
+      base,
+      scope: config.ticket,
+      took: now - begun,
+      totals: view.totals,
+      rows: view.rows,
+    })
+    yield* logs.write(...summary)
+    let closing: Line
 
     // The closing line: the stops', or how the run ended by itself, with its scope's part.
     if (all.first !== null) {
       const first = all.first
       const text = stopsLine(all)
+      closing = text
       if (!first.recorded || all.others.length > 0) {
         yield* events.emit({
           kind: "stop",
@@ -353,6 +371,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           ? ""
           : `; ${scope.line(yield* scope.end(beads, config.ticket, scope.ledgerView(state), { excludeTypes: config.settings.queue.exclude_types }))}`
       const text = line`${doneLine(n, how)}${scoped}`
+      closing = text
       yield* events.emit({ kind: "done", text })
       yield* logs.write(text)
     }
@@ -360,5 +379,5 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* events.emit({ kind: "end", code: exitCode })
     const phases: Record<string, TicketPhase> = {}
     for (const entry of state.tickets.values()) phases[entry.ticket] = entry.phase
-    return { exitCode, phases } satisfies Outcome
+    return { exitCode, phases, ending: [...summary, closing] } satisfies Outcome
   }).pipe(Effect.provide(Ledger.layer))

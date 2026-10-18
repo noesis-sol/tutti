@@ -2,8 +2,11 @@
 // tutti's entry point: the command line (src/cli/commands.ts), and a bare `tutti`'s run (§ 5): the
 // startup checks (exit 2), the run lock (§ 9.2), then the run (src/run/run.ts) on a ManagedRuntime
 // of the live layers, which is disposed of, and the lock released, once the run's scope has closed.
-// Until the dashboard exists every run is plain (§ 7.6): log lines on stdout, with a line saying why
-// when the terminal couldn't show a dashboard anyway. SIGUSR1 winds the run down (§ 7.4).
+// When Tty says the terminal can draw the dashboard, the run shows it in the command's one OpenTUI
+// renderer (src/ui/renderer.ts), the log goes to its file alone, and the run's summary and closing
+// lines are printed once the renderer is gone. Otherwise the run is plain (§ 7.6): log lines on
+// stdout, with a line saying why when the terminal couldn't show a dashboard. SIGUSR1 winds the
+// run down (§ 7.4).
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`.
 import { join } from "node:path"
@@ -22,7 +25,7 @@ import { bySignal, type DrainRequest } from "./run/drain.ts"
 import { EventStream } from "./run/eventstream.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
-import { detail, Log, logFile } from "./run/log.ts"
+import { detail, Log, logFile, type Sink } from "./run/log.ts"
 import { noHolds, nothingToRun, type Output, themeStyles } from "./run/nothing.ts"
 import { run } from "./run/run.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
@@ -33,22 +36,27 @@ import { RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
 import { Worktrees } from "./services/Worktrees.ts"
-import { makeTheme, outputAppearance } from "./ui/theme.ts"
+import { dashboard } from "./ui/App.tsx"
+import { open as openRenderer } from "./ui/renderer.ts"
+import { type Appearance, makeTheme, outputAppearance } from "./ui/theme.ts"
 
 export const version: string = pkg.version
 
 /** git, with its one writer at a time. */
 const gitLayer = Git.layer().pipe(Layer.provideMerge(GitWriter.layer))
 
-/** The live layers of the run `started` describes, which started at `at` (RFC 3339). */
-const liveLayers = (started: Started, at: string) => {
+/**
+ * The live layers of the run `started` describes, which started at `at` (RFC 3339), its log lines
+ * printed to `sink` too.
+ */
+const liveLayers = (started: Started, at: string, sink: Sink) => {
   const { config } = started
   const repo = config.repo
   const first = Layer.mergeAll(
     Layer.succeed(AppConfig, config),
     gitLayer,
     Beads.layer({ cwd: repo }),
-    Log.layer({ file: join(repo, logFile), sink: "stdout" }),
+    Log.layer({ file: join(repo, logFile), sink }),
     EventStream.layer({ repo, run: at }),
     Store.layer({ repo, run: { pid: process.pid, started: at, version } }),
     Transcripts.layer({ repo }),
@@ -110,8 +118,17 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     )
     if (Result.isFailure(locked)) return yield* cannotStart(locked.failure.message)
 
+    const terminal = yield* Effect.provide(
+      Effect.gen(function* () {
+        return yield* Tty
+      }),
+      ttyLayer,
+    )
+    const mode = outputMode(terminal, config.plain)
     const runtime = yield* Effect.acquireRelease(
-      Effect.sync(() => ManagedRuntime.make(liveLayers(started, at))),
+      Effect.sync(() =>
+        ManagedRuntime.make(liveLayers(started, at, mode._tag === "Plain" ? "stdout" : "none")),
+      ),
       (made) => made.disposeEffect,
     )
     const services = yield* Effect.result(runtime.contextEffect)
@@ -134,20 +151,16 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         permission_mode: started.account.permissionMode.inEffect,
       })
 
-      const mode = outputMode(tty, config.plain)
+      const depth = tty.colourDepth === "truecolor" ? "truecolor" : "256"
+      const themeOf = (appearance: Appearance) =>
+        makeTheme(config.scheme.scheme, { appearance, depth, noColor: config.noColor })
       const output: Output =
         mode._tag === "Plain"
           ? { _tag: "Plain" }
           : {
               _tag: "Box",
               width: (yield* tty.size).columns,
-              styles: themeStyles(
-                makeTheme(config.scheme.scheme, {
-                  appearance: yield* outputAppearance(config.appearance, null),
-                  depth: tty.colourDepth === "truecolor" ? "truecolor" : "256",
-                  noColor: config.noColor,
-                }),
-              ),
+              styles: themeStyles(themeOf(yield* outputAppearance(config.appearance, null))),
             }
       const nothing = yield* nothingToRun(
         {
@@ -177,15 +190,27 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         (drain) => Effect.sync(() => process.off("SIGUSR1", drain)),
       )
       const why = mode._tag === "Plain" ? plainReasonLine(mode.reason, tty.term) : undefined
-      const outcome = yield* Effect.scoped(
-        run({
-          version,
-          base,
-          start: [...startBlock(started, version), ...(why === undefined ? [] : [detail`${why}`])],
-          drains,
+      const start = [
+        ...startBlock(started, version),
+        ...(why === undefined ? [] : [detail`${why}`]),
+      ]
+      if (mode._tag === "Plain") {
+        return (yield* Effect.scoped(run({ version, base, start, drains }))).exitCode
+      }
+      // The renderer, destroyed once the run's scope and then its own have closed.
+      const shown = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const shell = yield* openRenderer({ chosen: config.appearance })
+          return yield* Effect.scoped(
+            run({ version, base, start, drains, dashboard: dashboard(shell, themeOf) }),
+          )
         }),
-      )
-      return outcome.exitCode
+      ).pipe(Effect.result)
+      if (Result.isFailure(shown)) {
+        return yield* cannotStart(`tutti cannot open its screen: ${shown.failure.message}`)
+      }
+      yield* Console.log(shown.success.ending.join("\n"))
+      return shown.success.exitCode
     }).pipe(Effect.provideContext(services.success), Effect.provide(ttyLayer))
   }).pipe(
     Effect.scoped,
