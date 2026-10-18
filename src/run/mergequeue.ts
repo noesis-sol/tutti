@@ -42,6 +42,7 @@ import { type HandBacks, handOver, makeHandBacks, type RebaseStop, resolve } fro
 import { Ledger } from "./ledger.ts"
 import {
   abandonRebase,
+  closeUnchanged,
   type FinishedTicket,
   fastForward,
   type MergeEnv,
@@ -268,13 +269,16 @@ export const make = (
           )
           if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
           if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
+          if (prepared._tag === "Unchanged") yield* closeUnchanged(ticket, options, prepared)
           const stop =
             prepared._tag === "Over"
               ? prepared.stop
-              : yield* fastForward(ticket, options, prepared.onto)
+              : prepared._tag === "Ready"
+                ? yield* fastForward(ticket, options, prepared.onto)
+                : undefined
           // A merge moves the base on, which may be what a ticket's failed check waits for: the
           // tickets it puts back are in line before this merge is over, so `settled` waits for them.
-          if (stop === undefined) yield* Effect.exit(restore(recheck))
+          if (stop === undefined && prepared._tag === "Ready") yield* Effect.exit(restore(recheck))
           yield* merged(stop)
           yield* fit(ticket.id, rechecks)
         }),

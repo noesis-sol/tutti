@@ -12,6 +12,9 @@
 //   fast-forwarded (MERGE_FAILED), the worktree and branch removed, the epics the ticket was the last
 //   to merge under closed, up the tree. exec's time limits kill a command themselves, without
 //   interrupting its fiber, so each git command's limit holds in there too.
+// - closeUnchanged, its stand-in when the branch has no change of its own left to merge: git's
+//   rebase dropped every commit, the base having their changes already, or its commits together
+//   change nothing. The ticket is Done{noChange}, cleaned up as after a merge.
 //
 // A rebase that stops on conflicts is handed back to the ticket's worker when it can take it
 // (handback.ts): prepare is then over with the rebase left in progress, for the merge queue to hand
@@ -28,7 +31,14 @@ import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
 import type { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
-import { failedHow, markUnchecked, runMergeCheck, saidOf, uncheckedMark } from "./check.ts"
+import {
+  clearUnchecked,
+  failedHow,
+  markUnchecked,
+  runMergeCheck,
+  saidOf,
+  uncheckedMark,
+} from "./check.ts"
 import { type CheckStop, type Fixes, whyNotFix } from "./checkback.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
@@ -74,15 +84,26 @@ export interface MergeStop {
 }
 
 /**
- * What prepare leaves: the merge over (set aside, blocked or stopped), ready to fast-forward, its
- * rebase stopped on conflicts its worker can take, or its check failed in a way its worker can take,
- * to be handed back.
+ * What prepare leaves: the merge over (set aside, blocked or stopped), ready to fast-forward, with
+ * nothing of its own left to merge, its rebase stopped on conflicts its worker can take, or its
+ * check failed in a way its worker can take, to be handed back.
  */
 export type Prepared =
   | { readonly _tag: "Over"; readonly stop?: MergeStop }
   | { readonly _tag: "Ready"; readonly onto: string }
+  | Unchanged
   | { readonly _tag: "HandBack"; readonly stop: RebaseStop }
   | { readonly _tag: "FixBack"; readonly stop: CheckStop }
+
+/**
+ * The branch, its worktree clean, changes nothing beyond the base: `why` says which way, and `own`
+ * whether it has commits of its own still, which keep git from deleting it as merged.
+ */
+export interface Unchanged {
+  readonly _tag: "Unchanged"
+  readonly why: string
+  readonly own: boolean
+}
 
 /**
  * How many passes may find the base moved and rebase onto it. Only merges move it during a run,
@@ -194,6 +215,30 @@ export const offBranch = (ticket: FinishedTicket) =>
       : "a detached HEAD"
   })
 
+/**
+ * The ticket's branch, its worktree clean, with no change of its own beyond where it left the base:
+ * `why(own)` says why, given whether it has commits beyond the base. Undefined when it has a change,
+ * or git can't say: the merge's next steps find out.
+ */
+const unchanged = (ticket: FinishedTicket, options: MergeOptions, why: (own: boolean) => string) =>
+  Effect.gen(function* () {
+    const { git } = yield* services
+    const { repo, base } = options
+    const read = yield* Effect.result(
+      Effect.all({
+        status: git.status(ticket.worktree),
+        changed: git.changedFiles(repo, base, ticket.branch),
+      }),
+    )
+    if (Result.isFailure(read)) return undefined
+    if (read.success.changed.length > 0 || uncommitted(read.success.status).length > 0) {
+      return undefined
+    }
+    const commits = yield* Effect.result(git.log(repo, base, ticket.branch))
+    const own = Result.isFailure(commits) || commits.success.length > 0
+    return { _tag: "Unchanged", why: why(own), own } satisfies Unchanged
+  })
+
 /** Puts the branch back after a rebase that didn't finish, if one is under way. */
 export const abandonRebase = (worktree: string) =>
   Effect.gen(function* () {
@@ -213,9 +258,10 @@ export interface MergeMemory {
 /**
  * Rebases the ticket, its branch off the base at `fork`, onto the base, which moved on to `onto`,
  * sets it up if need be and checks it: true when it is on top of the base, checked; false when any
- * of them set it aside; the rebase stopped, when its conflicts are to be handed back to its worker;
- * the check stopped, when its failure is. An interrupted rebase is aborted here too, whichever Git
- * it ran on.
+ * of them set it aside; Unchanged when the rebase left it changing nothing, as when git dropped its
+ * commits, the base having their changes already; the rebase stopped, when its conflicts are to be
+ * handed back to its worker; the check stopped, when its failure is. An interrupted rebase is
+ * aborted here too, whichever Git it ran on.
  */
 const rebaseAndCheck = (
   ticket: FinishedTicket,
@@ -279,6 +325,12 @@ const rebaseAndCheck = (
       )
       return false
     }
+    const dropped = yield* unchanged(
+      ticket,
+      options,
+      () => `rebased onto ${base}, which has its changes already, ${branch} changes nothing`,
+    )
+    if (dropped !== undefined) return dropped
     yield* log.write(detail`rebased ${branch} onto ${base}, which moved on while it ran`)
     return yield* setUpAndCheck(
       ticket,
@@ -335,6 +387,7 @@ const setUpAndCheck = (
         )
         return true
       case "Passed":
+        yield* log.write(detail`'${checked.command}' passes on the rebased ${branch}`)
         return true
       case "Failed":
         return yield* failed(checked.error, checked.output)
@@ -385,7 +438,8 @@ export const checksFailed = (
  * if need be and checked too. Ready once its branch is on top of the base, checked; over when it
  * was set aside (kept in the memory's rechecks when its check failed), blocked or stopped the
  * merges; HandBack when its rebase stopped on conflicts its worker can take; FixBack when its check
- * failed in a way its worker can take.
+ * failed in a way its worker can take; Unchanged when its branch changes nothing beyond the base,
+ * as when git's rebase dropped every commit.
  */
 export const prepare = (
   ticket: FinishedTicket,
@@ -424,6 +478,13 @@ export const prepare = (
         return { _tag: "Over", stop } satisfies Prepared
       }
       const { onto, fork } = where.success
+      // Its commits may undo each other, or a hand-back's rebase may have skipped them all.
+      const nothing = yield* unchanged(ticket, options, (own) =>
+        own
+          ? `the commits on ${branch}, taken together, change nothing`
+          : `${branch} has no commits beyond ${base} and its worktree is clean`,
+      )
+      if (nothing !== undefined) return nothing
       if (fork === onto) {
         const unchecked = checkedMark ? undefined : yield* uncheckedMark(id)
         if (unchecked === undefined) return { _tag: "Ready", onto } satisfies Prepared
@@ -465,9 +526,42 @@ export const prepare = (
       const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto)
       if (rebased === false) return { _tag: "Over" } satisfies Prepared
       if (rebased === true) continue
+      if ("_tag" in rebased) return rebased
       if ("files" in rebased) return { _tag: "HandBack", stop: rebased } satisfies Prepared
       return { _tag: "FixBack", stop: rebased } satisfies Prepared
     }
+  })
+
+/**
+ * The protected step for a ticket with nothing of its own left to merge, as `unchanged` says: its
+ * worktree and branch removed (a branch with commits of its own moved to the base first, so git
+ * deletes it as merged; its reflog keeps them), the ticket Done{noChange}, the `unmerged` label an
+ * earlier run gave it removed, and the epics above it closed.
+ */
+export const closeUnchanged = (
+  ticket: FinishedTicket,
+  options: MergeOptions,
+  unchanged: Unchanged,
+): Effect.Effect<void, never, MergeEnv> =>
+  Effect.gen(function* () {
+    const { git, worktrees, beads, ledger, log } = yield* services
+    const { id, title, branch, worktree } = ticket
+    if (unchanged.own) yield* Effect.ignore(git.resetBranch(worktree, options.base))
+    const cleanup = yield* Effect.result(worktrees.remove(id))
+    const left = Result.isSuccess(cleanup)
+      ? line`worktree and branch removed`
+      : line`but ${Tag.cleanupFailed} for ${worktree} / ${branch}: ${
+          cleanup.failure._tag === "BadTicketId" ? cleanup.failure.why : gitWhy(cleanup.failure)
+        }`
+    const text = detail`${id} closed with no change: ${unchanged.why}, so there is nothing to merge; ${left}`
+    yield* ledger.transition(id, Cause.NoChange(), {
+      beside: [{ kind: "closed", ticket: id, title, detail: "no change to merge", text }],
+    })
+    yield* log.write(text)
+    yield* clearUnchecked(id)
+    const shown = yield* Effect.result(beads.show(id))
+    if (Result.isSuccess(shown) && shown.success.labels.includes(unmergedLabel)) yield* unlabel(id)
+    yield* closeEpics(id)
   })
 
 /** The epics `id` was the last subticket to merge under, closed, each then its own parent's. */

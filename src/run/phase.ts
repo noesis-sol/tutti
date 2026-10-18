@@ -122,7 +122,7 @@ export type Cause = Data.TaggedEnum<{
   Dispatched: Empty
   /** Its work is verified (closed, committed, clean and on its branch; or a resolution or fix). */
   Verified: { readonly place: number }
-  /** Closed with nothing of its own to merge. */
+  /** Closed with nothing of its own to merge, or left with nothing once rebased onto the base. */
   NoChange: Empty
   /** Its worker filed a question ticket that blocks it, then settled. */
   FiledQuestion: { readonly question: string }
@@ -359,6 +359,13 @@ export const transitions: ReadonlyArray<Transition> = [
     to: "Done",
     recorded: { kinds: ["closed"] },
     next: (_, { commit }) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) }),
+  }),
+  row({
+    from: "Merging",
+    when: "NoChange",
+    to: "Done",
+    recorded: { kinds: ["closed"], detail: "no change to merge" },
+    next: () => TicketPhase.Done({ outcome: Outcome.NoChange() }),
   }),
   // § 3.4: a quit during the rebase or the check, before the fast-forward, leaves the ticket
   // waiting to merge, and the run's end then stops it as one in the queue.

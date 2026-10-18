@@ -237,7 +237,8 @@ describe("the setup before the merge check", () => {
         Effect.gen(function* () {
           const a = yield* finished("a", { "a.ts": "a\n" })
           yield* moveMain({ "main.txt": "moved\n" })
-          yield* (yield* Repository).fail("diff --name-only")
+          // The merge's looks for a change of its own, before and after the rebase, then the setup's.
+          yield* (yield* Repository).fail("diff --name-only", { times: 3 })
           yield* queue.offer(a)
         }),
       ),

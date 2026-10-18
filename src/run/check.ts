@@ -22,7 +22,8 @@ import { Log, line, Tag, ticketLine } from "./log.ts"
 
 /** How a ticket's merge check went. */
 export type Checked =
-  | { readonly _tag: "Passed" }
+  /** It passed; `command` is the check that ran. */
+  | { readonly _tag: "Passed"; readonly command: string }
   /** No check command is set: the rebased code merges unchecked. */
   | { readonly _tag: "Unchecked" }
   /** It failed, timed out or couldn't run; `output` is where its whole output is. */
@@ -143,7 +144,7 @@ export const uncheckedMark = (id: string): Effect.Effect<Unchecked | undefined, 
   })
 
 /** Clears the ticket's mark, its branch checked as it is now, if it has one. */
-const clearUnchecked = (id: string): Effect.Effect<void, never, Store> =>
+export const clearUnchecked = (id: string): Effect.Effect<void, never, Store> =>
   Effect.gen(function* () {
     const store = yield* Store
     if ((yield* uncheckedMark(id)) === undefined) return
@@ -197,7 +198,7 @@ const checkOnce = (
           yield* log.write(warning)
           yield* events.emit({ kind: "warn", ticket: ticket.id, text: warning })
         }
-        return { _tag: "Passed" } satisfies Checked
+        return { _tag: "Passed", command: result.command } satisfies Checked
       }),
     )
   })

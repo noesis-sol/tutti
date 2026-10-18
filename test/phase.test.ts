@@ -135,6 +135,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
     Done({ outcome: Outcome.Merged({ commit: "abc123" }) }),
   ],
   [
+    "Merging → Done{noChange} (nothing left to merge once rebased)",
+    Merging({ step: "rebase" }),
+    Cause.NoChange(),
+    Done({ outcome: Outcome.NoChange() }),
+  ],
+  [
     "Merging → ToMerge (the run ended before the fast-forward, § 3.4)",
     Merging({ step: "check" }),
     Cause.MergeInterrupted({ place: 1 }),
