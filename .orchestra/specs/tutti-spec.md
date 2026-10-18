@@ -879,7 +879,10 @@ Merging a ticket rebases it again if more landed meanwhile, so a ticket can go f
 
 Organs are written against `effect/ai`'s `LanguageModel` (D10, D16). `LanguageModel.make({ generateText, streamText, codecTransformer })` builds the service from provider functions. Each receives `ProviderOptions`: `prompt`, `tools`, `responseFormat` (`{ type: "text" }` or `{ type: "json", objectName, schema }`) and `toolChoice`. tutti's provider implements them with one SDK session per call:
 
-- **The prompt.** `ProviderOptions.prompt` (system and user messages) becomes the SDK's `systemPrompt` (a plain string, not the `claude_code` preset) and a single user message.
+- **The prompt.** `ProviderOptions.prompt` (system and user messages) becomes the SDK's `systemPrompt` (a plain string, not the `claude_code` preset) and a single user message. The system messages are joined with a blank line, and the string starts with one.
+  - **The model sees more than that string** (docs/spikes/04-effect-ai.md § 2, SDK 0.3.301, Claude Code 2.1.301). A string `systemPrompt` replaces Claude Code's default prompt, but Claude Code still puts its identity line (`You are a Claude agent, built on Anthropic's Claude Agent SDK.`) in front of it with no separator, which is why the string starts with a blank line. After it come an environment section (the working directory, whether it is a git repository, platform, shell, OS version, advice that downloaded files are untrusted, the model's name and ID, today's date) and a `<system-reminder>` with the account's email address. With `systemPrompt: ""` the identity line stands alone before them.
+  - **Nothing turns this off.** `settingSources: []` doesn't, and no SDK option does: `excludeDynamicSections` works only with the `claude_code` preset, and moves the sections into the first user message. It costs about 600 input tokens a call. It says nothing about the repository, since `cwd` is the organ's empty temp folder; the scout's names the repository's root.
+  - **Organs don't rely on it.** The API-key provider below sends the system prompt alone, so an organ's prompt never refers to the working directory, the date or the account; evidence that needs one of them carries it.
 - **Structured output.** For `responseFormat.type === "json"`, the provider converts `responseFormat.schema` with **`effect/ai`'s `AnthropicStructuredOutput`** codec transformer. Anthropic's structured output accepts only a subset of JSON Schema, and this transformer "adapts Effect Schema codecs to the JSON Schema subset accepted by Anthropic structured output", keeping unsupported constraints in the decoding codec.
   - The JSON Schema goes to the SDK as `outputFormat: { type: "json_schema", schema }`.
   - The result's structured output is returned as the text part `generateObject` decodes.
@@ -909,6 +912,8 @@ As orchestra: every section of evidence goes between `<evidence id="<random>">` 
 
 - **Triage** reads tutti's own transcript of the worker (§4.4): the last 40 items, at most 8,000 characters. It also reads the attention requests the worker raised and their answers, the denials by the classifier and the safety check, its compactions, and its worktree's changes. "The end of its terminal" goes, since there is no terminal.
 - **The reviewer** gets the per-ticket tallies of requests, answers, denials and your messages in place of hook tallies. Its **Needs you** section recommends rules for calls that kept being asked about or denied, as orchestra's recommends allow rules, and names the tickets whose removals the safety check denied, which no rule can allow (§4.5). It also says when a person steered a ticket.
+
+**The context Claude Code adds** to every organ's prompt (§6.1) changes none of this. It is Claude Code's own text, outside the tags, and holds nothing a worker, a ticket's author or the repository's files wrote, so it is no channel for instructions nobody here wrote, and the evidence rule needs no word about it. The account's email address in it goes only to Anthropic's API, as in any Claude Code session.
 
 ### 6.3 The scout
 
