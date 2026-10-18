@@ -251,18 +251,25 @@ const follow = (activity: Activity, message: SDKMessage, at: number): void => {
   }
 }
 
+/** A card's latest action, and whether it is a call Claude Code denied, shown for 10 seconds. */
+export interface LatestAction {
+  readonly text: string
+  readonly denied: boolean
+}
+
 /**
  * The latest action at `now`: a call denied in the last `deniedShownFor`, else the current tool
  * call, else the last line of assistant text (§ 4.4, § 4.5).
  */
-const latestOf = (activity: Activity, now: number): string | undefined => {
+const latestOf = (activity: Activity, now: number): LatestAction | undefined => {
   const denied = activity.denied
   if (denied !== undefined && now >= denied.at && now - denied.at < deniedShownFor) {
-    return denied.text
+    return { text: denied.text, denied: true }
   }
   let current: string | undefined
   for (const call of activity.pending.values()) current = call
-  return current ?? activity.text
+  const text = current ?? activity.text
+  return text === undefined ? undefined : { text, denied: false }
 }
 
 const liveKinds: Readonly<Record<string, LiveBlock["kind"]>> = {
@@ -357,6 +364,8 @@ export class Transcripts extends Context.Service<
     recent(worker: string): Effect.Effect<ReadonlyArray<Item>>
     /** What its card shows: `Bash(scripts/check-fast.sh)`, or the last line of its text. */
     latestAction(worker: string): Effect.Effect<string | undefined>
+    /** The same, saying whether it is a denied call. */
+    action(worker: string): Effect.Effect<LatestAction | undefined>
     /**
      * Opens a view of the worker for the scope: partial messages are folded while it is open. Its
      * updates follow on from its items and live messages, with none missed between.
@@ -495,6 +504,10 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
       stderr: (id) => (data) => storage.stderr(id, data),
       recent: (id) => Effect.sync(() => [...workerOf(id).ring]),
       latestAction: (id) =>
+        Effect.flatMap(Clock.currentTimeMillis, (now) =>
+          Effect.sync(() => latestOf(workerOf(id).activity, now)?.text),
+        ),
+      action: (id) =>
         Effect.flatMap(Clock.currentTimeMillis, (now) =>
           Effect.sync(() => latestOf(workerOf(id).activity, now)),
         ),

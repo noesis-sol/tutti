@@ -45,6 +45,7 @@ import {
 } from "../agent/AgentHost.ts"
 import type { Attention } from "../agent/Attention.ts"
 import { serve } from "../agent/attentionFiles.ts"
+import type { Transcripts } from "../agent/Transcripts.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
@@ -100,7 +101,7 @@ export interface RunOptions {
 }
 
 /** Every service the run uses; it makes its own Ledger. */
-export type RunEnv = Exclude<WorkEnv, Ledger> | Attention | RunFibers | Tty
+export type RunEnv = Exclude<WorkEnv, Ledger> | Attention | RunFibers | Transcripts | Tty
 
 /** The errors the Agent SDK fails with. */
 type AgentError = AgentStartFailed | AgentGone | AgentProtocol

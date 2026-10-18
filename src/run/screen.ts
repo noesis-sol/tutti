@@ -4,14 +4,17 @@
 //
 // The workers' states come from AgentHost, one stream per worker: a fiber follows the ledger and
 // starts following each ticket's worker once its phase holds one, and forgets it once its stream
-// ends (the worker ended, or was never started).
-import { Data, Effect, type Scope, Stream, SubscriptionRef } from "effect"
+// ends (the worker ended, or was never started). Their latest actions come from Transcripts, read
+// for each ticket whose phase holds a worker every `actionPoll`: a tool call starts and ends without
+// changing the worker's state, and a denied call stops being the latest action after its 10 s.
+import { Data, Duration, Effect, type Scope, Stream, SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
+import { type LatestAction, Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { type Commands, makeCommands } from "./commands.ts"
 import { holdsWorker, Ledger } from "./ledger.ts"
-import { make as makeView, type RunView, type Sources, type Status } from "./runView.ts"
+import { make as makeView, type RunView, type Sources, type Status, same } from "./runView.ts"
 
 /** The screen the run shows. */
 export type Screen = Data.TaggedEnum<{
@@ -80,10 +83,46 @@ export const workerStates: Effect.Effect<
   return SubscriptionRef.changes(states)
 })
 
-/** RunView's sources in a run: the ledger, the workers' states, the open requests, `status`. */
+/** How often the workers' latest actions are read. */
+export const actionPoll = Duration.millis(500)
+
+/** Each open worker's latest action, by its ticket: now, then on each change. */
+export const latestActions: Effect.Effect<
+  Stream.Stream<ReadonlyMap<string, LatestAction>>,
+  never,
+  Ledger | Transcripts | Scope.Scope
+> = Effect.gen(function* () {
+  const ledger = yield* Ledger
+  const transcripts = yield* Transcripts
+  const read = Effect.gen(function* () {
+    const state = yield* ledger.current
+    const found = new Map<string, LatestAction>()
+    for (const entry of state.tickets.values()) {
+      if (!holdsWorker(entry.phase)) continue
+      const action = yield* transcripts.action(entry.ticket)
+      if (action !== undefined) found.set(entry.ticket, action)
+    }
+    return found
+  })
+  const actions = yield* SubscriptionRef.make<ReadonlyMap<string, LatestAction>>(yield* read)
+  yield* Effect.gen(function* () {
+    yield* Effect.sleep(actionPoll)
+    const found = yield* read
+    const before = yield* SubscriptionRef.get(actions)
+    if (!same(Object.fromEntries(before), Object.fromEntries(found))) {
+      yield* SubscriptionRef.set(actions, found)
+    }
+  }).pipe(Effect.forever, Effect.forkScoped)
+  return SubscriptionRef.changes(actions)
+})
+
+/**
+ * RunView's sources in a run: the ledger, the workers' states and latest actions, the open
+ * requests, `status`.
+ */
 export const sources = (
   status: Status,
-): Effect.Effect<Sources, never, Ledger | AgentHost | Attention | Scope.Scope> =>
+): Effect.Effect<Sources, never, Ledger | AgentHost | Attention | Transcripts | Scope.Scope> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const attention = yield* Attention
@@ -92,6 +131,7 @@ export const sources = (
       workers: yield* workerStates,
       requests: attention.open,
       status: Stream.succeed(status),
+      actions: yield* latestActions,
     }
   })
 
@@ -102,7 +142,7 @@ export const sources = (
 export const show = (
   dashboard: Dashboard,
   status: Status,
-): Effect.Effect<ScreenInputs, never, Ledger | AgentHost | Attention | Scope.Scope> =>
+): Effect.Effect<ScreenInputs, never, Ledger | AgentHost | Attention | Transcripts | Scope.Scope> =>
   Effect.gen(function* () {
     const inputs: ScreenInputs = {
       view: yield* makeView(yield* sources(status)),

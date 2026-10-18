@@ -119,6 +119,27 @@ export const useNow = (): number => {
   return now
 }
 
+/** The spinner, Bubbles' `Dot` (§ 7.11): its frames, and how long each is shown. */
+export const spinnerFrames = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"] as const
+export const spinnerTick = 100
+
+/** The spinner's frame at `now`, from the shell's clock: ten a second. */
+export const spinnerAt = (now: number): string =>
+  spinnerFrames[Math.floor(now / spinnerTick) % spinnerFrames.length] ?? "⣾"
+
+/** The spinner's frame now, drawn anew every `spinnerTick` while `active`. */
+export const useSpinner = (active: boolean): string => {
+  const clock = useShell().now ?? Date.now
+  const [now, setNow] = useState(clock)
+  useEffect(() => {
+    if (!active) return
+    setNow(clock())
+    const timer = setInterval(() => setNow(clock()), spinnerTick)
+    return () => clearInterval(timer)
+  }, [clock, active])
+  return spinnerAt(now)
+}
+
 /** Sends a command to the run, from a handler: it is queued at once, and no Effect runs. */
 export const useCommand = (): ((command: UiCommand) => void) => {
   const { commands } = useShell()

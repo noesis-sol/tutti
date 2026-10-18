@@ -18,6 +18,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
+import type { LatestAction } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
@@ -94,6 +95,8 @@ export interface Inputs {
   /** The open attention requests, every worker's, oldest first. */
   readonly requests: ReadonlyArray<AttentionRequest>
   readonly status: Status
+  /** Each open worker's latest action (§ 4.4), by its ticket; none when left out. */
+  readonly actions?: ReadonlyMap<string, LatestAction>
 }
 
 /** The streams make() reads its inputs from: each gives its value now, then each change. */
@@ -102,6 +105,8 @@ export interface Sources {
   readonly workers: EffectStream.Stream<ReadonlyMap<string, WorkerState>>
   readonly requests: EffectStream.Stream<ReadonlyArray<AttentionRequest>>
   readonly status: EffectStream.Stream<Status>
+  /** None when left out. */
+  readonly actions?: EffectStream.Stream<ReadonlyMap<string, LatestAction>>
 }
 
 /** The dashboard's totals (§ 5.1, § 7.2). */
@@ -157,6 +162,10 @@ export interface Card {
   readonly since: number
   /** The action line, when the phase gives one (a merge's step, a recheck). */
   readonly action: string | null
+  /** Its worker's latest action, for the action line when the phase gives none. */
+  readonly latest: LatestAction | null
+  /** You steered its worker and haven't released it (§ 4.3). */
+  readonly steered: boolean
   /** Its worker's open requests, oldest first. */
   readonly requests: ReadonlyArray<AttentionRequest>
 }
@@ -446,6 +455,8 @@ const probeCard = (probe: ProbeView, state: WorkerState | undefined): Card => {
     motion: motionOf(phase, state, []),
     since: probe.since,
     action: "checking that commands run on this machine",
+    latest: null,
+    steered: false,
     requests: [],
   }
 }
@@ -472,6 +483,9 @@ const noteOf = (entry: Entry, title: string, branch: string): string => {
     ? `${sanitizeLine(outcome.commit.slice(0, 7))} merged into ${branch}`
     : "no change to merge"
 }
+
+const latestOf = (action: LatestAction | undefined): LatestAction | null =>
+  action === undefined ? null : { text: sanitizeLine(action.text), denied: action.denied }
 
 const windDownMark = (phase: TicketPhase): WindDownMark => {
   switch (phase._tag) {
@@ -555,6 +569,7 @@ const keepAll = <A>(
  * when nothing is. */
 export const project = (inputs: Inputs, previous: RunView = emptyView): RunView => {
   const { ledger, workers, requests, status } = inputs
+  const actions = inputs.actions ?? new Map<string, LatestAction>()
   const branch = sanitizeLine(status.branch)
   const requestsOf = new Map<string, Array<AttentionRequest>>()
   for (const request of requests) {
@@ -605,6 +620,8 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         motion: motionOf(entry.phase, state, open),
         since: entry.since,
         action: actionOf(entry, branch),
+        latest: latestOf(actions.get(entry.ticket)),
+        steered: entry.steered,
         requests: open,
       })
     }
@@ -679,9 +696,10 @@ export const make = (
       sources.workers,
       sources.requests,
       sources.status,
+      sources.actions ?? Stream.succeed(new Map<string, LatestAction>()),
     ).pipe(
-      Stream.runForEach(([ledger, workers, requests, status]) =>
-        Queue.offer(latest, { ledger, workers, requests, status }),
+      Stream.runForEach(([ledger, workers, requests, status, actions]) =>
+        Queue.offer(latest, { ledger, workers, requests, status, actions }),
       ),
       Effect.forkScoped,
     )

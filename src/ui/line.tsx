@@ -1,7 +1,8 @@
 // A line of the dashboard as segments of text, each in a style of the theme's, measured and cut to
 // the pane's width before it is drawn, so that no line wraps (§ 7.2). Frames are drawn as text too,
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
-import type { Style, Theme } from "./theme.ts"
+import { TextAttributes } from "@opentui/core"
+import type { Role, Style, Theme } from "./theme.ts"
 
 /** What a segment is drawn in: a style's colours and attributes. */
 export type Look = Pick<Style, "fg" | "bg" | "attributes">
@@ -11,6 +12,13 @@ export const frameLook = (theme: Theme): Look => ({
   fg: theme.rgba("frame"),
   bg: undefined,
   attributes: 0,
+})
+
+/** A role's colour, bold or not, for what no style of orchestra's draws: a frame, a mark. */
+export const roleLook = (theme: Theme, role: Role, bold = false): Look => ({
+  fg: theme.rgba(role),
+  bg: undefined,
+  attributes: bold ? TextAttributes.BOLD : 0,
 })
 
 /** Text in a look; null for the terminal's own. */
@@ -111,5 +119,41 @@ export const framed = (
       ...widths.flatMap((w, i) => [seg(" "), ...padded(cut(cells[i] ?? [], w), w), seg(" "), bar]),
     ]),
     edge("╰", "┴", "╯"),
+  ]
+}
+
+/** The corners and sides of a box's frame: rounded, or heavy for the highlighted card. */
+const corners = {
+  rounded: { tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│" },
+  heavy: { tl: "┏", tr: "┓", bl: "┗", br: "┛", h: "━", v: "┃" },
+} as const
+
+export type Border = keyof typeof corners
+
+/**
+ * `lines` in a frame `width` wide, a space each side of them, the frame in `frame`: rounded, or
+ * heavy and bold (§ 7.11's highlight, which keeps the frame's colour).
+ */
+export const boxed = (
+  lines: ReadonlyArray<Segments>,
+  width: number,
+  frame: Look,
+  border: Border = "rounded",
+): ReadonlyArray<Segments> => {
+  const c = corners[border]
+  const look =
+    border === "heavy" ? { ...frame, attributes: frame.attributes | TextAttributes.BOLD } : frame
+  const inner = Math.max(width - 4, 0)
+  const rule = c.h.repeat(Math.max(width - 2, 0))
+  return [
+    [seg(c.tl + rule + c.tr, look)],
+    ...lines.map((line) => [
+      seg(c.v, look),
+      seg(" "),
+      ...padded(cut(line, inner), inner),
+      seg(" "),
+      seg(c.v, look),
+    ]),
+    [seg(c.bl + rule + c.br, look)],
   ]
 }
