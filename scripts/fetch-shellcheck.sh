@@ -32,7 +32,7 @@ sha256_of() {
 }
 
 cache=.cache/shellcheck/$SHELLCHECK_VERSION
-if [ -x "$cache/shellcheck" ] && "$cache/shellcheck" --version >/dev/null 2>&1; then
+if [ -x "$cache/shellcheck" ] && { "$cache/shellcheck" --version >/dev/null 2>&1; } 2>/dev/null; then
   echo "$cache/shellcheck"
   exit 0
 fi
