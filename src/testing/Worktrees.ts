@@ -1,6 +1,7 @@
 // The Worktrees test layer (§ 3.3): temp folders. A ticket's worktree is a plain folder at
 // <root>/<id>, with no git in it: reused when it is there already, with what the script says an
-// earlier attempt left. IDs are checked, and run files opened through the symlink guard, as live.
+// earlier attempt left. A detached worktree is a new folder under <root>, its name starting with
+// its prefix. IDs are checked, and run files opened through the symlink guard, as live.
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -21,6 +22,8 @@ import {
 export type WorktreeCall =
   | { readonly op: "prepare"; readonly id: string }
   | { readonly op: "remove"; readonly id: string; readonly force: boolean }
+  | { readonly op: "addDetached"; readonly path: string; readonly commit: string }
+  | { readonly op: "removeDetached"; readonly path: string }
 
 export interface Options {
   /** The folder the worktrees go in; a new temp folder by default. */
@@ -51,6 +54,17 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
             rmSync(join(root, id), { recursive: true, force: true })
           }),
         ),
+      addDetached: (prefix, commit) =>
+        Effect.sync(() => {
+          const path = mkdtempSync(join(root, prefix))
+          calls.push({ op: "addDetached", path, commit })
+          return path
+        }),
+      removeDetached: (path) =>
+        Effect.sync(() => {
+          calls.push({ op: "removeDetached", path })
+          rmSync(path, { recursive: true, force: true })
+        }),
       openRunFile,
       checkRunFolder,
       writeRunFile,

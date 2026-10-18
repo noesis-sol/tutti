@@ -186,6 +186,8 @@ export class Git extends Context.Service<
   {
     /** git worktree add: a new worktree at path, on a branch that exists or one made from `base`. */
     addWorktree(repo: string, path: string, options: WorktreeOptions): Effect.Effect<void, GitError>
+    /** git worktree add --detach: a new worktree at path with `commit` checked out, on no branch. */
+    addDetachedWorktree(repo: string, path: string, commit: string): Effect.Effect<void, GitError>
     /** git worktree remove: refuses a worktree with changes unless forced. */
     removeWorktree(
       repo: string,
@@ -411,6 +413,18 @@ export class Git extends Context.Service<
                   ? ["worktree", "add", "--quiet", path, worktree.branch]
                   : ["worktree", "add", "--quiet", "-b", worktree.branch, path, worktree.base],
               ),
+            ),
+          addDetachedWorktree: (repo, path, commit) =>
+            Effect.asVoid(
+              write("worktree add", repo, [
+                "worktree",
+                "add",
+                "--quiet",
+                "--detach",
+                path,
+                "--end-of-options",
+                commit,
+              ]),
             ),
           removeWorktree: (repo, path, remove = {}) =>
             Effect.asVoid(

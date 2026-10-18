@@ -265,6 +265,20 @@ export class Worktrees extends Context.Service<
       id: string,
       options?: { readonly force?: boolean },
     ): Effect.Effect<void, BadTicketId | GitError>
+    /**
+     * A new worktree in a folder of its own under the worktrees' folder, its name starting with
+     * `prefix`, with `commit` checked out on no branch, its run files excluded from git first: the
+     * full check's (§ 5 item 12). Its path, absolute.
+     */
+    addDetached(
+      prefix: string,
+      commit: string,
+    ): Effect.Effect<string, GitError | ExcludeUnwritable | PlatformError>
+    /**
+     * Removes a worktree addDetached made, whatever was left in it, and has git forget it: its
+     * folder is deleted, then git's worktrees are pruned.
+     */
+    removeDetached(path: string): Effect.Effect<void, GitError | PlatformError>
     /** Opens a file under a worktree's .tutti/run/ (see openRunFile). */
     openRunFile(
       worktree: string,
@@ -356,7 +370,37 @@ export class Worktrees extends Context.Service<
             )
           })
 
-        return Worktrees.of({ prepare, remove, openRunFile, checkRunFolder, writeRunFile })
+        const addDetached = (prefix: string, commit: string) =>
+          writer.withLock(
+            Effect.gen(function* () {
+              yield* ensureExcluded(yield* git.commonDir(repo)).pipe(
+                Effect.provideService(FileSystem.FileSystem, fs),
+              )
+              yield* fs.makeDirectory(root, { recursive: true })
+              const path = yield* fs.makeTempDirectory({ directory: root, prefix })
+              // git forgets what it registered of a worktree it couldn't make on the next prune.
+              yield* git
+                .addDetachedWorktree(repo, path, commit)
+                .pipe(Effect.tapError(() => Effect.ignore(fs.remove(path, { recursive: true }))))
+              return path
+            }),
+          )
+
+        const removeDetached = (path: string) =>
+          Effect.andThen(
+            fs.remove(path, { recursive: true, force: true }),
+            git.pruneWorktrees(repo),
+          )
+
+        return Worktrees.of({
+          prepare,
+          remove,
+          addDetached,
+          removeDetached,
+          openRunFile,
+          checkRunFolder,
+          writeRunFile,
+        })
       }),
     )
 }

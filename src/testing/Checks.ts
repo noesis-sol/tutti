@@ -11,8 +11,15 @@ import {
   type Said,
 } from "../services/Checks.ts"
 
-/** A scripted run: its result or error, or an Effect giving one (one that never ends, say). */
-export type Scripted = CheckResult | CheckError | Effect.Effect<CheckResult, CheckError>
+/**
+ * A scripted run: its result or error, an Effect giving one (one that never ends, say), or a
+ * function of the run asked for giving one (to write its output, say).
+ */
+export type Scripted =
+  | CheckResult
+  | CheckError
+  | Effect.Effect<CheckResult, CheckError>
+  | ((run: CheckRun) => Effect.Effect<CheckResult, CheckError>)
 
 export type Script = { readonly [K in CheckKind]?: ReadonlyArray<Scripted> }
 
@@ -41,8 +48,9 @@ export const passed = (check: CheckKind, said: Partial<Said> = {}): CheckPassed 
   ...said,
 })
 
-const play = (scripted: Scripted): Effect.Effect<CheckResult, CheckError> => {
+const play = (scripted: Scripted, run: CheckRun): Effect.Effect<CheckResult, CheckError> => {
   if (Effect.isEffect(scripted)) return scripted
+  if (typeof scripted === "function") return scripted(run)
   switch (scripted._tag) {
     case "CheckPassed":
     case "NoCheckCommand":
@@ -63,7 +71,7 @@ export const layer = (script: Script = {}, runs: Array<CheckRun> = []) => {
     Effect.suspend(() => {
       runs.push(run)
       const scripted = left[run.check].shift()
-      return scripted === undefined ? Effect.succeed(passed(run.check)) : play(scripted)
+      return scripted === undefined ? Effect.succeed(passed(run.check)) : play(scripted, run)
     })
   return Layer.succeed(Checks, {
     setup: ({ before, ...options }) => next({ check: "setup", before, ...options }),

@@ -649,6 +649,35 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
                 })
               }),
           ),
+        addDetachedWorktree: (repo, path, commit) =>
+          operation(
+            "write",
+            "worktree add",
+            repo,
+            ["worktree", "add", "--quiet", "--detach", path, "--end-of-options", commit],
+            (refuse) =>
+              Effect.gen(function* () {
+                const checkout = yield* inRepo(refuse, repo)
+                const where = normalize(path)
+                if (checkouts.has(where) || locate(where) !== undefined) {
+                  return yield* refuse(128, `fatal: '${where}' already exists`)
+                }
+                const hash = resolve(checkout, commit)
+                if (hash === undefined) {
+                  return yield* refuse(128, `fatal: invalid reference: ${commit}`)
+                }
+                seq += 1
+                checkouts.set(where, {
+                  path: where,
+                  seq,
+                  head: { detached: hash },
+                  index: new Map(treeOf(hash)),
+                  work: new Map(treeOf(hash)),
+                  conflicts: new Map(),
+                  gone: false,
+                })
+              }),
+          ),
         removeWorktree: (repo, path, options = {}) =>
           operation(
             "write",

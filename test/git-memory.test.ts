@@ -163,6 +163,28 @@ const expectations = (make: () => Fixture) => {
     expect(left.map((worktree) => worktree.path)).toEqual([repo.dir])
   })
 
+  test("worktree add --detach: a commit checked out on no branch; an unknown commit refused", async () => {
+    const repo = make()
+    const start = repo.head("main")
+    const detached = repo.beside("detached")
+    const listed = success(
+      await repo.git((git) =>
+        Effect.gen(function* () {
+          yield* git.addDetachedWorktree(repo.dir, detached, "main")
+          return yield* git.worktrees(repo.dir)
+        }),
+      ),
+    )
+    expect(listed).toEqual([
+      { path: repo.dir, head: start, branch: "main", prunable: false },
+      { path: detached, head: start, prunable: false },
+    ])
+    const unknown = failure(
+      await repo.git((git) => git.addDetachedWorktree(repo.dir, repo.beside("x"), "no-such")),
+    )
+    expect(unknown).toMatchObject({ _tag: "GitFailed", op: "worktree add" })
+  })
+
   test("worktree prune forgets a worktree whose folder is gone", async () => {
     const repo = make()
     const worktree = repo.worktree("wt/demo-1")

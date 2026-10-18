@@ -12,7 +12,8 @@
 // The end (§ 5 item 14): nothing left to start or merge. The tickets still in a phase a run can't
 // end in are Stopped and their sessions suspended (§ 4.8), as are the sessions of those that
 // stopped the run; then the summary lines, the closing line (the stops', or READY_EMPTY,
-// LIMIT_REACHED or DRAINED, with a scoped run's SCOPE_ part), and the end record. In plain mode
+// LIMIT_REACHED or DRAINED, with a scoped run's SCOPE_ part), the full check when the run ended by
+// itself having merged a ticket (fullcheck.ts), and the end record. In plain mode
 // (§ 7.6) every line goes to stdout as the Log writes it; a worker's attention request is a
 // PERMISSION or QUESTION line naming the `tutti answer` command, served from the attention files.
 // When Tty says the terminal can draw the dashboard and main gave the run one, the run shows it
@@ -47,6 +48,7 @@ import { schemeNotices } from "../ui/theme.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
+import { fullCheck, fullCheckDue } from "./fullcheck.ts"
 import {
   addStop,
   exitCodeOf,
@@ -380,9 +382,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       yield* events.emit({ kind: "done", text })
       yield* logs.write(text)
     }
-    const exitCode = exitCodeOf(all)
-    yield* events.emit({ kind: "end", code: exitCode })
+
+    // The full check, after a run that ended by itself and merged a ticket (fullcheck.ts).
     const phases: Record<string, TicketPhase> = {}
     for (const entry of state.tickets.values()) phases[entry.ticket] = entry.phase
-    return { exitCode, phases, ending: [...summary, closing] } satisfies Outcome
+    const said = [...summary, closing]
+    const command = config.settings.checks.full.command
+    if (fullCheckDue(command, all.first !== null, Object.values(phases))) {
+      said.push((yield* fullCheck({ base, started: begun })).text)
+    }
+    const exitCode = exitCodeOf(all)
+    yield* events.emit({ kind: "end", code: exitCode })
+    return { exitCode, phases, ending: said } satisfies Outcome
   }).pipe(Effect.provide(Ledger.layer))
