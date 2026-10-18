@@ -146,10 +146,27 @@ Results:
 - **darwin-x64 built in a Linux container** ran here under Rosetta. `codesign -dv` shows an
   ad-hoc signature (`Identifier=bun`), so Bun signs a Mach-O even when it builds it on Linux.
 - Bun downloads the target's runtime on the first cross build; no setup is needed.
-- **Not checked: darwin-arm64 built on Linux.** Apple Silicon refuses unsigned or badly signed
-  code, so this matters if the release workflow builds every target on one Linux runner. The run was
-  cut short by the machine's full disk, then by Docker hanging. Until it is checked, build darwin
-  targets on a macOS runner (tutti-nrg.62).
+- **darwin-arm64 built on Linux runs on Apple Silicon** (tutti-nrg.62). Apple Silicon refuses
+  unsigned or badly signed code, so this matters if the release workflow builds every target on one
+  Linux runner. Built with `in-container.sh darwin arm64 darwin-arm64 copy` in `oven/bun:1.4.3` on
+  Linux aarch64 (Lima 2.2.1's Ubuntu VM and its nerdctl, since Docker Desktop hung; the install took
+  157 s), copied to a macOS arm64 machine:
+  - `codesign --verify` passes ("valid on disk", "satisfies its Designated Requirement").
+    `codesign -dv` shows `Identifier=a.out`, `flags=0x20002(adhoc,linker-signed)`: the same form,
+    and the same size (337,448,690 bytes), as the binary `build.ts` builds for darwin-arm64 on
+    macOS arm64. The bytes differ, as the two builds' paths do.
+  - `./tutti-spike-darwin-arm64 all` exits 0: extract, `version` (2.1.301), `auth`, `probe` and
+    `frame`, which loads OpenTUI's library, all pass. `tty-frame` in a pseudo-terminal passes too
+    (599 ms).
+  - `spctl -a -t exec` rejects it, as it does the macOS-built one: neither is notarized. That
+    matters only for a file carrying the quarantine attribute, such as one downloaded by a browser;
+    `curl` and `tar` don't add it.
+  - **Not checked: a Linux x64 host.** Under qemu user emulation of x64 (in the same VM), Bun 1.4.3
+    aborts before the build, its baseline build too, so this couldn't be run here. Bun signs the
+    Mach-O itself (Linux has no `codesign`), so an x64 runner is expected to give the same result,
+    but that is untested. tutti-nrg.10.2 should run
+    the darwin-arm64 binary its Linux runner builds once on Apple Silicon, or build on an arm64
+    Linux runner, which this check covers.
 
 `bun build --compile` left a 70 MB `.<hash>-00000000.bun-build` in its working folder on every
 build, byte-identical to the `bun` executable (tutti-nrg.21). `build.ts` builds in a temp folder
@@ -238,6 +255,6 @@ No step of § 12's recipe failed. The follow-up tickets:
 - tutti-nrg.61: § 4.13's "M0 confirms the exact command" is `claude auth login` (§ 5), and § 12's
   supported range should be as § 6 recommends.
 - tutti-nrg.62: check that darwin-arm64 built on Linux runs, before tutti-nrg.10.2 relies on it
-  (§ 4).
+  (§ 4). Done: built on Linux aarch64, it passes `codesign --verify` and runs on Apple Silicon.
 - tutti-nrg.63 (after tutti-nrg.10.1): call `extractFromBunfs` once per run, and remove stale
   `claude-agent-sdk-*` extractions (§ 2).
