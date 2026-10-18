@@ -370,17 +370,22 @@ slow.describe("worktrees in a real repository", () => {
     expect(repo.git(["branch", "--list", "tutti/*"])).toBe("")
   })
 
-  test("every ID taken is a branch name git takes", () => {
-    const repo = makeRepo()
-    fc.assert(
-      fc.property(fc.string({ unit: "grapheme", minLength: 1, maxLength: 12 }), (id) => {
-        if (ticketIdProblem(id) !== undefined) return
-        const result = Bun.spawnSync(["git", "check-ref-format", "--branch", branchOf(id)], {
-          cwd: repo.dir,
-        })
-        expect(result.exitCode).toBe(0)
-      }),
-      { numRuns: 200 },
-    )
-  })
+  // Up to 200 git processes, one after another: past bun's 5 s on a loaded machine.
+  test(
+    "every ID taken is a branch name git takes",
+    () => {
+      const repo = makeRepo()
+      fc.assert(
+        fc.property(fc.string({ unit: "grapheme", minLength: 1, maxLength: 12 }), (id) => {
+          if (ticketIdProblem(id) !== undefined) return
+          const result = Bun.spawnSync(["git", "check-ref-format", "--branch", branchOf(id)], {
+            cwd: repo.dir,
+          })
+          expect(result.exitCode).toBe(0)
+        }),
+        { numRuns: 200 },
+      )
+    },
+    { timeout: 60_000 },
+  )
 })
