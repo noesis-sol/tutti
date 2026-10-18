@@ -1,15 +1,18 @@
 // tutti login (§ 4.13, § 8.1): Claude Code's own claude.ai login, `<claude> auth login`, run with
 // the terminal's stdin, stdout and stderr (docs/spikes/07-compile.md, § 5). It opens the browser,
 // prints the URL in case it didn't open, and waits for a code to be pasted. The Claude Code is the
-// one workers run: --claude's (TUTTI_CLAUDE), else the embedded one. Once it has exited, the login
-// probe says which account the workers will use, and how they are billed.
+// one workers run, as resolveClaude (src/agent/claudeBinary.ts) resolves it for a run: --claude's
+// (TUTTI_CLAUDE), else a compiled build's embedded one, extracted; from source, where it resolves
+// none, the SDK's platform package's. Once it has exited, the login probe, run with that Claude
+// Code, says which account the workers will use, and how they are billed.
 //
 // The login runs in tutti's process group, not one of its own as other commands do: it reads the
 // terminal, which only its foreground group may.
 import { createRequire } from "node:module"
-import { Console, Effect, Exit, Schema } from "effect"
+import { Console, Effect, Exit, Layer, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { Account, type AccountInfo, type AccountProbe, billingLine } from "../agent/Account.ts"
+import type { Claude } from "../agent/claudeBinary.ts"
 import { failures } from "../run/startup.ts"
 import { AppConfig } from "./AppConfig.ts"
 
@@ -68,8 +71,8 @@ export const embeddedClaude = (): string | null => {
 }
 
 /**
- * The login's command line: `<claude> auth login`, with `claude` --claude's path, else the
- * `embedded` one; null when there is neither.
+ * The login's command line: `<claude> auth login`, with `claude` the path resolveClaude resolved,
+ * else the `embedded` one; null when there is neither.
  */
 export const loginCommandLine = (
   claude: string | null,
@@ -122,16 +125,26 @@ export const loginReport = (probe: AccountProbe): ReadonlyArray<string> => [
 ]
 
 /**
- * tutti login: runs Claude Code's login with `run`, the Claude Code `embedded` unless the
- * configuration names another, then the probe, and prints the account and its billing.
+ * tutti login: runs Claude Code's login with `run`, with the Claude Code that `claude`
+ * (resolveClaude, from the folder tutti was started in) resolves from the configuration's --claude,
+ * `embedded` when it resolves none; then the probe, `account`, with that Claude Code, and prints the
+ * account and its billing. The resolution's warnings go to stderr; its problems stop the login
+ * before it runs.
  */
-export const login = <R>(
+export const login = <R, RA, RC>(
   run: (line: CommandLine) => Effect.Effect<number, LoginFailed, R>,
+  account: Layer.Layer<Account, never, AppConfig | RA>,
+  claude: (given: string | null) => Effect.Effect<Claude, never, RC>,
   embedded: () => string | null = embeddedClaude,
 ) =>
   Effect.gen(function* () {
     const config = yield* AppConfig
-    const line = loginCommandLine(config.claude, embedded)
+    const resolved = yield* claude(config.claude)
+    for (const warning of resolved.warnings) yield* Console.error(`tutti login: ${warning}`)
+    if (resolved.problems.length > 0) {
+      return yield* new LoginFailed({ problems: resolved.problems })
+    }
+    const line = loginCommandLine(resolved.path, embedded)
     if (line === null) {
       return yield* new LoginFailed({
         problems: ["no embedded Claude Code was found: run tutti login --claude <path>"],
@@ -143,8 +156,13 @@ export const login = <R>(
         problems: [`Claude Code's login exited with status ${code}`],
       })
     }
-    const account = yield* Account
-    const probed = yield* Effect.exit(account.probe)
+    const probed = yield* Effect.exit(
+      Effect.flatMap(Account, (probe) => probe.probe).pipe(
+        Effect.provide(
+          Layer.provide(account, Layer.succeed(AppConfig, { ...config, claude: resolved.path })),
+        ),
+      ),
+    )
     if (Exit.isFailure(probed)) {
       const problems = failures(probed.cause)
       if (problems.length === 0) return yield* Effect.failCause(probed.cause)

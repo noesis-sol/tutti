@@ -6,6 +6,7 @@ import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
 import { Account } from "../agent/Account.ts"
 import { answerWords } from "../agent/attentionFiles.ts"
+import { resolveClaude } from "../agent/claudeBinary.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import { plan } from "../plan/plan.ts"
 import { Beads } from "../services/Beads.ts"
@@ -167,8 +168,9 @@ export const loginCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
     (given) =>
       Effect.gen(function* () {
         const top = yield* Effect.orElseSucceed(repo, () => process.cwd())
-        yield* login(runInTerminal).pipe(
-          Effect.provide(Account.layer),
+        yield* login(runInTerminal, Account.layer, (claude) =>
+          resolveClaude(claude, process.cwd()),
+        ).pipe(
           Effect.provide(appConfigLayer({ ...noFlags, claude: given.claude }, top)),
           Effect.catch((error) =>
             Effect.andThen(
