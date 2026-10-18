@@ -203,6 +203,36 @@ export const resolveServers = (repo: string, names: ReadonlyArray<string>) =>
     return { servers, note: null } satisfies ChosenServers
   })
 
+/**
+ * The names of the servers defined for the repository at `repo` that workers can be given, in
+ * Claude Code's order of scopes, each once, for tutti init to offer: no claude.ai connector. A
+ * config file that can't be read offers none of its servers.
+ */
+export const definedServers = (repo: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const ignored: Array<string> = []
+    const userFile = yield* claudeConfigFile
+    const user = yield* readJson(fs, userFile, ignored)
+    const project = yield* readJson(fs, join(repo, ".mcp.json"), ignored)
+    const projects = user?.projects
+    const entry = isObject(projects)
+      ? yield* projectEntry(fs, projects, repo)
+      : Option.none<unknown>()
+    const local = Option.isSome(entry) && isObject(entry.value) ? entry.value : null
+    const names = [local, project, user].flatMap((holder) =>
+      Object.entries(serversIn(holder, "", "", ignored)).flatMap(([name, definition]) => {
+        const type = isObject(definition) ? (definition.type ?? "stdio") : undefined
+        return name.startsWith(connectorPrefix) ||
+          typeof type !== "string" ||
+          !transports.includes(type)
+          ? []
+          : [name]
+      }),
+    )
+    return [...new Set(names)]
+  })
+
 /** The problem when a session's system/init lists servers tutti didn't give it (§ 4.6). */
 export const notGivenProblem = (names: ReadonlyArray<string>): string =>
   `workers got MCP servers they weren't given: ${names.map((name) => JSON.stringify(name)).join(", ")}`

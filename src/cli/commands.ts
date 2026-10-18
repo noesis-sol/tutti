@@ -1,20 +1,40 @@
 // tutti's commands (§ 8.1): `tutti` takes the run flags (§ 8.2), and its subcommands are in the
 // table below. Each subcommand finds the project's main checkout from wherever it is started, a
 // ticket's worktree included, since that is where an agent answering a request runs.
-import { Console, Effect, Layer, Option, Schema } from "effect"
+import { Console, Effect, Layer, Option, Result, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
 import { Account } from "../agent/Account.ts"
 import { answerWords } from "../agent/attentionFiles.ts"
 import { resolveClaude } from "../agent/claudeBinary.ts"
+import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
+import { cancelledLine, type InitFlags, init, summaryLines } from "../init/init.ts"
+import { lineForm } from "../init/lineForm.ts"
+import { liveMachine } from "../init/steps.ts"
+import { parseMcpNames } from "../init/workers.ts"
 import { plan } from "../plan/plan.ts"
+import { maxConcurrent } from "../project/settings.ts"
+import { exitCodes } from "../run/holds.ts"
+import { findRepository } from "../run/startup.ts"
 import { Beads } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
+import { RunLock } from "../services/RunLock.ts"
 import * as Tty from "../services/Tty.ts"
-import { layer as appConfigLayer } from "./AppConfig.ts"
+import { streamInput } from "../ui/plain/forms.ts"
+import { appearanceOf, makeTheme, orchestraLoaded, outputAppearance } from "../ui/theme.ts"
+import { layer as appConfigLayer, load, SetupProblem } from "./AppConfig.ts"
 import { colours } from "./colours.ts"
-import { cliFlags, noFlags, type RunFlags, runFlags } from "./flags.ts"
+import {
+  cliFlags,
+  count,
+  noFlags,
+  onOff,
+  positiveTime,
+  type Reader,
+  type RunFlags,
+  runFlags,
+} from "./flags.ts"
 import { login, runInTerminal } from "./login.ts"
 
 /** The main checkout of the repository `dir` is in: the first of its worktrees. */
@@ -226,6 +246,237 @@ export const coloursCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
     ),
   )
 
+/** An init flag's text: absent unless given. */
+const initFlag = (
+  name: string,
+  description: string,
+  options: { readonly alias?: string; readonly metavar?: string; readonly onOff?: true } = {},
+) => {
+  let flag = Flag.String(name).pipe(
+    Flag.withDescription(description),
+    Flag.withMetavar(options.metavar ?? (options.onOff ? "on|off" : "value")),
+  )
+  if (options.onOff) flag = Flag.withOptionalValue(flag, "true")
+  if (options.alias !== undefined) flag = Flag.withAlias(flag, options.alias)
+  return Flag.optional(flag)
+}
+
+/** tutti init's flags, orchestra init's, each read by readInitFlags. */
+export const initFlags = {
+  checkFast: initFlag(
+    "check-fast",
+    `the command scripts/check-fast.sh runs, the merge check (lint, build, the fast tests); "" for a check that passes at once`,
+    { alias: "check", metavar: "command" },
+  ),
+  checkFull: initFlag(
+    "check-full",
+    `the slower suites' command, which scripts/check-full.sh runs after check-fast.sh, once at the end of a run; "" for none`,
+    { metavar: "command" },
+  ),
+  checkFastTimeout: initFlag(
+    "check-fast-timeout",
+    "how long check-fast may run on a rebased ticket, e.g. 5m (default 30m)",
+    { alias: "check-timeout", metavar: "time" },
+  ),
+  checkFullTimeout: initFlag(
+    "check-full-timeout",
+    "how long check-full may run at the end of a run, e.g. 90m (default 60m)",
+    { metavar: "time" },
+  ),
+  setup: initFlag(
+    "setup",
+    `the command that installs the dependencies in a worktree, run before check-fast when a rebase changes a lockfile, e.g. "npm ci"; "" for none (an existing setting is kept)`,
+    { metavar: "command" },
+  ),
+  concurrent: initFlag(
+    "concurrent",
+    `tickets to run at the same time by default, 1 to ${maxConcurrent} (asked when omitted)`,
+    { alias: "c", metavar: "N" },
+  ),
+  mcp: initFlag(
+    "mcp",
+    `the MCP servers workers get, by name, comma-separated, e.g. postgres,firecrawl; "" for none (asked when omitted)`,
+    { metavar: "names" },
+  ),
+  changelogUnion: initFlag(
+    "changelog-union",
+    "add 'CHANGELOG.md merge=union' to .gitattributes, so two tickets' changelog entries don't conflict (asked when omitted; =false declines)",
+    { onOff: true },
+  ),
+  installBeads: initFlag(
+    "install-beads",
+    "install Beads (bd) where it is missing, with Homebrew or the Beads install script (asked when omitted; =false declines)",
+    { onOff: true },
+  ),
+  prefix: initFlag(
+    "prefix",
+    "the Beads ticket prefix, IDs reading <prefix>-<hash>: lowercase letters, digits and hyphens, starting with a letter; a new Beads takes it, and an existing one's tickets are all renamed to it with bd rename-prefix (kept when not given)",
+    { metavar: "name" },
+  ),
+  force: Flag.Boolean("force").pipe(
+    Flag.withDescription("replace an existing .tutti/worker-prompt.md with the built-in template"),
+    Flag.withDefault(false),
+  ),
+}
+
+/** The texts of init's flags, as effect/cli parsed them. */
+export type InitFlagTexts = {
+  readonly [K in Exclude<keyof typeof initFlags, "force">]: Option.Option<string>
+} & { readonly force: boolean }
+
+/** Reads init's flags: their values, or every problem with them, each after `--name`. */
+export const readInitFlags = (
+  given: InitFlagTexts,
+): Result.Result<InitFlags, ReadonlyArray<string>> => {
+  const problems: Array<string> = []
+  const read = <A>(name: string, text: Option.Option<string>, reader: Reader<A>) => {
+    if (Option.isNone(text)) return {}
+    const value = reader(text.value)
+    if (Result.isFailure(value)) {
+      problems.push(`--${name} ${value.failure}`)
+      return {}
+    }
+    return { value: value.success }
+  }
+  const asIs: Reader<string> = (text) => Result.succeed(text)
+  const pick = <K extends keyof InitFlags, A extends InitFlags[K]>(
+    key: K,
+    read: { readonly value?: A },
+  ) => (read.value === undefined ? {} : { [key]: read.value })
+  const flags: InitFlags = {
+    ...pick("concurrent", read("concurrent", given.concurrent, count(1, maxConcurrent))),
+    ...pick(
+      "mcp",
+      read("mcp", given.mcp, (text) => Result.succeed(parseMcpNames(text))),
+    ),
+    ...pick("changelogUnion", read("changelog-union", given.changelogUnion, onOff)),
+    ...pick("installBeads", read("install-beads", given.installBeads, onOff)),
+    ...pick("prefix", read("prefix", given.prefix, asIs)),
+    ...pick("checkFast", read("check-fast", given.checkFast, asIs)),
+    ...pick("checkFull", read("check-full", given.checkFull, asIs)),
+    ...pick("checkFastTimeout", read("check-fast-timeout", given.checkFastTimeout, positiveTime)),
+    ...pick("checkFullTimeout", read("check-full-timeout", given.checkFullTimeout, positiveTime)),
+    ...pick("setup", read("setup", given.setup, asIs)),
+    force: given.force,
+  }
+  return problems.length > 0 ? Result.fail(problems) : Result.succeed(flags)
+}
+
+/** init stopped, having said why: it exits with status 2 and the project as it was. */
+const initStopped = (lines: ReadonlyArray<string>) =>
+  Effect.andThen(
+    Effect.forEach(lines, (line) => Console.error(line)),
+    Effect.sync(() => {
+      process.exitCode = exitCodes.setup
+    }),
+  )
+
+/**
+ * tutti init in the folder `cwd`: from the main checkout, asking in lines where stdin and stdout
+ * are a terminal, else asking nothing.
+ */
+const runInit = (cwd: string, flags: InitFlags) =>
+  Effect.gen(function* () {
+    const found = yield* findRepository(cwd)
+    if (Result.isFailure(found)) return yield* initStopped([`tutti init: ${found.failure}`])
+    const { repo, linked } = found.success
+    if (linked !== null) {
+      return yield* initStopped([
+        `tutti init: ${linked} is a linked worktree. Run this from the main checkout.`,
+      ])
+    }
+    const git = yield* Git
+    const commonDir = yield* Effect.result(git.commonDir(repo))
+    if (Result.isFailure(commonDir)) {
+      return yield* initStopped([`tutti init: tutti cannot find the git folder of ${repo}`])
+    }
+    const branch = Option.getOrElse(
+      yield* git.currentBranch(repo).pipe(Effect.orElseSucceed(() => Option.none<string>())),
+      () => "HEAD",
+    )
+    const machine = yield* liveMachine
+    const claudeConfig = yield* claudeConfigFile
+    const configure = Effect.gen(function* () {
+      const config = yield* load(noFlags, repo)
+      const claude = yield* resolveClaude(config.claude, cwd)
+      if (claude.problems.length > 0) return yield* new SetupProblem({ problems: claude.problems })
+      return { ...config, claude: claude.path }
+    })
+    const tty = yield* Effect.provide(
+      Effect.gen(function* () {
+        return yield* Tty.Tty
+      }),
+      Tty.layer,
+    )
+    const asks = process.stdin.isTTY === true && process.stdout.isTTY === true
+    const ran = yield* Effect.scoped(
+      Effect.gen(function* () {
+        let form = null
+        if (asks) {
+          const config = yield* Effect.option(load(noFlags, repo))
+          const chosen = Option.match(config, {
+            onNone: () => "auto" as const,
+            onSome: (value) => value.appearance,
+          })
+          const theme = makeTheme(
+            Option.match(config, {
+              onNone: () => orchestraLoaded,
+              onSome: (value) => value.scheme,
+            }).scheme,
+            {
+              appearance: tty.dumb
+                ? appearanceOf(chosen, null)
+                : yield* outputAppearance(chosen, null),
+              depth: tty.colourDepth === "truecolor" ? "truecolor" : "256",
+              noColor: Option.match(config, {
+                onNone: () => false,
+                onSome: (value) => value.noColor,
+              }),
+            },
+          )
+          const input = yield* streamInput(process.stdin)
+          form = lineForm({ input, write: (text) => process.stdout.write(text), theme })
+        }
+        return yield* Effect.result(
+          init({
+            repo,
+            commonDir: commonDir.success,
+            branch,
+            version: pkg.version,
+            flags,
+            form,
+            machine,
+            configure,
+            account: Account.layer,
+            claudeConfig,
+          }).pipe(Effect.provide(RunLock.layer), Effect.provide(Beads.layer({ cwd: repo }))),
+        )
+      }),
+    )
+    if (Result.isFailure(ran)) {
+      const error = ran.failure
+      return yield* initStopped([
+        error._tag === "FormCancelled" ? cancelledLine : `tutti init: ${error.message}`,
+      ])
+    }
+    yield* Console.log(summaryLines(ran.success).join("\n"))
+  }).pipe(Effect.provide(Git.layer()), Effect.provide(GitWriter.layer))
+
+/** `tutti init`, in the folder tutti was started in. */
+export const initCommand = Command.make("init", initFlags, (given) =>
+  Effect.gen(function* () {
+    const flags = readInitFlags(given)
+    if (Result.isFailure(flags)) {
+      return yield* initStopped(flags.failure.map((problem) => `tutti init: ${problem}`))
+    }
+    yield* runInit(process.cwd(), flags.success)
+  }),
+).pipe(
+  Command.withDescription(
+    "set up Beads and .tutti/ in this repository: bd installed where it is missing, bd init where Beads isn't set up; the worker prompt, the settings (how many tickets run at the same time, the MCP servers workers get, the checks and their time limits), a .gitignore, and the checks' runners (scripts/check-fast.sh and scripts/check-full.sh; one that is there is kept unless its flag is given); CHANGELOG.md merge=union offered; then the login probe's account, billing and permission mode. In a terminal it asks what the flags don't give. Run it from the main checkout, between runs",
+  ),
+)
+
 /**
  * tutti and its subcommands, the main checkout found with `repo`; `tutti plan` reads it with
  * `services`. A bare `tutti` is `run` with its flags (src/main.ts gives it the run); without one, it
@@ -239,6 +490,7 @@ export const tuttiWith = <E extends { readonly message: string } | string, R, S,
   Command.make("tutti", cliFlags, run).pipe(
     Command.withDescription("runs Claude Code workers on a Beads backlog, one worktree per ticket"),
     Command.withSubcommands([
+      initCommand,
       answerCommand(repo),
       planCommand(repo, services),
       loginCommand(repo),

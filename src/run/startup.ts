@@ -149,7 +149,7 @@ const real = (fs: FileSystem.FileSystem, path: string) =>
  * The main checkout of the repository `cwd` is in, and the linked worktree `cwd` is in instead,
  * if it is in one; or the problem.
  */
-const findRepository = (cwd: string) =>
+export const findRepository = (cwd: string) =>
   Effect.gen(function* () {
     const git = yield* Git
     const fs = yield* FileSystem.FileSystem
