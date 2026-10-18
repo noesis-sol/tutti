@@ -254,7 +254,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       // The renderer, destroyed once the run's scope and then its own have closed.
       const shown = yield* Effect.scoped(
         Effect.gen(function* () {
-          const shell = yield* openRenderer({ chosen: config.appearance })
+          const shell = yield* openRenderer({ chosen: config.appearance, mouse: config.mouse })
           return yield* Effect.scoped(
             scoped(run({ version, base, start, drains, dashboard: dashboard(shell, themeOf) })),
           )

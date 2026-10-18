@@ -1,0 +1,93 @@
+// Toasts (§ 7.3, § 7.11): a short line at the foot of the screen, over the view, that goes after a
+// few seconds by itself. Faint, or `needsYou` for a failure (`couldn't copy`). Ctrl+Z shows one,
+// since tutti can't be suspended (D18).
+import { useTerminalDimensions } from "@opentui/react"
+import { useSyncExternalStore } from "react"
+import { cut, Line, seg } from "./line.tsx"
+import { type External, external, useTheme } from "./useRunView.ts"
+
+/** What Ctrl+Z says (D18). */
+export const suspendToast =
+  "tutti can't be suspended: s stops after the current tickets, Ctrl+C quits"
+
+/** How long a toast is shown, in ms. */
+export const toastLife = 4000
+
+/** At most this many toasts are shown, the newest last. */
+export const toastsShown = 3
+
+export interface Toast {
+  readonly id: number
+  readonly text: string
+  /** Something failed: drawn `needsYou`, not faint. */
+  readonly failure: boolean
+}
+
+/** The toasts shown, oldest first, and a way to show another. */
+export interface ToastStore extends External<ReadonlyArray<Toast>> {
+  /** Shows `text` for `life` ms. */
+  readonly show: (text: string, options?: { readonly failure?: boolean }) => void
+  /** Takes every toast down and stops their timers. */
+  readonly dispose: () => void
+}
+
+/** An empty ToastStore whose toasts are shown `life` ms each. */
+export const makeToasts = (life: number = toastLife): ToastStore => {
+  const store = external<ReadonlyArray<Toast>>([])
+  const timers = new Set<ReturnType<typeof setTimeout>>()
+  let next = 0
+  return {
+    get: store.get,
+    subscribe: store.subscribe,
+    show: (text, options = {}) => {
+      const toast: Toast = { id: next++, text, failure: options.failure ?? false }
+      store.set([...store.get(), toast].slice(-toastsShown))
+      const timer = setTimeout(() => {
+        timers.delete(timer)
+        store.set(store.get().filter((each) => each.id !== toast.id))
+      }, life)
+      timers.add(timer)
+    },
+    dispose: () => {
+      for (const timer of timers) clearTimeout(timer)
+      timers.clear()
+      store.set([])
+    },
+  }
+}
+
+/** The toasts of `store`, right-aligned above the hint line. */
+export const Toasts = ({ store }: { readonly store: ToastStore }) => {
+  const toasts = useSyncExternalStore(store.subscribe, store.get)
+  const theme = useTheme()
+  const { width, height } = useTerminalDimensions()
+  if (toasts.length === 0) return null
+  const room = Math.max(width - 2, 0)
+  const lines = toasts.map((toast) =>
+    cut(
+      [
+        seg(
+          ` ${toast.text} `,
+          toast.failure
+            ? { fg: theme.rgba("needsYou"), bg: undefined, attributes: 0 }
+            : theme.styles.dim,
+        ),
+      ],
+      room,
+    ),
+  )
+  return (
+    <box
+      position="absolute"
+      zIndex={20}
+      right={1}
+      top={Math.max(height - 1 - lines.length, 0)}
+      flexDirection="column"
+      alignItems="flex-end"
+    >
+      {lines.map((segments, i) => (
+        <Line key={toasts[i]?.id ?? i} segments={segments} />
+      ))}
+    </box>
+  )
+}

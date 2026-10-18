@@ -7,6 +7,7 @@
 // and the hint are drawn.
 import { useTerminalDimensions } from "@opentui/react"
 import type { Key } from "../run/runView.ts"
+import { Box, useInput, useLayer } from "./keys.ts"
 import { cut, Lines, type Segments, seg } from "./line.tsx"
 import { sectionChrome, TicketsTable, tableLines, ticketsLines } from "./TicketsTable.tsx"
 import { TitleLine } from "./TitleLine.tsx"
@@ -55,6 +56,11 @@ export const showsTable = (height: number, totals: number, slots: number, foot: 
 export const Dashboard = () => {
   const view = useRunView()
   const theme = useTheme()
+  const { box } = useInput()
+  // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
+  useLayer("view", [
+    { key: "s", run: () => box.set(Box.Stop({ windingDown: view.windDown !== null })) },
+  ])
   const { width, height } = useTerminalDimensions()
   const hint = hintSegments(view.hint, theme, width)
   if (width < minWidth || height < minHeight) {

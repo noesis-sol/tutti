@@ -10,6 +10,7 @@ import { Effect } from "effect"
 import type { ReactNode } from "react"
 import type { Dashboard as RunDashboard } from "../run/screen.ts"
 import { Dashboard } from "./Dashboard.tsx"
+import { Input } from "./Input.tsx"
 import { styled } from "./line.tsx"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -57,14 +58,23 @@ export const App = () => {
   }
 }
 
-/** The App, or `children` in its place, over `value`. */
+/**
+ * The App, or `children` in its place, over `value`, with the input layers (`input`: the tests'
+ * paste limit and toast life).
+ */
 export const Root = ({
   value,
   children,
+  input = {},
 }: {
   readonly value: ShellValue
   readonly children?: ReactNode
-}) => <ShellContext.Provider value={value}>{children ?? <App />}</ShellContext.Provider>
+  readonly input?: { readonly pasteLimit?: number; readonly toastLife?: number }
+}) => (
+  <ShellContext.Provider value={value}>
+    <Input {...input}>{children ?? <App />}</Input>
+  </ShellContext.Provider>
+)
 
 /** The dashboard a run shows in `shell`'s renderer, drawn in the theme `themeOf` makes. */
 export const dashboard =

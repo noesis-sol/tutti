@@ -27,6 +27,12 @@ export const rendererConfig = {
   exitSignals: [],
 } as const satisfies CliRendererConfig
 
+/** rendererConfig, taking the mouse or leaving it to the terminal (`--no-mouse`, § 7.3). */
+export const rendererConfigFor = (mouse: boolean): CliRendererConfig => ({
+  ...rendererConfig,
+  useMouse: mouse,
+})
+
 /** How long the renderer waits for the terminal to say its theme mode at start, in ms. */
 export const themeModeLimit = 250
 
@@ -119,18 +125,21 @@ export const followAppearance = (
 
 /**
  * Opens the command's renderer in the caller's scope, which destroys it when it closes. `make`
- * makes it (OpenTUI's, on this terminal, by default; a test renderer in the tests), and `report`
+ * makes it from its config (OpenTUI's, on this terminal, by default; a test renderer in the
+ * tests), taking the mouse unless `mouse` is false, and `report`
  * says an error nothing caught once the renderer is gone (reportFatal by default). `mode2027` asks
  * for mode 2027 before the renderer is made and writes it back once it has closed: this terminal's
  * when `make` is OpenTUI's, none for another renderer unless given.
  */
 export const open = (options: {
   readonly chosen: "auto" | "light" | "dark"
-  readonly make?: () => Promise<CliRenderer>
+  readonly mouse?: boolean
+  readonly make?: (config: CliRendererConfig) => Promise<CliRenderer>
   readonly report?: (error: unknown) => void
   readonly mode2027?: Mode2027Io
 }): Effect.Effect<Shell, RendererFailed, Scope.Scope> => {
-  const make = options.make ?? (() => createCliRenderer(rendererConfig))
+  const make = options.make ?? createCliRenderer
+  const config = rendererConfigFor(options.mouse ?? true)
   const report = options.report ?? reportFatal
   const mode2027 = options.mode2027 ?? (options.make === undefined ? terminalMode2027 : undefined)
   return Effect.acquireRelease(
@@ -144,7 +153,7 @@ export const open = (options: {
         mode2027.write(restoreMode2027(before))
       }
       const renderer = yield* Effect.tryPromise({
-        try: make,
+        try: () => make(config),
         catch: (error) =>
           new RendererFailed({ message: error instanceof Error ? error.message : String(error) }),
       })
