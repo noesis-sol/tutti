@@ -216,15 +216,18 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
 // already in milliseconds is kept.
 const epochMillis = (at: number): number => (at < 1e12 ? at * 1000 : at)
 
-/** A new turn: what the last one left about its tool calls, retries and limit goes. */
+/**
+ * A new turn: what the last one left about its retries and limit goes. Its tool calls and
+ * subagents went with its result; a tool or subagent set now came from a hook of this turn, folded
+ * before its `system/init` (hooks come on the SDK's control channel, messages through its queue),
+ * and stays.
+ */
 const newTurn = (worker: Worker): Worker => ({
   ...worker,
   turn: Turn.Running(),
   idle: false,
   report: null,
   retry: null,
-  tool: null,
-  subagents: [],
   rateLimited: false,
 })
 

@@ -299,7 +299,6 @@ describe("AgentHost live: state, hooks and stderr", () => {
       {
         turns: [
           [
-            { wait: true },
             {
               hook: {
                 hook_event_name: "PreToolUse",
@@ -316,10 +315,8 @@ describe("AgentHost live: state, hooks and stderr", () => {
           const host = yield* AgentHost
           yield* host.start("t-1", session(dir))
           yield* host.send("t-1", "go", "clientComposed")
-          // The turn's system/init is folded in before its hook callback is called, as with the
-          // real CLI, where the model's answer comes between them.
-          yield* until("t-1", (s) => s._tag === "Working")
-          yield* host.send("t-1", "go on", "clientComposed")
+          // The fake sends system/init and calls the hook back to back, so the hook may be folded
+          // in before the init: the turn keeps its tool all the same.
           return yield* until("t-1", (s) => s._tag === "Working" && s.doing === "testing")
         }),
     )
