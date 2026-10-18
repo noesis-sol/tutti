@@ -1,7 +1,8 @@
 // The dashboard's title line (§ 7.2, § 7.11), under a blank line: the tutti pill, the version, and
-// whether the run is stopping or has a solo ticket running or next; then, faint, the branch, the
-// run's time and a scoped run's ticket; and on the right tutti's banners, the usage and the holds.
-// The states come first, so a narrow pane cuts the branch and the time, then drops them.
+// whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next;
+// then, faint, the branch, the run's time and a scoped run's ticket; and on the right tutti's
+// banners, the usage and the holds. The states come first, so a narrow pane cuts the branch and the
+// time, then drops them.
 import { runTime } from "../print/summary.ts"
 import { type Banner, clock, countdown, type TitleView } from "../run/runView.ts"
 import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
@@ -57,7 +58,8 @@ export const titleSegments = (
   const { styles } = theme
   const left: Array<Segment> = [seg(" tutti ", styles.title)]
   if (title.version !== "") left.push(seg(" "), seg(title.version, styles.dim))
-  if (title.stopping) left.push(seg("  · stopping", styles.stop))
+  if (title.quitting !== null) left.push(seg(`  · ${title.quitting}`, styles.stop))
+  else if (title.stopping) left.push(seg("  · stopping", styles.stop))
   if (title.solo !== null) {
     left.push(
       title.solo.running

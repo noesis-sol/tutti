@@ -98,6 +98,16 @@ export interface MergeQueue {
    * failed, as the queue does after each merge; the tickets it put back.
    */
   readonly recheck: Effect.Effect<ReadonlyArray<string>>
+  /**
+   * Stops the hand-backs under way, as quitting does (quit.ts): their tickets stay Resolving or
+   * Fixing, their rebases or fixes left as they are, for the run's end to stop them.
+   */
+  readonly stopHandBacks: Effect.Effect<void>
+  /**
+   * Stops the merges, as quitting does: one in its protected step finishes it first; one before it
+   * has its rebase aborted or its check killed, and is back at the head of the line, ToMerge.
+   */
+  readonly stopMerges: Effect.Effect<void>
 }
 
 /** Whether nothing is left for the queue to do. */
@@ -306,5 +316,7 @@ export const make = (
       rechecks,
       handBacks,
       recheck,
+      stopHandBacks: FiberSet.clear(handBacksSet),
+      stopMerges: FiberSet.clear(set),
     } satisfies MergeQueue
   })

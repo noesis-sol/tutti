@@ -450,6 +450,7 @@ describe("what the hold says", () => {
       scope: null,
       began: 0,
       stopping: false,
+      quitting: null,
       solo: null,
     }
     const text = (banners: Parameters<typeof titleSegments>[1], now: number) =>

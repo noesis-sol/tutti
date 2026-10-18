@@ -7,11 +7,15 @@
 // (src/ui/renderer.ts), the log goes to its file alone, and the run's summary and closing lines
 // are printed once the renderer is gone. Otherwise the run is plain (§ 7.6): the start question as
 // lines, log lines on stdout, with a line saying why when the terminal couldn't show a dashboard.
-// SIGUSR1 winds the run down (§ 7.4).
+// Signals (§ 7.4, src/run/quit.ts): SIGUSR1 winds the run down, SIGUSR2 too, their handlers in place
+// before the lock names tutti's PID; SIGTSTP is ignored with a log line (D18); while the run goes,
+// SIGINT, SIGTERM and SIGHUP quit it (§ 4.8), the third ending tutti at once, and before and after
+// it they interrupt the command. A panic outside the run's fibers is said with its stack once the
+// renderer is gone, exit 4.
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`.
 import { join } from "node:path"
-import { BunRuntime, BunServices } from "@effect/platform-bun"
+import { BunServices } from "@effect/platform-bun"
 import { Clock, Console, Effect, Layer, ManagedRuntime, Option, Queue, Result, Scope } from "effect"
 import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
@@ -34,12 +38,12 @@ import {
   interviewUnavailable,
   ticketCount,
 } from "./run/choose.ts"
-import { bySignal, type DrainRequest } from "./run/drain.ts"
+import type { DrainRequest } from "./run/drain.ts"
 import { EventStream } from "./run/eventstream.ts"
 import { type FeatureIO, inRenderer, planAndFile, scopedTo } from "./run/feature.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
-import { detail, Log, logFile, type Sink } from "./run/log.ts"
+import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
 import {
   check as checkNothing,
   type Options as NothingOptions,
@@ -49,6 +53,14 @@ import {
   report as reportNothing,
   themeStyles,
 } from "./run/nothing.ts"
+import {
+  catchSignals,
+  listen,
+  type QuitRequest,
+  quitBy,
+  runMain,
+  suspendIgnoredLine,
+} from "./run/quit.ts"
 import { run } from "./run/run.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
@@ -66,7 +78,7 @@ import { liveClipboard } from "./ui/clipboard.ts"
 import { askPlan } from "./ui/PlanConfirmation.tsx"
 import { planConfirmation, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
-import { open as openRenderer, type RendererFailed } from "./ui/renderer.ts"
+import { closeLimit, open as openRenderer, type RendererFailed } from "./ui/renderer.ts"
 import { askStart } from "./ui/StartQuestion.tsx"
 import {
   type Appearance,
@@ -123,12 +135,33 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
   )
 }
 
+/** Ends tutti at once with `code` (a third request to quit), `said` printed first if given. */
+const exitNow =
+  (destroy?: () => Promise<void>) =>
+  (code: number, said: ReadonlyArray<Line>): Effect.Effect<void> =>
+    Effect.promise(async () => {
+      if (destroy !== undefined) {
+        await destroy()
+        process.stdout.write(`${said.join("\n")}\n`)
+      }
+      process.exit(code)
+    })
+
 /** Says `message` on stderr, and gives the exit code of a run that can't start. */
 const cannotStart = (message: string) => Effect.as(Console.error(message), exitCodes.setup)
 
 /** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
   Effect.gen(function* () {
+    // SIGUSR1 and SIGUSR2 wind the run down, as orchestra's drain, and SIGTSTP is ignored: each
+    // handler is in place before tutti's PID is written anywhere, as without one each signal kills
+    // or stops tutti.
+    const drains = yield* Queue.unbounded<DrainRequest>()
+    const suspends = yield* Queue.unbounded<void>()
+    yield* catchSignals({
+      drain: (signal) => Queue.offerUnsafe(drains, { on: true, how: `by ${signal}` }),
+      suspend: () => Queue.offerUnsafe(suspends, undefined),
+    })
     const checked = yield* Effect.result(check(live(cwd, flags)).pipe(Effect.provide(gitLayer)))
     if (Result.isFailure(checked)) {
       const failed = checked.failure
@@ -183,6 +216,10 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     return yield* Effect.gen(function* () {
       const events = yield* EventStream
       const tty = yield* Tty
+      const logs = yield* Log
+      yield* Effect.forkScoped(
+        Effect.forever(Effect.andThen(Queue.take(suspends), logs.write(suspendIgnoredLine))),
+      )
 
       const depth = tty.colourDepth === "truecolor" ? "truecolor" : "256"
       const themeOf = (appearance: Appearance) =>
@@ -295,16 +332,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const scoped = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         scope === null ? effect : scopedTo(scope)(effect)
 
-      // SIGUSR1 winds the run down, as orchestra's drain.
-      const drains = yield* Queue.unbounded<DrainRequest>()
-      yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          const drain = () => Queue.offerUnsafe(drains, { on: true, how: bySignal })
-          process.on("SIGUSR1", drain)
-          return drain
-        }),
-        (drain) => Effect.sync(() => process.off("SIGUSR1", drain)),
-      )
+      // While the run goes, SIGINT, SIGTERM and SIGHUP quit it (§ 4.8).
+      const quits = yield* Queue.unbounded<QuitRequest>()
+      const listening = <A, E, R>(running: Effect.Effect<A, E, R>) =>
+        Effect.scoped(
+          Effect.andThen(
+            listen((signal) => Queue.offerUnsafe(quits, quitBy(signal))),
+            running,
+          ),
+        )
       const why = mode._tag === "Plain" ? plainReasonLine(mode.reason, tty.term) : undefined
       const start = () => [
         ...startBlock({ ...started, config: { ...config, ticket: scope } }, version),
@@ -342,8 +378,10 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         })
         if (stopped !== undefined) return stopped
         if (yield* nothingReported) return exitCodes.ok
-        return (yield* Effect.scoped(scoped(run({ version, base, start: start(), drains }))))
-          .exitCode
+        const ran = yield* listening(
+          scoped(run({ version, base, start: start(), drains, quits, exitNow: exitNow() })),
+        )
+        return ran.exitCode
       }
       if (asks === "no") {
         yield* begin(Work.Tickets())
@@ -387,13 +425,23 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             if (nothing !== null) return nothing
           }
           const clipboard = yield* liveClipboard(shell.renderer)
-          const ran = yield* Effect.scoped(
+          // Exiting at once, the renderer is destroyed first, waited for up to closeLimit.
+          const destroy = () => {
+            shell.renderer.destroy()
+            return Promise.race([
+              shell.renderer.closed.catch(() => undefined),
+              Bun.sleep(closeLimit),
+            ]).then(() => undefined)
+          }
+          const ran = yield* listening(
             scoped(
               run({
                 version,
                 base,
                 start: start(),
                 drains,
+                quits,
+                exitNow: exitNow(destroy),
                 dashboard: dashboard(shell, themeOf, clipboard),
               }),
             ),
@@ -445,12 +493,20 @@ export const tutti = tuttiWith(
 
 /** Runs tutti's command line, and exits when it is done. */
 export const main = (): void =>
-  BunRuntime.runMain(
+  runMain(
     Effect.flatMap(tuttiVersion, (shown) => Command.run(tutti, { version: shown })).pipe(
       // The command has said why on stderr.
       Effect.catchTag("CommandFailed", () =>
         Effect.sync(() => {
           process.exitCode = 1
+        }),
+      ),
+      // A panic: its scopes have closed, the renderer with them, before its stack is said.
+      Effect.catchDefect((defect) =>
+        Effect.sync(() => {
+          const said = defect instanceof Error ? (defect.stack ?? defect.message) : String(defect)
+          process.stderr.write(`tutti: PANIC: ${said}\n`)
+          process.exitCode = exitCodes.tool
         }),
       ),
       Effect.provide(BunServices.layer),

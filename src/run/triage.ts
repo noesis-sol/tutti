@@ -62,6 +62,8 @@ export interface Triage {
   readonly pending: Effect.Effect<number>
   /** The verdicts in, by ticket, as their rows show them: now, then each change. */
   readonly verdicts: Stream.Stream<ReadonlyMap<string, string>>
+  /** Aborts the organ calls under way and takes no more tickets, as quitting does (quit.ts). */
+  readonly interrupt: Effect.Effect<void>
 }
 
 /** Triage turned off: it takes no ticket. */
@@ -69,6 +71,7 @@ export const off: Triage = {
   deferred: () => Effect.void,
   pending: Effect.succeed(0),
   verdicts: Stream.succeed(new Map()),
+  interrupt: Effect.void,
 }
 
 /** How many characters of transcript lines are read back for the tail: its last items count. */
@@ -274,5 +277,6 @@ export const make = (options: {
         }),
       pending: Ref.get(pending),
       verdicts: SubscriptionRef.changes(verdicts),
+      interrupt: FiberSet.clear(fibers),
     } satisfies Triage
   })

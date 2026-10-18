@@ -16,6 +16,12 @@
 // request unanswered for 4 minutes stops the run with BLOCKED, lifted once its ticket has no request
 // open; its banner is on the title line while it holds.
 //
+// Quitting (§ 4.8, quit.ts): the first request to quit (SIGINT, SIGTERM, SIGHUP, the quit box's
+// `q`), or a panic in one of the run's fibers, cuts the loop short: the workers are interrupted at
+// once and their results waited for, the merges and hand-backs stopped, triage aborted, then the end
+// below suspends every session and the run ends INTERRUPTED (130), or PANIC (4). A second request
+// says what is under way; a third ends tutti at once, through RunOptions.exitNow.
+//
 // Before its first dispatch the run checks the tickets earlier runs left labelled `unmerged`
 // (unmerged.ts): one merged since by hand loses its label; bd failing to list them stops the run,
 // BEADS_FAILED.
@@ -34,6 +40,7 @@
 import {
   Cause as Causes,
   Clock,
+  Deferred,
   Duration,
   Effect,
   FiberSet,
@@ -89,6 +96,20 @@ import { detail, hold, type Line, Log, line, Tag } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
+import {
+  type Awaited,
+  atOnceText,
+  heard,
+  interruptedText,
+  interruptWorkers,
+  panicLines,
+  type QuitRequest,
+  quitLine,
+  quittingText,
+  stillQuittingLine,
+  unansweredLine,
+  underWayLine,
+} from "./quit.ts"
 import { emptyStatus, project, type Row, type Status, type Totals } from "./runView.ts"
 import { make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
@@ -115,6 +136,13 @@ export interface RunOptions {
   readonly start?: ReadonlyArray<Line>
   /** Requests to wind down or to take tickets again, such as SIGUSR1's. */
   readonly drains?: Queue.Dequeue<DrainRequest>
+  /**
+   * Requests to quit now (§ 4.8): SIGINT's, SIGTERM's and SIGHUP's, the quit box's `q`. The first
+   * quits, the second says what is under way, the third ends tutti at once through `exitNow`.
+   */
+  readonly quits?: Queue.Dequeue<QuitRequest>
+  /** Ends tutti at once with `code`, `said` the lines to print once the screen has gone. */
+  readonly exitNow?: (code: number, said: ReadonlyArray<Line>) => Effect.Effect<void>
   /** The dashboard to show when Tty says the terminal can draw one; the run is plain without it. */
   readonly dashboard?: Dashboard
 }
@@ -178,11 +206,24 @@ export const errorStop = (ticket: string, error: WorkError | AgentError): StopRe
   }
 }
 
-/** The PANIC stop of a ticket's fiber that died with `defect`. */
-export const panicStop = (ticket: string, defect: unknown): StopReason => {
+/** The first line of what `defect` says. */
+const firstLine = (defect: unknown): string => {
   const said = defect instanceof Error ? defect.message : String(defect)
-  return stopFor("PANIC", `${ticket}'s fiber: ${said.split("\n")[0] ?? ""}`, { ticket })
+  return said.split("\n")[0] ?? ""
 }
+
+/** The PANIC stop of a ticket's fiber that died with `defect`. */
+export const panicStop = (ticket: string, defect: unknown): StopReason =>
+  stopFor("PANIC", `${ticket}'s fiber: ${firstLine(defect)}`, { ticket })
+
+/** What a fiber that died with `cause` died of: its defect, or the cause told. */
+const defectOf = (cause: Causes.Cause<unknown>): unknown => {
+  const defect = Causes.findDefect(cause)
+  return Result.isSuccess(defect) ? defect.success : Causes.pretty(cause)
+}
+
+/** Why the run quits: a request to quit now, or a panic in one of its fibers (§ 4.8, § 7.4). */
+type Quitting = { readonly request: QuitRequest } | { readonly panic: StopReason }
 
 /** The stop a ticket's fiber ending with `cause` stops the run for, if any. */
 const causeStop = (ticket: string, cause: Causes.Cause<WorkError>): StopReason | undefined => {
@@ -270,6 +311,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // Wakes the run to look again: a merge, a stop, a drain request, the ready poll.
     const wake = yield* Queue.sliding<void>(1)
     const wakeUp = Queue.offer(wake, undefined)
+    // The first request to quit, or a panic, ends the loop below, and the run quits (quit.ts).
+    const quitting = yield* Deferred.make<Quitting>()
+    // What quitting waits for, for a second request to say.
+    const awaiting = yield* Ref.make<ReadonlyArray<Awaited>>([])
+    // A panic in one of the run's fibers (`where`), logged with its stack, quits the run: PANIC.
+    const panicked = (where: string, stop: StopReason, defect: unknown) =>
+      Effect.andThen(
+        logs.write(...panicLines(where, defect)),
+        Deferred.succeed(quitting, { panic: stop }),
+      )
 
     // A stop holds the run: said as it comes while tickets still run, unless its line was. A worker
     // past its ticket limit goes on, so its hold is said even with nothing else running.
@@ -357,7 +408,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             ),
           onFailure: (cause) => {
             const stop = causeStop(issue.id, cause)
-            return stop === undefined ? Effect.void : stopped(stop)
+            if (stop === undefined) return Effect.void
+            return stop.why === "PANIC"
+              ? panicked(`${issue.id}'s fiber`, stop, defectOf(cause))
+              : stopped(stop)
           },
         }),
         Effect.provideContext(context),
@@ -388,26 +442,80 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       )
     }
 
-    // The ready poll, the merge queue's changes and drain requests each wake the run.
+    // The ready poll, the merge queue's changes and drain requests each wake the run. A watcher that
+    // dies panics the run.
     const watchers = yield* fibers.make("run")
+    const watch = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      FiberSet.run(
+        watchers,
+        Effect.catchDefect(effect, (defect) =>
+          panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
+        ),
+      )
     // Triage's verdicts go on their tickets' rows as they come in.
-    yield* FiberSet.run(
-      watchers,
+    yield* watch(
       Stream.runForEach(triage.verdicts, (verdicts) =>
         SubscriptionRef.update(status, (now) => ({ ...now, verdicts })),
       ),
     )
-    yield* FiberSet.run(watchers, Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp)))
-    yield* FiberSet.run(
-      watchers,
+    yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp)))
+    yield* watch(
       Stream.runForEach(queue.changes, (state) => Effect.andThen(mergeStop(state), wakeUp)),
     )
     const drains = options.drains
     if (drains !== undefined) {
-      yield* FiberSet.run(
-        watchers,
-        Effect.forever(Effect.andThen(Effect.flatMap(Queue.take(drains), hear), wakeUp)),
-      )
+      yield* watch(Effect.forever(Effect.andThen(Effect.flatMap(Queue.take(drains), hear), wakeUp)))
+    }
+
+    // Requests to quit (quit.ts): the first quits, the second says what is under way and how to
+    // abandon it, and the third ends tutti at once, saving the workers not merged or dropped.
+    const atOnce = (request: QuitRequest) =>
+      Effect.gen(function* () {
+        const merging = (yield* queue.state).merging
+        const saved: Array<string> = []
+        for (const entry of (yield* ledger.current).tickets.values()) {
+          const phase = entry.phase
+          if (!stopsAtEnd(phase) && phase._tag !== "Merging" && phase._tag !== "Stopped") continue
+          if ((yield* store.ticket(entry.ticket))?.session === undefined) continue
+          const why = phase._tag === "Stopped" ? phase.why : "quit"
+          yield* Effect.ignore(store.suspend(entry.ticket, why, "Stopped"))
+          saved.push(entry.ticket)
+        }
+        const stop = stopFor("INTERRUPTED", atOnceText(request.how, saved, merging))
+        yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
+        yield* logs.write(stop.text)
+        yield* events.emit({ kind: "end", code: stop.code })
+        if (options.exitNow !== undefined) yield* options.exitNow(stop.code, [stop.text])
+      })
+    let asked = 0
+    const hearQuit = (request: QuitRequest) =>
+      Effect.gen(function* () {
+        asked += 1
+        switch (heard(asked)) {
+          case "quit":
+            yield* Deferred.succeed(quitting, { request })
+            return
+          case "warn": {
+            const merging = (yield* queue.state).merging
+            const text =
+              merging === null
+                ? stillQuittingLine(yield* Ref.get(awaiting), request)
+                : underWayLine(merging, request)
+            yield* events.emit({
+              kind: "warn",
+              ...(merging === null ? {} : { ticket: merging }),
+              text,
+            })
+            yield* logs.write(text)
+            return
+          }
+          case "exit":
+            yield* atOnce(request)
+        }
+      })
+    const quits = options.quits
+    if (quits !== undefined) {
+      yield* watch(Effect.forever(Effect.flatMap(Queue.take(quits), hearQuit)))
     }
 
     // A request unanswered for blockedAfter holds the run with BLOCKED, for its ticket; once that
@@ -448,8 +556,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }),
     )
     const timed = new Set<string>()
-    yield* FiberSet.run(
-      watchers,
+    yield* watch(
       Stream.runForEach(attention.open, (requests) =>
         Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis
@@ -457,8 +564,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             if (timed.has(request.id)) continue
             timed.add(request.id)
             const left = request.createdAt + Duration.toMillis(blockedAfter) - now
-            yield* FiberSet.run(
-              watchers,
+            yield* watch(
               Effect.andThen(Effect.sleep(Duration.millis(Math.max(0, left))), lookBlocked),
             )
           }
@@ -514,46 +620,114 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }
     })
     // Nothing left: a hold for the environment probes the machine, and goes on or ends the run.
-    for (;;) {
-      if (yield* settle) break
-      const probed = yield* environment.probe(yield* Ref.get(stops))
-      if (probed._tag === "Ends") break
-      if (probed._tag === "Failed") {
-        yield* Ref.update(stops, (all) => ({ ...all, first: probed.stop }))
-        break
+    const loop = Effect.gen(function* () {
+      for (;;) {
+        if (yield* settle) break
+        const probed = yield* environment.probe(yield* Ref.get(stops))
+        if (probed._tag === "Ends") break
+        if (probed._tag === "Failed") {
+          yield* Ref.update(stops, (all) => ({ ...all, first: probed.stop }))
+          break
+        }
+        yield* Ref.set(stops, noStops)
       }
-      yield* Ref.set(stops, noStops)
-    }
+    })
+
+    // Quitting's first four steps (§ 4.8, quit.ts), once the loop has stopped scheduling: the
+    // dashboard says what it waits for; every worker is interrupted at once, its result waited for
+    // quitWait at most; a merge in its protected step finishes, one before it is cut short; the
+    // organ calls are aborted. The tickets' fibers and the hand-backs stop before the interrupts, so
+    // that none acts on an interrupted turn.
+    const say = (awaited: ReadonlyArray<Awaited>) =>
+      Effect.andThen(
+        Ref.set(awaiting, awaited),
+        SubscriptionRef.update(status, (now) => ({ ...now, quitting: quittingText(awaited) })),
+      )
+    const openWorkers = Effect.gen(function* () {
+      const known = Option.getOrElse(yield* Stream.runHead(host.workers), () => new Set<string>())
+      const open: Array<string> = []
+      for (const ticket of known) {
+        const state = yield* Effect.result(host.current(ticket))
+        if (Result.isFailure(state)) continue
+        if (state.success._tag !== "Closed" && state.success._tag !== "Gone") open.push(ticket)
+      }
+      return open.sort()
+    })
+    const quitNow = (quit: Quitting) =>
+      Effect.gen(function* () {
+        const workers = yield* openWorkers
+        yield* say(workers.map((ticket) => ({ ticket, what: "worker" as const })))
+        if ("request" in quit) {
+          const text = quitLine(quit.request, workers)
+          yield* events.emit({ kind: "warn", text })
+          yield* logs.write(text)
+        }
+        yield* scheduler.interrupt
+        yield* queue.stopHandBacks
+        const unanswered = yield* interruptWorkers(workers)
+        if (unanswered.length > 0) yield* logs.write(unansweredLine(unanswered))
+        const merging = (yield* queue.state).merging
+        yield* say(merging === null ? [] : [{ ticket: merging, what: "merge" as const }])
+        yield* queue.stopMerges
+        yield* triage.interrupt
+        yield* say([])
+      })
+
+    const quit = yield* Effect.raceFirst(Effect.as(loop, null), Deferred.await(quitting))
     yield* Ref.set(ending, true)
+    if (quit !== null) yield* quitNow(quit)
     yield* mergeStop(yield* queue.state)
 
     // The end: the tickets a run can't end in Stopped, and every stopped ticket's session suspended;
-    // a worker past its ticket limit is still at it, its fiber stopped first.
-    const all = yield* Ref.get(stops)
+    // a worker past its ticket limit is still at it, its fiber stopped first. Quitting's steps 5 and
+    // 6 are any end's: the sessions are closed, every open one when quitting, then state.json says
+    // why each was suspended.
     const over = yield* Ref.get(overLimit)
     if (over.size > 0) yield* scheduler.interrupt
+    const before = yield* Ref.get(stops)
+    const ended = quit === null ? null : "panic" in quit ? quit.panic.why : "quit"
     const whyOf = (entry: { readonly ticket: string; readonly phase: TicketPhase }) =>
       entry.phase._tag === "Working" && over.has(entry.ticket)
         ? "TICKET_LIMIT"
-        : (all.first?.why ?? "run ended")
-    const suspend = (ticket: string, because: string, move: boolean) =>
-      Effect.gen(function* () {
-        const session = (yield* store.ticket(ticket))?.session
-        const records =
-          session === undefined
-            ? []
-            : [{ kind: "suspended" as const, ticket, session, why: because }]
-        if (move)
-          yield* ledger.transition(ticket, Cause.RunEnded({ why: because }), { beside: records })
-        else yield* Effect.forEach(records, (record) => events.emit(record), { discard: true })
-        yield* Effect.ignore(store.suspend(ticket, because, "Stopped"))
-        yield* host.close(ticket)
-      })
+        : (ended ?? before.first?.why ?? "run ended")
+    const suspended: Array<{ readonly ticket: string; readonly because: string }> = []
+    const saved: Array<string> = []
+    const handedBack: Array<string> = []
     for (const entry of (yield* ledger.current).tickets.values()) {
-      if (stopsAtEnd(entry.phase)) yield* suspend(entry.ticket, whyOf(entry), true)
-      else if (entry.phase._tag === "Stopped") yield* suspend(entry.ticket, entry.phase.why, false)
+      const { ticket, phase } = entry
+      const move = stopsAtEnd(phase)
+      if (!move && phase._tag !== "Stopped") continue
+      const because = phase._tag === "Stopped" ? phase.why : whyOf(entry)
+      const session = (yield* store.ticket(ticket))?.session
+      const records =
+        session === undefined ? [] : [{ kind: "suspended" as const, ticket, session, why: because }]
+      if (move)
+        yield* ledger.transition(ticket, Cause.RunEnded({ why: because }), { beside: records })
+      else yield* Effect.forEach(records, (record) => events.emit(record), { discard: true })
+      suspended.push({ ticket, because })
+      if (session !== undefined) saved.push(ticket)
+      if (phase._tag === "Resolving" || phase._tag === "Fixing") handedBack.push(ticket)
+    }
+    for (const each of suspended) yield* host.close(each.ticket)
+    if (quit !== null) yield* Effect.forEach(yield* openWorkers, host.close, { discard: true })
+    for (const each of suspended) {
+      yield* Effect.ignore(store.suspend(each.ticket, each.because, "Stopped"))
     }
     yield* labelAtEnd({ repo: config.repo, base })
+
+    // Quitting's last step: the run ends INTERRUPTED (exit 130), or PANIC (exit 4), before any
+    // stop the run had.
+    if (quit !== null) {
+      const stop =
+        "panic" in quit
+          ? quit.panic
+          : stopFor("INTERRUPTED", interruptedText(quit.request.how, saved, handedBack))
+      yield* Ref.update(stops, (now) => ({
+        first: stop,
+        others: [now.first, ...now.others].flatMap((other) => (other === null ? [] : [other])),
+      }))
+    }
+    const all = yield* Ref.get(stops)
 
     const state = yield* ledger.current
     const view = project({

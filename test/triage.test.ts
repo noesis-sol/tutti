@@ -349,6 +349,7 @@ describe("what triage is handed", () => {
       deferred: (d) => Effect.sync(() => void handed.push(d)),
       pending: Effect.succeed(0),
       verdicts: Stream.empty,
+      interrupt: Effect.void,
     }
     const settled = Settled.Read({ reading: Reading.Deferred(), state: idle })
     await scenario(

@@ -66,6 +66,8 @@ const lineOnly = (offered: Array<FinishedTicket>): Effect.Effect<MergeQueue, nev
       rechecks: yield* makeRechecks,
       handBacks: yield* makeHandBacks,
       recheck: Effect.succeed([]),
+      stopHandBacks: Effect.void,
+      stopMerges: Effect.void,
     } satisfies MergeQueue
   })
 

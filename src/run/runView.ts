@@ -67,6 +67,8 @@ export interface Status {
   readonly usage: Usage | null
   /** Something stopped the run, and the running tickets are finishing. */
   readonly stopping: boolean
+  /** The run is quitting (§ 4.8): `Quitting… waiting for t-1's worker`; null when it isn't. */
+  readonly quitting: string | null
   readonly solo: Solo | null
   /** The tickets not closed that the queue draws from (`9 of 16`); null until the run says. */
   readonly unclosed: number | null
@@ -87,6 +89,7 @@ export const emptyStatus: Status = {
   holds: [],
   usage: null,
   stopping: false,
+  quitting: null,
   solo: null,
   unclosed: null,
   verdicts: new Map(),
@@ -209,6 +212,8 @@ export interface TitleView {
   /** When the run began, in epoch milliseconds. */
   readonly began: number
   readonly stopping: boolean
+  /** What quitting waits for, shown in place of `· stopping`; null when the run isn't quitting. */
+  readonly quitting: string | null
   readonly solo: Solo | null
 }
 
@@ -228,7 +233,15 @@ export interface RunView {
 }
 
 export const emptyView: RunView = {
-  title: { version: "", branch: "", scope: null, began: 0, stopping: false, solo: null },
+  title: {
+    version: "",
+    branch: "",
+    scope: null,
+    began: 0,
+    stopping: false,
+    quitting: null,
+    solo: null,
+  },
   totals: {
     completed: 0,
     deferred: 0,
@@ -664,6 +677,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     scope: status.scope === null ? null : sanitizeLine(status.scope),
     began: status.began,
     stopping: status.stopping,
+    quitting: status.quitting === null ? null : sanitizeLine(status.quitting),
     solo:
       status.solo === null
         ? null
