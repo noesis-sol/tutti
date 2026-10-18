@@ -37,6 +37,7 @@ const row = (ticket: string, mark: string, word: string, note: string): Row => (
   mark,
   word,
   note,
+  verdict: null,
 })
 
 const ended = (rows: ReadonlyArray<Row>, totals: Partial<Summary["totals"]> = {}): Summary => ({

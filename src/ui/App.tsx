@@ -1,6 +1,6 @@
 // The React tree in the command's renderer (§ 7.1): one screen at a time, routed by the run's
-// Screen (the dashboard, a worker's view, the interview). Each screen is a placeholder here, which
-// the dashboard's, the worker view's and the interview's own code replace.
+// Screen (the dashboard, a worker's view, the interview). The worker view and the interview are
+// placeholders here, which their own code replaces.
 //
 // dashboard() is the Dashboard a run shows (src/run/screen.ts): it bridges the run's RunView and
 // Screen into React (useRunView.ts) and mounts the tree into the renderer until the run's scope
@@ -8,9 +8,11 @@
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import type { ReactNode } from "react"
-import type { Dashboard } from "../run/screen.ts"
+import type { Dashboard as RunDashboard } from "../run/screen.ts"
+import { Dashboard } from "./Dashboard.tsx"
+import { styled } from "./line.tsx"
 import type { Shell } from "./renderer.ts"
-import type { Appearance, Style, Theme } from "./theme.ts"
+import type { Appearance, Theme } from "./theme.ts"
 import {
   bridge,
   ShellContext,
@@ -19,13 +21,6 @@ import {
   useScreen,
   useTheme,
 } from "./useRunView.ts"
-
-/** The props that draw a <text> in `style`. */
-export const styled = (style: Style) => ({
-  ...(style.fg === undefined ? {} : { fg: style.fg }),
-  ...(style.bg === undefined ? {} : { bg: style.bg }),
-  attributes: style.attributes,
-})
 
 /** A screen still to be drawn: its name, and a line under it. */
 const Placeholder = ({ name, detail }: { readonly name: string; readonly detail: string }) => {
@@ -36,16 +31,6 @@ const Placeholder = ({ name, detail }: { readonly name: string; readonly detail:
       <text {...styled(theme.styles.tickets)}>{name}</text>
       <text {...styled(theme.styles.dim)}>{detail}</text>
     </box>
-  )
-}
-
-const DashboardScreen = () => {
-  const { totals } = useRunView()
-  return (
-    <Placeholder
-      name="Dashboard"
-      detail={`Completed ${totals.completed} · Needs you ${totals.needsYou} · Workers ${totals.workers} of ${totals.slots} · In queue ${totals.queued}`}
-    />
   )
 }
 
@@ -64,7 +49,7 @@ export const App = () => {
   const screen = useScreen()
   switch (screen._tag) {
     case "Dashboard":
-      return <DashboardScreen />
+      return <Dashboard />
     case "Worker":
       return <WorkerScreen worker={screen.worker} />
     case "Interview":
@@ -83,7 +68,7 @@ export const Root = ({
 
 /** The dashboard a run shows in `shell`'s renderer, drawn in the theme `themeOf` makes. */
 export const dashboard =
-  (shell: Shell, themeOf: (appearance: Appearance) => Theme): Dashboard =>
+  (shell: Shell, themeOf: (appearance: Appearance) => Theme): RunDashboard =>
   (inputs) =>
     Effect.gen(function* () {
       const value: ShellValue = {

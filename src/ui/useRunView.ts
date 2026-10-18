@@ -4,7 +4,15 @@
 // until the next change. React writes only UiCommands: its handlers put them in the command queue
 // with Queue.offerUnsafe (commands.ts's offer) and never run an Effect.
 import { Effect, type Scope, Stream, SubscriptionRef } from "effect"
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react"
 import { type Commands, offer, type UiCommand } from "../run/commands.ts"
 import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
@@ -68,6 +76,8 @@ export interface ShellValue {
   readonly appearance: External<Appearance>
   /** The theme in an appearance. */
   readonly themeOf: (appearance: Appearance) => Theme
+  /** The time, in epoch milliseconds, for elapsed times; Date.now when left out. */
+  readonly now?: () => number
 }
 
 export const ShellContext = createContext<ShellValue | null>(null)
@@ -92,6 +102,21 @@ export const useTheme = (): Theme => {
   const shell = useShell()
   const appearance = useExternal(shell.appearance)
   return useMemo(() => shell.themeOf(appearance), [shell, appearance])
+}
+
+/** How often elapsed times are drawn anew: every 3 seconds, as orchestra's (§ 7.2). */
+export const tick = 3000
+
+/** The time now, in epoch milliseconds, drawn anew every `tick`. */
+export const useNow = (): number => {
+  const clock = useShell().now ?? Date.now
+  const [now, setNow] = useState(clock)
+  useEffect(() => {
+    setNow(clock())
+    const timer = setInterval(() => setNow(clock()), tick)
+    return () => clearInterval(timer)
+  }, [clock])
+  return now
 }
 
 /** Sends a command to the run, from a handler: it is queued at once, and no Effect runs. */

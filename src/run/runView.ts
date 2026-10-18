@@ -36,17 +36,51 @@ export interface Usage {
   readonly resetsAt: number | null
 }
 
+/** The solo ticket (§ 5): running alone, or next, with no new ticket starting until it runs. */
+export interface Solo {
+  readonly ticket: string
+  readonly running: boolean
+}
+
 /** What the run says about itself, beside its tickets. */
 export interface Status {
+  /** tutti's version, for the title line. */
+  readonly version: string
   /** Where finished tickets land. */
   readonly branch: string
+  /** The ticket a scoped run (`--ticket`) works on; null for none. */
+  readonly scope: string | null
+  /** When the run began, in epoch milliseconds, for its run time. */
+  readonly began: number
   /** How many workers may run at once. */
   readonly concurrency: number
   readonly holds: ReadonlyArray<RunHold>
   readonly usage: Usage | null
+  /** Something stopped the run, and the running tickets are finishing. */
+  readonly stopping: boolean
+  readonly solo: Solo | null
+  /** The tickets not closed that the queue draws from (`9 of 16`); null until the run says. */
+  readonly unclosed: number | null
+  /** The triage organ's verdicts on tickets set aside, by ticket: `environment · high · …`. */
+  readonly verdicts: ReadonlyMap<string, string>
+  /** What the dashboard's warning line says for the whole run: the colour scheme's notices. */
+  readonly warnings: ReadonlyArray<string>
 }
 
-export const emptyStatus: Status = { branch: "", concurrency: 0, holds: [], usage: null }
+export const emptyStatus: Status = {
+  version: "",
+  branch: "",
+  scope: null,
+  began: 0,
+  concurrency: 0,
+  holds: [],
+  usage: null,
+  stopping: false,
+  solo: null,
+  unclosed: null,
+  verdicts: new Map(),
+  warnings: [],
+}
 
 /** Everything RunView is derived from. */
 export interface Inputs {
@@ -72,12 +106,16 @@ export interface Totals {
   /** Set aside: deferred, and left for review. */
   readonly deferred: number
   readonly review: number
+  /** Those set aside with the triage organ's verdict in. */
+  readonly triaged: number
   /** Each ticket once: Asked, Blocked, and those whose worker waits on you. */
   readonly needsYou: number
   /** Workers at work, of `slots`. */
   readonly workers: number
   readonly slots: number
   readonly queued: number
+  /** The tickets not closed the queue draws from; null until the run says. */
+  readonly unclosed: number | null
   readonly heldBack: number
   /** The queue takes no new tickets: the run winds down, or is held. */
   readonly queueHeld: boolean
@@ -92,6 +130,8 @@ export interface Row {
   readonly word: string
   /** What the row says of the ticket: its title, or how it finished. */
   readonly note: string
+  /** The triage organ's verdict, which replaces the note of a ticket set aside once it is in. */
+  readonly verdict: string | null
 }
 
 /** What a card shows instead of a spinner when its worker isn't at work (§ 5.1). */
@@ -141,7 +181,19 @@ export interface Key {
   readonly does: string
 }
 
+/** What the title line says of the run besides its banners. */
+export interface TitleView {
+  readonly version: string
+  readonly branch: string
+  readonly scope: string | null
+  /** When the run began, in epoch milliseconds. */
+  readonly began: number
+  readonly stopping: boolean
+  readonly solo: Solo | null
+}
+
 export interface RunView {
+  readonly title: TitleView
   readonly totals: Totals
   readonly rows: ReadonlyArray<Row>
   /** In their workers' number order. */
@@ -151,17 +203,22 @@ export interface RunView {
   readonly banners: ReadonlyArray<Banner>
   readonly windDown: WindDownView | null
   readonly hint: ReadonlyArray<Key>
+  /** The warning line's notices, each once. */
+  readonly warnings: ReadonlyArray<string>
 }
 
 export const emptyView: RunView = {
+  title: { version: "", branch: "", scope: null, began: 0, stopping: false, solo: null },
   totals: {
     completed: 0,
     deferred: 0,
     review: 0,
+    triaged: 0,
     needsYou: 0,
     workers: 0,
     slots: 0,
     queued: 0,
+    unclosed: null,
     heldBack: 0,
     queueHeld: false,
   },
@@ -171,10 +228,14 @@ export const emptyView: RunView = {
   banners: [],
   windDown: null,
   hint: [],
+  warnings: [],
 }
 
 /** At most this often RunView is written: 30 times a second. */
 export const interval = Duration.millis(1000 / 30)
+
+// The phases a ticket is set aside in, whose note the triage organ's verdict replaces.
+const setAside: ReadonlySet<PhaseTag> = new Set(["Deferred", "Review"])
 
 // The phases in which a worker is at work, which its state refines.
 const atWork: ReadonlySet<PhaseTag> = new Set(["Working", "Resolving", "Fixing"])
@@ -482,7 +543,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   }
   const none: ReadonlyArray<AttentionRequest> = []
 
-  const totals = { ...emptyView.totals, slots: status.concurrency }
+  const totals = { ...emptyView.totals, slots: status.concurrency, unclosed: status.unclosed }
   const needsYou = new Set(requestsOf.keys())
   const rows: Array<{ readonly at: number; readonly row: Row }> = []
   const cards: Array<Card> = []
@@ -491,10 +552,13 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     const open = requestsOf.get(entry.ticket) ?? none
     const phase = shown(entry.phase, state, open)
     const title = sanitizeLine(entry.title)
+    const verdict = setAside.has(phase._tag) ? (status.verdicts.get(entry.ticket) ?? null) : null
     for (const total of countsUnder(phase)) {
       if (total === "needsYou") needsYou.add(entry.ticket)
-      else if (total === "setAside") totals[phase._tag === "Review" ? "review" : "deferred"]++
-      else if (total === "inQueue") totals.queued++
+      else if (total === "setAside") {
+        totals[phase._tag === "Review" ? "review" : "deferred"]++
+        if (verdict !== null) totals.triaged++
+      } else if (total === "inQueue") totals.queued++
       else totals[total]++
     }
     if (entry.row !== null) {
@@ -505,6 +569,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           title,
           ...rowStatus(phase),
           note: noteOf(entry, title, branch),
+          verdict: verdict === null ? null : sanitizeLine(verdict),
         },
       })
     }
@@ -543,8 +608,22 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     banners.push(Banner.Hold({ word: sanitizeLine(hold.word), resetsAt: hold.resetsAt }))
   }
 
+  const heading: TitleView = {
+    version: sanitizeLine(status.version),
+    branch,
+    scope: status.scope === null ? null : sanitizeLine(status.scope),
+    began: status.began,
+    stopping: status.stopping,
+    solo:
+      status.solo === null
+        ? null
+        : { ticket: sanitizeLine(status.solo.ticket), running: status.solo.running },
+  }
+  const warnings = [...new Set(status.warnings.map(sanitizeLine))]
+
   cards.sort((a, b) => a.worker - b.worker)
   const next: RunView = {
+    title: keep(previous.title, heading),
     totals: keep(previous.totals, totals),
     rows: keepAll(
       previous.rows,
@@ -556,6 +635,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     banners: keep(previous.banners, banners),
     windDown: keep(previous.windDown, windDown),
     hint: keep(previous.hint, hintOf(cards, requests, ledger.windDown !== null)),
+    warnings: keep(previous.warnings, warnings),
   }
   const parts = Object.keys(next) as ReadonlyArray<keyof RunView>
   return parts.every((part) => next[part] === previous[part]) ? previous : next

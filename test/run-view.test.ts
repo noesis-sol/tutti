@@ -113,10 +113,12 @@ describe("totals", () => {
       completed: 2,
       deferred: 1,
       review: 1,
+      triaged: 0,
       needsYou: 4,
       workers: 4,
       slots: 3,
       queued: 1,
+      unclosed: null,
       heldBack: 1,
       queueHeld: false,
     })

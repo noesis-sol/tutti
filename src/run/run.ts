@@ -43,6 +43,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
+import { schemeNotices } from "../ui/theme.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
@@ -199,8 +200,12 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     if (dashboard !== undefined && outputMode(yield* Tty, config.plain)._tag === "Dashboard") {
       yield* show(dashboard, {
         ...emptyStatus,
+        version: options.version,
         branch: base,
+        scope: config.ticket,
+        began: begun,
         concurrency: config.settings.concurrent,
+        warnings: schemeNotices(config.scheme),
       })
     }
 

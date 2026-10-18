@@ -68,9 +68,9 @@ const withCompleted = (completed: number): RunView => ({
   totals: { ...emptyView.totals, completed },
 })
 
-/** Renders `node` at 80×8, disposed after the test. */
+/** Renders `node` at 80×24, disposed after the test. */
 const draw = async (node: ReactNode) => {
-  const setup = await testRender(node, { width: 80, height: 8 })
+  const setup = await testRender(node, { width: 80, height: 24 })
   scopes.push(
     Effect.runSync(
       Effect.gen(function* () {
@@ -95,11 +95,11 @@ describe("the bridge", () => {
   test("a RunView change re-renders the screen", async () => {
     const { ref, view } = await bridged()
     const setup = await draw(<Root value={shellValue(view)} />)
-    expect(setup.captureCharFrame()).toContain("Completed 0")
+    expect(setup.captureCharFrame()).not.toContain("✓ 3")
     await act(async () => {
       await Effect.runPromise(SubscriptionRef.set(ref, withCompleted(3)))
     })
-    await setup.waitForFrame((frame) => frame.includes("Completed 3"))
+    await setup.waitForFrame((frame) => frame.includes("✓ 3"))
   })
 
   test("getSnapshot is the same object until the next change", async () => {
@@ -173,7 +173,7 @@ describe("the bridge", () => {
     const { view } = await bridged()
     const screen = external<Screen>(Screen.Dashboard())
     const setup = await draw(<Root value={shellValue(view, { screen })} />)
-    expect(setup.captureCharFrame()).toContain("Dashboard")
+    expect(setup.captureCharFrame()).toContain("Completed")
     await act(async () => screen.set(Screen.Worker({ worker: 2 })))
     await setup.waitForFrame((frame) => frame.includes("Worker 2"))
     await act(async () => screen.set(Screen.Interview()))
@@ -191,11 +191,11 @@ describe("the bridge", () => {
         .find((span) => span.text.includes(text))
         ?.fg.toInts()
         .slice(0, 3)
-    // `Dashboard` is drawn in the emphasis role: #E5E7EB on dark, #374151 on light.
-    expect(colourOf("Dashboard")).toEqual([0xe5, 0xe7, 0xeb])
+    // `Tickets` is drawn in the emphasis role: #E5E7EB on dark, #374151 on light.
+    expect(colourOf("Tickets")).toEqual([0xe5, 0xe7, 0xeb])
     await act(async () => appearance.set("light"))
     await setup.renderOnce()
-    expect(colourOf("Dashboard")).toEqual([0x37, 0x41, 0x51])
+    expect(colourOf("Tickets")).toEqual([0x37, 0x41, 0x51])
   })
 })
 

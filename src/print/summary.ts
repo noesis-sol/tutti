@@ -75,7 +75,9 @@ const pad = (text: string, width: number): string =>
 
 /** The row style of each status word, as § 7.11's ticket rows give them, and whether the rest of
  * the row is faint, as a finished ticket's is. */
-const rowLooks: Readonly<Record<string, { readonly style: StyleOf; readonly faint: boolean }>> = {
+export const rowLooks: Readonly<
+  Record<string, { readonly style: StyleOf; readonly faint: boolean }>
+> = {
   working: { style: "picked", faint: false },
   editing: { style: "picked", faint: false },
   reading: { style: "picked", faint: false },
@@ -101,7 +103,15 @@ const rowLooks: Readonly<Record<string, { readonly style: StyleOf; readonly fain
   "held back": { style: "dim", faint: true },
 }
 
-type StyleOf = "picked" | "testing" | "closed" | "deferred" | "stop" | "toMerge" | "merging" | "dim"
+export type StyleOf =
+  | "picked"
+  | "testing"
+  | "closed"
+  | "deferred"
+  | "stop"
+  | "toMerge"
+  | "merging"
+  | "dim"
 
 /** A rounded frame's lines around `cells`, rows of columns `widths` wide, padded a space each side. */
 const framed = (
