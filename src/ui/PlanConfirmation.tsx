@@ -4,8 +4,8 @@
 // question stays under it. y says yes; n or Enter no; Esc or Ctrl+C cancels.
 import { useKeyboard } from "@opentui/react"
 import type { Effect } from "effect"
-import { styled } from "./App.tsx"
 import { type Answers, ask, Field, Hint } from "./Form.tsx"
+import { styled } from "./line.tsx"
 import { confirmHint, type FormCancelled, type Plan, planLines } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"

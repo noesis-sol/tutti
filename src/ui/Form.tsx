@@ -7,7 +7,7 @@
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import { type ReactNode, useMemo, useSyncExternalStore } from "react"
-import { styled } from "./App.tsx"
+import { styled } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"

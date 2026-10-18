@@ -8,8 +8,8 @@ import type { KeyBinding, TextareaRenderable } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
-import { styled } from "./App.tsx"
 import { type Answers, ask, Field, Hint } from "./Form.tsx"
+import { styled } from "./line.tsx"
 import {
   describeDescription,
   describeTitle,
