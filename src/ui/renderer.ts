@@ -7,6 +7,7 @@
 // one does. Whatever ends the process, the renderer is destroyed before anything is printed:
 // uncaughtException and unhandledRejection destroy it first and then report, and the Effect
 // runtime's fatal path closes the scope, and with it the renderer, before runMain prints the cause.
+// Once it has closed, mode 2027 is set back as the terminal had it before (mode2027.ts).
 //
 // Terminal.app leaves the rightmost column stale after a resize (OpenTUI #1110), so each resize
 // repaints the whole screen. The appearance (§ 7.11) is the user's choice, else the terminal's
@@ -15,6 +16,7 @@
 import { type CliRenderer, type CliRendererConfig, createCliRenderer } from "@opentui/core"
 import { Effect, Schema, type Scope } from "effect"
 import { exitCodes } from "../run/holds.ts"
+import { type Mode2027, queryMode2027, restoreMode2027 } from "./mode2027.ts"
 import { type Appearance, appearanceOf } from "./theme.ts"
 import { type External, external } from "./useRunView.ts"
 
@@ -53,16 +55,32 @@ export const closeLimit = 1000
 /**
  * The handler for an error nothing caught: destroys `renderer`, waits until it has closed (the
  * terminal back on the main screen, out of raw mode; OpenTUI closes it a microtask after destroy())
- * or `closeLimit` has passed, then `report`s the error. The promise is done once it has reported.
+ * or `closeLimit` has passed, `restore`s what destroy() leaves set, then `report`s the error. The
+ * promise is done once it has reported.
  */
 export const fatalHandler =
-  (renderer: CliRenderer, report: (error: unknown) => void) =>
+  (renderer: CliRenderer, report: (error: unknown) => void, restore: () => void = () => {}) =>
   (error: unknown): Promise<void> => {
     renderer.destroy()
-    return Promise.race([renderer.closed.catch(() => undefined), Bun.sleep(closeLimit)]).then(() =>
-      report(error),
+    return Promise.race([renderer.closed.catch(() => undefined), Bun.sleep(closeLimit)]).then(
+      () => {
+        restore()
+        report(error)
+      },
     )
   }
+
+/** Asks the terminal for mode 2027 before the renderer starts, and writes it back after. */
+export interface Mode2027Io {
+  readonly ask: Effect.Effect<Mode2027>
+  readonly write: (sequence: string) => void
+}
+
+/** Mode 2027 on this process's terminal. */
+export const terminalMode2027: Mode2027Io = {
+  ask: queryMode2027(),
+  write: (sequence) => void process.stdout.write(sequence),
+}
 
 /** The process events a fatal handler listens to. */
 export const fatalEvents = ["uncaughtException", "unhandledRejection"] as const
@@ -102,23 +120,35 @@ export const followAppearance = (
 /**
  * Opens the command's renderer in the caller's scope, which destroys it when it closes. `make`
  * makes it (OpenTUI's, on this terminal, by default; a test renderer in the tests), and `report`
- * says an error nothing caught once the renderer is gone (reportFatal by default).
+ * says an error nothing caught once the renderer is gone (reportFatal by default). `mode2027` asks
+ * for mode 2027 before the renderer is made and writes it back once it has closed: this terminal's
+ * when `make` is OpenTUI's, none for another renderer unless given.
  */
 export const open = (options: {
   readonly chosen: "auto" | "light" | "dark"
   readonly make?: () => Promise<CliRenderer>
   readonly report?: (error: unknown) => void
+  readonly mode2027?: Mode2027Io
 }): Effect.Effect<Shell, RendererFailed, Scope.Scope> => {
   const make = options.make ?? (() => createCliRenderer(rendererConfig))
   const report = options.report ?? reportFatal
+  const mode2027 = options.mode2027 ?? (options.make === undefined ? terminalMode2027 : undefined)
   return Effect.acquireRelease(
     Effect.gen(function* () {
+      const before = mode2027 === undefined ? undefined : yield* mode2027.ask
+      let restored = false
+      // Once, whichever of the scope and a fatal error closes the renderer first.
+      const restore = () => {
+        if (mode2027 === undefined || before === undefined || restored) return
+        restored = true
+        mode2027.write(restoreMode2027(before))
+      }
       const renderer = yield* Effect.tryPromise({
         try: make,
         catch: (error) =>
           new RendererFailed({ message: error instanceof Error ? error.message : String(error) }),
       })
-      const onFatal = fatalHandler(renderer, report)
+      const onFatal = fatalHandler(renderer, report, restore)
       for (const event of fatalEvents) process.on(event, onFatal)
       const onResize = () => repaintFully(renderer)
       renderer.on("resize", onResize)
@@ -128,14 +158,15 @@ export const open = (options: {
         renderer.off("resize", onResize)
         for (const event of fatalEvents) process.off(event, onFatal)
       }
-      return { shell: { renderer, appearance } satisfies Shell, stop }
+      return { shell: { renderer, appearance } satisfies Shell, stop, restore }
     }),
-    ({ shell, stop }) =>
+    ({ shell, stop, restore }) =>
       Effect.promise(async () => {
         shell.renderer.destroy()
         stop()
         // The terminal is back on the main screen once it settles, before anything is printed.
         await shell.renderer.closed.catch(() => undefined)
+        restore()
       }),
   ).pipe(Effect.map(({ shell }) => shell))
 }

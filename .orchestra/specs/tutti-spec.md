@@ -1038,6 +1038,8 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 
 **Clean-up on any exit.** `uncaughtException`, `unhandledRejection` and the Effect runtime's fatal path all call `renderer.destroy()` before printing anything. OpenTUI's own handlers report errors but "do not destroy the renderer".
 
+**Mode 2027.** OpenTUI 0.6.6 sets grapheme clustering (`CSI ? 2027 h`) at start, whether or not the terminal answered its DECRQM query, and `destroy()` leaves it set while it resets every other mode. tutti asks the terminal for mode 2027 (DECRQM, then DA1, waiting up to 250 ms) before the renderer starts, and once the renderer has closed sets it back: `CSI ? 2027 h` when the terminal said it was on, else `CSI ? 2027 l`.
+
 **Signals, in any mode:**
 
 | Signal | What it does |
