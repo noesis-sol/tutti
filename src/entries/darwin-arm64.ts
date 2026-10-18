@@ -4,5 +4,5 @@ import claude from "@anthropic-ai/claude-agent-sdk-darwin-arm64/claude" with { t
 import { embed } from "../agent/claudeBinary.ts"
 import { main } from "../main.ts"
 
-embed(claude)
+embed(claude, "darwin-arm64")
 main()

@@ -4,5 +4,5 @@ import claude from "@anthropic-ai/claude-agent-sdk-linux-x64/claude" with { type
 import { embed } from "../agent/claudeBinary.ts"
 import { main } from "../main.ts"
 
-embed(claude)
+embed(claude, "linux-x64")
 main()

@@ -9,7 +9,10 @@
 //   its platform package's `claude` as a file, which lives in Bun's $bunfs once compiled, and hands
 //   it to `embed`. A child process can't run a file in $bunfs, so the SDK's `extractFromBunfs`
 //   copies it out, into a folder named after its content's hash: once per version, and reused by
-//   every later run of that version.
+//   every later run of that version. A later run finds that copy by the SDK manifest's checksum,
+//   without reading and hashing the embedded file again, and removes other versions' stale copies
+//   (claudeExtract.ts). This runs once per run, in the startup checks, and every session gets the
+//   path from the configuration.
 // - **The SDK's own**, run from source: no path, and the SDK resolves its platform package's
 //   binary itself.
 //
@@ -17,12 +20,13 @@
 // carry and a compiled tutti embeds, read from its package.json at build time, to 30 patch
 // releases above it. The SDK checks none itself: below it, features tutti relies on may be
 // missing; above it, a release may no longer be tested with tutti's SDK.
-import { isAbsolute, resolve } from "node:path"
+import { dirname, isAbsolute, resolve } from "node:path"
 import { extractFromBunfs } from "@anthropic-ai/claude-agent-sdk/extract"
 import sdk from "@anthropic-ai/claude-agent-sdk/package.json" with { type: "json" }
 import { Effect, Option } from "effect"
 import { exec } from "../services/exec.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { extractedCopy, extractionBase, knownFor, tidyExtracted } from "./claudeExtract.ts"
 
 /** The Claude Code a compiled tutti embeds: the one the SDK's platform packages carry. */
 export const embeddedVersion: string = sdk.claudeCodeVersion
@@ -90,16 +94,19 @@ export const versionWarning = (
   return `the Claude Code at ${path} (--claude) is ${showVersion(version.value)}, outside the range: ${supported}. tutti runs it all the same`
 }
 
-// The platform's claude, imported as a file by a compiled build's entry; null from source.
+// The platform's claude, imported as a file by a compiled build's entry, and the build's target;
+// null from source.
 let embeddedFile: string | null = null
+let embeddedTarget: string | null = null
 
 /**
  * Called by a compiled build's entry, before tutti starts, with its platform package's `claude`
  * imported as a file: `import claude from "@anthropic-ai/claude-agent-sdk-<target>/claude" with
- * { type: "file" }`.
+ * { type: "file" }`, and its `<target>`, as the SDK's manifest names it.
  */
-export const embed = (file: string): void => {
+export const embed = (file: string, target: string): void => {
   embeddedFile = file
+  embeddedTarget = target
 }
 
 /** The Claude Code sessions run, as the startup checks resolved it. */
@@ -120,6 +127,8 @@ export interface Sources<R> {
   readonly embedded: string | null
   /** A real file with the embedded one's content: `extractFromBunfs`, its argument if it fails. */
   readonly extract: (file: string) => string
+  /** Keeps the extracted copy at a path in use, and removes other versions' stale copies. */
+  readonly tidy: (path: string) => void
   /** Where a command name with no `/` is on PATH, or null. */
   readonly which: (command: string) => string | null
   /** What `<path> --version` printed, or why it printed nothing. */
@@ -163,7 +172,10 @@ export const resolveWith = <R>(
     if (sources.embedded === null) return { path: null, warnings: [], problems: [] }
     const file = sources.embedded
     const path = yield* Effect.sync(() => sources.extract(file))
-    if (!inBunfs(path)) return { path, warnings: [], problems: [] }
+    if (!inBunfs(path)) {
+      yield* Effect.sync(() => sources.tidy(path))
+      return { path, warnings: [], problems: [] }
+    }
     return {
       path,
       warnings: [],
@@ -189,12 +201,33 @@ const claudeVersion = (path: string) =>
     ),
   )
 
+/** The embedded `file` as a real file: the copy already extracted, else `extractFromBunfs`'s. */
+const extract = (file: string): string => {
+  const known = embeddedTarget === null ? null : knownFor(embeddedTarget)
+  const uid = process.getuid?.()
+  const base = extractionBase(process.env, process.platform, uid)
+  const copy =
+    known === null || base === null || uid === undefined
+      ? null
+      : extractedCopy(file, known, base, uid)
+  return copy ?? extractFromBunfs(file)
+}
+
+const tidy = (path: string): void => {
+  const uid = process.getuid?.()
+  const base = extractionBase(process.env, process.platform, uid)
+  if (base !== null && uid !== undefined && dirname(dirname(path)) === base) {
+    tidyExtracted(path, base, uid)
+  }
+}
+
 /** The Claude Code this tutti's sessions run, `given` being --claude as given, from `cwd`. */
 export const resolveClaude = (given: string | null, cwd: string) =>
   resolveWith(given, {
     cwd,
     embedded: embeddedFile,
-    extract: extractFromBunfs,
+    extract,
+    tidy,
     which: (command) => Bun.which(command),
     version: claudeVersion,
   })

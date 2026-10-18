@@ -4,5 +4,5 @@ import claude from "@anthropic-ai/claude-agent-sdk-linux-arm64/claude" with { ty
 import { embed } from "../agent/claudeBinary.ts"
 import { main } from "../main.ts"
 
-embed(claude)
+embed(claude, "linux-arm64")
 main()

@@ -56,6 +56,7 @@ const sources = (overrides: Partial<Sources<never>> = {}): Sources<never> => ({
   extract: () => {
     throw new Error("nothing is embedded")
   },
+  tidy: () => {},
   which: () => null,
   version: () => Effect.succeed(`${embeddedVersion} (Claude Code)`),
   ...overrides,
@@ -136,8 +137,9 @@ describe("the Claude Code sessions run", () => {
     expect(await resolved(null, sources())).toEqual({ path: null, warnings: [], problems: [] })
   })
 
-  test("compiled: the embedded one, extracted", async () => {
+  test("compiled: the embedded one, extracted, and other versions' copies tidied", async () => {
     const extracted: Array<string> = []
+    const tidied: Array<string> = []
     const claude = await resolved(
       null,
       sources({
@@ -146,9 +148,11 @@ describe("the Claude Code sessions run", () => {
           extracted.push(file)
           return "/tmp/claude-501/claude-agent-sdk-0123456789abcdef/claude-abc123"
         },
+        tidy: (path) => tidied.push(path),
       }),
     )
     expect(extracted).toEqual(["/$bunfs/root/claude-abc123"])
+    expect(tidied).toEqual(["/tmp/claude-501/claude-agent-sdk-0123456789abcdef/claude-abc123"])
     expect(claude).toEqual({
       path: "/tmp/claude-501/claude-agent-sdk-0123456789abcdef/claude-abc123",
       warnings: [],
@@ -185,7 +189,13 @@ describe("the Claude Code sessions run", () => {
   test("compiled, the embedded one not extracted is a setup problem", async () => {
     const claude = await resolved(
       null,
-      sources({ embedded: "/$bunfs/root/claude-abc123", extract: (file) => file }),
+      sources({
+        embedded: "/$bunfs/root/claude-abc123",
+        extract: (file) => file,
+        tidy: (path) => {
+          throw new Error(`tidied ${path}`)
+        },
+      }),
     )
     expect(claude.problems).toEqual([
       "tutti couldn't copy its embedded Claude Code out to a file it can run. Make room in the " +
@@ -290,7 +300,7 @@ describe("resolveClaude", () => {
       import { Effect } from "effect"
       import { BunServices } from "@effect/platform-bun"
       import { embed, resolveClaude } from ${JSON.stringify(join(root, "src/agent/claudeBinary.ts"))}
-      embed(${JSON.stringify(embedded)})
+      embed(${JSON.stringify(embedded)}, "darwin-arm64")
       const claude = await Effect.runPromise(
         resolveClaude(null, process.cwd()).pipe(Effect.provide(BunServices.layer)),
       )
