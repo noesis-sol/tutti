@@ -43,8 +43,11 @@ import {
   canUseTool,
   deniedTool,
   emit,
+  gone,
+  hitsUsageLimit,
   result,
   type SessionScript,
+  run as step,
   turn,
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -678,6 +681,30 @@ describe("triage in a run", () => {
       "  triage t-1: environment (high confidence) - The classifier refused every command.",
       "  triage t-2: environment (high confidence) - The classifier refused every command.",
       "ENVIRONMENT: triage blamed the environment for the last 2 tickets (t-1, t-2) with high confidence (The classifier refused every command); check the machine, then restart",
+    ])
+  })
+
+  test("not a ticket whose worker reached the usage limit in its attempt", async () => {
+    const calls: Array<OrganCallRecord> = []
+    const limited: SessionScript = [
+      ...hitsUsageLimit(2_000_000_000),
+      step(Effect.promise(() => Bun.sleep(20))),
+      gone("its session ended"),
+    ]
+    const ran = await runs({
+      tickets: ["t-1", "t-2"],
+      organs: { triage: verdict({ cause: "problem", confidence: "low" }) },
+      calls,
+      scripts: (world) => ({ "t-1": [limited], "t-2": [defersDenied(world, "t-2")] }),
+    })
+    expectExitCode(ran, 0)
+    expectPhases(ran, { "t-1": "Deferred", "t-2": "Deferred" })
+    // Only t-2 is triaged: t-1's worker was UsageLimited (§ 4.12).
+    expect(calls.map((call) => call.input.match(/Ticket (\S+) was set aside/)?.[1])).toEqual([
+      "t-2",
+    ])
+    expect(ran.events.filter((r) => r.kind === "triage")).toEqual([
+      expect.objectContaining({ ticket: "t-2" }),
     ])
   })
 
