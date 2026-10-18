@@ -20,6 +20,7 @@ import {
 import type { AttentionRequest } from "../agent/Attention.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import type { Entry, State } from "./ledger.ts"
 import { type Activity, countsUnder, hasCard, type PhaseTag, TicketPhase } from "./phase.ts"
 
@@ -63,6 +64,8 @@ export interface Status {
   readonly unclosed: number | null
   /** The triage organ's verdicts on tickets set aside, by ticket: `environment · high · …`. */
   readonly verdicts: ReadonlyMap<string, string>
+  /** The environment probe's session, while it runs (§ 4.9): shown as a card labelled `probe`. */
+  readonly probe: ProbeView | null
   /** What the dashboard's warning line says for the whole run: the colour scheme's notices. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -79,6 +82,7 @@ export const emptyStatus: Status = {
   solo: null,
   unclosed: null,
   verdicts: new Map(),
+  probe: null,
   warnings: [],
 }
 
@@ -429,6 +433,23 @@ const motionOf = (
   return working(state, requests) ? "spinner" : "•"
 }
 
+/** The environment probe's card, worker 0, as a Working ticket's, its session in `state`. */
+const probeCard = (probe: ProbeView, state: WorkerState | undefined): Card => {
+  const phase = TicketPhase.Working({ activity: "working" })
+  return {
+    ticket: probeLabel,
+    title: probeLabel,
+    worker: 0,
+    phase,
+    state: state ?? null,
+    status: cardStatus(phase, state, []),
+    motion: motionOf(phase, state, []),
+    since: probe.since,
+    action: "checking that commands run on this machine",
+    requests: [],
+  }
+}
+
 const actionOf = (entry: Entry, branch: string): string | null => {
   if (entry.rechecking) return `checking again: ${branch} moved on since its check failed`
   if (entry.phase._tag !== "Merging") return null
@@ -588,6 +609,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       })
     }
   }
+  if (status.probe !== null) cards.push(probeCard(status.probe, workers.get(probeWorker)))
   totals.needsYou = needsYou.size
   totals.queueHeld = ledger.windDown !== null || status.holds.length > 0
 

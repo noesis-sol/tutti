@@ -61,7 +61,7 @@ import {
 } from "./AgentHost.ts"
 import type { Attention } from "./Attention.ts"
 import { workerEnv } from "./env.ts"
-import { type ChosenServers, checkInit } from "./mcp.ts"
+import { type ChosenServers, checkInit, noServers } from "./mcp.ts"
 import { type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
 import type { Transcripts } from "./Transcripts.ts"
 import { WorkerEvent } from "./WorkerState.ts"
@@ -119,6 +119,8 @@ export interface LiveOptions {
 interface Open {
   readonly ticket: string
   readonly sessionId: string
+  /** The MCP servers it was given: the workers', or none for the probe. */
+  readonly servers: ChosenServers
   readonly entry: WorkerEntry
   readonly inbox: Queue.Queue<SDKUserMessage, Cause.Done>
   readonly query: Query
@@ -271,7 +273,7 @@ export const layer = (
               )
             }
           }
-          const mcp = yield* Effect.exit(checkInit(init, options.servers))
+          const mcp = yield* Effect.exit(checkInit(init, session.servers))
           if (Exit.isFailure(mcp)) {
             const problems = mcp.cause.reasons.flatMap((reason) =>
               reason._tag === "Fail" ? reason.error.problems : [],
@@ -365,12 +367,13 @@ export const layer = (
           )
           const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
           const abort = new AbortController()
+          const servers = session.probe === true ? noServers : options.servers
           const sdkOptions: Options = workerOptions({
             config,
             ticket,
             worktree: session.cwd,
-            prompt: options.prompt,
-            servers: options.servers,
+            prompt: session.probe === true ? null : options.prompt,
+            servers,
             callbacks,
             session: how,
             env,
@@ -381,6 +384,7 @@ export const layer = (
           const opened: Open = {
             ticket,
             sessionId: session.sessionId,
+            servers,
             entry,
             inbox,
             query: query({

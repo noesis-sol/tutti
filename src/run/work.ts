@@ -17,13 +17,15 @@
 // The session is closed once the ticket no longer needs it (§ 4.8, sessions.ts): kept open while it
 // waits to merge, and when it stopped the run (it is suspended as the run ends); closed once asked,
 // its worker's turn over, to be resumed when the answer is in.
-import { Effect, Result } from "effect"
+import { Clock, Effect, Ref, Result, Stream } from "effect"
+import { AgentHost } from "../agent/AgentHost.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError, type Status } from "../services/Beads.ts"
 import type { GitError } from "../services/Git.ts"
 import type { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview, putAside } from "./aside.ts"
+import { type Settling, settlingOf } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
@@ -46,10 +48,14 @@ export interface RunStop {
 /** The exit code of a worker that stopped the run, as orchestra's ExitStuck. */
 export const stuckCode = 3
 
-/** How the ticket's fiber ended: its phase, and the stop when it stopped the run. */
+/**
+ * How the ticket's fiber ended: its phase, the stop when it stopped the run, and how its worker
+ * settled, as the environment hold counts it (`other` when left out: a resumed worker's).
+ */
 export interface Worked {
   readonly phase: TicketPhase | undefined
   readonly stop: RunStop | null
+  readonly settling?: Settling
 }
 
 /** What the per-ticket fiber can fail with, for the run to stop on. */
@@ -278,14 +284,47 @@ export const work = (
 ): Effect.Effect<Worked, WorkError, WorkEnv> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
+    const dispatched = yield* Clock.currentTimeMillis
     const started = yield* start(ticket, options.base)
     let stop: RunStop | null = null
+    let settling: Settling = "uncounted"
     if (started._tag === "Started") {
       const { worker } = started
-      const settled = yield* settle(worker, options.base)
+      const [settled, limited] = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const limited = yield* watchLimit(ticket.id)
+          return [yield* settle(worker, options.base), yield* Ref.get(limited)] as const
+        }),
+      )
       stop = yield* conclude(ticket, worker, settled, options.queue)
+      settling = yield* settlingOf({
+        worker,
+        settled,
+        started: dispatched,
+        limited,
+        base: options.base,
+      })
     }
-    return { phase: (yield* ledger.current).tickets.get(ticket.id)?.phase, stop }
+    return { phase: (yield* ledger.current).tickets.get(ticket.id)?.phase, stop, settling }
+  })
+
+/**
+ * Whether the ticket's worker has been UsageLimited (§ 4.12) since now, watched for the rest of
+ * the scope: such a worker never counts toward the environment hold.
+ */
+const watchLimit = (ticket: string) =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const limited = yield* Ref.make(false)
+    yield* host.state(ticket).pipe(
+      Stream.takeUntil((state) => state._tag === "UsageLimited"),
+      Stream.runForEach((state) =>
+        state._tag === "UsageLimited" ? Ref.set(limited, true) : Effect.void,
+      ),
+      Effect.ignore,
+      Effect.forkScoped({ startImmediately: true }),
+    )
+    return limited
   })
 
 /**

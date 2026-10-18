@@ -7,7 +7,8 @@
 // Holds and stops (§ 5 item 10): a stop holds the run (no new tickets, the running ones finish and
 // merge), and the run ends once nothing runs or waits to merge, with the stops' line and the first
 // one's exit code (holds.ts). A drain (drain.ts) does the same without a stop, and the run ends
-// DRAINED with exit 0.
+// DRAINED with exit 0. Workers failing at once hold the run with ENVIRONMENT (environment.ts): once
+// nothing runs, the probe either lifts that stop, and the run takes tickets again, or ends the run.
 //
 // Before its first dispatch the run checks the tickets earlier runs left labelled `unmerged`
 // (unmerged.ts): one merged since by hand loses its label; bd failing to list them stops the run,
@@ -51,6 +52,7 @@ import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
+import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { fullCheck, fullCheckDue } from "./fullcheck.ts"
@@ -242,6 +244,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         yield* wakeUp
       })
 
+    // Workers failing at once hold the run, as a stop does, until the probe (environment.ts).
+    const environment = yield* makeEnvironmentHold({ onHold: stopped })
+
     const queue = yield* makeQueue({ repo: config.repo, base })
     // The merge that stopped the merges, taken up once, by its watcher or by the end.
     const mergeStopSeen = yield* Ref.make(false)
@@ -263,9 +268,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       work(issue, { base, queue }).pipe(
         Effect.matchCauseEffect({
           onSuccess: (worked) =>
-            worked.stop === null
-              ? Effect.void
-              : stopped(stopOfLine(worked.stop, { ticket: issue.id, recorded: true, held: true })),
+            Effect.andThen(
+              environment.settled(issue.id, worked.settling ?? "other"),
+              worked.stop === null
+                ? Effect.void
+                : stopped(
+                    stopOfLine(worked.stop, { ticket: issue.id, recorded: true, held: true }),
+                  ),
+            ),
           onFailure: (cause) => {
             const stop = causeStop(issue.id, cause)
             return stop === undefined ? Effect.void : stopped(stop)
@@ -328,7 +338,17 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }
       return (yield* scheduler.running).size === 0 && isSettled(yield* queue.state)
     })
-    while (!(yield* nothingLeft)) yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
+    // Nothing left: a hold for the environment probes the machine, and goes on or ends the run.
+    for (;;) {
+      while (!(yield* nothingLeft)) yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
+      const probed = yield* environment.probe(yield* Ref.get(stops))
+      if (probed._tag === "Ends") break
+      if (probed._tag === "Failed") {
+        yield* Ref.update(stops, (all) => ({ ...all, first: probed.stop }))
+        break
+      }
+      yield* Ref.set(stops, noStops)
+    }
     yield* Ref.set(ending, true)
     yield* mergeStop(yield* queue.state)
 

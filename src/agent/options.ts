@@ -54,8 +54,8 @@ export interface WorkerOptionsInput {
   readonly ticket: string
   /** The ticket's worktree, the session's folder. */
   readonly worktree: string
-  /** The run's worker prompt, TICKET_ID still in it: the standing rules. */
-  readonly prompt: WorkerPrompt
+  /** The run's worker prompt, TICKET_ID still in it: the standing rules; null for the probe. */
+  readonly prompt: WorkerPrompt | null
   readonly servers: ChosenServers
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
@@ -153,7 +153,7 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      append: forTicket(input.prompt, input.ticket),
+      ...(input.prompt === null ? {} : { append: forTicket(input.prompt, input.ticket) }),
       snapshot: true,
     },
     ...(input.session._tag === "New"

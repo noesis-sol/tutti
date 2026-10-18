@@ -54,6 +54,8 @@ export const Tag = {
   answered: "ANSWERED",
   waitsForMerge: "WAITS_FOR_MERGE",
   reopenFailed: "REOPEN_FAILED",
+  probe: "PROBE",
+  probeOk: "PROBE_OK",
   paused: "PAUSED",
   resumed: "RESUMED",
   workerGone: "WORKER_GONE",

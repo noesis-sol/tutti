@@ -35,6 +35,9 @@ export interface ChosenServers {
 /** The START block's note when workers.mcp_servers is empty (§ 15, Q5). */
 export const noServersNote = "workers get no MCP servers: workers.mcp_servers is empty"
 
+/** No servers at all: the environment probe's (§ 4.9). */
+export const noServers: ChosenServers = { servers: [], note: null }
+
 /** A claude.ai connector's name starts with this, in system/init and the user's .claude.json. */
 export const connectorPrefix = "claude.ai "
 

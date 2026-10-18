@@ -12,7 +12,7 @@
 // would write wherever that led, and git's ignore rule for the folder (/.tutti/run/, which matches a
 // folder and not a link) wouldn't cover files written through it, for a worker's git add -A to
 // commit. So every link on the way is refused, wherever it points, with RunFilesOutside.
-import { lstatSync, mkdirSync, writeSync } from "node:fs"
+import { lstatSync, mkdirSync, readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Schema, type Scope } from "effect"
 import type { PlatformError } from "effect/PlatformError"
@@ -244,6 +244,25 @@ export const writeRunFile = (
         for (let written = 0; written < bytes.length; ) {
           written += writeSync(fd, bytes, written)
         }
+      }),
+    ),
+  )
+
+/** The first `most` bytes of the run file `name` in the worktree, as text (see openRunFile). */
+export const readRunFile = (
+  worktree: string,
+  name: string,
+  most = 4096,
+): Effect.Effect<string, RunFilesError> =>
+  Effect.scoped(
+    Effect.flatMap(openRunFile(worktree, name, O.RDONLY), (fd) =>
+      Effect.sync(() => {
+        const bytes = Buffer.alloc(most)
+        let read = 0
+        for (let n = -1; n !== 0 && read < most; read += n) {
+          n = readSync(fd, bytes, read, most - read, null)
+        }
+        return bytes.subarray(0, read).toString("utf8")
       }),
     ),
   )

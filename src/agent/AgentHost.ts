@@ -56,6 +56,11 @@ export interface Message {
 export interface Session {
   readonly sessionId: string
   readonly cwd: string
+  /**
+   * A session with no ticket, the environment probe's (§ 4.9): no MCP servers and no worker
+   * prompt, in the main checkout.
+   */
+  readonly probe?: true
 }
 
 /**
