@@ -280,6 +280,44 @@ export const conclude = (
     return null
   })
 
+/** What became of a ticket's worker: how it settled, and the stop when it stopped the run. */
+export interface Followed {
+  readonly settled: Settled
+  /** Whether it reached the usage limit (§ 4.12) on the way. */
+  readonly limited: boolean
+  readonly stop: RunStop | null
+}
+
+/**
+ * Follows the ticket's worker, started or resumed, to its outcome: TICKET_LIMIT counted from
+ * `since` while it goes on, settled, its ticket moved as it left it, and handed to triage when set
+ * aside, unless it reached the usage limit.
+ */
+export const follow = (
+  ticket: StartTicket,
+  worker: StartedWorker,
+  options: WorkOptions,
+  since: number,
+): Effect.Effect<Followed, BeadsError | GitError, WorkEnv> =>
+  Effect.gen(function* () {
+    const [settled, limited] = yield* Effect.scoped(
+      Effect.gen(function* () {
+        const limited = yield* watchLimit(ticket.id)
+        // TICKET_LIMIT or LONG_RUNNING while it goes on (holds.ts); the worker isn't interrupted.
+        yield* timeLimit(
+          ticket.id,
+          worker.worktree.path,
+          since,
+          options.onTicketLimit ?? (() => Effect.void),
+        ).pipe(Effect.forkScoped({ startImmediately: true }))
+        return [yield* settle(worker, options.base), yield* Ref.get(limited)] as const
+      }),
+    )
+    const stop = yield* conclude(ticket, worker, settled, options.queue)
+    if (!limited) yield* toTriage(worker, settled, options.triage)
+    return { settled, limited, stop }
+  })
+
 /**
  * The per-ticket fiber, for a ticket dispatched and Working: its worker started on `base`, settled,
  * and its ticket moved as it left it. Fails on what the run stops for: git making its worktree,
@@ -297,21 +335,9 @@ export const work = (
     let settling: Settling = "uncounted"
     if (started._tag === "Started") {
       const { worker } = started
-      const [settled, limited] = yield* Effect.scoped(
-        Effect.gen(function* () {
-          const limited = yield* watchLimit(ticket.id)
-          // TICKET_LIMIT or LONG_RUNNING while it goes on (holds.ts); the worker isn't interrupted.
-          yield* timeLimit(
-            ticket.id,
-            worker.worktree.path,
-            dispatched,
-            options.onTicketLimit ?? (() => Effect.void),
-          ).pipe(Effect.forkScoped({ startImmediately: true }))
-          return [yield* settle(worker, options.base), yield* Ref.get(limited)] as const
-        }),
-      )
-      stop = yield* conclude(ticket, worker, settled, options.queue)
-      if (!limited) yield* toTriage(worker, settled, options.triage)
+      const followed = yield* follow(ticket, worker, options, dispatched)
+      const { settled, limited } = followed
+      stop = followed.stop
       settling = yield* settlingOf({
         worker,
         settled,

@@ -144,18 +144,15 @@ export const earlierNote = (branch: string, base: string, earlier: Earlier): str
   return parts.join("\n\n")
 }
 
-/** A ticket's first message (§ 4.1): what is specific to this start, in paragraphs. */
-export const firstMessage = (m: FirstMessage): string => {
+/**
+ * What a start tells the worker of this run, as paragraphs: the time the ticket has, and the
+ * --ticket scope line. A resumed worker is told them too (carry.ts).
+ */
+export const runFacts = (
+  m: Pick<FirstMessage, "id" | "ticketLimit" | "scope">,
+): ReadonlyArray<string> => {
   const { id, scope } = m
-  const paragraphs = [
-    `Your ticket is ${id}. Your standing rules for it are in your system prompt: ` +
-      "follow them exactly, from claiming the ticket to closing it.",
-    ...(m.spec === null
-      ? []
-      : [
-          `${id} is part of the spec at ${m.spec}: read the sections of it that ${id} cites ` +
-            "before you start, and treat the spec as settled.",
-        ]),
+  return [
     ...(m.ticketLimit === null
       ? []
       : [
@@ -169,6 +166,22 @@ export const firstMessage = (m: FirstMessage): string => {
             `this work as a child of ${scope} (bd create --parent ${scope} …) so this run picks ` +
             "it up; anything else waits for a later run.",
         ]),
+  ]
+}
+
+/** A ticket's first message (§ 4.1): what is specific to this start, in paragraphs. */
+export const firstMessage = (m: FirstMessage): string => {
+  const { id } = m
+  const paragraphs = [
+    `Your ticket is ${id}. Your standing rules for it are in your system prompt: ` +
+      "follow them exactly, from claiming the ticket to closing it.",
+    ...(m.spec === null
+      ? []
+      : [
+          `${id} is part of the spec at ${m.spec}: read the sections of it that ${id} cites ` +
+            "before you start, and treat the spec as settled.",
+        ]),
+    ...runFacts(m),
     earlierNote(m.branch, m.base, m.earlier),
   ]
   return `${paragraphs.filter((p) => p !== "").join("\n\n")}\n`

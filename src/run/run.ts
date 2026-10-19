@@ -24,7 +24,9 @@
 //
 // Before its first dispatch the run checks the tickets earlier runs left labelled `unmerged`
 // (unmerged.ts): one merged since by hand loses its label; bd failing to list them stops the run,
-// BEADS_FAILED.
+// BEADS_FAILED. Then it takes up the workers the last run left in state.json (carry.ts): each
+// suspended one resumed in a slot, counting toward no limit; and as it ends, it saves the asked
+// tickets beside the suspended ones.
 //
 // The end (§ 5 item 14): nothing left to start or merge. Workers waiting on you (an open request)
 // keep it open with a dashboard (D19): it shows the end-of-run box until you answer them, and they
@@ -47,6 +49,7 @@ import {
   Duration,
   Effect,
   FiberSet,
+  type FileSystem,
   Option,
   Queue,
   Ref,
@@ -74,6 +77,7 @@ import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
+import { carryOver, saveAsked } from "./carry.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
@@ -120,7 +124,7 @@ import { type Dashboard, show } from "./screen.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold, holdWord as usageHoldWord } from "./usageLimit.ts"
-import { requeueWaiting, type WorkEnv, type WorkError, work } from "./work.ts"
+import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
 export interface Outcome {
@@ -162,6 +166,7 @@ export type RunEnv =
   | Tty
   | UsageLimits
   | Notifier
+  | FileSystem.FileSystem
 
 /** The errors the Agent SDK fails with. */
 type AgentError = AgentStartFailed | AgentGone | AgentProtocol
@@ -400,38 +405,36 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         )
       })
 
-    // A ticket's fiber: its work, and the stop it ended with, if any.
-    const ticketFiber = (issue: Issue): Effect.Effect<void> =>
-      work(issue, {
-        base,
-        queue,
-        triage,
-        onTicketLimit: (stop) =>
-          Effect.andThen(
-            Ref.update(overLimit, (over) => new Set([...over, issue.id])),
-            stopped(stop),
-          ),
-      }).pipe(
+    // A ticket's fiber, dispatched or carried over: its work, and the stop it ended with, if any.
+    const onTicketLimit = (ticket: string) => (stop: StopReason) =>
+      Effect.andThen(
+        Ref.update(overLimit, (over) => new Set([...over, ticket])),
+        stopped(stop),
+      )
+    const outcomeOf = <R>(ticket: string, worked: Effect.Effect<Worked, WorkError, R>) =>
+      worked.pipe(
         Effect.matchCauseEffect({
           onSuccess: (worked) =>
             Effect.andThen(
-              environment.settled(issue.id, worked.settling ?? "other"),
+              environment.settled(ticket, worked.settling ?? "other"),
               worked.stop === null
                 ? Effect.void
-                : stopped(
-                    stopOfLine(worked.stop, { ticket: issue.id, recorded: true, held: true }),
-                  ),
+                : stopped(stopOfLine(worked.stop, { ticket, recorded: true, held: true })),
             ),
           onFailure: (cause) => {
-            const stop = causeStop(issue.id, cause)
+            const stop = causeStop(ticket, cause)
             if (stop === undefined) return Effect.void
             return stop.why === "PANIC"
-              ? panicked(`${issue.id}'s fiber`, stop, defectOf(cause))
+              ? panicked(`${ticket}'s fiber`, stop, defectOf(cause))
               : stopped(stop)
           },
         }),
-        Effect.provideContext(context),
       )
+    const ticketFiber = (issue: Issue): Effect.Effect<void> =>
+      outcomeOf(
+        issue.id,
+        work(issue, { base, queue, triage, onTicketLimit: onTicketLimit(issue.id) }),
+      ).pipe(Effect.provideContext(context))
 
     const taking = Effect.map(
       Effect.all([Ref.get(stops), Ref.get(ending), usage.held]),
@@ -457,6 +460,17 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         ),
       )
     }
+
+    // The workers the last run left (carry.ts), taken up before the first dispatch: each resumed
+    // takes a slot, counting toward no limit, its ticket limit counted afresh.
+    yield* carryOver({
+      base,
+      queue,
+      triage,
+      onTicketLimit: (stop) =>
+        stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop),
+      carry: (ticket, worked, issue) => scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
+    }).pipe(Effect.provideContext(context))
 
     // The ready poll, the merge queue's changes and drain requests each wake the run. A watcher that
     // dies panics the run.
@@ -497,6 +511,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           yield* Effect.ignore(store.suspend(entry.ticket, why, "Stopped"))
           saved.push(entry.ticket)
         }
+        yield* saveAsked
         const stop = stopFor("INTERRUPTED", atOnceText(request.how, saved, merging))
         yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
         yield* logs.write(stop.text)
@@ -788,6 +803,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     for (const each of suspended) {
       yield* Effect.ignore(store.suspend(each.ticket, each.because, "Stopped"))
     }
+    yield* saveAsked
     yield* labelAtEnd({ repo: config.repo, base })
 
     // Quitting's last step: the run ends INTERRUPTED (exit 130), or PANIC (exit 4), before any
