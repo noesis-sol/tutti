@@ -140,6 +140,8 @@ describe("orchestra's settings, imported", () => {
 
   test("settings without mcp_servers say so, since orchestra then gives every server", () => {
     expect(importSettings({ concurrent: 2 }).mcpUnset).toBe(true)
+    expect(importSettings({ mcp_servers: null }).mcpUnset).toBe(true)
+    expect(importSettings({ mcp_servers: [] }).mcpUnset).toBe(false)
   })
 
   test("settings that aren't an object import nothing, and say so", () => {

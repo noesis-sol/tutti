@@ -207,7 +207,12 @@ export const importSettings = (orchestra: unknown): SettingsImport => {
       why: own(unplaced, key) ?? "not an orchestra setting tutti knows",
     })
   }
-  return { json, imported, leftOut, mcpUnset: !Object.hasOwn(orchestra, "mcp_servers") }
+  return {
+    json,
+    imported,
+    leftOut,
+    mcpUnset: unset("mcp_servers", own(orchestra, "mcp_servers") ?? null),
+  }
 }
 
 /** A change § 4.11 needs in an imported worker prompt: on which line (null: the whole), and what. */
