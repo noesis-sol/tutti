@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -13,6 +13,10 @@ import {
   run,
   showCommand,
 } from "../src/services/exec.ts"
+
+// Every test starts real processes, and some wait out a kill grace of 2 s. Under load they outlast
+// bun's 5 s default, whose timeout fails even "returns a command's stdout, stderr and exit code".
+setDefaultTimeout(30_000)
 
 const provide = <A, E>(effect: Effect.Effect<A, E, BunServices.BunServices>): Effect.Effect<A, E> =>
   Effect.provide(effect, BunServices.layer)

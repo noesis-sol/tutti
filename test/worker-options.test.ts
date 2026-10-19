@@ -207,13 +207,15 @@ describe("spawnInOwnProcessGroup", () => {
       signal: new AbortController().signal,
     } satisfies SpawnOptions)
 
+  // "close" comes once the process has exited and its stdout and stderr have closed: their whole
+  // output is in, however late it comes after "exit" on a loaded machine.
   const stdoutOf = (child: ReturnType<typeof spawnSh>) =>
     new Promise<string>((resolve) => {
       let text = ""
       child.stdout.on("data", (chunk: Buffer) => {
         text += chunk.toString()
       })
-      child.once("exit", () => setTimeout(() => resolve(text), 50))
+      child.once("close", () => resolve(text))
     })
 
   test("starts Claude Code leading a process group of its own", async () => {

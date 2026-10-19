@@ -32,6 +32,7 @@ import { stopWords } from "../src/ui/StopQuestion.tsx"
 import {
   makeToasts,
   suspendToast,
+  type Timer,
   type ToastStore,
   toastLife,
   toastsShown,
@@ -91,10 +92,30 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
 const onDashboard = <A,>(
   body: (rendered: Rendered, value: ShellValue) => Promise<A>,
   view: RunView = emptyView,
-  input: { readonly pasteLimit?: number; readonly toastLife?: number } = {},
+  input: { readonly pasteLimit?: number; readonly toastTimer?: Timer } = {},
 ) => {
   const value = shellOf(view)
   return withRender(<Root value={value} input={input} />, size, (rendered) => body(rendered, value))
+}
+
+/** A toast Timer that waits for the test: `fire` runs what is waiting, `waits` says for how long. */
+const manualTimer = () => {
+  const waiting: Array<{ readonly run: () => void; readonly ms: number }> = []
+  const timer: Timer = (run, ms) => {
+    const entry = { run, ms }
+    waiting.push(entry)
+    return () => {
+      const at = waiting.indexOf(entry)
+      if (at >= 0) waiting.splice(at, 1)
+    }
+  }
+  return {
+    timer,
+    waits: () => waiting.map((entry) => entry.ms),
+    fire: () => {
+      for (const entry of waiting.splice(0)) entry.run()
+    },
+  }
 }
 
 /** A textarea with the focus, handed to `onRef` once mounted. */
@@ -312,6 +333,7 @@ describe("the quit box", () => {
 
 describe("Ctrl+Z", () => {
   test("shows a faint toast that tutti can't be suspended, then it goes", async () => {
+    const clock = manualTimer()
     await onDashboard(
       async (rendered, value) => {
         await press(rendered, "ctrl+z")
@@ -323,12 +345,13 @@ describe("Ctrl+Z", () => {
         const span = line?.spans.find((each) => each.text.includes("can't be suspended"))
         expect((span?.attributes ?? 0) & TextAttributes.DIM).toBe(TextAttributes.DIM)
         expect(tags(value)).toEqual([])
-        await rendered.input(() => Bun.sleep(700))
+        // The toast goes when its timer fires, which the test does: no real clock to outrun.
+        expect(clock.waits()).toEqual([toastLife])
+        await rendered.input(() => clock.fire())
         expect(await frameOf(rendered)).not.toContain(suspendToast)
       },
       emptyView,
-      // Long enough to outlast the press and capture on a loaded machine, in real time.
-      { toastLife: 500 },
+      { toastTimer: clock.timer },
     )
   })
 

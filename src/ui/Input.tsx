@@ -24,7 +24,7 @@ import {
 import { SelectionLook, selectionLookOf } from "./line.tsx"
 import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
-import { makeToasts, suspendToast, Toasts } from "./Toasts.tsx"
+import { makeToasts, suspendToast, type Timer, Toasts } from "./Toasts.tsx"
 import { external, useCommand, useTheme } from "./useRunView.ts"
 
 /** Ctrl+C and Ctrl+Z, over every layer, in every view. */
@@ -75,16 +75,16 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
 
 /**
  * `children` with the input layers: a keymap on the renderer, its guards, the global keys, copying
- * a drag's selection, the box open and the toasts. `pasteLimit` and `toastLife` are the tests'.
+ * a drag's selection, the box open and the toasts. `pasteLimit` and `toastTimer` are the tests'.
  */
 export const Input = ({
   children,
   pasteLimit,
-  toastLife,
+  toastTimer,
 }: {
   readonly children: ReactNode
   readonly pasteLimit?: number
-  readonly toastLife?: number
+  readonly toastTimer?: Timer
 }) => {
   const renderer = useRenderer()
   const theme = useTheme()
@@ -92,7 +92,7 @@ export const Input = ({
   const [keymap] = useState(() => createDefaultOpenTuiKeymap(renderer))
   const [input] = useState<InputState>(() => ({
     box: external<Box | null>(null),
-    toasts: makeToasts(toastLife),
+    toasts: makeToasts(undefined, toastTimer),
   }))
   useEffect(() => {
     const unfilter = filterMouse(keymap)

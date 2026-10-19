@@ -780,9 +780,11 @@ echo 'Issue nope not found' >&2; exit 1`)
     expect(error).toMatchObject({ _tag: "BeadsFailed", exitCode: 13, stderr: "cannot claim\n" })
   })
 
+  // A bd that takes 1 s, three times over, two of them killed at their limit: 3.5 s alone under
+  // load, past bun's 5 s with more. The limit a read must keep within is as roomy.
   test("reads get the read limit and updates the write limit", async () => {
     const fake = fakeBd(`sleep 1; cat '${join(import.meta.dir, "fixtures/bd/close.json")}'`)
-    const limits = { read: "5 seconds", write: "200 millis" } as const
+    const limits = { read: "30 seconds", write: "200 millis" } as const
     const read = await live(
       fake,
       withBeads((beads) => beads.show("demo-1")),
@@ -802,11 +804,11 @@ echo 'Issue nope not found' >&2; exit 1`)
       await live(
         fake,
         withBeads((beads) => beads.list()),
-        { read: "200 millis", write: "5 seconds" },
+        { read: "200 millis", write: "30 seconds" },
       ),
     )
     expect(slowRead).toBeInstanceOf(BeadsTimedOut)
-  })
+  }, 30_000)
 
   test("a bd that can't be started is BeadsFailed", async () => {
     const dir = mkdtempSync(join(tmpdir(), "tutti-beads-"))

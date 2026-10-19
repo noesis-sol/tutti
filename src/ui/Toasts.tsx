@@ -23,6 +23,14 @@ export interface Toast {
   readonly failure: boolean
 }
 
+/** Runs `run` after `ms`, and returns what cancels it: setTimeout's, or a test's own clock. */
+export type Timer = (run: () => void, ms: number) => () => void
+
+const realTimer: Timer = (run, ms) => {
+  const timer = setTimeout(run, ms)
+  return () => clearTimeout(timer)
+}
+
 /** The toasts shown, oldest first, and a way to show another. */
 export interface ToastStore extends External<ReadonlyArray<Toast>> {
   /** Shows `text` for `life` ms. */
@@ -31,10 +39,10 @@ export interface ToastStore extends External<ReadonlyArray<Toast>> {
   readonly dispose: () => void
 }
 
-/** An empty ToastStore whose toasts are shown `life` ms each. */
-export const makeToasts = (life: number = toastLife): ToastStore => {
+/** An empty ToastStore whose toasts are shown `life` ms each, timed by `timer`. */
+export const makeToasts = (life: number = toastLife, timer: Timer = realTimer): ToastStore => {
   const store = external<ReadonlyArray<Toast>>([])
-  const timers = new Set<ReturnType<typeof setTimeout>>()
+  const cancels = new Set<() => void>()
   let next = 0
   return {
     get: store.get,
@@ -42,15 +50,15 @@ export const makeToasts = (life: number = toastLife): ToastStore => {
     show: (text, options = {}) => {
       const toast: Toast = { id: next++, text, failure: options.failure ?? false }
       store.set([...store.get(), toast].slice(-toastsShown))
-      const timer = setTimeout(() => {
-        timers.delete(timer)
+      const cancel = timer(() => {
+        cancels.delete(cancel)
         store.set(store.get().filter((each) => each.id !== toast.id))
       }, life)
-      timers.add(timer)
+      cancels.add(cancel)
     },
     dispose: () => {
-      for (const timer of timers) clearTimeout(timer)
-      timers.clear()
+      for (const cancel of cancels) cancel()
+      cancels.clear()
       store.set([])
     },
   }

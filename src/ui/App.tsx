@@ -14,6 +14,7 @@ import { Dashboard } from "./Dashboard.tsx"
 import { Input } from "./Input.tsx"
 import { styled } from "./line.tsx"
 import type { Shell } from "./renderer.ts"
+import type { Timer } from "./Toasts.tsx"
 import type { Appearance, Theme } from "./theme.ts"
 import { transcriptFeed } from "./transcriptItems.ts"
 import { bridge, ShellContext, type ShellValue, useScreen, useTheme } from "./useRunView.ts"
@@ -47,7 +48,7 @@ export const App = () => {
 
 /**
  * The App, or `children` in its place, over `value`, with the input layers (`input`: the tests'
- * paste limit and toast life).
+ * paste limit and toast timer).
  */
 export const Root = ({
   value,
@@ -56,7 +57,7 @@ export const Root = ({
 }: {
   readonly value: ShellValue
   readonly children?: ReactNode
-  readonly input?: { readonly pasteLimit?: number; readonly toastLife?: number }
+  readonly input?: { readonly pasteLimit?: number; readonly toastTimer?: Timer }
 }) => (
   <ShellContext.Provider value={value}>
     <Input {...input}>{children ?? <App />}</Input>
