@@ -11,10 +11,19 @@ import { readAgainAfter } from "../src/run/schedule.ts"
 import { Beads, BeadsFailed } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store, type TicketRecord } from "../src/services/Store.ts"
-import { claimsAndCloses, failStart, filesQuestion } from "../src/testing/AgentHost.ts"
+import {
+  bash,
+  claimsAndCloses,
+  failStart,
+  filesQuestion,
+  result,
+  sleep,
+  turn,
+} from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Seed } from "../src/testing/Beads.ts"
 import { Repository } from "../src/testing/Git.ts"
+import { texts } from "../src/testing/Log.ts"
 import {
   advance,
   backlog,
@@ -190,6 +199,45 @@ describe("carry-over: a suspended worker", () => {
     expect(told).toStartWith(carryOnText("t-1", "TICKET_LIMIT"))
     expect(told).toContain("You have about 1h for this ticket")
     expect(told).toContain("This run works on e-1 and its subtickets only.")
+  })
+
+  test("has its ticket limit counted afresh from its resume", async () => {
+    let early = true
+    const { ran, state } = await runs({
+      backlog: backlog().ticket("t-1", { status: "in_progress" }).seeds,
+      saved: (root) => ({ "t-1": savedRecord(root, "t-1") }),
+      worktrees: ["t-1"],
+      config: {
+        settings: {
+          ...defaults,
+          workers: { ...defaults.workers, ticket_limit: Duration.hours(1) },
+        },
+      },
+      scripts: () => ({ "t-1": [turn([...bash("make"), sleep("3 hours")], result("done"))] }),
+      around: (running) =>
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(running)
+          const minutes = (n: number) =>
+            Effect.forEach(
+              Array.from({ length: n }),
+              () =>
+                Effect.andThen(
+                  advance("1 minute"),
+                  Effect.promise(() => Bun.sleep(3)),
+                ),
+              { discard: true },
+            )
+          yield* minutes(59)
+          early = (yield* texts).some((each) => each.includes("TICKET_LIMIT"))
+          yield* minutes(5)
+          return yield* Fiber.join(fiber)
+        }),
+    })
+    expect(early).toBe(false)
+    expectLog(ran, [/^HOLD: TICKET_LIMIT: t-1 still working after 1h/])
+    expect(state.tickets["t-1"]).toEqual(
+      expect.objectContaining({ suspended: "TICKET_LIMIT", phase: "Stopped", resumes: 1 }),
+    )
   })
 
   test("takes a slot without counting toward --limit", async () => {
