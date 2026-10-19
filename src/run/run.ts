@@ -2,7 +2,9 @@
 // the end record. It is a scoped Effect. It forks the ready poll, the merge queue's consumer, the
 // watchers of the merge queue and of drain requests, and one fiber per running ticket, each into a
 // FiberSet of the run's scope (§ 3.4), and drives the scheduler itself: it fills the free slots as
-// the run starts, whenever a ticket's fiber ends or a merge finishes, and on each ready poll.
+// the run starts, whenever a ticket's fiber ends or a merge finishes, and on each ready poll. Each
+// such look first puts back the Waiting tickets whose blockers merged and resumes the Asked ones
+// whose questions are answered (asked.ts), unless the run holds or winds down.
 //
 // Holds and stops (§ 5 item 10): a stop holds the run (no new tickets, the running ones finish and
 // merge), and the run ends once nothing runs or waits to merge, with the stops' line and the first
@@ -77,6 +79,7 @@ import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
+import { takeAnswers } from "./asked.ts"
 import { carryOver, saveAsked } from "./carry.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
@@ -628,6 +631,17 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // ticket limit left out, as the run doesn't wait for them.
     const nothingLeft = Effect.gen(function* () {
       yield* requeueWaiting
+      // The answered tickets come back before new ones start, each in a slot of its own and
+      // counting toward no limit (asked.ts); not while the run holds or winds down, which takes up
+      // only what is running: the next run resumes them.
+      if ((yield* taking) && (yield* ledger.current).windDown === null) {
+        yield* takeAnswers({
+          base,
+          queue,
+          triage,
+          carry: (ticket, fiber) => scheduler.carry(ticket, outcomeOf(ticket, fiber)),
+        })
+      }
       if (yield* canTake) {
         const filled = yield* Effect.result(scheduler.fillTrying)
         if (Result.isFailure(filled)) {
