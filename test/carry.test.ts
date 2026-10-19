@@ -238,7 +238,8 @@ describe("carry-over: a suspended worker", () => {
     expect(state.tickets["t-1"]).toEqual(
       expect.objectContaining({ suspended: "TICKET_LIMIT", phase: "Stopped", resumes: 1 }),
     )
-  })
+    // An hour of minutes, each given the run a moment of real time: more than 5 s under load.
+  }, 30_000)
 
   test("takes a slot without counting toward --limit", async () => {
     const { ran } = await runs({
