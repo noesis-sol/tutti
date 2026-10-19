@@ -10,6 +10,9 @@
 //   scripts/check-fast.sh     the runners, in orchestra's format; one there is kept unless its
 //   scripts/check-full.sh     flag gives it a command
 //
+// In a project with .orchestra/ and no .tutti/, it first offers to import orchestra's settings and
+// worker prompt (./import.ts), which then stand in for the template's; the flags still win.
+//
 // Last it runs the login probe, whose account, billing and permission mode its summary reports. The
 // Checks step (the scout, the choice of checks, the verifier and the test work) is its own part.
 import { join } from "node:path"
@@ -26,6 +29,14 @@ import { TimeLimit } from "../services/exec.ts"
 import { RunLock } from "../services/RunLock.ts"
 import type { FormCancelled } from "../ui/questions.ts"
 import { schemeNotices } from "../ui/theme.ts"
+import {
+  findOrchestra,
+  type ImportOffer,
+  importOffer,
+  importSteps,
+  orchestraPromptFile,
+  promptChangeSteps,
+} from "./import.ts"
 import {
   checkScript,
   checksNothing,
@@ -103,6 +114,8 @@ export interface InitForm {
   readonly workers: (questions: WorkersQuestions) => Effect.Effect<WorkersAnswers, FormCancelled>
   /** Whether to mark the main checkout trusted, once the probe found it isn't. */
   readonly trust: (offer: TrustOffer) => Effect.Effect<boolean, FormCancelled>
+  /** Whether to import orchestra's settings and worker prompt, asked before the Workers step. */
+  readonly import: (offer: ImportOffer) => Effect.Effect<boolean, FormCancelled>
 }
 
 /** What init works on, and with. */
@@ -212,6 +225,32 @@ const readSettingsJson = (repo: string) =>
     return { json: json as Json, text: text.value, settings: decoded.value }
   })
 
+/** The object `over` laid over `base`, section by section: a new object. */
+const laidOver = (base: Json, over: Json): Json => {
+  const json: Json = structuredClone(base)
+  for (const [key, value] of Object.entries(over)) {
+    const under = json[key]
+    json[key] = isObject(value) && isObject(under) ? laidOver(under, value) : value
+  }
+  return json
+}
+
+/**
+ * The settings imported from orchestra, `imported` laid over the template, as readSettingsJson
+ * gives them for a project with none yet; refused when they don't decode together.
+ */
+const importedSettings = (repo: string, imported: Json) =>
+  Effect.gen(function* () {
+    const json = laidOver(settingsTemplate as Json, imported)
+    const decoded = decodeConfig(Settings, join(repo, settingsFile), json)
+    if (Exit.isFailure(decoded)) {
+      return yield* refused(
+        `the settings imported from orchestra have problems: ${String(decoded.cause)}`,
+      )
+    }
+    return { json, text: null, settings: decoded.value }
+  })
+
 /** What init changes in the settings: each absent where it keeps what is there. */
 interface SettingsChanges {
   readonly concurrent: number | null
@@ -300,18 +339,40 @@ const writeIfMissing = (repo: string, path: string, text: string, replace = fals
     return there ? ("replaced" as const) : ("wrote" as const)
   })
 
-/** The worker prompt's step: the built-in template where none is there, or with --force. */
-const writePrompt = (repo: string, force: boolean) =>
-  Effect.map(writeIfMissing(repo, workerPromptPath, builtInWorkerPrompt, force), (did) =>
-    did === "kept"
-      ? step(
-          "kept",
-          "worker prompt",
-          `${workerPromptPath} is there; left as it is (--force replaces it with the template)`,
-        )
-      : step("done", "worker prompt", `${did} ${workerPromptPath} from the built-in template`, [
-          workerPromptPath,
-        ]),
+/**
+ * The worker prompt's steps: the built-in template where none is there, or with --force; or
+ * orchestra's `imported` prompt, then the changes § 4.11 needs in it.
+ */
+const writePrompt = (repo: string, force: boolean, imported: string | null) =>
+  Effect.map(
+    writeIfMissing(repo, workerPromptPath, imported ?? builtInWorkerPrompt, force),
+    (did): ReadonlyArray<Step> =>
+      did === "kept"
+        ? [
+            step(
+              "kept",
+              "worker prompt",
+              `${workerPromptPath} is there; left as it is (--force replaces it with the template)`,
+            ),
+          ]
+        : imported === null
+          ? [
+              step(
+                "done",
+                "worker prompt",
+                `${did} ${workerPromptPath} from the built-in template`,
+                [workerPromptPath],
+              ),
+            ]
+          : [
+              step(
+                "done",
+                "worker prompt",
+                `imported ${orchestraPromptFile} to ${workerPromptPath}, with your changes`,
+                [workerPromptPath],
+              ),
+              ...promptChangeSteps(imported, workerPromptPath),
+            ],
   )
 
 /** The .gitignore's step: written where it is missing. */
@@ -429,7 +490,9 @@ const nextSteps = (repo: string, machine: Machine, steps: ReadonlyArray<Step>) =
     if (missing !== undefined) {
       next.push(`Fix what's missing above (${missing.label}: ${missing.detail}).`)
     }
-    if (steps.some((each) => each.label === "worker prompt" && each.kind === "done")) {
+    if (steps.some((each) => each.label === "worker prompt" && each.kind === "caution")) {
+      next.push(`Make the changes to ${workerPromptPath} listed above.`)
+    } else if (steps.some((each) => each.label === "worker prompt" && each.kind === "done")) {
       next.push(`Read ${workerPromptPath} and adjust it to the project.`)
     }
     // Advice: a git status that fails only leaves out the commit step.
@@ -527,7 +590,16 @@ export const init = <R>(options: InitOptions<R>) =>
     // Refused while a run holds the lock: checked before asking, and again once answered.
     yield* Effect.scoped(lock.acquire(request)).pipe(Effect.mapError(lockRefusal))
 
-    const existing = yield* readSettingsJson(repo)
+    const read = yield* readSettingsJson(repo)
+    // orchestra's settings and prompt, offered before the questions whose answers they start from.
+    const found = Option.getOrNull(yield* findOrchestra(repo))
+    const importConsent: Consent =
+      found === null ? false : form === null ? "unasked" : yield* form.import(importOffer(found))
+    const importing = found !== null && importConsent === true
+    const existing =
+      importing && found.settings !== null
+        ? yield* importedSettings(repo, found.settings.json)
+        : read
     const current = existing.settings
     const located = locateBd(machine)
     const install = findBeadsInstall(machine)
@@ -587,7 +659,8 @@ export const init = <R>(options: InitOptions<R>) =>
           ...(yield* setUpBeads(machine, repo, { install, consent: installConsent, prefix })),
         )
         if (prefix !== null) steps.push(...(yield* applyPrefix(machine, repo, prefix)))
-        steps.push(yield* writePrompt(repo, flags.force))
+        if (found !== null) steps.push(...importSteps(found, importConsent))
+        steps.push(...(yield* writePrompt(repo, flags.force, importing ? found.prompt : null)))
         steps.push(...(yield* writeRunners(repo, flags)))
         const written = yield* writeSettings(repo, existing, {
           concurrent,

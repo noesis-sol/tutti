@@ -1,8 +1,9 @@
 // init's questions a line at a time (§ 7.1), with the line forms' select, confirm and text
-// (src/ui/plain/forms.ts): the Workers step under its header, and the offer to mark an untrusted
-// main checkout trusted. The end of input (Ctrl+D) cancels, as Esc does in the renderer.
+// (src/ui/plain/forms.ts): the offer to import from orchestra, the Workers step under its header,
+// and the offer to mark an untrusted main checkout trusted. The end of input (Ctrl+D) cancels, as Esc does in the renderer.
 import { Effect } from "effect"
 import { confirm, type LineIO, text } from "../ui/plain/forms.ts"
+import { offerDescription } from "./import.ts"
 import type { InitForm } from "./init.ts"
 import { concurrencyNote, parseMcpNames, type WorkersAnswers } from "./workers.ts"
 
@@ -96,5 +97,11 @@ export const lineForm = (io: LineIO): InitForm => ({
     confirm(io, {
       question: `Mark ${offer.checkout} trusted?`,
       description: `${offer.explanation} tutti would set ${offer.key} in ${offer.file}, as Claude Code suggests.`,
+    }),
+  import: (offer) =>
+    confirm(io, {
+      question: "Import orchestra's settings and worker prompt?",
+      description: offerDescription(offer),
+      initial: true,
     }),
 })

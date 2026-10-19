@@ -120,6 +120,7 @@ const scriptedForm = (answers: WorkersAnswers = {}, trust = false) => {
         offers.push(offer)
         return trust
       }),
+    import: () => Effect.succeed(false),
   }
   return { form, asked, offers }
 }
@@ -318,6 +319,7 @@ describe("the files init writes", () => {
     const form: InitForm = {
       workers: () => Effect.fail(new FormCancelled()),
       trust: () => Effect.succeed(false),
+      import: () => Effect.succeed(false),
     }
     const error = failureOf(await runInit(project, { form }))
     expect(error).toBeInstanceOf(FormCancelled)

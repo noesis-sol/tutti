@@ -1,0 +1,21 @@
+{
+  "check_fast": "scripts/check.sh",
+  "check_full": "scripts/check-all.sh",
+  "check_fast_timeout": "15m",
+  "check_full_timeout": "1h30m",
+  "concurrent": 3,
+  "ticket_limit": "2h",
+  "setup": "npm ci",
+  "setup_files": ["package-lock.json"],
+  "exclude_types": ["epic", "chore"],
+  "footprint": false,
+  "resolve_conflicts": false,
+  "resolve_timeout": "10m",
+  "check_hand_backs": 1,
+  "environment_hold": { "count": 3, "window": "5m", "probe": "0", "notify": true },
+  "mcp_servers": ["postgres"],
+  "worker_effort": "high",
+  "organ_effort": "low",
+  "terminal": "tmux",
+  "agent_kind": "codex"
+}
