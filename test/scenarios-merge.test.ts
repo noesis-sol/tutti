@@ -806,7 +806,8 @@ describe("the time holds", () => {
   }, 30_000)
 
   test("BLOCKED holds the run at 4 minutes, and answering the request lifts it", async () => {
-    // a asks at once; b finishes at 10m, while the run holds, so c waits for the answer.
+    // a asks at once; b finishes at 10m. Plain, the run would end once b merged, suspending a
+    // (D19, end-of-run.test.ts): the request is answered while b still runs.
     const ran = await runs({
       tickets: ["a", "b", "c"],
       policy: waitForTest,
@@ -823,24 +824,22 @@ describe("the time holds", () => {
           expect((yield* texts).some((text) => text.includes("BLOCKED"))).toBe(false)
           yield* passes("2 minutes")
           yield* untilLogged(/^HOLD: BLOCKED/)
-          yield* passes("8 minutes")
-          yield* untilLogged(closedLine("b"))
+          yield* passes("2 minutes")
           expect((yield* texts).some((text) => text.includes("c dispatching"))).toBe(false)
           yield* (yield* Attention).answer("r1", { _tag: "Allow" }, "screen")
           yield* untilLogged(/^HOLD lifted/)
-          yield* passes("5 minutes")
+          yield* passes("10 minutes")
         }),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", c: "Done" })
     expectLog(ran, [
       "HOLD: BLOCKED >4min: a needs you: Bash(rm -rf build); no new tickets while the 2 running finish",
-      closedLine("b"),
       "HOLD lifted: a's requests were answered",
       "[3/40] c dispatching: c",
+      closedLine("b"),
       "READY_EMPTY after 3 tickets",
     ])
-    expectEvents(ran, ["attention", "hold", "closed", "hold", "attention_answered", "end"])
     const holds = ran.events.filter((r) => r.kind === "hold")
     expect(holds).toEqual([
       expect.objectContaining({ ticket: "a", text: expect.stringMatching(/^HOLD: BLOCKED/) }),

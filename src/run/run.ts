@@ -26,13 +26,16 @@
 // (unmerged.ts): one merged since by hand loses its label; bd failing to list them stops the run,
 // BEADS_FAILED.
 //
-// The end (§ 5 item 14): nothing left to start or merge. The tickets still in a phase a run can't
-// end in are Stopped and their sessions suspended (§ 4.8), as are the sessions of those that
-// stopped the run; each ticket closed and not merged is labelled `unmerged`; then the summary
-// lines, the closing line (the stops', or READY_EMPTY, LIMIT_REACHED or DRAINED, with a scoped
-// run's SCOPE_ part), the full check when the run ended by itself having merged a ticket
-// (fullcheck.ts), and the end record. In plain mode
-// (§ 7.6) every line goes to stdout as the Log writes it; a worker's attention request is a
+// The end (§ 5 item 14): nothing left to start or merge. Workers waiting on you (an open request)
+// keep it open with a dashboard (D19): it shows the end-of-run box until you answer them, and they
+// carry on, or end the run with the box's `q`. Plain, the run waits for them only until a stop holds
+// it, BLOCKED at the latest; then it ends as usual. Those past their ticket limit never keep it
+// open. The tickets still in a phase a run can't end in are Stopped and their sessions suspended
+// (§ 4.8), as are the sessions of those that stopped the run, a worker still waiting on you
+// suspended so (`waiting on you`); each ticket closed and not merged is labelled `unmerged`; then
+// the summary lines, the closing line (the stops', or READY_EMPTY, LIMIT_REACHED or DRAINED, with
+// a scoped run's SCOPE_ part), the full check when the run ended by itself having merged a ticket
+// (fullcheck.ts), and the end record. In plain mode (§ 7.6) every line goes to stdout as the Log writes it; a worker's attention request is a
 // PERMISSION or QUESTION line naming the `tutti answer` command, served from the attention files.
 // When Tty says the terminal can draw the dashboard and main gave the run one, the run shows it
 // (screen.ts) from its start to its end instead, and hands back the summary and closing lines for
@@ -110,7 +113,7 @@ import {
   unansweredLine,
   underWayLine,
 } from "./quit.ts"
-import { emptyStatus, project, type Row, type Status, type Totals } from "./runView.ts"
+import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
 import { make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, show } from "./screen.ts"
@@ -299,9 +302,20 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       warnings: notices,
     })
     const dashboard = options.dashboard
-    if (dashboard !== undefined && outputMode(yield* Tty, config.plain)._tag === "Dashboard") {
-      yield* show(dashboard, SubscriptionRef.changes(status))
-    }
+    const screen =
+      dashboard !== undefined && outputMode(yield* Tty, config.plain)._tag === "Dashboard"
+        ? yield* show(dashboard, SubscriptionRef.changes(status))
+        : null
+    // The end-of-run box (D19): the workers waiting on you it names, or null for none.
+    const showEndOfRun = (tickets: ReadonlyArray<string> | null) =>
+      Effect.gen(function* () {
+        const now = yield* SubscriptionRef.get(status)
+        if (!same(now.endOfRun, tickets)) {
+          yield* SubscriptionRef.set(status, { ...now, endOfRun: tickets })
+        }
+      })
+    // Set by the end-of-run box's `q`, taken by the run's next look.
+    const endAsked = yield* Ref.make(false)
 
     const stops = yield* Ref.make<Stops>(noStops)
     // The tickets whose workers went on past --ticket-limit: the run doesn't wait for them.
@@ -519,10 +533,23 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     if (quits !== undefined) {
       yield* watch(Effect.forever(Effect.flatMap(Queue.take(quits), hearQuit)))
     }
+    // The screen's commands the run takes: the end-of-run box's `q` (EndRun) ends the run.
+    if (screen !== null) {
+      yield* watch(
+        Effect.forever(
+          Effect.flatMap(Queue.take(screen.commands), (command) =>
+            command._tag === "EndRun"
+              ? Effect.andThen(Ref.set(endAsked, true), wakeUp)
+              : Effect.void,
+          ),
+        ),
+      )
+    }
 
     // A request unanswered for blockedAfter holds the run with BLOCKED, for its ticket; once that
     // ticket has none open, the hold is lifted (holds.ts). Each request is looked at again as it
-    // reaches its time, and every request open at each change.
+    // reaches its time, and every request open at each change, which wakes the run too: a worker
+    // that asks, or is answered, may end it or keep it open (D19).
     const blocked = yield* Ref.make<ReadonlySet<string>>(new Set())
     const oneLook = yield* Semaphore.make(1)
     const lookBlocked = oneLook.withPermits(1)(
@@ -571,15 +598,22 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             )
           }
           yield* lookBlocked
+          yield* wakeUp
         }),
       ),
     )
 
-    // Fills the free slots, then says whether nothing runs or waits to merge.
+    // Whether the run would take a ticket now, given a free slot.
+    const canTake = Effect.gen(function* () {
+      const winding = (yield* ledger.current).windDown !== null
+      return (yield* taking) && !winding && !(yield* scheduler.limitReached)
+    })
+    // Fills the free slots, then says whether nothing else runs, waits to merge or could start, and
+    // which workers wait on you (an open request) besides, oldest request first: those past their
+    // ticket limit left out, as the run doesn't wait for them.
     const nothingLeft = Effect.gen(function* () {
       yield* requeueWaiting
-      const winding = (yield* ledger.current).windDown !== null
-      if ((yield* taking) && !winding && !(yield* scheduler.limitReached)) {
+      if (yield* canTake) {
         const filled = yield* Effect.result(scheduler.fillTrying)
         if (Result.isFailure(filled)) {
           yield* stopped(
@@ -589,11 +623,27 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }
       const now = yield* ledger.current
       const over = yield* Ref.get(overLimit)
+      const requests = yield* attention.current
+      const asking = new Set(requests.map((request) => request.ticket))
+      const aside = new Set<string>()
       const busy = [...(yield* scheduler.running)].filter((ticket) => {
         const entry = now.tickets.get(ticket)
-        return entry === undefined || !over.has(ticket) || entry.phase._tag !== "Working"
+        if (entry === undefined || entry.phase._tag !== "Working") return true
+        if (asking.has(ticket) && !over.has(ticket)) aside.add(ticket)
+        return !over.has(ticket) && !asking.has(ticket)
       })
-      return busy.length === 0 && isSettled(yield* queue.state) && (yield* triage.pending) === 0
+      const waiting = [...new Set(requests.map((request) => request.ticket))].filter((ticket) =>
+        aside.has(ticket),
+      )
+      // With a worker waiting on you in its slot, a ticket queued for a slot is still to start.
+      const queued = [...now.tickets.values()].some((entry) => entry.phase._tag === "Queued")
+      const toStart = waiting.length > 0 && queued && (yield* canTake)
+      const done =
+        busy.length === 0 &&
+        !toStart &&
+        isSettled(yield* queue.state) &&
+        (yield* triage.pending) === 0
+      return { done, waiting }
     })
     // Whether nothing runs but workers waiting for the usage limit.
     const limitedOnly = Effect.gen(function* () {
@@ -607,17 +657,26 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     })
     // Waits until nothing is left. With the usage-limit hold on, the run waits for its reset
     // instead, unless a stop ends it anyway; it ends USAGE_LIMIT when it can't wait for it: whether
-    // it does.
+    // it does. With everything else done and workers waiting on you (D19), a dashboard shows the
+    // end-of-run box and waits, until they are answered or the box's `q` ends the run; plain, the
+    // run waits only until a stop holds it.
     const settle = Effect.gen(function* () {
       for (;;) {
-        const left = yield* nothingLeft
+        const { done, waiting } = yield* nothingLeft
         const limit = yield* usage.look(yield* limitedOnly)
         if (limit !== null) {
           yield* scheduler.interrupt
           yield* stopped(limit)
           return true
         }
-        if (left && ((yield* Ref.get(stops)).first !== null || !(yield* usage.held))) return false
+        const held = (yield* Ref.get(stops)).first !== null
+        const boxed = done && waiting.length > 0 && screen !== null
+        yield* showEndOfRun(boxed ? waiting : null)
+        const endNow = yield* Ref.getAndSet(endAsked, false)
+        if (done) {
+          if (waiting.length === 0 && (held || !(yield* usage.held))) return false
+          if (waiting.length > 0 && (screen === null ? held : endNow)) return false
+        }
         yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
       }
     })
@@ -684,21 +743,28 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     )
     const quit = yield* Effect.raceFirst(guardedLoop, Deferred.await(quitting))
     yield* Ref.set(ending, true)
+    yield* showEndOfRun(null)
     if (quit !== null) yield* quitNow(quit)
     yield* mergeStop(yield* queue.state)
 
     // The end: the tickets a run can't end in Stopped, and every stopped ticket's session suspended;
-    // a worker past its ticket limit is still at it, its fiber stopped first. Quitting's steps 5 and
-    // 6 are any end's: the sessions are closed, every open one when quitting, then state.json says
-    // why each was suspended.
+    // a worker past its ticket limit, or waiting on you, is still at it, its fiber stopped first.
+    // Quitting's steps 5 and 6 are any end's: the sessions are closed, every open one when
+    // quitting, then state.json says why each was suspended.
     const over = yield* Ref.get(overLimit)
-    if (over.size > 0) yield* scheduler.interrupt
+    const asking =
+      quit === null
+        ? new Set((yield* attention.current).map((request) => request.ticket))
+        : new Set<string>()
+    if (over.size > 0 || asking.size > 0) yield* scheduler.interrupt
     const before = yield* Ref.get(stops)
     const ended = quit === null ? null : "panic" in quit ? quit.panic.why : "quit"
     const whyOf = (entry: { readonly ticket: string; readonly phase: TicketPhase }) =>
       entry.phase._tag === "Working" && over.has(entry.ticket)
         ? "TICKET_LIMIT"
-        : (ended ?? before.first?.why ?? "run ended")
+        : entry.phase._tag === "Working" && asking.has(entry.ticket)
+          ? "waiting on you"
+          : (ended ?? before.first?.why ?? "run ended")
     const suspended: Array<{ readonly ticket: string; readonly because: string }> = []
     const saved: Array<string> = []
     const handedBack: Array<string> = []

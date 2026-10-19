@@ -18,6 +18,10 @@
 // `Shift+Tab`, `→` and `←` move between its buttons before moving on, `Enter` presses the focused
 // one and `1`–`4` pick a question's option; `d`, `Shift+D`, `a` and `r` answer the highlighted
 // card's request. On a compact line, `Enter` opens the Answer box.
+//
+// With everything else done and workers waiting on you (D19), the end-of-run box (EndOfRunBox.tsx)
+// replaces the cards, and `q` ends the run (EndRun). The answer keys still answer the target
+// request, and `1`–`9` open a worker's view to answer there.
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
@@ -25,6 +29,7 @@ import type { Card } from "../run/runView.ts"
 import { answerBindings } from "./AttentionCard.tsx"
 import { optionKeys, useAnswering } from "./attentionKeys.ts"
 import { Cards, type CardsLayout, grows, layoutOf, sectionLines } from "./Card.tsx"
+import { EndOfRunBox, endOfRunLines } from "./EndOfRunBox.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
@@ -102,7 +107,13 @@ export const Dashboard = () => {
   const foot = footLines + warnings.length
   const table = showsTable(height, totals.length, view.totals.slots, foot)
   const room = height - titleLines - totals.length - (table ? tableLines(height) : 0) - foot
-  const layout: CardsLayout = small ? { _tag: "Compact" } : layoutOf(cards, width, room)
+  const ending = view.endOfRun === null ? null : endOfRunLines(view.endOfRun, theme, width)
+  // Behind the end-of-run box no card's buttons are drawn: Enter opens the Answer box, as on a
+  // compact line.
+  const layout: CardsLayout =
+    small || ending !== null ? { _tag: "Compact" } : layoutOf(cards, width, room)
+  const endingNow = useRef(false)
+  endingNow.current = ending !== null
 
   // The view's keys, as bound: a key does nothing while the key help is open, but close it.
   const { box } = useInput()
@@ -145,6 +156,8 @@ export const Dashboard = () => {
     { key: "escape", run: () => showHelp(false) },
     // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
     ...key(["s"], () => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
+    // With the end-of-run box shown, `q` ends the run.
+    ...key(["q"], () => (endingNow.current ? command(UiCommand.EndRun()) : undefined)),
     // Tab and → move between an attention card's buttons, and on to the next card; ↓ and ↑ from
     // card to card.
     ...key(["tab", "right"], () => step(1, true)),
@@ -174,21 +187,30 @@ export const Dashboard = () => {
       {table ? (
         <TicketsTable lines={ticketsLines(view.rows, theme, width, tableLines(height))} />
       ) : null}
-      <box height={Math.min(sectionLines(layout, cards.length), Math.max(room, 0))} flexShrink={0}>
-        <Cards
-          cards={cards}
-          theme={theme}
-          layout={layout}
-          width={width}
-          now={now}
-          spin={spin}
-          stopping={view.title.stopping || view.windDown !== null}
-          highlighted={highlighted}
-          open={open}
-          focusOf={answering.focusOf}
-          press={answering.press}
-        />
-      </box>
+      {ending !== null ? (
+        <box height={Math.min(ending.length, Math.max(room, 0))} flexShrink={0}>
+          <EndOfRunBox lines={ending} />
+        </box>
+      ) : (
+        <box
+          height={Math.min(sectionLines(layout, cards.length), Math.max(room, 0))}
+          flexShrink={0}
+        >
+          <Cards
+            cards={cards}
+            theme={theme}
+            layout={layout}
+            width={width}
+            now={now}
+            spin={spin}
+            stopping={view.title.stopping || view.windDown !== null}
+            highlighted={highlighted}
+            open={open}
+            focusOf={answering.focusOf}
+            press={answering.press}
+          />
+        </box>
+      )}
       <box flexGrow={1} />
       {view.windDown === null ? null : (
         <WindDown segments={windDownSegments(view.windDown, theme, width)} />

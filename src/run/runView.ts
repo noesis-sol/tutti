@@ -69,6 +69,11 @@ export interface Status {
   readonly stopping: boolean
   /** The run is quitting (§ 4.8): `Quitting… waiting for t-1's worker`; null when it isn't. */
   readonly quitting: string | null
+  /**
+   * Everything else is done and these tickets' workers wait on you (D19, § 5 item 14): the run
+   * stays open for them, showing the end-of-run box; null when it isn't so.
+   */
+  readonly endOfRun: ReadonlyArray<string> | null
   readonly solo: Solo | null
   /** The tickets not closed that the queue draws from (`9 of 16`); null until the run says. */
   readonly unclosed: number | null
@@ -90,6 +95,7 @@ export const emptyStatus: Status = {
   usage: null,
   stopping: false,
   quitting: null,
+  endOfRun: null,
   solo: null,
   unclosed: null,
   verdicts: new Map(),
@@ -191,6 +197,13 @@ export const Banner = Data.taggedEnum<Banner>()
 /** A ticket's `■` on the wind-down line (§ 5.1). */
 export type WindDownMark = "windingDown" | "done" | "needsYou" | "faint"
 
+/** A worker the end-of-run box names, and what each of its open requests asks. */
+export interface Waiting {
+  readonly ticket: string
+  /** `Allow Bash(rm -rf build)?`, `a question`. */
+  readonly asks: ReadonlyArray<string>
+}
+
 export interface WindDownView {
   /** Each ticket running when the wind-down began, in that order. */
   readonly marks: ReadonlyArray<{ readonly ticket: string; readonly mark: WindDownMark }>
@@ -227,6 +240,8 @@ export interface RunView {
   /** Usage first, then each hold. */
   readonly banners: ReadonlyArray<Banner>
   readonly windDown: WindDownView | null
+  /** The workers the end-of-run box names (D19), in place of the cards; null with no box. */
+  readonly endOfRun: ReadonlyArray<Waiting> | null
   readonly hint: ReadonlyArray<Key>
   /** The warning line's notices, each once. */
   readonly warnings: ReadonlyArray<string>
@@ -260,6 +275,7 @@ export const emptyView: RunView = {
   requests: [],
   banners: [],
   windDown: null,
+  endOfRun: null,
   hint: [],
   warnings: [],
 }
@@ -388,6 +404,18 @@ const requestWord = (request: AttentionRequest): string => {
       return "question"
     case "Elicitation":
       return "input"
+  }
+}
+
+/** What a request asks, as the end-of-run box names it: `Allow Bash(rm -rf build)?`. */
+export const asks = (request: AttentionRequest): string => {
+  switch (request.kind._tag) {
+    case "Permission":
+      return `Allow ${request.kind.tool}(${request.kind.summary})?`
+    case "Question":
+      return "a question"
+    case "Elicitation":
+      return `input for ${request.kind.server}`
   }
 }
 
@@ -535,6 +563,7 @@ const hintOf = (
   cards: ReadonlyArray<Card>,
   requests: ReadonlyArray<AttentionRequest>,
   windingDown: boolean,
+  ending: boolean,
 ): ReadonlyArray<Key> => {
   const keys: Array<Key> = []
   if (cards.length > 0) keys.push({ keys: "Tab", does: "select" })
@@ -550,7 +579,8 @@ const hintOf = (
       keys.push({ keys: "a", does: "allow" })
     }
   }
-  keys.push({ keys: "s", does: windingDown ? "keep taking tickets" : "stop after current" })
+  if (ending) keys.push({ keys: "q", does: "end the run" })
+  else keys.push({ keys: "s", does: windingDown ? "keep taking tickets" : "stop after current" })
   keys.push({ keys: "?", does: "keys" })
   return keys
 }
@@ -684,6 +714,12 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         : { ticket: sanitizeLine(status.solo.ticket), running: status.solo.running },
   }
   const warnings = [...new Set(status.warnings.map(sanitizeLine))]
+  // The box names each worker the run waits on that still has a request open.
+  const waiting = (status.endOfRun ?? []).flatMap((ticket): ReadonlyArray<Waiting> => {
+    const open = requestsOf.get(ticket) ?? []
+    return open.length === 0 ? [] : [{ ticket: sanitizeLine(ticket), asks: open.map(asks) }]
+  })
+  const endOfRun = waiting.length === 0 ? null : waiting
 
   cards.sort((a, b) => a.worker - b.worker)
   const next: RunView = {
@@ -698,7 +734,8 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     requests: keepAll(previous.requests, requests, (request) => request.id),
     banners: keep(previous.banners, banners),
     windDown: keep(previous.windDown, windDown),
-    hint: keep(previous.hint, hintOf(cards, requests, ledger.windDown !== null)),
+    endOfRun: keep(previous.endOfRun, endOfRun),
+    hint: keep(previous.hint, hintOf(cards, requests, ledger.windDown !== null, endOfRun !== null)),
     warnings: keep(previous.warnings, warnings),
   }
   const parts = Object.keys(next) as ReadonlyArray<keyof RunView>

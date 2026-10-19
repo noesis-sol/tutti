@@ -29,6 +29,8 @@ export type UiCommand = Data.TaggedEnum<{
   Undrain: Record<never, never>
   /** Quit: `now` quits at once (§ 4.8); otherwise the quit box asks. */
   Quit: { readonly now: boolean }
+  /** End the run that waits only on workers waiting on you, suspending them (D19). */
+  EndRun: Record<never, never>
 }>
 
 export const UiCommand = Data.taggedEnum<UiCommand>()
@@ -109,6 +111,7 @@ export const resolve = (command: UiCommand, current: Current): Result.Result<Res
     case "Drain":
     case "Undrain":
     case "Quit":
+    case "EndRun":
       return Result.succeed({ command, ticket: null })
   }
 }
