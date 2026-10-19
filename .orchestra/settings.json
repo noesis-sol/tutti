@@ -4,5 +4,6 @@
   "check_full": "scripts/check-full.sh",
   "check_full_timeout": "60m",
   "concurrent": 4,
+  "worker_effort": "high",
   "mcp_servers": []
 }
