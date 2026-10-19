@@ -9,13 +9,18 @@ import { answerWords } from "../agent/attentionFiles.ts"
 import { resolveClaude } from "../agent/claudeBinary.ts"
 import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
+import { scoutSearch } from "../init/checks.ts"
 import { cancelledLine, type InitFlags, init, summaryLines } from "../init/init.ts"
 import { lineForm } from "../init/lineForm.ts"
 import { liveMachine } from "../init/steps.ts"
 import { parseMcpNames } from "../init/workers.ts"
+import { layer as languageModelLayer } from "../organs/AgentSdkLanguageModel.ts"
+import { OrganCost } from "../organs/OrganCost.ts"
+import { Organs } from "../organs/Organs.ts"
 import { plan } from "../plan/plan.ts"
 import { maxConcurrent } from "../project/settings.ts"
 import { exitCodes } from "../run/holds.ts"
+import { Log } from "../run/log.ts"
 import { findRepository } from "../run/startup.ts"
 import { Beads } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
@@ -23,7 +28,7 @@ import { RunLock } from "../services/RunLock.ts"
 import * as Tty from "../services/Tty.ts"
 import { streamInput } from "../ui/plain/forms.ts"
 import { appearanceOf, makeTheme, orchestraLoaded, outputAppearance } from "../ui/theme.ts"
-import { layer as appConfigLayer, load, SetupProblem } from "./AppConfig.ts"
+import { AppConfig, layer as appConfigLayer, load, SetupProblem } from "./AppConfig.ts"
 import { colours } from "./colours.ts"
 import {
   cliFlags,
@@ -285,7 +290,7 @@ export const initFlags = {
   ),
   setup: initFlag(
     "setup",
-    `the command that installs the dependencies in a worktree, run before check-fast when a rebase changes a lockfile, e.g. "npm ci"; "" for none (an existing setting is kept)`,
+    `the command that installs the dependencies in a worktree, run before check-fast when a rebase changes a lockfile, e.g. "npm ci"; "" for none (offered for a lockfile when omitted; an existing setting is kept)`,
     { metavar: "command" },
   ),
   concurrent: initFlag(
@@ -306,6 +311,11 @@ export const initFlags = {
   installBeads: initFlag(
     "install-beads",
     "install Beads (bd) where it is missing, with Homebrew or the Beads install script (asked when omitted; =false declines)",
+    { onOff: true },
+  ),
+  verifier: initFlag(
+    "verifier",
+    "write .claude/agents/verifier.md, a subagent that checks each ticket's change against the ticket in a fresh context, and have the worker prompt run it before a worker closes its ticket (asked when omitted; =false declines)",
     { onOff: true },
   ),
   prefix: initFlag(
@@ -351,6 +361,7 @@ export const readInitFlags = (
     ),
     ...pick("changelogUnion", read("changelog-union", given.changelogUnion, onOff)),
     ...pick("installBeads", read("install-beads", given.installBeads, onOff)),
+    ...pick("verifier", read("verifier", given.verifier, onOff)),
     ...pick("prefix", read("prefix", given.prefix, asIs)),
     ...pick("checkFast", read("check-fast", given.checkFast, asIs)),
     ...pick("checkFull", read("check-full", given.checkFull, asIs)),
@@ -402,6 +413,29 @@ const runInit = (cwd: string, flags: InitFlags) =>
       if (claude.problems.length > 0) return yield* new SetupProblem({ problems: claude.problems })
       return { ...config, claude: claude.path }
     })
+    // The scout, under the project's configuration as it is, over the Agent SDK with the login the
+    // probe finds. init keeps no log, so its organ cost lines go nowhere.
+    const quietLog = Layer.succeed(
+      Log,
+      Log.of({ write: () => Effect.void, lines: Effect.succeed([]) }),
+    )
+    const scout = Effect.gen(function* () {
+      const config = yield* configure.pipe(Effect.mapError((problem) => problem.message))
+      const withConfig = Layer.succeed(AppConfig, config)
+      const probed = yield* Effect.flatMap(Account, (account) => account.probe).pipe(
+        Effect.provide(Layer.provide(Account.layer, withConfig)),
+        Effect.mapError((error) => error.message),
+      )
+      return yield* scoutSearch(repo).pipe(
+        Effect.provide(
+          Organs.layer.pipe(
+            Layer.provideMerge(languageModelLayer({ account: probed })),
+            Layer.provideMerge(OrganCost.layer),
+            Layer.provideMerge(Layer.mergeAll(withConfig, quietLog)),
+          ),
+        ),
+      )
+    })
     const tty = yield* Effect.provide(
       Effect.gen(function* () {
         return yield* Tty.Tty
@@ -445,6 +479,7 @@ const runInit = (cwd: string, flags: InitFlags) =>
             version: pkg.version,
             flags,
             form,
+            scout,
             machine,
             configure,
             account: Account.layer,

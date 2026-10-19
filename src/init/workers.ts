@@ -8,7 +8,7 @@
 // An untrusted main checkout, which the probe finds, is offered the fix Claude Code suggests: init
 // sets `projects["<main checkout>"].hasTrustDialogAccepted` in the user's .claude.json, only once
 // you say yes, re-reading the file just before and replacing it atomically, then probes again.
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { Cause, Duration, Effect, Exit, FileSystem, Option } from "effect"
 import {
   type AccountError,
@@ -24,6 +24,7 @@ import { Beads, beadsWhy } from "../services/Beads.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { stateFile } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
+import type { PrefixQuestion } from "./checks.ts"
 import { joinAnd, type Machine, type Step, step } from "./steps.ts"
 
 /** What the Workers step asks, each question null where a flag answered it or it isn't asked. */
@@ -373,6 +374,9 @@ export const setUpBeads = (
 /** The label of the ticket prefix's step. */
 export const prefixLabel = "ticket prefix"
 
+/** The prefix bd init gives a new Beads: the folder's name. */
+export const defaultPrefix = (repo: string): string => basename(repo)
+
 /** The prefix as typed, without the trailing hyphen bd rename-prefix wants. */
 export const normalPrefix = (prefix: string): string => prefix.trim().replace(/-$/, "")
 
@@ -511,6 +515,39 @@ export const planPrefix = (machine: Machine, repo: string, given: string) =>
       .list({ all: true })
       .pipe(Effect.mapError((error) => `--prefix: bd can't list the tickets: ${beadsWhy(error)}`))
     return { prefix, was, tickets: all.length } satisfies PrefixPlan
+  })
+
+/**
+ * The ticket prefix as the Checks step asks it: the one Beads has, with how many tickets a new one
+ * renames and why they can't be renamed now, or, where Beads isn't set up, the folder's name, which
+ * bd init would give. Null where it can't be read (bd isn't on the PATH, or says what tutti can't
+ * read): init can't tell what a new one would change, so it doesn't ask.
+ */
+export const prefixQuestion = (machine: Machine, repo: string, bdOnPath: boolean) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const setUp = yield* fs.exists(join(repo, ".beads")).pipe(Effect.orElseSucceed(() => false))
+    if (!setUp) {
+      return {
+        current: defaultPrefix(repo),
+        isNew: true,
+        tickets: 0,
+        example: null,
+        refusal: null,
+      } satisfies PrefixQuestion
+    }
+    if (!bdOnPath) return null
+    const was = yield* beadsPrefix(machine, repo).pipe(Effect.option)
+    if (Option.isNone(was) || was.value === "") return null
+    const all = yield* (yield* Beads).list({ all: true }).pipe(Effect.option)
+    if (Option.isNone(all)) return null
+    return {
+      current: was.value,
+      isNew: false,
+      tickets: all.value.length,
+      example: all.value[0]?.id ?? null,
+      refusal: yield* prefixRefusal(machine, repo),
+    } satisfies PrefixQuestion
   })
 
 /**

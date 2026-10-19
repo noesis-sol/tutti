@@ -209,3 +209,51 @@ export const fullScript = (suites: ReadonlyArray<Suite>, fastEmpty: boolean): st
 
 /** Whether a runner's script checks nothing: init's `exit 0`. */
 export const checksNothing = (script: string): boolean => script.endsWith("\nexit 0\n")
+
+/** Whether `line` prints a suite's marker and does nothing else, as runnerScript writes it. */
+const isMarkerLine = (line: string): boolean => {
+  const start = `printf '%s\\n' `
+  if (!line.startsWith(start)) return false
+  const word = line.slice(start.length)
+  if (word.length < 2 || !word.startsWith("'") || !word.endsWith("'")) return false
+  const text = word.slice(1, -1).replaceAll(`'\\''`, "'")
+  return text.startsWith(`${suiteMarker} `) && shellQuote(text) === word
+}
+
+/**
+ * The commands a runner's script runs, a line each, for a question or the verifier to show: its
+ * lines without the comments and what init writes around the suites (set -e, the cd, the lock, the
+ * subshells' parentheses, the SUITE: lines).
+ */
+export const runnerCommands = (script: string): ReadonlyArray<string> =>
+  script
+    .replace(lockFunctions, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        !(
+          line === "" ||
+          line.startsWith("#") ||
+          line === "set -e" ||
+          line === `cd "$(dirname "$0")/.."` ||
+          line === "(" ||
+          line === ")" ||
+          line === "unlock" ||
+          (line.startsWith("lock ") && !/[;&|]/.test(line)) ||
+          isMarkerLine(line)
+        ),
+    )
+
+/**
+ * Whether a suite's command runs the project's own check, scripts/check.sh: a word of it is the
+ * script's path from the repository's root, or that path from a variable or the file system's root.
+ */
+export const runsCheckScript = (command: string): boolean =>
+  commandWords(command).some((each) => {
+    const word = each.startsWith("./") ? each.slice(2) : each
+    return (
+      word === checkScript ||
+      (word.endsWith(`/${checkScript}`) && (word.startsWith("$") || word.startsWith("/")))
+    )
+  })

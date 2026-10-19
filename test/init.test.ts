@@ -115,6 +115,7 @@ const scriptedForm = (answers: WorkersAnswers = {}, trust = false) => {
         asked.push(questions)
         return answers
       }),
+    checks: () => Effect.succeed({ verifier: false }),
     trust: (offer) =>
       Effect.sync(() => {
         offers.push(offer)
@@ -147,6 +148,7 @@ const runInit = (
         version: "0.1.0",
         flags: over.flags ?? noFlags,
         form: over.form ?? null,
+        scout: Effect.fail("there is no scout in these tests"),
         machine: over.machine ?? scriptedMachine(project).machine,
         configure: Effect.succeed(TestAppConfig.appConfig({}, project.repo)),
         account: over.account ?? TestAccount.layer(),
@@ -318,6 +320,7 @@ describe("the files init writes", () => {
     const project = newProject()
     const form: InitForm = {
       workers: () => Effect.fail(new FormCancelled()),
+      checks: () => Effect.succeed({}),
       trust: () => Effect.succeed(false),
       import: () => Effect.succeed(false),
     }
@@ -734,6 +737,7 @@ describe("init's flags and the line form's answers", () => {
     changelogUnion: Option.none<string>(),
     installBeads: Option.none<string>(),
     prefix: Option.none<string>(),
+    verifier: Option.none<string>(),
     force: false,
   }
 

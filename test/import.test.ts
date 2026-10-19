@@ -259,6 +259,7 @@ const scriptedForm = (yes: boolean) => {
         asked.push(questions)
         return {}
       }),
+    checks: () => Effect.succeed({ verifier: false }),
     trust: () => Effect.succeed(false),
     import: (offer) =>
       Effect.sync(() => {
@@ -291,6 +292,7 @@ const runInit = async (
         version: "0.1.0",
         flags,
         form,
+        scout: Effect.fail("there is no scout in these tests"),
         machine: machine(project),
         configure: Effect.succeed(TestAppConfig.appConfig({}, project.repo)),
         account: TestAccount.layer(),

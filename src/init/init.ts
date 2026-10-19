@@ -13,13 +13,16 @@
 // In a project with .orchestra/ and no .tutti/, it first offers to import orchestra's settings and
 // worker prompt (./import.ts), which then stand in for the template's; the flags still win.
 //
-// Last it runs the login probe, whose account, billing and permission mode its summary reports. The
-// Checks step (the scout, the choice of checks, the verifier and the test work) is its own part.
+// The Checks step (checks.ts) chooses the runners' suites, after the scout, and asks the setup
+// command, the ticket prefix and the verifier; init then writes the create-check-suite skill and the
+// verifier where they are chosen, and files the test work. Last it runs the login probe, whose
+// account, billing and permission mode its summary reports.
 import { join } from "node:path"
 import { Clock, type Duration, Effect, Exit, FileSystem, Layer, Option, Schema } from "effect"
 import { Account } from "../agent/Account.ts"
 import { definedServers } from "../agent/mcp.ts"
 import { AppConfig, type AppConfigValue, type SetupProblem } from "../cli/AppConfig.ts"
+import type { Scouting } from "../organs/scout.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
 import { builtInWorkerPrompt } from "../project/prompt.ts"
 import { maxConcurrent, Settings, settingsFile } from "../project/settings.ts"
@@ -29,6 +32,19 @@ import { TimeLimit } from "../services/exec.ts"
 import { RunLock } from "../services/RunLock.ts"
 import type { FormCancelled } from "../ui/questions.ts"
 import { schemeNotices } from "../ui/theme.ts"
+import {
+  applySkill,
+  applyVerifier,
+  asksChecks,
+  type ChecksAnswers,
+  type ChecksQuestions,
+  fileTestWork,
+  findSetup,
+  setupSteps,
+  skillState,
+  usesVerifier,
+  verifierPath,
+} from "./checks.ts"
 import {
   findOrchestra,
   type ImportOffer,
@@ -44,6 +60,7 @@ import {
   fastScript,
   fullRunner,
   fullScript,
+  isRunner,
   runnerSuites,
   type Suite,
   withoutRunners,
@@ -59,10 +76,13 @@ import {
   locateBd,
   markTrusted,
   mcpSteps,
+  normalPrefix,
   offersUnion,
   offPath,
   type PrefixPlan,
   planPrefix,
+  prefixProblem,
+  prefixQuestion,
   probeSteps,
   setUpBeads,
   trustDeclined,
@@ -89,6 +109,8 @@ export interface InitFlags {
   readonly checkFullTimeout?: Duration.Duration
   /** The setup command; "" for none. */
   readonly setup?: string
+  /** Write the verifier subagent, and have the worker prompt run it. */
+  readonly verifier?: boolean
   /** Replace an existing .tutti/worker-prompt.md with the template. */
   readonly force: boolean
 }
@@ -112,6 +134,8 @@ export interface TrustOffer {
 export interface InitForm {
   /** The Workers step: the questions `questions` has. */
   readonly workers: (questions: WorkersQuestions) => Effect.Effect<WorkersAnswers, FormCancelled>
+  /** The Checks step, which runs the scout: the questions `questions` has. */
+  readonly checks: (questions: ChecksQuestions) => Effect.Effect<ChecksAnswers, FormCancelled>
   /** Whether to mark the main checkout trusted, once the probe found it isn't. */
   readonly trust: (offer: TrustOffer) => Effect.Effect<boolean, FormCancelled>
   /** Whether to import orchestra's settings and worker prompt, asked before the Workers step. */
@@ -130,6 +154,8 @@ export interface InitOptions<R> {
   readonly flags: InitFlags
   /** The form; null without a terminal, when init asks nothing. */
   readonly form: InitForm | null
+  /** The scout's search for the project's suites, which the form runs: what it found, or why not. */
+  readonly scout: Effect.Effect<Scouting, string, R>
   readonly machine: Machine
   /** The configuration of a run in the project, read once init has written its settings. */
   readonly configure: Effect.Effect<AppConfigValue, SetupProblem, R>
@@ -388,23 +414,27 @@ const writeGitignore = (repo: string) =>
         ),
   )
 
+/** What init writes in a runner: its suites, null to keep the one there; and whether it replaces one that differs. */
+interface RunnerPlan {
+  readonly suites: ReadonlyArray<Suite> | null
+  readonly replace: boolean
+}
+
 /**
- * Writes the runners, mode 755: a runner a flag gives a command, and one that is missing; one that
- * is there is kept. A missing check-fast.sh calls an existing scripts/check.sh as its suite.
+ * Writes the runners, mode 755: a runner the plan gives suites, and one that is missing; one that
+ * is there is kept, as is one that differs from what the plan writes unless it replaces it. A
+ * missing check-fast.sh calls an existing scripts/check.sh as its suite.
  */
-const writeRunners = (repo: string, flags: InitFlags) =>
+const writeRunners = (
+  repo: string,
+  plan: { readonly fast: RunnerPlan; readonly full: RunnerPlan },
+) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const exists = (path: string) => fs.exists(join(repo, path))
     const steps: Array<Step> = []
-    const fastGiven =
-      flags.checkFast === undefined
-        ? null
-        : runnerSuites(flags.checkFast, "--check-fast", fastRunner)
-    const fullGiven =
-      flags.checkFull === undefined
-        ? null
-        : runnerSuites(flags.checkFull, "--check-full", fullRunner)
+    const fastGiven = plan.fast.suites
+    const fullGiven = plan.full.suites
     let fastSuites: ReadonlyArray<Suite> | null = fastGiven
     if (fastSuites === null && !(yield* exists(fastRunner))) {
       fastSuites = (yield* exists(checkScript))
@@ -421,16 +451,17 @@ const writeRunners = (repo: string, flags: InitFlags) =>
     const fastEmpty = fastSuites !== null && withoutRunners(fastSuites).kept.length === 0
     const fullSuites = fullGiven ?? ((yield* exists(fullRunner)) ? null : [])
     const runners = [
-      ["check-fast", fastRunner, "--check-fast", fastSuites, fastScript] as const,
+      ["check-fast", fastRunner, "--check-fast", fastSuites, fastScript, plan.fast] as const,
       [
         "check-full",
         fullRunner,
         "--check-full",
         fullSuites,
         (suites: ReadonlyArray<Suite>) => fullScript(suites, fastEmpty),
+        plan.full,
       ] as const,
     ]
-    for (const [label, path, flag, suites, script] of runners) {
+    for (const [label, path, flag, suites, script, planned] of runners) {
       const file = join(repo, path)
       const there = yield* fs.readFileString(file).pipe(Effect.option)
       if (suites === null) {
@@ -444,6 +475,16 @@ const writeRunners = (repo: string, flags: InitFlags) =>
       const text = script(suites)
       if (Option.isSome(there) && there.value === text) {
         steps.push(step("kept", label, `${path} is there; left as it is`))
+        continue
+      }
+      if (Option.isSome(there) && !planned.replace) {
+        steps.push(
+          step(
+            "caution",
+            label,
+            `${path} differs from what init would write; kept (tutti init ${flag} "<command>" replaces it)`,
+          ),
+        )
         continue
       }
       yield* fs.makeDirectory(join(repo, "scripts"), { recursive: true })
@@ -611,7 +652,7 @@ export const init = <R>(options: InitOptions<R>) =>
         ...chosenNow,
       ]),
     ]
-    const prefix: PrefixPlan | null =
+    const prefixGiven: PrefixPlan | null =
       flags.prefix === undefined
         ? null
         : yield* planPrefix(machine, repo, flags.prefix).pipe(Effect.mapError(refused))
@@ -650,6 +691,97 @@ export const init = <R>(options: InitOptions<R>) =>
     const concurrent = flags.concurrent ?? answers.concurrent ?? null
     const mcp = flags.mcp ?? answers.mcp ?? null
 
+    // The Checks step.
+    const fs = yield* FileSystem.FileSystem
+    const readThere = (path: string) =>
+      fs.readFileString(join(repo, path)).pipe(Effect.option, Effect.map(Option.getOrNull))
+    const fastThere = yield* readThere(fastRunner)
+    const hasCheckScript = yield* fs.stat(join(repo, checkScript)).pipe(
+      Effect.map((info) => info.type === "File"),
+      Effect.orElseSucceed(() => false),
+    )
+    const currentFast = current.checks.fast.command
+    const manualCommand =
+      currentFast !== null && !isRunner(currentFast, fastRunner)
+        ? currentFast
+        : fastThere === null && hasCheckScript
+          ? checkScript
+          : ""
+    const setupWas = current.checks.setup.command
+    const setupFound = yield* findSetup(repo)
+    const promptNow = flags.force ? null : yield* readThere(workerPromptPath)
+    const verifierThere = yield* fs.exists(join(repo, verifierPath))
+    const checksQuestions: ChecksQuestions = {
+      checks:
+        flags.checkFast === undefined && flags.checkFull === undefined
+          ? {
+              scout: Effect.provideContext(options.scout, yield* Effect.context<R>()),
+              checkScript: hasCheckScript,
+              command: manualCommand,
+              keepsRunner: fastThere !== null,
+              runners: { fast: fastThere, full: yield* readThere(fullRunner) },
+              skill: yield* skillState(repo),
+            }
+          : null,
+      setup:
+        flags.setup === undefined && setupWas === null && setupFound.offer !== ""
+          ? setupFound
+          : null,
+      // Asked where bd is there or init offers to install it, and the prefix can be read.
+      prefix:
+        form !== null &&
+        flags.prefix === undefined &&
+        (located.onPath || questions.installBeads !== null)
+          ? yield* prefixQuestion(machine, repo, located.onPath)
+          : null,
+      verifier:
+        flags.verifier === undefined &&
+        (!verifierThere || promptNow === null || !usesVerifier(promptNow)),
+    }
+    const checked: ChecksAnswers =
+      form !== null && asksChecks(checksQuestions) ? yield* form.checks(checksQuestions) : {}
+    const choice = checked.checks
+    const prefixAnswer =
+      checked.prefix === undefined || checksQuestions.prefix === null
+        ? null
+        : normalPrefix(checked.prefix)
+    if (prefixAnswer !== null) {
+      const problem = prefixProblem(prefixAnswer)
+      if (problem !== null) return yield* refused(`the ticket prefix ${problem}`)
+    }
+    const prefix: PrefixPlan | null =
+      prefixGiven ??
+      (prefixAnswer === null ||
+      checksQuestions.prefix === null ||
+      prefixAnswer === checksQuestions.prefix.current
+        ? null
+        : {
+            prefix: prefixAnswer,
+            was: checksQuestions.prefix.isNew ? null : checksQuestions.prefix.current,
+            tickets: checksQuestions.prefix.tickets,
+          })
+    const fromForm = "tutti init's form"
+    const fastPlan: RunnerPlan =
+      flags.checkFast !== undefined
+        ? { suites: runnerSuites(flags.checkFast, "--check-fast", fastRunner), replace: true }
+        : choice?.kind === "found"
+          ? { suites: choice.fast, replace: checked.replaceFast ?? false }
+          : choice?.kind === "scratch"
+            ? { suites: [], replace: checked.replaceFast ?? false }
+            : choice?.kind === "manual" && choice.command.trim() !== manualCommand
+              ? { suites: runnerSuites(choice.command, fromForm, fastRunner), replace: true }
+              : { suites: null, replace: false }
+    const fullPlan: RunnerPlan =
+      flags.checkFull !== undefined
+        ? { suites: runnerSuites(flags.checkFull, "--check-full", fullRunner), replace: true }
+        : choice?.kind === "found"
+          ? { suites: choice.full, replace: checked.replaceFull ?? false }
+          : choice?.kind === "scratch"
+            ? { suites: [], replace: checked.replaceFull ?? false }
+            : { suites: null, replace: false }
+    const setup = flags.setup ?? checked.setup
+    const verifierConsent = consent(flags.verifier, checksQuestions.verifier, checked.verifier)
+
     return yield* Effect.scoped(
       Effect.gen(function* () {
         // Held until init ends: no run starts in a tree init writes into, on tickets it renames.
@@ -661,7 +793,11 @@ export const init = <R>(options: InitOptions<R>) =>
         if (prefix !== null) steps.push(...(yield* applyPrefix(machine, repo, prefix)))
         if (found !== null) steps.push(...importSteps(found, importConsent))
         steps.push(...(yield* writePrompt(repo, flags.force, importing ? found.prompt : null)))
-        steps.push(...(yield* writeRunners(repo, flags)))
+        steps.push(...(yield* writeRunners(repo, { fast: fastPlan, full: fullPlan })))
+        steps.push(...(yield* applySkill(repo, choice, checked.replaceSkill ?? false)))
+        steps.push(
+          ...(yield* applyVerifier(repo, workerPromptPath, verifierConsent, checked.stack ?? [])),
+        )
         const written = yield* writeSettings(repo, existing, {
           concurrent,
           mcp,
@@ -671,15 +807,25 @@ export const init = <R>(options: InitOptions<R>) =>
           ...(flags.checkFullTimeout === undefined
             ? {}
             : { checkFullTimeout: flags.checkFullTimeout }),
-          ...(flags.setup === undefined ? {} : { setup: flags.setup.trim() }),
-          fastRunnerChecks: flags.checkFast !== undefined,
-          fullRunnerChecks: flags.checkFull !== undefined,
+          ...(setup === undefined ? {} : { setup: setup.trim() }),
+          fastRunnerChecks: flags.checkFast !== undefined || fastPlan.suites !== null,
+          fullRunnerChecks: flags.checkFull !== undefined || fullPlan.suites !== null,
         })
         steps.push(written.step)
+        steps.push(
+          ...setupSteps({
+            command: written.settings.checks.setup.command,
+            was: setupWas,
+            offer: setupFound.offer,
+            lockfiles: setupFound.lockfiles,
+            unasked: form === null && checksQuestions.setup !== null,
+          }),
+        )
         steps.push(yield* writeGitignore(repo))
         steps.push(...(yield* applyUnion(machine, repo, unionConsent)))
         steps.push(concurrencyStep(written.settings.concurrent, concurrent !== null))
         steps.push(...mcpSteps(written.settings.workers.mcp_servers, available))
+        steps.push(...(yield* fileTestWork(choice, options.branch)))
 
         const configured = yield* Effect.result(options.configure)
         if (configured._tag === "Failure") {
