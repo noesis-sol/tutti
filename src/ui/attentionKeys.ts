@@ -32,7 +32,7 @@ const answering = (label: string, answer: Answer): Button => ({
   press: { _tag: "Answer", answer },
 })
 
-/** The button for what the card can't hold: the worker view shows it (§ 4.5). */
+/** The button for what the card can't hold: the worker view's answer form takes it (§ 4.5). */
 export const answerInView: Button = { label: "Answer in view", press: { _tag: "View" } }
 
 /** The most options a question shows on a card, as `1`–`4` pick them. */
@@ -226,11 +226,13 @@ export interface Answering {
 /**
  * The answering of the cards drawn in this render. Each card's oldest request is the one it shows;
  * the time it first showed it starts its guard. `sent` is called once a button or key has answered
- * (or the answer was dropped) or opened the worker view.
+ * (or the answer was dropped) or pressed Answer in view. Answer in view opens the card's worker
+ * view, or does `inView` when given: the worker view's panel opens the answer form.
  */
 export const useAnswering = (
   cards: ReadonlyArray<Card>,
   sent: () => void = () => {},
+  inView?: (request: AttentionRequest) => void,
 ): Answering => {
   const command = useCommand()
   const answer = useSendAnswer()
@@ -271,7 +273,8 @@ export const useAnswering = (
     if (request === undefined || button === undefined || !settled(request)) return
     if (button.press._tag === "Answer") send(request, button.press.answer)
     else {
-      command(UiCommand.OpenWorker({ worker: card.worker }))
+      if (inView === undefined) command(UiCommand.OpenWorker({ worker: card.worker }))
+      else inView(request)
       sent()
     }
   }

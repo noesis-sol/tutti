@@ -52,6 +52,8 @@ export type Box = Data.TaggedEnum<{
   Answer: { readonly worker: number }
   /** Shift+D's: a reason to deny the request `requestId` with, typed in a small field. */
   Reason: { readonly requestId: string; readonly ticket: string }
+  /** Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5). */
+  Form: { readonly requestId: string; readonly ticket: string }
 }>
 
 export const Box = Data.taggedEnum<Box>()

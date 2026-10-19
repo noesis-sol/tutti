@@ -3,7 +3,8 @@
 // elapsed time) and its title, over a rule. Below the transcript, the attention panel shows the
 // worker's open requests with the card's buttons and rules (attentionKeys.ts), each with its
 // description, its reason and its whole input, and a conflict hand-back waiting for a steered
-// worker (§ 4.3) as a notice with Hand it the conflict now. The composer goes under it (§ 7.5).
+// worker (§ 4.3) as a notice with Hand it the conflict now. Answer in view, for what a card can't
+// hold, opens the answer form over the view (AnswerForm.tsx). The composer goes under it (§ 7.5).
 //
 // The items (transcriptItems.ts): assistant text as Markdown (<markdown>, in the theme's heading,
 // code and link roles); each tool call one line, `Tool  summary`, its result at the end of it (`✓`,
@@ -45,7 +46,7 @@ import { buttonsOf, optionKeys, picksOptions, requestText, useAnswering } from "
 import { headOf, statusLook } from "./Card.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
-import { type KeyBinding, useLayer } from "./keys.ts"
+import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
 import {
   boxed,
   cut,
@@ -585,6 +586,7 @@ export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
   ["a", "allow the request, unless it opens on Deny"],
   ["r", "allow for this run"],
   ["1–4 in a question", "pick an option"],
+  ["Answer in view", "the answer form: ↑↓ move, Space picks, Enter presses"],
   ["the wheel, PgUp/PgDn", "scroll; past the top loads earlier items"],
   ["g, G", "jump to the top or the end"],
   ["Ctrl+C", "quit: stop after current, or quit now"],
@@ -641,7 +643,10 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   const more = waiting.length - requests.length
   const requestCards: ReadonlyArray<Card> =
     card === undefined ? [] : requests.map((request) => ({ ...card, requests: [request] }))
-  const answering = useAnswering(requestCards)
+  const { box } = useInput()
+  const answering = useAnswering(requestCards, undefined, (request) =>
+    box.set(Box.Form({ requestId: request.id, ticket: request.ticket })),
+  )
   const handBack = ticket !== undefined && handBacks.includes(ticket)
 
   // The selection names an entry, a request or the hand-back; with none chosen, the oldest request
