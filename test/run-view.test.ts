@@ -493,7 +493,7 @@ describe("commands", () => {
           open1: resolve(UiCommand.OpenWorker({ worker: 1 }), now),
           answer: resolve(UiCommand.Answer({ requestId: "r1", answer: { _tag: "Deny" } }), now),
           answered: resolve(UiCommand.Answer({ requestId: "r9", answer: { _tag: "Deny" } }), now),
-          message: resolve(UiCommand.SendMessage({ ticket: "a", text: "hi" }), now),
+          message: resolve(UiCommand.SendMessage({ ticket: "a", text: "hi", uuid: "u-1" }), now),
           drain: resolve(UiCommand.Drain(), now),
         }
       }),

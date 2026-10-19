@@ -502,7 +502,10 @@ describe("the answer form in the worker view", () => {
       await press(rendered, "enter")
       expect((await rendered.capture()).chars).toContain("t-1 asks")
       await rendered.input(() => view.set(viewOf([])))
-      const frame = await until(rendered, has("no─longer─open"))
+      // The toast is drawn over the foot of the view, a rule's `─` showing through its spaces there.
+      const frame = await until(rendered, (shown) =>
+        shown.chars.replaceAll("─", " ").includes("t-1's request is no longer open"),
+      )
       expect(frame.chars).not.toContain("t-1 asks")
       expect(frame.chars.replaceAll("─", " ")).toContain("t-1's request is no longer open")
     })

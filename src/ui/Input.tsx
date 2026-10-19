@@ -1,8 +1,9 @@
 // The input layers around the screen (§ 7.3): the renderer's keymap, the guards in front of it
 // (split mouse reports, a lone Esc, unterminated pastes), the keys every view has (Ctrl+C, Ctrl+Z)
 // and what they open over the view: the box open (the quit box, the stop question, the Answer and
-// reason boxes of attention cards, the answer form), and the toasts. A drag's selection is drawn in the theme's
-// selection roles and copied on release (clipboard.ts).
+// reason boxes of attention cards, the answer form, a worker view's interrupt question), and the
+// toasts. A drag's selection is drawn in the theme's selection roles and copied on release
+// (clipboard.ts).
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
@@ -64,7 +65,9 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
     case "Stop":
       return <StopQuestion windingDown={box.windingDown} />
     case "Answer":
-      // The Answer box is mounted throughout, its keys bound before it opens: it draws itself.
+    case "Interrupt":
+      // The Answer box is mounted throughout, its keys bound before it opens: it draws itself, as
+      // the worker view draws its interrupt question.
       return null
     case "Reason":
       return <ReasonBox requestId={box.requestId} ticket={box.ticket} />

@@ -54,6 +54,8 @@ export type From = "clientComposed" | "human"
 export interface Message {
   readonly text: string
   readonly from: From
+  /** The uuid to send it with, drawn by the caller (the composer, § 7.5); drawn here when left out. */
+  readonly uuid?: string
 }
 
 /** A session to start or resume: its ID, drawn by the caller, and where it runs (the worktree). */
@@ -111,15 +113,11 @@ export interface SessionMessage {
 }
 
 /** The SDK user message that carries `message`, stamped `uuid`, into session `session`. */
-export const userMessage = (
-  message: Message,
-  uuid: SDKUserMessage["uuid"] & string,
-  session: string,
-): SDKUserMessage => ({
+export const userMessage = (message: Message, uuid: string, session: string): SDKUserMessage => ({
   type: "user",
   message: { role: "user", content: message.text },
   parent_tool_use_id: null,
-  uuid,
+  uuid: uuid as SDKUserMessage["uuid"] & string,
   session_id: session,
   ...(message.from === "clientComposed"
     ? { client_composed: true as const }
@@ -177,10 +175,10 @@ export class AgentHost extends Context.Service<
     ): Effect.Effect<string, AgentStartFailed>
     /**
      * Pushes a message into the worker's inbox: the CLI may fold it into the running turn or queue
-     * it, alone or sharing a turn with another (§ 4.1). Its uuid, which the session's results and
-     * an interrupt's receipt name it by.
+     * it, alone or sharing a turn with another (§ 4.1). Its uuid, `uuid` when given, which the
+     * session's results and an interrupt's receipt name it by.
      */
-    send(ticket: string, text: string, from: From): Effect.Effect<string, AgentGone>
+    send(ticket: string, text: string, from: From, uuid?: string): Effect.Effect<string, AgentGone>
     /**
      * Interrupts the worker's turn and cancels the messages queued behind it (§ 4.8); open requests
      * are withdrawn. The receipt.

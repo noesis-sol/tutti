@@ -4,9 +4,11 @@
 // Ctrl+C and Ctrl+Z are keys in raw mode, global wherever the focus is (D15, D18).
 //
 // The keymap sees each key before the focused renderable does, so a layer below the text field
-// leaves printable keys alone while one has the focus, and the view's and global layers are off
-// while a box is open: the box is modal. A binding runs the handler of the latest render, never a
-// closure of an earlier one (OpenTUI #1660).
+// leaves its keys alone while one has the focus when the key is pressed: a box's layer the printable
+// keys, since a box moves between its own fields with Enter, Tab and the arrows; the view's and the
+// global layer those too (fieldTakes), for the composer to edit and move with. The view's and global
+// layers are off while a box is open: the box is modal. A binding runs the handler of the latest render, never
+// a closure of an earlier one (OpenTUI #1660).
 //
 // Three guards sit in front of the input: mouse reports split by a late read (OpenTUI #1661) are
 // kept from becoming keys, a lone Esc waits `escapeHold` in case it is a split report's start, and
@@ -32,7 +34,7 @@ export const priorities = {
   always: 500,
   /** The focused composer or another text field: its own keys, and every printable key. */
   field: 400,
-  /** An open box: the quit box, the stop question, an answer form. */
+  /** An open box: the quit box, the stop question, an answer form, a confirmation. */
   box: 300,
   /** The keys of the view shown: the dashboard's or a worker view's. */
   view: 200,
@@ -54,6 +56,8 @@ export type Box = Data.TaggedEnum<{
   Reason: { readonly requestId: string; readonly ticket: string }
   /** Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5). */
   Form: { readonly requestId: string; readonly ticket: string }
+  /** Ctrl+X's in a worker view: whether to interrupt the turn of the ticket's worker (§ 7.5). */
+  Interrupt: { readonly ticket: string }
 }>
 
 export const Box = Data.taggedEnum<Box>()
@@ -95,6 +99,26 @@ export const printable = (key: string): boolean => {
   )
 }
 
+/** The keys a text field edits or moves with besides the printable ones, in keymap syntax. */
+const fieldKeys = new Set([
+  "return",
+  "enter",
+  "linefeed",
+  "tab",
+  "shift+tab",
+  "up",
+  "down",
+  "left",
+  "right",
+  "home",
+  "end",
+  "backspace",
+  "delete",
+])
+
+/** Whether a focused text field takes the binding `key`: a printable key, Enter, Tab or an arrow. */
+export const fieldTakes = (key: string): boolean => printable(key) || fieldKeys.has(key)
+
 /** A key a layer binds, and what pressing it does. */
 export interface KeyBinding {
   readonly key: string
@@ -117,8 +141,9 @@ const andAlso = (matcher: ReactiveMatcher, also: () => boolean): ReactiveMatcher
 /**
  * Binds `bindings` in `layer` while the component is mounted: in the box layer while the box
  * `which` is open (any box when left out), in the view's and the global layer while no box is
- * open, in `always` always. A printable key is left to a focused text field. Each key runs the
- * `run` of the latest render.
+ * open, in `always` always. A focused text field is left the printable keys of a box's layer, and
+ * every key it takes (fieldTakes) of the view's and the global layer. Each key runs the `run` of
+ * the latest render.
  *
  * A box's keys are bound before it opens, so they work from the moment it opens, before React has
  * drawn it.
@@ -134,8 +159,9 @@ export const useLayer = (
   latest.current = bindings
   const keys = bindings.map((binding) => binding.key)
   const shape = keys.join("\n")
-  // Two keymap layers at the layer's priority: the printable keys', off while a text field has the
-  // focus, and the others'.
+  // Two keymap layers at the layer's priority: those of the keys left to a text field, off while one
+  // has the focus, and the others'.
+  const leaves = layer === "box" ? printable : fieldTakes
   const bind = (typed: boolean) => () => {
     const open = boxMatcher(box, (shown) => {
       switch (layer) {
@@ -151,7 +177,7 @@ export const useLayer = (
       priority: priorities[layer],
       enabled: typed ? andAlso(open, () => !fieldFocused(renderer)) : open,
       bindings: keys
-        .filter((key) => printable(key) === typed)
+        .filter((key) => leaves(key) === typed)
         .map((key) => ({
           key,
           cmd: () => latest.current.find((binding) => binding.key === key)?.run(),

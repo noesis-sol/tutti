@@ -15,8 +15,11 @@ export type UiCommand = Data.TaggedEnum<{
   CloseWorker: Record<never, never>
   /** Answer the open attention request `requestId`. */
   Answer: { readonly requestId: string; readonly answer: AttentionAnswer }
-  /** Send your message to the ticket's worker, which becomes steered (§ 4.3). */
-  SendMessage: { readonly ticket: string; readonly text: string }
+  /**
+   * Send your message to the ticket's worker, which becomes steered (§ 4.3), with the uuid the
+   * composer drew for it: its `queued` mark waits for that send by it (§ 7.5).
+   */
+  SendMessage: { readonly ticket: string; readonly text: string; readonly uuid: string }
   /** Interrupt the turn of the ticket's worker; it becomes steered. */
   Interrupt: { readonly ticket: string }
   /** Hand a steered worker back to the run (§ 4.3). */

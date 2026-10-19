@@ -472,7 +472,7 @@ export const layer = (
       /** Pushes a message into the session's inbox; its uuid. */
       const push = (session: Open, message: Message) =>
         Effect.gen(function* () {
-          const uuid = randomUUID()
+          const uuid = message.uuid ?? randomUUID()
           // Outstanding before the CLI can see it, so its turn's result can't come first.
           yield* workers.fold(session.entry, WorkerEvent.Sent({ uuid }))
           yield* Queue.offer(session.inbox, userMessage(message, uuid, session.sessionId))
@@ -499,8 +499,10 @@ export const layer = (
             begin(ticket, session, { _tag: "Resume", sessionId: session.sessionId }),
             (opened) => push(opened, message),
           ),
-        send: (ticket, text, from) =>
-          Effect.flatMap(sessionOf(ticket), (session) => push(session, { text, from })),
+        send: (ticket, text, from, uuid) =>
+          Effect.flatMap(sessionOf(ticket), (session) =>
+            push(session, { text, from, ...(uuid === undefined ? {} : { uuid }) }),
+          ),
         interrupt: (ticket) =>
           Effect.gen(function* () {
             const session = yield* sessionOf(ticket)

@@ -522,7 +522,8 @@ describe("the worker view", () => {
           The undo stack now records edits in groups. See the spec (https://x.test/spec)
           .
         ────────────────────────────────────────────────────────────────────────────────
-          Esc dashboard · ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll · g/G to…
+         > i to write to the worker
+          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? key…
         "
       `)
     })
@@ -557,7 +558,8 @@ describe("the worker view", () => {
           The undo stack now records edits in groups. See the spec (https://x.test/spec)
           .
         ────────────────────────────────────────────────────────────────────────────────
-          Esc dashboard · ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll · g/G to…
+         > i to write to the worker
+          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? key…
         "
       `)
       // Enter again collapses it, back to its one line.
@@ -602,7 +604,8 @@ describe("the worker view", () => {
           │   Looking for callers.
           │   Grep  undo                                                               ✓
         ────────────────────────────────────────────────────────────────────────────────
-          Esc dashboard · ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll · g/G to…
+         > i to write to the worker
+          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? key…
         "
       `)
     })
@@ -702,7 +705,8 @@ describe("the attention panel", () => {
           ┃ }                                                                          ┃
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           ────────────────────────────────────────────────────────────────────────────────
-            Esc dashboard · ↑↓ select · Enter expand · ? keys · d deny · PgUp/PgDn scroll…
+           > i to write to the worker
+            Esc dashboard · i write · d deny · Ctrl+X interrupt · ↑↓ select · Enter expan…
           "
         `)
       },

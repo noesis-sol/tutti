@@ -4,7 +4,8 @@
 // worker's open requests with the card's buttons and rules (attentionKeys.ts), each with its
 // description, its reason and its whole input, and a conflict hand-back waiting for a steered
 // worker (§ 4.3) as a notice with Hand it the conflict now. Answer in view, for what a card can't
-// hold, opens the answer form over the view (AnswerForm.tsx). The composer goes under it (§ 7.5).
+// hold, opens the answer form over the view (AnswerForm.tsx). Under them and the rule, the composer
+// (Composer.tsx): the steered line with its Release button, your messages still queued, the field.
 //
 // The items (transcriptItems.ts): assistant text as Markdown (<markdown>, in the theme's heading,
 // code and link roles); each tool call one line, `Tool  summary`, its result at the end of it (`✓`,
@@ -22,11 +23,20 @@
 // panel's requests, and between a request's buttons; `Enter` expands or collapses the selected item
 // or presses the focused button; `1`–`9` switch workers (or pick a question's option); `d`,
 // `Shift+D`, `a` and `r` answer the selected request, or the oldest; PgUp/PgDn and `g`/`G` scroll;
-// `Esc` and a click on `← Dashboard` go back to the dashboard.
+// `i` or a click focuses the composer; `Ctrl+X` asks, then interrupts the worker's turn; `Ctrl+R`
+// releases a steered worker; `Esc` leaves the composer, then goes back to the dashboard, as a click
+// on `← Dashboard` does. While you write in the composer, it takes the printable keys, Enter and
+// the arrows; PgUp/PgDn, Ctrl+X, Ctrl+R and Esc still work.
 //
 // Branding (§ 7.5): tutti's own glyphs and layout, and the scheme's colours; the chrome names
 // neither Claude nor its product.
-import { type MouseEvent, RGBA, type ScrollBoxRenderable, SyntaxStyle } from "@opentui/core"
+import {
+  type MouseEvent,
+  RGBA,
+  type ScrollBoxRenderable,
+  SyntaxStyle,
+  type TextareaRenderable,
+} from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import {
   createContext,
@@ -39,11 +49,20 @@ import {
   useSyncExternalStore,
 } from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
+import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
 import type { Card } from "../run/runView.ts"
 import { AttentionLines, answerBindings, type ButtonSegment } from "./AttentionCard.tsx"
 import { buttonsOf, optionKeys, picksOptions, requestText, useAnswering } from "./attentionKeys.ts"
 import { headOf, statusLook } from "./Card.tsx"
+import {
+  Composer,
+  InterruptQuestion,
+  QueuedLines,
+  queuedLines,
+  SteeredLine,
+  useSends,
+} from "./Composer.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
@@ -564,24 +583,45 @@ export const handBackLines = (
   )
 }
 
-/** The worker view's hint: the keys there are. */
-const hintKeys = (requests: boolean) => [
-  { keys: "Esc", does: "dashboard" },
-  { keys: "↑↓", does: "select" },
-  { keys: "Enter", does: "expand" },
-  { keys: "?", does: "keys" },
-  ...(requests ? [{ keys: "d", does: "deny" }] : []),
-  { keys: "PgUp/PgDn", does: "scroll" },
-  { keys: "g/G", does: "top/end" },
-  { keys: "1–9", does: "workers" },
-]
+/** The worker view's hint: the keys there are; the composer's while you write in it. */
+const hintKeys = (requests: boolean, composing: boolean, steered: boolean) => {
+  const steering = [
+    { keys: "Ctrl+X", does: "interrupt" },
+    ...(steered ? [{ keys: "Ctrl+R", does: "release" }] : []),
+  ]
+  return composing
+    ? [
+        { keys: "Enter", does: "send" },
+        { keys: "Alt+Enter/Ctrl+J", does: "new line" },
+        { keys: "Esc", does: "leave" },
+        ...steering,
+      ]
+    : [
+        { keys: "Esc", does: "dashboard" },
+        { keys: "i", does: "write" },
+        ...(requests ? [{ keys: "d", does: "deny" }] : []),
+        ...steering,
+        { keys: "↑↓", does: "select" },
+        { keys: "Enter", does: "expand" },
+        { keys: "?", does: "keys" },
+        { keys: "PgUp/PgDn", does: "scroll" },
+        { keys: "g/G", does: "top/end" },
+        { keys: "1–9", does: "workers" },
+      ]
+}
 
 /** The worker view's keys, for its key help (§ 7.3's table). */
 export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
   ["Tab, Shift+Tab, arrows", "move between items; between a request's buttons"],
   ["Enter, a click", "expand or collapse the item; press the focused button"],
   ["1–9", "switch to that worker"],
-  ["Esc, ← Dashboard", "back to the dashboard"],
+  [
+    "i, a click on the composer",
+    "write to the worker; Enter sends, Alt+Enter or Ctrl+J a new line",
+  ],
+  ["Esc, ← Dashboard", "leave the composer; back to the dashboard"],
+  ["Ctrl+X", "interrupt the worker's turn (asks first)"],
+  ["Ctrl+R, Release", "release a steered worker"],
   ["d, Shift+D", "deny the request; deny with a reason"],
   ["a", "allow the request, unless it opens on Deny"],
   ["r", "allow for this run"],
@@ -643,11 +683,62 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   const more = waiting.length - requests.length
   const requestCards: ReadonlyArray<Card> =
     card === undefined ? [] : requests.map((request) => ({ ...card, requests: [request] }))
-  const { box } = useInput()
+  const input = useInput()
   const answering = useAnswering(requestCards, undefined, (request) =>
-    box.set(Box.Form({ requestId: request.id, ticket: request.ticket })),
+    input.box.set(Box.Form({ requestId: request.id, ticket: request.ticket })),
   )
   const handBack = ticket !== undefined && handBacks.includes(ticket)
+
+  // The composer: you write in it while it is chosen and no box is open over the view. It takes
+  // the focus, or gives it up, as the key is pressed, so that the keys after it go where it says.
+  // Your messages sent while a turn is under way are queued until the transcript says they were
+  // taken.
+  const box = useSyncExternalStore(input.box.subscribe, input.box.get)
+  const field = useRef<TextareaRenderable>(null)
+  const composingNow = useRef(false)
+  const [composing, setComposingState] = useState(false)
+  const setComposing = (on: boolean) => {
+    composingNow.current = on
+    setComposingState(on)
+    if (!on) field.current?.blur()
+    else if (input.box.get() === null) field.current?.focus()
+  }
+  const typing = composing && box === null
+  const underWay = found?.state != null && !hasSettled(found.state)
+  const sends = useSends(ticket, window.latest, underWay)
+  const send = (text: string) => {
+    if (found === undefined) return
+    const uuid = crypto.randomUUID()
+    sends.sent({ uuid, ticket: found.ticket, text })
+    command(UiCommand.SendMessage({ ticket: found.ticket, text, uuid }))
+  }
+  // Ctrl+X asks first; `y` interrupts the turn the question names, and its queued messages go.
+  const interrupt = () => {
+    if (found === undefined) return
+    field.current?.blur()
+    input.box.set(Box.Interrupt({ ticket: found.ticket }))
+  }
+  const answerInterrupt = (yes: boolean) => {
+    const asked = input.box.get()
+    if (asked?._tag !== "Interrupt") return
+    input.box.set(null)
+    if (composingNow.current) field.current?.focus()
+    if (!yes) return
+    sends.cancelled(asked.ticket)
+    command(UiCommand.Interrupt({ ticket: asked.ticket }))
+  }
+  useLayer(
+    "box",
+    [
+      { key: "y", run: () => answerInterrupt(true) },
+      { key: "n", run: () => answerInterrupt(false) },
+      { key: "escape", run: () => answerInterrupt(false) },
+    ],
+    "Interrupt",
+  )
+  const release = () => {
+    if (found?.steered === true) command(UiCommand.Release({ ticket: found.ticket }))
+  }
 
   // The selection names an entry, a request or the hand-back; with none chosen, the oldest request
   // is the target. Kept in a ref, so that keys arriving together each see the one before them.
@@ -773,7 +864,13 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
     helpOpen.current = shown
     setHelp(shown)
   }
+  // While you write, the composer takes the printable keys, Enter, Tab and the arrows (keys.ts).
   const keys: ReadonlyArray<KeyBinding> = [
+    { key: "pageup", run: () => page(-1) },
+    { key: "pagedown", run: () => page(1) },
+    { key: "ctrl+x", run: interrupt },
+    { key: "ctrl+r", run: release },
+    { key: "i", run: () => setComposing(true) },
     { key: "down", run: () => move(1) },
     { key: "up", run: () => move(-1) },
     ...["tab", "right"].map((key) => ({ key, run: () => stepOrMove(1) })),
@@ -781,8 +878,6 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
     ...["return", "enter"].map((key) => ({ key, run: enter })),
     ...answerBindings(answering, targetCard),
     ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ key: String(n), run: number(n) })),
-    { key: "pageup", run: () => page(-1) },
-    { key: "pagedown", run: () => page(1) },
     {
       key: "g",
       run: () => {
@@ -802,7 +897,11 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   ]
   useLayer("view", [
     { key: "?", run: () => showHelp(!helpOpen.current) },
-    { key: "escape", run: () => (helpOpen.current ? showHelp(false) : close()) },
+    {
+      key: "escape",
+      run: () =>
+        helpOpen.current ? showHelp(false) : composingNow.current ? setComposing(false) : close(),
+    },
     ...keys.map((binding) => ({
       key: binding.key,
       run: () => (helpOpen.current ? undefined : binding.run()),
@@ -889,9 +988,36 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
         })}
         {more > 0 ? <Line segments={[seg(`  +${more} more requests`, theme.styles.dim)]} /> : null}
         <Line segments={rule} />
-        <Hint segments={hintSegments(hintKeys(requests.length > 0), theme, inner)} />
+        {card?.steered === true ? (
+          <SteeredLine theme={theme} width={inner} release={release} />
+        ) : null}
+        {sends.queued.length > 0 ? (
+          <QueuedLines lines={queuedLines(sends.queued, theme, inner)} />
+        ) : null}
+        <Composer
+          theme={theme}
+          field={field}
+          focused={typing}
+          focus={() => setComposing(true)}
+          send={send}
+        />
+        <Hint
+          segments={hintSegments(
+            hintKeys(requests.length > 0, typing, card?.steered === true),
+            theme,
+            inner,
+          )}
+        />
         {help ? (
           <KeyHelp theme={theme} width={width} height={height} keys={workerViewKeys} />
+        ) : null}
+        {box?._tag === "Interrupt" ? (
+          <InterruptQuestion
+            theme={theme}
+            ticket={box.ticket}
+            yes={() => answerInterrupt(true)}
+            no={() => answerInterrupt(false)}
+          />
         ) : null}
       </box>
     </LooksContext.Provider>

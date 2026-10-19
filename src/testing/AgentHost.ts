@@ -352,7 +352,7 @@ export const layer = (
       // Pushes a message into the session's inbox; its uuid.
       const push = (ticket: string, session: Running, message: Message) =>
         Effect.gen(function* () {
-          const uuid = uuidOf(yield* Ref.updateAndGet(drawn, (k) => k + 1))
+          const uuid = message.uuid ?? uuidOf(yield* Ref.updateAndGet(drawn, (k) => k + 1))
           const sdk = userMessage(message, uuid, session.sessionId)
           yield* record(Sent.Message({ ticket, message: sdk }))
           yield* workers.fold(session.entry, WorkerEvent.Sent({ uuid }))
@@ -435,8 +435,10 @@ export const layer = (
           Effect.flatMap(begin(ticket, s, Sent.Resumed({ ticket, session: s })), (playing) =>
             push(ticket, playing, message),
           ),
-        send: (ticket, text, from) =>
-          Effect.flatMap(session(ticket), (playing) => push(ticket, playing, { text, from })),
+        send: (ticket, text, from, uuid) =>
+          Effect.flatMap(session(ticket), (playing) =>
+            push(ticket, playing, { text, from, ...(uuid === undefined ? {} : { uuid }) }),
+          ),
         interrupt: (ticket) =>
           Effect.gen(function* () {
             const playing = yield* session(ticket)
