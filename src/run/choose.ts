@@ -79,6 +79,9 @@ export const askLines = (
 /** What a run whose start question was cancelled says on stderr, before it exits 130. */
 export const cancelledMessage = "tutti: stopped before the run started; nothing was changed."
 
-/** What a run says on stderr when its start question chose a new feature, until the interview. */
+/**
+ * What a run says on stderr when its start question, asked as lines, chose a new feature: the
+ * interview is a view in the renderer, which the terminal can't show.
+ */
 export const interviewUnavailable =
-  "tutti: the feature interview isn't available yet; nothing was filed or changed."
+  "tutti: the feature interview needs tutti's full screen, which this terminal can't show; nothing was filed or changed. tutti --feature \"<request>\" plans the feature without it."

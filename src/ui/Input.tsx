@@ -66,8 +66,9 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
       return <StopQuestion windingDown={box.windingDown} />
     case "Answer":
     case "Interrupt":
+    case "Leave":
       // The Answer box is mounted throughout, its keys bound before it opens: it draws itself, as
-      // the worker view draws its interrupt question.
+      // the worker view draws its interrupt question and the Interview view its leave question.
       return null
     case "Reason":
       return <ReasonBox requestId={box.requestId} ticket={box.ticket} />

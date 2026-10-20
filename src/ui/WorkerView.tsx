@@ -118,7 +118,7 @@ export const panelRequests = 2
 export const entryId = (key: string): string => `entry-${key}`
 
 /** The selection key of a request in the panel, and of the hand-back notice. */
-const requestKey = (request: AttentionRequest): string => `request:${request.id}`
+export const requestKey = (request: AttentionRequest): string => `request:${request.id}`
 const handBackKey = "handback"
 
 /** The Markdown and code styles, from the theme's roles (§ 7.11 "Markdown"). */
@@ -130,7 +130,7 @@ interface Looks {
   readonly error: SyntaxStyle
 }
 
-const LooksContext = createContext<Looks | null>(null)
+export const LooksContext = createContext<Looks | null>(null)
 
 const useLooks = (): Looks => {
   const looks = useContext(LooksContext)
@@ -139,7 +139,7 @@ const useLooks = (): Looks => {
 }
 
 /** The syntax styles of `theme`, made in the renderer's native scene and freed with it. */
-const useSyntaxStyles = (theme: Theme): Looks => {
+export const useSyntaxStyles = (theme: Theme): Looks => {
   const renderer = useRenderer()
   const looks = useMemo(() => {
     const role = (name: Role) => ({ fg: theme.rgba(name, "fg") })
@@ -277,7 +277,7 @@ const ClickLine = ({
 )
 
 /** Entries one under the other, `width` wide. */
-const EntryList = ({
+export const EntryList = ({
   entries,
   ...props
 }: Omit<EntryProps, "entry"> & { readonly entries: ReadonlyArray<Entry> }) => (
@@ -466,7 +466,7 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
 })
 
 /** Whether the selection can rest on `entry`: one that expands. */
-const selectable = (entry: Entry): boolean => entry._tag !== "Text"
+export const selectable = (entry: Entry): boolean => entry._tag !== "Text"
 
 /** A request's input, as the panel shows it whole (§ 7.5): its JSON, its questions, its form. */
 export const inputOf = (request: AttentionRequest): ReadonlyArray<string> => {
@@ -547,7 +547,7 @@ export const panelParts = (
 }
 
 /** A request's box in the panel: its input scrolls in at most `room` lines; buttons are pressed. */
-const PanelBox = ({
+export const PanelBox = ({
   parts,
   room,
   press,

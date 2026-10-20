@@ -106,8 +106,8 @@ export interface Interview {
   readonly tools: InterviewTools
   /** What file_feature has filed, now and on each change. */
   readonly filing: SubscriptionRef.SubscriptionRef<Filing>
-  /** Sends what you typed in the composer: its uuid. */
-  send(text: string): Effect.Effect<string, AgentGone>
+  /** Sends what you typed in the composer, with the uuid the composer drew, if it drew one: its uuid. */
+  send(text: string, uuid?: string): Effect.Effect<string, AgentGone>
   /**
    * Waits for the interview's end: once file_feature has filed the epic and the session's turns
    * are over, closes the session and gives the epic to offer; or the session's end without it.
@@ -200,7 +200,7 @@ export const startInterview = (
       sessionId,
       tools,
       filing: tools.filing,
-      send: (text) => host.send(interviewWorker, text, "human"),
+      send: (text, uuid) => host.send(interviewWorker, text, "human", uuid),
       ended,
       leave: Effect.andThen(Ref.set(left, true), host.end(interviewWorker)),
       filedSomething: Effect.map(SubscriptionRef.get(tools.filing), filedSomething),

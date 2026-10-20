@@ -172,6 +172,7 @@ export const Composer = ({
   focused,
   focus,
   send,
+  placeholder = composerPlaceholder,
 }: {
   readonly theme: Theme
   /** The field, which the view focuses and blurs as keys come. */
@@ -181,6 +182,8 @@ export const Composer = ({
   readonly focus: () => void
   /** Sends a message: what you typed, without the blank lines and spaces around it. */
   readonly send: (text: string) => void
+  /** Its placeholder, unfocused and focused: the worker view's when left out. */
+  readonly placeholder?: (focused: boolean) => string
 }) => {
   const { form } = theme
   const [lines, setLines] = useState(1)
@@ -221,7 +224,7 @@ export const Composer = ({
         keyBindings={descriptionKeys}
         onSubmit={submit}
         onContentChange={fit}
-        placeholder={composerPlaceholder(focused)}
+        placeholder={placeholder(focused)}
         {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
         {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
         {...(form.placeholder.fg === undefined ? {} : { placeholderColor: form.placeholder.fg })}

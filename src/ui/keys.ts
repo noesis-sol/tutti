@@ -58,6 +58,8 @@ export type Box = Data.TaggedEnum<{
   Form: { readonly requestId: string; readonly ticket: string }
   /** Ctrl+X's in a worker view: whether to interrupt the turn of the ticket's worker (§ 7.5). */
   Interrupt: { readonly ticket: string }
+  /** Leaving the Interview view with nothing filed: whether to end the interview (§ 4.10). */
+  Leave: Record<never, never>
 }>
 
 export const Box = Data.taggedEnum<Box>()

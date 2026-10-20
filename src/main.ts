@@ -5,7 +5,9 @@
 // released, once the run's scope has closed. When Tty says the terminal can draw the dashboard,
 // the run asks the start question and shows the dashboard in the command's one OpenTUI renderer
 // (src/ui/renderer.ts), the log goes to its file alone, and the run's summary and closing lines
-// are printed once the renderer is gone. Otherwise the run is plain (§ 7.6): the start question as
+// are printed once the renderer is gone. New feature, at the start question, opens the Interview
+// view in that renderer (src/run/interview.ts); once its epic is filed and you say y, the run goes
+// on, scoped to the epic, into the dashboard. Otherwise the run is plain (§ 7.6): the start question as
 // lines, log lines on stdout, with a line saying why when the terminal couldn't show a dashboard.
 // Signals (§ 7.4, src/run/quit.ts): SIGUSR1 winds the run down, SIGUSR2 too, their handlers in place
 // before the lock names tutti's PID; SIGTSTP is ignored with a log line (D18); while the run goes,
@@ -43,6 +45,7 @@ import { EventStream } from "./run/eventstream.ts"
 import { type FeatureIO, inRenderer, planAndFile, scopedTo } from "./run/feature.ts"
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
+import { interview, interviewEnding } from "./run/interview.ts"
 import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
 import {
   check as checkNothing,
@@ -73,7 +76,7 @@ import { type Holder, RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
 import { Worktrees } from "./services/Worktrees.ts"
-import { dashboard } from "./ui/App.tsx"
+import { dashboard, interviewScreen } from "./ui/App.tsx"
 import { liveClipboard } from "./ui/clipboard.ts"
 import { askPlan } from "./ui/PlanConfirmation.tsx"
 import { planConfirmation, streamInput } from "./ui/plain/forms.ts"
@@ -293,8 +296,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           })
         })
       const cancelled = Effect.as(Console.error(cancelledMessage), exitCodes.interrupted)
-      /** The new feature's interview (tutti-nrg.9.8 builds it); for now the run ends there. */
-      const interview = Effect.gen(function* () {
+      /** A new feature chosen at the start question asked as lines: the interview needs the renderer. */
+      const noInterview = Effect.gen(function* () {
         yield* Console.error(interviewUnavailable)
         yield* events.emit({ kind: "end", code: exitCodes.ok })
         return exitCodes.ok
@@ -356,7 +359,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             : Result.succeed(Work.Tickets())
         if (Result.isFailure(asked)) return yield* cancelled
         yield* begin(asked.success)
-        if (asked.success._tag === "Feature") return yield* interview
+        if (asked.success._tag === "Feature") return yield* noInterview
         // The plan confirmation, a line at a time.
         const stopped = yield* planFeature<never>({
           out: stdout,
@@ -415,16 +418,26 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             if (nothing !== null) return nothing
           }
           const shell = yield* screen.shell
+          const clipboard = yield* liveClipboard(shell.renderer)
           if (asks !== "no") {
             const asked = yield* Effect.result(askStart(shell, themeOf, count))
             if (Result.isFailure(asked)) return { _tag: "Cancelled" } as const
             const work = asked.success
             yield* begin(work)
-            if (work._tag === "Feature") return { _tag: "Feature", work } as const
+            if (work._tag === "Feature") {
+              // The interview, in this renderer; once its epic is filed and you say y, the run.
+              const outcome = yield* interview(work.description, {
+                screen: interviewScreen(shell, themeOf, clipboard),
+                confirm: (plan, question) => askPlan(shell, themeOf, plan, question),
+              })
+              if (outcome._tag !== "Run") {
+                return { _tag: "Interviewed", work, ending: interviewEnding(outcome) } as const
+              }
+              scope = outcome.epic
+            }
             const nothing = yield* nothingYet
             if (nothing !== null) return nothing
           }
-          const clipboard = yield* liveClipboard(shell.renderer)
           // Exiting at once, the renderer is destroyed first, waited for up to closeLimit.
           const destroy = () => {
             shell.renderer.destroy()
@@ -458,9 +471,14 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           return yield* cancelled
         case "Stopped":
           return ended.exitCode
-        case "Feature":
+        case "Interviewed": {
           yield* Console.log(chosenLines(ended.work).join("\n"))
-          return yield* interview
+          const said = ended.ending
+          if (said.out.length > 0) yield* Console.log(said.out.join("\n"))
+          if (said.error.length > 0) yield* Console.error(said.error.join("\n"))
+          yield* events.emit({ kind: "end", code: said.exitCode })
+          return said.exitCode
+        }
         case "Nothing":
           yield* reportNothing(ended.nothing, output)
           yield* events.emit({ kind: "end", code: exitCodes.ok })

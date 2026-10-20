@@ -1,36 +1,26 @@
 // The React tree in the command's renderer (§ 7.1): one screen at a time, routed by the run's
-// Screen (the dashboard, a worker's view, the interview). The interview is a placeholder here,
-// which its own code replaces.
+// Screen (the dashboard, a worker's view, the interview).
 //
 // dashboard() is the Dashboard a run shows (src/run/screen.ts): it bridges the run's RunView and
 // Screen into React (useRunView.ts), and the workers' transcripts for their views
 // (transcriptItems.ts), and mounts the tree into the renderer until the run's scope closes.
+// interviewScreen() is the Interview view's (src/run/interview.ts), mounted the same way, with the
+// description and what file_feature has filed beside it.
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import type { ReactNode } from "react"
-import type { Dashboard as RunDashboard } from "../run/screen.ts"
+import type { InterviewScreen } from "../run/interview.ts"
+import type { Dashboard as RunDashboard, ScreenInputs } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
 import { Dashboard } from "./Dashboard.tsx"
 import { Input } from "./Input.tsx"
-import { styled } from "./line.tsx"
+import { InterviewContext, type InterviewValue, InterviewView } from "./InterviewView.tsx"
 import type { Shell } from "./renderer.ts"
 import type { Timer } from "./Toasts.tsx"
 import type { Appearance, Theme } from "./theme.ts"
 import { transcriptFeed } from "./transcriptItems.ts"
-import { bridge, ShellContext, type ShellValue, useScreen, useTheme } from "./useRunView.ts"
+import { bridge, ShellContext, type ShellValue, useScreen } from "./useRunView.ts"
 import { WorkerView } from "./WorkerView.tsx"
-
-/** A screen still to be drawn: its name, and a line under it. */
-const Placeholder = ({ name, detail }: { readonly name: string; readonly detail: string }) => {
-  const theme = useTheme()
-  return (
-    <box flexDirection="column" paddingX={1}>
-      <text {...styled(theme.styles.title)}>{" tutti "}</text>
-      <text {...styled(theme.styles.tickets)}>{name}</text>
-      <text {...styled(theme.styles.dim)}>{detail}</text>
-    </box>
-  )
-}
 
 /** The screen the run shows now. */
 export const App = () => {
@@ -42,7 +32,7 @@ export const App = () => {
       // Keyed by the worker, so that switching workers opens the other's transcript afresh.
       return <WorkerView key={screen.worker} worker={screen.worker} />
     case "Interview":
-      return <Placeholder name="Interview" detail="a new feature" />
+      return <InterviewView />
   }
 }
 
@@ -64,6 +54,35 @@ export const Root = ({
   </ShellContext.Provider>
 )
 
+/** The ShellValue over a screen's `inputs`, in `shell`, bridged for the scope's life. */
+const shellValue = (
+  inputs: ScreenInputs,
+  shell: Shell,
+  themeOf: (appearance: Appearance) => Theme,
+  clipboard?: Clipboard,
+) =>
+  Effect.gen(function* () {
+    return {
+      view: yield* bridge(inputs.view),
+      screen: yield* bridge(inputs.screen),
+      commands: inputs.commands,
+      appearance: shell.appearance,
+      themeOf,
+      transcripts: yield* transcriptFeed(inputs.transcripts),
+      ...(clipboard === undefined ? {} : { clipboard }),
+    } satisfies ShellValue
+  })
+
+/** `node` mounted in `shell`'s renderer until the scope closes. */
+const mount = (shell: Shell, node: ReactNode) =>
+  Effect.gen(function* () {
+    const root = yield* Effect.acquireRelease(
+      Effect.sync(() => createRoot(shell.renderer)),
+      (made) => Effect.sync(() => made.unmount()),
+    )
+    root.render(node)
+  })
+
 /**
  * The dashboard a run shows in `shell`'s renderer, drawn in the theme `themeOf` makes, copying a
  * drag's selection with `clipboard`.
@@ -72,18 +91,28 @@ export const dashboard =
   (shell: Shell, themeOf: (appearance: Appearance) => Theme, clipboard?: Clipboard): RunDashboard =>
   (inputs) =>
     Effect.gen(function* () {
-      const value: ShellValue = {
-        view: yield* bridge(inputs.view),
-        screen: yield* bridge(inputs.screen),
-        commands: inputs.commands,
-        appearance: shell.appearance,
-        themeOf,
-        transcripts: yield* transcriptFeed(inputs.transcripts),
-        ...(clipboard === undefined ? {} : { clipboard }),
+      const value = yield* shellValue(inputs, shell, themeOf, clipboard)
+      yield* mount(shell, <Root value={value} />)
+    })
+
+/** The Interview view in `shell`'s renderer, as dashboard() shows the dashboard. */
+export const interviewScreen =
+  (
+    shell: Shell,
+    themeOf: (appearance: Appearance) => Theme,
+    clipboard?: Clipboard,
+  ): InterviewScreen =>
+  (inputs) =>
+    Effect.gen(function* () {
+      const value = yield* shellValue(inputs, shell, themeOf, clipboard)
+      const interview: InterviewValue = {
+        description: inputs.description,
+        filing: yield* bridge(inputs.filing),
       }
-      const root = yield* Effect.acquireRelease(
-        Effect.sync(() => createRoot(shell.renderer)),
-        (made) => Effect.sync(() => made.unmount()),
+      yield* mount(
+        shell,
+        <InterviewContext.Provider value={interview}>
+          <Root value={value} />
+        </InterviewContext.Provider>,
       )
-      root.render(<Root value={value} />)
     })
