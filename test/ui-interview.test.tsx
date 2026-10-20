@@ -57,7 +57,6 @@ import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { interviewScreen, Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { InterviewContext, leaveAbout, leaveQuestion } from "../src/ui/InterviewView.tsx"
-import { escapeHold } from "../src/ui/keys.ts"
 import { askPlan } from "../src/ui/PlanConfirmation.tsx"
 import { FormCancelled, type Plan } from "../src/ui/questions.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
@@ -72,7 +71,7 @@ import {
   windowOf,
 } from "../src/ui/transcriptItems.ts"
 import { type External, external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
-import { type Frame, type Rendered, withRender } from "./render.ts"
+import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -166,9 +165,6 @@ const has = (text: string) => (frame: Frame) => frame.chars.includes(text)
 
 const taken = (commands: Commands) => Effect.runSync(Queue.clear(commands))
 
-/** How long a lone ESC waits to be a key: the stdin parser's 20 ms, the Esc hold, and some. */
-const escWait = 40 + escapeHold
-
 const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
   rendered.input(async (setup) => {
     for (const key of keys) {
@@ -177,8 +173,7 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
           setup.mockInput.pressEnter()
           break
         case "escape":
-          setup.mockInput.pressEscape()
-          await Bun.sleep(escWait)
+          await pressEscape(setup)
           break
         default:
           await setup.mockInput.typeText(key)
