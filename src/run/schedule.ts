@@ -195,7 +195,10 @@ export interface Scheduler {
    * as for the usage limit's reset (§ 4.12).
    */
   readonly interrupt: Effect.Effect<void>
-  /** Whether the run has started as many tickets as --limit allows. */
+  /**
+   * Whether the run has started as many tickets as --limit allows, and none of them waits to start
+   * again: a ticket back in the queue until its blocker merges keeps its place.
+   */
   readonly limitReached: Effect.Effect<boolean>
 }
 
@@ -438,7 +441,7 @@ export const make = (
       })
 
     // --limit is reached once the run has started that many tickets and none of them waits to
-    // start again.
+    // start again; the done line says LIMIT_REACHED once it has started that many all the same.
     const limitReached = Effect.gen(function* () {
       const s = yield* Ref.get(slots)
       if (s.started < options.limit) return false

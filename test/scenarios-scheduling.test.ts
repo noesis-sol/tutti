@@ -107,11 +107,12 @@ const works = (
     result(`Closed ${id}.`),
   )
 
-/** Claims its ticket, notes why it can't finish, and defers it. */
-const defers = (world: World, id: string): SessionScript =>
+/** Claims its ticket and, after `takes`, defers it, noting why it can't finish. */
+const defers = (world: World, id: string, takes: Duration.Input = 0): SessionScript =>
   turn(
     [
       ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
+      sleep(takes),
       ...bash(`bd defer ${id}`, orDie(world.beads.defer(id, { reason: "needs a design" }))),
     ],
     result(`Deferred ${id}.`),
@@ -152,15 +153,19 @@ const needs = (world: World, id: string, blocker: string): SessionScript =>
   )
 
 /**
- * Claims its ticket and is gone with it in progress; resumed, it is gone again at once: the run
- * stops for it, PAUSED.
+ * Claims its ticket and, after `takes`, is gone with it in progress; resumed, it is gone again at
+ * once: the run stops for it, PAUSED.
  */
-const isGoneTwice = (world: World, id: string): ReadonlyArray<SessionScript> => [
+const isGoneTwice = (
+  world: World,
+  id: string,
+  takes: Duration.Input,
+): ReadonlyArray<SessionScript> => [
   [
-    ...turn(bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true })))).slice(
-      0,
-      -2,
-    ),
+    ...turn([
+      ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
+      sleep(takes),
+    ]).slice(0, -2),
     gone("exit 1"),
   ],
   [gone("exit 1")],
@@ -190,13 +195,28 @@ const noHandBacks = (settings: Settings): Partial<Settings> => ({
 
 // The run.
 
-/** Moves TestClock on by `total`, a ready poll at a time, letting the run catch up after each. */
+/**
+ * Waits, in real time, until the run has caught up: it has written no log line or record for 30 ms.
+ * The run reads files for real, so a busy machine can keep it from catching up within a few.
+ */
+const caughtUp = Effect.gen(function* () {
+  const captured = yield* Captured
+  let said = -1
+  for (let i = 0, still = 0; i < 1000 && still < 6; i++) {
+    const now = (yield* texts).length + (yield* captured.records).length
+    still = now === said ? still + 1 : 0
+    said = now
+    yield* Effect.promise(() => Bun.sleep(5))
+  }
+})
+
+/** Moves TestClock on by `total`, a ready poll at a time, once the run has caught up each time. */
 const passes = (total: Duration.Input) =>
   Effect.gen(function* () {
     const polls = Duration.toMillis(Duration.fromInputUnsafe(total)) / Duration.toMillis(readyPoll)
     for (let i = 0; i < polls; i++) {
+      yield* caughtUp
       yield* advance(readyPoll)
-      yield* Effect.promise(() => Bun.sleep(3))
     }
   })
 
@@ -580,10 +600,10 @@ describe("parents and epics", () => {
     const ran = await runs({
       backlog: backlog().epic("e", ["e.2"]).epic("e.1", ["e.1.1"], { parent: "e" }),
       scripts: (world, places) => ({
-        "e.2": [works(world, places, "e.2")],
-        "e.1.1": [works(world, places, "e.1.1", { takes: "1 minute" })],
+        "e.2": [works(world, places, "e.2", { takes: "1 minute" })],
+        "e.1.1": [works(world, places, "e.1.1", { takes: "2 minutes" })],
       }),
-      during: () => passes("2 minutes"),
+      during: () => passes("3 minutes"),
     })
     expectClean(ran, 0)
     expectPhases(ran, { "e.2": "Done", "e.1.1": "Done" })
@@ -746,6 +766,36 @@ describe("waits for merge", () => {
   }, 30_000)
 })
 
+describe("--limit and waits for merge", () => {
+  test("a ticket whose blocker never merges keeps its place: the run ends LIMIT_REACHED", async () => {
+    // a closes without a commit and is left for review, so b, waiting for it, never starts again.
+    const ran = await runs({
+      backlog: backlog()
+        .ticket("a", { priority: 0 })
+        .ticket("b", { priority: 1 })
+        .ticket("c", { priority: 2 }),
+      limit: 2,
+      scripts: (world, places) => ({
+        a: [closesUncommitted(world, places, "a", "1 minute")],
+        b: [needs(world, "b", "a")],
+      }),
+      during: () => passes("2 minutes"),
+    })
+    expectClean(ran, 0)
+    expectPhases(ran, { a: "Review", b: "Waiting", c: "Queued" })
+    expect(pathOf(ran, "b")).toEqual(["Queued", "Working", "Waiting"])
+    expectLog(ran, [
+      "[1/2] a dispatching: a",
+      "[2/2] b dispatching: b",
+      /^ {2}WAITS_FOR_MERGE: b waits for a to merge; /,
+      /^ {2}CLOSED_WITHOUT_COMMIT: no commit on tutti\/a names a; /,
+      "LIMIT_REACHED at 2 tickets",
+    ])
+    expect(ran.log.some((text) => text.includes("c dispatching"))).toBe(false)
+    expectEvents(ran, ["dispatch", "dispatch", "waits", "warn", "done", "end"])
+  }, 30_000)
+})
+
 describe("--limit", () => {
   test("counts the tickets the run starts, and the run ends LIMIT_REACHED, exit 0", async () => {
     const ran = await runs({
@@ -782,9 +832,10 @@ describe("the scope", () => {
       backlog: backlog().epic("e", ["e.1", "e.2"]).ticket("other"),
       ticket: "e",
       scripts: (world, places) => ({
-        "e.1": [works(world, places, "e.1")],
-        "e.2": [works(world, places, "e.2")],
+        "e.1": [works(world, places, "e.1", { takes: "1 minute" })],
+        "e.2": [works(world, places, "e.2", { takes: "2 minutes" })],
       }),
+      during: () => passes("3 minutes"),
     })
     expectClean(ran, 0)
     expectPhases(ran, { "e.1": "Done", "e.2": "Done" })
@@ -811,9 +862,10 @@ describe("the scope", () => {
         .ticket("e.3", { parent: "e" }),
       ticket: "e",
       scripts: (world, places) => ({
-        "e.1": [works(world, places, "e.1")],
-        "e.3": [defers(world, "e.3")],
+        "e.1": [works(world, places, "e.1", { takes: "2 minutes" })],
+        "e.3": [defers(world, "e.3", "1 minute")],
       }),
+      during: () => passes("3 minutes"),
     })
     expectClean(ran, 0)
     expectPhases(ran, { "e.1": "Done", "e.3": "Deferred" })
@@ -821,12 +873,12 @@ describe("the scope", () => {
     expectLog(ran, [
       "[1/40] e.1 dispatching: e.1",
       "[2/40] e.3 dispatching: e.3",
-      closedLine("e.1"),
       /^ {2}e\.3 deferred by its worker; worktree .*\/e\.3 left open$/,
+      closedLine("e.1"),
       "READY_EMPTY after 2 tickets; SCOPE_OPEN: e: 2 of its 3 subtickets not done: e.3 (set aside in this run), e.2 (blocked by x outside the scope)",
     ])
     expect(ran.log.some((text) => text.includes("x dispatching"))).toBe(false)
-    expectEvents(ran, ["dispatch", "dispatch", "closed", "deferred", "done", "end"])
+    expectEvents(ran, ["dispatch", "dispatch", "deferred", "closed", "done", "end"])
   })
 })
 
@@ -927,10 +979,10 @@ describe("unmerged at the end", () => {
       settings: noHandBacks,
       checks: { fast: [fails()] },
       scripts: (world, places) => ({
-        x: [works(world, places, "x")],
-        b: [works(world, places, "b", { takes: "1 minute" })],
+        x: [works(world, places, "x", { takes: "1 minute" })],
+        b: [works(world, places, "b", { takes: "2 minutes" })],
       }),
-      during: () => passes("2 minutes"),
+      during: () => passes("3 minutes"),
     })
     expectClean(ran, 0)
     expectPhases(ran, { x: "Done", b: "Review", c: "HeldBack" })
@@ -960,7 +1012,7 @@ describe("stopping drains", () => {
         .ticket("b", { priority: 1 })
         .ticket("c", { priority: 2 }),
       scripts: (world, places) => ({
-        a: isGoneTwice(world, "a"),
+        a: isGoneTwice(world, "a", "1 minute"),
         b: [works(world, places, "b", { takes: "5 minutes" })],
       }),
       during: () => passes("6 minutes"),
@@ -1001,12 +1053,15 @@ describe("stopping drains", () => {
       scripts: (world, places) => ({
         a: [
           works(world, places, "a", {
-            first: [step(Effect.asVoid(Queue.offer(drains, { on: true, how: "by SIGUSR1" })))],
+            first: [
+              sleep("1 minute"),
+              step(Effect.asVoid(Queue.offer(drains, { on: true, how: "by SIGUSR1" }))),
+            ],
           }),
         ],
-        b: [works(world, places, "b", { takes: "1 minute" })],
+        b: [works(world, places, "b", { takes: "2 minutes" })],
       }),
-      during: () => passes("2 minutes"),
+      during: () => passes("3 minutes"),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", c: "Queued" })
