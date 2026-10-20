@@ -63,14 +63,16 @@ export const decodeReferences = (text: string): string =>
     return named[ref] ?? whole
   })
 
-/** Draws Markdown with `theme`'s styles. */
+/** Draws Markdown with `theme`'s styles; with none where it is unstyled. */
 const painter = (theme: Theme) => {
   const open = (a: Attributes): string =>
-    (a.bold ? "\x1b[1m" : "") +
-    (a.faint ? "\x1b[2m" : "") +
-    (a.italic ? "\x1b[3m" : "") +
-    (a.strike ? "\x1b[9m" : "") +
-    (a.colour === null ? "" : theme.ansi(a.colour, "fg"))
+    !theme.styled
+      ? ""
+      : (a.bold ? "\x1b[1m" : "") +
+        (a.faint ? "\x1b[2m" : "") +
+        (a.italic ? "\x1b[3m" : "") +
+        (a.strike ? "\x1b[9m" : "") +
+        (a.colour === null ? "" : theme.ansi(a.colour, "fg"))
 
   const paint = (text: string, a: Attributes): string => {
     const start = open(a)

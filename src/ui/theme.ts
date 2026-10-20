@@ -458,6 +458,24 @@ export const outputAppearance = (
     ? Effect.succeed(appearanceOf(chosen, detected))
     : Effect.map(queryAppearance, (answer) => appearanceOf(chosen, Option.getOrNull(answer)))
 
+/**
+ * The theme, from `themeOf`, of what is printed to stdout outside the renderer where no renderer
+ * detected the appearance. On a terminal (`tty`) it is styled, in the appearance `chosen`, else the
+ * terminal's background, as outputAppearance asks it, though a `dumb` terminal isn't asked. Where
+ * stdout isn't a terminal, such as a pipe or a file, it is unstyled, and nothing is asked.
+ */
+export const printedTheme = (
+  themeOf: (appearance: Appearance, styled: boolean) => Theme,
+  chosen: "auto" | "light" | "dark",
+  terminal: { readonly dumb: boolean; readonly tty: boolean },
+): Effect.Effect<Theme> =>
+  !terminal.tty
+    ? Effect.succeed(themeOf(appearanceOf(chosen, null), false))
+    : Effect.map(
+        terminal.dumb ? Effect.succeed(appearanceOf(chosen, null)) : outputAppearance(chosen, null),
+        (appearance) => themeOf(appearance, true),
+      )
+
 /** How many colours the terminal draws: exact colours, or the nearest of 256. */
 export type ColourDepth = "truecolor" | "256"
 
@@ -570,12 +588,14 @@ export interface Theme {
   readonly appearance: Appearance
   readonly depth: ColourDepth
   readonly noColor: boolean
+  /** Whether it writes ANSI at all: not for output that isn't a terminal, where nothing is styled. */
+  readonly styled: boolean
   readonly styles: { readonly [S in StyleName]: Style }
   /** The forms' styles, from the form roles. */
   readonly form: { readonly [S in FormStyleName]: Style }
   /** A role's colour for OpenTUI. */
   readonly rgba: (role: Role, layer?: Layer) => RGBA
-  /** A role's colour as an ANSI sequence; empty under NO_COLOR. */
+  /** A role's colour as an ANSI sequence; empty under NO_COLOR, and unstyled. */
   readonly ansi: (role: Role, layer?: Layer) => string
 }
 
@@ -608,7 +628,8 @@ export const ansiOf = (colour: Colour, layer: Layer, depth: ColourDepth): string
 
 /**
  * The theme: the styles of `scheme` in its `appearance` variant. Under NO_COLOR every role is the
- * terminal's default colour; bold and faint remain.
+ * terminal's default colour; bold and faint remain. Unless `styled` (the default), it writes no
+ * ANSI at all, for output that isn't a terminal; OpenTUI's colours and attributes stay.
  */
 export const makeTheme = (
   scheme: Scheme,
@@ -616,23 +637,27 @@ export const makeTheme = (
     readonly appearance: Appearance
     readonly depth: ColourDepth
     readonly noColor: boolean
+    readonly styled?: boolean
   },
 ): Theme => {
   const { appearance, depth, noColor } = options
+  const styled = options.styled ?? true
   const colourOf = (role: Role): Colour =>
     noColor ? { _tag: "Default" } : scheme.colours[role][appearance]
   const rgba = (role: Role, layer: Layer = backgroundRoles.has(role) ? "bg" : "fg") =>
     rgbaOf(colourOf(role), layer)
   const ansi = (role: Role, layer: Layer = backgroundRoles.has(role) ? "bg" : "fg") =>
-    noColor ? "" : ansiOf(colourOf(role), layer, depth)
+    noColor || !styled ? "" : ansiOf(colourOf(role), layer, depth)
   const style = (spec: StyleSpec): Style => {
     const attributes = (spec.bold ? TextAttributes.BOLD : 0) | (spec.faint ? TextAttributes.DIM : 0)
-    const open = [
-      spec.bold ? "\x1b[1m" : "",
-      spec.faint ? "\x1b[2m" : "",
-      spec.fg === null ? "" : ansi(spec.fg, "fg"),
-      spec.bg === null ? "" : ansi(spec.bg, "bg"),
-    ].join("")
+    const open = !styled
+      ? ""
+      : [
+          spec.bold ? "\x1b[1m" : "",
+          spec.faint ? "\x1b[2m" : "",
+          spec.fg === null ? "" : ansi(spec.fg, "fg"),
+          spec.bg === null ? "" : ansi(spec.bg, "bg"),
+        ].join("")
     return {
       fg: spec.fg === null ? undefined : rgba(spec.fg, "fg"),
       bg: spec.bg === null ? undefined : rgba(spec.bg, "bg"),
@@ -647,5 +672,5 @@ export const makeTheme = (
   const form = Object.fromEntries(
     formStyleNames.map((name) => [name, style(formStyleSpecs[name])]),
   ) as Theme["form"]
-  return { scheme, appearance, depth, noColor, styles, form, rgba, ansi }
+  return { scheme, appearance, depth, noColor, styled, styles, form, rgba, ansi }
 }

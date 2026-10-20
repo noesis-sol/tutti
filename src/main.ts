@@ -90,6 +90,7 @@ import {
   appearanceOf,
   makeTheme,
   outputAppearance,
+  printedTheme,
   type Theme,
 } from "./ui/theme.ts"
 import {
@@ -263,8 +264,11 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       )
 
       const depth = tty.colourDepth === "truecolor" ? "truecolor" : "256"
-      const themeOf = (appearance: Appearance) =>
-        makeTheme(config.scheme.scheme, { appearance, depth, noColor: config.noColor })
+      const themeOf = (appearance: Appearance, styled = true) =>
+        makeTheme(config.scheme.scheme, { appearance, depth, noColor: config.noColor, styled })
+      /** The theme of what is printed to `out` with no renderer's appearance: unstyled off a TTY. */
+      const printedThemeOf = (out: Out) =>
+        printedTheme(themeOf, config.appearance, { dumb: tty.dumb, tty: out.tty })
       // The main screen's theme: the box's, and the line form's. A dumb terminal isn't asked for
       // its background.
       const mainTheme =
@@ -358,7 +362,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       }) =>
         Effect.gen(function* () {
           if (config.feature === null) return undefined
-          const theme = themeOf(yield* outputAppearance(config.appearance, null))
+          const theme = yield* printedThemeOf(io.out)
           const featured = yield* planAndFile(
             { request: config.feature, repo: config.repo, yes: config.yes },
             {
@@ -439,13 +443,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             }),
           ),
         )
-        const theme =
-          mainTheme ??
-          themeOf(
-            tty.dumb
-              ? appearanceOf(config.appearance, null)
-              : yield* outputAppearance(config.appearance, null),
-          )
+        const theme = mainTheme ?? (yield* printedThemeOf(stdout))
         return yield* finish(ran, yield* reportOut(theme), false)
       }
       if (asks === "no") {
