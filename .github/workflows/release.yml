@@ -1,9 +1,9 @@
 # Releases a version (§ 12 Releases) for each v* tag pushed: the check first, then the six builds
-# (scripts/build.sh, cross-compiled on Linux), their archives tutti_<ver>_<os>_<arch>[_musl].tar.gz
-# with checksums.txt, signed with the ed25519 release key as checksums.txt.sig, and the archives'
-# build provenance attested. A tag with a suffix (v1.2.0-rc.1) makes a pre-release. Run it from the
-# Actions tab (workflow_dispatch) with a tag to release an existing tag again: its notes and assets
-# are replaced.
+# (scripts/build.sh, cross-compiled on Linux), each run on its own system, their archives
+# tutti_<ver>_<os>_<arch>[_musl].tar.gz with checksums.txt, signed with the ed25519 release key as
+# checksums.txt.sig, and the archives' build provenance attested. A tag with a suffix (v1.2.0-rc.1)
+# makes a pre-release. Run it from the Actions tab (workflow_dispatch) with a tag to release an
+# existing tag again: its notes and assets are replaced.
 #
 # Releasing: in CHANGELOG.md, rename "## Unreleased" to "## [X.Y.Z] - YYYY-MM-DD" (its section
 # becomes the notes, scripts/release-notes.sh), set package.json's version to X.Y.Z, commit on main,
@@ -122,7 +122,8 @@ jobs:
           compression-level: 0 # already gzipped
           retention-days: 7
 
-  # The archives that a runner here can run: each unpacks and prints the bare version.
+  # Each archive on a runner of its system and architecture: each unpacks and prints the bare
+  # version. The musl ones run in Alpine, in docker on the glibc runner of their architecture.
   run:
     needs: build
     strategy:
@@ -133,8 +134,15 @@ jobs:
           - target: linux-x64-musl
             runner: ubuntu-latest
             alpine: true
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: linux-arm64-musl
+            runner: ubuntu-24.04-arm
+            alpine: true
           - target: darwin-arm64
             runner: macos-latest
+          - target: darwin-x64
+            runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     steps:
