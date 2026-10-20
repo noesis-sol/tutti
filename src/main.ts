@@ -52,9 +52,9 @@ import { interview, interviewEnding } from "./run/interview.ts"
 import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
 import {
   check as checkNothing,
+  endIfNothing,
   heldAtStart,
   type Options as NothingOptions,
-  nothingToRun,
   type Output,
   report as reportNothing,
   themeStyles,
@@ -314,11 +314,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       }
       /** Whether there is nothing to run, which it then reports on the main screen. */
       const nothingReported = Effect.gen(function* () {
-        if (Result.isFailure(unmerged) || !(yield* nothingToRun(nothingOptions(), output))) {
-          return false
-        }
-        yield* events.emit({ kind: "end", code: exitCodes.ok })
-        return true
+        if (Result.isFailure(unmerged)) return false
+        return (yield* endIfNothing(nothingOptions(), output)) !== null
       })
       /** Nothing to run, to report once the renderer has gone; null when there is something. */
       const nothingYet = Effect.gen(function* () {

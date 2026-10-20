@@ -2,7 +2,7 @@
 // run under TestClock. Each asserts the run's log lines, its event records, the phases its tickets
 // went through and ended in (with no PHASE_BUG), that it left no fiber or process behind it, and
 // its exit code. Nothing to run ends before the run's loop, as main checks it: those scenarios
-// assert what main does there, its done line, its record and what it prints.
+// assert what main does there: its done line, its records, what it prints and its exit code.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -11,7 +11,7 @@ import { Console, Duration, Effect, Fiber, Queue } from "effect"
 import { carriedTickets } from "../src/run/carry.ts"
 import type { DrainRequest } from "../src/run/drain.ts"
 import { line } from "../src/run/log.ts"
-import { heldAtStart, nothingToRun } from "../src/run/nothing.ts"
+import { endIfNothing, heldAtStart } from "../src/run/nothing.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import { stillUnmerged } from "../src/run/unmerged.ts"
@@ -1094,7 +1094,7 @@ describe("nothing to run", () => {
 
   /**
    * What main does before the run's loop: it reads the tickets left unmerged and the workers the
-   * last run left, then checks for something to run, which it reports when there is none.
+   * last run left, then checks for something to run, and ends with exit 0 when there is none.
    */
   const starts = async (seeds: BacklogBuilder, state?: State) => {
     const repo = folder("repo")
@@ -1108,7 +1108,7 @@ describe("nothing to run", () => {
       },
       Effect.gen(function* () {
         const unmerged = yield* stillUnmerged({ repo, base: "main" })
-        const nothing = yield* nothingToRun(
+        const exitCode = yield* endIfNothing(
           {
             scope: null,
             filter: { excludeTypes: ["epic"] },
@@ -1120,7 +1120,7 @@ describe("nothing to run", () => {
           },
           { _tag: "Plain" },
         )
-        return { nothing, records: yield* (yield* Captured).records }
+        return { exitCode, records: yield* (yield* Captured).records }
       }).pipe(Effect.provideService(Console.Console, console)),
     )
     if (ran.exit._tag === "Failure") throw new Error(`the check failed: ${ran.exit.cause}`)
@@ -1139,10 +1139,14 @@ describe("nothing to run", () => {
         .ticket("e.1", { parent: "e", status: "closed" })
         .ticket("k", { status: "closed" }),
     )
-    expect(ran.nothing).toBe(true)
+    // The run ends there, exit 0, without its loop.
+    expect(ran.exitCode).toBe(0)
     expect(ran.printed).toEqual(["✓ All done", "  Still open: e (bd close e)"])
     expect(ran.log).toEqual(["READY_EMPTY after 0 tickets: everything is done"])
-    expect(ran.records.map((record) => record.kind)).toEqual(["done"])
+    expect(ran.records).toEqual([
+      expect.objectContaining({ kind: "done" }),
+      expect.objectContaining({ kind: "end", code: 0 }),
+    ])
   })
 
   test("every ready ticket held back: nothing ready, each hold with its count", async () => {
@@ -1155,7 +1159,7 @@ describe("nothing to run", () => {
         .ticket("b", { blockedBy: ["u"] })
         .ticket("f", { dependencies: [{ id: "u", type: "discovered-from" }] }),
     )
-    expect(ran.nothing).toBe(true)
+    expect(ran.exitCode).toBe(0)
     expect(ran.printed).toEqual([
       "○ Nothing ready to run",
       "  1 ticket waits for its subtickets to merge",
@@ -1166,12 +1170,15 @@ describe("nothing to run", () => {
     expect(ran.log).toEqual(["READY_EMPTY after 0 tickets: nothing ready"])
     expect(ran.records).toEqual([
       expect.objectContaining({ kind: "done", text: "READY_EMPTY after 0 tickets: nothing ready" }),
+      expect.objectContaining({ kind: "end", code: 0 }),
     ])
   })
 
   test("a ticket a run would start, or a worker the last run left, is something to run", async () => {
     const ready = await starts(backlog().ticket("k"))
-    expect(ready.nothing).toBe(false)
+    // The run goes on to its loop: no exit code yet, and nothing said.
+    expect(ready.exitCode).toBeNull()
+    expect(ready.records).toEqual([])
     const left: TicketRecord = {
       session: "session-k",
       worktree: "/worktrees/k",
@@ -1185,7 +1192,7 @@ describe("nothing to run", () => {
       version: stateVersion,
       tickets: { k: left },
     })
-    expect(carried.nothing).toBe(false)
+    expect(carried.exitCode).toBeNull()
     expect(carried.printed).toEqual([])
     expect(carried.log).toEqual([])
   })

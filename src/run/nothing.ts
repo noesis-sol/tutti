@@ -12,6 +12,7 @@ import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
 import * as free from "./deferredFree.ts"
 import { EventStream } from "./eventstream.ts"
+import { exitCodes } from "./holds.ts"
 import { dated, detail, type Line, Log, line } from "./log.ts"
 import * as scope from "./scope.ts"
 
@@ -495,4 +496,19 @@ export const nothingToRun = (
     if (Result.isFailure(n) || n.success === null) return false
     yield* report(n.success, output)
     return true
+  })
+
+/**
+ * Ends the run before its loop when it has nothing to run, as main does: reported (see
+ * `nothingToRun`), then the end record with exit code 0, which it gives back; null when the run has
+ * something to run and goes on to its loop.
+ */
+export const endIfNothing = (
+  options: Options,
+  output: Output,
+): Effect.Effect<number | null, never, Beads | Git | Log | EventStream> =>
+  Effect.gen(function* () {
+    if (!(yield* nothingToRun(options, output))) return null
+    yield* (yield* EventStream).emit({ kind: "end", code: exitCodes.ok })
+    return exitCodes.ok
   })
