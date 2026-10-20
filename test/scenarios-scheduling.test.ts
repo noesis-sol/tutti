@@ -639,10 +639,10 @@ describe("blockers and follow-ups", () => {
         .ticket("f", { priority: 2, dependencies: [{ id: "a", type: "discovered-from" }] }),
       scripts: (world, places) => ({
         a: [works(world, places, "a", { last: [sleep("2 minutes")] })],
-        b: [works(world, places, "b")],
-        f: [works(world, places, "f")],
+        b: [works(world, places, "b", { takes: "1 minute" })],
+        f: [works(world, places, "f", { takes: "2 minutes" })],
       }),
-      during: () => passes("3 minutes"),
+      during: () => passes("5 minutes"),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", f: "Done" })
@@ -706,26 +706,19 @@ describe("blockers and follow-ups", () => {
 })
 
 describe("waits for merge", () => {
-  test("a ticket that started too early goes back in the queue, keeping its place under --limit", async () => {
-    // b's worker finds it needs a's work, links a as its blocker and stops with nothing done. c is
-    // ready all along, but under --limit 2 b's place is kept for it: c never starts.
+  test("a ticket that started too early goes back in the queue, and counts once", async () => {
+    // b's worker finds it needs a's work, links a as its blocker and stops with nothing done.
     const ran = await runs({
-      backlog: backlog()
-        .ticket("a", { priority: 0 })
-        .ticket("b", { priority: 1 })
-        .ticket("c", { priority: 2 }),
+      backlog: backlog().ticket("a", { priority: 0 }).ticket("b", { priority: 1 }),
       limit: 2,
       scripts: (world, places) => ({
         a: [works(world, places, "a", { takes: "3 minutes" })],
         b: [needs(world, "b", "a"), works(world, places, "b")],
-        c: [works(world, places, "c")],
       }),
       during: () => passes("4 minutes"),
     })
     expectClean(ran, 0)
-    expectPhases(ran, { a: "Done", b: "Done", c: "Queued" })
-    expect(pathOf(ran, "c")).toEqual(["Queued"])
-    expect(ran.log.some((text) => text.includes("c dispatching"))).toBe(false)
+    expectPhases(ran, { a: "Done", b: "Done" })
     expect(pathOf(ran, "b")).toEqual([
       "Queued",
       "Working",
@@ -764,11 +757,10 @@ describe("waits for merge", () => {
       { op: "remove", id: "b", force: false },
     ])
   }, 30_000)
-})
 
-describe("--limit and waits for merge", () => {
-  test("a ticket whose blocker never merges keeps its place: the run ends LIMIT_REACHED", async () => {
-    // a closes without a commit and is left for review, so b, waiting for it, never starts again.
+  test("under --limit, its place goes to the next ready ticket until it starts again", async () => {
+    // As orchestra's: b doesn't count toward --limit while it waits, so c starts in its place. a
+    // closes without a commit and is left for review, so b never starts again.
     const ran = await runs({
       backlog: backlog()
         .ticket("a", { priority: 0 })
@@ -778,21 +770,33 @@ describe("--limit and waits for merge", () => {
       scripts: (world, places) => ({
         a: [closesUncommitted(world, places, "a", "1 minute")],
         b: [needs(world, "b", "a")],
+        c: [works(world, places, "c", { takes: "2 minutes" })],
       }),
-      during: () => passes("2 minutes"),
+      during: () => passes("3 minutes"),
     })
     expectClean(ran, 0)
-    expectPhases(ran, { a: "Review", b: "Waiting", c: "Queued" })
+    expectPhases(ran, { a: "Review", b: "Waiting", c: "Done" })
     expect(pathOf(ran, "b")).toEqual(["Queued", "Working", "Waiting"])
+    expect(dispatches(ran)).toEqual(["a 0m", "b 0m", "c 0m"])
     expectLog(ran, [
       "[1/2] a dispatching: a",
       "[2/2] b dispatching: b",
       /^ {2}WAITS_FOR_MERGE: b waits for a to merge; /,
+      "[2/2] c dispatching: c",
       /^ {2}CLOSED_WITHOUT_COMMIT: no commit on tutti\/a names a; /,
+      closedLine("c"),
       "LIMIT_REACHED at 2 tickets",
     ])
-    expect(ran.log.some((text) => text.includes("c dispatching"))).toBe(false)
-    expectEvents(ran, ["dispatch", "dispatch", "waits", "warn", "done", "end"])
+    expectEvents(ran, [
+      "dispatch",
+      "dispatch",
+      "waits",
+      "dispatch",
+      "warn",
+      "closed",
+      "done",
+      "end",
+    ])
   }, 30_000)
 })
 

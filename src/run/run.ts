@@ -1012,7 +1012,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       yield* logs.write(text)
     } else {
       const n = yield* scheduler.started
-      const how = state.windDown !== null ? "drained" : n >= config.limit ? "limit" : "empty"
+      const how =
+        state.windDown !== null ? "drained" : (yield* scheduler.limitReached) ? "limit" : "empty"
       const text = line`${doneLine(n, how)}${yield* scopePart}`
       closing = text
       closed = Ending.Done({ text, tickets: n, limit: config.limit, took: now - begun })

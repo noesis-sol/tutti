@@ -195,10 +195,7 @@ export interface Scheduler {
    * as for the usage limit's reset (§ 4.12).
    */
   readonly interrupt: Effect.Effect<void>
-  /**
-   * Whether the run has started as many tickets as --limit allows, and none of them waits to start
-   * again: a ticket back in the queue until its blocker merges keeps its place.
-   */
+  /** Whether the run has started as many tickets as --limit allows. */
   readonly limitReached: Effect.Effect<boolean>
 }
 
@@ -257,11 +254,6 @@ const counts = (
 interface Slots {
   readonly running: ReadonlySet<string>
   readonly started: number
-  /**
-   * The numbers of the tickets running, and of those put back in the queue until their blocker
-   * merges (WAITS_FOR_MERGE), which keep their number and their place under --limit.
-   */
-  readonly numbers: ReadonlyMap<string, number>
   /** The running tickets dispatched, or carried with their issue: their footprints and labels. */
   readonly issues: ReadonlyMap<string, Issue>
   /** The solo ticket running, if any. */
@@ -281,7 +273,6 @@ export const make = (
     const slots = yield* Ref.make<Slots>({
       running: new Set(),
       started: 0,
-      numbers: new Map(),
       issues: new Map(),
       solo: null,
     })
@@ -327,14 +318,14 @@ export const make = (
       })
     })
 
-    // Whether the ticket is back in the queue until its blocker merges (WAITS_FOR_MERGE), or
-    // already queued again from there; not one an environment hold reopened.
+    // A ticket dispatched (`counted`) that started too early, put back in the queue until its
+    // blocker merges (WAITS_FOR_MERGE), counts toward --limit once, as it starts again.
     const requeued = (state: State, ticket: string) => {
       const phase = state.tickets.get(ticket)?.phase
       return phase?._tag === "Waiting" ? phase.for !== "probe" : waiting(state, ticket)
     }
 
-    const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue) =>
+    const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue, counted = false) =>
       Effect.gen(function* () {
         if (issue?.parent !== undefined) parentOf.set(ticket, issue.parent)
         yield* Ref.update(slots, (s) => ({
@@ -345,13 +336,13 @@ export const make = (
         }))
         yield* showQueue
         const release = Effect.gen(function* () {
-          const kept = requeued(yield* ledger.current, ticket)
+          const again = counted && requeued(yield* ledger.current, ticket)
           yield* Ref.update(slots, (s) => {
             skipSaid.forget(ticket)
             return {
               ...s,
               running: new Set([...s.running].filter((id) => id !== ticket)),
-              numbers: kept ? s.numbers : new Map([...s.numbers].filter(([id]) => id !== ticket)),
+              started: again ? s.started - 1 : s.started,
               issues: new Map([...s.issues].filter(([id]) => id !== ticket)),
               solo: s.solo === ticket ? null : s.solo,
             }
@@ -380,22 +371,10 @@ export const make = (
         }
       })
 
-    // A ticket started again, as one put back in the queue until its blocker merged
-    // (WAITS_FOR_MERGE), keeps its number: it counts toward --limit once.
     const dispatch = (issue: Issue, ids: ReadonlyArray<string>) =>
       Effect.gen(function* () {
-        const again = (yield* Ref.get(slots)).numbers.has(issue.id)
-        const s = yield* Ref.updateAndGet(slots, (s) =>
-          again
-            ? s
-            : {
-                ...s,
-                started: s.started + 1,
-                numbers: new Map([...s.numbers, [issue.id, s.started + 1]]),
-              },
-        )
-        const n = s.numbers.get(issue.id) ?? s.started
-        const text = dispatchLine(n, options.limit, issue)
+        const s = yield* Ref.updateAndGet(slots, (s) => ({ ...s, started: s.started + 1 }))
+        const text = dispatchLine(s.started, options.limit, issue)
         const solo = isSolo(issue) ? { ticket: issue.id } : soloState(s)
         const queue = counts(yield* ledger.current, ids, solo, [
           issue.id,
@@ -405,7 +384,7 @@ export const make = (
           kind: "dispatch",
           ticket: issue.id,
           title: issue.title,
-          n,
+          n: s.started,
           limit: options.limit,
           ...queue,
           text,
@@ -413,40 +392,23 @@ export const make = (
         const moved = yield* ledger.transition(issue.id, Cause.Dispatched(), { beside: [record] })
         if (Result.isFailure(moved)) {
           // A PHASE_BUG, which the ledger logged: nothing starts, and nothing is counted.
-          if (!again) {
-            yield* Ref.update(slots, (s) => ({
-              ...s,
-              started: s.started - 1,
-              numbers: new Map([...s.numbers].filter(([id]) => id !== issue.id)),
-            }))
-          }
+          yield* Ref.update(slots, (s) => ({ ...s, started: s.started - 1 }))
           return false
         }
         yield* logs.write(text)
-        yield* occupy(issue.id, options.start.start(issue), issue)
+        yield* occupy(issue.id, options.start.start(issue), issue, true)
         return true
       })
 
-    // Whether `issue` may take a slot now: past --limit, only a ticket the run started already.
-    const mayStart = (issue: Issue) =>
-      Effect.gen(function* () {
-        const s = yield* Ref.get(slots)
-        const state = yield* ledger.current
-        return (
-          s.running.size < options.concurrent &&
-          (s.started < options.limit || s.numbers.has(issue.id)) &&
-          state.windDown === null &&
-          (yield* taking)
-        )
-      })
-
-    // --limit is reached once the run has started that many tickets and none of them waits to
-    // start again; the done line says LIMIT_REACHED once it has started that many all the same.
-    const limitReached = Effect.gen(function* () {
+    const mayStart = Effect.gen(function* () {
       const s = yield* Ref.get(slots)
-      if (s.started < options.limit) return false
       const state = yield* ledger.current
-      return ![...s.numbers.keys()].some((id) => !s.running.has(id) && requeued(state, id))
+      return (
+        s.running.size < options.concurrent &&
+        s.started < options.limit &&
+        state.windDown === null &&
+        (yield* taking)
+      )
     })
 
     // Moves a waiting ticket to the phase `held` says: HeldBack for its reason, or Queued; one held
@@ -635,9 +597,8 @@ export const make = (
           for (const [id, held] of overlaps) holds.set(id, held.why)
           const free = notHeld.filter((issue) => !overlaps.has(issue.id))
           // The pick: the first ticket free, unless a solo ticket runs, or is first in line and
-          // waits for the running tickets to finish. Past --limit, only one the run started.
-          const first =
-            s.started < options.limit ? free[0] : free.find((issue) => s.numbers.has(issue.id))
+          // waits for the running tickets to finish.
+          const first = free[0]
           let start: Issue | undefined
           let next: string | null = null
           if (first !== undefined && s.solo === null) {
@@ -656,12 +617,10 @@ export const make = (
             if (soloWhy !== "") yield* logs.write(soloWhy)
           }
           // With a slot free and none to start, only a solo ticket keeps the free ones waiting.
-          if (slot && start === undefined && (s.solo !== null || next !== null)) {
-            for (const issue of free) holds.set(issue.id, "solo")
-          }
+          if (slot && start === undefined) for (const issue of free) holds.set(issue.id, "solo")
           // The others settle once the slots are filled, as the last pick leaves them: one
           // dispatched changes what holds the rest, and they aren't released only to be held again.
-          if (start === undefined || !(yield* mayStart(start))) {
+          if (start === undefined || !(yield* mayStart)) {
             for (const issue of inLine) yield* settle(issue.id, holds.get(issue.id), ids)
             // A ticket that ended while its footprint was read no longer holds the others back.
             if (overlaps.size > 0 && (yield* Ref.get(slots)).running !== s.running) continue
@@ -710,10 +669,10 @@ export const make = (
       run,
       fillTrying: fillTries(1),
       freed: Queue.take(freed),
-      carry: occupy,
+      carry: (ticket, work, issue) => occupy(ticket, work, issue),
       started: Effect.map(Ref.get(slots), (s) => s.started),
       running: Effect.map(Ref.get(slots), (s) => s.running),
       interrupt: FiberSet.clear(tickets),
-      limitReached,
+      limitReached: Effect.map(Ref.get(slots), (s) => s.started >= options.limit),
     }
   })
