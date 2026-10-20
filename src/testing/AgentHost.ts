@@ -9,17 +9,17 @@
 // CLI starts by itself.
 //
 // Every message is recorded in Transcripts and folded into the worker's state as the live layer
-// does it (makeWorkers). The layer speaks for the CLI where a script can't know the uuids: each send
-// gets its command_lifecycle (`queued` when pushed, `started` when a Wait takes it, `completed`
-// after the result of the turn that took it), a result lists in `user_message_uuids` the sends
-// taken since the last result unless the script lists them itself, and an `idle` is held back
-// while a send waits untaken, as the CLI sends `idle` only after the last queued turn. An interrupt
-// cancels the sends still queued (§ 4.8): in its receipt, as `interrupt({ cancelQueued: true })`
-// does, or one by one with `cancel_async_message`, as on a CLI without `interrupt_cancel_queued_v1`.
-// Everything the layer is sent is recorded, in order: starts, resumes, messages as the SDK would get
-// them (client_composed or origin human), interrupts and their receipts, cancel_async_message
-// requests and their answers, the answers to permission requests and elicitations, closes and ends.
-// Recording reads them back.
+// does it (makeWorkers), and each send is recorded there as it is pushed. The layer speaks for the
+// CLI where a script can't know the uuids: each send gets its command_lifecycle (`queued` when
+// pushed, `started` when a Wait takes it, `completed` after the result of the turn that took it), a
+// result lists in `user_message_uuids` the sends taken since the last result unless the script
+// lists them itself, and an `idle` is held back while a send waits untaken, as the CLI sends `idle`
+// only after the last queued turn. An interrupt cancels the sends still queued (§ 4.8): in its
+// receipt, as `interrupt({ cancelQueued: true })` does, or one by one with `cancel_async_message`,
+// as on a CLI without `interrupt_cancel_queued_v1`. Everything the layer is sent is recorded, in
+// order: starts, resumes, messages as the SDK would get them (client_composed or origin human),
+// interrupts and their receipts, cancel_async_message requests and their answers, the answers to
+// permission requests and elicitations, closes and ends. Recording reads them back.
 import type {
   CanUseTool,
   ElicitationRequest,
@@ -356,6 +356,7 @@ export const layer = (
           const sdk = userMessage(message, uuid, session.sessionId)
           yield* record(Sent.Message({ ticket, message: sdk }))
           yield* workers.fold(session.entry, WorkerEvent.Sent({ uuid }))
+          yield* workers.sent(session.entry, session.sessionId, sdk)
           yield* lifecycle(session, uuid, "queued")
           yield* Ref.update(session.queued, (uuids) => [...uuids, uuid])
           yield* Queue.offer(session.inbox, sdk)

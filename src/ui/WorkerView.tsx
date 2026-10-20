@@ -728,7 +728,16 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   const store = transcript?.state ?? noTranscript
   const state = useSyncExternalStore(store.subscribe, store.get)
   const window = state.window
-  const entries = useMemo(() => entriesOf(window.items, state.live), [window.items, state.live])
+  // Your messages sent while a turn is under way are queued until the transcript says they were
+  // taken; the composer shows them till then, the transcript after.
+  const underWay = found?.state != null && !hasSettled(found.state)
+  const sends = useSends(ticket, window.latest, underWay)
+  const queuedKey = sends.queued.map((send) => send.uuid).join(" ")
+  const queued = useMemo(() => new Set(queuedKey === "" ? [] : queuedKey.split(" ")), [queuedKey])
+  const entries = useMemo(
+    () => entriesOf(window.items, state.live, queued),
+    [window.items, state.live, queued],
+  )
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const shown = bounded(entries, expanded, window.following)
   const flat = mounted(shown, expanded)
@@ -749,8 +758,6 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
 
   // The composer: you write in it while it is chosen and no box is open over the view. It takes
   // the focus, or gives it up, as the key is pressed, so that the keys after it go where it says.
-  // Your messages sent while a turn is under way are queued until the transcript says they were
-  // taken.
   const box = useSyncExternalStore(input.box.subscribe, input.box.get)
   const field = useRef<TextareaRenderable>(null)
   const composingNow = useRef(false)
@@ -762,8 +769,6 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
     else if (input.box.get() === null) field.current?.focus()
   }
   const typing = composing && box === null
-  const underWay = found?.state != null && !hasSettled(found.state)
-  const sends = useSends(ticket, window.latest, underWay)
   const send = (text: string) => {
     if (found === undefined) return
     const uuid = crypto.randomUUID()

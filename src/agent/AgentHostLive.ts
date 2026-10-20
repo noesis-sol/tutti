@@ -2,8 +2,9 @@
 // session, in streaming input mode. A session's inbox is an Effect Queue the SDK reads as its
 // prompt, an AsyncIterable<SDKUserMessage>; a message pushed while a turn is under way joins that
 // turn or waits in the CLI's own queue (§ 4.1). Every message the session sends is recorded in
-// Transcripts and folded into the worker's state (makeWorkers); its hook callbacks are folded in
-// too, and its stderr goes to the transcript's stderr.log (workerOptions).
+// Transcripts and folded into the worker's state (makeWorkers), and every message pushed into its
+// inbox is recorded there as it is pushed; its hook callbacks are folded in too, and its stderr
+// goes to the transcript's stderr.log (workerOptions).
 //
 // Each session's first system/init is checked (§ 4.1): the permission mode in effect, logged once
 // and kept for the START block when it isn't the one asked for; the MCP servers, where any the
@@ -475,7 +476,9 @@ export const layer = (
           const uuid = message.uuid ?? randomUUID()
           // Outstanding before the CLI can see it, so its turn's result can't come first.
           yield* workers.fold(session.entry, WorkerEvent.Sent({ uuid }))
-          yield* Queue.offer(session.inbox, userMessage(message, uuid, session.sessionId))
+          const sdk = userMessage(message, uuid, session.sessionId)
+          yield* workers.sent(session.entry, session.sessionId, sdk)
+          yield* Queue.offer(session.inbox, sdk)
           return uuid as string
         })
 

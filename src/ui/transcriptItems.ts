@@ -133,12 +133,25 @@ const toolOf = (block: Readonly<Record<string, unknown>>, live: boolean): Buildi
 
 /**
  * The entries of `items`, oldest first, with `live` (the partial messages being built) at the end
- * of the worker's own or under their Agent call.
+ * of the worker's own or under their Agent call. A message sent to the worker is left out while its
+ * uuid is in `queued` (the composer shows it below, § 7.5), and once a `command_lifecycle` in
+ * `items` says the CLI cancelled it: it never reached the worker.
  */
 export const entriesOf = (
   items: ReadonlyArray<Item>,
   live: ReadonlyArray<Live> = [],
+  queued: ReadonlySet<string> = new Set(),
 ): ReadonlyArray<Entry> => {
+  const cancelled = new Set<string>()
+  for (const item of items) {
+    const m = item.message as unknown as Readonly<Record<string, unknown>>
+    const uuid = asString(m.command_uuid)
+    if (m.type === "command_lifecycle" && m.state === "cancelled" && uuid !== undefined) {
+      cancelled.add(uuid)
+    }
+  }
+  const unsaid = (uuid: string | undefined) =>
+    uuid !== undefined && (queued.has(uuid) || cancelled.has(uuid))
   const top: Array<Node> = []
   const tools = new Map<string, Building>()
   // The groups of a subagent's items whose Agent call isn't in the window, by that call's ID.
@@ -191,7 +204,11 @@ export const entriesOf = (
         }
       }
       // What was said to the worker itself; a subagent's prompt is its Agent call's input.
-      if (parent === null && !blocks.some((b) => b?.type === "tool_result")) {
+      if (
+        parent === null &&
+        !blocks.some((b) => b?.type === "tool_result") &&
+        !unsaid(asString(m.uuid))
+      ) {
         const text = resultText(content)
         if (text.trim() !== "") place(null, { _tag: "Prompt", key: `${item.seq}`, text })
       }

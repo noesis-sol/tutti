@@ -586,10 +586,10 @@ describe("what it was sent", () => {
       ["s-1", "command_lifecycle"],
       ["s-1", "system"],
     ])
-    // The first session's 9 messages (a tool call's 2 and a send's 3 among them), then the
-    // resumed one's 7.
+    // The first session's 10 messages (a tool call's 2 and a send's 4 among them, the message
+    // itself first), then the resumed one's 8.
     expect(done.transcript.map((item) => item.seq)).toEqual(
-      Array.from({ length: 16 }, (_, i) => i + 1),
+      Array.from({ length: 18 }, (_, i) => i + 1),
     )
     expect(done.transcript.every((item) => item.session === "s-1")).toBe(true)
   })

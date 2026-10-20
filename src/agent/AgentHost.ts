@@ -3,7 +3,9 @@
 // WorkerState, folded from its session's messages, hooks and open attention requests (§ 4.2), which
 // the host keeps in a SubscriptionRef from the worker's first start until it is ended; and a stream
 // of its sessions' raw SDK messages, in the shape Transcripts records them. The host itself records
-// every message in Transcripts, so a reader that subscribes late misses nothing from the file.
+// every message in Transcripts, so a reader that subscribes late misses nothing from the file. It
+// records there too each message it sends a worker, as it pushes it: the SDK doesn't echo them
+// (tutti doesn't ask it to replay user messages), and the worker view shows them (§ 7.5).
 //
 // A call Claude Code denies without asking comes as a `permission_denied` (§ 4.5), which names the
 // call's tool use but not its input: each worker keeps its last calls' inputs, from its assistant
@@ -277,6 +279,15 @@ export interface Workers {
    * reported to UsageLimits, when there is one (§ 4.12).
    */
   readonly emit: (entry: WorkerEntry, session: string, message: SDKMessage) => Effect.Effect<void>
+  /**
+   * A message sent into the session `session`, as it is pushed: recorded in Transcripts alone. The
+   * session doesn't send it back, so it isn't published, and the send is folded in as `Sent`.
+   */
+  readonly sent: (
+    entry: WorkerEntry,
+    session: string,
+    message: SDKUserMessage,
+  ) => Effect.Effect<void>
   /** Waits until the worker's state counts every one of its open attention requests. */
   readonly counted: (entry: WorkerEntry) => Effect.Effect<void>
   /** Forgets the worker: its streams end. */
@@ -427,6 +438,7 @@ export const makeWorkers = (
             yield* usage.value.report(message.rate_limit_info)
           }
         }),
+      sent: (entry, session, message) => transcripts.record(entry.ticket, session, message),
       counted: (entry) =>
         Effect.gen(function* () {
           const open = yield* openCount(entry.ticket)
