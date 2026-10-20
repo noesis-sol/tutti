@@ -7,12 +7,14 @@ import { createTestRenderer } from "@opentui/core/testing"
 import { testRender } from "@opentui/react/test-utils"
 import { Effect, Exit, Option, Queue, Scope, Stream, SubscriptionRef } from "effect"
 import { act, type ReactNode, useEffect } from "react"
+import { Filing } from "../src/agent/interviewTools.ts"
 import { makeCommands, UiCommand } from "../src/run/commands.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { emptyView, type RunView } from "../src/run/runView.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
+import { InterviewContext } from "../src/ui/InterviewView.tsx"
 import {
   fatalEvents,
   fatalHandler,
@@ -172,12 +174,17 @@ describe("the bridge", () => {
   test("the screen routes by view", async () => {
     const { view } = await bridged()
     const screen = external<Screen>(Screen.Dashboard())
-    const setup = await draw(<Root value={shellValue(view, { screen })} />)
+    const interview = { description: "A feature", filing: external<Filing>(Filing.None()) }
+    const setup = await draw(
+      <InterviewContext.Provider value={interview}>
+        <Root value={shellValue(view, { screen })} />
+      </InterviewContext.Provider>,
+    )
     expect(setup.captureCharFrame()).toContain("Completed")
     await act(async () => screen.set(Screen.Worker({ worker: 2 })))
     await setup.waitForFrame((frame) => frame.includes("← Dashboard"))
     await act(async () => screen.set(Screen.Interview()))
-    await setup.waitForFrame((frame) => frame.includes("Interview"))
+    await setup.waitForFrame((frame) => frame.includes("← Back"))
   })
 
   test("the theme follows the appearance", async () => {
