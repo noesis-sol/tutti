@@ -6,7 +6,7 @@
 // - The variable set to anything else, or `anthropic` with no key, is a setup problem.
 // - Each call takes OrganCall's model and effort as a request override: the model is
 //   defaultModel unless --organ-model names one, and an effort above `high` is sent as `high`, the
-//   Messages API's most.
+//   most @effect/ai-anthropic's request config takes.
 // - The request sends the prompt's system messages alone: no environment section, no account.
 // - An organ that reads the repository with Claude Code's tools (the scout, § 6.3) can't run here,
 //   with no Claude Code: its call fails with InvalidUserInputError.
@@ -75,7 +75,7 @@ export const providerProblems = (
   return Result.isFailure(chosen) ? [chosen.failure] : []
 }
 
-/** The Messages API's effort for an organ's: it has no level above `high`. */
+/** The request's effort for an organ's: @effect/ai-anthropic's config takes none above `high`. */
 export const apiEffort = (
   effort: NonNullable<OrganCallConfig["effort"]>,
 ): "low" | "medium" | "high" => (effort === "low" || effort === "medium" ? effort : "high")
