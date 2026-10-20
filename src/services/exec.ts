@@ -5,10 +5,24 @@
 // it expires: a fiber of its own sends the signals, so the limit holds even while the caller is
 // uninterruptible (§ 3.4). A kill -9 of tutti runs neither, so the group also has a reaper
 // (src/services/reaper.ts) that ends it then, with the same grace; the reaper goes with the group.
+// Bun's node:child_process can lose a command's exit and its output (tutti-cje): exec stops waiting
+// for them a grace after the group has gone, and fails with CommandNotRun.
 import type { ChildProcess as Reaper } from "node:child_process"
 import { writeSync } from "node:fs"
 import { constants } from "node:os"
-import { Cause, Context, Duration, Effect, Exit, Fiber, FileSystem, Schema, Stream } from "effect"
+import {
+  Cause,
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  FileSystem,
+  Schedule,
+  Schema,
+  Scope,
+  Stream,
+} from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { startReaper, stopReaper } from "./reaper.ts"
@@ -21,6 +35,29 @@ export const TimeLimit = {
 
 /** How long a process group has between SIGTERM and SIGKILL, unless the command says otherwise. */
 export const defaultKillGrace: Duration.Duration = Duration.seconds(2)
+
+/**
+ * How long exec waits for a command's exit once its process group has gone, where the exit is due at
+ * once. Bun 1.4.3's node:child_process can lose a child's exit and output, about once in a few
+ * thousand spawns (tutti-cje); past this grace, exec fails with CommandNotRun.
+ */
+export const LostExitGrace = Context.Reference<Duration.Duration>(
+  "tutti/services/exec/LostExitGrace",
+  { defaultValue: () => Duration.seconds(5) },
+)
+
+/** How often exec looks for a command's process group while it waits for the command's exit. */
+const groupPoll = Duration.millis(200)
+
+/** Some process of the group whose leader is `group` is still there. */
+const groupAlive = (group: number): boolean => {
+  try {
+    process.kill(-group, 0)
+    return true
+  } catch {
+    return false
+  }
+}
 
 /** How much of each of stdout and stderr is kept in memory, unless the command says otherwise. */
 export const defaultMaxOutputBytes = 16 * 1024 * 1024
@@ -159,6 +196,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
   const timeLimit = Duration.fromInputUnsafe(command.timeLimit)
   const grace = command.killGrace ?? defaultKillGrace
   const max = command.maxOutputBytes ?? defaultMaxOutputBytes
+  const lostGrace = yield* LostExitGrace
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
@@ -174,6 +212,15 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
           stopReaper(reaper)
           if (group !== undefined) groups.delete(group)
         }),
+      )
+      // The spawner's finalizer waits on the command's exit, so it has a scope of its own: one that
+      // isn't waited on once the exit is lost.
+      const spawned = yield* Scope.make()
+      let lost = false
+      yield* Effect.addFinalizer((exit) =>
+        lost
+          ? Effect.asVoid(Effect.forkDetach(Scope.close(spawned, exit)))
+          : Scope.close(spawned, exit),
       )
       const handle = yield* spawner
         .spawn(
@@ -192,14 +239,25 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
             stderr: "pipe",
           }),
         )
-        .pipe(Effect.mapError(notRun))
+        .pipe(Scope.provide(spawned), Effect.mapError(notRun))
       group = handle.pid
       groups.add(group)
       const leader = group
       reaper = yield* Effect.sync(() =>
         startReaper(leader, Duration.toSeconds(Duration.fromInputUnsafe(grace))),
       )
-      const kill = Effect.ignore(handle.kill({ killSignal: "SIGTERM", forceKillAfter: grace }))
+      // Ends once the group has been gone for the grace, which it is only when its exit is lost.
+      const exitLost = Effect.repeat(
+        Effect.sync(() => groupAlive(leader)),
+        { while: (alive) => alive, schedule: Schedule.spaced(groupPoll) },
+      ).pipe(Effect.andThen(Effect.sleep(lostGrace)), Effect.interruptible)
+      // The spawner's kill ends by waiting on the exit too.
+      const kill = Effect.raceFirst(
+        Effect.interruptible(
+          Effect.ignore(handle.kill({ killSignal: "SIGTERM", forceKillAfter: grace })),
+        ),
+        exitLost,
+      )
 
       // A leader still running at the limit has timed out, whatever code it exits with once killed.
       let timedOut = false
@@ -229,7 +287,21 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         Effect.forkScoped,
       )
 
-      const exit = yield* Effect.exit(handle.exitCode)
+      const exit = yield* Effect.raceFirst(
+        Effect.interruptible(Effect.exit(handle.exitCode)),
+        Effect.as(exitLost, undefined),
+      )
+      if (exit === undefined) {
+        // The output went with the exit: what came of it is no result.
+        lost = true
+        if (timedOut) {
+          return yield* new CommandTimedOut({ command: shown, timeLimit, stderr: stderr.text() })
+        }
+        return yield* new CommandNotRun({
+          command: shown,
+          reason: "its process group ended, but its exit and the end of its output never came",
+        })
+      }
       // The leader has gone. What is left of its group would hold the pipes open, so it goes too.
       yield* kill
       yield* Fiber.join(reading)
