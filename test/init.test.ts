@@ -31,7 +31,8 @@ import {
   summaryLines,
   type TrustOffer,
 } from "../src/init/init.ts"
-import { readConcurrency, readServers } from "../src/init/lineForm.ts"
+import { readConcurrency } from "../src/init/form.ts"
+import { readServers } from "../src/init/lineForm.ts"
 import { fastScript, fullScript, isRunner, runsRunner, suiteMarker } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
 import {
