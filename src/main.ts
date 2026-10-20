@@ -80,6 +80,7 @@ import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/
 import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard, interviewScreen } from "./ui/App.tsx"
 import { liveClipboard } from "./ui/clipboard.ts"
+import { liveUrlOpener } from "./ui/openUrl.ts"
 import { askPlan } from "./ui/PlanConfirmation.tsx"
 import { planConfirmation, streamInput } from "./ui/plain/forms.ts"
 import { chosenLines, TicketCount, Work } from "./ui/questions.ts"
@@ -481,6 +482,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           }
           const shell = yield* screen.shell
           const clipboard = yield* liveClipboard(shell.renderer)
+          const desktop = { clipboard, urlOpener: yield* liveUrlOpener(clipboard) }
           if (asks !== "no") {
             const asked = yield* Effect.result(askStart(shell, themeOf, count))
             if (Result.isFailure(asked)) return { _tag: "Cancelled" } as const
@@ -489,7 +491,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             if (work._tag === "Feature") {
               // The interview, in this renderer; once its epic is filed and you say y, the run.
               const outcome = yield* interview(work.description, {
-                screen: interviewScreen(shell, themeOf, clipboard),
+                screen: interviewScreen(shell, themeOf, desktop),
                 confirm: (plan, question) => askPlan(shell, themeOf, plan, question),
               })
               if (outcome._tag !== "Run") {
@@ -517,7 +519,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                 drains,
                 quits,
                 exitNow: exitNow(destroy),
-                dashboard: dashboard(shell, themeOf, clipboard),
+                dashboard: dashboard(shell, themeOf, desktop),
                 endLater: true,
               }),
             ),

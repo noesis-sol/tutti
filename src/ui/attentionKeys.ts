@@ -5,16 +5,18 @@
 //
 // Every answer names the request drawn on the card when the key was pressed or the button clicked,
 // never one opened since. One no longer open by then (answered elsewhere, by `tutti answer`, or
-// withdrawn) is dropped with a toast. Input to a card is ignored for `settle` ms after its request
+// withdrawn) is dropped with a toast. Open URL opens an elicitation's URL before it answers Accept
+// (openUrl.ts). Input to a card is ignored for `settle` ms after its request
 // appears or changes, so a key meant for the request before can't answer the next. Allow is never
 // focused first: a permission opens on Deny, and one with `defaultToNo` has no one-key allow.
-import { useRef, useState } from "react"
+import { useContext, useRef, useState } from "react"
 import { type Answer, type AttentionRequest, allowsForRun } from "../agent/Attention.ts"
 import { UiCommand } from "../run/commands.ts"
 import type { Card } from "../run/runView.ts"
 import { Box, useInput } from "./keys.ts"
+import { type Opened, openedToast, urlCopiedToast, urlFailedToast } from "./openUrl.ts"
 import { sanitizeLine } from "./sanitize.ts"
-import { useClock, useCommand, useLatestRunView } from "./useRunView.ts"
+import { ShellContext, useClock, useCommand, useLatestRunView } from "./useRunView.ts"
 
 /** How long input to a card is ignored after its request appears or changes, in ms (§ 4.5). */
 export const settle = 500
@@ -185,9 +187,17 @@ export const requestText = (request: AttentionRequest): RequestText => {
 export const staleToast = (ticket: string): string =>
   `${sanitizeLine(ticket)}'s request is no longer open`
 
+/** The URL Accept opens first: a URL elicitation's, when it has one. */
+export const urlToOpen = (request: AttentionRequest, answer: Answer): string | undefined =>
+  request.kind._tag === "Elicitation" && request.kind.mode === "url" && answer._tag === "Accept"
+    ? request.kind.url
+    : undefined
+
 /**
  * Sends `answer` to the request `request` names, if it is still open in the RunView as it is now;
- * else drops it with a toast.
+ * else drops it with a toast. Accepting a URL elicitation opens its URL first, with the shell's
+ * UrlOpener, and toasts how: the Accept is sent once it is opened or copied, if the request is
+ * still open then, and not when it was neither.
  */
 export const useSendAnswer = (): ((
   request: { readonly id: string; readonly ticket: string },
@@ -196,10 +206,23 @@ export const useSendAnswer = (): ((
   const command = useCommand()
   const latest = useLatestRunView()
   const { toasts } = useInput()
-  return (request, answer) => {
-    if (latest().requests.some((open) => open.id === request.id)) {
+  const opener = useContext(ShellContext)?.urlOpener
+  const openOf = (id: string) => latest().requests.find((open) => open.id === id)
+  const send = (request: { readonly id: string; readonly ticket: string }, answer: Answer) => {
+    if (openOf(request.id) !== undefined) {
       command(UiCommand.Answer({ requestId: request.id, answer }))
     } else toasts.show(staleToast(request.ticket))
+  }
+  return (request, answer) => {
+    const open = openOf(request.id)
+    const url = open === undefined ? undefined : urlToOpen(open, answer)
+    if (opener === undefined || url === undefined) return send(request, answer)
+    const opened = (how: Opened) => {
+      if (how === "failed") return toasts.show(urlFailedToast, { failure: true })
+      toasts.show(how === "opened" ? openedToast : urlCopiedToast)
+      send(request, answer)
+    }
+    opener.open(url).then(opened, () => opened("failed"))
   }
 }
 

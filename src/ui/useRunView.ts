@@ -17,6 +17,7 @@ import { type Commands, offer, type UiCommand } from "../run/commands.ts"
 import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
+import type { UrlOpener } from "./openUrl.ts"
 import type { Appearance, Theme } from "./theme.ts"
 import type { TranscriptFeed } from "./transcriptItems.ts"
 
@@ -82,6 +83,8 @@ export interface ShellValue {
   readonly now?: () => number
   /** Where a drag's selection is copied (§ 7.3); nothing is copied when left out. */
   readonly clipboard?: Clipboard
+  /** Where Open URL opens an elicitation's URL (§ 4.5); it only answers Accept when left out. */
+  readonly urlOpener?: UrlOpener
   /** Where a worker view reads its transcript; the view shows none when left out. */
   readonly transcripts?: TranscriptFeed
   /** The tickets whose steered worker has a conflict hand-back waiting (§ 4.3); none when left out. */

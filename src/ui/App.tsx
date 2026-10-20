@@ -15,6 +15,7 @@ import type { Clipboard } from "./clipboard.ts"
 import { Dashboard } from "./Dashboard.tsx"
 import { Input } from "./Input.tsx"
 import { InterviewContext, type InterviewValue, InterviewView } from "./InterviewView.tsx"
+import type { UrlOpener } from "./openUrl.ts"
 import type { Shell } from "./renderer.ts"
 import type { Timer } from "./Toasts.tsx"
 import type { Appearance, Theme } from "./theme.ts"
@@ -54,12 +55,18 @@ export const Root = ({
   </ShellContext.Provider>
 )
 
+/** What the screen hands the desktop: a drag's selection, and Open URL's URL. */
+export interface Desktop {
+  readonly clipboard?: Clipboard
+  readonly urlOpener?: UrlOpener
+}
+
 /** The ShellValue over a screen's `inputs`, in `shell`, bridged for the scope's life. */
 const shellValue = (
   inputs: ScreenInputs,
   shell: Shell,
   themeOf: (appearance: Appearance) => Theme,
-  clipboard?: Clipboard,
+  desktop: Desktop,
 ) =>
   Effect.gen(function* () {
     return {
@@ -69,7 +76,8 @@ const shellValue = (
       appearance: shell.appearance,
       themeOf,
       transcripts: yield* transcriptFeed(inputs.transcripts),
-      ...(clipboard === undefined ? {} : { clipboard }),
+      ...(desktop.clipboard === undefined ? {} : { clipboard: desktop.clipboard }),
+      ...(desktop.urlOpener === undefined ? {} : { urlOpener: desktop.urlOpener }),
     } satisfies ShellValue
   })
 
@@ -85,13 +93,13 @@ const mount = (shell: Shell, node: ReactNode) =>
 
 /**
  * The dashboard a run shows in `shell`'s renderer, drawn in the theme `themeOf` makes, copying a
- * drag's selection with `clipboard`.
+ * drag's selection and opening Open URL's URL with `desktop`.
  */
 export const dashboard =
-  (shell: Shell, themeOf: (appearance: Appearance) => Theme, clipboard?: Clipboard): RunDashboard =>
+  (shell: Shell, themeOf: (appearance: Appearance) => Theme, desktop: Desktop = {}): RunDashboard =>
   (inputs) =>
     Effect.gen(function* () {
-      const value = yield* shellValue(inputs, shell, themeOf, clipboard)
+      const value = yield* shellValue(inputs, shell, themeOf, desktop)
       yield* mount(shell, <Root value={value} />)
     })
 
@@ -100,11 +108,11 @@ export const interviewScreen =
   (
     shell: Shell,
     themeOf: (appearance: Appearance) => Theme,
-    clipboard?: Clipboard,
+    desktop: Desktop = {},
   ): InterviewScreen =>
   (inputs) =>
     Effect.gen(function* () {
-      const value = yield* shellValue(inputs, shell, themeOf, clipboard)
+      const value = yield* shellValue(inputs, shell, themeOf, desktop)
       const interview: InterviewValue = {
         description: inputs.description,
         filing: yield* bridge(inputs.filing),
