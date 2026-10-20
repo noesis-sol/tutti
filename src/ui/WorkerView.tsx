@@ -454,6 +454,9 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
     case "Text":
       return (
         <box id={entryId(entry.key)} paddingLeft={2} flexShrink={0}>
+          {/* Only live text grows: OpenTUI's <markdown> not streaming keeps the blocks the new
+              text starts with, so a quote grown a line there is two. The entry its message lands
+              as has a key of its own, and a new <markdown> parses it whole. */}
           <markdown
             content={entry.text}
             syntaxStyle={looks.markdown}
