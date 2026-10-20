@@ -62,6 +62,29 @@ export const ready = (
     return byPriority(under.filter((issue) => takes(filter, issue)))
   })
 
+/**
+ * How many of `open`, bd's tickets not closed, the queue draws from: those the run may take, in its
+ * scope, a scope being its ticket and the descendants `open` gives it (a closed ticket has none open).
+ */
+export const unclosedIn = (
+  open: ReadonlyArray<Issue>,
+  scope: string | null,
+  filter: Filter,
+): number => {
+  const parentOf = new Map(open.map((issue) => [issue.id, issue.parent]))
+  const inScope = (id: string): boolean => {
+    const seen = new Set<string>()
+    for (let at: string | undefined = id; at !== undefined; at = parentOf.get(at)) {
+      if (at === scope) return true
+      if (seen.has(at)) return false
+      seen.add(at)
+    }
+    return false
+  }
+  return open.filter((issue) => takes(filter, issue) && (scope === null || inScope(issue.id)))
+    .length
+}
+
 /** The ticket's subtickets, theirs and so on, closed or not: bd lists one level at a time. */
 export const descendants = (
   beads: Beads["Service"],

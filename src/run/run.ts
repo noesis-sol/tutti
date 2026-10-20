@@ -42,7 +42,9 @@
 // (fullcheck.ts), and the end record. In plain mode (§ 7.6) every line goes to stdout as the Log writes it; a worker's attention request is a
 // PERMISSION or QUESTION line naming the `tutti answer` command, served from the attention files.
 // When Tty says the terminal can draw the dashboard and main gave the run one, the run shows it
-// (screen.ts) from its start to its end instead, and hands back the summary and closing lines for
+// (screen.ts) from its start to its end instead, its status kept live: the stops (`· stopping`),
+// the scheduler's solo ticket and tickets not closed, the probe's card, triage's verdicts, the
+// holds' banners. It hands back the summary and closing lines for
 // main to print once the renderer is gone (§ 7.1). Given RunOptions.endLater, the run leaves the
 // report and the end record to `finish`, which main runs on the main screen once the renderer is
 // gone: the styled summary and closing line after a dashboard, then the report (report.ts), then
@@ -356,6 +358,13 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const endAsked = yield* Ref.make(false)
 
     const stops = yield* Ref.make<Stops>(noStops)
+    // Changes the stops, the title line saying `· stopping` while one holds the run.
+    const updateStops = (change: (all: Stops) => Stops) =>
+      Effect.gen(function* () {
+        const stopping = (yield* Ref.updateAndGet(stops, change)).first !== null
+        if ((yield* SubscriptionRef.get(status)).stopping === stopping) return
+        yield* SubscriptionRef.update(status, (now) => ({ ...now, stopping }))
+      })
     // The tickets whose workers went on past --ticket-limit: the run doesn't wait for them.
     const overLimit = yield* Ref.make<ReadonlySet<string>>(new Set())
     // Set once the run ends, so that nothing starts after it.
@@ -378,7 +387,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // past its ticket limit goes on, so its hold is said even with nothing else running.
     const stopped = (stop: StopReason) =>
       Effect.gen(function* () {
-        yield* Ref.update(stops, (all) => addStop(all, stop))
+        yield* updateStops((all) => addStop(all, stop))
         const now = runningIn(yield* ledger.current, yield* Ref.get(overLimit))
         if (!stop.held && (now > 0 || stop.why === "TICKET_LIMIT")) {
           const text = hold(stop.text, now)
@@ -494,6 +503,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       start: { start: ticketFiber },
       taking,
       ...(footprints === undefined ? {} : { footprints }),
+      show: ({ solo, unclosed }) =>
+        SubscriptionRef.update(status, (now) => ({ ...now, solo, unclosed })),
     })
 
     // The tickets earlier runs left unmerged, checked before the first dispatch: one merged by hand
@@ -533,6 +544,12 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* watch(
       Stream.runForEach(triage.verdicts, (verdicts) =>
         SubscriptionRef.update(status, (now) => ({ ...now, verdicts })),
+      ),
+    )
+    // The environment probe's session shows as a card while it runs.
+    yield* watch(
+      Stream.runForEach(environment.probing, (probe) =>
+        SubscriptionRef.update(status, (now) => ({ ...now, probe })),
       ),
     )
     yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp)))
@@ -667,7 +684,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           ],
         }))
         for (const ticket of lifts) {
-          yield* Ref.update(stops, (all) => liftStops(all, (stop) => isBlockedOn(stop, ticket)))
+          yield* updateStops((all) => liftStops(all, (stop) => isBlockedOn(stop, ticket)))
           const text = blockedLifted(ticket)
           yield* events.emit({ kind: "hold", ticket, lifted: true, text })
           yield* logs.write(text)
@@ -799,10 +816,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         const probed = yield* environment.probe(yield* Ref.get(stops))
         if (probed._tag === "Ends") break
         if (probed._tag === "Failed") {
-          yield* Ref.update(stops, (all) => ({ ...all, first: probed.stop }))
+          yield* updateStops((all) => ({ ...all, first: probed.stop }))
           break
         }
-        yield* Ref.set(stops, noStops)
+        yield* updateStops(() => noStops)
       }
     })
 
@@ -911,7 +928,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         "panic" in quit
           ? quit.panic
           : stopFor("INTERRUPTED", interruptedText(quit.request.how, saved, handedBack))
-      yield* Ref.update(stops, (now) => ({
+      yield* updateStops((now) => ({
         first: stop,
         others: [now.first, ...now.others].flatMap((other) => (other === null ? [] : [other])),
       }))

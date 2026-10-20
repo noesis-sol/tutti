@@ -69,7 +69,8 @@ import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
 import { Cause, type Hold, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
-import { ready, unmergedLabel } from "./scope.ts"
+import type { Solo } from "./runView.ts"
+import { ready, unclosedIn, unmergedLabel } from "./scope.ts"
 
 /** How often bd ready is read while tickets run: tickets become ready mid-run. */
 export const readyPoll: Duration.Duration = Duration.seconds(30)
@@ -142,6 +143,15 @@ export interface Options {
    * footprints are on: its guesses join their footprints as they come in.
    */
   readonly predictor?: Predictor
+  /** Shows the queue as the dashboard draws it, on each change (§ 7.2). */
+  readonly show?: (queue: QueueShown) => Effect.Effect<void>
+}
+
+/** What the dashboard draws of the queue: the solo ticket, and the tickets it draws from. */
+export interface QueueShown {
+  readonly solo: Solo | null
+  /** The tickets not closed in the run's scope that it takes, as the last fill read them. */
+  readonly unclosed: number | null
 }
 
 /** What one fill did. */
@@ -277,6 +287,9 @@ export const make = (
     let soloSaid = ""
     // The LIKELY_CONFLICT lines said, each once.
     const warned = new Set<string>()
+    // The tickets the queue draws from, as the last fill read them, and the queue last shown.
+    let unclosed: number | null = null
+    let shownLast = ""
 
     const soloState = (s: Slots): SoloState | null =>
       s.solo !== null
@@ -284,6 +297,23 @@ export const make = (
         : soloNext !== null
           ? { ticket: soloNext, next: true }
           : null
+
+    // Shows the queue when it changed since it was last shown.
+    const showQueue = Effect.suspend(() => {
+      const show = options.show
+      if (show === undefined) return Effect.void
+      return Effect.flatMap(Ref.get(slots), (s) => {
+        const solo = soloState(s)
+        const queue: QueueShown = {
+          solo: solo === null ? null : { ticket: solo.ticket, running: solo.next !== true },
+          unclosed,
+        }
+        const key = JSON.stringify(queue)
+        if (key === shownLast) return Effect.void
+        shownLast = key
+        return show(queue)
+      })
+    })
 
     const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue) =>
       Effect.gen(function* () {
@@ -294,6 +324,7 @@ export const make = (
           issues: issue === undefined ? s.issues : new Map([...s.issues, [ticket, issue]]),
           solo: issue !== undefined && isSolo(issue) ? ticket : s.solo,
         }))
+        yield* showQueue
         const release = Effect.andThen(
           Ref.update(slots, (s) => {
             skipSaid.forget(ticket)
@@ -304,7 +335,7 @@ export const make = (
               solo: s.solo === ticket ? null : s.solo,
             }
           }),
-          Queue.offer(freed, undefined),
+          Effect.andThen(showQueue, Queue.offer(freed, undefined)),
         )
         yield* FiberSet.run(tickets, Effect.ensuring(work, release))
       })
@@ -430,6 +461,7 @@ export const make = (
         // unmerged by an earlier run, and of the run's tickets not merged yet. bd show gives the
         // parent of one the run didn't dispatch.
         const open = yield* beads.list()
+        unclosed = unclosedIn(open, options.scope, filter)
         const left = leftUnmerged(
           yield* ledger.current,
           yield* beads.list({ status: "closed", labels: [unmergedLabel] }),
@@ -585,6 +617,7 @@ export const make = (
           if (!(yield* dispatch(start, ids))) break
           dispatched.push(start.id)
         }
+        yield* showQueue
         const after = counts(yield* ledger.current, ids, null)
         return {
           dispatched,
