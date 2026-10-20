@@ -5,8 +5,7 @@
 //
 // Each key is PKIX PEM, as `openssl pkey -in release-key.pem -pubout` prints the release key's
 // public half, named after the month it was made. scripts/install.sh holds the same keys in its
-// `release_keys`. None is here until the maintainer makes the release key (scripts/sign-checksums.ts
-// says how): until then `tutti update` installs nothing.
+// `release_keys`.
 //
 // Key rotation, as orchestra's: to replace the key (it leaked, or is old), add the new one a release
 // before retiring the old, so that the binaries of both releases verify the next.
@@ -30,7 +29,15 @@ export interface ReleaseKey {
 }
 
 /** The release keys, oldest first. */
-export const releaseKeys: ReadonlyArray<ReleaseKey> = []
+export const releaseKeys: ReadonlyArray<ReleaseKey> = [
+  {
+    name: "2026-10",
+    pem: `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAtoGlzKgru416pWobucm9ICq3LtFfTEFkOaRy0Yx2Je4=
+-----END PUBLIC KEY-----
+`,
+  },
+]
 
 /** The PEM text as an ed25519 public key, or why it isn't one. */
 export const parsePublicKey = (pem: string): KeyObject | string => {

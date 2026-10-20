@@ -28,9 +28,11 @@ set -eu
 
 # The public keys a release's checksums.txt may be signed with (PKIX PEM, as
 # `openssl pkey -in release-key.pem -pubout` prints the release key's): a new key is added here, and
-# an old one leaves. None is here until the maintainer makes the release key (scripts/sign-checksums.ts
-# says how), and until then the script installs nothing.
-release_keys=''
+# an old one leaves; src/update/keys.ts holds the same (test/install-script.test.ts checks it).
+# 2026-10:
+release_keys='-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAtoGlzKgru416pWobucm9ICq3LtFfTEFkOaRy0Yx2Je4=
+-----END PUBLIC KEY-----'
 
 releases=https://github.com/noesis-sol/tutti/releases
 system_dir=/usr/local/bin
