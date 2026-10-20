@@ -55,27 +55,30 @@ export const withRender = async <A>(
 export const renderFrame = (node: ReactNode, size: Size): Promise<Frame> =>
   withRender(node, size, (rendered) => rendered.capture())
 
-/** How long `pressEscape` waits for the Esc key before it gives up, in ms. */
+/** How long `pressEscape` waits for the Esc key before it fails, in ms. */
 const escapeDeadline = 2000
 
 /**
  * Presses a lone Esc and waits until the renderer hands it on as a key: after the stdin parser's
  * 20 ms wait to tell it from a sequence's start, and the Esc hold (`escapeHold`), both timers in
- * real time that a loaded machine runs late. Gives up after `escapeDeadline`, for the test's
- * expectations to say what is missing.
+ * real time that a loaded machine runs late. Listens ahead of the keymap, which stops the keys it
+ * binds from reaching later listeners. Fails if no Esc comes within `escapeDeadline`.
  */
 export const pressEscape = async (setup: TestRendererSetup): Promise<void> => {
   const keyInput = setup.renderer.keyInput
   let heard: (key: KeyEvent) => void = () => {}
-  const pressed = new Promise<void>((resolve) => {
+  const pressed = new Promise<boolean>((resolve) => {
     heard = (key) => {
-      if (key.name === "escape") resolve()
+      if (key.name === "escape") resolve(true)
     }
-    keyInput.on("keypress", heard)
+    keyInput.prependListener("keypress", heard)
   })
   try {
     setup.mockInput.pressEscape()
-    await Promise.race([pressed, Bun.sleep(escapeDeadline)])
+    const late = Bun.sleep(escapeDeadline).then(() => false)
+    if (!(await Promise.race([pressed, late]))) {
+      throw new Error(`no Esc key within ${escapeDeadline} ms of pressing it`)
+    }
   } finally {
     keyInput.off("keypress", heard)
   }
