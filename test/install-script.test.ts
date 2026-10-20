@@ -18,6 +18,7 @@ import {
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { signChecksums } from "../scripts/sign-checksums.ts"
+import { parsePublicKey, releaseKeys } from "../src/update/keys.ts"
 
 const script = readFileSync(resolve(import.meta.dir, "../scripts/install.sh"))
 
@@ -30,6 +31,17 @@ const archives = (tag: string) =>
     "linux_arm64_musl",
     "linux_x64_musl",
   ].map((target) => `tutti_${tag.slice(1)}_${target}.tar.gz`)
+
+/** The PEM public keys in `text`, trimmed, in order. */
+const pemKeys = (text: string): ReadonlyArray<string> =>
+  text.match(/-----BEGIN PUBLIC KEY-----[\s\S]*?-----END PUBLIC KEY-----/g) ?? []
+
+/** The keys in install.sh's `release_keys='…'`. */
+const scriptKeys = () => {
+  const value = /^release_keys='([^']*)'$/m.exec(script.toString())
+  expect(value, "install.sh sets release_keys='…'").not.toBeNull()
+  return pemKeys(value?.[1] ?? "")
+}
 
 const sha256 = (data: Uint8Array) => new Bun.CryptoHasher("sha256").update(data).digest("hex")
 
@@ -295,12 +307,29 @@ describe("scripts/install.sh", () => {
     timeout,
   )
 
-  test(
+  test("holds exactly the release keys src/update/keys.ts does, each an ed25519 key", () => {
+    const keys = scriptKeys()
+    expect(keys).toEqual(releaseKeys.flatMap((key) => pemKeys(key.pem)))
+    for (const pem of keys) expect(typeof parsePublicKey(pem)).not.toBe("string")
+  })
+
+  test.skipIf(releaseKeys.length > 0)(
     "with no release key, installs nothing",
     () => {
       const ran = install({ releases, key: "" })
       expect(ran.code).toBe(1)
       expect(ran.out).toContain("this install script holds no release key yet")
+      expect(installed(ran.system)).toBeUndefined()
+    },
+    timeout,
+  )
+
+  test.skipIf(releaseKeys.length === 0 || !hasOpenssl3)(
+    "with its own release keys, refuses a release signed with another, and installs nothing",
+    () => {
+      const ran = install({ releases, key: "" })
+      expect(ran.code).toBe(1)
+      expect(ran.out).toContain("checksums.txt.sig doesn't verify checksums.txt with a release key")
       expect(installed(ran.system)).toBeUndefined()
     },
     timeout,
