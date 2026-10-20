@@ -9,7 +9,11 @@
 // bunfig.toml defines process.env.NODE_ENV as "production" for React's production build, and bun
 // test reads it too. The suites define "test" over it, as bun test sets it, so they keep React's
 // development build: @opentui/react/test-utils needs its act, which the production build lacks.
-import { mkdtempSync, readFileSync } from "node:fs"
+//
+// The suites make their temp folders under os.tmpdir() and leave them there. Thousands of entries in
+// one folder slow every bun test started in a folder under it (~5 s to start at 500k entries), so
+// each run gets a temp folder of its own, given to bun test as TMPDIR, and removes it when it ends.
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -107,6 +111,7 @@ const tee = async (stream: ReadableStream<Uint8Array>, to: NodeJS.WriteStream): 
 const runBunTest = async (
   args: ReadonlyArray<string>,
   report: string,
+  temp: string,
 ): Promise<{ readonly code: number; readonly output: string }> => {
   const proc = Bun.spawn(
     [
@@ -118,7 +123,7 @@ const runBunTest = async (
       `--reporter-outfile=${report}`,
       ...args,
     ],
-    { stdin: "inherit", stdout: "pipe", stderr: "pipe" },
+    { stdin: "inherit", stdout: "pipe", stderr: "pipe", env: { ...process.env, TMPDIR: temp } },
   )
   const [out, err, code] = await Promise.all([
     tee(proc.stdout, process.stdout),
@@ -136,10 +141,10 @@ const readReport = (report: string): ReadonlyArray<TestCase> => {
   }
 }
 
-const main = async (args: ReadonlyArray<string>): Promise<number> => {
-  const reports = mkdtempSync(join(tmpdir(), "tutti-test-"))
+const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> => {
+  const reports = mkdtempSync(join(temp, "tutti-test-reports-"))
   const first = join(reports, "first.xml")
-  const { code, output } = await runBunTest(args, first)
+  const { code, output } = await runBunTest(args, first, temp)
   if (code === 0) return 0
   const failed = readReport(first).filter((test) => test.failed)
   // A failure outside any test (a file that doesn't load, an error between tests) isn't in the
@@ -153,6 +158,7 @@ const main = async (args: ReadonlyArray<string>): Promise<number> => {
     const rerun = await runBunTest(
       [fileArgument(test.file), "--test-name-pattern", exactNamePattern(test.name)],
       report,
+      temp,
     )
     const reran = readReport(report)
     if (rerun.code === 0 && reran.length > 0 && reran.every((t) => !t.failed)) {
@@ -165,5 +171,22 @@ const main = async (args: ReadonlyArray<string>): Promise<number> => {
 }
 
 if (import.meta.main) {
-  process.exit(await main(Bun.argv.slice(2)))
+  const temp = mkdtempSync(join(tmpdir(), "tutti-test-"))
+  const remove = () => rmSync(temp, { recursive: true, force: true })
+  for (const [signal, code] of [
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ] as const) {
+    process.on(signal, () => {
+      remove()
+      process.exit(code)
+    })
+  }
+  let code = 1
+  try {
+    code = await main(Bun.argv.slice(2), temp)
+  } finally {
+    remove()
+  }
+  process.exit(code)
 }
