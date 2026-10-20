@@ -1,0 +1,224 @@
+# Releases a version (§ 12 Releases) for each v* tag pushed: the check first, then the six builds
+# (scripts/build.sh, cross-compiled on Linux), their archives tutti_<ver>_<os>_<arch>[_musl].tar.gz
+# with checksums.txt, signed with the ed25519 release key as checksums.txt.sig, and the archives'
+# build provenance attested. A tag with a suffix (v1.2.0-rc.1) makes a pre-release. Run it from the
+# Actions tab (workflow_dispatch) with a tag to release an existing tag again: its notes and assets
+# are replaced.
+#
+# Releasing: in CHANGELOG.md, rename "## Unreleased" to "## [X.Y.Z] - YYYY-MM-DD" (its section
+# becomes the notes, scripts/release-notes.sh), set package.json's version to X.Y.Z, commit on main,
+# then tag the commit (git tag -a vX.Y.Z -m "tutti X.Y.Z") and push both.
+#
+# The release key: the repository secret TUTTI_RELEASE_KEY holds a PKCS#8 PEM ed25519 private key
+# (scripts/sign-checksums.ts says how to make one). Without it the first job fails, saying so, and
+# nothing is built or published.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to release, such as v0.9.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# One run at a time for a tag; a second waits rather than racing it over the same assets.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  BUN_VERSION: 1.4.3 # as ci.yml's
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the tag's name
+        run: |
+          case "$TAG" in
+          v[0-9]*.[0-9]*.[0-9]*) ;;
+          *) echo "::error::$TAG is not a version tag (vX.Y.Z, or vX.Y.Z-<suffix> for a pre-release)"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # The key signs a file here, so a missing or bad key fails the release before anything is built.
+      - name: Check the release key
+        env:
+          TUTTI_RELEASE_KEY: ${{ secrets.TUTTI_RELEASE_KEY }}
+        run: |
+          if [ -z "$TUTTI_RELEASE_KEY" ]; then
+            echo "::error::The repository secret TUTTI_RELEASE_KEY isn't set: it holds the ed25519 release key that signs checksums.txt (scripts/sign-checksums.ts says how to make one)"
+            exit 1
+          fi
+          echo probe > "$RUNNER_TEMP/probe"
+          bun scripts/sign-checksums.ts "$RUNNER_TEMP/probe"
+
+      # The binary's version is package.json's, and the archives are named after the tag.
+      - name: Check the version
+        run: |
+          version="$(bun --print 'require("./package.json").version')"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::package.json's version is $version, not ${TAG#v}"
+            exit 1
+          fi
+
+      - name: Check the notes
+        run: scripts/release-notes.sh "$TAG"
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Check
+        run: scripts/check-full.sh
+
+  # Each target on a runner of its own, so each install holds only its target's packages (§ 12
+  # Cross-compiling). Linux cross-compiles the darwin binaries: Bun signs a Mach-O it builds there,
+  # and a darwin-arm64 built on Linux x64 runs on Apple Silicon (docs/spikes/07-compile.md, § 4).
+  build:
+    needs: check
+    strategy:
+      matrix:
+        target:
+          - darwin-arm64
+          - darwin-x64
+          - linux-arm64
+          - linux-x64
+          - linux-arm64-musl
+          - linux-x64-musl
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Build
+        run: scripts/build.sh --release --archive --out dist ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: archive-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          compression-level: 0 # already gzipped
+          retention-days: 7
+
+  # The archives that a runner here can run: each unpacks and prints the bare version.
+  run:
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-latest
+          - target: linux-x64-musl
+            runner: ubuntu-latest
+            alpine: true
+          - target: darwin-arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: archive-${{ matrix.target }}
+
+      - name: Unpack
+        run: tar -xzf tutti_*.tar.gz tutti
+
+      # A musl build needs libstdc++ and libgcc on a bare Alpine (§ 12, The musl builds).
+      - name: Run
+        env:
+          ALPINE: ${{ matrix.alpine && 'true' || '' }}
+        run: |
+          if [ -n "$ALPINE" ]; then
+            version="$(docker run --rm -v "$PWD:/w" alpine:3 sh -c 'apk add --quiet --no-cache libstdc++ libgcc && /w/tutti --version')"
+          else
+            version="$(./tutti --version)"
+          fi
+          echo "$version"
+          [ "$version" = "tutti $TAG" ] || { echo "::error::tutti --version printed '$version', not 'tutti $TAG'"; exit 1; }
+
+  publish:
+    needs: [build, run]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # the Release and its assets
+      id-token: write # the attestations' signing certificate
+      attestations: write
+      artifact-metadata: write
+    steps:
+      # Every tag, for picking the newest release.
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: archive-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          count="$(ls tutti_*.tar.gz | wc -l)"
+          [ "$count" -eq 6 ] || { echo "::error::$count archives, not 6"; ls; exit 1; }
+          sha256sum tutti_*.tar.gz > checksums.txt
+          cat checksums.txt
+
+      - name: Sign
+        env:
+          TUTTI_RELEASE_KEY: ${{ secrets.TUTTI_RELEASE_KEY }}
+        run: bun scripts/sign-checksums.ts dist/checksums.txt
+
+      - name: Build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*.tar.gz
+
+      # Only the newest release is GitHub's latest, which tutti update downloads: releasing an older
+      # tag again leaves it where it is. A pre-release never is.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/release-notes.sh "$TAG" > "$RUNNER_TEMP/notes.md"
+          case "$TAG" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+          newest="$(git tag -l 'v*' --sort=-v:refname | { grep -v -e - || true; } | head -n 1)"
+          if [ "$TAG" = "$newest" ]; then latest=true; else latest=false; fi
+          echo "$TAG: pre-release $prerelease, latest $latest (newest release tag: $newest)"
+          set -- dist/tutti_*.tar.gz dist/checksums.txt dist/checksums.txt.sig
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease="$prerelease" --latest="$latest"
+            gh release upload "$TAG" --clobber "$@"
+          else
+            gh release create "$TAG" --verify-tag --title "tutti ${TAG#v}" \
+              --notes-file "$RUNNER_TEMP/notes.md" --prerelease="$prerelease" --latest="$latest" "$@"
+          fi

@@ -1,0 +1,73 @@
+# Runs the check (scripts/check.sh, § 13) with its slow suites, scripts/check-full.sh, on Linux and
+# macOS for each push to main and each pull request, and builds the runner's own binary with
+# scripts/build.sh and runs it, so a change that breaks the compiled build fails here rather than in
+# a release (release.yml).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A pull request's newer push replaces its running check; main's pushes are each checked.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+# The Bun tutti is developed and released with; release.yml pins the same.
+env:
+  BUN_VERSION: 1.4.3
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false # a failure on one system says nothing about the other
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Check
+        run: scripts/check-full.sh
+
+  # The host's build, as a release builds it (§ 12 Builds), less --release: its --version carries
+  # the commit.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: scripts/build.sh --out dist host
+
+      - name: Run
+        run: |
+          version="$(dist/*/tutti --version)"
+          echo "$version"
+          want="tutti v$(bun --print 'require("./package.json").version') $(git rev-parse HEAD | cut -c 1-12)"
+          [ "$version" = "$want" ] || { echo "::error::tutti --version printed '$version', not '$want'"; exit 1; }
