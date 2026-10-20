@@ -5,7 +5,7 @@
 import { useKeyboard } from "@opentui/react"
 import type { Effect } from "effect"
 import { type Answers, ask, Field, Hint } from "./Form.tsx"
-import { styled } from "./line.tsx"
+import { plainFg, styled } from "./line.tsx"
 import { confirmHint, type FormCancelled, type Plan, planLines } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -35,7 +35,7 @@ export const PlanConfirmation = ({
       <scrollbox focused flexGrow={1} flexShrink={1}>
         {planLines(plan, theme).map((line, at) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: the lines are fixed for the form's life
-          <text key={at}>
+          <text key={at} fg={plainFg}>
             {line.length === 0
               ? " "
               : line.map((segment, part) => (
@@ -49,7 +49,7 @@ export const PlanConfirmation = ({
       </scrollbox>
       <box flexDirection="column" paddingTop={1} flexShrink={0}>
         <Field theme={theme} focused>
-          <text>
+          <text fg={plainFg}>
             <span {...styled(form.fieldTitle)}>{question}</span>
             <span {...styled(form.description)}>{` ${confirmHint}`}</span>
           </text>

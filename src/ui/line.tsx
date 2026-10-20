@@ -1,7 +1,7 @@
 // A line of the dashboard as segments of text, each in a style of the theme's, measured and cut to
 // the pane's width before it is drawn, so that no line wraps (§ 7.2). Frames are drawn as text too,
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
-import { type RGBA, TextAttributes } from "@opentui/core"
+import { RGBA, TextAttributes } from "@opentui/core"
 import { createContext, useContext } from "react"
 import type { Role, Style, Theme } from "./theme.ts"
 
@@ -33,9 +33,15 @@ export type Segments = ReadonlyArray<Segment>
 /** `text` in `look`. */
 export const seg = (text: string, look: Look | null = null): Segment => ({ text, look })
 
-/** The props that draw a <text> or <span> in `look`. */
+/**
+ * The terminal's own text colour, for text no role colours (§ 7.11's "default text colour"). Left
+ * to itself, OpenTUI draws such text exact white, which a light terminal can't show.
+ */
+export const plainFg = RGBA.defaultForeground()
+
+/** The props that draw a <text> or <span> in `look`, in the terminal's text colour without a role. */
 export const styled = (look: Look) => ({
-  ...(look.fg === undefined ? {} : { fg: look.fg }),
+  fg: look.fg ?? plainFg,
   ...(look.bg === undefined ? {} : { bg: look.bg }),
   attributes: look.attributes,
 })
@@ -81,15 +87,17 @@ export interface SelectionColours {
 
 /**
  * Selected text in the theme's `selection` and `selectionText` roles (§ 7.11). A role left to the
- * terminal's default colour, as every role is under NO_COLOR, is left to OpenTUI, so that what is
- * selected still shows.
+ * terminal's default colour, as every role is under NO_COLOR, would draw selected text as the text
+ * around it (OpenTUI's own selection swaps a cell's colours, and both are the terminal's): it is
+ * the palette's black on its white instead, slots 0 and 7, which follow the terminal's theme, so
+ * that what is selected still shows.
  */
 export const selectionLookOf = (theme: Theme): SelectionColours => {
   const given = (role: "selection" | "selectionText") =>
     !theme.noColor && theme.scheme.colours[role][theme.appearance]._tag !== "Default"
   return {
-    ...(given("selection") ? { selectionBg: theme.rgba("selection") } : {}),
-    ...(given("selectionText") ? { selectionFg: theme.rgba("selectionText") } : {}),
+    selectionBg: given("selection") ? theme.rgba("selection") : RGBA.fromIndex(7),
+    selectionFg: given("selectionText") ? theme.rgba("selectionText") : RGBA.fromIndex(0),
   }
 }
 
@@ -98,7 +106,7 @@ export const SelectionLook = createContext<SelectionColours>({})
 
 /** One line, never wrapped: what doesn't fit the box is clipped. */
 export const Line = ({ segments }: { readonly segments: Segments }) => (
-  <text wrapMode="none" height={1} {...useContext(SelectionLook)}>
+  <text wrapMode="none" height={1} fg={plainFg} {...useContext(SelectionLook)}>
     {segments.map((each, i) =>
       each.look === null ? (
         // biome-ignore lint/suspicious/noArrayIndexKey: a line's segments are drawn anew in order

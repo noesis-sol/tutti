@@ -39,7 +39,7 @@ import {
 import { staleToast, useSendAnswer } from "./attentionKeys.ts"
 import { hintSegments } from "./Hint.tsx"
 import { useInput, useLayer } from "./keys.ts"
-import { cut, Line, roleLook, type Segments, seg, styled } from "./line.tsx"
+import { cut, Line, plainFg, roleLook, type Segments, seg, styled } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 import { useRunView, useTheme } from "./useRunView.ts"
 
@@ -333,7 +333,7 @@ const FormBody = ({
       <Line segments={[]} />
       <box flexDirection="row" height={1} flexShrink={0}>
         {button(sendLabel, rows.length)}
-        <text wrapMode="none" height={1}>
+        <text wrapMode="none" height={1} fg={plainFg}>
           {"  "}
         </text>
         {button(refuseLabel, rows.length + 1)}

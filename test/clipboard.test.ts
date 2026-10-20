@@ -7,7 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { PassThrough, Writable } from "node:stream"
 import { BunServices } from "@effect/platform-bun"
-import { createCliRenderer } from "@opentui/core"
+import { createCliRenderer, RGBA } from "@opentui/core"
 import { Effect } from "effect"
 import fc from "fast-check"
 import { createElement } from "react"
@@ -207,8 +207,11 @@ describe("the selection's colours", () => {
     })
   })
 
-  test("are OpenTUI's own under NO_COLOR, so the selection still shows", () => {
-    expect(selectionLookOf(themeOf("dark", true))).toEqual({})
+  test("are the palette's black on its white under NO_COLOR, so the selection still shows", () => {
+    expect(selectionLookOf(themeOf("dark", true))).toEqual({
+      selectionBg: RGBA.fromIndex(7),
+      selectionFg: RGBA.fromIndex(0),
+    })
   })
 })
 

@@ -9,6 +9,7 @@ import {
   Line,
   type Look,
   padded,
+  plainFg,
   type Segment,
   type Segments,
   seg,
@@ -101,6 +102,7 @@ export const Modal = ({
             key={choice.name}
             wrapMode="none"
             height={1}
+            fg={plainFg}
             onMouseDown={(event: MouseEvent) => {
               if (event.button === 0) choice.run()
             }}

@@ -9,7 +9,7 @@ import { useKeyboard } from "@opentui/react"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
 import { type Answers, ask, Field, Hint } from "./Form.tsx"
-import { styled } from "./line.tsx"
+import { plainFg, styled } from "./line.tsx"
 import {
   describeDescription,
   describeTitle,
@@ -84,7 +84,7 @@ export const StartQuestion = ({
         <text {...styled(form.fieldTitle)}>{startTitle}</text>
         <text {...styled(form.description)}>{startDescription}</text>
         {options.map((option, at) => (
-          <text key={option}>
+          <text key={option} fg={plainFg}>
             {at === highlighted ? (
               <>
                 <span {...styled(form.selector)}>{"> "}</span>

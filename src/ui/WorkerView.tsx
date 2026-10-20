@@ -72,6 +72,7 @@ import {
   Line,
   Lines,
   padded,
+  plainFg,
   roleLook,
   type Segments,
   seg,
@@ -142,27 +143,36 @@ const useSyntaxStyles = (theme: Theme): Looks => {
   const renderer = useRenderer()
   const looks = useMemo(() => {
     const role = (name: Role) => ({ fg: theme.rgba(name, "fg") })
+    // A style with no role of its own is the terminal's text colour: OpenTUI's own is white.
+    const plain = { fg: plainFg }
     const make = (styles: Parameters<typeof SyntaxStyle.fromStyles>[0]) =>
       SyntaxStyle.fromStyles(styles, renderer.nativeScene)
     return {
       theme,
       markdown: make({
-        default: {},
+        default: plain,
         "markup.heading.1": { ...role("heading1"), bold: true },
         "markup.heading.2": { ...role("heading2"), bold: true },
+        // H3 and below: a heading's scope names its level, and no style falls back to another.
+        ...Object.fromEntries(
+          [3, 4, 5, 6].map((level) => [
+            `markup.heading.${level}`,
+            { ...role("heading3"), bold: true },
+          ]),
+        ),
         "markup.heading": { ...role("heading3"), bold: true },
         "markup.raw": role("code"),
         "markup.raw.block": role("code"),
-        "markup.link": { dim: true },
+        "markup.link": { ...plain, dim: true },
         "markup.link.label": role("link"),
-        "markup.link.url": { dim: true },
-        "markup.strong": { bold: true },
-        "markup.italic": { italic: true },
-        "markup.quote": { dim: true, italic: true },
-        "markup.list": {},
-        conceal: { dim: true },
+        "markup.link.url": { ...plain, dim: true },
+        "markup.strong": { ...plain, bold: true },
+        "markup.italic": { ...plain, italic: true },
+        "markup.quote": { ...plain, dim: true, italic: true },
+        "markup.list": plain,
+        conceal: { ...plain, dim: true },
       }),
-      output: make({ default: { dim: true } }),
+      output: make({ default: { ...plain, dim: true } }),
       error: make({ default: role("needsYou") }),
     }
   }, [renderer, theme])

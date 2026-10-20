@@ -30,6 +30,7 @@ import {
   Line,
   type Look,
   padded,
+  plainFg,
   roleLook,
   type Segment,
   type Segments,
@@ -120,6 +121,7 @@ const ButtonLine = ({
           key={i}
           wrapMode="none"
           height={1}
+          fg={plainFg}
           {...(isButton(each)
             ? {
                 onMouseDown: (event: MouseEvent) => {
