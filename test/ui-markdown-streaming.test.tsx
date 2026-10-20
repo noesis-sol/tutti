@@ -60,9 +60,19 @@ const drawn = (text: string, steps: ReadonlyArray<string>) => {
         content.set(text)
         streaming.set(false)
       })
-      // Markdown is drawn once it has been highlighted.
-      await Bun.sleep(100)
-      return linesOf(await rendered.capture())
+      // Markdown is drawn once it has been highlighted: wait for each of its words, then for the
+      // frame to hold.
+      const words = text.match(/\w+/g) ?? []
+      const deadline = Date.now() + 10_000
+      let last: ReadonlyArray<string> = []
+      for (;;) {
+        const frame = await rendered.capture()
+        const lines = linesOf(frame)
+        const whole = words.every((word) => frame.chars.includes(word))
+        if ((whole && lines.join("\n") === last.join("\n")) || Date.now() > deadline) return lines
+        last = whole ? lines : []
+        await Bun.sleep(30)
+      }
     },
   )
 }
