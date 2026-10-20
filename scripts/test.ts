@@ -11,9 +11,13 @@
 // development build: @opentui/react/test-utils needs its act, which the production build lacks.
 //
 // The suites make their temp folders under os.tmpdir() and leave them there. Thousands of entries in
-// one folder slow every bun test started in a folder under it (~5 s to start at 500k entries), so
-// each run gets a temp folder of its own, given to bun test as TMPDIR, and removes it when it ends.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+// one folder slow every bun test started in a folder under it, at any depth (~1-5 s to start at
+// 500k entries), so each run gets a temp folder of its own, given to bun test as TMPDIR, and removes
+// it when it ends. On macOS that folder is not in $TMPDIR, the per-user folder every program on the
+// machine leaves its temp files in, but in /tmp, as the SDK extracts Claude Code there
+// (src/agent/claudeExtract.ts); TUTTI_TEST_TMPDIR names another. A run killed before it could
+// remove its folder (SIGKILL) leaves it, named with the run's process ID: the next run removes it.
+import { lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -170,10 +174,68 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   return stillFailing === 0 ? 0 : 1
 }
 
+/** The folder each run's temp folder is made in. */
+export const runTempBase = (
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+): string => env.TUTTI_TEST_TMPDIR || (platform === "darwin" ? "/tmp" : tmpdir())
+
+const runTempPrefix = "tutti-test-"
+
+/** The process ID in the name of a run's temp folder, or undefined for any other name. */
+export const runTempPid = (name: string): number | undefined => {
+  const match = new RegExp(`^${runTempPrefix}(\\d+)-[A-Za-z0-9]+$`).exec(name)
+  return match?.[1] === undefined ? undefined : Number(match[1])
+}
+
+const isAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    // EPERM: the process is there, another user's.
+    return (error as NodeJS.ErrnoException).code === "EPERM"
+  }
+}
+
+/**
+ * Removes the temp folders that earlier runs left in base, those named with the ID of a process
+ * that has ended, and returns their paths. A link, or a folder another user owns, is left alone.
+ */
+export const removeStaleRuns = (
+  base: string,
+  alive: (pid: number) => boolean = isAlive,
+): ReadonlyArray<string> => {
+  let names: ReadonlyArray<string>
+  try {
+    names = readdirSync(base)
+  } catch {
+    return []
+  }
+  const removed: Array<string> = []
+  for (const name of names) {
+    const pid = runTempPid(name)
+    if (pid === undefined || pid === process.pid || alive(pid)) continue
+    const path = join(base, name)
+    try {
+      const stat = lstatSync(path)
+      if (!stat.isDirectory() || stat.uid !== process.getuid?.()) continue
+      rmSync(path, { recursive: true, force: true })
+      removed.push(path)
+    } catch {
+      // Gone already: another run starting beside this one removed it.
+    }
+  }
+  return removed
+}
+
 if (import.meta.main) {
-  const temp = mkdtempSync(join(tmpdir(), "tutti-test-"))
+  const base = runTempBase(process.env, process.platform)
+  removeStaleRuns(base)
+  const temp = mkdtempSync(join(base, `${runTempPrefix}${process.pid}-`))
   const remove = () => rmSync(temp, { recursive: true, force: true })
   for (const [signal, code] of [
+    ["SIGHUP", 129],
     ["SIGINT", 130],
     ["SIGTERM", 143],
   ] as const) {
