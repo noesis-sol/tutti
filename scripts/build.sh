@@ -25,7 +25,8 @@
 # checkout's own runs and tests keep working.
 #
 # bun build --compile leaves a copy of Bun (.<hash>-00000000.bun-build) in its working folder
-# (tutti-nrg.21), so it runs in a temp folder, removed afterwards.
+# (tutti-nrg.21; Bun's bug oven-sh/bun#14020, still open with Bun 1.4.3 on macOS), so it runs in a
+# temp folder, removed afterwards.
 set -e
 cd "$(dirname "$0")/.."
 root=$(pwd)

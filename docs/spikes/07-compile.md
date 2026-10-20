@@ -181,8 +181,11 @@ Results:
     (tutti-nrg.10.2) can build darwin-arm64 on `ubuntu-latest` (x64) or `ubuntu-24.04-arm`.
 
 `bun build --compile` left a 70 MB `.<hash>-00000000.bun-build` in its working folder on every
-build, byte-identical to the `bun` executable (tutti-nrg.21). `build.ts` builds in a temp folder
-and removes it.
+build, byte-identical to the `bun` executable (tutti-nrg.21). It is Bun's bug
+[oven-sh/bun#14020](https://github.com/oven-sh/bun/issues/14020), open since Bun 1.1.28 (Bun's
+maintainers call it a bug, and a comment on it has it fixed on Windows) and still there with Bun
+1.4.3 on macOS 26 arm64. `build.ts` builds in a temp folder and removes it, as `scripts/build.sh`
+does.
 
 ## 5. `tutti login`
 

@@ -25,7 +25,8 @@ const host = `${process.platform}-${process.arch}`
 
 // The fake bun. `install` without --os installs the host's packages (FAKE_HOST); with --os and
 // --cpu it adds that platform's, and for Linux the musl ones too, beside those there. `build` logs
-// its working folder and the OpenTUI packages installed, the ones a real compile would embed.
+// its working folder and the OpenTUI packages installed, the ones a real compile would embed, and
+// leaves a .bun-build file there, as a real compile does (tutti-nrg.21, oven-sh/bun#14020).
 const bin = mkdtempSync(join(tmpdir(), "tutti-build-script-bin-"))
 writeFileSync(
   join(bin, "bun"),
@@ -48,6 +49,7 @@ install)
   done ;;
 build)
   echo "build in=$PWD embeds=$(ls "$FAKE_ROOT/node_modules/@opentui" | tr '\\n' ' ')$*" >>"$FAKE_LOG"
+  echo bun >.1fc64566d4203500-00000000.bun-build
   while [ "$1" != --outfile ]; do shift; done
   echo binary >"$2"
   exit "\${FAKE_BUILD_EXIT:-0}" ;;
@@ -96,6 +98,14 @@ const run = (root: string, args: ReadonlyArray<string>, env: Record<string, stri
     calls: readFileSync(log, "utf8").split("\n").filter(Boolean),
   }
 }
+
+/** The folders the builds ran in, and the .bun-build files under the checkout. */
+const leftovers = (root: string, calls: ReadonlyArray<string>) => ({
+  folders: calls.flatMap((c) => /^build in=(\S+) /.exec(c)?.[1] ?? []).filter(existsSync),
+  copies: readdirSync(root, { recursive: true, encoding: "utf8" }).filter((name) =>
+    name.endsWith(".bun-build"),
+  ),
+})
 
 const installed = (root: string, scope: string) => readdirSync(join(root, "node_modules", scope))
 
@@ -155,6 +165,8 @@ describe("scripts/build.sh", () => {
     ])
     // The host's packages again, and no other's, for the checkout's own runs.
     hostsOnly(root)
+    // The compiles' copies of Bun went with their temp folder.
+    expect(leftovers(root, result.calls)).toEqual({ folders: [], copies: [] })
   })
 
   test("host is this machine's target", () => {
@@ -204,6 +216,7 @@ describe("scripts/build.sh", () => {
     expect(result.calls.filter((c) => c.startsWith("build"))).toHaveLength(1)
     expect(result.calls.at(-1)).toBe("install install --frozen-lockfile")
     hostsOnly(root)
+    expect(leftovers(root, result.calls)).toEqual({ folders: [], copies: [] })
   })
 
   describe("in a git checkout", () => {
@@ -266,6 +279,8 @@ describe("scripts/build.sh", () => {
     "builds this machine's binary, which runs tutti --version",
     () => {
       const out = realpathSync(mkdtempSync(join(tmpdir(), "tutti-build-host-")))
+      const copies = (dir: string) => readdirSync(dir).filter((name) => name.endsWith(".bun-build"))
+      const before = copies(checkout)
       const build = Bun.spawnSync(["sh", script, "--out", out, "host"], {
         cwd: checkout,
         stdout: "pipe",
@@ -273,7 +288,10 @@ describe("scripts/build.sh", () => {
       })
       expect(build.stderr.toString()).not.toContain("error:")
       expect(build.exitCode).toBe(0)
+      // The compile's copy of Bun (oven-sh/bun#14020) is neither in the checkout nor beside the binary.
+      expect(copies(checkout)).toEqual(before)
       const [target] = readdirSync(out)
+      expect(copies(join(out, target ?? ""))).toEqual([])
       const binary = join(out, target ?? "", "tutti")
       expect(existsSync(binary)).toBe(true)
       const version = Bun.spawnSync([binary, "--version"], { cwd: out, stdout: "pipe" })
