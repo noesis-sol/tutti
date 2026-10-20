@@ -45,6 +45,7 @@ export const O = {
 
 const F_GETFD = 1
 const FD_CLOEXEC = 1
+const LOCK_SH = 1
 const LOCK_EX = 2
 const LOCK_NB = 4
 const LOCK_UN = 8
@@ -190,7 +191,18 @@ export const flockExclusiveNonBlocking = (fd: number): Effect.Effect<boolean, Li
     return unwrap(result).pipe(Effect.as(true))
   })
 
-/** Releases a lock flockExclusiveNonBlocking took. */
+/**
+ * Takes flock(LOCK_SH|LOCK_NB) on `fd`. Succeeds with false when another open file holds the lock
+ * exclusively; other shared locks don't stop it.
+ */
+export const flockSharedNonBlocking = (fd: number): Effect.Effect<boolean, LibcError> =>
+  Effect.suspend(() => {
+    const result = attempt("flock", `fd ${fd}`, () => s.flock(fd, LOCK_SH | LOCK_NB))
+    if (result instanceof LibcError && result.errno === EWOULDBLOCK) return Effect.succeed(false)
+    return unwrap(result).pipe(Effect.as(true))
+  })
+
+/** Releases a lock flockExclusiveNonBlocking or flockSharedNonBlocking took. */
 export const unlock = (fd: number): Effect.Effect<void, LibcError> =>
   Effect.suspend(() => unwrap(attempt("flock", `fd ${fd}`, () => s.flock(fd, LOCK_UN)))).pipe(
     Effect.asVoid,

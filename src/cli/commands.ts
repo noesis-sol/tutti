@@ -157,14 +157,18 @@ export const answerCommand = <E extends { readonly message: string } | string, R
     ),
   )
 
-/** bd and git in the project at `repo`, for `tutti plan`. */
+/** bd, git and the run lock in the project at `repo`, for `tutti plan`. */
 export const planServices = (repo: string) =>
-  Layer.mergeAll(Beads.layer({ cwd: repo }), Git.layer().pipe(Layer.provide(GitWriter.layer)))
+  Layer.mergeAll(
+    Beads.layer({ cwd: repo }),
+    Git.layer().pipe(Layer.provide(GitWriter.layer)),
+    RunLock.layer,
+  )
 
 /** `tutti plan`, finding the main checkout with `repo` and reading it with `services`. */
 export const planCommand = <E extends { readonly message: string } | string, R, S>(
   repo: Effect.Effect<string, E, R>,
-  services: (repo: string) => Layer.Layer<Beads | Git, never, S>,
+  services: (repo: string) => Layer.Layer<Beads | Git | RunLock, never, S>,
 ) =>
   Command.make(
     "plan",
@@ -564,7 +568,7 @@ export const initCommand = Command.make("init", initFlags, (given) =>
  */
 export const tuttiWith = <E extends { readonly message: string } | string, R, S, R2 = never>(
   repo: Effect.Effect<string, E, R>,
-  services: (repo: string) => Layer.Layer<Beads | Git, never, S>,
+  services: (repo: string) => Layer.Layer<Beads | Git | RunLock, never, S>,
   run: (flags: RunFlags) => Effect.Effect<void, never, R2> = () => Console.log(pkg.version),
 ) =>
   Command.make("tutti", cliFlags, run).pipe(

@@ -13,8 +13,10 @@ import { compareIds, type Link, planLinks } from "../src/plan/plan.ts"
 import { repoFiles } from "../src/run/footprint.ts"
 import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
 import type { Git } from "../src/services/Git.ts"
+import type { RunLock } from "../src/services/RunLock.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as gitLayer } from "../src/testing/Git.ts"
+import { layer as lockLayer } from "../src/testing/RunLock.ts"
 
 const ticket = (id: string, priority: number, description: string, more: Partial<Issue> = {}) =>
   ({
@@ -232,7 +234,7 @@ describe("tutti plan", () => {
             noSuchIssue: false,
           })
         // bd refusing to list the tickets, or to add a link to the tickets `refused`.
-        const services = Context.add(yield* Effect.context<Beads | Git>(), Beads, {
+        const services = Context.add(yield* Effect.context<Beads | Git | RunLock>(), Beads, {
           ...beads,
           list: (options) =>
             unlisted ? Effect.fail(locked("bd list --json")) : beads.list(options),
@@ -254,7 +256,7 @@ describe("tutti plan", () => {
         )
         return { printed, errors, failed: exit._tag === "Failure", blockers }
       }).pipe(
-        Effect.provide(Layer.mergeAll(beadsLayer(seeds), gitLayer({ dir, files }))),
+        Effect.provide(Layer.mergeAll(beadsLayer(seeds), gitLayer({ dir, files }), lockLayer())),
         Effect.provide(BunServices.layer),
       ),
     )

@@ -1,6 +1,7 @@
 // The RunLock's test layer (§ 3.3): the locks in memory, by git folder. A run takes both as the
 // live layer does, refused with the same AlreadyRunning while another run in the layer holds
-// either, and releases both when its scope closes. A rewrite names its new holder in tutti's.
+// either, and releases both when its scope closes. A rewrite names its new holder in tutti's. A
+// probe sees the locks held in the layer, as acquire would.
 import { Effect, Layer, Ref } from "effect"
 import {
   AlreadyRunning,
@@ -63,6 +64,16 @@ export const layer = (held: ReadonlyArray<Held> = []) =>
               } satisfies HeldLock
             }),
           ),
+        probe: (request) =>
+          Effect.map(Ref.get(locks), (current) => {
+            for (const program of ["tutti", "orchestra"] as const) {
+              const holder = current.get(key(request.commonDir, program))
+              if (holder !== undefined) {
+                return new AlreadyRunning({ program, holder, repo: request.repo })
+              }
+            }
+            return undefined
+          }),
       })
     }),
   )

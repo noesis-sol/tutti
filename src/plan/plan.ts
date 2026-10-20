@@ -2,7 +2,8 @@
 // tickets touching the same code, so they run one after the other instead of side by side, the
 // higher-priority ticket first. Tickets are linked when they name the same function, or work on the
 // same small file and aren't compared on it by function, read from their footprints (footprint.ts).
-// Without --apply the proposal is only printed; with it each link is added with bd dep add.
+// Without --apply the proposal is only printed; with it each link is added with bd dep add, after a
+// warning when a run holds the repository's lock.
 import { Console, Effect, type FileSystem } from "effect"
 import type { ConfigFileInvalid } from "../project/configFile.ts"
 import { readSettings } from "../project/settings.ts"
@@ -21,6 +22,7 @@ import {
 import { takes } from "../run/scope.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
+import { RunLock } from "../services/RunLock.ts"
 
 /** A blocks link: `blocked` waits for `blocker` (bd dep add <blocked> <blocker>). */
 export interface Link {
@@ -194,14 +196,29 @@ const beadsProblem = (error: BeadsError): string => {
 }
 
 /**
+ * Warns on stderr when a run, tutti's or orchestra's, holds the lock of the project at repo: it
+ * holds back the tickets it hasn't started, but one it has started keeps going whatever it now
+ * waits for. A lock that can't be read warns of nothing.
+ */
+const warnOfRun = (repo: string): Effect.Effect<void, never, Git | RunLock> =>
+  Effect.gen(function* () {
+    const commonDir = yield* (yield* Git).commonDir(repo)
+    const held = yield* (yield* RunLock).probe({ repo, commonDir })
+    if (held === undefined) return
+    yield* Console.error(
+      `tutti plan: warning: ${held.message}. A ticket it has started keeps going and may merge before a ticket it now waits for.`,
+    )
+  }).pipe(Effect.ignore)
+
+/**
  * Proposes the links between the open tickets of the project at repo, on stdout, and adds them with
- * apply. Fails with what went wrong, said on stderr: settings that can't be read, bd failing to list
- * the tickets, or a link bd didn't add.
+ * apply, warning first when a run holds the lock. Fails with what went wrong, said on stderr:
+ * settings that can't be read, bd failing to list the tickets, or a link bd didn't add.
  */
 export const plan = (
   repo: string,
   apply: boolean,
-): Effect.Effect<void, string, Beads | Git | FileSystem.FileSystem> =>
+): Effect.Effect<void, string, Beads | Git | RunLock | FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const settings = yield* readSettings(repo).pipe(Effect.mapError(settingsProblem))
@@ -227,6 +244,7 @@ export const plan = (
       )
     }
     const priorities = new Map(open.map((issue) => [issue.id, priorityOf(issue)]))
+    if (apply) yield* warnOfRun(repo)
     yield* Console.log(
       `${apply ? "Adding" : "Proposed"} ${plural(links.length, "blocks link")} between the ${plural(open.length, "open ticket")}:`,
     )

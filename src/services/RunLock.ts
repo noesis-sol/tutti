@@ -10,10 +10,21 @@
 // tutti's PID. A file is opened without O_TRUNC and rewritten only once locked: truncating first
 // would wipe the holder's JSON from a file someone else holds. Once held, tutti.lock can be
 // rewritten, for a feature chosen at the start question after the lock was taken.
+//
+// `tutti plan --apply` probes the locks without taking them, to warn that a run is under way: a
+// shared flock for a moment, as orchestra's plan takes, which a run's retries get past.
 import { ftruncateSync, readFileSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Context, Effect, Exit, Layer, Schema, Scope } from "effect"
-import { close, flockExclusiveNonBlocking, O, openCloexec } from "../native/libc.ts"
+import {
+  close,
+  flockExclusiveNonBlocking,
+  flockSharedNonBlocking,
+  LibcError,
+  O,
+  openCloexec,
+  unlock,
+} from "../native/libc.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 
 /** The two programs whose lock files a run takes. */
@@ -215,6 +226,49 @@ const take = (
   })
 }
 
+/** What probing the lock asks for: the repository, and its git folder where the lock files are. */
+export type ProbeRequest = Pick<LockRequest, "repo" | "commonDir">
+
+/**
+ * Whether a process holds the lock on `<commonDir>/<program's file>`: the AlreadyRunning a run
+ * would be refused with, or undefined. It takes a shared flock for a moment, which a run's retries
+ * get past, and creates no file: a missing one is held by nobody.
+ */
+const probeOne = (
+  request: ProbeRequest,
+  program: Program,
+): Effect.Effect<AlreadyRunning | undefined, LockFailed> => {
+  const file = join(request.commonDir, lockFiles[program])
+  return Effect.acquireUseRelease(
+    openCloexec(file, O.RDONLY).pipe(
+      Effect.catchIf(
+        (error) => error instanceof LibcError && error.code === "ENOENT",
+        () => Effect.succeed(undefined),
+      ),
+      Effect.mapError(failed(file)),
+    ),
+    (fd) =>
+      fd === undefined
+        ? Effect.succeed(undefined)
+        : Effect.gen(function* () {
+            const free = yield* flockSharedNonBlocking(fd).pipe(Effect.mapError(failed(file)))
+            if (free) {
+              yield* Effect.ignore(unlock(fd))
+              return undefined
+            }
+            const said = yield* Effect.sync(() => {
+              try {
+                return readFileSync(file, "utf8")
+              } catch {
+                return ""
+              }
+            })
+            return new AlreadyRunning({ program, repo: request.repo, holder: parseHolder(said) })
+          }),
+    (fd) => (fd === undefined ? Effect.void : Effect.ignore(close(fd))),
+  )
+}
+
 export class RunLock extends Context.Service<
   RunLock,
   {
@@ -223,6 +277,11 @@ export class RunLock extends Context.Service<
      * closes. Fails with AlreadyRunning when another process holds either, holding neither then.
      */
     acquire(request: LockRequest): Effect.Effect<HeldLock, AlreadyRunning | LockFailed, Scope.Scope>
+    /**
+     * Whether another process holds tutti.lock or orchestra.lock in `request.commonDir`, without
+     * taking either: the AlreadyRunning acquire would fail with, or undefined when neither is held.
+     */
+    probe(request: ProbeRequest): Effect.Effect<AlreadyRunning | undefined, LockFailed>
   }
 >()("tutti/services/RunLock") {
   static readonly layer = Layer.succeed(
@@ -245,6 +304,10 @@ export class RunLock extends Context.Service<
             if (Exit.isFailure(exit)) yield* Scope.close(scope, exit)
             return yield* exit
           }),
+        ),
+      probe: (request) =>
+        Effect.flatMap(probeOne(request, "tutti"), (held) =>
+          held === undefined ? probeOne(request, "orchestra") : Effect.succeed(held),
         ),
     }),
   )
