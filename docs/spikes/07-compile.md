@@ -161,12 +161,24 @@ Results:
   - `spctl -a -t exec` rejects it, as it does the macOS-built one: neither is notarized. That
     matters only for a file carrying the quarantine attribute, such as one downloaded by a browser;
     `curl` and `tar` don't add it.
-  - **Not checked: a Linux x64 host.** Under qemu user emulation of x64 (in the same VM), Bun 1.4.3
-    aborts before the build, its baseline build too, so this couldn't be run here. Bun signs the
-    Mach-O itself (Linux has no `codesign`), so an x64 runner is expected to give the same result,
-    but that is untested. tutti-nrg.10.2 should run
-    the darwin-arm64 binary its Linux runner builds once on Apple Silicon, or build on an arm64
-    Linux runner, which this check covers.
+- **darwin-arm64 built on Linux x64 runs on Apple Silicon too, and is byte-identical to the
+  Linux aarch64 build** (tutti-kx7). Under qemu user emulation of x64, Bun 1.4.3 aborts before the
+  build, its baseline build too. Rosetta runs it: a Lima 2.2.1 `vz` VM made with `--rosetta`
+  (Rosetta registered in `binfmt_misc`, macOS 26.6), its nerdctl running `oven/bun:1.4.3` with
+  `--platform linux/amd64` (`uname -m` is `x86_64`, Bun's `process.arch` is `x64`). There
+  `in-container.sh darwin arm64 darwin-arm64 copy` installs in 157 s and builds in 10.2 s:
+  - The binary is the same 337,448,690 bytes, and its sha256 is the same
+    (`b50b44a4…0b686`), as the one the same script builds in `oven/bun:1.4.3` with
+    `--platform linux/arm64` in the same VM, whose paths are the same: x64 Bun's cross build and
+    its signature are arm64 Bun's.
+  - `codesign --verify` passes; `codesign -dv` shows `Identifier=a.out`,
+    `flags=0x20002(adhoc,linker-signed)`. `./tutti-spike-darwin-arm64 all` exits 0 (`version`
+    2.1.301, `auth`, `probe`, `frame`), and `tty-frame` in a pseudo-terminal passes (602 ms).
+    `spctl` rejects it, as above.
+  - Rosetta translates x64 code rather than running it on an x64 CPU, so this isn't a native x64
+    runner. But Bun signs the Mach-O itself (Linux has no `codesign`), and an output identical
+    to the arm64 build leaves nothing an x64 runner is expected to change. The release workflow
+    (tutti-nrg.10.2) can build darwin-arm64 on `ubuntu-latest` (x64) or `ubuntu-24.04-arm`.
 
 `bun build --compile` left a 70 MB `.<hash>-00000000.bun-build` in its working folder on every
 build, byte-identical to the `bun` executable (tutti-nrg.21). `build.ts` builds in a temp folder
