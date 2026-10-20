@@ -12,7 +12,6 @@ import { emptyView, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import {
-  escapeHold,
   guardPaste,
   isTextField,
   mouseFilter,
@@ -39,7 +38,7 @@ import {
 } from "../src/ui/Toasts.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
-import { type Rendered, withRender } from "./render.ts"
+import { pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -70,9 +69,6 @@ const tags = (value: ShellValue) => sent(value).map((command) => command._tag)
 
 const frameOf = async (rendered: Rendered) => (await rendered.capture()).chars
 
-/** How long a lone ESC waits to be a key: the stdin parser's 20 ms, the Esc hold, and some. */
-const escWait = 40 + escapeHold
-
 /**
  * Presses `keys`, one after another with no wait for React: a character, `tab`, `ctrl+<k>`, or
  * `escape`, after which the parser waits to tell a lone ESC from a sequence's start.
@@ -82,8 +78,7 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
     for (const key of keys) {
       if (key.startsWith("ctrl+")) setup.mockInput.pressKey(key.slice(5), { ctrl: true })
       else if (key === "escape") {
-        setup.mockInput.pressEscape()
-        await Bun.sleep(escWait)
+        await pressEscape(setup)
       } else setup.mockInput.pressKey(key === "tab" ? "TAB" : key)
     }
   })

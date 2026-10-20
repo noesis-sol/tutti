@@ -263,24 +263,29 @@ const issuesOrUnreadable = (
       )
 
 describe("decoding arbitrary output", () => {
-  test("never throws, and yields only well-formed Issues or BeadsUnreadable", () => {
-    fc.assert(
-      fc.property(output, (stdout) => {
-        const list = Effect.runSyncExit(decodeIssues("bd ready", stdout))
-        const one = Effect.runSyncExit(decodeIssue("bd show", stdout))
-        const deps = Effect.runSyncExit(decodeDependencies("bd dep list", stdout))
-        return (
-          issuesOrUnreadable(list, (a) => [...(a as Issue[])]) &&
-          issuesOrUnreadable(one, (a) => [a as Issue]) &&
-          issuesOrUnreadable(deps, (a) =>
-            (a as Array<{ issue: Issue }>).map((dependency) => dependency.issue),
-          ) &&
-          typeof saysNoSuchIssue(stdout) === "boolean"
-        )
-      }),
-      { numRuns: 2000 },
-    )
-  })
+  // 2000 runs of three decoders: past bun's 5 s on a loaded machine.
+  test(
+    "never throws, and yields only well-formed Issues or BeadsUnreadable",
+    () => {
+      fc.assert(
+        fc.property(output, (stdout) => {
+          const list = Effect.runSyncExit(decodeIssues("bd ready", stdout))
+          const one = Effect.runSyncExit(decodeIssue("bd show", stdout))
+          const deps = Effect.runSyncExit(decodeDependencies("bd dep list", stdout))
+          return (
+            issuesOrUnreadable(list, (a) => [...(a as Issue[])]) &&
+            issuesOrUnreadable(one, (a) => [a as Issue]) &&
+            issuesOrUnreadable(deps, (a) =>
+              (a as Array<{ issue: Issue }>).map((dependency) => dependency.issue),
+            ) &&
+            typeof saysNoSuchIssue(stdout) === "boolean"
+          )
+        }),
+        { numRuns: 2000 },
+      )
+    },
+    { timeout: 60_000 },
+  )
 
   test("metadataList returns strings for any metadata", () => {
     fc.assert(

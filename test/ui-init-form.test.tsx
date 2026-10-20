@@ -18,6 +18,7 @@ import { streamInput } from "../src/ui/plain/forms.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
+import { pressEscape } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -145,12 +146,6 @@ const driven = async <A, E>(
   } finally {
     setup.renderer.destroy()
   }
-}
-
-/** A lone Esc is told from the start of a sequence after a short wait. */
-const pressEscape = async (setup: TestRendererSetup) => {
-  setup.mockInput.pressEscape()
-  await Bun.sleep(50)
 }
 
 describe("init's form in the renderer", () => {

@@ -24,7 +24,6 @@ import {
   type Value,
 } from "../src/ui/answerForm.ts"
 import { settle } from "../src/ui/attentionKeys.ts"
-import { escapeHold } from "../src/ui/keys.ts"
 import { sanitizeLine } from "../src/ui/sanitize.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
@@ -33,7 +32,7 @@ import {
   type TranscriptState,
 } from "../src/ui/transcriptItems.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
-import { type Frame, type Rendered, withRender } from "./render.ts"
+import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
@@ -340,8 +339,7 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<string>) =>
           setup.mockInput.pressEnter()
           break
         case "escape":
-          setup.mockInput.pressEscape()
-          await Bun.sleep(40 + escapeHold)
+          await pressEscape(setup)
           break
         case "up":
         case "down":

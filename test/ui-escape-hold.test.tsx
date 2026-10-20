@@ -12,7 +12,7 @@ import { escapeHold, escapeHolder } from "../src/ui/keys.ts"
 import { quitQuestion } from "../src/ui/QuitBox.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
-import { type Rendered, withRender } from "./render.ts"
+import { pressEscape, type Rendered, withRender } from "./render.ts"
 
 const ESC = "\x1b"
 
@@ -146,10 +146,7 @@ describe("a mouse report split after its ESC", () => {
 
   test("while a lone Esc still closes it, after the hold", async () => {
     await withQuitBox(async (rendered) => {
-      await rendered.input(async (setup) => {
-        setup.renderer.stdin.emit("data", Buffer.from(ESC))
-        await Bun.sleep(parserWait + escapeHold + 20)
-      })
+      await rendered.input(pressEscape)
       expect((await rendered.capture()).chars).not.toContain(quitQuestion)
     })
   })

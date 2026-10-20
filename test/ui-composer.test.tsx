@@ -24,7 +24,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { composerPlaceholder, interruptWords, takenIn } from "../src/ui/Composer.tsx"
-import { escapeHold, fieldTakes } from "../src/ui/keys.ts"
+import { fieldTakes } from "../src/ui/keys.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
   appended,
@@ -37,7 +37,7 @@ import {
   windowOf,
 } from "../src/ui/transcriptItems.ts"
 import { external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
-import { type Frame, type Rendered, withRender } from "./render.ts"
+import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -179,9 +179,6 @@ const composerFocused = async (rendered: Rendered, focused: boolean): Promise<bo
   }
 }
 
-/** How long a lone ESC waits to be a key: the stdin parser's 20 ms, the Esc hold, and some. */
-const escWait = 40 + escapeHold
-
 type Key = string | { readonly ctrl: string } | "alt+enter"
 
 const press = (rendered: Rendered, ...keys: ReadonlyArray<Key>) =>
@@ -191,8 +188,7 @@ const press = (rendered: Rendered, ...keys: ReadonlyArray<Key>) =>
       else if (key === "enter") setup.mockInput.pressEnter()
       else if (key === "alt+enter") setup.mockInput.pressEnter({ meta: true })
       else if (key === "escape") {
-        setup.mockInput.pressEscape()
-        await Bun.sleep(escWait)
+        await pressEscape(setup)
       } else await setup.mockInput.typeText(key)
     }
   })

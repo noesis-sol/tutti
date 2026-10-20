@@ -3,7 +3,7 @@
 // the root from the renderer's destroy event, outside act(), and a key or click that updates state
 // does so outside act() too: React then warns "An update to … inside a test was not wrapped in
 // act(…)", and the frame doesn't show the update (docs/spikes/05-opentui-soak.md § 5).
-import type { CapturedFrame } from "@opentui/core"
+import type { CapturedFrame, KeyEvent } from "@opentui/core"
 import type { TestRendererSetup } from "@opentui/core/testing"
 import { testRender } from "@opentui/react/test-utils"
 import { act, type ReactNode } from "react"
@@ -54,3 +54,29 @@ export const withRender = async <A>(
 /** Renders node at size and returns its first frame. */
 export const renderFrame = (node: ReactNode, size: Size): Promise<Frame> =>
   withRender(node, size, (rendered) => rendered.capture())
+
+/** How long `pressEscape` waits for the Esc key before it gives up, in ms. */
+const escapeDeadline = 2000
+
+/**
+ * Presses a lone Esc and waits until the renderer hands it on as a key: after the stdin parser's
+ * 20 ms wait to tell it from a sequence's start, and the Esc hold (`escapeHold`), both timers in
+ * real time that a loaded machine runs late. Gives up after `escapeDeadline`, for the test's
+ * expectations to say what is missing.
+ */
+export const pressEscape = async (setup: TestRendererSetup): Promise<void> => {
+  const keyInput = setup.renderer.keyInput
+  let heard: (key: KeyEvent) => void = () => {}
+  const pressed = new Promise<void>((resolve) => {
+    heard = (key) => {
+      if (key.name === "escape") resolve()
+    }
+    keyInput.on("keypress", heard)
+  })
+  try {
+    setup.mockInput.pressEscape()
+    await Promise.race([pressed, Bun.sleep(escapeDeadline)])
+  } finally {
+    keyInput.off("keypress", heard)
+  }
+}

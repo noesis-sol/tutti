@@ -26,7 +26,7 @@ import { type Look, roleLook, type Segments, widthOf } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue, spinnerAt, spinnerFrames } from "../src/ui/useRunView.ts"
 import { windDownSegments } from "../src/ui/WindDown.tsx"
-import { type Frame, renderFrame, type Size, withRender } from "./render.ts"
+import { type Frame, pressEscape, renderFrame, type Size, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -651,10 +651,7 @@ describe("the hint and the key help", () => {
         await rendered.input((setup) => setup.mockInput.pressKey("2"))
         expect(Effect.runSync(Queue.size(commands))).toBe(0)
         // A lone Esc reaches the keys once the parser has waited for more of a sequence.
-        await rendered.input(async (setup) => {
-          setup.mockInput.pressEscape()
-          await new Promise((done) => setTimeout(done, 100))
-        })
+        await rendered.input(pressEscape)
         expect(await shows()).toBe(false)
         await rendered.input((setup) => setup.mockInput.typeText("?"))
         await rendered.input((setup) => setup.mockInput.typeText("?"))

@@ -25,7 +25,7 @@ import {
   orchestra,
 } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { type Frame, type Rendered, withRender } from "./render.ts"
+import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -166,10 +166,8 @@ describe("the start question in the renderer", () => {
         )
       }
       await press(rendered, async (setup) => {
-        if (key === "escape") setup.mockInput.pressEscape()
+        if (key === "escape") await pressEscape(setup)
         else setup.mockInput.pressCtrlC()
-        // A lone Esc is told from the start of a sequence after a short wait.
-        await Bun.sleep(50)
       })
     })
     expect(said.cancelled()).toBe(1)
@@ -254,8 +252,7 @@ describe("askStart", () => {
       const fiber = await forked(askStart(shell, themeOf, TicketCount.Unknown()))
       await act(async () => {
         await setup.renderOnce()
-        setup.mockInput.pressEscape()
-        await Bun.sleep(50)
+        await pressEscape(setup)
       })
       const exit = await Effect.runPromise(Fiber.await(fiber))
       expect(Exit.isFailure(exit) && String(exit.cause)).toContain("FormCancelled")
@@ -349,10 +346,7 @@ describe("the plan confirmation in the renderer", () => {
   test("Esc cancels", async () => {
     const { said, node } = confirmation()
     await withRender(node, size, async (rendered) => {
-      await press(rendered, async (setup) => {
-        setup.mockInput.pressEscape()
-        await Bun.sleep(50)
-      })
+      await press(rendered, pressEscape)
     })
     expect(said.cancelled()).toBe(1)
     expect(said.answers).toEqual([])
