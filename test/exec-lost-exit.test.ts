@@ -71,6 +71,16 @@ describe("exec, when the command's exit is lost", () => {
     expect(groups.size).toBe(0)
   })
 
+  test("fails with CommandNotRun, not CommandTimedOut, when it ended before its time limit", async () => {
+    const groups = new Set<number>()
+    const exit = await runLosing(
+      { command: "sh", args: ["-c", "exit 0"], timeLimit: "100 millis" },
+      groups,
+    )
+    expect(failure(exit)).toBeInstanceOf(CommandNotRun)
+    expect(groups.size).toBe(0)
+  })
+
   test("still fails with CommandTimedOut when the time limit killed it", async () => {
     const groups = new Set<number>()
     const started = Date.now()

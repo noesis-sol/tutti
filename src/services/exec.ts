@@ -260,11 +260,12 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       )
 
       // A leader still running at the limit has timed out, whatever code it exits with once killed.
+      // One whose group has gone has ended, its exit lost.
       let timedOut = false
       yield* Effect.interruptible(Effect.sleep(timeLimit)).pipe(
         Effect.andThen(handle.isRunning),
         Effect.flatMap((running) => {
-          timedOut = running
+          timedOut = running && groupAlive(leader)
           return running ? kill : Effect.void
         }),
         Effect.ignore,
