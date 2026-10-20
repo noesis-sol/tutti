@@ -1,8 +1,12 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import pkg from "../package.json" with { type: "json" }
+
+// Each test starts tutti as a bun process, which bun's 5 s default fails when other checks run
+// beside this one.
+setDefaultTimeout(30_000)
 
 describe("smoke", () => {
   test("bun src/main.ts --version prints package.json's version and the checkout's commit", async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -9,6 +9,11 @@ import {
   summaryCounts,
   unescapeXml,
 } from "../scripts/test.ts"
+
+// The scripts/test.ts tests run the runner on files of their own: each starts two or three bun
+// processes, about 1-3 s on an idle machine, which bun's 5 s default fails when other checks run
+// beside this one.
+setDefaultTimeout(30_000)
 
 // A report as bun test --reporter=junit writes it (Bun 1.4.3): one testsuite per file, a nested
 // testsuite per describe block.

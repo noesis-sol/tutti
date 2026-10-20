@@ -2,7 +2,7 @@
 // a worker stays Working until each of tutti's sends is listed, whichever way it ran (§ 4.2). The
 // reducer, the scripted sessions (src/testing/AgentHost.ts) and the fake Claude Code
 // (test/fixtures/fake-claude/claude.ts) under the live host.
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -52,6 +52,10 @@ import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.t
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+
+// The live host's tests start the fake Claude Code as a process, about half a second on an idle
+// machine: bun's 5 s default fails them when other checks run beside this one.
+setDefaultTimeout(30_000)
 
 // The reducer's events, as test/worker-state.test.ts has them.
 const sdk = (message: object): WorkerEvent =>

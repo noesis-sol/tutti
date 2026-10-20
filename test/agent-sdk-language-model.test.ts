@@ -23,8 +23,8 @@ import { layer as costLayer } from "../src/testing/OrganCost.ts"
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
 // Each call starts the fake as a Claude Code process, about 3 s on an idle machine: bun's 5 s
-// default fails them when other checks run beside this one.
-setDefaultTimeout(30_000)
+// default fails them when other checks run beside this one, and 30 s did at a load average of 100.
+setDefaultTimeout(60_000)
 
 /** What the fake logged at its start: its arguments, PID, folder and the variables asked for. */
 interface Started {

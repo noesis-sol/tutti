@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -47,6 +47,10 @@ import {
   scenario,
   type World,
 } from "./harness.ts"
+
+// Whole runs, some waiting out a hold, take up to a second on an idle machine: bun's 5 s default
+// fails them when other checks run beside this one.
+setDefaultTimeout(30_000)
 
 // TestClock starts at the epoch, so a limit resetting at 3600 (seconds, as the API says it) resets
 // an hour into the run.
