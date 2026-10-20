@@ -191,7 +191,7 @@ const report = async (setup: Setup = {}) => {
         ...setup.run,
       }
       const fiber = yield* Effect.forkChild(
-        runReport(run, { printer: makePrinter(out, theme), theme, width: 100 }),
+        runReport(run, Effect.succeed({ printer: makePrinter(out, theme), theme, width: 100 })),
       )
       if (setup.interrupt) {
         yield* TestClock.adjust("1 second")

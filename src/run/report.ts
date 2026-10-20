@@ -456,12 +456,16 @@ const organFailure = (error: OrganError): string => {
 /**
  * The run report, at the end of the run: gathered, written by the reviewer, saved to
  * .tutti/reports/<start time>.md and printed, each step said on the printer. Nothing at all when
- * --review=false or the run was quit.
+ * --review=false or the run was quit: `out` is made only when the report has something to print.
  */
-export const runReport = (run: ReportRun, out: ReportOut): Effect.Effect<void, never, ReportEnv> =>
+export const runReport = (
+  run: ReportRun,
+  made: Effect.Effect<ReportOut>,
+): Effect.Effect<void, never, ReportEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     if (run.quit || !config.settings.organs.review) return
+    const out = yield* made
     const logs = yield* Log
     const hold = yield* OrganHold
     if (yield* hold.held) {

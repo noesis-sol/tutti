@@ -156,8 +156,11 @@ export interface Outcome {
   readonly closing: Ending
   /** The lines the run wrote after its closing line: the full check's, a quit's as it ended. */
   readonly after: ReadonlyArray<Line>
-  /** The run report on `out` (report.ts), which `finish` runs; nothing without organs. */
-  readonly report: (out: ReportOut) => Effect.Effect<void>
+  /**
+   * The run report on the `out` made (report.ts), which `finish` runs; nothing without organs, and
+   * `out` made only when the report prints.
+   */
+  readonly report: (out: Effect.Effect<ReportOut>) => Effect.Effect<void>
 }
 
 export interface RunOptions {
@@ -1052,7 +1055,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     }
     const reportContext = yield* Effect.context<RunEnv | Ledger>()
     const cost = yield* Effect.serviceOption(OrganCost)
-    const report = (out: ReportOut): Effect.Effect<void> =>
+    const report = (out: Effect.Effect<ReportOut>): Effect.Effect<void> =>
       Option.isNone(organs) || Option.isNone(cost)
         ? Effect.void
         : runReport(reportRun, out).pipe(
@@ -1079,18 +1082,28 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
  * dashboard's renderer is gone (§ 5 item 14 "Then", § 7.1): when `styled`, the summary, the
  * closing and scope lines and the lines after them, in `out`'s theme, as a plain run's log has
  * already said them; then the report, and the end record. Ctrl+C interrupting it ends the run
- * INTERRUPTED. Gives the run's exit code.
+ * INTERRUPTED. Gives the run's exit code. `out` is made only when something prints on it: a plain
+ * run's report theme asks the terminal for its background (OSC 11).
  */
 export const finish = (
   outcome: Outcome,
-  out: ReportOut,
+  made: Effect.Effect<ReportOut>,
   styled: boolean,
 ): Effect.Effect<number, never, EventStream> =>
   Effect.gen(function* () {
     const events = yield* EventStream
+    let out = made
     if (styled) {
-      yield* printSummary(out.printer, outcome.summary, outcome.closing, out.theme, out.width)
-      if (outcome.after.length > 0) yield* out.printer.print(outcome.after.join("\n"))
+      const printed = yield* made
+      yield* printSummary(
+        printed.printer,
+        outcome.summary,
+        outcome.closing,
+        printed.theme,
+        printed.width,
+      )
+      if (outcome.after.length > 0) yield* printed.printer.print(outcome.after.join("\n"))
+      out = Effect.succeed(printed)
     }
     yield* outcome
       .report(out)

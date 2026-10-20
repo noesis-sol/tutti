@@ -443,8 +443,10 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             }),
           ),
         )
-        const theme = mainTheme ?? (yield* printedThemeOf(stdout))
-        return yield* finish(ran, yield* reportOut(theme), false)
+        // The report's theme, made only when the report prints: off the main screen's theme, it
+        // asks the terminal for its background.
+        const theme = mainTheme === undefined ? printedThemeOf(stdout) : Effect.succeed(mainTheme)
+        return yield* finish(ran, Effect.flatMap(theme, reportOut), false)
       }
       if (asks === "no") {
         yield* begin(Work.Tickets())
@@ -545,7 +547,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           yield* events.emit({ kind: "end", code: exitCodes.ok })
           return exitCodes.ok
         case "Ran":
-          return yield* finish(ended.outcome, yield* reportOut(themeOf(ended.appearance)), true)
+          return yield* finish(ended.outcome, reportOut(themeOf(ended.appearance)), true)
       }
     }).pipe(Effect.provideContext(services.success), Effect.provide(ttyLayer))
     const found = yield* newer

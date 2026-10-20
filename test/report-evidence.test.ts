@@ -290,7 +290,11 @@ const reviewed = async (plan: Plan): Promise<Ran<string>> => {
       yield* plan.during ?? Effect.void
       const outcome = yield* Fiber.join(running)
       const out = { write: () => {}, columns: () => 100, tty: false }
-      yield* finish(outcome, { printer: makePrinter(out, theme), theme, width: 100 }, false)
+      yield* finish(
+        outcome,
+        Effect.succeed({ printer: makePrinter(out, theme), theme, width: 100 }),
+        false,
+      )
       return calls.find((each) => each.call.organ === "reviewer")?.input ?? "(no reviewer call)"
     }).pipe(Effect.provide(organs)),
   )

@@ -80,7 +80,11 @@ const finishes = (plan: Plan): Promise<Ran<Finished>> => {
     const outcome = yield* run({ version: "0.1.0-test", base: "main", quits, endLater: true })
     const before = yield* (yield* Captured).records
     const finishing = yield* Effect.forkChild(
-      finish(outcome, { printer: makePrinter(out, theme), theme, width: 100 }, plan.styled ?? true),
+      finish(
+        outcome,
+        Effect.succeed({ printer: makePrinter(out, theme), theme, width: 100 }),
+        plan.styled ?? true,
+      ),
     )
     if (plan.interrupt) {
       yield* TestClock.adjust("1 second")
