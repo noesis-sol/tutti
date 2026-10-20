@@ -28,7 +28,7 @@ Ticket tutti-nrg.1.7, M0 spike (8) (spec § 14), for § 12 (builds, embedding Cl
 | Extraction | `/tmp/claude-<uid>/claude-agent-sdk-<hash>/` on macOS and `os.tmpdir()`'s equivalent on Linux. **1.8 s** the first time on macOS arm64, then **130–160 ms on every start**, because it reads and hashes the whole 250 MB each time. Nothing removes old versions (§ 2) |
 | OpenTUI's native library | **Embedded by OpenTUI's own imports**: every installed `@opentui/core-<platform>` package goes in. Bun writes the one in use to `$TMPDIR/.bun-<uid>-<hash>.dylib` (or `.so`) and `dlopen`s it. One frame rendered on every target, in a test renderer and, on macOS, in a real terminal (§ 3) |
 | musl | **Works, with one step OpenTUI doesn't take for itself:** it loads the glibc library unless `OPENTUI_LIBC=musl` is set, and on x64 Alpine that fails (§ 3.2) |
-| Cross-compiling | **Works** both ways tried: linux-x64 built on macOS, and darwin-x64 built on Linux (which runs here under Rosetta). `bun install --os --cpu` is a better install than the README's `npm install --force` (§ 4) |
+| Cross-compiling | **Works** every way tried: linux-x64 built on macOS, darwin-x64 built on Linux (which runs here under Rosetta), and darwin-arm64 built on Linux aarch64 or x64, which passes `codesign --verify` and runs here. `bun install --os --cpu` is a better install than the README's `npm install --force` (§ 4) |
 | `tutti login` | **`<extracted claude> auth login`**, run with the terminal inherited (§ 5) |
 | `--claude`'s supported range | **The SDK enforces none.** The SDK names the Claude Code it ships with (2.1.301), and each Claude Code release lists the SDK versions it was tested with. Recommended: warn below 2.1.301, and above it once a release no longer lists the SDK (§ 6) |
 | Defaults of a compiled binary | It **loads `.env` and `bunfig.toml` (with its `preload` code) from the folder it runs in**, unless built with `--no-compile-autoload-*`. `--compile` doesn't set `NODE_ENV` despite its help text (§ 7) |
@@ -268,5 +268,6 @@ No step of § 12's recipe failed. The follow-up tickets:
   supported range should be as § 6 recommends.
 - tutti-nrg.62: check that darwin-arm64 built on Linux runs, before tutti-nrg.10.2 relies on it
   (§ 4). Done: built on Linux aarch64, it passes `codesign --verify` and runs on Apple Silicon.
+  tutti-kx7: built on Linux x64 (under Rosetta), it is byte-identical to that build, and runs.
 - tutti-nrg.63 (after tutti-nrg.10.1): call `extractFromBunfs` once per run, and remove stale
   `claude-agent-sdk-*` extractions (§ 2).
