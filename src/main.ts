@@ -17,7 +17,7 @@
 // it they interrupt the command. A panic outside the run's fibers is said with its stack once the
 // renderer is gone, exit 4.
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
-// its Claude Code and then calls `main`.
+// its Claude Code and then calls `main`; the npm bundle from src/npm.ts, which detects musl first.
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Clock, Console, Effect, Layer, ManagedRuntime, Option, Queue, Result, Scope } from "effect"

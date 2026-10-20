@@ -12,6 +12,7 @@
 #   - none of .env, .env.local and .env.production (with NODE_ENV=production set) is read: each sets
 #     TUTTI_COLOUR_SCHEME, which tutti colours would say it can't use;
 #   - the project's bunfig.toml preload doesn't run.
+# Installed, it also checks that OpenTUI's native library loads, its libc's: on Alpine the musl one.
 # bunx installs the package's dependencies from the registry, so this needs the network. The user
 # config is an empty one, so its colour scheme can't stand in for the project's.
 set -e
@@ -89,10 +90,39 @@ check "bunx -p" bunx -p "$tarball" tutti
 (cd "$project" && printf '{ "private": true }\n' >package.json && bun add --silent "$tarball")
 check "node_modules/.bin" "$project/node_modules/.bin/tutti"
 
+# OpenTUI's native library loads, its libc's (§ 12 npm): on a musl Linux the bundle sets
+# OPENTUI_LIBC=musl, else OpenTUI loads the glibc library, which on x64 Alpine fails. --version
+# doesn't use the library, so a preload, given on the command line, opens it as the run exits, from
+# the platform package OpenTUI picks with the OPENTUI_LIBC the bundle left.
+bundle=$project/node_modules/@noesis-sol/tutti/bin/bundle/tutti.js
+cat >"$work/native-probe.ts" <<'PROBE'
+import { dlopen } from "bun:ffi"
+import { dirname, join } from "node:path"
+process.on("exit", () => {
+  const musl = process.platform === "linux" && process.env.OPENTUI_LIBC === "musl"
+  const name = `@opentui/core-${process.platform}-${process.arch}${musl ? "-musl" : ""}`
+  const file = `libopentui.${process.platform === "darwin" ? "dylib" : "so"}`
+  const lib = join(dirname(Bun.resolveSync(name, dirname(process.argv[1]))), file)
+  try {
+    dlopen(lib, { setLogCallback: { args: ["ptr"], returns: "void" } }).close()
+    console.error(`native: ${name}`)
+  } catch (error) {
+    console.error(`native failed: ${name}: ${error instanceof Error ? error.message : error}`)
+  }
+})
+PROBE
+said=$(cd "$project" &&
+  bun --no-env-file --config=/dev/null --preload "$work/native-probe.ts" "$bundle" --version \
+    2>&1 >/dev/null) || true
+case $said in
+"native: "*) echo "ok: OpenTUI's native library loads: ${said#native: }" ;;
+*) fail "OpenTUI's native library: $said" ;;
+esac
+
 # The control: the bundle run as bun runs a bin, without the launcher, reads both, so the checks
 # above would have seen them.
 printf 'TUTTI_COLOUR_SCHEME=from.env\n' >"$project/.env"
-said=$(cd "$project" && bun node_modules/@noesis-sol/tutti/bin/bundle/tutti.js colours 2>&1 | head -n 1) || true
+said=$(cd "$project" && bun "$bundle" colours 2>&1 | head -n 1) || true
 case $said in
 *"used instead of 'from.env'"*) echo "ok: the control: the bundle run without the launcher reads .env" ;;
 *) fail "the control: the bundle run without the launcher didn't read .env: $said" ;;

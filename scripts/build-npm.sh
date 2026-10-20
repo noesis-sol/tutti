@@ -13,9 +13,10 @@
 #              (TUTTI_BUILD_COMMIT ""). Without it, the version carries the commit, as
 #              scripts/build.sh's does.
 #
-# The bundle is bun build --target=bun of src/main.ts with process.env.NODE_ENV defined as
-# "production", for React's production build (§ 3.1): a bin run from the user's project never reads
-# tutti's bunfig.toml. React is bundled, so the define reaches it. The platform packages, OpenTUI's
+# The bundle is bun build --target=bun of src/npm.ts, which detects musl before anything
+# loads OpenTUI (OPENTUI_LIBC, § 12 npm) and runs src/main.ts's main, with process.env.NODE_ENV
+# defined as "production", for React's production build (§ 3.1): a bin run from the user's project
+# never reads tutti's bunfig.toml. React is bundled, so the define reaches it. The platform packages, OpenTUI's
 # native library (@opentui/core-<platform>) and the SDK's Claude Code
 # (@anthropic-ai/claude-agent-sdk-<platform>), stay external: each is an optional dependency that an
 # install picks for its machine, and the code that loads them asks for every platform's by name.
@@ -57,6 +58,6 @@ else
 fi
 
 rm -rf -- "$out"
-bun build --target=bun src/main.ts --outdir "$out" --entry-naming tutti.js \
+bun build --target=bun src/npm.ts --outdir "$out" --entry-naming tutti.js \
   --define 'process.env.NODE_ENV:"production"' --define "TUTTI_BUILD_COMMIT:\"$commit\"" \
   --external '@opentui/core-*' --external '@anthropic-ai/claude-agent-sdk-*'

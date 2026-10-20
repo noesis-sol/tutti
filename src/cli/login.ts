@@ -13,6 +13,7 @@ import { Console, Effect, Exit, Layer, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { Account, type AccountInfo, type AccountProbe, billingLine } from "../agent/Account.ts"
 import type { Claude } from "../agent/claudeBinary.ts"
+import { onMusl } from "../native/musl.ts"
 import { failures } from "../run/startup.ts"
 import { AppConfig } from "./AppConfig.ts"
 
@@ -24,13 +25,6 @@ export interface CommandLine {
 
 /** The SDK's package; the platform packages, each with its Claude Code, are named after it. */
 const sdkPackage = "@anthropic-ai/claude-agent-sdk"
-
-/** Whether this is Linux on musl, whose glibc version Node's report leaves out, as the SDK reads it. */
-const onMusl = (): boolean => {
-  if (process.platform !== "linux") return false
-  const report = process.report?.getReport() as { header?: { glibcVersionRuntime?: string } }
-  return report?.header?.glibcVersionRuntime === undefined
-}
 
 /**
  * The platform packages' Claude Code for `platform` and `arch`, in the order the SDK tries them:

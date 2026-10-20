@@ -18,6 +18,3 @@ and for agents that run tutti through `bunx`. It needs Bun 1.3.14 or later on `P
 Claude Code and OpenTUI's native library for its platform from npm. Its `tutti` is a shell launcher
 that runs the bundled tutti with Bun, reading neither the `.env` files nor a `bunfig.toml` of the
 folder it runs in, so a project's `ANTHROPIC_API_KEY` in `.env` doesn't reach tutti or its workers.
-
-On Alpine and other musl systems the dashboard needs `OPENTUI_LIBC=musl` set: OpenTUI loads its
-glibc library otherwise.
