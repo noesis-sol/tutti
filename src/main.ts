@@ -29,7 +29,7 @@ import { AppConfig } from "./cli/AppConfig.ts"
 import { mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
 import type { RunFlags } from "./cli/flags.ts"
 import { tuttiVersion } from "./cli/version.ts"
-import { layer as languageModelLayer } from "./organs/AgentSdkLanguageModel.ts"
+import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { makePrinter, type Out, stdout } from "./print/organLine.ts"
@@ -125,9 +125,11 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     servers: started.mcp,
     account: started.account,
   })
-  // The organs, over the Agent SDK, their costs logged, skipped while the usage limit holds.
+  // The organs, over the Agent SDK or, with TUTTI_ORGAN_PROVIDER=anthropic, the Messages API, their
+  // costs logged, skipped while the usage limit holds. The startup checks reported a choice that
+  // can't be used.
   const organs = Organs.layer.pipe(
-    Layer.provideMerge(languageModelLayer({ account: started.account })),
+    Layer.provideMerge(Layer.orDie(languageModelLayer({ account: started.account }))),
     Layer.provideMerge(OrganCost.layer),
     Layer.provide(organHold),
   )

@@ -3,7 +3,8 @@
 // whatever happens to the answer after: `ORGAN triage: $0.0123 in 1 turn, 4.2s` in the log, and
 // the run's total, for the end of the report. In a single-call session the last result's total is
 // the call's. A call that ends without a result (timed out, or its session failed first) spent
-// tokens no result reports: it is recorded as a call of unknown cost, with the time it ran.
+// tokens no result reports: it is recorded as a call of unknown cost, with the time it ran. So is
+// a call that answered through a provider that reports no price (AnthropicProvider's).
 import { Context, Effect, Layer, Ref } from "effect"
 import { type Line, Log, line, Tag } from "../run/log.ts"
 
@@ -21,12 +22,14 @@ export interface Cost {
   readonly sessionId: string
 }
 
-/** One organ call that ended without a result, so of unknown cost. */
+/** One organ call that ended without a result, or whose provider reports no price. */
 export interface UnknownCost {
   /** The organ that made the call: `triage`. */
   readonly organ: string
   /** How long the call ran. */
   readonly durationMs: number
+  /** The call answered, but its provider reports no price; absent when it ended with no result. */
+  readonly unpriced?: true
 }
 
 /** The run's organ calls, added up. */
@@ -52,9 +55,14 @@ export const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
 export const costLine = (cost: Cost): Line =>
   `${Tag.organ} ${line`${cost.organ}: ${dollars(cost.costUsd)} in ${cost.turns} ${cost.turns === 1 ? "turn" : "turns"}, ${seconds(cost.durationMs)}`}` as Line
 
-/** The log line of a call of unknown cost: `ORGAN triage: cost unknown, no result after 180.0s`. */
+/**
+ * The log line of a call of unknown cost: `ORGAN triage: cost unknown, no result after 180.0s`, or
+ * `ORGAN triage: cost unknown, no price reported, 4.2s` for one that answered.
+ */
 export const unknownCostLine = (cost: UnknownCost): Line =>
-  `${Tag.organ} ${line`${cost.organ}: cost unknown, no result after ${seconds(cost.durationMs)}`}` as Line
+  cost.unpriced === true
+    ? (`${Tag.organ} ${line`${cost.organ}: cost unknown, no price reported, ${seconds(cost.durationMs)}`}` as Line)
+    : (`${Tag.organ} ${line`${cost.organ}: cost unknown, no result after ${seconds(cost.durationMs)}`}` as Line)
 
 /** `cost` added to `total`. */
 export const add = (total: Total, cost: Cost): Total => ({

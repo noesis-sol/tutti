@@ -2,8 +2,8 @@
 // problem collected so that they are all reported at once, and the run exits 2. A repository
 // `tutti init` hasn't set up says so first, in place of the problems that init fixes. In § 5's
 // order: the git repository and its main checkout, on a branch; a clean tree; bd and the Beads
-// database; the login probe (§ 4.13); the settings, flags, variables and user config; the MCP names
-// (§ 4.6); the worker prompt (§ 4.11).
+// database; the login probe (§ 4.13); organs' provider (§ 6.1); the settings, flags, variables and
+// user config; the MCP names (§ 4.6); the worker prompt (§ 4.11).
 //
 // orchestra's run state names workers it left behind, which tutti doesn't adopt (§ 11): a warning,
 // not a problem. A run that passes gets what the checks resolved, and its START block from them.
@@ -24,6 +24,7 @@ import {
   workerPromptFile,
 } from "../cli/AppConfig.ts"
 import { noFlags, type RunFlags } from "../cli/flags.ts"
+import { providerProblems } from "../organs/AnthropicProvider.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
 import { settingsFile } from "../project/settings.ts"
@@ -360,6 +361,7 @@ export const check = <R>(checking: Checking<R>) =>
       ...beads,
       ...claude.problems,
       ...account.problems,
+      ...providerProblems(process.env),
       ...configured.problems,
       ...mcp.problems,
       ...prompt.problems,
