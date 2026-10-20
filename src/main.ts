@@ -4,11 +4,13 @@
 // run (src/run/run.ts) on a ManagedRuntime of the live layers, which is disposed of, and the lock
 // released, once the run's scope has closed. When Tty says the terminal can draw the dashboard,
 // the run asks the start question and shows the dashboard in the command's one OpenTUI renderer
-// (src/ui/renderer.ts), the log goes to its file alone, and the run's summary and closing lines
-// are printed once the renderer is gone. New feature, at the start question, opens the Interview
+// (src/ui/renderer.ts), the log goes to its file alone, and once the renderer is gone the run's
+// summary, closing and scope lines are printed in the theme of the renderer's appearance, then the
+// report with its organ lines, then the end record (src/run/run.ts's finish). New feature, at the start question, opens the Interview
 // view in that renderer (src/run/interview.ts); once its epic is filed and you say y, the run goes
 // on, scoped to the epic, into the dashboard. Otherwise the run is plain (§ 7.6): the start question as
-// lines, log lines on stdout, with a line saying why when the terminal couldn't show a dashboard.
+// lines, log lines on stdout, with a line saying why when the terminal couldn't show a dashboard,
+// the log's summary lines, then the report.
 // Signals (§ 7.4, src/run/quit.ts): SIGUSR1 winds the run down, SIGUSR2 too, their handlers in place
 // before the lock names tutti's PID; SIGTSTP is ignored with a log line (D18); while the run goes,
 // SIGINT, SIGTERM and SIGHUP quit it (§ 4.8), the third ending tutti at once, and before and after
@@ -64,7 +66,7 @@ import {
   runMain,
   suspendIgnoredLine,
 } from "./run/quit.ts"
-import { run } from "./run/run.ts"
+import { finish, run } from "./run/run.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
@@ -133,12 +135,12 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     account: started.account,
   })
   // The organs, over the Agent SDK or, with TUTTI_ORGAN_PROVIDER=anthropic, the Messages API, their
-  // costs logged, skipped while the usage limit holds. The startup checks reported a choice that
-  // can't be used.
+  // costs logged, skipped while the usage limit holds, as the report asks too. The startup checks
+  // reported a choice that can't be used.
   const organs = Organs.layer.pipe(
     Layer.provideMerge(Layer.orDie(languageModelLayer({ account: started.account }))),
     Layer.provideMerge(OrganCost.layer),
-    Layer.provide(organHold),
+    Layer.provideMerge(organHold),
   )
   return Layer.mergeAll(host, organs).pipe(
     Layer.provideMerge(second),
@@ -273,6 +275,13 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                 : yield* outputAppearance(config.appearance, null),
             )
           : undefined
+      /** Where the report goes, in `theme`, on the main screen. */
+      const reportOut = (theme: Theme) =>
+        Effect.map(tty.size, (size) => ({
+          printer: makePrinter(stdout, theme),
+          theme,
+          width: size.columns,
+        }))
       const output: Output =
         mainTheme === undefined || mode._tag === "Plain"
           ? { _tag: "Plain" }
@@ -418,9 +427,26 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         if (stopped !== undefined) return stopped
         if (yield* nothingReported) return exitCodes.ok
         const ran = yield* listening(
-          scoped(run({ version, base, start: start(), drains, quits, exitNow: exitNow() })),
+          scoped(
+            run({
+              version,
+              base,
+              start: start(),
+              drains,
+              quits,
+              exitNow: exitNow(),
+              endLater: true,
+            }),
+          ),
         )
-        return ran.exitCode
+        const theme =
+          mainTheme ??
+          themeOf(
+            tty.dumb
+              ? appearanceOf(config.appearance, null)
+              : yield* outputAppearance(config.appearance, null),
+          )
+        return yield* finish(ran, yield* reportOut(theme), false)
       }
       if (asks === "no") {
         yield* begin(Work.Tickets())
@@ -492,10 +518,11 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                 quits,
                 exitNow: exitNow(destroy),
                 dashboard: dashboard(shell, themeOf, clipboard),
+                endLater: true,
               }),
             ),
           )
-          return { _tag: "Ran", ...ran } as const
+          return { _tag: "Ran", outcome: ran, appearance: shell.appearance.get() } as const
         }),
       ).pipe(Effect.result)
       if (Result.isFailure(shown)) {
@@ -520,8 +547,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           yield* events.emit({ kind: "end", code: exitCodes.ok })
           return exitCodes.ok
         case "Ran":
-          yield* Console.log(ended.ending.join("\n"))
-          return ended.exitCode
+          return yield* finish(ended.outcome, yield* reportOut(themeOf(ended.appearance)), true)
       }
     }).pipe(Effect.provideContext(services.success), Effect.provide(ttyLayer))
     const found = yield* newer

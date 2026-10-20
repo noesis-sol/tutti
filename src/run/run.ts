@@ -43,7 +43,10 @@
 // PERMISSION or QUESTION line naming the `tutti answer` command, served from the attention files.
 // When Tty says the terminal can draw the dashboard and main gave the run one, the run shows it
 // (screen.ts) from its start to its end instead, and hands back the summary and closing lines for
-// main to print once the renderer is gone (§ 7.1).
+// main to print once the renderer is gone (§ 7.1). Given RunOptions.endLater, the run leaves the
+// report and the end record to `finish`, which main runs on the main screen once the renderer is
+// gone: the styled summary and closing line after a dashboard, then the report (report.ts), then
+// the end record (§ 5 item 14 "Then").
 import { join } from "node:path"
 import {
   Cause as Causes,
@@ -73,9 +76,13 @@ import { serve } from "../agent/attentionFiles.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import type { UsageLimits } from "../agent/UsageLimits.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
+import { section } from "../organs/evidence.ts"
+import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
+import { Ending, printSummary, type Summary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
+import { Git } from "../services/Git.ts"
 import type { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
@@ -93,6 +100,7 @@ import {
   blockedLifted,
   blockedStop,
   exitCodeOf,
+  exitCodes,
   isBlockedOn,
   liftStops,
   noStops,
@@ -121,6 +129,7 @@ import {
   unansweredLine,
   underWayLine,
 } from "./quit.ts"
+import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
 import { footprintsOf, make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
@@ -136,6 +145,14 @@ export interface Outcome {
   readonly phases: Readonly<Record<string, TicketPhase>>
   /** The summary and closing lines the run wrote at its end. */
   readonly ending: ReadonlyArray<Line>
+  /** What the styled summary is made from (§ 7.1). */
+  readonly summary: Summary
+  /** How the run ended, for the styled closing line and the report: a scoped run's part included. */
+  readonly closing: Ending
+  /** The lines the run wrote after its closing line: the full check's, a quit's as it ended. */
+  readonly after: ReadonlyArray<Line>
+  /** The run report on `out` (report.ts), which `finish` runs; nothing without organs. */
+  readonly report: (out: ReportOut) => Effect.Effect<void>
 }
 
 export interface RunOptions {
@@ -156,6 +173,11 @@ export interface RunOptions {
   readonly exitNow?: (code: number, said: ReadonlyArray<Line>) => Effect.Effect<void>
   /** The dashboard to show when Tty says the terminal can draw one; the run is plain without it. */
   readonly dashboard?: Dashboard
+  /**
+   * Leaves the report and the end record to `finish`, run once the dashboard's renderer is gone,
+   * so that they follow the summary on the main screen (§ 5 item 14 "Then", § 7.1).
+   */
+  readonly endLater?: boolean
 }
 
 /**
@@ -296,6 +318,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const context = yield* Effect.context<WorkEnv>()
     const { base } = options
     const begun = yield* Clock.currentTimeMillis
+    // The base's commit as the run starts, for the report's commits merged.
+    const startHead = yield* (yield* Git)
+      .revParse(config.repo, base)
+      .pipe(Effect.orElseSucceed(() => base))
 
     if (options.start !== undefined && options.start.length > 0) yield* logs.write(...options.start)
     yield* serve({ repo: config.repo })
@@ -868,22 +894,36 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       status: { ...emptyStatus, branch: base, concurrency: config.settings.concurrent },
     })
     const now = yield* Clock.currentTimeMillis
-    const summary = summaryLines({
+    const summarised: Summary = {
       version: options.version,
-      base,
+      branch: base,
       scope: config.ticket,
       took: now - begun,
       totals: view.totals,
       rows: view.rows,
-    })
+    }
+    const summary = summaryLines({ ...summarised, base })
     yield* logs.write(...summary)
     let closing: Line
+    let closed: Ending
+    // A scoped run's part of the closing line: `; SCOPE_DONE: …` or `; SCOPE_OPEN: …`.
+    const scopePart = Effect.suspend(() =>
+      config.ticket === null
+        ? Effect.succeed("")
+        : Effect.map(
+            scope.end(beads, config.ticket, scope.ledgerView(state), {
+              excludeTypes: config.settings.queue.exclude_types,
+            }),
+            (end) => `; ${scope.line(end)}`,
+          ),
+    )
 
     // The closing line: the stops', or how the run ended by itself, with its scope's part.
     if (all.first !== null) {
       const first = all.first
       const text = stopsLine(all)
       closing = text
+      closed = Ending.Stopped({ text: `${text}${yield* scopePart}` })
       if (!first.recorded || all.others.length > 0) {
         yield* events.emit({
           kind: "stop",
@@ -898,12 +938,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       const n = yield* scheduler.started
       const how =
         state.windDown !== null ? "drained" : (yield* scheduler.limitReached) ? "limit" : "empty"
-      const scoped =
-        config.ticket === null
-          ? ""
-          : `; ${scope.line(yield* scope.end(beads, config.ticket, scope.ledgerView(state), { excludeTypes: config.settings.queue.exclude_types }))}`
-      const text = line`${doneLine(n, how)}${scoped}`
+      const text = line`${doneLine(n, how)}${yield* scopePart}`
       closing = text
+      closed = Ending.Done({ text, tickets: n, limit: config.limit, took: now - begun })
       yield* events.emit({ kind: "done", text })
       yield* logs.write(text)
     }
@@ -912,6 +949,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const phases: Record<string, TicketPhase> = {}
     for (const entry of state.tickets.values()) phases[entry.ticket] = entry.phase
     const said = [...summary, closing]
+    const sections = config.feature === null ? [] : [section("The feature request", config.feature)]
     const command = config.settings.checks.full.command
     let exitCode = exitCodeOf(all)
     // The stop of a quit, or a panic, after the loop: `when` it came.
@@ -924,8 +962,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         Effect.map(fullCheck({ base, started: begun }), (done) => ({ done })),
         Effect.map(Deferred.await(quitting), (quit) => ({ quit })),
       )
-      if ("done" in checked) said.push(checked.done.text)
-      else {
+      if ("done" in checked) {
+        said.push(checked.done.text)
+        sections.push(section("The full check", checked.done.text))
+      } else {
         const stop = lateStop(checked.quit, "during the full check")
         yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
         yield* logs.write(stop.text)
@@ -940,6 +980,62 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       said.push(stop.text)
       exitCode = stop.code
     }
+
+    // The report, over the run's services, when it has organs: skipped once the run was quit.
+    const reportRun: ReportRun = {
+      started: begun,
+      base,
+      startHead,
+      ending: closed,
+      exitCode,
+      quit: quit !== null || (yield* Deferred.isDone(quitting)),
+      sections,
+    }
+    const reportContext = yield* Effect.context<RunEnv | Ledger>()
+    const cost = yield* Effect.serviceOption(OrganCost)
+    const report = (out: ReportOut): Effect.Effect<void> =>
+      Option.isNone(organs) || Option.isNone(cost)
+        ? Effect.void
+        : runReport(reportRun, out).pipe(
+            Effect.provideService(Organs, organs.value),
+            Effect.provideService(OrganCost, cost.value),
+            Effect.provideContext(reportContext),
+          )
+    const outcome: Outcome = {
+      exitCode,
+      phases,
+      ending: said,
+      summary: summarised,
+      closing: closed,
+      after: said.slice(summary.length + 1),
+      report,
+    }
+    if (options.endLater) return outcome
     yield* events.emit({ kind: "end", code: exitCode })
-    return { exitCode, phases, ending: said } satisfies Outcome
+    return outcome
   }).pipe(Effect.provide(Ledger.layer))
+
+/**
+ * What follows a run that left it to its caller (RunOptions.endLater), on the main screen once the
+ * dashboard's renderer is gone (§ 5 item 14 "Then", § 7.1): when `styled`, the summary, the
+ * closing and scope lines and the lines after them, in `out`'s theme, as a plain run's log has
+ * already said them; then the report, and the end record. Ctrl+C interrupting it ends the run
+ * INTERRUPTED. Gives the run's exit code.
+ */
+export const finish = (
+  outcome: Outcome,
+  out: ReportOut,
+  styled: boolean,
+): Effect.Effect<number, never, EventStream> =>
+  Effect.gen(function* () {
+    const events = yield* EventStream
+    if (styled) {
+      yield* printSummary(out.printer, outcome.summary, outcome.closing, out.theme, out.width)
+      if (outcome.after.length > 0) yield* out.printer.print(outcome.after.join("\n"))
+    }
+    yield* outcome
+      .report(out)
+      .pipe(Effect.onInterrupt(() => events.emit({ kind: "end", code: exitCodes.interrupted })))
+    yield* events.emit({ kind: "end", code: outcome.exitCode })
+    return outcome.exitCode
+  })
