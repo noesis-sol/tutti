@@ -45,7 +45,7 @@ export const Hint = ({ theme, keys }: { readonly theme: Theme; readonly keys: st
 )
 
 /** `children` in the theme the appearance now gives, re-rendered when it changes. */
-const Themed = ({
+export const Themed = ({
   appearance,
   themeOf,
   children,

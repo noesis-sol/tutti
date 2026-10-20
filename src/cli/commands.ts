@@ -10,7 +10,7 @@ import { resolveClaude } from "../agent/claudeBinary.ts"
 import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import { scoutSearch } from "../init/checks.ts"
-import { cancelledLine, type InitFlags, init, summaryLines } from "../init/init.ts"
+import { cancelledLine, type InitFlags, type InitForm, init, summaryLines } from "../init/init.ts"
 import { lineForm } from "../init/lineForm.ts"
 import { liveMachine } from "../init/steps.ts"
 import { parseMcpNames } from "../init/workers.ts"
@@ -18,6 +18,7 @@ import { layer as languageModelLayer } from "../organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
 import { plan } from "../plan/plan.ts"
+import { initCancelled, initHeader, initSummary } from "../print/initSummary.ts"
 import { maxConcurrent } from "../project/settings.ts"
 import { exitCodes } from "../run/holds.ts"
 import { Log } from "../run/log.ts"
@@ -26,8 +27,17 @@ import { Beads } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
 import * as Tty from "../services/Tty.ts"
+import { initFormKind, openInitForm } from "../ui/InitForm.tsx"
 import { streamInput } from "../ui/plain/forms.ts"
-import { appearanceOf, makeTheme, orchestraLoaded, outputAppearance } from "../ui/theme.ts"
+import { open as openRenderer } from "../ui/renderer.ts"
+import {
+  type Appearance,
+  appearanceOf,
+  makeTheme,
+  orchestraLoaded,
+  outputAppearance,
+  type Theme,
+} from "../ui/theme.ts"
 import { AppConfig, layer as appConfigLayer, load, SetupProblem } from "./AppConfig.ts"
 import { colours } from "./colours.ts"
 import {
@@ -383,8 +393,9 @@ const initStopped = (lines: ReadonlyArray<string>) =>
   )
 
 /**
- * tutti init in the folder `cwd`: from the main checkout, asking in lines where stdin and stdout
- * are a terminal, else asking nothing.
+ * tutti init in the folder `cwd`: from the main checkout, asking in its own renderer where stdin and
+ * stdout are a terminal that draws one, in lines with TERM=dumb, else asking nothing; then its
+ * summary on the main screen.
  */
 const runInit = (cwd: string, flags: InitFlags) =>
   Effect.gen(function* () {
@@ -442,32 +453,53 @@ const runInit = (cwd: string, flags: InitFlags) =>
       }),
       Tty.layer,
     )
-    const asks = process.stdin.isTTY === true && process.stdout.isTTY === true
+    const kind = initFormKind(tty)
+    const config = kind === null ? Option.none() : yield* Effect.option(load(noFlags, repo))
+    const chosen = Option.match(config, {
+      onNone: () => "auto" as const,
+      onSome: (value) => value.appearance,
+    })
+    const themeOf = (appearance: Appearance) =>
+      makeTheme(
+        Option.match(config, {
+          onNone: () => orchestraLoaded,
+          onSome: (value) => value.scheme,
+        }).scheme,
+        {
+          appearance,
+          depth: tty.colourDepth === "truecolor" ? "truecolor" : "256",
+          noColor: Option.match(config, {
+            onNone: () => false,
+            onSome: (value) => value.noColor,
+          }),
+        },
+      )
+    // The theme the summary is printed in, once the form is done: the variant the renderer
+    // detected, or the one the line form asked in; none without a form.
+    const printed: { theme: Theme | null } = { theme: null }
     const ran = yield* Effect.scoped(
       Effect.gen(function* () {
-        let form = null
-        if (asks) {
-          const config = yield* Effect.option(load(noFlags, repo))
-          const chosen = Option.match(config, {
-            onNone: () => "auto" as const,
-            onSome: (value) => value.appearance,
-          })
-          const theme = makeTheme(
-            Option.match(config, {
-              onNone: () => orchestraLoaded,
-              onSome: (value) => value.scheme,
-            }).scheme,
-            {
-              appearance: tty.dumb
-                ? appearanceOf(chosen, null)
-                : yield* outputAppearance(chosen, null),
-              depth: tty.colourDepth === "truecolor" ? "truecolor" : "256",
-              noColor: Option.match(config, {
-                onNone: () => false,
-                onSome: (value) => value.noColor,
+        let form: InitForm | null = null
+        if (kind === "renderer") {
+          // The form's own renderer, destroyed when this scope closes, before the summary.
+          const shell = yield* Effect.option(openRenderer({ chosen, mouse: false }))
+          if (Option.isSome(shell)) {
+            const opened = shell.value
+            form = yield* openInitForm(opened, themeOf, repo)
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                printed.theme = themeOf(opened.appearance.get())
               }),
-            },
+            )
+          }
+        }
+        if (form === null && kind !== null) {
+          // TERM=dumb, or a renderer that couldn't be opened: the line forms.
+          const theme = themeOf(
+            tty.dumb ? appearanceOf(chosen, null) : yield* outputAppearance(chosen, null),
           )
+          printed.theme = theme
+          process.stdout.write(`${initHeader(theme, repo)}\n`)
           const input = yield* streamInput(process.stdin)
           form = lineForm({ input, write: (text) => process.stdout.write(text), theme })
         }
@@ -488,13 +520,26 @@ const runInit = (cwd: string, flags: InitFlags) =>
         )
       }),
     )
+    const { theme } = printed
     if (Result.isFailure(ran)) {
       const error = ran.failure
+      if (error._tag === "FormCancelled" && theme !== null) {
+        yield* Console.error(initCancelled(theme))
+        process.exitCode = exitCodes.setup
+        return
+      }
       return yield* initStopped([
         error._tag === "FormCancelled" ? cancelledLine : `tutti init: ${error.message}`,
       ])
     }
-    yield* Console.log(summaryLines(ran.success).join("\n"))
+    if (theme === null) {
+      yield* Console.log(summaryLines(ran.success).join("\n"))
+      return
+    }
+    // After the renderer's form, on the main screen: the title the alternate screen took with it.
+    if (kind === "renderer") yield* Console.log(initHeader(theme, repo))
+    const width = Math.min(process.stdout.columns ?? 80, 100)
+    yield* Console.log(`${initSummary(ran.success, theme, width)}\n`)
   }).pipe(Effect.provide(Git.layer()), Effect.provide(GitWriter.layer))
 
 /** `tutti init`, in the folder tutti was started in. */

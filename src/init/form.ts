@@ -91,7 +91,9 @@ export interface Fields {
   /** The servers chosen. */
   readonly servers: (field: ServersField) => Effect.Effect<ReadonlyArray<string>, FormCancelled>
   /** Runs the scout's search: what it found, or why not, skipped included where it can be. */
-  readonly scout: (search: Effect.Effect<Scouting, string>) => Effect.Effect<ScoutResult, FormCancelled>
+  readonly scout: (
+    search: Effect.Effect<Scouting, string>,
+  ) => Effect.Effect<ScoutResult, FormCancelled>
 }
 
 /** The concurrency typed, or what is wrong with it; "" keeps `initial`. */

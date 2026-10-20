@@ -23,6 +23,7 @@ import {
   UntrustedCheckout,
 } from "../src/agent/Account.ts"
 import { readInitFlags } from "../src/cli/commands.ts"
+import { readConcurrency } from "../src/init/form.ts"
 import {
   type InitFlags,
   type InitForm,
@@ -31,7 +32,6 @@ import {
   summaryLines,
   type TrustOffer,
 } from "../src/init/init.ts"
-import { readConcurrency } from "../src/init/form.ts"
 import { readServers } from "../src/init/lineForm.ts"
 import { fastScript, fullScript, isRunner, runsRunner, suiteMarker } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
