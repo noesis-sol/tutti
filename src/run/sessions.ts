@@ -18,7 +18,8 @@
 // carry on; gone again, the run holds with PAUSED (settle.ts), and the next run resumes it again.
 // Resuming fails when the ticket has no saved session, its worktree is gone, the spawn fails, the
 // transcript is gone, or Claude Code reports a startup_failure_reason (cwd_unavailable, …): the
-// ticket is then warned about (WORKER_GONE), noted, and dropped, left for review.
+// ticket is then warned about (WORKER_GONE), noted, and dropped, left for review, its record in
+// state.json forgotten.
 import { Data, Effect, Result, Schema } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Beads } from "../services/Beads.ts"
@@ -177,17 +178,21 @@ export const resumeGone = (
 
 /**
  * Drops the ticket, in progress with its worker gone and its session not resumed (`why`): warned
- * about (WORKER_GONE), noted, and left for review, no longer followed.
+ * about (WORKER_GONE), noted, and left for review, no longer followed, and forgotten in state.json.
  */
 export const workerGone = (
   ticket: string,
   worktree: string,
   why: string,
-): Effect.Effect<void, never, Beads | Ledger | Log> =>
-  leaveForReview(ticket, {
-    why: Tag.workerGone,
-    detail: "in progress, its worker gone",
-    text: ticketLine(
-      Tag.workerGone,
-    )`${ticket} is in progress, but its worker is gone and its session could not be resumed (${why}); worktree ${worktree} left for review, no longer followed; reopen it to run it again (bd update ${ticket} --status open), or finish it by hand`,
+): Effect.Effect<void, never, Beads | Ledger | Log | Store> =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    yield* leaveForReview(ticket, {
+      why: Tag.workerGone,
+      detail: "in progress, its worker gone",
+      text: ticketLine(
+        Tag.workerGone,
+      )`${ticket} is in progress, but its worker is gone and its session could not be resumed (${why}); worktree ${worktree} left for review, no longer followed; reopen it to run it again (bd update ${ticket} --status open), or finish it by hand`,
+    })
+    yield* Effect.ignore(store.remove(ticket))
   })

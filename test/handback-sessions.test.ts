@@ -2,7 +2,7 @@
 // (Gone), resumed for a hand-back and recorded as sessions.ts records a resume, and the session
 // closed once a hand-back is over, as its ticket's phase says.
 import { describe, expect, test } from "bun:test"
-import { Effect, Exit, type Scope, Stream } from "effect"
+import { Effect, Exit, Ref, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
@@ -190,24 +190,48 @@ const handedBack = (
   scenario(
     { backlog: backlog().ticket("a").seeds, ...withCheck, ...setup, scripts },
     Effect.gen(function* () {
-      const queue: MergeQueue = yield* makeQueue(options)
-      const ticket = yield* finished(worker)
-      const repository = yield* Repository
-      yield* repository.commit(
-        repository.dir,
-        "Land something else",
-        hooks.landed ?? { "a.txt": "main's a\n" },
-      )
-      yield* hooks.before ?? Effect.void
-      yield* queue.offer(ticket)
-      yield* queue.settled
-      return {
-        phases: phasesOf(yield* (yield* Ledger).current),
-        resumes: (yield* (yield* Store).ticket("a"))?.resumes ?? 0,
-        goneResumed: yield* (yield* Ledger).goneResumed("a"),
-      } satisfies Ended
+      // A ticket merged is forgotten in state.json, so a's resumes are counted as they are saved.
+      const store = yield* Store
+      const resumes = yield* Ref.make(0)
+      const counting = Store.of({
+        ...store,
+        resumed: (id) =>
+          Effect.andThen(
+            store.resumed(id),
+            id === "a" ? Ref.update(resumes, (n) => n + 1) : Effect.void,
+          ),
+      })
+      return yield* Effect.provideService(merged(worker, hooks, resumes), Store, counting)
     }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<Ended, unknown, Env | Scope.Scope>,
   )
+
+/** The rest of handedBack, a's resumes counted in `resumes`. */
+const merged = (
+  worker: Worker,
+  hooks: {
+    readonly landed?: Files
+    readonly before?: Effect.Effect<void, unknown, Env | Ledger>
+  },
+  resumes: Ref.Ref<number>,
+) =>
+  Effect.gen(function* () {
+    const queue: MergeQueue = yield* makeQueue(options)
+    const ticket = yield* finished(worker)
+    const repository = yield* Repository
+    yield* repository.commit(
+      repository.dir,
+      "Land something else",
+      hooks.landed ?? { "a.txt": "main's a\n" },
+    )
+    yield* hooks.before ?? Effect.void
+    yield* queue.offer(ticket)
+    yield* queue.settled
+    return {
+      phases: phasesOf(yield* (yield* Ledger).current),
+      resumes: yield* Ref.get(resumes),
+      goneResumed: yield* (yield* Ledger).goneResumed("a"),
+    } satisfies Ended
+  })
 
 /** A check failing in a.txt, which the ticket changes: it isn't checked again (recheck.ts). */
 const ownFailure = failing("a.txt:1: expected 1")

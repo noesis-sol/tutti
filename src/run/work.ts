@@ -23,7 +23,7 @@ import { AgentHost } from "../agent/AgentHost.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError, type Status } from "../services/Beads.ts"
 import type { GitError } from "../services/Git.ts"
-import type { Store } from "../services/Store.ts"
+import { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview, putAside } from "./aside.ts"
 import { type Settling, settlingOf } from "./environment.ts"
@@ -112,6 +112,8 @@ const noChange = (ticket: StartTicket, worker: StartedWorker, why: string, own: 
       ],
     })
     yield* logs.write(text)
+    // Done, it has nothing left for a later run: its record in state.json goes.
+    yield* Effect.ignore((yield* Store).remove(ticket.id))
   })
 
 /**

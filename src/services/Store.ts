@@ -83,7 +83,7 @@ const TicketRecordFields = Schema.Struct({
   branch: Schema.optionalKey(Schema.String),
   /** Why its session was suspended as the run ended; absent while the ticket is in a run. */
   suspended: Schema.optionalKey(Schema.String),
-  /** Its phase as it left the run. */
+  /** Its phase as it left the run; absent while it is in one, and after a run that crashed. */
   phase: Schema.optionalKey(Schema.Literals(phaseNames)),
   /** How many times its session has been resumed. */
   resumes: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),

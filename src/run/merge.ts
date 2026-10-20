@@ -29,17 +29,10 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
 import type { CheckError, Checks } from "../services/Checks.ts"
 import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
-import type { Store } from "../services/Store.ts"
+import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
-import {
-  clearUnchecked,
-  failedHow,
-  markUnchecked,
-  runMergeCheck,
-  saidOf,
-  uncheckedMark,
-} from "./check.ts"
+import { failedHow, markUnchecked, runMergeCheck, saidOf, uncheckedMark } from "./check.ts"
 import { type CheckStop, type Fixes, whyNotFix } from "./checkback.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
@@ -533,8 +526,8 @@ export const prepare = (
 /**
  * The protected step for a ticket with nothing of its own left to merge, as `unchanged` says: its
  * worktree and branch removed (a branch with commits of its own moved to the base first, so git
- * deletes it as merged; its reflog keeps them), the ticket Done{noChange}, the `unmerged` label an
- * earlier run gave it removed, and the epics above it closed.
+ * deletes it as merged; its reflog keeps them), the ticket Done{noChange} and forgotten in
+ * state.json, the `unmerged` label an earlier run gave it removed, and the epics above it closed.
  */
 export const closeUnchanged = (
   ticket: FinishedTicket,
@@ -556,7 +549,8 @@ export const closeUnchanged = (
       beside: [{ kind: "closed", ticket: id, title, detail: "no change to merge", text }],
     })
     yield* log.write(text)
-    yield* clearUnchecked(id)
+    // Done, it has nothing left for a later run: its record in state.json goes, its marks with it.
+    yield* Effect.ignore((yield* Store).remove(id))
     const shown = yield* Effect.result(beads.show(id))
     if (Result.isSuccess(shown) && shown.success.labels.includes(unmergedLabel)) yield* unlabel(id)
     yield* closeEpics(id)
@@ -612,8 +606,8 @@ const closeEpics = (id: string) =>
 
 /**
  * The protected step: the base fast-forwarded to the ticket's branch, on top of it at `onto`, in
- * the main checkout, then the worktree and branch removed, the ticket Done, the `unmerged` label an
- * earlier run gave it removed, and the epics above it closed. Undefined when it merged; the stop when the main checkout or git kept it from merging.
+ * the main checkout, then the worktree and branch removed, the ticket Done and forgotten in
+ * state.json, the `unmerged` label an earlier run gave it removed, and the epics above it closed. Undefined when it merged; the stop when the main checkout or git kept it from merging.
  */
 export const fastForward = (
   ticket: FinishedTicket,
@@ -707,6 +701,8 @@ export const fastForward = (
       ],
     })
     yield* log.write(text)
+    // Done, it has nothing left for a later run: its record in state.json goes.
+    yield* Effect.ignore((yield* Store).remove(id))
     // A carried-over ticket keeps its label until it merges: closeEpics takes a labelled
     // subticket for one not merged.
     const shown = yield* Effect.result(beads.show(id))

@@ -593,6 +593,8 @@ During this, a second signal abandons the merge, as orchestra's does: `<id>'s me
 - a ticket deleted from Beads: dropped
 - a worktree gone: dropped, found by the check before resuming (Resume limits)
 - a ticket that can't be checked: kept for the next run
+- a ticket merged, closed with no change, or dropped (`WORKER_GONE`, or by one of the cases above): forgotten in `state.json`
+- a run that crashed (`kill -9`, a power cut) suspended nothing. A run that ends saves the phase each of its other tickets left it in, so a record with neither is one a crash left. Once the process `state.json` names is gone, the next run takes up such a ticket as a suspended one, told the last run crashed, when bd has it in progress or closed; one in any other state is forgotten
 
 **The quit box's `s`** is orchestra's drain: no new tickets, the running ones finish and merge, and the run ends `DRAINED` (exit 0).
 

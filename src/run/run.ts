@@ -81,7 +81,7 @@ import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
-import { carryOver, saveAsked } from "./carry.ts"
+import { carryOver, saveAsked, saveLeft } from "./carry.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
@@ -530,6 +530,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           saved.push(entry.ticket)
         }
         yield* saveAsked
+        yield* saveLeft
         const stop = stopFor("INTERRUPTED", atOnceText(request.how, saved, merging))
         yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
         yield* logs.write(stop.text)
@@ -842,6 +843,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       yield* Effect.ignore(store.suspend(each.ticket, each.because, "Stopped"))
     }
     yield* saveAsked
+    yield* saveLeft
     yield* labelAtEnd({ repo: config.repo, base })
 
     // Quitting's last step: the run ends INTERRUPTED (exit 130), or PANIC (exit 4), before any
