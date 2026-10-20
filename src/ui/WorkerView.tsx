@@ -31,6 +31,8 @@
 // Branding (§ 7.5): tutti's own glyphs and layout, and the scheme's colours; the chrome names
 // neither Claude nor its product.
 import {
+  BoxRenderable,
+  type MarkdownOptions,
   type MouseEvent,
   RGBA,
   type ScrollBoxRenderable,
@@ -125,6 +127,8 @@ const handBackKey = "handback"
 interface Looks {
   readonly theme: Theme
   readonly markdown: SyntaxStyle
+  /** The Markdown's quotes and rules, drawn faint (markdownBlocks). */
+  readonly blocks: NonNullable<MarkdownOptions["renderNode"]>
   /** A command's output, faint; and an error's, `needsYou`. */
   readonly output: SyntaxStyle
   readonly error: SyntaxStyle
@@ -136,6 +140,45 @@ const useLooks = (): Looks => {
   const looks = useContext(LooksContext)
   if (looks === null) throw new Error("a transcript item is drawn outside its worker view")
   return looks
+}
+
+/** The longest a Markdown rule is drawn (§ 7.11 "Markdown"). */
+export const ruleWidth = 40
+
+/**
+ * OpenTUI draws a quote's bar and a rule as box borders, in a colour with no attributes, and the
+ * rule the whole width. This keeps its boxes, which it updates in place as the text streams, with
+ * their borders off: a quote's draws a faint `│ ` on each of its lines, a rule's a faint `─` at
+ * most `ruleWidth` long.
+ */
+const markdownBlocks = (theme: Theme): NonNullable<MarkdownOptions["renderNode"]> => {
+  const faint = theme.styles.dim
+  const fg = faint.fg ?? plainFg
+  const renderNode: NonNullable<MarkdownOptions["renderNode"]> = (token, context) => {
+    if (token.type !== "blockquote" && token.type !== "hr") return undefined
+    const box = context.defaultRender()
+    if (!(box instanceof BoxRenderable)) return box
+    // No sides, not false: OpenTUI sets the colour of a quote it updates, which gives a box with
+    // its border false all four.
+    box.border = []
+    if (token.type === "blockquote") {
+      box.paddingLeft = 2
+      box.renderAfter = function (buffer) {
+        for (let y = 0; y < this.height; y++) {
+          buffer.drawText("│", this.x, this.y + y, fg, undefined, faint.attributes)
+        }
+      }
+    } else {
+      box.maxWidth = ruleWidth
+      box.renderAfter = function (buffer) {
+        buffer.drawText("─".repeat(this.width), this.x, this.y, fg, undefined, faint.attributes)
+      }
+    }
+    return box
+  }
+  // OpenTUI's flag for a renderNode that leaves the other blocks to it: the paragraphs stay
+  // coalesced, with the blank lines between them.
+  return Object.assign(renderNode, { codeBlockOnly: true })
 }
 
 /** The syntax styles of `theme`, made in the renderer's native scene and freed with it. */
@@ -172,6 +215,7 @@ export const useSyntaxStyles = (theme: Theme): Looks => {
         "markup.list": plain,
         conceal: { ...plain, dim: true },
       }),
+      blocks: markdownBlocks(theme),
       output: make({ default: { ...plain, dim: true } }),
       error: make({ default: role("needsYou") }),
     }
@@ -413,6 +457,7 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
           <markdown
             content={entry.text}
             syntaxStyle={looks.markdown}
+            renderNode={looks.blocks}
             conceal
             streaming={entry.live}
           />

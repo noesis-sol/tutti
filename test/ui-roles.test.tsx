@@ -227,7 +227,7 @@ const transcript: ReadonlyArray<Item> = [
   call("bash-1", "Bash", { command: "bun x nope" }),
   answered("bash-1", "Exit code 1\nerror: nope not found", true),
   said(
-    "# Undone\n\n## Groups\n\n### Notes\n\nThe stack records `edits` now. See [the spec](https://x.test/spec).\n\nA **strong** word.\n\n> quoted",
+    "# Undone\n\n## Groups\n\n### Notes\n\nThe stack records `edits` now. See [the spec](https://x.test/spec).\n\nA **strong** word.\n\n---\n\n> quoted",
   ),
   sdk({ type: "result", subtype: "success", is_error: false }),
 ].map((message, i) => ({
@@ -927,6 +927,8 @@ const scenes: ReadonlyArray<Scene> = [
       ["strong", look("text", "bold")],
       ["word.", look("text")],
       ["quoted", look("text", "faint")],
+      [{ text: "│", on: "│ quoted" }, look("text", "faint")],
+      [{ text: "─".repeat(40), on: "  ─" }, look("text", "faint")],
       [{ text: ">", on: " > i to write" }, look("formAccent")],
       ["i to write to the worker", look("formPlaceholder")],
     ],
