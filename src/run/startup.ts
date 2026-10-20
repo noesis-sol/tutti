@@ -24,7 +24,7 @@ import {
   workerPromptFile,
 } from "../cli/AppConfig.ts"
 import { noFlags, type RunFlags } from "../cli/flags.ts"
-import { providerProblems } from "../organs/AnthropicProvider.ts"
+import { type OrganProvider, organProvider } from "../organs/AnthropicProvider.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
 import { settingsFile } from "../project/settings.ts"
@@ -79,6 +79,8 @@ export interface Started {
   readonly prompt: WorkerPrompt
   readonly mcp: ChosenServers
   readonly account: AccountProbe
+  /** The provider organs use (TUTTI_ORGAN_PROVIDER): the Anthropic one bills ANTHROPIC_API_KEY. */
+  readonly organs: OrganProvider["_tag"]
   /** What the run says once as it starts, but doesn't stop it. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -87,6 +89,8 @@ export interface Started {
 export interface Checking<R> {
   /** The folder tutti was started in. */
   readonly cwd: string
+  /** tutti's environment, where TUTTI_ORGAN_PROVIDER chooses organs' provider. */
+  readonly env: Readonly<Record<string, string | undefined>>
   /** The configuration of a run in the main checkout `repo`: AppConfig.load under the flags. */
   readonly config: (repo: string) => Effect.Effect<AppConfigValue, SetupProblem, R>
   /** bd in the main checkout `repo`. */
@@ -328,6 +332,7 @@ export const check = <R>(checking: Checking<R>) =>
     // embedded one, extracted.
     const claude = yield* checking.claude(given.claude)
     const config: AppConfigValue = { ...given, claude: claude.path }
+    const organs = organProvider(checking.env)
     // A worker prompt of its own (--prompt) is enough to run in a project init hasn't set up, as
     // in orchestra; without one, such a project has no worker prompt to check.
     const ownPrompt = config.prompt !== resolvePath(repo, workerPromptFile)
@@ -361,7 +366,7 @@ export const check = <R>(checking: Checking<R>) =>
       ...beads,
       ...claude.problems,
       ...account.problems,
-      ...providerProblems(process.env),
+      ...(Result.isFailure(organs) ? [organs.failure] : []),
       ...configured.problems,
       ...mcp.problems,
       ...prompt.problems,
@@ -374,6 +379,7 @@ export const check = <R>(checking: Checking<R>) =>
       notSetUp ||
       problems.length > 0 ||
       Result.isFailure(branch) ||
+      Result.isFailure(organs) ||
       Option.isNone(configured.value) ||
       Option.isNone(account.value) ||
       Option.isNone(mcp.value) ||
@@ -387,6 +393,7 @@ export const check = <R>(checking: Checking<R>) =>
       prompt: prompt.value.value,
       mcp: mcp.value.value,
       account: account.value.value,
+      organs: organs.success._tag,
       warnings,
     } satisfies Started
   })
@@ -395,6 +402,7 @@ export const check = <R>(checking: Checking<R>) =>
 export const live = (cwd: string, flags: RunFlags) =>
   ({
     cwd,
+    env: process.env,
     config: (repo) => load(flags, repo),
     beads: (repo) => Beads.layer({ cwd: repo }),
     claude: (given) => resolveClaude(given, cwd),
@@ -433,7 +441,7 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
       ...(servers.length === 0 ? [] : [["MCP servers", servers.join(", ")] as const]),
     ],
     notes: [
-      billingLine(started.account.billing),
+      billingLine(started.account.billing, started.organs === "Anthropic"),
       permissionModeLine(started.account.permissionMode),
       ...(started.mcp.note === null ? [] : [started.mcp.note]),
       `memory: ${memoryEstimate(concurrency)}`,

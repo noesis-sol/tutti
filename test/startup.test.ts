@@ -113,6 +113,7 @@ const run = (repo: string, scenario: Scenario = {}) =>
       return yield* Effect.exit(
         check({
           cwd: scenario.cwd ?? repo,
+          env: {},
           config: (top) =>
             Array.isArray(scenario.config)
               ? Effect.fail(new SetupProblem({ problems: scenario.config }))
@@ -515,6 +516,7 @@ describe("the START block", () => {
     prompt: { text: "Work on TICKET_ID.", file: null },
     mcp: { servers: [], note: noServersNote },
     account: TestAccount.accountProbe(),
+    organs: "AgentSdk",
     warnings: [],
     ...overrides,
   })

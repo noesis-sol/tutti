@@ -14,6 +14,7 @@ const started = (scheme: LoadedScheme, warnings: ReadonlyArray<string> = []): St
   prompt: { text: "Work on TICKET_ID.", file: null },
   mcp: { servers: [], note: noServersNote },
   account: TestAccount.accountProbe(),
+  organs: "AgentSdk",
   warnings,
 })
 

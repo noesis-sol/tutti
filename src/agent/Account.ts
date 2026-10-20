@@ -203,8 +203,22 @@ export type Billing =
   /** Another login Claude Code finds itself: a key from apiKeyHelper or /login, a cloud provider. */
   | { readonly _tag: "Other"; readonly source: string }
 
-/** The `START` block's billing line. */
-export const billingLine = (billing: Billing): string => {
+/**
+ * The `START` block's billing line. `organsOnKey` when organs bill ANTHROPIC_API_KEY over the
+ * Messages API (TUTTI_ORGAN_PROVIDER=anthropic), whatever bills workers.
+ */
+export const billingLine = (billing: Billing, organsOnKey = false): string => {
+  if (organsOnKey) {
+    const organs = `${apiKeyVariable} for organs (TUTTI_ORGAN_PROVIDER=anthropic)`
+    switch (billing._tag) {
+      case "Subscription":
+        return `billing: subscription for workers, ${organs}`
+      case "ApiKey":
+        return "billing: API key, for workers and organs (TUTTI_ORGAN_PROVIDER=anthropic)"
+      case "Other":
+        return `billing: ${billing.source} for workers, ${organs}`
+    }
+  }
   switch (billing._tag) {
     case "Subscription":
       return billing.keyUnused

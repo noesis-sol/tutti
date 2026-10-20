@@ -331,6 +331,7 @@ describe("the startup checks", () => {
       Effect.exit(
         check({
           cwd: repo,
+          env: {},
           config: (top) => Effect.succeed(TestAppConfig.appConfig({ claude: "claude" }, top)),
           beads: () => TestBeads.layer(),
           claude: (given) =>

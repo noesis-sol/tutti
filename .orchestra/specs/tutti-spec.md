@@ -674,6 +674,7 @@ Every change of status is a `usage_limit` event (§10).
 - **With both a subscription login and the key set**, tutti removes the key from workers' and organs' environment. The probe is run without the key to find the subscription. The `START` block says `billing: subscription (ANTHROPIC_API_KEY is set but not used; --billing api uses it)`.
 - **`--billing api`** (or `TUTTI_BILLING=api`, or `"billing": "api"` in the user config) keeps the key.
 - **With the key and no subscription**, the key is used, and `START` says `billing: API key`.
+- **With `TUTTI_ORGAN_PROVIDER=anthropic`** (§6.1), organs bill the key over the Messages API whatever bills workers, and `START` says so: `billing: subscription for workers, ANTHROPIC_API_KEY for organs (TUTTI_ORGAN_PROVIDER=anthropic)`, or `billing: API key, for workers and organs (TUTTI_ORGAN_PROVIDER=anthropic)`.
 
 This matters beyond cost. The Agent SDK's terms ask third-party products not to offer claude.ai login; using your own login on your own machine is what tutti does (§15.2).
 
