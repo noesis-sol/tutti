@@ -14,8 +14,9 @@ import {
   showCommand,
 } from "../src/services/exec.ts"
 
-// Every test starts real processes, and some wait out a kill grace of 2 s. Under load they outlast
-// bun's 5 s default, whose timeout fails even "returns a command's stdout, stderr and exit code".
+// Every test starts real processes, and some wait out a kill grace of 2 s, which under load can
+// outlast bun's 5 s default. (A command whose exit Bun lost hung exec, past any timeout; exec now
+// fails it with CommandNotRun, see test/exec-lost-exit.test.ts.)
 setDefaultTimeout(30_000)
 
 const provide = <A, E>(effect: Effect.Effect<A, E, BunServices.BunServices>): Effect.Effect<A, E> =>

@@ -59,6 +59,16 @@ const groupAlive = (group: number): boolean => {
   }
 }
 
+/** Ends once the group has been gone for `grace`, in which its exit is lost (see LostExitGrace). */
+const groupGoneFor = (group: number, grace: Duration.Duration): Effect.Effect<void> =>
+  Effect.repeat(
+    Effect.sync(() => groupAlive(group)),
+    {
+      while: (alive) => alive,
+      schedule: Schedule.spaced(groupPoll),
+    },
+  ).pipe(Effect.andThen(Effect.sleep(grace)), Effect.interruptible)
+
 /** How much of each of stdout and stderr is kept in memory, unless the command says otherwise. */
 export const defaultMaxOutputBytes = 16 * 1024 * 1024
 
@@ -184,7 +194,8 @@ const writeAllTo = (fd: number, chunk: Uint8Array): Effect.Effect<void, Error> =
 
 /**
  * Runs a command to its end and returns its exit code and output, whatever the code. Fails with
- * CommandTimedOut past its time limit, and with CommandNotRun when it can't be started.
+ * CommandTimedOut past its time limit, and with CommandNotRun when it can't be started or its exit
+ * is lost (see LostExitGrace).
  */
 export const exec = Effect.fn("exec")(function* (command: Command) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
@@ -214,14 +225,21 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         }),
       )
       // The spawner's finalizer waits on the command's exit, so it has a scope of its own: one that
-      // isn't waited on once the exit is lost.
+      // isn't waited on once the exit is lost, found lost or not (exec interrupted before it knew).
       const spawned = yield* Scope.make()
       let lost = false
-      yield* Effect.addFinalizer((exit) =>
-        lost
-          ? Effect.asVoid(Effect.forkDetach(Scope.close(spawned, exit)))
-          : Scope.close(spawned, exit),
-      )
+      yield* Effect.addFinalizer((exit) => {
+        const leader = group
+        if (leader === undefined) return Scope.close(spawned, exit)
+        const closing = Effect.forkDetach(Scope.close(spawned, exit))
+        if (lost) return Effect.asVoid(closing)
+        return Effect.flatMap(closing, (fiber) =>
+          Effect.raceFirst(
+            Effect.interruptible(Fiber.join(fiber)),
+            groupGoneFor(leader, lostGrace),
+          ),
+        )
+      })
       const handle = yield* spawner
         .spawn(
           ChildProcess.make(command.command, command.args, {
@@ -246,11 +264,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       reaper = yield* Effect.sync(() =>
         startReaper(leader, Duration.toSeconds(Duration.fromInputUnsafe(grace))),
       )
-      // Ends once the group has been gone for the grace, which it is only when its exit is lost.
-      const exitLost = Effect.repeat(
-        Effect.sync(() => groupAlive(leader)),
-        { while: (alive) => alive, schedule: Schedule.spaced(groupPoll) },
-      ).pipe(Effect.andThen(Effect.sleep(lostGrace)), Effect.interruptible)
+      const exitLost = groupGoneFor(leader, lostGrace)
       // The spawner's kill ends by waiting on the exit too.
       const kill = Effect.raceFirst(
         Effect.interruptible(

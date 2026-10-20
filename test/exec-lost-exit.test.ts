@@ -3,7 +3,7 @@
 // wait on that exit forever. A spawner that loses them on purpose stands in for it here.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
-import { Duration, Effect, Exit, Stream } from "effect"
+import { Duration, Effect, Exit, Fiber, Stream } from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import {
   type Command,
@@ -78,6 +78,27 @@ describe("exec, when the command's exit is lost", () => {
       groups,
     )
     expect(failure(exit)).toBeInstanceOf(CommandNotRun)
+    expect(groups.size).toBe(0)
+  })
+
+  test("is interrupted before it knows the exit is lost, and its scope still closes", async () => {
+    const groups = new Set<number>()
+    const started = Date.now()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const spawner = yield* losingSpawner
+        const fiber = yield* Effect.forkChild(
+          exec({ command: "sh", args: ["-c", "exit 0"], timeLimit: "20 seconds" }).pipe(
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+            Effect.provideService(LostExitGrace, Duration.seconds(2)),
+            Effect.provideService(ProcessGroups, groups),
+          ),
+        )
+        yield* Effect.sleep("300 millis")
+        yield* Fiber.interrupt(fiber)
+      }).pipe(Effect.provide(BunServices.layer)),
+    )
+    expect(Date.now() - started).toBeLessThan(10_000)
     expect(groups.size).toBe(0)
   })
 
