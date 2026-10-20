@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Duration, Effect, Fiber } from "effect"
+import { Effect, Fiber } from "effect"
+import { Log } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import { Git } from "../src/services/Git.ts"
@@ -10,12 +11,12 @@ import {
   bash,
   filesQuestion,
   type SessionScript,
-  sleep,
   run as step,
   turn,
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Seed } from "../src/testing/Beads.ts"
+import { texts } from "../src/testing/Log.ts"
 import {
   advance,
   backlog,
@@ -27,6 +28,9 @@ import {
   type World,
 } from "./harness.ts"
 
+// The fill reads the footprints' files for real, so the workers here wait for the log lines they
+// need rather than for TestClock, which the run is moved on by a ready poll at a time meanwhile.
+
 /** A new folder, its real path: the main checkout's, or the worktrees'. */
 const folder = (name: string) =>
   realpathSync(mkdtempSync(join(tmpdir(), `tutti-run-footprints-${name}-`)))
@@ -37,23 +41,37 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
 /** A ticket naming the files it works on. */
 const touching = (...files: ReadonlyArray<string>): Omit<Seed, "id"> => ({ metadata: { files } })
 
-/**
- * Claims `id`, does `before`, commits `files` in its worktree, goes on past `polls` ready polls (two
- * by default: long enough for the run to fill its slots beside it), then closes it.
- */
+/** The run's log so far, once the scenario has started. */
+interface Logged {
+  texts: Effect.Effect<ReadonlyArray<string>>
+}
+
+/** Waits, in real time, until a log line matches `pattern`; dies after 20 s without one. */
+const until = (logged: Logged, pattern: RegExp): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 4000; i++) {
+      if ((yield* logged.texts).some((text) => pattern.test(text))) return
+      yield* Effect.promise(() => Bun.sleep(5))
+    }
+    return yield* Effect.die(
+      new Error(`no log line matched ${pattern}:\n${(yield* logged.texts).join("\n")}`),
+    )
+  })
+
+/** Claims `id`, does `before`, commits `files` in its worktree, waits for `after`, then closes it. */
 const works = (
   world: World,
   root: string,
   id: string,
   options: {
     readonly files?: Readonly<Record<string, string>>
-    readonly before?: ReadonlyArray<SessionScript[number]>
-    readonly polls?: number
+    readonly before?: Effect.Effect<void>
+    readonly after?: Effect.Effect<void>
   } = {},
 ): SessionScript =>
   turn([
     ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
-    ...(options.before ?? []),
+    ...(options.before === undefined ? [] : [step(options.before)]),
     ...bash(
       `git commit -am "Change (${id})"`,
       orDie(
@@ -64,7 +82,7 @@ const works = (
         ),
       ),
     ),
-    sleep(Duration.times(readyPoll, options.polls ?? 2)),
+    ...(options.after === undefined ? [] : [step(options.after)]),
     ...bash(`bd close ${id}`, orDie(world.beads.close(id, "done"))),
   ])
 
@@ -100,11 +118,16 @@ const answers = (world: World, id: string): Effect.Effect<void> =>
 const runs = (plan: {
   readonly seeds: ReadonlyArray<Seed>
   readonly footprint: boolean
-  readonly scripts: (world: World, root: string) => Readonly<Record<string, SessionScript[]>>
+  readonly scripts: (
+    world: World,
+    root: string,
+    logged: Logged,
+  ) => Readonly<Record<string, SessionScript[]>>
 }): Promise<Ran<Outcome>> => {
   const repo = folder("repo")
   const root = folder("worktrees")
   const settings = appConfig().settings
+  const logged: Logged = { texts: Effect.succeed([]) }
   return scenario(
     {
       config: {
@@ -119,9 +142,10 @@ const runs = (plan: {
       backlog: plan.seeds,
       git: { dir: repo },
       worktrees: { root },
-      scripts: (world: World) => plan.scripts(world, root),
+      scripts: (world: World) => plan.scripts(world, root, logged),
     },
     Effect.gen(function* () {
+      logged.texts = texts.pipe(Effect.provideService(Log, yield* Log))
       const git = yield* Git
       for (const seed of plan.seeds) {
         yield* git.addWorktree(repo, join(root, seed.id), {
@@ -130,18 +154,21 @@ const runs = (plan: {
         })
       }
       const fiber = yield* Effect.forkChild(run({ version: "0.1.0-test", base: "main" }))
-      for (let i = 0; i < 12; i++) {
-        for (let j = 0; j < 200; j++) yield* Effect.yieldNow
-        yield* advance(readyPoll)
-      }
-      return yield* Fiber.join(fiber)
+      // A ready poll every few milliseconds, until the run ends.
+      const clock = yield* Effect.forkChild(
+        Effect.forever(
+          Effect.andThen(
+            Effect.promise(() => Bun.sleep(5)),
+            advance(readyPoll),
+          ),
+        ),
+      )
+      const outcome = yield* Fiber.join(fiber)
+      yield* Fiber.interrupt(clock)
+      return outcome
     }),
   )
 }
-
-/** The index of the first log line `pattern` matches; -1 when none does. */
-const lineOf = (ran: Ran<unknown>, pattern: RegExp): number =>
-  ran.log.findIndex((each) => pattern.test(each))
 
 describe("the run's footprints", () => {
   const seeds = backlog()
@@ -152,8 +179,8 @@ describe("the run's footprints", () => {
     const ran = await runs({
       seeds,
       footprint: true,
-      scripts: (world, root) => ({
-        "t-1": [works(world, root, "t-1")],
+      scripts: (world, root, logged) => ({
+        "t-1": [works(world, root, "t-1", { after: until(logged, /skipping t-2/) })],
         "t-2": [works(world, root, "t-2")],
       }),
     })
@@ -165,40 +192,50 @@ describe("the run's footprints", () => {
       /^ {2}t-1 settled/,
       /t-2 dispatching/,
     ])
-  })
+  }, 30_000)
 
   test("with it off, the two run side by side", async () => {
     const ran = await runs({
       seeds,
       footprint: false,
-      scripts: (world, root) => ({
-        "t-1": [works(world, root, "t-1")],
+      scripts: (world, root, logged) => ({
+        "t-1": [works(world, root, "t-1", { after: until(logged, /t-2 dispatching/) })],
         "t-2": [works(world, root, "t-2")],
       }),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done", "t-2": "Done" })
-    expect(lineOf(ran, /skipping/)).toBe(-1)
+    expect(ran.log.some((text) => text.includes("skipping"))).toBe(false)
     expectLog(ran, [/t-1 dispatching/, /t-2 dispatching/, /^ {2}t-1 closed \(.*\); merged/])
-  })
+  }, 30_000)
 
   test("two running worktrees changing one file give LIKELY_CONFLICT", async () => {
+    const warning = /LIKELY_CONFLICT/
     const ran = await runs({
       seeds: backlog()
         .ticket("t-1", { priority: 0, ...touching("src/a.ts") })
         .ticket("t-2", { priority: 1, ...touching("src/b.ts") }).seeds,
       footprint: true,
-      scripts: (world, root) => ({
-        "t-1": [works(world, root, "t-1", { files: { "src/z.ts": "z\n" } })],
-        "t-2": [works(world, root, "t-2", { files: { "src/z.ts": "z\n" } })],
+      scripts: (world, root, logged) => ({
+        "t-1": [
+          works(world, root, "t-1", {
+            files: { "src/z.ts": "z\n" },
+            after: until(logged, warning),
+          }),
+        ],
+        "t-2": [
+          works(world, root, "t-2", {
+            files: { "src/z.ts": "z\n" },
+            after: until(logged, warning),
+          }),
+        ],
       }),
     })
-    expectLog(ran, [
-      /t-1 dispatching/,
-      /t-2 dispatching/,
-      /^ {2}LIKELY_CONFLICT: t-1 and t-2 both edit src\/z\.ts; the second to merge may conflict$/,
+    expectExitCode(ran, 0)
+    expect(ran.log.filter((text) => warning.test(text))).toEqual([
+      "  LIKELY_CONFLICT: t-1 and t-2 both edit src/z.ts; the second to merge may conflict",
     ])
-  })
+  }, 30_000)
 
   test("an answered ticket's footprint counts as it is resumed", async () => {
     const ran = await runs({
@@ -208,11 +245,15 @@ describe("the run's footprints", () => {
         // Ready once t-2 merges, while the resumed t-1 still runs.
         .ticket("t-3", { priority: 2, blockedBy: ["t-2"], ...touching("src/a.ts") }).seeds,
       footprint: true,
-      scripts: (world, root) => ({
-        "t-1": [asks(world, "t-1"), works(world, root, "t-1", { polls: 6 })],
+      scripts: (world, root, logged) => ({
+        "t-1": [
+          asks(world, "t-1"),
+          works(world, root, "t-1", { after: until(logged, /skipping t-3/) }),
+        ],
         "t-2": [
           works(world, root, "t-2", {
-            before: [sleep(readyPoll), step(answers(world, "t-1"))],
+            before: Effect.andThen(until(logged, /ASKED: t-1/), answers(world, "t-1")),
+            after: until(logged, /RESUMED: t-1/),
           }),
         ],
         "t-3": [works(world, root, "t-3")],
@@ -227,5 +268,5 @@ describe("the run's footprints", () => {
       /^ {2}t-1 settled/,
       /t-3 dispatching/,
     ])
-  })
+  }, 30_000)
 })

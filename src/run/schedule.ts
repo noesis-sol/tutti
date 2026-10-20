@@ -577,6 +577,8 @@ export const make = (
           // dispatched changes what holds the rest, and they aren't released only to be held again.
           if (start === undefined || !(yield* mayStart)) {
             for (const issue of inLine) yield* settle(issue.id, holds.get(issue.id), ids)
+            // A ticket that ended while its footprint was read no longer holds the others back.
+            if (overlaps.size > 0 && (yield* Ref.get(slots)).running !== s.running) continue
             break
           }
           yield* settle(start.id, undefined, ids)

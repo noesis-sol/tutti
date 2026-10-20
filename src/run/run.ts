@@ -682,7 +682,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // With a worker waiting on you in its slot, a ticket queued for a slot is still to start.
       const queued = [...now.tickets.values()].some((entry) => entry.phase._tag === "Queued")
       const toStart = waiting.length > 0 && queued && (yield* canTake)
+      // A ticket held back for a running one's footprint, when that one ended after the fill read
+      // it, is to start too: the next look fills again.
+      const overlapped =
+        (yield* scheduler.running).size === 0 &&
+        [...now.tickets.values()].some(
+          (entry) => entry.phase._tag === "HeldBack" && entry.phase.why === "overlap",
+        ) &&
+        (yield* canTake)
       const done =
+        !overlapped &&
         busy.length === 0 &&
         !toStart &&
         isSettled(yield* queue.state) &&
