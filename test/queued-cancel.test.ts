@@ -2,25 +2,18 @@
 // queued behind the turn, with `interrupt({ cancelQueued: true })` where the CLI advertises
 // `interrupt_cancel_queued_v1`, else one by one with `cancel_async_message`; a message cancelled
 // either way is no longer outstanding (§ 4.2), and one the CLI won't cancel runs. The scripted
-// AgentHost, the live host over the fake Claude Code (test/fixtures/fake-claude/claude.ts), and
-// § 13's contract tests against the real SDK.
+// AgentHost and the live host over the fake Claude Code (test/fixtures/fake-claude/claude.ts); § 13's
+// contract tests against the real SDK are in test/contract/sdk.test.ts.
 import { describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import {
-  type CanUseTool,
-  query,
-  type SDKMessage,
-  type SDKUserMessage,
-} from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Schedule, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
-import { layer as liveLayer, queuedControls } from "../src/agent/AgentHostLive.ts"
+import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import type { Attention } from "../src/agent/Attention.ts"
-import { workerEnv } from "../src/agent/env.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import type { WorkerState } from "../src/agent/WorkerState.ts"
@@ -44,7 +37,6 @@ import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.t
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
-import { live } from "./gates.ts"
 
 type Env = AgentHost | Attention | Transcripts | Files | Log | EventStream
 
@@ -304,145 +296,4 @@ describe("the live AgentHost: an interrupt on a CLI without interrupt_cancel_que
     expect(done.requests).toEqual([{ subtype: "interrupt", cancel_queued: true }])
     expect(done.results).toEqual([[expect.any(String)]])
   })
-})
-
-// § 13's contract tests, against the real SDK and Claude Code (docs/spikes/02-sdk-lifecycle.md § 1).
-
-/** A session over the real SDK in a fresh git folder, its messages collected as they come. */
-const realSession = () => {
-  const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-queued-cancel-")))
-  Bun.spawnSync(["git", "init", "-q", repo])
-  // Claude Code's Bash tool refuses a standalone long `sleep`, so the long turn runs this.
-  writeFileSync(join(repo, "wait.sh"), 'sleep "$1"\n', { mode: 0o755 })
-  const pending: Array<SDKUserMessage> = []
-  let wake: () => void = () => {}
-  let closed = false
-  const inbox = async function* (): AsyncGenerator<SDKUserMessage> {
-    while (!closed) {
-      const next = pending.shift()
-      if (next !== undefined) yield next
-      else await new Promise<void>((resolve) => (wake = resolve))
-    }
-  }
-  const canUseTool: CanUseTool = async (tool, input) =>
-    tool === "Bash" && String(input.command ?? "").startsWith("./wait.sh ")
-      ? { behavior: "allow", updatedInput: input }
-      : { behavior: "deny", message: "This test allows only ./wait.sh." }
-  const session = query({
-    prompt: inbox(),
-    options: {
-      cwd: repo,
-      projectConfigRoot: repo,
-      settingSources: ["project", "local"],
-      permissionMode: "default",
-      model: "haiku",
-      canUseTool,
-      mcpServers: {},
-      strictMcpConfig: true,
-      persistSession: false,
-      env: workerEnv({ subscription: false, billing: "subscription" }),
-    },
-  })
-  const messages: Array<SDKMessage> = []
-  const reading = (async () => {
-    for await (const message of session) messages.push(message)
-  })()
-  /** Sends `text`; its uuid. */
-  const send = (text: string): string => {
-    const uuid = crypto.randomUUID()
-    pending.push({
-      type: "user",
-      message: { role: "user", content: text },
-      parent_tool_use_id: null,
-      uuid: uuid as SDKUserMessage["uuid"] & string,
-    })
-    wake()
-    return uuid
-  }
-  /** Waits, at most `seconds`, until a message `matches`, from the `from`th on; its index or -1. */
-  const seen = async (matches: (m: SDKMessage) => boolean, seconds: number, from = 0) => {
-    const deadline = Date.now() + seconds * 1000
-    while (Date.now() < deadline) {
-      const at = messages.findIndex((m, i) => i >= from && matches(m))
-      if (at !== -1) return at
-      await Bun.sleep(50)
-    }
-    return -1
-  }
-  const close = async () => {
-    closed = true
-    wake()
-    session.close()
-    await reading.catch(() => {})
-  }
-  return { session, messages, send, seen, close }
-}
-
-const isBash = (m: SDKMessage) =>
-  m.type === "assistant" &&
-  (m.message.content as ReadonlyArray<{ type: string; name?: string }>).some(
-    (block) => block.type === "tool_use" && block.name === "Bash",
-  )
-const isResult = (m: SDKMessage) => m.type === "result"
-const listed = (m: SDKMessage): ReadonlyArray<string> =>
-  m.type === "result"
-    ? ((m as { user_message_uuids?: ReadonlyArray<string> }).user_message_uuids ?? [])
-    : []
-
-const longTurn = (seconds: number, word: string) =>
-  "Use the Bash tool to run exactly this command, with no changes and not in the background: " +
-  `./wait.sh ${seconds}\nWhen it has finished, reply with the single word ${word} and nothing else.`
-
-live.describe("queued messages against the real SDK", () => {
-  test(
-    "interrupt({ cancelQueued: true }) with two queued: both under cancelled, no turn after",
-    async () => {
-      const real = realSession()
-      try {
-        real.send(longTurn(40, "ALPHA"))
-        expect(await real.seen(isBash, 120)).toBeGreaterThanOrEqual(0)
-        await Bun.sleep(1500)
-        const b = real.send("Reply with the single word BRAVO.")
-        const c = real.send("Reply with the single word CHARLIE.")
-        await Bun.sleep(800)
-        const before = real.messages.length
-        const receipt = await queuedControls(real.session).interrupt({ cancelQueued: true })
-        expect(receipt?.still_queued ?? []).toEqual([])
-        expect(receipt?.cancelled ?? []).toEqual(expect.arrayContaining([b, c]))
-        const stopped = await real.seen(isResult, 30, before)
-        expect(stopped).toBeGreaterThanOrEqual(0)
-        // Survivors would start their turn within milliseconds; none comes.
-        await Bun.sleep(15_000)
-        expect(real.messages.slice(stopped + 1).filter(isResult)).toEqual([])
-      } finally {
-        await real.close()
-      }
-    },
-    { timeout: 240_000 },
-  )
-
-  test(
-    "cancel_async_message on a message queued behind a running turn: cancelled, never runs",
-    async () => {
-      const real = realSession()
-      try {
-        real.send(longTurn(8, "ALPHA"))
-        expect(await real.seen(isBash, 120)).toBeGreaterThanOrEqual(0)
-        await Bun.sleep(1000)
-        const b = real.send("Reply with the single word BRAVO.")
-        await Bun.sleep(800)
-        expect(await queuedControls(real.session).cancelAsyncMessage(b)).toBe(true)
-        const done = await real.seen(isResult, 120)
-        expect(done).toBeGreaterThanOrEqual(0)
-        // A message still queued would run as the next turn, at once; it doesn't.
-        await Bun.sleep(15_000)
-        const results = real.messages.filter(isResult)
-        expect(results.length).toBe(1)
-        expect(results.flatMap(listed)).not.toContain(b)
-      } finally {
-        await real.close()
-      }
-    },
-    { timeout: 240_000 },
-  )
 })

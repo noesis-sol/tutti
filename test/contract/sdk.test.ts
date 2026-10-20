@@ -49,7 +49,7 @@ import type { ChosenServers } from "../../src/agent/mcp.ts"
 import { noServersNote } from "../../src/agent/mcp.ts"
 import { type SessionStart, workerOptions } from "../../src/agent/options.ts"
 import type { Transcripts } from "../../src/agent/Transcripts.ts"
-import type { WorkerState } from "../../src/agent/WorkerState.ts"
+import { initial, step, WorkerEvent, type WorkerState } from "../../src/agent/WorkerState.ts"
 import { defaultSettings } from "../../src/cli/AppConfig.ts"
 import type { permissionModes } from "../../src/project/settings.ts"
 import type { EventStream } from "../../src/run/eventstream.ts"
@@ -618,6 +618,17 @@ live.describe("Agent SDK contract: background tasks", () => {
       const reports = after.filter(isResult)
       expect(reports).toHaveLength(1)
       expect(reports[0]?.user_message_uuids ?? []).toEqual([])
+      // Each message folded as AgentHost folds it: the worker is Working from that idle, through
+      // the moment between the emptied set and running, until the report's idle settles it.
+      let worker = initial()
+      const folded = all.map((message) => {
+        worker = step(worker, WorkerEvent.Message({ message }), Date.now())
+        return worker.state._tag
+      })
+      expect(new Set(folded.slice(idle, report + 1))).toEqual(new Set(["Working"]))
+      const settled = all.findLastIndex((m) => stateOf(m) === "idle")
+      expect(settled).toBeGreaterThan(report)
+      expect(folded[settled]).toBe("Idle")
       expect(state._tag).toBe("Idle")
     },
     testLimit,
