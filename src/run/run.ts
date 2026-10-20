@@ -486,7 +486,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       ([all, ended, held]) => all.first === null && !ended && !held,
     )
     // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
-    // the checks' scripts count as no ticket's, and each ticket works in <worktrees>/<id>.
+    // the checks' scripts count as no ticket's. A ticket works in the worktree the Store saved for
+    // it, wherever git had it (a reused one, or one an earlier run's --worktrees put elsewhere), or
+    // else in <worktrees>/<id>.
     const checks = config.settings.checks
     const footprints = config.settings.queue.footprint
       ? yield* footprintsOf({
@@ -495,7 +497,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           checkCommands: [checks.fast.command, checks.full.command].filter(
             (command): command is string => command !== null,
           ),
-          worktree: (ticket) => join(config.worktrees, ticket),
+          worktree: (ticket) =>
+            Effect.map(
+              store.ticket(ticket),
+              (saved) => saved?.worktree ?? join(config.worktrees, ticket),
+            ),
         })
       : undefined
     const scheduler = yield* makeScheduler({

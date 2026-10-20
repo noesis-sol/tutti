@@ -104,7 +104,7 @@ export const footprintsOf = (options: {
   readonly repo: string
   readonly base: string
   readonly checkCommands: ReadonlyArray<string>
-  readonly worktree: (ticket: string) => string
+  readonly worktree: (ticket: string) => Effect.Effect<string>
 }): Effect.Effect<Footprints, never, Git | FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<Git | FileSystem.FileSystem>()
@@ -115,7 +115,9 @@ export const footprintsOf = (options: {
         Effect.orElseSucceed(() => repoFiles(undefined, options.checkCommands)),
       ),
       changed: (ticket) =>
-        worktreeChanges(options.worktree(ticket), options.base).pipe(
+        Effect.flatMap(options.worktree(ticket), (path) =>
+          worktreeChanges(path, options.base),
+        ).pipe(
           Effect.orElseSucceed((): ReadonlyArray<string> => []),
           Effect.provideContext(context),
         ),

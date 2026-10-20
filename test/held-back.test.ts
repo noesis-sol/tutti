@@ -648,7 +648,7 @@ describe("the checkout's footprints", () => {
           repo: repo.dir,
           base: "main",
           checkCommands: ["scripts/check.sh"],
-          worktree: (ticket) => `/repo-tutti/${ticket}`,
+          worktree: (ticket) => Effect.succeed(`/repo-tutti/${ticket}`),
         })
         const files = yield* source.repo
         return [
