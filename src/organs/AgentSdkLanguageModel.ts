@@ -442,6 +442,17 @@ export const layer = (
         Stream.unwrap(
           Effect.gen(function* () {
             const call = yield* OrganCall
+            // The call's time runs from before its setup, and is recorded last, after the session
+            // is aborted and its folder removed: an interruption during the setup records it too.
+            const startedAt = yield* Clock.currentTimeMillis
+            let ended = false
+            yield* Effect.addFinalizer(() =>
+              Effect.gen(function* () {
+                if (ended) return
+                const endedAt = yield* Clock.currentTimeMillis
+                yield* costs.recordUnknown({ organ: call.organ, durationMs: endedAt - startedAt })
+              }),
+            )
             const cwd =
               call.reads?.cwd ??
               (yield* fs
@@ -452,7 +463,6 @@ export const layer = (
                   ),
                 ))
             const abortController = new AbortController()
-            const startedAt = yield* Clock.currentTimeMillis
             let stderr = ""
             const q = query({
               prompt: (async function* () {
@@ -472,14 +482,10 @@ export const layer = (
                 },
               }),
             })
-            let ended = false
             yield* Effect.addFinalizer(() =>
-              Effect.gen(function* () {
+              Effect.sync(() => {
                 if (!ended) abortController.abort()
                 q.close()
-                if (ended) return
-                const endedAt = yield* Clock.currentTimeMillis
-                yield* costs.recordUnknown({ organ: call.organ, durationMs: endedAt - startedAt })
               }),
             )
             const failed = (error: unknown) => {

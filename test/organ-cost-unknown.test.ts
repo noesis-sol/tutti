@@ -64,14 +64,17 @@ const unknownLine = /^ORGAN triage: cost unknown, no result after \d+\.\ds$/
 
 describe("an organ call that ends without a result", () => {
   test("timed out, it is logged and counted as a call of unknown cost", async () => {
+    const before = Date.now()
     const exit = await run([{ hang: true }], Effect.all([triage("500 millis"), texts, total]))
+    const elapsed = Date.now() - before
     const [outcome, lines, sum] = value(exit)
     expect(outcome).toBe("timed out")
     expect(lines).toHaveLength(1)
     expect(lines[0]).toMatch(unknownLine)
     expect(sum).toMatchObject({ calls: 1, costUsd: 0, turns: 0, unknown: 1 })
-    // The time it ran, the time limit at least.
-    expect(sum.durationMs).toBeGreaterThanOrEqual(500)
+    // The time it ran: the time limit starts before the provider does, so it can be less.
+    expect(sum.durationMs).toBeGreaterThan(0)
+    expect(sum.durationMs).toBeLessThanOrEqual(elapsed)
   })
 
   test("its session failing first, it is logged and counted as a call of unknown cost", async () => {
