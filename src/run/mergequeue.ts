@@ -254,13 +254,18 @@ export const make = (
         )
       })
 
-    // Its conflicts handed back to its worker, Resolving; a resolution whose check fails goes on to
-    // Fixing, or is blocked (checkback.ts).
+    // Its conflicts handed back to its worker, Resolving; a resolution that changes nothing is
+    // closed at once, protected as a merge's last step is; one whose check fails goes on to Fixing,
+    // or is blocked (checkback.ts).
     const handBack = (stop: RebaseStop) =>
       Effect.gen(function* () {
         const handed = yield* handOver(stop, options, handBacks)
         const work = Effect.gen(function* () {
           const resolved = yield* resolve(stop, options, memory.setUps)
+          if (resolved._tag === "Unchanged") {
+            yield* Effect.uninterruptible(closeUnchanged(stop.ticket, options, resolved.unchanged))
+            return false
+          }
           if (resolved._tag === "CheckFailed") {
             const fixed = yield* fixResolution(
               stop,

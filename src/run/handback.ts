@@ -14,10 +14,12 @@
 // push until its send is no longer outstanding and the worker has settled, within resolve_timeout
 // from the push. Then tutti looks at what the worker left without taking its word for it: the rebase
 // finished, the worktree clean and on its branch, the branch on top of the base it was rebased onto
-// with only the ticket's own commits, and, set up if need be (setup.ts), the check passing. A resolution verified goes back in the
-// merge queue, ToMerge; one rejected, or not done in time, is Blocked (MERGE_CONFLICT), the branch
-// put back as the ticket closed it and the ticket's notes saying why. One whose check fails goes on
-// to checkback.ts, which hands the failure back too, Fixing{afterResolution}, or blocks it.
+// with only the ticket's own commits, and, set up if need be (setup.ts), the check passing. A
+// resolution verified goes back in the merge queue, ToMerge; one that leaves the branch changing
+// nothing, its worker having skipped every commit the base has already, is closed at once,
+// Done{noChange}, unchecked; one rejected, or not done in time, is Blocked (MERGE_CONFLICT), the
+// branch put back as the ticket closed it and the ticket's notes saying why. One whose check fails
+// goes on to checkback.ts, which hands the failure back too, Fixing{afterResolution}, or blocks it.
 //
 // A conflict that can't be handed back is Blocked at once, its rebase aborted, and the MERGE_CONFLICT
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
@@ -43,6 +45,8 @@ import {
   type MergeEnv,
   type MergeOptions,
   offBranch,
+  type Unchanged,
+  unchanged,
   uncommitted,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
@@ -510,11 +514,13 @@ export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, M
   })
 
 /**
- * How a hand-back ended: the resolution verified and checked, the ticket blocked, or the resolution
- * verified but its check, or the setup before it, failing, for checkback.ts to hand back or block.
+ * How a hand-back ended: the resolution verified and checked, verified and changing nothing (for
+ * the caller to close as unchanged, closeUnchanged), the ticket blocked, or the resolution verified
+ * but its check, or the setup before it, failing, for checkback.ts to hand back or block.
  */
 export type Resolved =
   | { readonly _tag: "Verified" }
+  | { readonly _tag: "Unchanged"; readonly unchanged: Unchanged }
   | { readonly _tag: "Blocked" }
   | { readonly _tag: "CheckFailed"; readonly error: CheckError; readonly output: string }
 
@@ -550,8 +556,9 @@ export const rejectResolution = (
 /**
  * The hand-back of `stop`'s conflicts to the ticket's worker, Resolving: the hand-back given, what
  * the worker left verified, set up if need be (`setUps`, setup.ts) and checked. Verified: the
- * caller puts it back in the merge queue; its setup or check failing: the caller hands that back,
- * or blocks it (checkback.ts). Else it is Blocked here, its branch put back and its notes saying
+ * caller puts it back in the merge queue; Unchanged, the branch left changing nothing, unchecked:
+ * the caller closes it so; its setup or check failing: the caller hands that back, or blocks it
+ * (checkback.ts). Else it is Blocked here, its branch put back and its notes saying
  * why.
  */
 export const resolve = (
@@ -570,6 +577,13 @@ export const resolve = (
     let why = yield* give(stop.ticket, resolvePrompt(stop, base, check), what, limit)
     if (why === undefined) why = yield* verifyResolved(stop, options)
     if (why === undefined) {
+      const { branch } = stop.ticket
+      const nothing = yield* unchanged(stop.ticket, options, (own) =>
+        own
+          ? `the commits on ${branch}, taken together, change nothing`
+          : `its worker found the changes of ${branch} on ${base} already and skipped them in the rebase`,
+      )
+      if (nothing !== undefined) return { _tag: "Unchanged", unchanged: nothing } satisfies Resolved
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
       const setup = yield* setUp(stop.ticket, options, setUps, stop.fork, stop.onto, false)
       const checked = setup._tag === "Failed" ? setup : yield* runMergeCheck(stop.ticket)

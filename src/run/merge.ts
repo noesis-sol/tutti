@@ -14,7 +14,8 @@
 //   interrupting its fiber, so each git command's limit holds in there too.
 // - closeUnchanged, its stand-in when the branch has no change of its own left to merge: git's
 //   rebase dropped every commit, the base having their changes already, or its commits together
-//   change nothing. The ticket is Done{noChange}, cleaned up as after a merge.
+//   change nothing. The ticket is Done{noChange}, cleaned up as after a merge. A hand-back's
+//   resolution that skipped every commit is closed so at once too (handback.ts).
 //
 // A rebase that stops on conflicts is handed back to the ticket's worker when it can take it
 // (handback.ts): prepare is then over with the rebase left in progress, for the merge queue to hand
@@ -212,7 +213,11 @@ export const offBranch = (ticket: FinishedTicket) =>
  * `why(own)` says why, given whether it has commits beyond the base. Undefined when it has a change,
  * or git can't say: the merge's next steps find out.
  */
-const unchanged = (ticket: FinishedTicket, options: MergeOptions, why: (own: boolean) => string) =>
+export const unchanged = (
+  ticket: FinishedTicket,
+  options: MergeOptions,
+  why: (own: boolean) => string,
+): Effect.Effect<Unchanged | undefined, never, MergeEnv> =>
   Effect.gen(function* () {
     const { git } = yield* services
     const { repo, base } = options

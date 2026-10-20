@@ -413,6 +413,13 @@ export const transitions: ReadonlyArray<Transition> = [
   }),
   row({
     from: "Resolving",
+    when: "NoChange",
+    to: "Done",
+    recorded: { kinds: ["closed"], detail: "no change to merge" },
+    next: () => TicketPhase.Done({ outcome: Outcome.NoChange() }),
+  }),
+  row({
+    from: "Resolving",
     when: "CheckHandedBack",
     to: "Fixing",
     recorded: { kinds: [], log: "FIXING" },

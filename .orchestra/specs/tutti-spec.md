@@ -840,6 +840,7 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `Merging` | `Review` | the check failed and can't be handed back (it timed out, the run winds down, the attempts are used up, hand-backs are off); or `DIRTY_WORKTREE`, `REBASE_FAILED`, `OFF_BRANCH` | `warn` with `aside` |
 | `Merging` | `Blocked` | conflicts that can't be handed back; or the main checkout dirty or off its branch, git failing, or the branch not fast-forwarding | `warn` or `hold` with `blocked` |
 | `Resolving` | `ToMerge` | tutti verified the resolution: the rebase finished; the worktree clean and on its branch; only the ticket's own commits on top of the base; the check passing | `phase` |
+| `Resolving` | `Done{noChange}` | tutti verified the resolution, and it leaves the branch changing nothing: its worker skipped every commit, the base having their changes already, or its commits together change nothing. It is closed at once, unchecked, its worktree and branch removed as after a merge, as orchestra does | `closed` (`no change to merge`) |
 | `Resolving` | `Fixing{afterResolution}` | the resolution is verified, but its check fails, and the failure is handed back | the log's `FIXING` |
 | `Resolving` | `Blocked` | the resolution was rejected, or wasn't done within `resolve_timeout`. The branch is put back as the ticket closed it | `warn` with `blocked` |
 | `Fixing` | `ToMerge` | tutti verified the fix (new commits naming the ticket; the worktree clean and on its branch) and the check passes | `phase` |

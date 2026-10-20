@@ -177,6 +177,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
     ToMerge({ place: 1 }),
   ],
   [
+    "Resolving → Done{noChange}",
+    Resolving({ attempt: 1 }),
+    Cause.NoChange(),
+    Done({ outcome: Outcome.NoChange() }),
+  ],
+  [
     "Resolving → Fixing{afterResolution}",
     Resolving({ attempt: 1 }),
     Cause.CheckHandedBack({ attempt: 1 }),
