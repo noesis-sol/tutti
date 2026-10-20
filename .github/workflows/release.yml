@@ -10,8 +10,9 @@
 # then tag the commit (git tag -a vX.Y.Z -m "tutti X.Y.Z") and push both.
 #
 # The release key: the repository secret TUTTI_RELEASE_KEY holds a PKCS#8 PEM ed25519 private key
-# (scripts/sign-checksums.ts says how to make one). Without it the first job fails, saying so, and
-# nothing is built or published.
+# (scripts/sign-checksums.ts says how to make one), whose public half is in src/update/keys.ts.
+# Without it, or with a key tutti doesn't build in, the first job fails, saying so, and nothing is
+# built or published.
 name: Release
 
 on:
@@ -56,7 +57,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      # The key signs a file here, so a missing or bad key fails the release before anything is built.
+      # The key signs a file here, so a missing or bad key, or one not in src/update/keys.ts, fails the
+      # release before anything is built.
       - name: Check the release key
         env:
           TUTTI_RELEASE_KEY: ${{ secrets.TUTTI_RELEASE_KEY }}

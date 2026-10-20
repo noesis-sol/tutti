@@ -1,11 +1,13 @@
 // scripts/sign-checksums.ts (§ 12 Releases): checksums.txt.sig is checksums.txt's raw ed25519
-// signature with the release key from $TUTTI_RELEASE_KEY, and without a usable key nothing is signed.
+// signature with the release key from $TUTTI_RELEASE_KEY, and without a usable key, or with one
+// whose public half tutti doesn't build in (src/update/keys.ts), nothing is signed.
 import { describe, expect, test } from "bun:test"
 import { createPublicKey, generateKeyPairSync, verify } from "node:crypto"
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { releaseKey, signChecksums } from "../scripts/sign-checksums.ts"
+import { releaseKey, signChecksums, signFile, signRelease } from "../scripts/sign-checksums.ts"
+import type { ReleaseKey } from "../src/update/keys.ts"
 
 const script = resolve(import.meta.dir, "../scripts/sign-checksums.ts")
 const sums = "0123  tutti_0.9.0_darwin_arm64.tar.gz\n4567  tutti_0.9.0_linux_x64_musl.tar.gz\n"
@@ -18,10 +20,25 @@ const ed25519 = () => {
   }
 }
 
-/** A folder holding checksums.txt, and the script run on it with `key` as $TUTTI_RELEASE_KEY. */
-const sign = (key: string | undefined, args: ReadonlyArray<string> = ["checksums.txt"]) => {
+/** A new folder holding checksums.txt. */
+const sumsFolder = (): string => {
   const dir = mkdtempSync(join(tmpdir(), "tutti-sign-checksums-"))
   writeFileSync(join(dir, "checksums.txt"), sums)
+  return dir
+}
+
+/** The signature written beside checksums.txt in `dir`, if any. */
+const signatureIn = (dir: string) => {
+  const sig = join(dir, "checksums.txt.sig")
+  return existsSync(sig) ? readFileSync(sig) : undefined
+}
+
+/**
+ * A folder holding checksums.txt, and the script run on it with `key` as $TUTTI_RELEASE_KEY. The
+ * script trusts only the keys tutti builds in, so a key made here is never one of them.
+ */
+const sign = (key: string | undefined, args: ReadonlyArray<string> = ["checksums.txt"]) => {
+  const dir = sumsFolder()
   const env: Record<string, string | undefined> = { ...process.env }
   delete env.TUTTI_RELEASE_KEY
   if (key !== undefined) env.TUTTI_RELEASE_KEY = key
@@ -31,14 +48,22 @@ const sign = (key: string | undefined, args: ReadonlyArray<string> = ["checksums
     stdout: "pipe",
     stderr: "pipe",
   })
-  const sig = join(dir, "checksums.txt.sig")
   return {
     dir,
     exitCode: proc.exitCode,
     stderr: proc.stderr.toString(),
-    sig: existsSync(sig) ? readFileSync(sig) : undefined,
+    sig: signatureIn(dir),
   }
 }
+
+/** A folder holding checksums.txt, signed in it by signFile with `key`, trusting `keys`. */
+const signWith = (key: string | undefined, keys: ReadonlyArray<ReleaseKey>) => {
+  const dir = sumsFolder()
+  const why = signFile(join(dir, "checksums.txt"), key, keys)
+  return { dir, why, sig: signatureIn(dir) }
+}
+
+const asReleaseKey = (pem: string, name = "2026-10"): ReleaseKey => ({ name, pem })
 
 // OpenSSL 3, which scripts/install.sh verifies with where it is installed; LibreSSL can't.
 const openssl3 = (() => {
@@ -49,14 +74,16 @@ const openssl3 = (() => {
 describe("scripts/sign-checksums.ts", () => {
   test("writes checksums.txt's raw 64-byte signature, which the public key verifies", () => {
     const { privatePem, publicPem } = ed25519()
-    const result = sign(privatePem)
-    expect(result.stderr).toBe("")
-    expect(result.exitCode).toBe(0)
+    const other = ed25519()
+    const result = signWith(privatePem, [
+      asReleaseKey(other.publicPem, "2025-01"),
+      asReleaseKey(publicPem),
+    ])
+    expect(result.why).toBeUndefined()
     expect(result.sig?.length).toBe(64)
     expect(
       verify(null, Buffer.from(sums), createPublicKey(publicPem), result.sig ?? Buffer.alloc(0)),
     ).toBe(true)
-    const other = ed25519()
     expect(
       verify(
         null,
@@ -71,7 +98,8 @@ describe("scripts/sign-checksums.ts", () => {
     "its signature verifies with openssl pkeyutl, as install.sh checks it",
     () => {
       const { privatePem, publicPem } = ed25519()
-      const result = sign(privatePem)
+      const result = signWith(privatePem, [asReleaseKey(publicPem)])
+      expect(result.why).toBeUndefined()
       writeFileSync(join(result.dir, "public.pem"), publicPem)
       const check = Bun.spawnSync(
         [
@@ -116,6 +144,48 @@ describe("scripts/sign-checksums.ts", () => {
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toContain("is a ec key, not an ed25519 key")
     expect(result.sig).toBeUndefined()
+  })
+
+  test("a key tutti doesn't build in signs nothing: tutti update would refuse the release", () => {
+    const result = sign(ed25519().privatePem)
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain(
+      "$TUTTI_RELEASE_KEY's public key is not in src/update/keys.ts, so tutti update would refuse the release",
+    )
+    expect(result.sig).toBeUndefined()
+  })
+
+  test("signFile refuses a key whose public half isn't among the keys it trusts", () => {
+    const { privatePem } = ed25519()
+    const others = [asReleaseKey(ed25519().publicPem, "2025-01"), asReleaseKey(ed25519().publicPem)]
+    for (const keys of [[], others]) {
+      const result = signWith(privatePem, keys)
+      expect(result.why).toContain("is not in src/update/keys.ts")
+      expect(result.sig).toBeUndefined()
+    }
+  })
+
+  test("signFile passes on releaseKey's refusal, signing nothing", () => {
+    const { publicPem } = ed25519()
+    const result = signWith("hunter2", [asReleaseKey(publicPem)])
+    expect(result.why).toContain("not a PKCS#8 PEM private key")
+    expect(result.sig).toBeUndefined()
+  })
+
+  test("signRelease skips a trusted key that isn't an ed25519 public key", () => {
+    const { privatePem, publicPem } = ed25519()
+    const key = releaseKey(privatePem)
+    if (typeof key === "string") throw new Error(key)
+    const data = new TextEncoder().encode(sums)
+    const ec = generateKeyPairSync("ec", { namedCurve: "P-256" })
+      .publicKey.export({ type: "spki", format: "pem" })
+      .toString()
+    expect(signRelease(data, key, [asReleaseKey(ec), asReleaseKey("hunter2")])).toContain(
+      "is not in src/update/keys.ts",
+    )
+    const signature = signRelease(data, key, [asReleaseKey(ec), asReleaseKey(publicPem)])
+    if (typeof signature === "string") throw new Error(signature)
+    expect(verify(null, data, createPublicKey(publicPem), signature)).toBe(true)
   })
 
   test.each([[[]], [["checksums.txt", "more.txt"]]])("arguments %j are a usage error", (args) => {

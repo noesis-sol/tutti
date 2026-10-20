@@ -2,18 +2,21 @@
 // Releases), for scripts/install.sh and tutti update to verify: it writes the raw 64-byte signature
 // to checksums.txt.sig beside it, as `openssl pkeyutl -sign -rawin` would. The key is a PKCS#8 PEM
 // private key in $TUTTI_RELEASE_KEY, the repository secret of that name in the release workflow
-// (.github/workflows/release.yml). Without it, or with a key that isn't ed25519, it signs nothing
-// and exits 1, saying why.
+// (.github/workflows/release.yml). Without it, with a key that isn't ed25519, or with one whose
+// public half isn't among the release keys tutti builds in (src/update/keys.ts), which tutti update
+// would refuse the release for, it signs nothing and exits 1, saying why.
 //
 //   TUTTI_RELEASE_KEY="$(cat release-key.pem)" bun scripts/sign-checksums.ts dist/checksums.txt
 //
-// The key is made once, by the maintainer, and its public half is the one tutti builds in:
+// The key is made once, by the maintainer, and its public half is added to src/update/keys.ts (which
+// says how to rotate it) before it signs a release:
 //
 //   openssl genpkey -algorithm ed25519 -out release-key.pem
 //   openssl pkey -in release-key.pem -pubout          # the public key
 //   gh secret set TUTTI_RELEASE_KEY < release-key.pem
 import { createPrivateKey, createPublicKey, type KeyObject, sign, verify } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
+import { parsePublicKey, type ReleaseKey, releaseKeys } from "../src/update/keys.ts"
 
 /** The environment variable holding the private key. */
 export const keyEnv = "TUTTI_RELEASE_KEY"
@@ -46,6 +49,37 @@ export const signChecksums = (data: Uint8Array, key: KeyObject): Uint8Array => {
   return signature
 }
 
+/**
+ * `data`'s signature with `key` once it verifies with one of `keys`, as tutti update verifies it,
+ * or why it doesn't: the key isn't a release key, and tutti update would refuse the release.
+ */
+export const signRelease = (
+  data: Uint8Array,
+  key: KeyObject,
+  keys: ReadonlyArray<ReleaseKey>,
+): Uint8Array | string => {
+  const signature = signChecksums(data, key)
+  for (const releaseKey of keys) {
+    const parsed = parsePublicKey(releaseKey.pem)
+    if (typeof parsed !== "string" && verify(null, data, parsed, signature)) return signature
+  }
+  return `$${keyEnv}'s public key is not in src/update/keys.ts, so tutti update would refuse the release: add it there first`
+}
+
+/** Signs `file` with the PEM key, which must be one of `keys`, into `file`.sig; or says why not. */
+export const signFile = (
+  file: string,
+  pem: string | undefined,
+  keys: ReadonlyArray<ReleaseKey>,
+): string | undefined => {
+  const key = releaseKey(pem)
+  if (typeof key === "string") return key
+  const signature = signRelease(readFileSync(file), key, keys)
+  if (typeof signature === "string") return signature
+  writeFileSync(`${file}.sig`, signature)
+  return undefined
+}
+
 if (import.meta.main) {
   const [file, ...rest] = process.argv.slice(2)
   if (file === undefined || rest.length > 0) {
@@ -54,10 +88,9 @@ if (import.meta.main) {
     )
     process.exit(2)
   }
-  const key = releaseKey(process.env[keyEnv])
-  if (typeof key === "string") {
-    process.stderr.write(`sign-checksums: ${key}\n`)
+  const why = signFile(file, process.env[keyEnv], releaseKeys)
+  if (why !== undefined) {
+    process.stderr.write(`sign-checksums: ${why}\n`)
     process.exit(1)
   }
-  writeFileSync(`${file}.sig`, signChecksums(readFileSync(file), key))
 }
