@@ -89,6 +89,7 @@ import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
 import { carryOver, saveAsked, saveLeft } from "./carry.ts"
+import { resolve, type UiCommand } from "./commands.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
@@ -118,6 +119,7 @@ import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
 import {
   type Awaited,
   atOnceText,
+  fromDashboard,
   heard,
   interruptedText,
   interruptWorkers,
@@ -133,7 +135,7 @@ import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
 import { footprintsOf, make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
-import { type Dashboard, show } from "./screen.ts"
+import { type Dashboard, Screen, show } from "./screen.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold, holdWord as usageHoldWord } from "./usageLimit.ts"
@@ -593,17 +595,46 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     if (quits !== undefined) {
       yield* watch(Effect.forever(Effect.flatMap(Queue.take(quits), hearQuit)))
     }
-    // The screen's commands the run takes: the end-of-run box's `q` (EndRun) ends the run.
+    // The screen's commands, each resolved against the ledger and the open requests as it is taken:
+    // one that no longer names anything (the worker finished, the request was answered) is dropped.
+    // The end-of-run box's `q` (EndRun) ends the run. Quit without `now` is the quit box's to ask.
+    // Steering's commands (SendMessage, Interrupt, Release, HandBackNow) are steer.ts's to take.
     if (screen !== null) {
-      yield* watch(
-        Effect.forever(
-          Effect.flatMap(Queue.take(screen.commands), (command) =>
-            command._tag === "EndRun"
-              ? Effect.andThen(Ref.set(endAsked, true), wakeUp)
-              : Effect.void,
-          ),
-        ),
-      )
+      const take = (command: UiCommand) =>
+        Effect.gen(function* () {
+          const resolved = resolve(command, {
+            ledger: yield* ledger.current,
+            requests: yield* attention.current,
+          })
+          if (Result.isFailure(resolved)) {
+            yield* Effect.logDebug(`dropped ${resolved.failure.message}`)
+            return
+          }
+          switch (command._tag) {
+            case "OpenWorker":
+              return yield* SubscriptionRef.set(
+                screen.screen,
+                Screen.Worker({ worker: command.worker }),
+              )
+            case "CloseWorker":
+              return yield* SubscriptionRef.set(screen.screen, Screen.Dashboard())
+            case "Answer":
+              return yield* attention
+                .answer(command.requestId, command.answer, "screen")
+                .pipe(Effect.catch((error) => Effect.logDebug(`dropped Answer: ${error.message}`)))
+            case "Drain":
+            case "Undrain":
+              yield* hear({ on: command._tag === "Drain", how: fromDashboard.how })
+              return yield* wakeUp
+            case "Quit":
+              if (command.now) yield* hearQuit(fromDashboard)
+              return
+            case "EndRun":
+              yield* Ref.set(endAsked, true)
+              return yield* wakeUp
+          }
+        })
+      yield* watch(Effect.forever(Effect.flatMap(Queue.take(screen.commands), take)))
     }
 
     // A request unanswered for blockedAfter holds the run with BLOCKED, for its ticket; once that
