@@ -117,10 +117,19 @@ const defers = (world: World, id: string): SessionScript =>
     result(`Deferred ${id}.`),
   )
 
-/** Claims its ticket, edits a file and closes it without committing: work left for review. */
-const closesUncommitted = (world: World, places: Places, id: string): SessionScript =>
+/**
+ * Claims its ticket, edits a file and, after `takes`, closes it without committing: work left for
+ * review.
+ */
+const closesUncommitted = (
+  world: World,
+  places: Places,
+  id: string,
+  takes: Duration.Input = 0,
+): SessionScript =>
   turn([
     ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
+    sleep(takes),
     ...bash(
       `echo ${id} > ${id}.txt`,
       orDie(world.repository.write(join(places.root, id), { [`${id}.txt`]: `${id}\n` })),
@@ -677,19 +686,26 @@ describe("blockers and follow-ups", () => {
 })
 
 describe("waits for merge", () => {
-  test("a ticket that started too early goes back in the queue, and counts once", async () => {
-    // b's worker finds it needs a's work, links a as its blocker and stops with nothing done.
+  test("a ticket that started too early goes back in the queue, keeping its place under --limit", async () => {
+    // b's worker finds it needs a's work, links a as its blocker and stops with nothing done. c is
+    // ready all along, but under --limit 2 b's place is kept for it: c never starts.
     const ran = await runs({
-      backlog: backlog().ticket("a", { priority: 0 }).ticket("b", { priority: 1 }),
+      backlog: backlog()
+        .ticket("a", { priority: 0 })
+        .ticket("b", { priority: 1 })
+        .ticket("c", { priority: 2 }),
       limit: 2,
       scripts: (world, places) => ({
         a: [works(world, places, "a", { takes: "3 minutes" })],
         b: [needs(world, "b", "a"), works(world, places, "b")],
+        c: [works(world, places, "c")],
       }),
       during: () => passes("4 minutes"),
     })
     expectClean(ran, 0)
-    expectPhases(ran, { a: "Done", b: "Done" })
+    expectPhases(ran, { a: "Done", b: "Done", c: "Queued" })
+    expect(pathOf(ran, "c")).toEqual(["Queued"])
+    expect(ran.log.some((text) => text.includes("c dispatching"))).toBe(false)
     expect(pathOf(ran, "b")).toEqual([
       "Queued",
       "Working",
@@ -821,9 +837,10 @@ describe("set aside and review", () => {
       settings: () => ({ concurrent: 3 }),
       scripts: (world, places) => ({
         a: [defers(world, "a")],
-        b: [closesUncommitted(world, places, "b")],
-        c: [works(world, places, "c")],
+        b: [closesUncommitted(world, places, "b", "1 minute")],
+        c: [works(world, places, "c", { takes: "2 minutes" })],
       }),
+      during: () => passes("3 minutes"),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Deferred", b: "Review", c: "Done" })
