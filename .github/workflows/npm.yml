@@ -1,0 +1,172 @@
+# Publishes the npm package, @noesis-sol/tutti (§ 12 npm), for each v* tag pushed: for development
+# and agents (bunx), not the recommended install, which is a release archive (release.yml). The
+# package's bin is the launcher bin/tutti, which runs the bundle scripts/build-npm.sh builds. Run it
+# from the Actions tab (workflow_dispatch) with a tag to publish an existing tag: a version npm has
+# already is left as it is.
+#
+# The token: the repository secret NPM_TOKEN holds an npm automation token that may publish
+# @noesis-sol/tutti. Without it nothing is built or published, and the run says so and succeeds.
+#
+# The tarball is packed once, checked as bunx runs it on Linux, Alpine and macOS
+# (scripts/check-npm.sh), and that tarball is published, with provenance once the repository is
+# public (npm generates none for a private one, and refuses the publish). A tag with a suffix
+# (v1.2.0-rc.1) publishes under the dist-tag next, so bunx @noesis-sol/tutti stays on the release.
+name: npm
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to publish, such as v0.9.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  BUN_VERSION: 1.4.3 # as ci.yml's
+
+jobs:
+  # Secrets can't be read in a job's if, so this job says whether the token is there.
+  token:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      set: ${{ steps.token.outputs.set }}
+    steps:
+      - id: token
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo set=true >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::The repository secret NPM_TOKEN isn't set, so $TAG isn't published to npm"
+            echo set=false >> "$GITHUB_OUTPUT"
+          fi
+
+  pack:
+    needs: token
+    if: needs.token.outputs.set == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check the tag's name
+        run: |
+          case "$TAG" in
+          v[0-9]*.[0-9]*.[0-9]*) ;;
+          *) echo "::error::$TAG is not a version tag (vX.Y.Z, or vX.Y.Z-<suffix> for a pre-release)"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Check the version
+        run: |
+          version="$(bun --print 'require("./package.json").version')"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::package.json's version is $version, not ${TAG#v}"
+            exit 1
+          fi
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # The release bundle, then the tarball without prepack's build over it.
+      - name: Pack
+        run: |
+          scripts/build-npm.sh --release
+          mkdir -p dist/npm
+          bun pm pack --ignore-scripts --destination dist/npm
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-package
+          path: dist/npm/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  check:
+    needs: pack
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+          - runner: ubuntu-latest
+            alpine: true
+          - runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          sparse-checkout: scripts
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-package
+          path: dist/npm
+
+      - name: Check
+        env:
+          ALPINE: ${{ matrix.alpine && 'true' || '' }}
+        run: |
+          if [ -n "$ALPINE" ]; then
+            docker run --rm -v "$PWD:/w:ro" "oven/bun:$BUN_VERSION-alpine" \
+              sh -c '/w/scripts/check-npm.sh /w/dist/npm/*.tgz'
+          else
+            scripts/check-npm.sh dist/npm/*.tgz
+          fi
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # npm's provenance
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-package
+          path: dist/npm
+
+      - name: Publish
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          version="${TAG#v}"
+          if [ "$(npm view "@noesis-sol/tutti@$version" version 2>/dev/null)" = "$version" ]; then
+            echo "::notice::npm has @noesis-sol/tutti $version already; it is left as it is"
+            exit 0
+          fi
+          case "$TAG" in *-*) dist_tag=next ;; *) dist_tag=latest ;; esac
+          if [ "$PRIVATE" = true ]; then
+            echo "::notice::The repository is private, so the package is published without provenance"
+            provenance=--no-provenance
+          else
+            provenance=--provenance
+          fi
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > "$RUNNER_TEMP/.npmrc"
+          NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/.npmrc" npm publish dist/npm/*.tgz \
+            --access public "$provenance" --tag "$dist_tag"

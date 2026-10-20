@@ -1,0 +1,9 @@
+#!/bin/sh
+# tutti's npm bin (§ 12 npm): runs the bundle beside it, which scripts/build-npm.sh builds as the
+# package is packed, with neither the .env files nor a bunfig.toml of the folder it runs in. Bun
+# run as a bin reads both, so a project's ANTHROPIC_API_KEY in .env would reach tutti and its
+# workers, and a project's bunfig.toml preload would run code in tutti. --config=/dev/null puts an
+# empty bunfig.toml in place of the folder's. The flags can't be a shebang's: Linux passes them to
+# env as one argument, and BusyBox's env (Alpine) has no -S to split them. readlink -f follows the
+# node_modules/.bin symlink, in a project or in bunx's cache, to this file.
+exec bun --no-env-file --config=/dev/null "$(dirname "$(readlink -f "$0")")/bundle/tutti.js" "$@"

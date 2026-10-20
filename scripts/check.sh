@@ -4,7 +4,8 @@
 #   tsc:        bunx tsc --noEmit
 #   biome:      bunx biome check .
 #   test:       scripts/test.sh (slow suites too when TUTTI_SLOW=1)
-#   lint:       shellcheck on the tracked shell scripts, with a pinned release that
+#   lint:       shellcheck on the tracked shell scripts (and the npm package's launcher, bin/tutti,
+#               which has no .sh), with a pinned release that
 #               scripts/fetch-shellcheck.sh fetches into .cache/shellcheck/ (git-ignored) and
 #               verifies by its sha256. When it can't be downloaded (offline), the step says so
 #               and is skipped rather than failed.
@@ -19,7 +20,7 @@ run_shellcheck() {
     return 0
   fi
   [ "$status" -eq 0 ] || return "$status"
-  git ls-files -z -- '*.sh' | xargs -0 "$shellcheck"
+  git ls-files -z -- '*.sh' bin/tutti | xargs -0 "$shellcheck"
 }
 
 echo "SUITE: tsc"

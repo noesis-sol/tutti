@@ -10,3 +10,6 @@
 node_modules/
 dist/
 .cache/
+
+# The npm package's bundle, scripts/build-npm.sh
+/bin/bundle/
