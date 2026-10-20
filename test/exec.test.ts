@@ -15,8 +15,8 @@ import {
 } from "../src/services/exec.ts"
 
 // Every test starts real processes, and some wait out a kill grace of 2 s, which under load can
-// outlast bun's 5 s default. (A command whose exit Bun lost hung exec, past any timeout; exec now
-// fails it with CommandNotRun, see test/exec-lost-exit.test.ts.)
+// outlast bun's 5 s default. (The first spawn's exit, which Bun can lose, hung exec past any
+// timeout; exec now fails it with CommandNotRun, and test/warm-up.ts's spawn takes that loss.)
 setDefaultTimeout(30_000)
 
 const provide = <A, E>(effect: Effect.Effect<A, E, BunServices.BunServices>): Effect.Effect<A, E> =>

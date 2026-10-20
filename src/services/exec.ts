@@ -49,13 +49,16 @@ export const LostExitGrace = Context.Reference<Duration.Duration>(
 /** How often exec looks for a command's process group while it waits for the command's exit. */
 const groupPoll = Duration.millis(200)
 
-/** Some process of the group whose leader is `group` is still there. */
+/**
+ * Some process of the group whose leader is `group` is still there. Only ESRCH says it has gone:
+ * EPERM is a group tutti can't signal, or on macOS one whose only member is a zombie not yet reaped.
+ */
 const groupAlive = (group: number): boolean => {
   try {
     process.kill(-group, 0)
     return true
-  } catch {
-    return false
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH"
   }
 }
 

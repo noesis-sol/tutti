@@ -5,3 +5,7 @@
 # suites keep the development build that @opentui/react/test-utils' act needs.
 [define]
 "process.env.NODE_ENV" = "\"production\""
+
+# One spawn before the first test, which Bun can lose (test/warm-up.ts).
+[test]
+preload = ["./test/warm-up.ts"]
