@@ -18,9 +18,9 @@
 // The ledger's phases keep a ticket from being taken twice: only a ticket the run hasn't taken up,
 // or one still Queued or HeldBack, is a candidate. --limit counts the tickets this run starts; a
 // resumed or carried-over worker takes a slot (carry) but counts toward nothing, and a ticket put
-// back in the queue until its blocker merges counts once, as it starts again. A ticket whose ID
-// can't name a worktree or a branch is set aside as it is queued (BAD_TICKET_ID), without a worker
-// or a slot.
+// back in the queue until its blocker merges counts once, as it starts again: it is dispatched
+// again only once its last fiber has ended and freed its slot. A ticket whose ID can't name a
+// worktree or a branch is set aside as it is queued (BAD_TICKET_ID), without a worker or a slot.
 import {
   Duration,
   Effect,
@@ -319,10 +319,14 @@ export const make = (
     })
 
     // A ticket dispatched (`counted`) that started too early, put back in the queue until its
-    // blocker merges (WAITS_FOR_MERGE), counts toward --limit once, as it starts again.
+    // blocker merges (WAITS_FOR_MERGE), counts toward --limit once, as it starts again. Its fiber
+    // ends a few steps after it enters Waiting: by then its blocker may have merged, putting it back
+    // in the queue, and bd ready may no longer list it, taking it out of the ledger. It isn't
+    // dispatched again before its fiber ends, so it is never Working here for a later start.
     const requeued = (state: State, ticket: string) => {
       const phase = state.tickets.get(ticket)?.phase
-      return phase?._tag === "Waiting" ? phase.for !== "probe" : waiting(state, ticket)
+      if (phase === undefined) return true
+      return phase._tag === "Waiting" ? phase.for !== "probe" : waiting(state, ticket)
     }
 
     const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue, counted = false) =>
@@ -585,7 +589,10 @@ export const make = (
           const state = yield* ledger.current
           const s = yield* Ref.get(slots)
           const slot = s.running.size < options.concurrent
-          const inLine = queue.filter((issue) => waiting(state, issue.id))
+          // A ticket back in the queue whose last fiber still holds its slot waits for it to end.
+          const inLine = queue.filter(
+            (issue) => waiting(state, issue.id) && !s.running.has(issue.id),
+          )
           const holds = new Map<string, Hold>()
           const notHeld: Array<Issue> = []
           for (const issue of inLine) {
