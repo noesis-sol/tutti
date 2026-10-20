@@ -34,7 +34,7 @@
 import { Clock, Effect, FileSystem, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
-import { type PhaseName, Store, type TicketRecord } from "../services/Store.ts"
+import { type PhaseName, type State, Store, type TicketRecord } from "../services/Store.ts"
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
 import { EventStream } from "./eventstream.ts"
@@ -171,6 +171,25 @@ export const saveLeft: Effect.Effect<void, never, Ledger | Store> = Effect.gen(f
 const leftByCrash = (record: TicketRecord): boolean =>
   record.suspended === undefined && record.phase === undefined && record.session !== undefined
 
+/** The records of the workers the last run left in state.json: suspended, or left by a crash. */
+const toCarry = (state: State) =>
+  Effect.gen(function* () {
+    // A run whose process is gone, and that didn't save its tickets as it ended, crashed.
+    const last = state.run
+    const crashed = last !== undefined && !(yield* Effect.sync(() => processRunning(last.pid)))
+    return Object.entries(state.tickets).filter(
+      ([, record]) => record.suspended !== undefined || (crashed && leftByCrash(record)),
+    )
+  })
+
+/** The tickets whose workers the last run left in state.json, for this one to carry on with. */
+export const carriedTickets: Effect.Effect<ReadonlySet<string>, never, Store> = Effect.gen(
+  function* () {
+    const saved = yield* toCarry(yield* (yield* Store).state)
+    return new Set(saved.map(([id]) => id))
+  },
+)
+
 /** The question the saved ticket waited on, if state.json has one. */
 const savedQuestion = (record: TicketRecord): string | undefined => {
   const question = Object.hasOwn(record.metadata, questionKey)
@@ -197,13 +216,9 @@ export const carryOver = (
     const context = yield* Effect.context<WorkEnv>()
     const { base } = options
     const carried = new Map<string, Carried>()
-    const state = yield* store.state
-    // A run whose process is gone, and that didn't save its tickets as it ended, crashed.
-    const last = state.run
-    const crashed = last !== undefined && !(yield* Effect.sync(() => processRunning(last.pid)))
-    const saved = Object.entries(state.tickets)
-      .filter(([, record]) => record.suspended !== undefined || (crashed && leftByCrash(record)))
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    const saved = [...(yield* toCarry(yield* store.state))].sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    )
     if (saved.length === 0) return carried
 
     // A scoped run takes up its ticket and its descendants; bd failing to list them, its ticket.

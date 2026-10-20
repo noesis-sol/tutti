@@ -35,6 +35,7 @@ import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { makePrinter, type Out, stdout } from "./print/organLine.ts"
+import { carriedTickets } from "./run/carry.ts"
 import {
   asking,
   askLines,
@@ -51,8 +52,8 @@ import { interview, interviewEnding } from "./run/interview.ts"
 import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
 import {
   check as checkNothing,
+  heldAtStart,
   type Options as NothingOptions,
-  noHolds,
   nothingToRun,
   type Output,
   report as reportNothing,
@@ -297,15 +298,20 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       // bd failing to list the tickets left unmerged is something to run: the run lists them again,
       // and stops on it.
       const unmerged = yield* Effect.result(stillUnmerged({ repo: config.repo, base }))
-      const nothingOptions = (): NothingOptions => ({
-        scope,
-        filter: { excludeTypes: config.settings.queue.exclude_types },
-        repo: config.repo,
-        base,
-        carried: new Set(),
-        unmerged: Result.isSuccess(unmerged) ? unmerged.success : new Set(),
-        held: noHolds,
-      })
+      const beads = yield* Beads
+      const carried = yield* carriedTickets
+      const nothingOptions = (): NothingOptions => {
+        const left = Result.isSuccess(unmerged) ? unmerged.success : new Set<string>()
+        return {
+          scope,
+          filter: { excludeTypes: config.settings.queue.exclude_types },
+          repo: config.repo,
+          base,
+          carried,
+          unmerged: left,
+          held: heldAtStart(beads, left),
+        }
+      }
       /** Whether there is nothing to run, which it then reports on the main screen. */
       const nothingReported = Effect.gen(function* () {
         if (Result.isFailure(unmerged) || !(yield* nothingToRun(nothingOptions(), output))) {

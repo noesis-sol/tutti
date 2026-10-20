@@ -44,7 +44,7 @@ export interface RunStop {
   readonly why: "PAUSED"
   readonly code: number
   readonly ticket: string
-  /** The line the log has for it. */
+  /** The line the run ends with for it, `PAUSED: …`; its HOLD line is the run's to say. */
   readonly line: Line
 }
 
@@ -164,7 +164,6 @@ const paused = (worker: StartedWorker, gone: string | null) =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
-    const logs = yield* Log
     const { id, path } = worker.worktree
     const after =
       gone === null ? line`its worker idle for ${formatDuration(idleGrace)}` : line`${gone}`
@@ -174,14 +173,11 @@ const paused = (worker: StartedWorker, gone: string | null) =>
       }),
     )
     const reason = line`${id} still in_progress, ${after} (worktree ${path}); stopping so it can be answered`
-    const text = tagged(Tag.hold)`${line`${Tag.paused}: ${reason}`}`
+    const text = tagged(Tag.paused)`${reason}`
+    // The run says the HOLD line, with the tickets still running, as it takes the stop.
     yield* ledger.transition(id, Cause.StopRun({ why: "PAUSED" }), {
-      beside: [
-        { kind: "hold", ticket: id, text },
-        { kind: "stop", detail: Tag.paused, ticket: id, text: tagged(Tag.paused)`${reason}` },
-      ],
+      beside: [{ kind: "stop", detail: Tag.paused, ticket: id, text }],
     })
-    yield* logs.write(text)
     return { why: "PAUSED", code: stuckCode, ticket: id, line: text } satisfies RunStop
   })
 

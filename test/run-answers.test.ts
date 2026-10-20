@@ -176,7 +176,6 @@ describe("the run takes the answers", () => {
     expectLog(ran, [
       /ANSWERED: \S+ \(Which way\?\) is answered, so t-1 comes back/,
       /^ {2}t-2 closed \(.*\); merged into main/,
-      /^HOLD: PAUSED: t-1 still in_progress/,
       /^PAUSED: t-1 still in_progress/,
     ])
   })

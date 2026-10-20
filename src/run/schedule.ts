@@ -17,7 +17,8 @@
 //
 // The ledger's phases keep a ticket from being taken twice: only a ticket the run hasn't taken up,
 // or one still Queued or HeldBack, is a candidate. --limit counts the tickets this run starts; a
-// resumed or carried-over worker takes a slot (carry) but counts toward nothing. A ticket whose ID
+// resumed or carried-over worker takes a slot (carry) but counts toward nothing, and a ticket put
+// back in the queue until its blocker merges counts once, as it starts again. A ticket whose ID
 // can't name a worktree or a branch is set aside as it is queued (BAD_TICKET_ID), without a worker
 // or a slot.
 import {
@@ -317,7 +318,14 @@ export const make = (
       })
     })
 
-    const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue) =>
+    // A ticket dispatched (`counted`) that started too early, put back in the queue until its
+    // blocker merges (WAITS_FOR_MERGE), counts toward --limit once, as it starts again.
+    const requeued = (state: State, ticket: string) => {
+      const phase = state.tickets.get(ticket)?.phase
+      return phase?._tag === "Waiting" ? phase.for !== "probe" : waiting(state, ticket)
+    }
+
+    const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue, counted = false) =>
       Effect.gen(function* () {
         if (issue?.parent !== undefined) parentOf.set(ticket, issue.parent)
         yield* Ref.update(slots, (s) => ({
@@ -327,18 +335,21 @@ export const make = (
           solo: issue !== undefined && isSolo(issue) ? ticket : s.solo,
         }))
         yield* showQueue
-        const release = Effect.andThen(
-          Ref.update(slots, (s) => {
+        const release = Effect.gen(function* () {
+          const again = counted && requeued(yield* ledger.current, ticket)
+          yield* Ref.update(slots, (s) => {
             skipSaid.forget(ticket)
             return {
               ...s,
               running: new Set([...s.running].filter((id) => id !== ticket)),
+              started: again ? s.started - 1 : s.started,
               issues: new Map([...s.issues].filter(([id]) => id !== ticket)),
               solo: s.solo === ticket ? null : s.solo,
             }
-          }),
-          Effect.andThen(showQueue, Queue.offer(freed, undefined)),
-        )
+          })
+          yield* showQueue
+          yield* Queue.offer(freed, undefined)
+        })
         yield* FiberSet.run(tickets, Effect.ensuring(work, release))
       })
 
@@ -385,7 +396,7 @@ export const make = (
           return false
         }
         yield* logs.write(text)
-        yield* occupy(issue.id, options.start.start(issue), issue)
+        yield* occupy(issue.id, options.start.start(issue), issue, true)
         return true
       })
 
@@ -658,7 +669,7 @@ export const make = (
       run,
       fillTrying: fillTries(1),
       freed: Queue.take(freed),
-      carry: occupy,
+      carry: (ticket, work, issue) => occupy(ticket, work, issue),
       started: Effect.map(Ref.get(slots), (s) => s.started),
       running: Effect.map(Ref.get(slots), (s) => s.running),
       interrupt: FiberSet.clear(tickets),

@@ -115,7 +115,7 @@ import {
 } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, hold, type Line, Log, line, Tag } from "./log.ts"
-import { beadsWhy, gitWhy } from "./merge.ts"
+import { beadsWhy, closedAfter, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
 import {
@@ -309,6 +309,25 @@ export const doneLine = (n: number, how: "drained" | "limit" | "empty"): Line =>
       : line`READY_EMPTY after ${n} tickets`
 
 /**
+ * `root`, when the run closed it, an epic whose last subticket merged in this run: its close reason
+ * names a ticket the run merged. None when it didn't, or bd can't show it.
+ */
+const closedByRun = (
+  beads: Beads["Service"],
+  root: string,
+  state: State,
+): Effect.Effect<ReadonlySet<string>> =>
+  beads.show(root).pipe(
+    Effect.map((issue): ReadonlySet<string> => {
+      const after = issue.status === "closed" ? closedAfter(issue.closeReason) : undefined
+      return after !== undefined && state.tickets.get(after)?.phase._tag === "Done"
+        ? new Set([root])
+        : new Set()
+    }),
+    Effect.orElseSucceed((): ReadonlySet<string> => new Set()),
+  )
+
+/**
  * The run, from its START block to its end record, in the run's scope: it hands back its exit
  * code and each ticket's phase. It never fails: what goes wrong stops it, with an exit code.
  */
@@ -464,7 +483,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
               environment.settled(ticket, worked.settling ?? "other"),
               worked.stop === null
                 ? Effect.void
-                : stopped(stopOfLine(worked.stop, { ticket, recorded: true, held: true })),
+                : stopped(stopOfLine(worked.stop, { ticket, recorded: true })),
             ),
           onFailure: (cause) => {
             const stop = causeStop(ticket, cause)
@@ -965,16 +984,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     let closing: Line
     let closed: Ending
     // A scoped run's part of the closing line: `; SCOPE_DONE: …` or `; SCOPE_OPEN: …`.
-    const scopePart = Effect.suspend(() =>
-      config.ticket === null
-        ? Effect.succeed("")
-        : Effect.map(
-            scope.end(beads, config.ticket, scope.ledgerView(state), {
-              excludeTypes: config.settings.queue.exclude_types,
-            }),
-            (end) => `; ${scope.line(end)}`,
-          ),
-    )
+    const scopePart = Effect.gen(function* () {
+      const root = config.ticket
+      if (root === null) return ""
+      const view = scope.ledgerView(state, yield* closedByRun(beads, root, state))
+      const end = yield* scope.end(beads, root, view, {
+        excludeTypes: config.settings.queue.exclude_types,
+      })
+      return `; ${scope.line(end)}`
+    })
 
     // The closing line: the stops', or how the run ended by itself, with its scope's part.
     if (all.first !== null) {

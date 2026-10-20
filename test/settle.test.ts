@@ -458,9 +458,13 @@ describe("the continue nudge and PAUSED", () => {
     expectLog(ran, [
       "  t-1's worker ended its turn with the ticket still in progress; told it to continue (1 of 2)",
       "  t-1's worker ended its turn with the ticket still in progress; told it to continue (2 of 2)",
-      `HOLD: PAUSED: t-1 still in_progress, its worker idle for 10m (worktree ${join(root, id)}); stopping so it can be answered`,
     ])
-    expectEvents(ran, ["phase", "hold", "stop"])
+    // The run says the HOLD line as it takes the stop; the stop's line is the one it ends with.
+    expect(String(stop?.line)).toBe(
+      `PAUSED: t-1 still in_progress, its worker idle for 10m (worktree ${join(root, id)}); stopping so it can be answered`,
+    )
+    expect(ran.log.some((text) => text.startsWith("HOLD: "))).toBe(false)
+    expectEvents(ran, ["phase", "stop"])
     expect(records(ran, "stop")).toEqual([
       expect.objectContaining({ detail: "PAUSED", ticket: id }),
     ])
@@ -522,9 +526,9 @@ describe("the continue nudge and PAUSED", () => {
     expect(phaseOf(ran)).toEqual(expect.objectContaining({ _tag: "Stopped", why: "PAUSED" }))
     // The first message, then the carry-on message of its one resume.
     expect(sentTexts(ran)).toHaveLength(2)
-    expectLog(ran, [
-      /HOLD: PAUSED: t-1 still in_progress, its worker is gone \(exit 1\); its session was resumed once in this run already/,
-    ])
+    expect(resultOf(ran).worked.stop?.line).toMatch(
+      /^PAUSED: t-1 still in_progress, its worker is gone \(exit 1\); its session was resumed once in this run already/,
+    )
   })
 
   test("a worker that needs you has not settled: its ticket isn't read until you answer", async () => {

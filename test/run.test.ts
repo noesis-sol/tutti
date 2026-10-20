@@ -382,7 +382,9 @@ describe("stops and exit codes", () => {
     })
     expectExitCode(ran, 3)
     expectPhases(ran, { "t-1": "Stopped" })
-    expectLog(ran, [/^HOLD: PAUSED: t-1 still in_progress/, /^PAUSED: t-1 still in_progress/])
+    // With nothing else running, the stop holds nothing: no HOLD line, as orchestra's.
+    expectLog(ran, [/^PAUSED: t-1 still in_progress/])
+    expect(ran.log.some((text) => text.startsWith("HOLD: "))).toBe(false)
     expect(recordsOf(ran, "stop")).toHaveLength(1)
     expect(recordsOf(ran, "suspended")).toEqual([
       expect.objectContaining({ ticket: "t-1", why: "PAUSED" }),

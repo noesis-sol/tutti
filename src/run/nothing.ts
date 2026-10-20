@@ -128,6 +128,27 @@ export interface Options {
 export const noHolds = (): Effect.Effect<HoldKind | undefined> => Effect.succeed(undefined)
 
 /**
+ * What holds back a ready ticket as the run starts, as its scheduler would hold it back (§ 5 item
+ * 5), given the tickets closed but not merged (`unmerged`): a parent whose subtickets aren't all
+ * closed and merged, a ticket blocked by one not merged, a follow-up filed from one. Nothing runs
+ * yet, so a blocker or a source holds it back only while closed and not merged.
+ */
+export const heldAtStart =
+  (beads: Beads["Service"], unmerged: ReadonlySet<string>) =>
+  (issue: Issue): Effect.Effect<HoldKind | undefined, BeadsError> =>
+    Effect.gen(function* () {
+      const children = yield* beads.list({ parent: issue.id, all: true })
+      if (children.some((child) => child.status !== "closed" || unmerged.has(child.id))) {
+        return "parent"
+      }
+      const links = (yield* beads.show(issue.id)).dependencies
+      const by = (type: string) => links.some((link) => link.type === type && unmerged.has(link.id))
+      if (by("blocks")) return "blocker"
+      if (by("discovered-from")) return "followUp"
+      return undefined
+    })
+
+/**
  * Why a run of all of bd ready has nothing to run, given the tickets not closed (`unclosed`), how
  * many are closed but not merged, and the ready tickets, all held back, with what holds each.
  */

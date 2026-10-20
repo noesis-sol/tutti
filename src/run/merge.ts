@@ -138,6 +138,16 @@ export const changedOutsideTools = (status: ReadonlyArray<StatusEntry>): Readonl
 export const allMerged = (n: number): string =>
   n === 1 ? "its 1 subticket is merged" : `all ${n} subtickets are merged`
 
+/** The reason an epic is closed with, as `after`, its last subticket, merged. */
+export const epicCloseReason = (n: number, after: string): string => {
+  const all = allMerged(n)
+  return `${all[0]?.toUpperCase()}${all.slice(1)}; closed by tutti after ${after}`
+}
+
+/** The ticket whose merge closed the epic its close reason is, or undefined when tutti didn't. */
+export const closedAfter = (reason: string): string | undefined =>
+  /; closed by tutti after (\S+)$/.exec(reason)?.[1]
+
 /** Every service a merge uses. */
 export type MergeEnv =
   | AppConfig
@@ -592,9 +602,7 @@ const closeEpics = (id: string) =>
       )
       if (!merged) return
       const all = allMerged(children.length)
-      const closed = yield* Effect.result(
-        beads.close(epic, `${all[0]?.toUpperCase()}${all.slice(1)}; closed by tutti after ${id}`),
-      )
+      const closed = yield* Effect.result(beads.close(epic, epicCloseReason(children.length, id)))
       if (Result.isFailure(closed)) {
         yield* say(
           detail`${all}, but bd could not close ${epic}: ${beadsWhy(closed.failure)}; close it with: bd close ${epic}`,
