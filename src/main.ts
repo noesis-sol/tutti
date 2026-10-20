@@ -28,7 +28,7 @@ import { UsageLimits } from "./agent/UsageLimits.ts"
 import { AppConfig } from "./cli/AppConfig.ts"
 import { mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
 import type { RunFlags } from "./cli/flags.ts"
-import { tuttiVersion } from "./cli/version.ts"
+import { releaseBuild, tuttiVersion } from "./cli/version.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
@@ -90,6 +90,13 @@ import {
   outputAppearance,
   type Theme,
 } from "./ui/theme.ts"
+import {
+  cacheDir,
+  checksForUpdates,
+  githubReleases,
+  newerNotice,
+  startCheck,
+} from "./update/update.ts"
 
 export const version: string = pkg.version
 
@@ -155,6 +162,22 @@ const exitNow =
 /** Says `message` on stderr, and gives the exit code of a run that can't start. */
 const cannotStart = (message: string) => Effect.as(Console.error(message), exitCodes.setup)
 
+/**
+ * Says that release `newer` is out (§ 7.11 "A newer release"), below the run's end: on stdout after
+ * the dashboard, in `theme` (the line `notice`, its command `emphasis` bold), or with plain output
+ * on stderr when that is a terminal. Not on a terminal, it says nothing.
+ */
+const sayNewer = (newer: string, dashboard: boolean, theme: Effect.Effect<Theme>) =>
+  Effect.gen(function* () {
+    const { text, command } = newerNotice(newer, version)
+    if (dashboard) {
+      const { styles } = yield* theme
+      process.stdout.write(`${styles.deferred.paint(text)}${styles.key.paint(command)}\n`)
+    } else if (process.stderr.isTTY) {
+      process.stderr.write(`${text}${command}\n`)
+    }
+  })
+
 /** A bare `tutti`: the run, in the folder tutti was started in; its exit code. */
 const runFrom = (cwd: string, flags: RunFlags) =>
   Effect.gen(function* () {
@@ -167,6 +190,17 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       drain: (signal) => Queue.offerUnsafe(drains, { on: true, how: `by ${signal}` }),
       suspend: () => Queue.offerUnsafe(suspends, undefined),
     })
+    // A release build's daily check for a newer release (§ 12), in the background; its answer, if
+    // it has one by then, is said once the run has ended.
+    const env = (name: string) => process.env[name]
+    const newer = checksForUpdates({ kind: releaseBuild ? "release" : "clone" }, env)
+      ? yield* startCheck({
+          releases: githubReleases,
+          current: version,
+          cache: cacheDir(env),
+          now: Date.now,
+        })
+      : Effect.succeed(Option.none<string>())
     const checked = yield* Effect.result(check(live(cwd, flags)).pipe(Effect.provide(gitLayer)))
     if (Result.isFailure(checked)) {
       const failed = checked.failure
@@ -218,7 +252,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       return yield* cannotStart(`tutti cannot start its run: ${String(services.failure)}`)
     }
 
-    return yield* Effect.gen(function* () {
+    const code = yield* Effect.gen(function* () {
       const events = yield* EventStream
       const tty = yield* Tty
       const logs = yield* Log
@@ -490,6 +524,19 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           return ended.exitCode
       }
     }).pipe(Effect.provideContext(services.success), Effect.provide(ttyLayer))
+    const found = yield* newer
+    if (Option.isSome(found)) {
+      const depth = terminal.colourDepth === "truecolor" ? "truecolor" : "256"
+      const theme = Effect.map(
+        terminal.dumb
+          ? Effect.succeed(appearanceOf(config.appearance, null))
+          : outputAppearance(config.appearance, null),
+        (appearance) =>
+          makeTheme(config.scheme.scheme, { appearance, depth, noColor: config.noColor }),
+      )
+      yield* sayNewer(found.value, mode._tag === "Dashboard", theme)
+    }
+    return code
   }).pipe(
     Effect.scoped,
     Effect.flatMap((code) =>

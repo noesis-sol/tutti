@@ -6,7 +6,7 @@ import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
 import { Account } from "../agent/Account.ts"
 import { answerWords } from "../agent/attentionFiles.ts"
-import { resolveClaude } from "../agent/claudeBinary.ts"
+import { buildTarget, resolveClaude } from "../agent/claudeBinary.ts"
 import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import { scoutSearch } from "../init/checks.ts"
@@ -38,6 +38,8 @@ import {
   outputAppearance,
   type Theme,
 } from "../ui/theme.ts"
+import { releaseKeys } from "../update/keys.ts"
+import { type Build, githubReleases, update } from "../update/update.ts"
 import { AppConfig, layer as appConfigLayer, load, SetupProblem } from "./AppConfig.ts"
 import { colours } from "./colours.ts"
 import {
@@ -51,6 +53,7 @@ import {
   runFlags,
 } from "./flags.ts"
 import { login, runInTerminal } from "./login.ts"
+import { releaseBuild, tuttiVersion } from "./version.ts"
 
 /** The main checkout of the repository `dir` is in: the first of its worktrees. */
 export const mainCheckout = (dir: string) =>
@@ -264,6 +267,53 @@ export const coloursCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
       "preview a colour scheme, the one in use by default: every role's colour and where it comes from, a mock of the dashboard, and anything that keeps the scheme from being used, which exits 1",
     ),
   )
+
+/** The running tutti, for tutti update: the compiled binary, or Bun running it from source. */
+export const thisBuild = Effect.map(tuttiVersion, (shown): Build => {
+  const target = buildTarget()
+  return {
+    version: pkg.version,
+    shown,
+    kind: releaseBuild ? "release" : target !== null ? "clone" : "source",
+    target,
+    exe: process.execPath,
+  }
+})
+
+/** `tutti update`: the running build from the latest GitHub Release, verified with the release keys. */
+export const updateCommand = Command.make(
+  "update",
+  {
+    check: Flag.Boolean("check").pipe(
+      Flag.withDescription(
+        "only say whether a newer release is out, exiting 1 when one is; change nothing",
+      ),
+      Flag.withDefault(false),
+    ),
+    force: Flag.Boolean("force").pipe(
+      Flag.withDescription(
+        "replace a build from a clone, or one newer than the latest release, too",
+      ),
+      Flag.withDefault(false),
+    ),
+  },
+  (given) =>
+    Effect.gen(function* () {
+      const code = yield* update(given, yield* thisBuild, {
+        releases: githubReleases,
+        keys: releaseKeys,
+        say: {
+          out: (line) => process.stdout.write(`${line}\n`),
+          error: (line) => process.stderr.write(`${line}\n`),
+        },
+      })
+      process.exitCode = code
+    }),
+).pipe(
+  Command.withDescription(
+    "replace this tutti with the latest GitHub Release's binary for its platform, once the signature of the release's checksums.txt verifies with a release key built into tutti and the archive's SHA-256 matches it. A build from a clone is replaced only with --force. Exit codes: 0 updated or nothing to do (--check: none newer), 1 --check: a newer release is out, 2 refused (a build from a clone, tutti run from source, a folder it can't write in), 4 the update failed",
+  ),
+)
 
 /** An init flag's text: absent unless given. */
 const initFlag = (
@@ -579,5 +629,6 @@ export const tuttiWith = <E extends { readonly message: string } | string, R, S,
       planCommand(repo, services),
       loginCommand(repo),
       coloursCommand(repo),
+      updateCommand,
     ]),
   )

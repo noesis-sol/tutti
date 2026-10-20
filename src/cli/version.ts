@@ -25,6 +25,10 @@ export const formatVersion = (version: string, commit: Option.Option<BuildCommit
     onSome: ({ hash, dirty }) => `${version} ${hash}${dirty ? "+dirty" : ""}`,
   })
 
+/** Whether tutti is a release build: built from a tag, its define "". */
+export const releaseBuild: boolean =
+  typeof TUTTI_BUILD_COMMIT === "string" && TUTTI_BUILD_COMMIT === ""
+
 /** The define's value as a commit: none for a release's "". */
 export const parseBuildCommit = (define: string): Option.Option<BuildCommit> => {
   const dirty = define.endsWith("+dirty")

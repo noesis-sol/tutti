@@ -109,6 +109,9 @@ export const embed = (file: string, target: string): void => {
   embeddedTarget = target
 }
 
+/** A compiled build's target, as its entry names it (linux-x64-musl); null from source. */
+export const buildTarget = (): string | null => embeddedTarget
+
 /** The Claude Code sessions run, as the startup checks resolved it. */
 export interface Claude {
   /** Its executable, for `pathToClaudeCodeExecutable`; null for the SDK's own. */
