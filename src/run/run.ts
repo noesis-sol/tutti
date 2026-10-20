@@ -1015,8 +1015,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       exitCode = stop.code
     }
 
-    // Gathered only for a report: bd lists the scope's tickets level by level.
-    const reviews = Option.isSome(organs) && config.settings.organs.review
+    // Gathered only for a report, which a quit skips: bd lists the scope's tickets level by level.
+    const quitted = quit !== null || (yield* Deferred.isDone(quitting))
+    const reviews = Option.isSome(organs) && config.settings.organs.review && !quitted
     if (config.ticket !== null && reviews) {
       sections.push(...(yield* followUpsSection(beads, config.ticket, begun)))
     }
@@ -1029,7 +1030,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       startHead,
       ending: closed,
       exitCode,
-      quit: quit !== null || (yield* Deferred.isDone(quitting)),
+      quit: quitted,
       sections,
     }
     const reportContext = yield* Effect.context<RunEnv | Ledger>()
