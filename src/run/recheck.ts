@@ -31,7 +31,10 @@ export interface Recheck {
   readonly head: string
 }
 
-/** The tickets of a run waiting to be checked once more, and those taken up to be. */
+/**
+ * The tickets of a run waiting to be checked once more, and those taken up to be; and what the
+ * check said of each ticket it set aside, for the run report.
+ */
 export interface Rechecks {
   /** The tickets waiting to be checked once more, in the order they were set aside. */
   readonly waiting: Effect.Effect<ReadonlyArray<Recheck>>
@@ -41,6 +44,10 @@ export interface Rechecks {
   keep(recheck: Recheck): Effect.Effect<void>
   /** Takes the ticket out of those waiting, as checked once more; false when it wasn't waiting. */
   take(id: string): Effect.Effect<boolean>
+  /** Keeps what the ticket's check said as it set the ticket aside, in place of what it said before. */
+  noteFailure(id: string, evidence: string): Effect.Effect<void>
+  /** What the check said of each ticket it set aside, by ticket, in the order they were first. */
+  readonly failures: Effect.Effect<ReadonlyMap<string, string>>
 }
 
 /** A run's rechecks: none waiting, none taken up. */
@@ -49,6 +56,7 @@ export const makeRechecks: Effect.Effect<Rechecks> = Effect.gen(function* () {
     readonly waiting: ReadonlyArray<Recheck>
     readonly rechecked: ReadonlySet<string>
   }>({ waiting: [], rechecked: new Set() })
+  const failures = yield* Ref.make<ReadonlyMap<string, string>>(new Map())
   return {
     waiting: Effect.map(Ref.get(ref), (state) => state.waiting),
     rechecked: (id) => Effect.map(Ref.get(ref), (state) => state.rechecked.has(id)),
@@ -68,6 +76,8 @@ export const makeRechecks: Effect.Effect<Rechecks> = Effect.gen(function* () {
           },
         ]
       }),
+    noteFailure: (id, evidence) => Ref.update(failures, (said) => new Map(said).set(id, evidence)),
+    failures: Ref.get(failures),
   } satisfies Rechecks
 })
 

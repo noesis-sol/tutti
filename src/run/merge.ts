@@ -41,6 +41,7 @@ import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { Cause, Detail } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
+import { noteFailedCheck } from "./reportEvidence.ts"
 import { unmergedLabel } from "./scope.ts"
 import { type SetUps, setUp } from "./setup.ts"
 import { ignoredFolders } from "./startup.ts"
@@ -394,7 +395,8 @@ export const checksFailedDetail = (error: CheckError): string => {
 /**
  * Sets the ticket aside as its check, or the setup before it, failed on its branch rebased onto the
  * base at `onto`, kept to be checked once more once the base moves on, unless this was that once
- * (recheck.ts). `tried` says what came of handing it back to its worker, if anything.
+ * (recheck.ts), and what the check said kept for the report (reportEvidence.ts). `tried` says what
+ * came of handing it back to its worker, if anything.
  */
 export const checksFailed = (
   ticket: FinishedTicket,
@@ -420,6 +422,7 @@ export const checksFailed = (
     )
     const said = saidOf(error)
     if (said.length > 0) yield* log.write(...said.map((each) => detail`  ${each}`))
+    yield* noteFailedCheck(ticket, options, rechecks, onto, error, output)
   })
 
 /**

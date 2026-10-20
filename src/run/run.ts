@@ -132,6 +132,7 @@ import {
   underWayLine,
 } from "./quit.ts"
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
+import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
 import { footprintsOf, make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
@@ -980,7 +981,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const phases: Record<string, TicketPhase> = {}
     for (const entry of state.tickets.values()) phases[entry.ticket] = entry.phase
     const said = [...summary, closing]
-    const sections = config.feature === null ? [] : [section("The feature request", config.feature)]
+    // The report's evidence beside the log, in orchestra's order: the failed checks, the full
+    // check, the follow-ups filed outside the scope, the feature request.
+    const sections = [...failedChecksSection(state.tickets, yield* queue.rechecks.failures)]
     const command = config.settings.checks.full.command
     let exitCode = exitCodeOf(all)
     // The stop of a quit, or a panic, after the loop: `when` it came.
@@ -1011,6 +1014,13 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       said.push(stop.text)
       exitCode = stop.code
     }
+
+    // Gathered only for a report: bd lists the scope's tickets level by level.
+    const reviews = Option.isSome(organs) && config.settings.organs.review
+    if (config.ticket !== null && reviews) {
+      sections.push(...(yield* followUpsSection(beads, config.ticket, begun)))
+    }
+    if (config.feature !== null) sections.push(section("The feature request", config.feature))
 
     // The report, over the run's services, when it has organs: skipped once the run was quit.
     const reportRun: ReportRun = {
