@@ -13,6 +13,7 @@ import { type RunStamp, type State, Store, type TicketRecord } from "../src/serv
 import {
   bash,
   claimsAndCloses,
+  defers,
   failStart,
   gone,
   run as runs,
@@ -124,6 +125,7 @@ const commands = (world: World, root: string, id: string) => {
       world.repository.commit(join(root, id), "Change something (t-10)", { "a.txt": "a\n" }),
     ),
     close: orDie(world.beads.close(id, "done")),
+    defer: orDie(world.beads.defer(id)),
   }
 }
 
@@ -181,6 +183,37 @@ describe("state.json: a ticket the run is done with", () => {
     })
     expectPhases(ran, { "t-1": "Review" })
     expectLog(ran, [/WORKER_GONE: t-1 is in progress/])
+    expect(state.tickets["t-1"]).toBeUndefined()
+  })
+
+  test("closed with no change as it merges, the base having its change, is forgotten", async () => {
+    const { ran, state } = await plainRun({
+      backlog: backlog().ticket("t-1").seeds,
+      worktrees: ["t-1"],
+      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
+      // main gets the same change while t-1 runs: the rebase drops its commit (closeUnchanged).
+      before: (repo) =>
+        Effect.asVoid(
+          Effect.flatMap(Repository, (repository) =>
+            repository.commit(repo, "Land the same change", { "t-1.txt": "x\n" }),
+          ),
+        ),
+    })
+    expectPhases(ran, { "t-1": "Done" })
+    expectLog(ran, [/t-1 closed with no change: rebased onto main, which has its changes already/])
+    expect(state.tickets["t-1"]).toBeUndefined()
+  })
+
+  test("deferred, is forgotten: undeferred, it starts a new session", async () => {
+    const { ran, state } = await plainRun({
+      backlog: backlog().ticket("t-1").seeds,
+      worktrees: ["t-1"],
+      scripts: (world, root) => {
+        const c = commands(world, root, "t-1")
+        return { "t-1": [defers("t-1", { claim: c.claim, defer: c.defer })] }
+      },
+    })
+    expectPhases(ran, { "t-1": "Deferred" })
     expect(state.tickets["t-1"]).toBeUndefined()
   })
 

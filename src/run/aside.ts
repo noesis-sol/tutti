@@ -6,9 +6,11 @@
 //   DEFER_FAILED says so, in the log and in a `warn` record with `aside`.
 // - left for review (Working or Merging → Review{why}), as orchestra's leaveFor: the log's line goes
 //   in the ticket's notes too, and its phase moves to Review with a `warn` record with `aside`. A
-//   note bd can't add doesn't keep it from review.
+//   note bd can't add doesn't keep it from review. Its record in state.json gets the phase at once,
+//   so a crash after it doesn't have the next run take it up as a worker still at it (carry.ts).
 import { Effect, Result } from "effect"
 import { Beads } from "../services/Beads.ts"
+import { Store } from "../services/Store.ts"
 import { Ledger } from "./ledger.ts"
 import * as log from "./log.ts"
 import { type Line, Log } from "./log.ts"
@@ -53,15 +55,20 @@ export const reviewNote = (text: Line): string => `tutti: ${text.trimStart()}`
 export const leaveForReview = (
   id: string,
   review: Review,
-): Effect.Effect<void, never, Beads | Ledger | Log> =>
+): Effect.Effect<void, never, Beads | Ledger | Log | Store> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
     const logs = yield* Log
+    const store = yield* Store
     yield* Effect.ignore(beads.update(id, { appendNotes: reviewNote(review.text) }))
     yield* ledger.transition(id, Cause.Aside({ why: review.why }), {
       beside: [{ kind: "warn", ticket: id, aside: true, detail: review.detail, text: review.text }],
     })
+    const record = yield* store.ticket(id)
+    if (record !== undefined && record.suspended === undefined) {
+      yield* Effect.ignore(store.updateTicket(id, (ticket) => ({ ...ticket, phase: "Review" })))
+    }
     yield* logs.write(review.text)
   })
 

@@ -23,8 +23,10 @@
 // for the next run, as is one outside this run's --ticket scope. A dropped ticket is forgotten in
 // state.json.
 //
-// A run that ends saves the phase each of its other tickets left it in (saveLeft), so a record
-// with neither why it was suspended nor a phase is one whose run never reached its end: it crashed
+// A run that ends saves the phase each of its other tickets left it in (saveLeft), and forgets a
+// deferred one, which comes back through bd ready with a new session; a ticket left for review has
+// its phase saved as it is (aside.ts). So a record with neither why it was suspended nor a phase is
+// one whose run never reached its end with it: it crashed
 // (kill -9, a power cut), leaving its workers' sessions unsuspended, since a crash can't lose a
 // session ID (§ 4.8). Once that run's process is gone, the next run takes up such a ticket as a
 // suspended one (`crashed`) when bd has it in progress or closed; one in any other state, back in
@@ -137,7 +139,7 @@ export const saveAsked: Effect.Effect<ReadonlyArray<string>, never, Ledger | Sto
 /**
  * Saves the phase each ticket of the run left it in as the run ends, after saveAsked and the
  * suspended: each record in state.json with neither, so the next run doesn't take it for one a
- * crash left.
+ * crash left. A deferred ticket's is forgotten instead: undeferred, it starts a new session.
  */
 export const saveLeft: Effect.Effect<void, never, Ledger | Store> = Effect.gen(function* () {
   const store = yield* Store
@@ -156,7 +158,9 @@ export const saveLeft: Effect.Effect<void, never, Ledger | Store> = Effect.gen(f
       const tickets = { ...state.tickets }
       for (const [id, record] of Object.entries(tickets)) {
         const phase = phases.get(id)
-        if (phase !== undefined && left(record)) tickets[id] = { ...record, phase }
+        if (phase === undefined || !left(record)) continue
+        if (phase === "Deferred") delete tickets[id]
+        else tickets[id] = { ...record, phase }
       }
       return { ...state, tickets }
     }),

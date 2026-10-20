@@ -5,13 +5,15 @@ import { Ledger } from "../src/run/ledger.ts"
 import { type Log, Tag, ticketLine } from "../src/run/log.ts"
 import { Cause } from "../src/run/phase.ts"
 import type { Beads } from "../src/services/Beads.ts"
+import { Store } from "../src/services/Store.ts"
 import { Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
+import { layer as storeLayer } from "../src/testing/Store.ts"
 
 /** Runs `body` on ticket t-1, Working, and gives back its notes, records, log and phase. */
-const aside = (body: Effect.Effect<unknown, never, Ledger | Beads | Log>) =>
+const aside = (body: Effect.Effect<unknown, never, Ledger | Beads | Log | Store>) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const ledger = yield* Ledger
@@ -25,8 +27,20 @@ const aside = (body: Effect.Effect<unknown, never, Ledger | Beads | Log>) =>
         records: (yield* (yield* Captured).records).filter((record) => record.kind !== "phase"),
         log: yield* texts,
         phase: (yield* ledger.current).tickets.get("t-1")?.phase,
+        saved: yield* (yield* Store).ticket("t-1"),
       }
-    }).pipe(Effect.provide(Layer.mergeAll(ledgerLayer(), beadsLayer([{ id: "t-1" }])))),
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          ledgerLayer(),
+          beadsLayer([{ id: "t-1" }]),
+          storeLayer({
+            version: 1,
+            tickets: { "t-1": { session: "session-t-1", resumes: 0, metadata: {} } },
+          }),
+        ),
+      ),
+    ),
   )
 
 describe("setting a ticket aside", () => {
@@ -51,6 +65,8 @@ describe("setting a ticket aside", () => {
       }),
     ])
     expect(left.log).toContain(text)
+    // Saved at once, so a crash after it doesn't have the next run take it up (carry.ts).
+    expect(left.saved).toEqual(expect.objectContaining({ session: "session-t-1", phase: "Review" }))
   })
 
   test("deferred: its note, bd's deferral, Deferred and its deferred record", async () => {
