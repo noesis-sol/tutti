@@ -15,6 +15,7 @@ import type { StartTicket } from "../src/run/start.ts"
 import { type Worked, work } from "../src/run/work.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
+import { Store, type TicketRecord } from "../src/services/Store.ts"
 import {
   claimsAndCloses,
   failStart,
@@ -102,6 +103,13 @@ const asks = (world: World, ...titles: ReadonlyArray<string>): SessionScript =>
     ),
   })
 
+/** Claims the ticket and files a question titled `title` blocking it, leaving it in progress. */
+const asksInProgress = (world: World, title: string): SessionScript =>
+  filesQuestion(id, {
+    claim: orDie(world.beads.update(id, { claim: true })),
+    file: orDie(world.beads.create({ title, labels: ["human"], blocks: [id] })),
+  })
+
 /** Claims the ticket again, commits a change naming it and closes it. */
 const finishes = (world: World, root: string): SessionScript =>
   claimsAndCloses(id, {
@@ -116,6 +124,8 @@ interface Seen {
   readonly polls: ReadonlyArray<ReadonlyArray<string>>
   readonly carried: ReadonlyArray<Worked>
   readonly phase: TicketPhase | undefined
+  /** The ticket's record in state.json as the scenario ends. */
+  readonly saved: TicketRecord | undefined
 }
 
 /** The ticket's questions that aren't closed, by title. */
@@ -180,7 +190,8 @@ const asked = (
         for (const fiber of fibers) carried.push(yield* Fiber.join(fiber))
       }
       const phase = (yield* ledger.current).tickets.get(id)?.phase
-      return { asked: first, polls, carried, phase } satisfies Seen
+      const saved = yield* (yield* Store).ticket(id)
+      return { asked: first, polls, carried, phase, saved } satisfies Seen
     }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<Seen, unknown, Env | Scope.Scope>,
   )
 }
@@ -283,7 +294,28 @@ describe("a worker that filed a question ticket", () => {
     expect(records(ran, "asked")).toHaveLength(2)
   })
 
-  test("whose session can't be resumed: WORKER_GONE, dropped", async () => {
+  test("left in progress, whose session can't be resumed: WORKER_GONE says to reopen it", async () => {
+    const ran = await asked(
+      (world) => [
+        asksInProgress(world, "Which way?"),
+        [failStart("No conversation found with session ID")],
+      ],
+      [["Which way?"]],
+    )
+    const seen = resultOf(ran)
+    expect(seen.polls).toEqual([[]])
+    expect(seen.phase).toEqual(expect.objectContaining({ _tag: "Review", why: "WORKER_GONE" }))
+    expectLog(ran, [
+      /^ {2}WORKER_GONE: t-1's question \S+ is answered, but its session could not be resumed \(No conversation found with session ID\); worktree .*t-1 left for review, no longer followed; reopen it to run it again \(bd update t-1 --status open\), or finish it by hand$/,
+    ])
+    // Its record forgotten and the ticket outside bd ready, no later run takes it up by itself.
+    expect(seen.saved).toBeUndefined()
+    const issue = ran.issues.find((each) => each.id === id)
+    expect(issue?.status).toBe("in_progress")
+    expect(issue?.notes).toContain("reopen it to run it again")
+  })
+
+  test("whose session can't be resumed: WORKER_GONE, dropped, its record forgotten", async () => {
     const ran = await asked(
       (world) => [asks(world, "Which way?"), [failStart("No conversation found with session ID")]],
       [["Which way?"]],
@@ -295,8 +327,10 @@ describe("a worker that filed a question ticket", () => {
     expect(records(ran, "resumed")).toEqual([])
     expectEvents(ran, ["asked", "phase", "answered", "phase", "warn"])
     expectLog(ran, [
-      /^ {2}WORKER_GONE: t-1's question \S+ is answered, but its session could not be resumed \(No conversation found with session ID\); worktree .*t-1 left for review, no longer followed; a later run takes it up again, or finish it by hand$/,
+      /^ {2}WORKER_GONE: t-1's question \S+ is answered, but its session could not be resumed \(No conversation found with session ID\); worktree .*t-1 left for review, no longer followed; it is in bd ready, so a later run takes it up again, or finish it by hand$/,
     ])
+    expect(seen.saved).toBeUndefined()
+    expect(ran.issues.find((each) => each.id === id)?.status).toBe("open")
     expect(ran.log.join("\n")).not.toContain("PHASE_BUG")
   })
 })

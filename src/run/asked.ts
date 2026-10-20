@@ -10,8 +10,10 @@
 // question is answered" message (the `resumed` record, the RESUMED line). The resumed worker takes
 // a slot, counting toward no limit (the scheduler's carry), and its ticket goes on as a dispatched
 // one does: settled, read, and moved as its worker leaves it. A session that can't be resumed (its
-// worktree or transcript gone, the spawn failing) drops its ticket: WORKER_GONE, left for review. A
-// ticket bd can't show waits for the next poll.
+// worktree or transcript gone, the spawn failing) drops its ticket: WORKER_GONE, left for review,
+// its record in state.json forgotten, as sessions.ts's workerGone does. Only bd ready brings it back
+// then, so its line says a later run takes it up when it is open, and to reopen it when it is in
+// progress, or else to finish it by hand. A ticket bd can't show waits for the next poll.
 import { Effect, Ref, Result } from "effect"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
@@ -90,14 +92,21 @@ export const takeAnswers = (
         ),
       )
       if (Result.isFailure(resumed)) {
+        // Its record is forgotten, so only bd ready brings it back: open, a later run starts it
+        // afresh; in progress, nothing does until it is reopened.
+        const next =
+          issue.success.status === "open"
+            ? "it is in bd ready, so a later run takes it up again"
+            : `reopen it to run it again (bd update ${id} --status open)`
         yield* leaveForReview(id, {
           why: Tag.workerGone,
           detail: "answered, its session not resumed",
           text: ticketLine(
             Tag.workerGone,
-          )`${id}'s question ${question} is answered, but its session could not be resumed (${resumed.failure.reason}); worktree ${saved?.worktree ?? ""} left for review, no longer followed; a later run takes it up again, or finish it by hand`,
+          )`${id}'s question ${question} is answered, but its session could not be resumed (${resumed.failure.reason}); worktree ${saved?.worktree ?? ""} left for review, no longer followed; ${next}, or finish it by hand`,
         })
         yield* fit(id)
+        yield* Effect.ignore(store.remove(id))
         continue
       }
       const worker: StartedWorker = {
