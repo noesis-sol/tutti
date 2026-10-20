@@ -41,9 +41,9 @@ export const answeredText = (id: string, question: string, title: string): strin
 export interface AnswerOptions extends WorkOptions {
   /**
    * Runs the resumed worker's fiber, `work`, in a slot, counting toward no limit: the scheduler's
-   * carry.
+   * carry. With its issue, its footprint, parent and solo label count as a dispatched ticket's do.
    */
-  carry(ticket: string, work: Effect.Effect<Worked, WorkError>): Effect.Effect<void>
+  carry(ticket: string, work: Effect.Effect<Worked, WorkError>, issue?: Issue): Effect.Effect<void>
 }
 
 /**
@@ -126,6 +126,7 @@ export const takeAnswers = (
           if (!limited) yield* toTriage(worker, settled, options.triage)
           return { phase: (yield* ledger.current).tickets.get(id)?.phase, stop }
         }).pipe(Effect.provideContext(context)),
+        issue.success,
       )
       back.push(id)
     }

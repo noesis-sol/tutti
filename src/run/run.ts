@@ -44,6 +44,7 @@
 // When Tty says the terminal can draw the dashboard and main gave the run one, the run shows it
 // (screen.ts) from its start to its end instead, and hands back the summary and closing lines for
 // main to print once the renderer is gone (§ 7.1).
+import { join } from "node:path"
 import {
   Cause as Causes,
   Clock,
@@ -121,7 +122,7 @@ import {
   underWayLine,
 } from "./quit.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
-import { make as makeScheduler, readyPoll } from "./schedule.ts"
+import { footprintsOf, make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, show } from "./screen.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
@@ -443,6 +444,19 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       Effect.all([Ref.get(stops), Ref.get(ending), usage.held]),
       ([all, ended, held]) => all.first === null && !ended && !held,
     )
+    // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
+    // the checks' scripts count as no ticket's, and each ticket works in <worktrees>/<id>.
+    const checks = config.settings.checks
+    const footprints = config.settings.queue.footprint
+      ? yield* footprintsOf({
+          repo: config.repo,
+          base,
+          checkCommands: [checks.fast.command, checks.full.command].filter(
+            (command): command is string => command !== null,
+          ),
+          worktree: (ticket) => join(config.worktrees, ticket),
+        })
+      : undefined
     const scheduler = yield* makeScheduler({
       concurrent: config.settings.concurrent,
       limit: config.limit,
@@ -450,6 +464,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       excludeTypes: config.settings.queue.exclude_types,
       start: { start: ticketFiber },
       taking,
+      ...(footprints === undefined ? {} : { footprints }),
     })
 
     // The tickets earlier runs left unmerged, checked before the first dispatch: one merged by hand
@@ -639,7 +654,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           base,
           queue,
           triage,
-          carry: (ticket, fiber) => scheduler.carry(ticket, outcomeOf(ticket, fiber)),
+          carry: (ticket, fiber, issue) => scheduler.carry(ticket, outcomeOf(ticket, fiber), issue),
         })
       }
       if (yield* canTake) {

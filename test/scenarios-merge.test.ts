@@ -780,15 +780,18 @@ describe("the time holds", () => {
     expectPhases(ran, { a: "Stopped", b: "Done", c: "Done", d: "Queued" })
     const stop =
       /^TICKET_LIMIT: a still working after 1h \(worktree .*\/a\); its worker goes on, and is suspended when the run ends$/
+    const hold =
+      /^HOLD: TICKET_LIMIT: a still working after 1h .*; no new tickets while the 1 running finish$/
+    // c starts as b settles, and b's merge goes on meanwhile: either may be logged first.
     expectLog(ran, [
       "[1/40] a dispatching: a",
       "[2/40] b dispatching: b",
       "[3/40] c dispatching: c",
-      closedLine("b"),
-      /^HOLD: TICKET_LIMIT: a still working after 1h .*; no new tickets while the 1 running finish$/,
+      hold,
       closedLine("c"),
       stop,
     ])
+    expectLog(ran, ["[2/40] b dispatching: b", closedLine("b"), hold])
     expect(ran.log.some((text) => text.includes("d dispatching"))).toBe(false)
     expectEvents(ran, ["hold", "closed", "suspended", "stop", "end"])
     expect(ran.events.find((r) => r.kind === "stop")).toMatchObject({ detail: "TICKET_LIMIT" })
