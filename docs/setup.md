@@ -384,7 +384,7 @@ for a project that sets them all; the table below gives each one's default:
     "ticket_limit": "2h",
     "ask_user_question": true
   },
-  "templates": { "worker_prompt": 4, "verifier": 2 },
+  "templates": { "worker_prompt": 5, "verifier": 2 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "queue": { "exclude_types": ["epic"], "footprint": true },
   "merge": { "resolve_conflicts": true, "resolve_timeout": "20m", "check_hand_backs": 2 },

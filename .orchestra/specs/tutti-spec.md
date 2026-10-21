@@ -1472,7 +1472,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
     "ticket_limit": "2h",
     "ask_user_question": true
   },
-  "templates": { "worker_prompt": 4, "verifier": 2 },
+  "templates": { "worker_prompt": 5, "verifier": 2 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "queue": { "exclude_types": ["epic"], "footprint": true },
   "merge": { "resolve_conflicts": true, "resolve_timeout": "20m", "check_hand_backs": 2 },

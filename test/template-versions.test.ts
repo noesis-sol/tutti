@@ -47,7 +47,7 @@ import * as TestGit from "../src/testing/Git.ts"
 
 // The templates as their last recorded versions have them. A change to a template is a new version
 // of it: the first test fails until src/init/templates.ts records it.
-const promptTemplateSum = "d3bad6b31253fece28a6a36b7013590f562312b4152d8ec7c7ca77f4ae0c3b7c"
+const promptTemplateSum = "bd4709f13e27fbbcd717c688fd96d2787e32f8a8603fb5401d3883f1ff3af27b"
 const verifierTemplateSum = "4ba3193b5fe3b22299902405072ae30672f2ebba9b614c040ad0734bcf2c3151"
 
 const sum = (text: string): string => createHash("sha256").update(text).digest("hex")
@@ -162,7 +162,7 @@ describe("an older worker prompt or verifier", () => {
     for (const want of [
       "templates: .tutti/worker-prompt.md is older than tutti's worker prompt template, which has since changed ",
       "the opening (a removal Claude Code's safety check holds is refused outright in auto mode; a worker passes Bash no timeout of its own, as tutti raises Bash's default to the merge check's limit; a worker checks its own change and leaves the whole suite to the merge check)",
-      " and Close (a ticket closes once the worker's own checks pass)",
+      ", Close (a ticket closes once the worker's own checks pass) and Working unattended (no to-do checklist is asked for, which Beads' own guidance forbids)",
       ": tutti init --update rewrites those sections from the template",
     ]) {
       expect(note).toContain(want)
@@ -257,12 +257,13 @@ describe("tutti init --update", () => {
     for (const gone of ["Check your work with", "and nothing of your reasoning. Run"]) {
       expect(prompt).not.toContain(gone)
     }
-    // The sections no change touched are the project's copy's, as they were.
-    const old = sections(fixture("worker-prompt-2026-10-17.md") + projectNotes)
+    // The project's own section is its copy's, as it was.
+    const old = sections(result.updates[0]?.before ?? "")
     const now = sections(prompt)
-    expect(now.find((each) => each.title === "Working unattended")).toEqual(
-      old.find((each) => each.title === "Working unattended"),
+    expect(now.find((each) => each.title === "Project notes")).toEqual(
+      old.find((each) => each.title === "Project notes"),
     )
+    expect(prompt).not.toContain("todo checklist")
     expect(prompt.endsWith(verifierSection)).toBe(true)
     expect(prompt.split("## Verify").length).toBe(2)
 
@@ -297,7 +298,7 @@ describe("tutti init --update", () => {
     expect(diff).not.toContain("Project notes")
     const lines = updateLines(result)
     expect(lines).toContain(
-      "✓ worker prompt  rewrote the opening, Close and Verify in .tutti/worker-prompt.md from the template; the rest is as it was",
+      "✓ worker prompt  rewrote the opening, Close, Working unattended and Verify in .tutti/worker-prompt.md from the template; the rest is as it was",
     )
     expect(lines.join("\n")).toContain(diff.trimEnd())
     expect(updateNext(result).at(-1)).toBe(
@@ -474,7 +475,7 @@ describe("tutti init and the templates' versions", () => {
     const summary = await runInit(project, { force: false })
     const lines = summary.steps.map(stepLine)
     expect(lines).toContain(
-      "! templates  .tutti/worker-prompt.md is older than tutti's worker prompt template, which has since changed the opening, Close and Verify: tutti init --update takes those sections",
+      "! templates  .tutti/worker-prompt.md is older than tutti's worker prompt template, which has since changed the opening, Close, Working unattended and Verify: tutti init --update takes those sections",
     )
     expect(lines).toContain(
       `! templates  ${verifierPath} is older than tutti's verifier template, which has since changed the opening, Its checks, How to verify and Rules: tutti init --update takes those sections`,

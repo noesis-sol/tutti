@@ -84,6 +84,12 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     what: "the verifier runs once the worker's own checks pass",
     marker: "once your checks pass after your last commit",
   },
+  {
+    version: 5,
+    section: "Working unattended",
+    what: "no to-do checklist is asked for, which Beads' own guidance forbids",
+    marker: "keep the ticket's notes current",
+  },
 ]
 
 /** The changes to the verifier's template, verifier.md. */
