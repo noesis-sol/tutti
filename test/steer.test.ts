@@ -8,10 +8,10 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Duration, Effect, Exit, Fiber, Queue, type Scope, Stream } from "effect"
+import { Duration, Effect, Exit, Fiber, Queue, Result, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { Attention } from "../src/agent/Attention.ts"
-import { UiCommand } from "../src/run/commands.ts"
+import { resolve, UiCommand } from "../src/run/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { makeHandBacks, type RebaseStop } from "../src/run/handback.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
@@ -24,7 +24,14 @@ import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { idleGrace, nudgeText, untilSettled } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
-import { handBackNow, interrupt, lengthOf, release, sendMessage } from "../src/run/steer.ts"
+import {
+  handBackNow,
+  interrupt,
+  lengthOf,
+  release,
+  releaseAndHandOver,
+  sendMessage,
+} from "../src/run/steer.ts"
 import { type Worked, work } from "../src/run/work.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
@@ -600,6 +607,120 @@ describe("HandBackNow", () => {
     expect(out.phase?._tag).toBe("Working")
     expect(out.waiting.map((stop) => stop.ticket.id)).toEqual(["a"])
     expect(ran.log).toEqual([])
+  })
+})
+
+// A steered worker whose ticket is Blocked on a conflict, its hand-back waiting (§ 4.3): its view's
+// commands still reach it, and Release hands the conflict over.
+
+/** Whether the run would take `command` now, as run.ts resolves it. */
+const takes = (command: UiCommand) =>
+  Effect.map(
+    Effect.flatMap(Ledger, (ledger) => ledger.current),
+    (state) => Result.isSuccess(resolve(command, { ledger: state, requests: [] })),
+  )
+
+describe("a steered worker blocked on its waiting hand-back", () => {
+  test("takes a message, an interrupt and Release; Release hands its conflict over", async () => {
+    const ran = await scenario(
+      {
+        backlog: backlog().ticket("a").seeds,
+        ...withCheck,
+        scripts: (world) => ({
+          a: [
+            finishedSession([...turn([]), ...resolves(world, "a", { "a.txt": "both\n" })]),
+            resolves(world, "a", { "a.txt": "both\n" }),
+          ],
+        }),
+      },
+      Effect.gen(function* () {
+        const ledger = yield* Ledger
+        const queue = yield* makeQueue(options)
+        const finishedA = yield* finished({ "a.txt": "a\n" })
+        yield* (yield* Repository).commit((yield* Repository).dir, "Land something else", {
+          "a.txt": "main's a\n",
+        })
+        yield* ledger.steer("a", "message")
+        yield* queue.offer(finishedA)
+        yield* queue.settled
+        expect((yield* ledger.current).tickets.get("a")?.phase).toMatchObject({
+          _tag: "Blocked",
+          why: "MERGE_CONFLICT",
+        })
+        const message = UiCommand.SendMessage({ ticket: "a", text: secret, uuid: yours })
+        expect(yield* takes(message)).toBe(true)
+        expect(yield* takes(UiCommand.Interrupt({ ticket: "a" }))).toBe(true)
+        expect(yield* takes(UiCommand.Release({ ticket: "a" }))).toBe(true)
+        const sent = yield* sendMessage("a", secret, yours)
+        yield* untilSettled("a")
+        const interrupted = yield* interrupt("a")
+        const handed = yield* releaseAndHandOver("a", queue, options)
+        yield* untilPhase("a", "Done")
+        yield* queue.settled
+        const state = yield* ledger.current
+        return {
+          sent,
+          interrupted,
+          handed,
+          steered: state.tickets.get("a")?.steered,
+          phase: state.tickets.get("a")?.phase,
+          waiting: yield* queue.handBacks.waiting,
+          // Done, with no worker and not steered: the run drops what the view sends it.
+          stale: !(yield* takes(message)),
+        }
+      }).pipe(Effect.provide(Ledger.layer)),
+    )
+    const out = resultOf(ran)
+    expect(out).toMatchObject({ sent: true, interrupted: true, handed: true, stale: true })
+    expect(out.steered).toBe(false)
+    expect(out.phase?._tag).toBe("Done")
+    expect(out.waiting).toEqual([])
+    expect(messagesOf(ran, "a").map((each) => each.uuid)).toContain(yours)
+    expect(ran.sent).toContainEqual(expect.objectContaining({ _tag: "Interrupted", ticket: "a" }))
+    expect(pathOf(ran)).toEqual([
+      "Queued:Ready",
+      "Working:Dispatched",
+      "ToMerge:Verified",
+      "Merging:ItsTurn",
+      "Blocked:Block",
+      "ToMerge:HandedOver",
+      "Merging:ItsTurn",
+      "Resolving:ConflictsHandedBack",
+      "ToMerge:Verified",
+      "Merging:ItsTurn",
+      "Done:FastForwarded",
+    ])
+    expectLog(ran, [
+      /^ {2}MERGE_CONFLICT: a closed, .*you have steered its worker, so the hand-back waits in its view/,
+      `  MESSAGE: you → a (${lengthOf(secret)} characters)`,
+      "  RELEASED: a",
+      "  you released a's worker; tutti/a is back in the merge queue, to be rebased onto main again and its conflict handed back",
+      /^ {2}RESOLVING: tutti\/a conflicts with main in a\.txt; handed back to its worker/,
+    ])
+    // Released, the worker was handed the conflict as any other: no waiver left behind.
+    expect(composed(ran)).toHaveLength(1)
+    expectNoText(ran, secret)
+  })
+
+  test("Release with no hand-back waiting releases only; one not steered does nothing", async () => {
+    const ran = await scenario(
+      { backlog: backlog().ticket("a").seeds },
+      Effect.gen(function* () {
+        const ledger = yield* Ledger
+        const queue = yield* lineOnly
+        yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
+        yield* ledger.transition("a", Cause.Dispatched())
+        const unsteered = yield* releaseAndHandOver("a", queue, options)
+        yield* ledger.steer("a", "interrupt")
+        const steered = yield* releaseAndHandOver("a", queue, options)
+        const entry = (yield* ledger.current).tickets.get("a")
+        return { unsteered, steered, phase: entry?.phase, still: entry?.steered }
+      }).pipe(Effect.provide(Ledger.layer)),
+    )
+    const out = resultOf(ran)
+    expect(out).toMatchObject({ unsteered: false, steered: false, still: false })
+    expect(out.phase?._tag).toBe("Working")
+    expect(ran.log).toEqual(["  RELEASED: a"])
   })
 })
 

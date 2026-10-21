@@ -139,7 +139,7 @@ import { emptyStatus, project, type Row, type Status, same, type Totals } from "
 import { footprintsOf, make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, Screen, show } from "./screen.ts"
-import { handBackNow, interrupt, release, sendMessage } from "./steer.ts"
+import { handBackNow, interrupt, releaseAndHandOver, sendMessage } from "./steer.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold, holdWord as usageHoldWord } from "./usageLimit.ts"
@@ -695,7 +695,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             case "Interrupt":
               return yield* interrupt(command.ticket)
             case "Release":
-              return yield* release(command.ticket)
+              if (yield* releaseAndHandOver(command.ticket, queue, { repo: config.repo, base })) {
+                yield* wakeUp
+              }
+              return
             case "HandBackNow":
               yield* handBackNow(command.ticket, queue, { repo: config.repo, base })
               return yield* wakeUp

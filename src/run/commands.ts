@@ -22,7 +22,7 @@ export type UiCommand = Data.TaggedEnum<{
   SendMessage: { readonly ticket: string; readonly text: string; readonly uuid: string }
   /** Interrupt the turn of the ticket's worker; it becomes steered. */
   Interrupt: { readonly ticket: string }
-  /** Hand a steered worker back to the run (§ 4.3). */
+  /** Hand a steered worker back to the run, and the conflict waiting for it, if one is (§ 4.3). */
   Release: { readonly ticket: string }
   /** Hand the ticket's steered worker the conflict waiting for it now (§ 4.3). */
   HandBackNow: { readonly ticket: string }
@@ -71,14 +71,16 @@ export interface Current {
   readonly requests: ReadonlyArray<AttentionRequest>
 }
 
-// The ticket, if it has a worker now: a session open for it.
+// The ticket, if it has a worker now: a phase that holds one, or a steered worker, whose session
+// may stay open outside one (Blocked, its hand-back waiting, § 4.3). steer.ts acts on the session:
+// a send to one that has ended is dropped there.
 const withWorker = (
   command: UiCommand,
   ticket: string,
   current: Current,
 ): Result.Result<Resolved, Stale> => {
   const entry = current.ledger.tickets.get(ticket)
-  return entry !== undefined && holdsWorker(entry.phase)
+  return entry !== undefined && (holdsWorker(entry.phase) || entry.steered)
     ? Result.succeed({ command, ticket })
     : Result.fail(new Stale({ command: command._tag, why: `${ticket} has no worker` }))
 }

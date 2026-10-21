@@ -183,7 +183,8 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
 /**
  * a's worker: it asks to run a command (you steer it meanwhile), lands a conflicting change on main
  * as it works, commits its own and closes the ticket; your message then has a turn of its own.
- * Resumed for the hand-back you gave it, it resolves the conflict. b's asks too, and then finishes.
+ * Its session kept open while the hand-back waits (§ 4.8), it resolves the conflict you hand it.
+ * b's asks too, and then finishes.
  */
 const scripts = (world: World, repo: string, root: string) => {
   const worktree = join(root, "a")
@@ -212,11 +213,9 @@ const scripts = (world: World, repo: string, root: string) => {
     init(),
     result(),
     sessionState("idle"),
+    ...turn([run(orDie(world.repository.continueRebase(worktree, { "a.txt": "both\n" })))]),
   ]
-  const resumed: SessionScript = turn([
-    run(orDie(world.repository.continueRebase(worktree, { "a.txt": "both\n" }))),
-  ])
-  return { a: [first, resumed], b: [b] }
+  return { a: [first], b: [b] }
 }
 
 interface Seen {

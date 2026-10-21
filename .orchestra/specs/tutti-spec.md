@@ -385,11 +385,12 @@ These stay, as orchestra has them:
 **Steering.** A worker becomes *steered* when you send it a message from its composer or interrupt it (Ctrl+X).
 
 - **tutti sends a steered worker nothing automatically:** no continue nudges, no hand-backs, no "carry on".
-- **A hand-back due to it waits.** It appears in its view as a notice with **Hand it the conflict now**.
+- **A hand-back due to it waits.** It appears in its view as a notice with **Hand it the conflict now**. Its ticket is `Blocked{MERGE_CONFLICT}` meanwhile, and its session stays open (§4.8): its view still takes your messages, interrupts and **Release**.
   - **Hand it the conflict now** hands the conflict over. The ticket, `Blocked` on `MERGE_CONFLICT`, goes back in the merge queue (§5.1) and is rebased again. If it still conflicts, the conflict is handed back to the worker, steered as it is: the steered check is waived for that one hand-back.
 - **A message you type may join a turn of tutti's.** Sent while a nudge or hand-back runs, it can be folded into that turn (§4.1), and one turn then answers both. The worker is steered from your send. tutti sends nothing after that turn, but it still reads the ticket and verifies what a hand-back left (§4.7): reading and verifying send nothing.
 - **The idle grace for `PAUSED` counts from your last message.**
-- **Releasing a worker** (**Release** in its view, or `Ctrl+R`) makes it unsteered. Leaving its view doesn't release it.
+- **Releasing a worker** (**Release** in its view, or `Ctrl+R`) makes it unsteered, wherever its ticket is. Leaving its view doesn't release it.
+  - A hand-back waiting for it is handed over then, as **Hand it the conflict now** does (`Blocked` → `ToMerge`, rebased again, the conflict handed back), since it waited only because the worker was steered. The log says `you released <id>'s worker; <branch> is back in the merge queue, to be rebased onto <base> again and its conflict handed back`. Steered again before that rebase, the worker makes it wait again.
 - **Recording.** The card shows `steered` beside the status. The log records `STEERED: <id>` and `RELEASED: <id>`.
 
 ### 4.4 Activity, live text and transcripts
@@ -548,6 +549,7 @@ Conflict resolution and check fixes go to the ticket's worker as orchestra sends
 | merged, or closed with no change | closed |
 | asked (a question ticket), once its turn has ended | closed; resumed when the answer is in, told so |
 | waits for merge, deferred, left for review | closed |
+| blocked on a conflict whose hand-back waits for its steered worker (§4.3) | open, until it is handed over |
 | set aside after a failed check that may be checked again | open until the run ends (a recheck may hand it a conflict) |
 | the worker stopped the run (`PAUSED`, `TICKET_LIMIT`), or still waits on you when the run ends | suspended as the run ends (below) |
 
@@ -853,7 +855,7 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `Fixing{afterResolution}` | `Blocked` | the same, after a resolution | `warn` with `blocked` |
 | `Resolving`, `Fixing` | `Stopped` | the run ended during the hand-back; its rebase or fix is left as it is, and the `INTERRUPTED` line says so | `suspended` |
 | `Review{CHECKS_FAILED}` | `ToMerge` | the base moved on since the check failed; the failure isn't in the ticket's own code; it hasn't been checked again in this run | the log's `RECHECK` |
-| `Blocked{MERGE_CONFLICT}` | `ToMerge` | you pressed **Hand it the conflict now** (§4.3) for a hand-back waiting on its steered worker. It is rebased again, and the conflict is handed back with the steered check waived once | `phase` |
+| `Blocked{MERGE_CONFLICT}` | `ToMerge` | you pressed **Hand it the conflict now** (§4.3) for a hand-back waiting on its steered worker. It is rebased again, and the conflict is handed back with the steered check waived once. Releasing the worker (§4.3) does the same, with no waiver | `phase` |
 
 Merging a ticket rebases it again if more landed meanwhile, so a ticket can go from `Merging` to `Resolving`, back to `ToMerge`, and through `Merging` again. Each pass counts toward its attempts.
 

@@ -100,6 +100,12 @@ describe("lifetime: § 4.8's table, row by row", () => {
     })
   }
 
+  test("blocked on its conflict with the hand-back waiting for its steered worker: open", () => {
+    expect(lifetime(TicketPhase.Blocked({ why: "MERGE_CONFLICT" }), false, true)).toBe("open")
+    // Only a conflict's hand-back waits.
+    expect(lifetime(TicketPhase.Blocked({ why: "DIRTY_TREE" }), false, true)).toBe("closed")
+  })
+
   test("set aside after a failed check that may be checked again: open until the run ends", () => {
     const aside = TicketPhase.Review({ why: "CHECKS_FAILED" })
     expect(lifetime(aside, true)).toBe("untilRunEnds")

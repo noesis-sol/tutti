@@ -25,7 +25,8 @@
 // checked puts the ticket back in line, ToMerge.
 //
 // Once a ticket's merge, or a hand-back to its worker, is over, its session is closed if its phase
-// no longer needs it (sessions.ts): merged, blocked, or set aside and not to be checked again.
+// no longer needs it (sessions.ts): merged, blocked (unless its hand-back waits for its steered
+// worker), or set aside and not to be checked again.
 import {
   Effect,
   FiberSet,
@@ -235,7 +236,7 @@ export const make = (
           merging: null,
           resolving: handed ? [...state.resolving, id] : state.resolving,
         }))
-        if (!handed) return yield* fit(id, rechecks)
+        if (!handed) return yield* fit(id, rechecks, handBacks)
         const done = SubscriptionRef.update(ref, (state) => ({
           ...state,
           resolving: state.resolving.filter((each) => each !== id),
@@ -247,7 +248,7 @@ export const make = (
             Effect.interruptible(
               Effect.gen(function* () {
                 if (yield* work) yield* offer(ticket)
-                yield* fit(id, rechecks)
+                yield* fit(id, rechecks, handBacks)
               }),
             ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
           ),
@@ -314,7 +315,7 @@ export const make = (
           // tickets it puts back are in line before this merge is over, so `settled` waits for them.
           if (stop === undefined && prepared._tag === "Ready") yield* Effect.exit(restore(recheck))
           yield* merged(stop)
-          yield* fit(ticket.id, rechecks)
+          yield* fit(ticket.id, rechecks, handBacks)
         }),
       )
 

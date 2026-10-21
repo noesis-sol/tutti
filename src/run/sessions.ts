@@ -1,7 +1,9 @@
 // Session lifetime (§ 4.8's Lifetime and Resume limits, § 4.7). A ticket's session's subprocess is
 // kept only while the ticket needs it, and lifetime() is § 4.8's table:
 //
-// - open while the ticket runs, waits to merge, merges or is handed back;
+// - open while the ticket runs, waits to merge, merges or is handed back, and while it is blocked
+//   on a conflict whose hand-back waits for its steered worker (§ 4.3), which you may message,
+//   interrupt or release meanwhile;
 // - closed, keeping its ID, once it is merged or closed with no change, asked (its turn has ended
 //   by then: its worker settled), waits for a merge, is deferred or left for review;
 // - open until the run ends when it was set aside after a failed check that may be checked again,
@@ -27,6 +29,7 @@ import { Store } from "../services/Store.ts"
 import { leaveForReview } from "./aside.ts"
 import type { resumedWhy } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
+import type { HandBacks } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import type { TicketPhase } from "./phase.ts"
@@ -40,9 +43,10 @@ export type Lifetime = "open" | "closed" | "untilRunEnds" | "suspended"
 
 /**
  * What the ticket's session is while the ticket is in `phase`; `recheck` says whether a ticket set
- * aside after a failed check may be checked again.
+ * aside after a failed check may be checked again, `handBackWaits` whether a ticket blocked on its
+ * conflict has its hand-back waiting for its steered worker.
  */
-export const lifetime = (phase: TicketPhase, recheck = false): Lifetime => {
+export const lifetime = (phase: TicketPhase, recheck = false, handBackWaits = false): Lifetime => {
   switch (phase._tag) {
     case "Working":
     case "ToMerge":
@@ -52,6 +56,8 @@ export const lifetime = (phase: TicketPhase, recheck = false): Lifetime => {
       return "open"
     case "Review":
       return phase.why === Tag.checksFailed && recheck ? "untilRunEnds" : "closed"
+    case "Blocked":
+      return phase.why === Tag.mergeConflict && handBackWaits ? "open" : "closed"
     case "Stopped":
       return "suspended"
   }
@@ -60,12 +66,14 @@ export const lifetime = (phase: TicketPhase, recheck = false): Lifetime => {
 
 /**
  * Closes the ticket's session when its phase no longer needs it (§ 4.8). `rechecks`, the merge
- * queue's, say whether a ticket set aside after a failed check may be checked again; without them,
- * it may not.
+ * queue's, say whether a ticket set aside after a failed check may be checked again, and
+ * `handBacks` whether a blocked ticket's hand-back waits for its steered worker; without them, it
+ * may not, and none does.
  */
 export const fit = (
   ticket: string,
   rechecks?: Rechecks,
+  handBacks?: HandBacks,
 ): Effect.Effect<void, never, AgentHost | Ledger> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
@@ -75,7 +83,10 @@ export const fit = (
     const recheck =
       rechecks !== undefined &&
       (yield* rechecks.waiting).some((waiting) => waiting.ticket.id === ticket)
-    if (lifetime(phase, recheck) === "closed") yield* host.close(ticket)
+    const waits =
+      handBacks !== undefined &&
+      (yield* handBacks.waiting).some((waiting) => waiting.ticket.id === ticket)
+    if (lifetime(phase, recheck, waits) === "closed") yield* host.close(ticket)
   })
 
 /** Why a session is resumed, as the `resumed` record has it. */
