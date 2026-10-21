@@ -640,6 +640,7 @@ tutti's built-in worker prompt is orchestra's, rewritten where the tmux world sh
 - **Working unattended** stays, and adds that the maintainer may sometimes send a message: follow it, then carry on with the ticket.
 - **Never push, commit with the ticket ID, close only when the checks pass**, and the rest of orchestra's rules stay as they are.
 - **Removals**: orchestra's rule against removing a target built from a variable or a glob stays, with tutti's reason: the safety check refuses such a removal unless a person approves it, and in auto mode refuses it outright (§4.5). The worker overwrites instead, writes to a new name, or removes a file by its literal absolute path.
+- **A check run once**: a note after the prompt, as orchestra's `checkNote` (0.9.0), has the worker run a check once, its whole output saved to `.tutti/run/worker-check.log` in its worktree (git ignores it; the run's own check writes `check.log`) and its exit status printed, as in `<checks.fast.command> > .tutti/run/worker-check.log 2>&1; echo "exit $?"` (`<the check>` without one), then read the file rather than run the check again to see what it said. Workers piped a check through `tail`, which hides its exit status, then ran it again to learn whether it passed. A note, not a line of the template, so a project's own worker prompt gets it too, naming its merge check.
 - **Moved out of the system prompt**: the time it has and the `--ticket` line go in the first message (§4.1), so a resumed session gets current values.
 
 ### 4.12 Usage limits
@@ -1602,6 +1603,8 @@ bunx biome check .
 scripts/test.sh                 # bun test --retry=1; prints FLAKY: <file> <test> for a test that passed only on its retry; React's development build (§3.1)
 shellcheck on tracked shell scripts (pinned binary, as orchestra's)
 ```
+
+Its last line is its verdict, its exit status unchanged: `scripts/check.sh: PASS`, or the step it failed in, `TUTTI_SLOW=1 scripts/check.sh: FAIL in test (exit 1)` (tsc, biome, test or shellcheck), as orchestra's `scripts/check.sh` has it. The output's end alone then says whether it passed, so a check run once with its output saved (§4.11) needn't run again to tell.
 
 - **Flaky tests.** `bun test --retry=N` retries failed tests. `--rerun-each` is a different thing: it repeats every test to surface flakiness. M0 checks whether Bun's JUnit report (`--reporter=junit --reporter-outfile`) says which tests passed only on a retry. If it does, `scripts/test.sh` turns those into `FLAKY:` lines. If not, it runs without `--retry`, reruns each failed test once by name (`-t`), and prints `FLAKY:` for those that pass.
 - **Whole-run scenarios** use the test layers (§3.3) under `TestClock`, as orchestra's `newTimedHarness` uses `synctest`. `AgentHost`'s test layer replays scripted SDK message sequences, including:

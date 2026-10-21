@@ -50,6 +50,14 @@ start alone: the ticket's ID, the spec it is part of (its `spec` metadata), how 
 (`--ticket-limit`), the scope of a `--ticket` run, and what an earlier attempt left on its branch
 (`git log <base>..HEAD`, `git status`), to build on or revert deliberately rather than start over.
 
+After the prompt, tutti adds a note to every worker's rules, whatever prompt it was given: run a
+check once, its whole output saved to `.tutti/run/worker-check.log` (which git ignores) and its exit
+status printed, as in `scripts/check-fast.sh > .tutti/run/worker-check.log 2>&1; echo "exit $?"`
+(the project's `checks.fast.command`), then read the file rather than run the check again. Workers
+piped a check through `tail`, which hides its exit status, then ran the whole check again to learn
+whether it passed. A check script whose last line says `PASS` or `FAIL` and the step, as tutti's own
+`scripts/check.sh` does, lets the file's end alone answer.
+
 Each rule of the template prevents a way a run goes wrong:
 
 - **Its own worktree; never push; tutti merges.** Workers can't disturb each other or the branch

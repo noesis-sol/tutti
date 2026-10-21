@@ -58,6 +58,26 @@ export const withoutAskUserQuestion = (prompt: string): string => {
 export const forTicket = (prompt: WorkerPrompt, id: string): string =>
   prompt.text.replaceAll(ticketIdPlaceholder, id)
 
+/**
+ * The file in a worktree that checkNote has a worker save a check's whole output to, under its
+ * .tutti/run/, which git ignores: not check.log, which holds the output of the run's own check.
+ */
+export const workerCheckLog = ".tutti/run/worker-check.log"
+
+/**
+ * The note appended to a worker's standing rules that has it run a check once, its whole output in
+ * workerCheckLog and its exit status printed, then read the file rather than run the check again to
+ * see what it said: workers piped a check through tail, which hides its exit status, then ran it
+ * again, minutes of a full check each time, to learn whether it passed. Its example is the
+ * project's merge check (checks.fast.command) when it has one.
+ */
+export const checkNote = (command: string | null): string =>
+  `\n\nRun a check (tests, linters, a build) once, its whole output saved to a file in .tutti/run ` +
+  `(never committed) and its exit status printed, as in ` +
+  `'${command ?? "<the check>"} > ${workerCheckLog} 2>&1; echo "exit $?"', then read the file's ` +
+  `end or search it, rather than running the check again to see its output or whether it ` +
+  `passed. Piping a check through tail hides its exit status.\n`
+
 /** `file` as a problem names it: from the project's top when it is inside it. */
 const shown = (repo: string, file: string): string => {
   const rel = relative(repo, file)
