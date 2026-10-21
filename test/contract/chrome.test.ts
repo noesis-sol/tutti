@@ -3,7 +3,7 @@
 // MCP config, so workers get --no-chrome unless workers.mcp_servers chooses claude-in-chrome. Each
 // test starts one session with a worker's options in a fresh temp folder and reads its first
 // system/init. The test with Chrome on runs only where Claude Code has Chrome set up.
-import { expect } from "bun:test"
+import { expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
@@ -102,6 +102,10 @@ const problems = async (init: SDKSystemMessage, servers: ChosenServers) => {
 const chromeTools = (init: SDKSystemMessage) =>
   init.tools.filter((tool) => tool.startsWith(`mcp__${chromeServer}__`))
 
+// Not live.test.skipIf(!chromeSetUp): without TUTTI_LIVE, live.test is test.skip, and Bun throws on
+// test.skip.skipIf(true), failing the file where Chrome isn't set up, as on CI (tutti-99n).
+const liveWithChrome = chromeSetUp ? live.test : test.skip
+
 live.describe("Agent SDK contract: Claude in Chrome", () => {
   live.test(
     "not chosen, system/init lists no Chrome server and no Chrome tools, even where it is set up",
@@ -115,7 +119,7 @@ live.describe("Agent SDK contract: Claude in Chrome", () => {
     testLimit,
   )
 
-  live.test.skipIf(!chromeSetUp)(
+  liveWithChrome(
     "chosen, where it is set up, system/init lists Chrome as dynamic, with its tools",
     async () => {
       const servers: ChosenServers = { servers: [], chrome: true, note: null }
