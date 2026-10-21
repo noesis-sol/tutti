@@ -149,6 +149,9 @@ const commands = (world: World, root: string) => {
   }
 }
 
+/** `text` as a regular expression that matches it as written. */
+const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
 /** Scripts for the one ticket, made from the world and the worktrees' folder. */
 const scripts =
   (root: string, sessions: (c: ReturnType<typeof commands>, world: World) => SessionScript) =>
@@ -262,19 +265,27 @@ describe("the outcome of a settled worker", () => {
     )
   })
 
-  test("closed with a commit naming it and uncommitted changes: Review", async () => {
+  test("closed with a commit naming it and uncommitted changes: Review, naming each file", async () => {
     const root = worktreesRoot()
     const ran = await working({
       root,
       backlog: tiny.seeds,
       scripts: scripts(root, (c) =>
-        turn([run(c.commit(`Change (${id})`)), run(c.write({ "b.txt": "b\n" })), run(c.close)]),
+        turn([
+          run(c.commit(`Change (${id})`)),
+          run(c.write({ "a.txt": "changed\n", "b.txt": "b\n" })),
+          run(c.close),
+        ]),
       ),
     })
     expect(phaseOf(ran)).toEqual(
       expect.objectContaining({ _tag: "Review", why: "CLOSED_UNCOMMITTED" }),
     )
-    expectLog(ran, [/CLOSED_UNCOMMITTED: t-1 closed \(\w{7} Change \(t-1\)\) but .* b\.txt/])
+    const said = `${id} closed \\(\\w{7} Change \\(t-1\\)\\) but ${escaped(join(root, id))} has uncommitted changes: M a\\.txt, \\?\\? b\\.txt; worktree left for review \\(commit or remove them\\)`
+    expectLog(ran, [new RegExp(`^  CLOSED_UNCOMMITTED: ${said}$`)])
+    expect(ran.issues.find((issue) => issue.id === id)?.notes).toMatch(
+      new RegExp(`tutti: CLOSED_UNCOMMITTED: ${said}`),
+    )
   })
 
   test("closed off its branch: Review, OFF_BRANCH", async () => {

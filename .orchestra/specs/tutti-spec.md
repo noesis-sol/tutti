@@ -1885,7 +1885,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | the verifier passes Bash no timeout; `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS`; the rules on giving a check its time | Done (tutti-kkb.11) |
 | | a hand-back's time limit leaves out the time the machine is loaded | Planned (tutti-kkb.2) |
 | | footprints leave out notes; a ticket with commits footprinted from its branch, in the run and in `plan` | Done (tutti-kkb.16) |
-| | `CLOSED_UNCOMMITTED` names the files left uncommitted | Planned (tutti-kkb.19) |
+| | `CLOSED_UNCOMMITTED` names the files left uncommitted | Done (tutti-kkb.19) |
 | | a verifier round sees the earlier rounds' findings, `DISAGREES WITH ROUND <n>:` | Done (tutti-kkb.9) |
 | | a stop as a spec run commits its setup says it was committed | Planned (tutti-kkb.28) |
 | | a ticket checked ahead whose own check failed blames itself, not the branch ahead | Planned (tutti-kkb.18) |

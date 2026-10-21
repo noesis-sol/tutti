@@ -35,7 +35,14 @@ import { beadsWhy, gitWhy } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause, probeWait, setupWait, type TicketPhase } from "./phase.ts"
 import { fit, workerGone } from "./sessions.ts"
-import { idleGrace, type Settled, type SettleEnv, settle, unmergedBlockers } from "./settle.ts"
+import {
+  idleGrace,
+  listChanges,
+  type Settled,
+  type SettleEnv,
+  settle,
+  unmergedBlockers,
+} from "./settle.ts"
 import type { SetUps } from "./setup.ts"
 import { type StartError, type StartedWorker, type StartTicket, start } from "./start.ts"
 import type { Deferral, Triage } from "./triage.ts"
@@ -233,15 +240,18 @@ export const conclude = (
           )`no commit on ${branch} names ${id}; worktree ${path} left for review`,
         })
         break
-      case "Uncommitted":
+      case "Uncommitted": {
+        const { shown, more } = listChanges(reading.files)
+        const andMore = more === 0 ? "" : ` and ${more} more`
         yield* leaveForReview(id, {
           why: Tag.closedUncommitted,
           detail: "closed with uncommitted changes",
           text: ticketLine(
             Tag.closedUncommitted,
-          )`${id} closed (${reading.commit.hash.slice(0, 7)} ${reading.commit.subject}) but ${path} has uncommitted changes to ${reading.files}; worktree left for review`,
+          )`${id} closed (${reading.commit.hash.slice(0, 7)} ${reading.commit.subject}) but ${path} has uncommitted changes: ${shown}${andMore}; worktree left for review (commit or remove them)`,
         })
         break
+      }
       case "OffBranch":
         yield* leaveForReview(id, {
           why: Tag.offBranch,

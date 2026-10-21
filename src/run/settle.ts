@@ -64,15 +64,33 @@ export const namesTicket = (message: string, id: string): boolean => {
   return false
 }
 
-/** The files with changes in a worktree, untracked ones included, outside its .tutti/run/. */
-export const changes = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
+/** The changes in a worktree, untracked files included, outside its .tutti/run/, by path. */
+export const changeEntries = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<StatusEntry> =>
   status
     .filter(
       (entry) =>
         entry.code !== "!!" && entry.path !== runFolder && !entry.path.startsWith(`${runFolder}/`),
     )
-    .map((entry) => entry.path)
-    .sort()
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+
+/** The files with changes in a worktree, untracked ones included, outside its .tutti/run/. */
+export const changes = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
+  changeEntries(status).map((entry) => entry.path)
+
+/** The most files a line about a worktree's uncommitted changes names. */
+export const shownChanges = 5
+
+/**
+ * The first `shownChanges` of `entries`, each as its git status code and path (`M a.txt`,
+ * `?? out/b`), and how many more there are, if any: a line names them as `<shown>` then
+ * ` and <more> more`.
+ */
+export const listChanges = (
+  entries: ReadonlyArray<StatusEntry>,
+): { readonly shown: ReadonlyArray<string>; readonly more: number } => ({
+  shown: entries.slice(0, shownChanges).map((entry) => `${entry.code.trim()} ${entry.path}`),
+  more: Math.max(0, entries.length - shownChanges),
+})
 
 /**
  * The open question `issue` waits on, if any: a ticket labelled human that blocks it and isn't
@@ -119,8 +137,8 @@ export type Reading = Data.TaggedEnum<{
   NoChange: { readonly why: string; readonly own: boolean }
   /** Closed with changes, but no commit on its branch names it. */
   NoCommit: Record<never, never>
-  /** Closed with `commit` naming it, but with uncommitted changes to `files`. */
-  Uncommitted: { readonly commit: Commit; readonly files: ReadonlyArray<string> }
+  /** Closed with `commit` naming it, but with uncommitted changes, untracked files included. */
+  Uncommitted: { readonly commit: Commit; readonly files: ReadonlyArray<StatusEntry> }
   /** Closed, but its worktree has `on` checked out instead of its branch. */
   OffBranch: { readonly on: string }
   /** It waits on `question`, which its worker filed. */
@@ -249,7 +267,7 @@ const readClosed = (worker: StartedWorker, title: string, base: string) =>
     const on = yield* offBranch({ id, title, branch, worktree: path })
     if (on !== undefined) return Reading.OffBranch({ on })
     const commits = yield* git.log(path, base)
-    const files = changes(yield* git.status(path))
+    const files = changeEntries(yield* git.status(path))
     const named = commits.find((commit) => namesTicket(commit.message, id))
     if (files.length === 0 && commits.length === 0) {
       return Reading.NoChange({
