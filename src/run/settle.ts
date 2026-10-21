@@ -6,10 +6,12 @@
 // A worker that settles with its ticket still in progress, no question asked and no deferral, is
 // told to continue, at most twice: client_composed nudges, each waited for until it is no longer
 // outstanding and the worker has settled again. Then, after a 10-minute idle grace, the run holds
-// with PAUSED. A worker you have steered (the ledger's flag) gets no nudges, and its grace counts from
-// your last message. One that has been closed can't be nudged: it pauses at once. One whose session
-// went is resumed once in this run and told to carry on (sessions.ts); gone again, it pauses, and
-// one whose session can't be resumed is dropped (WORKER_GONE).
+// with PAUSED. A worker whose turn failed (an interrupt, an API error) is read as an idle one. A
+// worker you have steered (the ledger's flag) gets no nudges, and its grace counts from your last
+// message; released during its grace, it gets the nudges it has left. One that has been closed can't
+// be nudged: it pauses at once. One whose session went is resumed once in this run and told to carry
+// on (sessions.ts); gone again, or steered, it pauses, and one whose session can't be resumed is
+// dropped (WORKER_GONE).
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Clock, Data, Duration, Effect, Option, Queue, Result, Schedule, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
@@ -301,27 +303,40 @@ export const read = (
     return Reading.Unfinished({ status })
   })
 
+/** Whether a settled worker in `state` is idle: its turn ended, cleanly or failed. */
+const idle = (state: WorkerState): state is Extract<WorkerState, { _tag: "Idle" | "Failed" }> =>
+  state._tag === "Idle" || state._tag === "Failed"
+
 /**
  * Waits through the idle grace of a worker idle since `at`, its ticket still in progress: true when
- * it got going again before the grace ran out. The grace counts from your last message to it, when
- * that came later.
+ * it got going again before the grace ran out, or you released it, steered. The grace counts from
+ * your last message to it, when that came later.
  */
 const grace = (ticket: string, at: number) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const ledger = yield* Ledger
     const going = host.state(ticket).pipe(
-      Stream.filter((state) => state._tag !== "Idle"),
+      Stream.filter((state) => !idle(state)),
       Stream.runHead,
       Effect.map(Option.isSome),
       Effect.catchTag("AgentGone", () => Effect.succeed(true)),
+    )
+    const released = ledger.changes.pipe(
+      Stream.filter((state) => state.tickets.get(ticket)?.steered !== true),
+      Stream.runHead,
+      Effect.as(true),
     )
     for (;;) {
       const entry = (yield* ledger.current).tickets.get(ticket)
       const from = Math.max(at, entry?.lastMessage ?? at)
       const left = from + Duration.toMillis(idleGrace) - (yield* Clock.currentTimeMillis)
       if (left <= 0) return false
-      const woke = yield* Effect.raceFirst(going, Effect.as(Effect.sleep(left), false))
+      const woke = yield* Effect.raceAll([
+        going,
+        ...(entry?.steered === true ? [released] : []),
+        Effect.as(Effect.sleep(left), false),
+      ])
       if (woke) return true
     }
   })
@@ -358,6 +373,13 @@ export const settle = (
         yield* logs.write(detail`${id} settled: ${how(state)}`)
         return Settled.Read({ reading, state })
       }
+      const steered = (yield* ledger.current).tickets.get(id)?.steered ?? false
+      if (state._tag === "Gone" && steered) {
+        // A steered worker is told nothing, so it isn't resumed to carry on (§ 4.3).
+        return Settled.Paused({
+          gone: `${how(state)}; you have steered it, so tutti did not resume it to carry on, and the next run resumes it`,
+        })
+      }
       if (state._tag === "Gone") {
         // Resumed once in this run, told to carry on; gone again, it pauses (§ 4.8).
         const back = yield* resumeGone(id, state.why)
@@ -367,8 +389,7 @@ export const settle = (
           gone: `${how(state)}; its session was resumed once in this run already, and the next run resumes it again`,
         })
       }
-      if (state._tag !== "Idle") return Settled.Paused({ gone: how(state) })
-      const steered = (yield* ledger.current).tickets.get(id)?.steered ?? false
+      if (!idle(state)) return Settled.Paused({ gone: how(state) })
       if (!steered && told < nudges) {
         told++
         if (yield* nudge(id, told)) continue

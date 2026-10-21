@@ -87,6 +87,13 @@ export interface HandBacks {
   wait(stop: RebaseStop): Effect.Effect<void>
   /** Takes the ticket's waiting hand-back out of those waiting; undefined when it has none. */
   take(id: string): Effect.Effect<RebaseStop | undefined>
+  /**
+   * Waives the steered check for the ticket's next conflict, as you handed it over (§ 4.3): its
+   * worker, steered, is handed the conflict all the same.
+   */
+  waive(id: string): Effect.Effect<void>
+  /** Takes the ticket's waiver, as its rebase starts: whether it had one. */
+  waived(id: string): Effect.Effect<boolean>
 }
 
 /** A run's hand-backs: none yet. */
@@ -94,7 +101,8 @@ export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
   const ref = yield* Ref.make<{
     readonly counts: ReadonlyMap<string, number>
     readonly waiting: ReadonlyArray<RebaseStop>
-  }>({ counts: new Map(), waiting: [] })
+    readonly waived: ReadonlySet<string>
+  }>({ counts: new Map(), waiting: [], waived: new Set() })
   return {
     count: (id) => Effect.map(Ref.get(ref), (state) => state.counts.get(id) ?? 0),
     next: (id) =>
@@ -113,6 +121,16 @@ export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
         const found = state.waiting.find((each) => each.ticket.id === id)
         if (found === undefined) return [undefined, state]
         return [found, { ...state, waiting: state.waiting.filter((each) => each !== found) }]
+      }),
+    waive: (id) =>
+      Ref.update(ref, (state) => ({ ...state, waived: new Set([...state.waived, id]) })),
+    waived: (id) =>
+      Ref.modify(ref, (state) => {
+        if (!state.waived.has(id)) return [false, state]
+        return [
+          true,
+          { ...state, waived: new Set([...state.waived].filter((each) => each !== id)) },
+        ]
       }),
   } satisfies HandBacks
 })
@@ -152,11 +170,12 @@ export interface NotHandedBack {
 
 /**
  * Why `stop` can't be handed back to the ticket's worker, the `handedBack`th time so far; undefined
- * when it can.
+ * when it can. `waived`: you handed it over, so a steered worker takes it (§ 4.3).
  */
 export const whyNotHandBack = (
   stop: RebaseStop,
   handedBack: number,
+  waived = false,
 ): Effect.Effect<NotHandedBack | undefined, never, AppConfig | AgentHost | Ledger | Store> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -173,7 +192,7 @@ export const whyNotHandBack = (
     if (stop.head === "" || stop.own < 1 || stop.files.length === 0) {
       return not("git could not say what the rebase stopped on")
     }
-    if ((yield* ledger.current).tickets.get(id)?.steered === true) {
+    if (!waived && (yield* ledger.current).tickets.get(id)?.steered === true) {
       return not("you have steered its worker, so the hand-back waits in its view", true)
     }
     const busy = yield* workerAway(id)

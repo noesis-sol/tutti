@@ -262,7 +262,8 @@ export interface MergeMemory {
  * of them set it aside; Unchanged when the rebase left it changing nothing, as when git dropped its
  * commits, the base having their changes already; the rebase stopped, when its conflicts are to be
  * handed back to its worker; the check stopped, when its failure is. An interrupted rebase is
- * aborted here too, whichever Git it ran on.
+ * aborted here too, whichever Git it ran on. `waived`: you handed its conflict over, so its worker,
+ * steered, takes the hand-back (§ 4.3).
  */
 const rebaseAndCheck = (
   ticket: FinishedTicket,
@@ -270,6 +271,7 @@ const rebaseAndCheck = (
   memory: MergeMemory,
   fork: string,
   onto: string,
+  waived: boolean,
 ) =>
   Effect.gen(function* () {
     const { git, ledger, log } = yield* services
@@ -312,7 +314,7 @@ const rebaseAndCheck = (
           own: Result.isSuccess(before) ? before.success.own.length : -1,
           files: error.files,
         }
-        const not = yield* whyNotHandBack(stop, yield* memory.handBacks.count(id))
+        const not = yield* whyNotHandBack(stop, yield* memory.handBacks.count(id), waived)
         if (not === undefined) return stop
         yield* notHandedBack(stop, options, not, memory.handBacks)
         return false
@@ -454,6 +456,8 @@ export const prepare = (
     const { git, log } = yield* services
     const { id, branch, worktree } = ticket
     const { repo, base } = options
+    // A conflict you handed over is handed back to its steered worker in this merge only (§ 4.3).
+    const waived = yield* memory.handBacks.waived(id)
     const on = yield* offBranch(ticket)
     if (on !== undefined) {
       yield* aside(
@@ -527,7 +531,7 @@ export const prepare = (
         )
         return { _tag: "Over" } satisfies Prepared
       }
-      const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto)
+      const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto, waived)
       if (rebased === false) return { _tag: "Over" } satisfies Prepared
       if (rebased === true) continue
       if ("_tag" in rebased) return rebased

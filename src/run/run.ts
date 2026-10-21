@@ -139,6 +139,7 @@ import { emptyStatus, project, type Row, type Status, same, type Totals } from "
 import { footprintsOf, make as makeScheduler, readyPoll } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, Screen, show } from "./screen.ts"
+import { handBackNow, interrupt, release, sendMessage } from "./steer.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold, holdWord as usageHoldWord } from "./usageLimit.ts"
@@ -644,7 +645,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // The screen's commands, each resolved against the ledger and the open requests as it is taken:
     // one that no longer names anything (the worker finished, the request was answered) is dropped.
     // The end-of-run box's `q` (EndRun) ends the run. Quit without `now` is the quit box's to ask.
-    // Steering's commands (SendMessage, Interrupt, Release, HandBackNow) are steer.ts's to take.
+    // Steering's commands (SendMessage, Interrupt, Release, HandBackNow) go to steer.ts.
     if (screen !== null) {
       const take = (command: UiCommand) =>
         Effect.gen(function* () {
@@ -677,6 +678,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
               return
             case "EndRun":
               yield* Ref.set(endAsked, true)
+              return yield* wakeUp
+            case "SendMessage":
+              return yield* sendMessage(command.ticket, command.text, command.uuid)
+            case "Interrupt":
+              return yield* interrupt(command.ticket)
+            case "Release":
+              return yield* release(command.ticket)
+            case "HandBackNow":
+              yield* handBackNow(command.ticket, queue, { repo: config.repo, base })
               return yield* wakeUp
           }
         })

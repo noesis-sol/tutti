@@ -242,6 +242,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
     Cause.Recheck({ place: 1 }),
     ToMerge({ place: 1 }),
   ],
+  [
+    "Blocked{MERGE_CONFLICT} → ToMerge",
+    Blocked({ why: "MERGE_CONFLICT" }),
+    Cause.HandedOver({ place: 1 }),
+    ToMerge({ place: 1 }),
+  ],
   ["carried over: → Working", null, Cause.Resumed(), Working({ activity: "starting" })],
   [
     "carried over: → Asked",
@@ -305,6 +311,7 @@ const causeOf: { readonly [C in CauseTag]: Extract<Cause, { readonly _tag: C }> 
   CheckHandedBack: Cause.CheckHandedBack({ attempt: 1 }),
   Block: Cause.Block({ why: "GIT_FAILED" }),
   Recheck: Cause.Recheck({ place: 1 }),
+  HandedOver: Cause.HandedOver({ place: 1 }),
   Resumed: Cause.Resumed(),
   StillAsked: Cause.StillAsked({ question: "tut-q1" }),
   Unmerged: Cause.Unmerged({ place: 1 }),
@@ -338,6 +345,9 @@ describe("transition", () => {
   test("the conditions on a phase's fields hold", () => {
     expect(
       rejected(transition(Review({ why: "DIRTY_WORKTREE" }), Cause.Recheck({ place: 1 }))),
+    ).toBeInstanceOf(InvalidTransition)
+    expect(
+      rejected(transition(Blocked({ why: "DIRTY_TREE" }), Cause.HandedOver({ place: 1 }))),
     ).toBeInstanceOf(InvalidTransition)
     expect(
       ok(transition(Fixing({ attempt: 1, afterResolution: true }), Cause.Aside({ why: "x" }))),
@@ -417,6 +427,7 @@ const causeArb: fc.Arbitrary<Cause> = fc.oneof(
   fc.constantFrom(...holds).map((why) => Cause.Held({ why })),
   ordinal.map((place) => Cause.Verified({ place })),
   ordinal.map((place) => Cause.Recheck({ place })),
+  ordinal.map((place) => Cause.HandedOver({ place })),
   ordinal.map((place) => Cause.Unmerged({ place })),
   text.map((question) => Cause.FiledQuestion({ question })),
   text.map((question) => Cause.StillAsked({ question })),

@@ -156,6 +156,8 @@ export type Cause = Data.TaggedEnum<{
   Block: { readonly why: string }
   /** Its check failed, the base has moved on since, and it is checked once more. */
   Recheck: { readonly place: number }
+  /** You handed its steered worker the conflict that waited for it: rebased again, handed back. */
+  HandedOver: { readonly place: number }
   /** Carried over from an earlier run with its session, which is resumed. */
   Resumed: Empty
   /** Carried over from an earlier run, still waiting on its question. */
@@ -482,6 +484,16 @@ export const transitions: ReadonlyArray<Transition> = [
     to: "ToMerge",
     recorded: { kinds: [], log: "RECHECK" },
     only: ({ why }) => why === "CHECKS_FAILED",
+    next: (_, { place }) => TicketPhase.ToMerge({ place }),
+  }),
+  // § 4.3: a conflict that waited for its steered worker, handed over by you. Back in the merge
+  // queue, it is rebased again, and the conflict is handed back with the steered check waived once.
+  row({
+    from: "Blocked",
+    when: "HandedOver",
+    to: "ToMerge",
+    recorded: { kinds: ["phase"] },
+    only: ({ why }) => why === "MERGE_CONFLICT",
     next: (_, { place }) => TicketPhase.ToMerge({ place }),
   }),
   row({
