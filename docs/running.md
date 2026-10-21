@@ -384,7 +384,7 @@ What can go wrong, and what becomes of the ticket:
 | | |
 |---|---|
 | `OFF_BRANCH` | its worktree has another branch, or a detached HEAD, checked out: left for review |
-| `DIRTY_WORKTREE` | uncommitted changes in its worktree stop the rebase: left for review |
+| `DIRTY_WORKTREE` | uncommitted changes in its worktree stop the rebase, or the check of a branch on top of the base: left for review |
 | `REBASE_FAILED` | git refuses the rebase for another reason: left for review |
 | `MERGE_CONFLICT` | the rebase stops on conflicts: handed back to its worker, else blocked |
 | `CHECKS_FAILED` | the check fails or doesn't finish within its time limit: handed back, else left for review |
