@@ -115,12 +115,22 @@ export interface SetUps {
   since(id: string, at: string): Effect.Effect<string>
   /** The ticket's dependencies are now set up for the base at `onto` and its branch at `head`. */
   set(id: string, onto: string, head: string): Effect.Effect<void>
+  /**
+   * The ticket's dependencies were set up off the base, `why` saying how: on top of the branch
+   * ahead of it in the merge queue, its branch since put back (mergetrain.ts). Its next setup runs
+   * whatever the base changed, until `set` says otherwise.
+   */
+  offBase(id: string, why: string): Effect.Effect<void>
+  /** How the ticket's dependencies were set up off the base, if they were, as offBase says. */
+  off(id: string): Effect.Effect<string | undefined>
 }
 
 /** What a ticket's dependencies were last set up for, of what was asked: the base's commit, its branch's. */
 interface SetUpFor {
   readonly base?: string
   readonly head?: string
+  /** Set up off the base: how. */
+  readonly off?: string
 }
 
 /** A run's setups: none yet, its setup checks.setup. */
@@ -161,6 +171,9 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
         Ref.update(commits, (setUps) => new Map(setUps).set(id, { base: onto, head })),
         head === "" ? Effect.void : setWorktree(id, head),
       ),
+    offBase: (id, why) =>
+      Ref.update(commits, (setUps) => new Map(setUps).set(id, { ...setUps.get(id), off: why })),
+    off: (id) => Effect.map(Ref.get(commits), (setUps) => setUps.get(id)?.off),
   } satisfies SetUps
 })
 
@@ -236,6 +249,8 @@ export const setUp = (
     const rebased = Result.isSuccess(changed) ? setupFilesIn(changed.success, files) : []
     if (Result.isFailure(changed)) why.push("git could not say what the rebase changed")
     else if (rebased.length > 0) why.push(line`${fileList(rebased)} changed in the rebase`)
+    const off = yield* setUps.off(ticket.id)
+    if (off !== undefined) why.push(off)
     if (fix !== undefined) {
       const since = yield* setUps.since(ticket.id, fix.from)
       const own =

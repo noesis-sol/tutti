@@ -60,6 +60,8 @@ interface Run {
   passed: string
   /** It wasn't rebased, or its check failed or was stopped: none behind it starts. */
   failed: boolean
+  /** The setup may have run in its worktree, on top of the branch ahead. */
+  setUp: boolean
   /** What failed on it and how, and where the output is, when its check failed. */
   why: Line | ""
 }
@@ -189,6 +191,7 @@ export const make = (
         yield* log.write(
           detail`checking ${branch} ahead of its turn to merge, rebased onto ${run.behind} as it is checked`,
         )
+        run.setUp = true
         const setup = yield* setUp(
           run.ticket,
           options,
@@ -198,6 +201,7 @@ export const make = (
           undefined,
           true,
         )
+        if (setup._tag === "Unneeded") run.setUp = false
         const checked =
           setup._tag === "Failed"
             ? ({ _tag: "Failed", error: setup.error, output: setup.output } as const)
@@ -252,6 +256,7 @@ export const make = (
               head: "",
               passed: "",
               failed: false,
+              setUp: false,
               why: "",
             }
             runs.set(id, made)
@@ -273,11 +278,20 @@ export const make = (
     )
 
     // Puts the ticket's branch, at `head`, back as its worker left it when its train rebased it and
-    // it hasn't moved since: whether it did, or git's error when it could not.
+    // it hasn't moved since: whether it did, or git's error when it could not. Dependencies set up
+    // on top of the branch ahead are set up again before its next check.
     const putBack = (run: Run, head: string) =>
-      run.head === "" || head !== run.head
-        ? Effect.succeed(false)
-        : Effect.as(git.resetBranch(run.ticket.worktree, run.orig), true)
+      Effect.andThen(
+        run.setUp
+          ? memory.setUps.offBase(
+              run.ticket.id,
+              line`its dependencies were set up on top of ${run.behind}, ahead of its turn`,
+            )
+          : Effect.void,
+        run.head === "" || head !== run.head
+          ? Effect.succeed(false)
+          : Effect.as(git.resetBranch(run.ticket.worktree, run.orig), true),
+      )
 
     const watch: CheckWatch = {
       starts: (ticket, at) =>

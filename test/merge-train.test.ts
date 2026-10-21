@@ -40,9 +40,9 @@ const check = "scripts/check-fast.sh"
 const defaults = appConfig().settings
 
 /** The settings: a check command, failed checks set aside at once, and `train` checked ahead. */
-const settings = (train = 1) => ({
+const settings = (train = 1, setup = defaults.checks.setup) => ({
   ...defaults,
-  checks: { ...defaults.checks, fast: { ...defaults.checks.fast, command: check } },
+  checks: { ...defaults.checks, fast: { ...defaults.checks.fast, command: check }, setup },
   merge: { ...defaults.merge, check_hand_backs: 0, train },
 })
 
@@ -124,13 +124,20 @@ const twoTickets = (
     readonly checks: ReadonlyArray<Scripted>
     readonly files?: { readonly a: Files; readonly b: Files }
     readonly machineFull?: boolean
+    /** The setup command, run when deps.txt changes. */
+    readonly setup?: boolean
   },
   body: (queue: MergeQueue) => Effect.Effect<void, unknown, Env | Ledger | Scope.Scope> = (queue) =>
     Effect.asVoid(queue.settled),
 ) =>
   scenario(
     {
-      config: { settings: settings(plan.train) },
+      config: {
+        settings: settings(
+          plan.train,
+          plan.setup === true ? { command: "install.sh", files: ["deps.txt"] } : undefined,
+        ),
+      },
       backlog: backlog().ticket("a").ticket("b").seeds,
       checks: { fast: plan.checks },
     },
@@ -250,6 +257,33 @@ describe("the next ticket in line", () => {
       "  rebased tutti/b onto main, which moved on while it ran",
       `  '${check}' passes on the rebased tutti/b`,
       /^ {2}b closed .*; merged into main/,
+    ])
+  })
+
+  test("set up on top of the one ahead, which fails, is set up again in its turn", async () => {
+    // a changes deps.txt, the setup's file, so b is set up on top of tutti/a ahead of its turn; a's
+    // check then fails. b's dependencies are a's: its turn sets it up again on main.
+    const bPassed = Deferred.makeUnsafe<void>()
+    const ran = await twoTickets({
+      setup: true,
+      files: { a: { "deps.txt": "a's deps\n", "a.txt": "a\n" }, b: { "b.txt": "b\n" } },
+      checks: each((id) =>
+        id === "a"
+          ? Effect.andThen(Deferred.await(bPassed), Effect.fail(failing))
+          : Deferred.succeed(bPassed, undefined),
+      ),
+    })
+    const merged = resultOf(ran)
+    expect(merged.phases.b).toBe("Done")
+    expect(merged.main.has("deps.txt")).toBe(false)
+    const setUpB = ran.checkRuns.filter((run) => run.check === "setup" && whose(run) === "b")
+    expect(setUpB).toHaveLength(2)
+    expectLog(ran, [
+      "  b: deps.txt changed in the rebase; running 'install.sh' before the check",
+      "  tutti/b was checked ahead of its turn on top of tutti/a, which did not merge as it was checked: put back as its worker left it",
+      "  rebased tutti/b onto main, which moved on while it ran",
+      "  b: its dependencies were set up on top of tutti/a, ahead of its turn; running 'install.sh' before the check",
+      `  '${check}' passes on the rebased tutti/b`,
     ])
   })
 
