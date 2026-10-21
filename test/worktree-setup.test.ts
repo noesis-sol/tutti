@@ -19,11 +19,18 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber } from "effect"
 import { probeFile, probeWorker } from "../src/run/environment.ts"
+import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
-import { countsUnder, TicketPhase } from "../src/run/phase.ts"
+import { Cause, countsUnder, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyView } from "../src/run/runView.ts"
-import { makeSetUps, setUpWorktree, setupMarkName } from "../src/run/setup.ts"
+import {
+  leaveSetupFailed,
+  makeSetUps,
+  setUpWorktree,
+  setupMarkName,
+  setupWaiting,
+} from "../src/run/setup.ts"
 import { CheckFailed, setupLogName } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { runFolder, writeRunFile } from "../src/services/Worktrees.ts"
@@ -37,7 +44,7 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Script as ChecksScript, passed } from "../src/testing/Checks.ts"
-import type { Files } from "../src/testing/Git.ts"
+import { type Files, Repository } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import { totalsLine } from "../src/ui/Totals.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
@@ -375,6 +382,91 @@ describe("the setup before a worker", () => {
         )
       }),
     )
+  })
+})
+
+describe("a reused worktree whose branch changed a setup file", () => {
+  test("is set up again before its worker, and only for a file the setup reads", async () => {
+    const repo = folder("changed-repo")
+    const path = join(folder("changed-worktrees"), "a")
+    mkdirSync(path, { recursive: true })
+    const worktree = {
+      id: "a",
+      branch: "tutti/a",
+      path,
+      reused: true,
+      fresh: false,
+      earlier: { commits: [], status: [] },
+    }
+    const settings = {
+      ...defaults,
+      checks: { ...defaults.checks, setup: { ...defaults.checks.setup, command: setup } },
+    }
+    const ran = await scenario(
+      { config: { repo, settings }, git: { dir: repo } },
+      Effect.gen(function* () {
+        const git = yield* Git
+        const repository = yield* Repository
+        yield* git.addWorktree(repo, path, { branch: "tutti/a", base: "main" })
+        const setUps = yield* makeSetUps
+        // Not set up in this run: nothing says what changed since, and nothing runs.
+        expect(yield* setUpWorktree(worktree, setUps, repo)).toEqual({ _tag: "Unneeded" })
+        yield* setUps.setWorktree("a", yield* git.revParse(repo, "tutti/a"))
+        yield* repository.commit(path, "Notes (a)", { "notes.txt": "n\n" })
+        expect(yield* setUpWorktree(worktree, setUps, repo)).toEqual({ _tag: "Unneeded" })
+        yield* repository.commit(path, "Bump left-pad (a)", { "bun.lock": "left-pad 2\n" })
+        expect(yield* setUpWorktree(worktree, setUps, repo)).toEqual({ _tag: "Passed" })
+        // Set up for the branch as it is now: nothing has changed since.
+        expect(yield* setUpWorktree(worktree, setUps, repo)).toEqual({ _tag: "Unneeded" })
+      }),
+    )
+    expect(ran.exit._tag).toBe("Success")
+    expectLog(ran, [
+      startsLine(
+        "a",
+        `bun.lock changed since its dependencies were last set up; running '${setup}' in its worktree`,
+      ),
+    ])
+    expect(ran.checkRuns.map((each) => [each.check, each.cwd])).toEqual([["setup", path]])
+  })
+})
+
+describe("leaving a ticket whose setup failed", () => {
+  test("reopens one bd ready gave in progress; one bd can't reopen isn't named as waiting", async () => {
+    const path = folder("reopen")
+    const failed = {
+      _tag: "Failed",
+      command: setup,
+      error: setupFails(),
+      output: join(path, runFolder, setupLogName),
+    } as const
+    const ran = await scenario(
+      { backlog: backlog().ticket("a", { status: "in_progress" }).seeds },
+      Effect.gen(function* () {
+        const ledger = yield* Ledger
+        const setUps = yield* makeSetUps
+        // "gone" isn't in bd: reopening it fails.
+        for (const id of ["a", "gone"]) {
+          yield* ledger.transition(id, Cause.Ready(), { title: id })
+          yield* ledger.transition(id, Cause.Dispatched())
+          yield* leaveSetupFailed({ id, title: id, status: "in_progress" }, path, failed, setUps)
+        }
+        const state = yield* ledger.current
+        expect(state.tickets.get("a")?.phase).toEqual(TicketPhase.Waiting({ for: "setup" }))
+        expect(state.tickets.get("gone")?.phase).toEqual(TicketPhase.Waiting({ for: "setup" }))
+        const failures = yield* setUps.failures
+        expect(failures.get("a")).toMatchObject({ notReopened: false })
+        expect(failures.get("gone")).toMatchObject({ notReopened: true })
+        expect(setupWaiting(state, failures)).toEqual([["a", failed.output]])
+      }).pipe(Effect.provide(Ledger.layer)),
+    )
+    expect(ran.exit._tag).toBe("Success")
+    expect(ran.issues.find((issue) => issue.id === "a")?.status).toBe("open")
+    expectLog(ran, [
+      /^ {2}SETUP_FAILED: .* for a; /,
+      /^ {2}REOPEN_FAILED: gone stays in_progress, so it won't be back in the queue after its setup failed: /,
+      /^ {2}SETUP_FAILED: .* for gone; /,
+    ])
   })
 })
 

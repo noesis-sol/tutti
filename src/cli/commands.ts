@@ -354,7 +354,7 @@ export const initFlags = {
   ),
   setup: initFlag(
     "setup",
-    `the command that installs the dependencies in a worktree, run before check-fast when a rebase changes a lockfile, e.g. "npm ci"; "" for none (offered for a lockfile when omitted; an existing setting is kept)`,
+    `the command that installs the dependencies in a worktree, run in each new one before its worker and before check-fast when a rebase changes a lockfile, e.g. "npm ci"; "" for none (offered for a lockfile when omitted; an existing setting is kept)`,
     { metavar: "command" },
   ),
   concurrent: initFlag(
