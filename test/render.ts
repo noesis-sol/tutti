@@ -3,7 +3,12 @@
 // the root from the renderer's destroy event, outside act(), and a key or click that updates state
 // does so outside act() too: React then warns "An update to … inside a test was not wrapped in
 // act(…)", and the frame doesn't show the update (docs/spikes/05-opentui-soak.md § 5).
-import type { CapturedFrame, KeyEvent } from "@opentui/core"
+import {
+  type BaseRenderable,
+  type CapturedFrame,
+  CodeRenderable,
+  type KeyEvent,
+} from "@opentui/core"
 import type { TestRendererSetup } from "@opentui/core/testing"
 import { testRender } from "@opentui/react/test-utils"
 import { act, type ReactNode } from "react"
@@ -17,8 +22,34 @@ export type Rendered = {
   readonly setup: TestRendererSetup
   /** Runs input (setup.mockInput, setup.mockMouse, setup.resize) inside act(), then flushes. */
   readonly input: (drive: (setup: TestRendererSetup) => void | Promise<void>) => Promise<void>
-  /** Captures the frame once the renderer is idle. */
+  /** Captures the frame once the renderer is idle and no text is still being highlighted. */
   readonly capture: () => Promise<Frame>
+}
+
+/** How long `capture` waits for text still being highlighted before it fails, in ms. */
+const highlightDeadline = 4000
+
+/** The <code> renderables under node still highlighting, as <markdown> draws its blocks with. */
+const highlighting = (node: BaseRenderable): ReadonlyArray<CodeRenderable> => [
+  ...(node instanceof CodeRenderable && node.isHighlighting ? [node] : []),
+  ...node.getChildren().flatMap(highlighting),
+]
+
+/**
+ * Waits until the renderer is idle and no text is still being highlighted. A <markdown> block is a
+ * <code> renderable that draws nothing until tree-sitter has highlighted it, off the render loop: a
+ * loaded machine finishes after the renderer went idle, and the frame lacks the text (tutti-8wh).
+ */
+const settle = async (setup: TestRendererSetup): Promise<void> => {
+  const deadline = Date.now() + highlightDeadline
+  await setup.waitForVisualIdle()
+  for (let busy = highlighting(setup.renderer.root); busy.length > 0; ) {
+    const left = deadline - Date.now()
+    if (left <= 0) throw new Error(`text still highlighting ${highlightDeadline} ms on`)
+    await Promise.race([Promise.all(busy.map((code) => code.highlightingDone)), Bun.sleep(left)])
+    await setup.waitForVisualIdle()
+    busy = highlighting(setup.renderer.root)
+  }
 }
 
 /** Renders node at size, runs body, and disposes inside act(), whether body succeeds or not. */
@@ -37,7 +68,7 @@ export const withRender = async <A>(
       await setup.flush()
     },
     capture: async () => {
-      await setup.waitForVisualIdle()
+      await settle(setup)
       return { chars: setup.captureCharFrame(), spans: setup.captureSpans() }
     },
   }
