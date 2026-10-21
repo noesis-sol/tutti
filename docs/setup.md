@@ -290,13 +290,16 @@ manifests by default), and always before the full check, which runs in a fresh w
 ## The verifier
 
 The verifier is a subagent, `.claude/agents/verifier.md`, that checks a ticket's change against the
-ticket in a fresh context: it reads the ticket and the commits naming it, runs the merge check,
-checks each acceptance criterion, and answers `PASS` or `FAIL` with each gap it found. It changes
-nothing.
+ticket in a fresh context: it reads the ticket and the commits naming it, quotes the worker's own
+passing check when the worker's commit is HEAD and nothing is uncommitted (else it runs the suites on
+what the change touches, leaving the whole suite to the merge check), checks each acceptance
+criterion, and answers `PASS` or `FAIL` with each gap it found. It changes nothing.
 
 `init` writes it when you choose it (or `--verifier`), filled in with the project's stack and checks,
 and adds a `## Verify` section to the worker prompt: before closing its ticket, a worker runs it,
-fixes the gaps it reports, and asks again, three rounds at most. Each ticket then costs a
+fixes the gaps it reports, and asks again with the earlier rounds' findings, three rounds at most;
+where a round disagrees with an earlier one (`DISAGREES WITH ROUND <n>:`), the worker asks you which
+holds rather than go round again. Each ticket then costs a
 subagent's run too. tutti runs the verifier in the foreground, whatever the worker asks for, so the
 worker's turn waits for its answer.
 
