@@ -384,7 +384,7 @@ export const layer = (
           const setup = session.interview
           const servers =
             setup !== undefined
-              ? inProcess(serverName, setup.server)
+              ? inProcess(serverName, setup.server, options.servers.chrome === true)
               : session.probe === true
                 ? noServers
                 : options.servers
@@ -393,6 +393,7 @@ export const layer = (
               ? interviewOptions({
                   config,
                   setup,
+                  chrome: options.servers.chrome === true,
                   callbacks,
                   session: how,
                   env,

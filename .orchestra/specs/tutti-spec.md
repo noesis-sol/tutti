@@ -527,6 +527,8 @@ What the check accepts, from that spike:
 - **Connectors.** A claude.ai connector shows source `claudeai` and is named `claude.ai <Name>` (`claude.ai Gmail`). That is how the setup check tells that a name refers to a connector.
 - **Statuses.** A server can still be `pending` in the first `system/init`. The check compares names and sources, never statuses.
 
+**Claude in Chrome.** `claude-in-chrome` is built into Claude Code, not defined in a config file, and Claude Code turns it on by itself once it is set up on the machine, past `strictMcpConfig`. As orchestra does, choosing it in `mcp_servers` gives workers and the feature interview `--chrome` (the SDK's `extraArgs`), and leaving it out gives them `--no-chrome`; the login probe and organs always get `--no-chrome`. With `--chrome`, `system/init` lists it with source `dynamic`, which the check accepts; a machine where Chrome isn't set up lists none, which it accepts too.
+
 ### 4.7 Hand-backs and nudges
 
 Conflict resolution and check fixes go to the ticket's worker as orchestra sends them, with the same instructions, limits (`resolve_timeout` 20 m, `check_hand_backs` 2) and verification of what the worker left. Each is a `client_composed` message pushed into the worker's inbox.

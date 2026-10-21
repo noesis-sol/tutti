@@ -296,4 +296,9 @@ A name that isn't defined on this machine, or names a claude.ai connector, stops
 server it wasn't given is stopped before it does anything. The run's `START` line says what workers
 get: `MCP servers: postgres` or `workers get no MCP servers: workers.mcp_servers is empty`.
 
-Organs never get MCP servers.
+Claude in Chrome, which Claude Code turns on by itself once it is set up on your machine, is
+`claude-in-chrome` in `workers.mcp_servers`: it is built into Claude Code, so no config file defines
+it. Chosen, workers and the feature interview get it (`--chrome`); left out, they don't
+(`--no-chrome`).
+
+Organs never get MCP servers, nor Chrome.

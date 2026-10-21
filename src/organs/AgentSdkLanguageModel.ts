@@ -42,6 +42,7 @@ import {
 } from "effect/ai"
 import type { AccountProbe } from "../agent/Account.ts"
 import { workerEnv } from "../agent/env.ts"
+import { chromeArgs } from "../agent/mcp.ts"
 import { spawnInOwnProcessGroup } from "../agent/options.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type Cost, OrganCost } from "./OrganCost.ts"
@@ -152,6 +153,8 @@ export const organOptions = (input: OrganOptionsInput): Options => ({
     ? {}
     : { hooks: input.call.reads.hooks, maxBudgetUsd: input.call.reads.maxBudgetUsd }),
   strictMcpConfig: true,
+  // Claude Code turns Claude in Chrome on by itself once it is set up: an organ never gets it.
+  extraArgs: chromeArgs({ chrome: false }),
   settingSources: [],
   permissionPrompts: "none",
   persistSession: false,

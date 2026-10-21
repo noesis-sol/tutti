@@ -9,6 +9,11 @@
 // servers. A passed definition shows source "dynamic" there, not the scope it was resolved from
 // (docs/spikes/03-sdk-mcp-subagents.md), and an in-process server "sdk"; both are accepted, and so
 // is the scope, as § 4.1 has it.
+//
+// Claude in Chrome, claude-in-chrome, is built into Claude Code rather than defined in a config
+// file: choosing it gives sessions --chrome, and leaving it out --no-chrome (chromeArgs), as
+// orchestra does. Claude Code turns Chrome on by itself, past strict MCP config, once it is set up
+// on the machine. With --chrome, system/init lists it with source dynamic.
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import type { McpServerConfig, SDKSystemMessage } from "@anthropic-ai/claude-agent-sdk"
@@ -31,6 +36,8 @@ export interface ChosenServer {
 /** The servers workers get, in workers.mcp_servers' order, and what the START block says of them. */
 export interface ChosenServers {
   readonly servers: ReadonlyArray<ChosenServer>
+  /** Whether workers.mcp_servers chose Claude in Chrome (chromeServer); not when left out. */
+  readonly chrome?: boolean
   /** A note for the START block when workers get no servers; null when they get some. */
   readonly note: string | null
 }
@@ -38,14 +45,32 @@ export interface ChosenServers {
 /** The START block's note when workers.mcp_servers is empty (§ 15, Q5). */
 export const noServersNote = "workers get no MCP servers: workers.mcp_servers is empty"
 
-/** No servers at all: the environment probe's (§ 4.9). */
-export const noServers: ChosenServers = { servers: [], note: null }
+/** No servers at all, nor Chrome: the environment probe's (§ 4.9). */
+export const noServers: ChosenServers = { servers: [], chrome: false, note: null }
 
-/** One in-process server of tutti's own, `name`, made by createSdkMcpServer: the interview's (§ 4.10). */
-export const inProcess = (name: string, definition: McpServerConfig): ChosenServers => ({
+/**
+ * One in-process server of tutti's own, `name`, made by createSdkMcpServer, and Chrome when the
+ * project chose it: the interview's (§ 4.10).
+ */
+export const inProcess = (
+  name: string,
+  definition: McpServerConfig,
+  chrome: boolean,
+): ChosenServers => ({
   servers: [{ name, scope: "sdk", definition }],
+  chrome,
   note: null,
 })
+
+/** Claude in Chrome's name, in workers.mcp_servers and system/init. */
+export const chromeServer = "claude-in-chrome"
+
+/**
+ * The SDK's extraArgs giving a session Chrome as `chosen` says: --chrome when chosen, --no-chrome
+ * otherwise.
+ */
+export const chromeArgs = (chosen: Pick<ChosenServers, "chrome">): Record<string, null> =>
+  chosen.chrome === true ? { chrome: null } : { "no-chrome": null }
 
 /** A claude.ai connector's name starts with this, in system/init and the user's .claude.json. */
 export const connectorPrefix = "claude.ai "
@@ -136,11 +161,17 @@ const projectEntry = (fs: FileSystem.FileSystem, projects: Json, repo: string) =
  * Resolves workers.mcp_servers, `names`, for the repository at `repo`, the main checkout. Every
  * problem is reported at once: a name defined nowhere, a claude.ai connector, a definition workers
  * can't be given, a config file that can't be read. No names reads no file and gives no servers.
+ * Claude in Chrome (chromeServer) isn't resolved: choosing it sets `chrome`.
  */
 export const resolveServers = (repo: string, names: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const chosen = [...new Set(names)]
-    if (chosen.length === 0) return { servers: [], note: noServersNote } satisfies ChosenServers
+    const chrome = names.includes(chromeServer)
+    const chosen = [...new Set(names)].filter((name) => name !== chromeServer)
+    if (chosen.length === 0) {
+      return chrome
+        ? ({ servers: [], chrome, note: null } satisfies ChosenServers)
+        : ({ servers: [], note: noServersNote } satisfies ChosenServers)
+    }
     const fs = yield* FileSystem.FileSystem
     const problems: Array<string> = []
     const userFile = yield* claudeConfigFile
@@ -200,7 +231,7 @@ export const resolveServers = (repo: string, names: ReadonlyArray<string>) =>
       }
     }
     if (problems.length > 0) return yield* new SetupProblem({ problems })
-    return { servers, note: null } satisfies ChosenServers
+    return { servers, ...(chrome ? { chrome } : {}), note: null } satisfies ChosenServers
   })
 
 /**
@@ -246,6 +277,8 @@ export const missingProblem = (names: ReadonlyArray<string>): string =>
  * with source sdk, dynamic or the scope it was resolved from. Statuses aren't compared: a server
  * can still be pending. A server listed but not chosen, or chosen but listed with another source,
  * is one workers weren't given; a chosen server not listed is missing. Either is a setup problem.
+ * Chrome, when chosen, may be listed with source dynamic, and needn't be: --chrome on a machine
+ * where it isn't set up gives none.
  */
 export const checkInit = (
   init: Pick<SDKSystemMessage, "mcp_servers">,
@@ -257,6 +290,8 @@ export const checkInit = (
     .filter((server) => {
       const scope = scopes.get(server.name)
       const source = server.source
+      if (chosen.chrome === true && server.name === chromeServer && source === "dynamic")
+        return false
       return (
         scope === undefined ||
         source === undefined ||

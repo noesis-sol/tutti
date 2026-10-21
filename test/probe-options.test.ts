@@ -51,6 +51,7 @@ describe("probeOptions", () => {
       effort: "high",
       mcpServers: {},
       strictMcpConfig: true,
+      extraArgs: { "no-chrome": null },
       disallowedTools: ["AskUserQuestion"],
       persistSession: false,
       stderr,

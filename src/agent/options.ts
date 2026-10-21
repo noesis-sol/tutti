@@ -33,7 +33,7 @@ import type { InterviewSetup } from "./AgentHost.ts"
 import { Attention } from "./Attention.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
 import { qualifiedToolNames, serverName } from "./interviewTools.ts"
-import { type ChosenServers, mcpServers } from "./mcp.ts"
+import { type ChosenServers, chromeArgs, mcpServers } from "./mcp.ts"
 import { Transcripts } from "./Transcripts.ts"
 
 /** How a worker's session starts: a new one with the ID tutti drew, or a saved one resumed. */
@@ -108,6 +108,8 @@ interface SharedInput {
   readonly env: Record<string, string>
   readonly stderr: (data: string) => void
   readonly abortController: AbortController
+  /** Whether the session gets Claude in Chrome: the project's choice, never the probe's. */
+  readonly chrome: boolean
   /** Told of Claude Code's process once the SDK has spawned it. */
   readonly spawned?: (child: ChildProcessWithoutNullStreams) => void
 }
@@ -115,7 +117,8 @@ interface SharedInput {
 /**
  * The options a worker's session and the login probe's share (§ 4.13: the probe runs with the
  * workers' options), so the two can't drift: the settings Claude Code reads, the permission mode,
- * model and effort, strict MCP config, the environment, and the spawn into a process group.
+ * model and effort, strict MCP config and Chrome (chromeArgs), the environment, and the spawn into
+ * a process group.
  */
 const sharedOptions = (input: SharedInput) => {
   const workers = input.config.settings.workers
@@ -128,6 +131,7 @@ const sharedOptions = (input: SharedInput) => {
     ...(workers.model === null ? {} : { model: workers.model }),
     ...(workers.effort === null ? {} : { effort: workers.effort }),
     strictMcpConfig: true,
+    extraArgs: chromeArgs(input),
     ...(workers.ask_user_question ? {} : { disallowedTools: [askUserQuestionTool] }),
     stderr: input.stderr,
     env: input.env,
@@ -153,6 +157,7 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
       env: input.env,
       stderr: callbacks.stderr,
       abortController: input.abortController,
+      chrome: input.servers.chrome === true,
     }),
     cwd: input.worktree,
     systemPrompt: {
@@ -187,11 +192,11 @@ export interface ProbeOptionsInput {
 
 /**
  * The login probe's SDK options (§ 4.13): the workers' shared options, in the main checkout, with
- * no MCP servers and no session saved. It is sent no prompt, so it has no ticket, standing rules,
+ * no MCP servers, no Chrome and no session saved. It is sent no prompt, so it has no ticket, standing rules,
  * session ID, permission callbacks or hooks: nothing it could call them for.
  */
 export const probeOptions = (input: ProbeOptionsInput): Options => ({
-  ...sharedOptions(input),
+  ...sharedOptions({ ...input, chrome: false }),
   cwd: input.config.repo,
   mcpServers: {},
   persistSession: false,
@@ -228,6 +233,8 @@ export const allowOwnTools: HookCallbackMatcher = {
 export interface InterviewOptionsInput {
   readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
   readonly setup: InterviewSetup
+  /** Whether workers.mcp_servers chose Claude in Chrome: the interview gets it as workers do. */
+  readonly chrome: boolean
   /** The interview's callbacks, as a worker's (workerCallbacks): AskUserQuestion goes to Attention. */
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
@@ -240,7 +247,7 @@ export interface InterviewOptionsInput {
  * The feature interview's SDK options (§ 4.10): the workers' shared options, in the main checkout,
  * its settings loaded. Its tools are enforced: interviewBuiltins is the whole built-in set (a
  * subagent inherits it), and tutti's in-process server is its one MCP server, its three tools
- * allowed without asking (allowOwnTools). The interview's instructions are appended to the claude_code preset.
+ * allowed without asking (allowOwnTools), and Chrome when the project chose it. The interview's instructions are appended to the claude_code preset.
  */
 export const interviewOptions = (input: InterviewOptionsInput): Options => {
   const { callbacks } = input
@@ -250,6 +257,7 @@ export const interviewOptions = (input: InterviewOptionsInput): Options => {
     env: input.env,
     stderr: callbacks.stderr,
     abortController: input.abortController,
+    chrome: input.chrome,
   })
   return {
     ...shared,

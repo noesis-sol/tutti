@@ -13,7 +13,7 @@ import { type Cause, Effect, Exit, FileSystem, Layer, Option, Result, Schema } f
 import type { ChildProcessSpawner } from "effect/process"
 import { Account, type AccountProbe, billingLine, permissionModeLine } from "../agent/Account.ts"
 import { type Claude, resolveClaude } from "../agent/claudeBinary.ts"
-import { type ChosenServers, resolveServers } from "../agent/mcp.ts"
+import { type ChosenServers, chromeServer, resolveServers } from "../agent/mcp.ts"
 import {
   AppConfig,
   type AppConfigValue,
@@ -463,7 +463,10 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
   const { config } = started
   const concurrency = config.settings.concurrent
   const ticketLimit = config.settings.workers.ticket_limit
-  const servers = started.mcp.servers.map((server) => server.name)
+  const servers = [
+    ...started.mcp.servers.map((server) => server.name),
+    ...(started.mcp.chrome === true ? [chromeServer] : []),
+  ]
   return start({
     version,
     repo: config.repo,

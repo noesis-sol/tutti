@@ -99,6 +99,7 @@ describe("workerOptions", () => {
         web: { type: "http", url: "https://example.com/mcp" },
       },
       strictMcpConfig: true,
+      extraArgs: { "no-chrome": null },
       canUseTool,
       onElicitation,
       hooks,

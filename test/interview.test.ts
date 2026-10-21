@@ -144,6 +144,7 @@ describe("interviewOptions", () => {
           options: interviewOptions({
             config,
             setup: { prompt: interviewPrompt, server: tools.server },
+            chrome: false,
             callbacks,
             session: { _tag: resume ? "Resume" : "New", sessionId: "s-1" },
             env: { PATH: "/usr/bin" },
