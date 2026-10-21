@@ -353,6 +353,9 @@ export interface Stops {
 
 export const noStops: Stops = { first: null, others: [] }
 
+/** Why the run takes on no more work while the account's usage limit holds it. */
+export const usageHolds = "the run holds (USAGE_LIMIT)"
+
 /**
  * Why the run takes on no more work, as the merges say it when they hand no failed check back
  * (orchestra's sayNoMore): a stop holds it, the usage limit does, or it winds down. Undefined when
@@ -366,7 +369,7 @@ export const noMoreWork = (
   stops.first !== null
     ? `the run holds (${stops.first.text})`
     : usageHeld
-      ? "the run holds (USAGE_LIMIT)"
+      ? usageHolds
       : windingDown
         ? "the run is winding down"
         : undefined

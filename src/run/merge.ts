@@ -57,7 +57,13 @@ import {
 } from "./checkback.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
-import { type HandBacks, notHandedBack, type RebaseStop, whyNotHandBack } from "./handback.ts"
+import {
+  type AtReset,
+  type HandBacks,
+  notHandedBack,
+  type RebaseStop,
+  whyNotHandBack,
+} from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { Cause, Detail } from "./phase.ts"
@@ -89,6 +95,11 @@ export interface MergeOptions {
    * it does. A failed check isn't handed back to its worker then. Without it, only a drain counts.
    */
   readonly noMore?: Effect.Effect<string | undefined>
+  /**
+   * Where a hand-back due to a worker at the account's usage limit waits for the limit to lift: the
+   * usage-limit hold, which sends it at the reset (handback.ts's give). Without it, it is sent at once.
+   */
+  readonly atReset?: AtReset
   /**
    * Takes a slot for a ticket checked once more (recheck.ts) and runs `work` in it, as a running
    * ticket's: false, taking none, while a solo ticket runs or is next, no slot is free, or the

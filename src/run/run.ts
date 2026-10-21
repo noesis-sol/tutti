@@ -516,7 +516,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // merge then (mergetrain.ts).
     const machineFull = yield* Ref.make(false)
     const queue = yield* makeQueue(
-      { repo: config.repo, base, noMore, recheckSlot, setUps, machineFull: Ref.get(machineFull) },
+      {
+        repo: config.repo,
+        base,
+        noMore,
+        atReset: usage.atReset,
+        recheckSlot,
+        setUps,
+        machineFull: Ref.get(machineFull),
+      },
       (where, defect) =>
         panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
     )

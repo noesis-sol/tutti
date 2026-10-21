@@ -2,8 +2,9 @@
 // Resolving and Resolving → ToMerge, Blocked), as orchestra's handback.go has it. A finished
 // ticket's rebase that stops on conflicts is handed back to its worker to resolve when it can take
 // it: hand-backs on, a check command set to check the resolution with, attempts left, git able to say
-// what the rebase stopped on, and its worker Idle or Failed and not steered, or its session closed by
-// tutti, which is resumed for it (not a Gone resume, so it counts toward no resume limit). A worker
+// what the rebase stopped on, and its worker Idle or Failed and not steered, or at the account's usage
+// limit, handed it once the limit lifts, or its session closed by tutti, which is resumed for it (not
+// a Gone resume, so it counts toward no resume limit). A worker
 // whose session ended unexpectedly (Gone) takes it too while the ticket's one Gone resume of the run
 // is left (§ 4.8): its session is resumed for the hand-back, and one that can't be is WORKER_GONE.
 // Either resume is recorded as sessions.ts has it (RESUMED, `resumed`). The rebase is left in
@@ -13,11 +14,14 @@
 // The hand-back is a client_composed message with orchestra's instructions. It is under way from
 // its push until its send is no longer outstanding and the worker has settled, within
 // resolve_timeout from the push, the time its worker waits at the account's usage limit left out, as
-// orchestra 0.8.0 has it; the reset tells it to carry on with the hand-back (usageLimit.ts). A
-// worker seen at the limit with what it was asked done in git, its turn having ended on the limit as
-// it finished, has given its answer, and one past resolve_timeout has what git shows done taken as
-// it is, or is stopped and told the hand-back is over before its branch is put back, as orchestra's
-// orchestra-nr1v.1 and -nr1v.2 have it. Then tutti looks at what the worker left without taking its word
+// orchestra 0.8.0 has it; the reset tells it to carry on with the hand-back (usageLimit.ts). A worker
+// at the limit already is handed it once the limit lifts, as orchestra 0.8.0 has it: the usage-limit
+// hold keeps the hand-back and sends it at the reset as the worker's carry-on, the wait not counting
+// toward resolve_timeout either. A worker seen at the limit with what it was asked done in git, its
+// turn having ended on the limit as it finished, has given its answer, and one past resolve_timeout
+// has what git shows done taken as it is, or is stopped and told the hand-back is over before its
+// branch is put back, as orchestra's orchestra-nr1v.1 and -nr1v.2 have it. Then tutti looks at what
+// the worker left without taking its word
 // for it: the rebase finished, the worktree clean and on its branch, the branch on top of the base
 // it was rebased onto with only the ticket's own commits, and, set up if need be (setup.ts), the
 // check passing. The check runs once, where the branch merges, as orchestra 0.8.5 has it: when the
@@ -44,7 +48,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import { AgentHost, type From } from "../agent/AgentHost.ts"
+import { type AgentGone, AgentHost, type From } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -230,8 +234,9 @@ const goneAgain = (why: string): string =>
 
 /**
  * Why the ticket's worker can't take a hand-back, as it is now: undefined when it is Idle or
- * Failed, its session, closed by tutti in this run or an earlier one, can be resumed, or it is Gone
- * with the ticket's one Gone resume of the run left (§ 4.8).
+ * Failed, at the account's usage limit (handed it once the limit lifts, give), its session, closed by
+ * tutti in this run or an earlier one, can be resumed, or it is Gone with the ticket's one Gone
+ * resume of the run left (§ 4.8).
  */
 export const workerAway = (
   id: string,
@@ -243,6 +248,7 @@ export const workerAway = (
     const state = yield* Effect.result(host.current(id))
     if (Result.isSuccess(state)) {
       const now = state.success
+      if (now._tag === "UsageLimited") return undefined
       if (now._tag !== "Gone") return away(now)
       return (yield* ledger.goneResumed(id)) ? goneAgain(now.why) : undefined
     }
@@ -450,6 +456,29 @@ export const handBackOver = (handBack: HandBack, limit: string, attempt: string)
 export type GiveEnv = MergeEnv
 
 /**
+ * Where a hand-back due to a worker at the account's usage limit waits for the limit to lift: the
+ * usage-limit hold (usageLimit.ts), which sends it at the reset as the worker's carry-on.
+ */
+export interface AtReset {
+  /**
+   * Keeps the hand-back due to the ticket's worker, at the limit, `prompt`, for the reset to send:
+   * its send's uuid once sent, or why its worker didn't take it. Null when the hold is off, the
+   * limit reset already: the caller sends it.
+   */
+  keep(
+    id: string,
+    mode: HandBackMode,
+    prompt: string,
+  ): Effect.Effect<Effect.Effect<string, AgentGone> | null>
+  /** Takes back the ticket's hand-back kept for the reset: false once the reset has sent it. */
+  takeBack(id: string): Effect.Effect<boolean>
+}
+
+/** What a ticket's worker is handed back, for a line: `conflicts to resolve`. */
+export const handedWords = (mode: HandBackMode): string =>
+  mode === "resolving" ? "conflicts to resolve" : "failed check to fix"
+
+/**
  * Resumes the ticket's session for its hand-back, `prompt`, recording it (`why`, the RESUMED line
  * starting with `what`). Why it couldn't be; undefined once it is resumed.
  */
@@ -600,16 +629,55 @@ const endLate = (
   })
 
 /**
+ * Sends the hand-back to the ticket's worker, at the account's usage limit, once the limit lifts, as
+ * orchestra 0.8.0 has it: `atReset` keeps it for the reset to send as the worker's carry-on, the wait
+ * not counting toward `limit`, and the hand-back's turn starts its clock. Its send's uuid, or why it
+ * failed; undefined when the worker left the limit without it (steered, or its session ended), for
+ * the caller to give it as to any worker.
+ */
+const sendAtReset = (
+  handBack: HandBack,
+  limit: Duration.Duration,
+  atReset: AtReset,
+): Effect.Effect<Result.Result<string, AgentGone> | undefined, never, GiveEnv> =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const logs = yield* Log
+    const { id } = handBack.ticket
+    const kept = yield* atReset.keep(id, handBack.mode, handBack.prompt)
+    if (kept === null) return yield* Effect.result(host.send(id, handBack.prompt, "clientComposed"))
+    yield* logs.write(
+      detail`${id}'s worker is at the usage limit: it is handed its ${handedWords(handBack.mode)} once the limit lifts, the wait not counting toward the ${formatDuration(limit)}`,
+    )
+    let sent = yield* Effect.raceFirst(
+      Effect.result(kept),
+      Effect.as(
+        whenState(id, (state) => !isLimited(state)),
+        undefined,
+      ),
+    )
+    if (sent === undefined) {
+      if (yield* atReset.takeBack(id)) return undefined
+      sent = yield* Effect.result(kept)
+    }
+    // Sent at the reset, its worker is UsageLimited until the hand-back's turn starts.
+    if (Result.isSuccess(sent)) yield* whenState(id, (state) => !isLimited(state))
+    return sent
+  })
+
+/**
  * Gives the ticket's worker a hand-back, its prompt, resuming its session if tutti closed it or it
  * is Gone (the RESUMED line starting with its `what`), and waits until its send is no longer
  * outstanding and the worker has settled, within `limit` from the push, the time its worker waits at
- * the account's usage limit not counting. A worker at the limit with what it was asked done in git
- * has given its answer; one past the limit is stopped (endLate). Why it wasn't done; undefined when
- * what it left is to be looked at.
+ * the account's usage limit not counting. A worker at the limit already is handed it once the limit
+ * lifts, by `atReset` when given (sendAtReset). A worker at the limit with what it was asked done in
+ * git has given its answer; one past the limit is stopped (endLate). Why it wasn't done; undefined
+ * when what it left is to be looked at.
  */
 export const give = (
   handBack: HandBack,
   limit: Duration.Duration,
+  atReset?: AtReset,
 ): Effect.Effect<string | undefined, never, GiveEnv> =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -633,7 +701,12 @@ export const give = (
           Effect.ignore,
           Effect.forkScoped({ startImmediately: true }),
         )
-        const sent = yield* Effect.result(host.send(id, prompt, from))
+        const sent =
+          state.success._tag === "UsageLimited" && atReset !== undefined
+            ? yield* sendAtReset(handBack, limit, atReset)
+            : yield* Effect.result(host.send(id, prompt, from))
+        // It left the limit without the hand-back: given as to any worker, from its state now.
+        if (sent === undefined) return yield* give(handBack, limit)
         if (Result.isFailure(sent)) {
           return line`its worker did not take the hand-back (${sent.failure.why})`
         }
@@ -828,6 +901,7 @@ export const resolve = (
         done: Effect.map(verifyResolved(stop, options), (rejected) => rejected === undefined),
       },
       limit,
+      options.atReset,
     )
     if (why === undefined) why = yield* verifyResolved(stop, options)
     if (why === undefined) {

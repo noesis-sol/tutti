@@ -303,7 +303,9 @@ is told to carry on with the hand-back, not its ticket. A worker whose turn ende
 finished, the rebase done or the fix committed, has given its answer: tutti takes it from git without
 waiting for the reset. Past the 20 minutes, a rebase finished or a fix committed is taken as it is;
 otherwise the worker is stopped and told the hand-back is over, its branch put back and which commit
-its attempt had got to, which git keeps.
+its attempt had got to, which git keeps. A worker at the limit already when a check fails on what it
+left, or its merge meets conflicts, is handed them once the limit lifts, in place of the reset's
+message to carry on, rather than its ticket being set aside; the wait doesn't count either.
 
 ## Sessions
 

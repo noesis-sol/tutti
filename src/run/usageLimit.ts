@@ -13,7 +13,8 @@
 //   (settle.ts), so it isn't nudged, triaged or counted toward the environment hold
 //   (environment.ts): its ticket's fiber waits for it.
 // - At the reset plus liftAfter, the hold is lifted (`USAGE_LIMIT lifted`) and each UsageLimited
-//   worker you haven't steered is sent a client_composed message to carry on.
+//   worker you haven't steered is sent a client_composed message to carry on. A worker handed back
+//   its ticket while at the limit (handback.ts's give) is sent the hand-back in its place.
 // - With nothing else running, the run waits for the reset, the title line counting down and the
 //   log saying the countdown every countdownEvery. It ends USAGE_LIMIT (exit 8) only when the reset
 //   time is unknown or later than --usage-limit-wait.
@@ -22,6 +23,7 @@
 // usage_limit record.
 import {
   Clock,
+  Deferred,
   Duration,
   Effect,
   FiberSet,
@@ -31,7 +33,7 @@ import {
   Semaphore,
   Stream,
 } from "effect"
-import { AgentHost } from "../agent/AgentHost.ts"
+import { type AgentGone, AgentHost } from "../agent/AgentHost.ts"
 import { type RateLimit, UsageLimits, type Waiting } from "../agent/UsageLimits.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { OrganHold } from "../organs/Organs.ts"
@@ -41,7 +43,7 @@ import { Store } from "../services/Store.ts"
 import { timestamp } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
-import type { HandBackMode } from "./handback.ts"
+import { type AtReset, type HandBackMode, handedWords } from "./handback.ts"
 import { type StopReason, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log, Tag, tagged, usageLimit, usageLimitLifted, usageWarning } from "./log.ts"
@@ -137,6 +139,15 @@ export interface UsageLimitHold {
    * --usage-limit-wait; null otherwise.
    */
   look(alone: boolean): Effect.Effect<StopReason | null>
+  /** Keeps the hand-backs due to workers at the limit, to send at the reset as their carry-on. */
+  readonly atReset: AtReset
+}
+
+/** A hand-back kept for the reset: what it hands back, its prompt, and what came of its send. */
+interface Kept {
+  readonly mode: HandBackMode
+  readonly prompt: string
+  readonly sent: Deferred.Deferred<string, AgentGone>
 }
 
 interface HoldState {
@@ -221,6 +232,8 @@ export const make = (options: {
     const watchers = yield* fibers.make("usageLimit")
     const lifter = yield* fibers.make("usageLimit lift")
     const state = yield* Ref.make(fresh)
+    // The hand-backs kept for the reset, by ticket.
+    const kept = yield* Ref.make<ReadonlyMap<string, Kept>>(new Map())
     // Changes run one at a time, so the hold is put on and lifted once.
     const one = yield* Semaphore.make(1)
 
@@ -319,8 +332,20 @@ export const make = (options: {
           lifted: true,
         }),
       )
+      // A hand-back kept for the reset is its worker's carry-on.
+      const due = yield* Ref.getAndSet(kept, new Map())
+      for (const [ticket, handBack] of due) {
+        const sent = yield* Effect.exit(host.send(ticket, handBack.prompt, "clientComposed"))
+        yield* Deferred.done(handBack.sent, sent)
+        if (sent._tag === "Success") {
+          yield* logs.write(
+            detail`${ticket}: the usage limit has reset; its worker is handed its ${handedWords(handBack.mode)}`,
+          )
+        }
+      }
       const entries = (yield* ledger.current).tickets
       for (const ticket of before.limited) {
+        if (due.has(ticket)) continue
         if (entries.get(ticket)?.steered === true) {
           yield* logs.write(
             detail`${ticket}: the usage limit has reset; you steer its worker, so tutti tells it nothing`,
@@ -475,9 +500,25 @@ export const make = (options: {
         return null
       }).pipe(one.withPermit)
 
+    // Kept only while the hold is on, so that the reset sends it: one at a time with the lift.
+    const keep: AtReset["keep"] = (ticket, mode, prompt) =>
+      Effect.gen(function* () {
+        if ((yield* Ref.get(state)).hold === null) return null
+        const sent = yield* Deferred.make<string, AgentGone>()
+        yield* Ref.update(kept, (all) => new Map([...all, [ticket, { mode, prompt, sent }]]))
+        return Deferred.await(sent)
+      }).pipe(one.withPermit)
+
+    const takeBack: AtReset["takeBack"] = (ticket) =>
+      Ref.modify(kept, (all) => {
+        if (!all.has(ticket)) return [false, all]
+        return [true, new Map([...all].filter(([each]) => each !== ticket))]
+      })
+
     return {
       held: Effect.map(Ref.get(state), (s) => s.hold !== null),
       limited: Effect.map(Ref.get(state), (s) => s.limited),
       look,
+      atReset: { keep, takeBack },
     } satisfies UsageLimitHold
   })

@@ -9,7 +9,9 @@
 // it can take it: hand-backs on (merge.check_hand_backs), attempts left of them, a failure to show
 // it (the check finished), git able to say what the check failed on, the run neither holding nor winding down, and
 // its worker Idle or Failed and not steered, or its session closed by tutti, which is resumed, or
-// Gone with its ticket's one Gone resume of the run left, resumed too (handback.ts's give).
+// Gone with its ticket's one Gone resume of the run left, resumed too (handback.ts's give). A worker
+// at the account's usage limit takes it too, though that limit holds the run: it is handed the
+// failure once the limit lifts, as orchestra 0.8.0 has it.
 //
 // The hand-back is a client_composed message with orchestra's instructions: what failed, the lines
 // that say so, what landed on the base since the branch was cut, and to commit a fix naming the
@@ -35,6 +37,7 @@
 // notes saying what came of each attempt. A failure that can't be handed back is set aside at once,
 // its line saying why.
 import { Effect, Ref, Result } from "effect"
+import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
@@ -43,6 +46,7 @@ import { type Commit, Git } from "../services/Git.ts"
 import { type Checked, failedHow, runMergeCheck, saidOf } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { failedResolved, give, type RebaseStop, rejectResolution, workerAway } from "./handback.ts"
+import { usageHolds } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { branchOn, detail, fixing, Log, line } from "./log.ts"
 import {
@@ -142,10 +146,19 @@ export const times = (n: number): string => (n === 1 ? "once" : n === 2 ? "twice
 
 const short = (hash: string) => hash.slice(0, 10)
 
+/** Whether the ticket's worker is at the account's usage limit. */
+const atLimit = (id: string): Effect.Effect<boolean, never, AgentHost> =>
+  Effect.gen(function* () {
+    const state = yield* Effect.result((yield* AgentHost).current(id))
+    return Result.isSuccess(state) && state.success._tag === "UsageLimited"
+  })
+
 /**
  * Why `stop`'s failure can't be handed back to the ticket's worker, the `fixed`th time so far:
  * undefined when it can, "" when check hand-backs are turned off (nothing to say). While the run
- * holds or winds down it takes on no more work, as `options.noMore` says.
+ * holds or winds down it takes on no more work, as `options.noMore` says, but for a worker at the
+ * account's usage limit while that limit alone holds the run: it is handed the failure once the
+ * limit lifts.
  */
 export const whyNotFix = (
   stop: CheckStop,
@@ -167,7 +180,8 @@ export const whyNotFix = (
     }
     if (stop.at === "" || stop.head === "") return "git could not say what the check failed on"
     const noMore = options.noMore === undefined ? undefined : yield* options.noMore
-    if (noMore !== undefined) return noMore
+    // A worker at the usage limit takes it once the limit lifts (handback.ts's give).
+    if (noMore !== undefined && !(noMore === usageHolds && (yield* atLimit(id)))) return noMore
     const state = yield* ledger.current
     if (state.windDown !== null) return "the run is winding down"
     if (state.tickets.get(id)?.steered === true) return "you have steered its worker"
@@ -529,6 +543,7 @@ export const fixCheck = (
           done: fixed,
         },
         limit,
+        options.atReset,
       )
       const verified =
         why === undefined
