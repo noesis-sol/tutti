@@ -183,14 +183,24 @@ const causeMessage = (cause: Cause.Cause<unknown>): string => {
   return Cause.pretty(cause)
 }
 
+/** Why a worker is gone, and its start failed, when Claude Code couldn't be spawned (§ 4.8). */
+const launchFailed = "Claude Code couldn't be launched"
+
+// The SDK reports any spawn that fails as a libc mismatch (docs/spikes/02-sdk-lifecycle.md § 3).
+/** Whether `message`, from the SDK, is a spawn that failed. */
+const isLaunchFailure = (message: string): boolean => message.includes("failed to launch")
+
 /** The reason a session didn't start, from what failed its initialize. */
 const startFailure = (open: Open, message: string): string => {
   if (open.startupFailure !== undefined) {
     return `Claude Code refused to start: ${open.startupFailure}`
   }
-  // The SDK reports any spawn that fails as a libc mismatch (docs/spikes/02-sdk-lifecycle.md § 3).
-  return message.includes("failed to launch") ? "Claude Code couldn't be launched" : message
+  return isLaunchFailure(message) ? launchFailed : message
 }
+
+/** Why a worker is gone when its stream failed without tutti closing it. */
+const failedWhy = (message: string): string =>
+  isLaunchFailure(message) ? launchFailed : `${endedWhy}: ${message}`
 
 /**
  * The live AgentHost, over the Agent SDK, its workers' sessions set up by `options` and AppConfig.
@@ -312,10 +322,7 @@ export const layer = (
           Stream.runForEach((message) => onMessage(session, message)),
           Effect.exit,
           Effect.flatMap((exit) =>
-            gone(
-              session,
-              Exit.isSuccess(exit) ? endedWhy : `${endedWhy}: ${causeMessage(exit.cause)}`,
-            ),
+            gone(session, Exit.isSuccess(exit) ? endedWhy : failedWhy(causeMessage(exit.cause))),
           ),
         )
 

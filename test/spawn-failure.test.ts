@@ -1,6 +1,7 @@
 // Sessions that can't start (§ 4.8), outside the live tests: AgentHost's live layer, over the Agent
 // SDK, with no real Claude Code. A Claude Code whose spawn fails is AgentStartFailed with the reason
-// `Claude Code couldn't be launched`, not the SDK's libc wording; a session whose folder isn't there
+// `Claude Code couldn't be launched`, not the SDK's libc wording, and its worker Gone with the same
+// reason; a session whose folder isn't there
 // is AgentStartFailed with `its folder isn't there: <path>`, Claude Code never spawned. Through the
 // run's start and resume, the first sets the ticket aside (START_FAILED) and the second fails the
 // resume with the folder's reason.
@@ -115,7 +116,7 @@ const startFailedOf = (exit: Exit.Exit<unknown, unknown>) => {
 }
 
 describe("a failed spawn", () => {
-  test("a Claude Code that can't be launched fails the start: Claude Code couldn't be launched, the worker Gone", async () => {
+  test("a Claude Code that can't be launched fails the start: Claude Code couldn't be launched, the worker Gone with it", async () => {
     const claude = unlaunchable()
     const { exit, state } = await withHost(claude, ({ dir }) =>
       Effect.gen(function* () {
@@ -131,7 +132,9 @@ describe("a failed spawn", () => {
     // Not the SDK's message, which blames the binary's libc.
     expect(failed).not.toHaveProperty("startupFailureReason")
     expect(failed.reason).not.toContain("libc")
-    expect(state._tag).toBe("Gone")
+    // The worker's Gone has the same reason: the stream's failure, which the SDK words as a libc
+    // mismatch too, is seen first.
+    expect(state).toEqual({ _tag: "Gone", why: launchFailed })
   })
 
   test("the run's start sets the ticket aside: START_FAILED, its worker didn't start: Claude Code couldn't be launched", async () => {
