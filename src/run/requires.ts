@@ -6,8 +6,11 @@
 //
 // A run checks the list as it starts, before its first ticket or any worker it carries over, and
 // stops REQUIREMENTS_MISSING, exit 2, for what is still missing, rather than leave every ticket to
-// fail on it one by one (requiresAtStart); `tutti init` lists the requirements among what the
-// machine needs, and `tutti requires` prints each one's state.
+// fail on it one by one (runRequires). A merge that changes the list on the base has the run take
+// the new one (setup.ts's takeSettings) and check it again, as at its start, before the next ticket
+// starts: what is still missing stops the run REQUIREMENTS_MISSING too, the running tickets finishing
+// first (a HOLD line), as orchestra's takeRequires and recheckRequires have it. `tutti init` lists
+// the requirements among what the machine needs, and `tutti requires` prints each one's state.
 import { join } from "node:path"
 import { Duration, Effect } from "effect"
 import { O } from "../native/libc.ts"
@@ -162,6 +165,24 @@ export const checkRequires = (list: ReadonlyArray<Requirement>, options: CheckOp
     return report as RequireReport
   })
 
+/** Whether the lists `a` and `b` are the same requirements, in the same order. */
+export const sameRequires = (
+  a: ReadonlyArray<Requirement>,
+  b: ReadonlyArray<Requirement>,
+): boolean =>
+  a.length === b.length &&
+  a.every((r, i) => {
+    const other = b[i]
+    return (
+      other !== undefined &&
+      r.name === other.name &&
+      r.check === other.check &&
+      r.install === other.install &&
+      r.manual === other.manual &&
+      (r.platforms ?? []).join(",") === (other.platforms ?? []).join(",")
+    )
+  })
+
 /** The requirements still missing. */
 export const missingOf = (report: RequireReport): RequireReport =>
   report.filter((res) => res.state === "missing")
@@ -236,11 +257,11 @@ export const missingDetail = (report: RequireReport): string => {
 }
 
 /**
- * The run's check of its requirements as it starts: each step said as a REQUIRES line, under the
- * START block, then how they were found; what is still missing, as missingDetail says it, or "" for
- * nothing missing or none to check.
+ * The run's check of its requirements, as it starts and again once a merge changed them: each step
+ * said as a REQUIRES line (under the START block at the start), then how they were found; what is
+ * still missing, as missingDetail says it, or "" for nothing missing or none to check.
  */
-export const requiresAtStart = (list: ReadonlyArray<Requirement>, options: CheckOptions) =>
+export const runRequires = (list: ReadonlyArray<Requirement>, options: CheckOptions) =>
   Effect.gen(function* () {
     if (list.length === 0) return ""
     const logs = yield* Log

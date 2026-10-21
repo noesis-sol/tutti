@@ -345,6 +345,11 @@ still missing it stops at once with one line, exit 2, rather than leave every ti
 REQUIREMENTS_MISSING: docker (start Docker Desktop); meet it (each entry of 'requires' in .tutti/settings.json says how), then run again
 ```
 
+A ticket that changes the list (the environment ticket a spec's breakdown files first, say) has
+the run take the new list once it merges and check it again before the next ticket starts, in the
+same way: what is still missing stops the run, the tickets running then finishing first, and the
+workers started from then on are told the list as it is now.
+
 `tutti init` checks the list too, installing what it can, a line of its summary for each entry.
 `tutti requires` checks it at any time and prints each entry's state (`jq: met`, `docker: missing:
 start Docker Desktop`), exit 2 for one missing; `--no-install` only checks.

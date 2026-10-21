@@ -77,6 +77,8 @@ export interface WorkerOptionsInput {
    * changes the requires list writes again (requiresNote).
    */
   readonly readme?: boolean
+  /** The names of the run's requires list now (requiresNote); the settings' when left out. */
+  readonly requires?: ReadonlyArray<string>
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
   /** workerEnv()'s environment (§ 4.13). */
@@ -191,7 +193,7 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
             append:
               forTicket(input.prompt, input.ticket) +
               requiresNote(
-                input.config.settings.requires.map((r) => r.name),
+                input.requires ?? input.config.settings.requires.map((r) => r.name),
                 input.prompt.text,
                 input.readme === true,
               ) +

@@ -51,7 +51,9 @@ and the workers carried over, and the deferred tickets free to run
 **What the machine must have.** Before its first ticket, and before any worker it carries over, the
 run checks the project's requires list, installing what it can. For what is still missing it stops
 at once, exit 2, nothing started: `REQUIREMENTS_MISSING: docker (start Docker Desktop); meet it (each
-entry of 'requires' in .tutti/settings.json says how), then run again`.
+entry of 'requires' in .tutti/settings.json says how), then run again`. A ticket that changes the
+list checks it again once it merges, before the next ticket starts; what is missing then stops the
+run the same way, the running tickets finishing first.
 
 **The start question.** In a terminal (its input and output both), `tutti` asks what the run should
 work on:
@@ -465,8 +467,9 @@ and then the run ends with that reason. The log says
 - **`DIRTY_TREE`**, **`GIT_FAILED`**, **`MERGE_FAILED`**: the merges stop.
 - **`BEADS_FAILED`**, **`AGENT_FAILED`**: `bd` or a worker's session failing.
 - **`ENVIRONMENT`** and **`USAGE_LIMIT`**, below.
-- **`REQUIREMENTS_MISSING`**: what the project's requires list names is missing as the run starts;
-  the run ends at once, exit 2 ([above](#starting-a-run)).
+- **`REQUIREMENTS_MISSING`**: what the project's requires list names is missing as the run starts,
+  or once a merge has changed the list; the run ends at once, or once the running tickets finish,
+  exit 2 ([above](#starting-a-run)).
 
 **Winding down yourself.** `s` in the dashboard, then `y`, or `kill -USR1 <pid>`: no new tickets, the
 running ones finish and merge, and the run ends `DRAINED`, exit 0, with the full check and the report

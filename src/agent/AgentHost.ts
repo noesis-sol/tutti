@@ -201,6 +201,11 @@ export class AgentHost extends Context.Service<
     close(ticket: string): Effect.Effect<void>
     /** Closes the worker's session if it is open and forgets the worker: its streams end. */
     end(ticket: string): Effect.Effect<void>
+    /**
+     * The run's requires list has the entries `names` from now on, a merge having changed it: the
+     * workers started or resumed after are told so (requiresNote); before, the settings' entries.
+     */
+    takeRequires(names: ReadonlyArray<string>): Effect.Effect<void>
     /** The worker's state now. */
     current(ticket: string): Effect.Effect<WorkerState, AgentGone>
     /** The worker's state: now, then on each change, across its sessions, until it is ended. */

@@ -31,13 +31,15 @@
 // environment (retrySetups). Setups failing ticket after ticket hold the run for the environment,
 // as workers failing at once do (environment.ts), and the run's end names the tickets still waiting
 // on one (SETUP_WAITS). A merge that changes checks.setup in .tutti/settings.json has the run use it
-// from then on (takeSettings).
+// from then on (takeSettings), and one that changes its requires list has the run check the new
+// list before the next ticket starts (requires.ts).
 import { unlinkSync } from "node:fs"
 import { basename, join } from "node:path"
 import { Effect, Option, Ref, Result } from "effect"
+import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
-import { Settings, settingsFile } from "../project/settings.ts"
+import { type Requirement, Settings, settingsFile } from "../project/settings.ts"
 import { Beads } from "../services/Beads.ts"
 import { type CheckError, Checks, setupLogName } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
@@ -57,6 +59,7 @@ import { Ledger, type State as LedgerState } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, type FinishedTicket, type MergeOptions } from "./merge.ts"
 import { Cause, Detail, setupWait } from "./phase.ts"
+import { sameRequires } from "./requires.ts"
 
 /** The run's setup: its command (null: none), and the globs of the files it reads. */
 export interface SetupConf {
@@ -92,6 +95,18 @@ export interface SetUps {
   readonly now: Effect.Effect<SetupConf>
   /** The run uses `setup` from now on. */
   take(setup: SetupConf): Effect.Effect<void>
+  /**
+   * The requires list as the run has it now: the settings', unless a merge committed another
+   * (takeSettings).
+   */
+  readonly requires: Effect.Effect<ReadonlyArray<Requirement>>
+  /** The run has `list` as its requires list from now on, due to be checked (requiresDue). */
+  takeRequires(list: ReadonlyArray<Requirement>): Effect.Effect<void>
+  /**
+   * Whether the requires list is due to be checked, a merge having changed it since it was last
+   * asked: true once for each change.
+   */
+  readonly requiresDue: Effect.Effect<boolean>
   /**
    * The branch commit the dependencies in the ticket's worktree were last set up for in this run,
    * before its worker or before its check; undefined when they weren't.
@@ -145,9 +160,12 @@ export const offBaseKey = "set_up_off_base"
  * base, as state.json says when there is a Store.
  */
 export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(function* () {
-  const { command, files } = (yield* AppConfig).settings.checks.setup
+  const { settings } = yield* AppConfig
+  const { command, files } = settings.checks.setup
   const store = yield* Effect.serviceOption(Store)
   const setup = yield* Ref.make<SetupConf>({ command, files })
+  const requires = yield* Ref.make(settings.requires)
+  const requiresDue = yield* Ref.make(false)
   const heads = yield* Ref.make<ReadonlyMap<string, string>>(new Map())
   const failures = yield* Ref.make<ReadonlyMap<string, FailedSetup>>(new Map())
   const left = new Map<string, SetUpFor>()
@@ -181,6 +199,9 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
   return {
     now: Ref.get(setup),
     take: (conf) => Ref.set(setup, conf),
+    requires: Ref.get(requires),
+    takeRequires: (list) => Effect.andThen(Ref.set(requires, list), Ref.set(requiresDue, true)),
+    requiresDue: Ref.getAndSet(requiresDue, false),
     worktree: (id) => Effect.map(Ref.get(heads), (now) => now.get(id)),
     setWorktree,
     failed: (id, failed) => Ref.update(failures, (now) => new Map(now).set(id, failed)),
@@ -609,15 +630,17 @@ const setupSaid = (command: string | null): string => (command === null ? "none"
  * Has the run take checks.setup from .tutti/settings.json as ticket `id`'s merge committed it to the
  * base, when the merge, from `before` to `now`, changed that file: a setup set during the run counts
  * from then on, as the environment ticket a spec's breakdown files first sets it for the tickets
- * after it. One git can't read, or that doesn't parse, is warned of (SETTINGS_UNREAD), and the
- * setup stays as it was.
+ * after it. Its requires list too, which the run checks before the next ticket starts (requires.ts),
+ * and names to the workers started or resumed from then on (AgentHost's takeRequires). One git
+ * can't read, or that doesn't parse, is warned of (SETTINGS_UNREAD), and the setup and the
+ * requires list stay as they were.
  */
 export const takeSettings = (
   id: string,
   options: MergeOptions,
   setUps: SetUps,
   before: string,
-): Effect.Effect<void, never, Git | Log | EventStream> =>
+): Effect.Effect<void, never, AgentHost | Git | Log | EventStream> =>
   Effect.gen(function* () {
     const git = yield* Git
     const logs = yield* Log
@@ -630,7 +653,7 @@ export const takeSettings = (
     const was = yield* setUps.now
     const read = yield* Effect.result(git.fileAt(repo, now, settingsFile))
     let problem: string | undefined
-    let setup: SetupConf | undefined
+    let taken: Settings | undefined
     if (Result.isFailure(read)) problem = read.failure.message
     else {
       const parsed = (() => {
@@ -643,7 +666,7 @@ export const takeSettings = (
       if ("error" in parsed) problem = parsed.error
       else {
         const decoded = yield* Effect.result(decodeConfig(Settings, settingsFile, parsed.json))
-        if (Result.isSuccess(decoded)) setup = decoded.success.checks.setup
+        if (Result.isSuccess(decoded)) taken = decoded.success
         else {
           problem = decoded.failure.problems
             .map((each) => (each.path === "" ? each.message : `${each.path}: ${each.message}`))
@@ -651,13 +674,23 @@ export const takeSettings = (
         }
       }
     }
-    if (setup === undefined) {
+    if (taken === undefined) {
       const text = ticketLine(
         Tag.settingsUnread,
-      )`${id}'s merge changed ${settingsFile} on ${base}, but it could not be read${problem === undefined ? "" : `: ${problem}`}; the setup stays ${setupSaid(was.command)}`
+      )`${id}'s merge changed ${settingsFile} on ${base}, but it could not be read${problem === undefined ? "" : `: ${problem}`}; the setup stays ${setupSaid(was.command)}, and the requirements as they were`
       yield* logs.writeWith([text], (yield* EventStream).emit({ kind: "warn", ticket: id, text }))
       return
     }
+    if (!sameRequires(taken.requires, yield* setUps.requires)) {
+      yield* setUps.takeRequires(taken.requires)
+      yield* (yield* AgentHost).takeRequires(taken.requires.map((r) => r.name))
+      yield* logs.write(
+        ticketLine(
+          Tag.requires,
+        )`${id}'s merge changed the requirements in ${settingsFile} on ${base}: they are checked before the next ticket starts`,
+      )
+    }
+    const setup = taken.checks.setup
     const same =
       setup.command === was.command &&
       setup.files.length === was.files.length &&

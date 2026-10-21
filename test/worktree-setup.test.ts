@@ -698,7 +698,7 @@ describe("the setup settings a merge changes", () => {
     expectLog(ran, [
       /^ {2}a closed /,
       new RegExp(
-        `^ {2}SETTINGS_UNREAD: a's merge changed \\.tutti/settings\\.json on main, but it could not be read: it isn't valid JSON: .*; the setup stays '${setup}'$`,
+        `^ {2}SETTINGS_UNREAD: a's merge changed \\.tutti/settings\\.json on main, but it could not be read: it isn't valid JSON: .*; the setup stays '${setup}', and the requirements as they were$`,
       ),
       startsLine("b"),
     ])

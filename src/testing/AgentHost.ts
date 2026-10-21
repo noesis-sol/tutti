@@ -146,6 +146,8 @@ export class Recording extends Context.Service<
     sentTo(ticket: string): Effect.Effect<ReadonlyArray<Sent>>
     /** The messages the ticket's worker was sent, in order. */
     messages(ticket: string): Effect.Effect<ReadonlyArray<SDKUserMessage>>
+    /** The names of each requires list the run took from a merge (takeRequires), in order. */
+    readonly requires: Effect.Effect<ReadonlyArray<ReadonlyArray<string>>>
   }
 >()("tutti/testing/AgentHost/Recording") {}
 
@@ -214,6 +216,7 @@ export const layer = (
       const left = new Map(Object.entries(scripts).map(([ticket, script]) => [ticket, [...script]]))
       const running = new Map<string, Running>()
       const sent: Array<Sent> = []
+      const requires: Array<ReadonlyArray<string>> = []
       const drawn = yield* Ref.make(0)
       // Starts, resumes, closes, ends and a session going are one at a time.
       const one = yield* Semaphore.make(1)
@@ -488,6 +491,7 @@ export const layer = (
             yield* record(Sent.Ended({ ticket }))
             yield* workers.forget(ticket)
           }).pipe(one.withPermit),
+        takeRequires: (names) => Effect.sync(() => void requires.push(names)),
         current: workers.current,
         state: workers.state,
         messages: workers.messages,
@@ -511,6 +515,7 @@ export const layer = (
               item._tag === "Message" && item.ticket === ticket ? [item.message] : [],
             ),
           ),
+        requires: Effect.sync(() => [...requires]),
       })
       return Context.make(AgentHost, host).pipe(Context.add(Recording, recording))
     }),

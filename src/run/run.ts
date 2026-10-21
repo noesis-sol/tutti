@@ -159,7 +159,7 @@ import {
 import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
-import { requiresAtStart } from "./requires.ts"
+import { runRequires } from "./requires.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
 import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
 import * as scope from "./scope.ts"
@@ -723,7 +723,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // quit cuts an install short: it is heard once the run listens for them, below, and the run
     // quits with nothing resumed.
     const quitEarly = yield* Ref.make<QuitRequest | null>(null)
-    const checking = requiresAtStart(config.settings.requires, {
+    const checking = runRequires(config.settings.requires, {
       repo: config.repo,
       installLimit: config.settings.checks.fast.timeout,
     })
@@ -1095,6 +1095,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // first, each in a slot: each is done but for its merge, and others may wait on it. One left
       // for a hold, a solo ticket or a slot is due again at a later look (recheck.ts).
       yield* queue.recheck
+      // A merge that changed the requires list has it checked again before the next ticket starts
+      // (requires.ts): what is still missing stops the run as at its start, the running tickets
+      // finishing first.
+      if (yield* setUps.requiresDue) {
+        const missing = yield* runRequires(yield* setUps.requires, {
+          repo: config.repo,
+          installLimit: config.settings.checks.fast.timeout,
+        })
+        if (missing !== "") yield* stopped(stopFor("REQUIREMENTS_MISSING", missing))
+      }
       // The answered tickets come back before new ones start, each in a slot of its own and
       // counting toward no limit (asked.ts); not while the run holds or winds down, which takes up
       // only what is running: the next run resumes them.

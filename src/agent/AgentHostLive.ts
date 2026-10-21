@@ -257,6 +257,10 @@ export const layer = (
       const readme = yield* fs
         .exists(join(config.repo, readmeName))
         .pipe(Effect.orElseSucceed(() => false))
+      // The names of the run's requires list, as the workers starting now are told it (requiresNote).
+      const requires = yield* Ref.make<ReadonlyArray<string>>(
+        config.settings.requires.map((r) => r.name),
+      )
       const findings = yield* Ref.make<SetupFindings>(noFindings)
       const open = new Map<string, Open>()
       // Tickets whose session is being made, so a second start is refused at once.
@@ -429,6 +433,7 @@ export const layer = (
                   servers,
                   skills,
                   readme,
+                  requires: yield* Ref.get(requires),
                   callbacks,
                   session: how,
                   env,
@@ -579,6 +584,7 @@ export const layer = (
           }),
         close,
         end: (ticket) => Effect.andThen(close(ticket), workers.forget(ticket)),
+        takeRequires: (names) => Ref.set(requires, names),
         current: workers.current,
         state: workers.state,
         messages: workers.messages,
