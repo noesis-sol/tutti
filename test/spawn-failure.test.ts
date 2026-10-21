@@ -27,6 +27,7 @@ import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { testEnv } from "./env.ts"
 import { backlog, expectLog, scenario } from "./harness.ts"
 
 // The SDK spawns (or fails to spawn) a process for each start: bun's 5 s default fails them when
@@ -59,7 +60,7 @@ const hostOptions = (log: string) => ({
   prompt: { text: "Work on TICKET_ID.", file: null },
   servers: { servers: [], note: noServersNote },
   account: { billing: { _tag: "Subscription", keyUnused: false } as const, subscription: true },
-  env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify({ log }) },
+  env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ log }) },
 })
 
 /** How long, in real time, a test's host may take to close. */

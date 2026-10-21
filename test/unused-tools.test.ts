@@ -21,6 +21,7 @@ import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.t
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { testEnv } from "./env.ts"
 
 // The live host's test starts the fake Claude Code as a process.
 setDefaultTimeout(30_000)
@@ -207,7 +208,7 @@ const workerArgs = (dir: string): Promise<ReadonlyArray<string>> => {
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers: noServers,
     account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-    env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify({ log }) },
+    env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ log }) },
   })
   const started = Effect.gen(function* () {
     const agents = yield* AgentHost

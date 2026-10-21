@@ -18,6 +18,7 @@ import {
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import pkg from "../package.json" with { type: "json" }
+import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 
 const checkout = resolve(import.meta.dir, "..")
@@ -55,7 +56,7 @@ const runs = (j: Job) => j.steps.flatMap((step) => (step.run === undefined ? [] 
 
 /** The environment without NODE_ENV and the probe's variables, as a shell passes it on. */
 const shellEnv = (extra: Record<string, string> = {}): Record<string, string | undefined> => {
-  const env: Record<string, string | undefined> = { ...process.env }
+  const env: Record<string, string | undefined> = { ...testEnv }
   for (const name of [
     "NODE_ENV",
     "TUTTI_PROBE_ENV",

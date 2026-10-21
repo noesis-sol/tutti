@@ -19,6 +19,7 @@ import type { Log } from "../src/run/log.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
+import { testEnv } from "./env.ts"
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
@@ -80,7 +81,7 @@ const run = async <A, E>(
         layer({
           account: { subscription: true },
           env: {
-            ...process.env,
+            ...testEnv,
             ANTHROPIC_API_KEY: "sk-ant-test",
             FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario),
           },

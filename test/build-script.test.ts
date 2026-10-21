@@ -17,6 +17,7 @@ import {
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import pkg from "../package.json" with { type: "json" }
+import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 
 const checkout = resolve(import.meta.dir, "..")
@@ -82,8 +83,8 @@ const run = (root: string, args: ReadonlyArray<string>, env: Record<string, stri
   const proc = Bun.spawnSync(["sh", join(root, "scripts/build.sh"), ...args], {
     cwd: root,
     env: {
-      ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
+      ...testEnv,
+      PATH: `${bin}:${testEnv.PATH}`,
       FAKE_LOG: log,
       FAKE_ROOT: root,
       FAKE_HOST: host,

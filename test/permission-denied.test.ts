@@ -36,6 +36,7 @@ import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.t
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { testEnv } from "./env.ts"
 
 /** The safety check's reason for a held removal, as the spike saw it. */
 const heldReason =
@@ -333,7 +334,7 @@ describe("the live host", () => {
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: { servers: [], note: noServersNote },
       account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
+      env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
     })
     const config = appConfig({ claude: fake, settings: defaultSettings }, dir)
     const seen = await Effect.runPromise(

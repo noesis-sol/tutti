@@ -32,6 +32,7 @@ import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
 import * as TestGit from "../src/testing/Git.ts"
+import { testEnv, withVariable } from "./env.ts"
 
 const root = join(import.meta.dir, "..")
 
@@ -166,9 +167,7 @@ describe("the Claude Code sessions run", () => {
     mkdirSync(bunfs, { recursive: true })
     const embedded = fakeClaude(bunfs, embeddedVersion, "claude-abc123")
     const tmp = folder("claude-tmp")
-    const before = process.env.CLAUDE_CODE_TMPDIR
-    process.env.CLAUDE_CODE_TMPDIR = tmp
-    try {
+    await withVariable("CLAUDE_CODE_TMPDIR", tmp, async () => {
       const from = sources({ embedded, extract: extractFromBunfs })
       const first = await resolved(null, from)
       const again = await resolved(null, from)
@@ -180,10 +179,7 @@ describe("the Claude Code sessions run", () => {
       const path = first.path ?? ""
       expect(readFileSync(path, "utf8")).toBe(readFileSync(embedded, "utf8"))
       expect(statSync(path).mode & 0o777).toBe(0o755)
-    } finally {
-      if (before === undefined) delete process.env.CLAUDE_CODE_TMPDIR
-      else process.env.CLAUDE_CODE_TMPDIR = before
-    }
+    })
   })
 
   test("compiled, the embedded one not extracted is a setup problem", async () => {
@@ -308,7 +304,7 @@ describe("resolveClaude", () => {
     `
     const ran = Bun.spawnSync([process.execPath, "--eval", script], {
       cwd: root,
-      env: { ...process.env, CLAUDE_CODE_TMPDIR: tmp },
+      env: { ...testEnv, CLAUDE_CODE_TMPDIR: tmp },
     })
     expect(ran.stderr.toString()).toBe("")
     const claude = JSON.parse(ran.stdout.toString()) as Claude

@@ -8,6 +8,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { releaseKey, signChecksums, signFile, signRelease } from "../scripts/sign-checksums.ts"
 import type { ReleaseKey } from "../src/update/keys.ts"
+import { testEnv } from "./env.ts"
 
 const script = resolve(import.meta.dir, "../scripts/sign-checksums.ts")
 const sums = "0123  tutti_0.9.0_darwin_arm64.tar.gz\n4567  tutti_0.9.0_linux_x64_musl.tar.gz\n"
@@ -39,7 +40,7 @@ const signatureIn = (dir: string) => {
  */
 const sign = (key: string | undefined, args: ReadonlyArray<string> = ["checksums.txt"]) => {
   const dir = sumsFolder()
-  const env: Record<string, string | undefined> = { ...process.env }
+  const env: Record<string, string | undefined> = { ...testEnv }
   delete env.TUTTI_RELEASE_KEY
   if (key !== undefined) env.TUTTI_RELEASE_KEY = key
   const proc = Bun.spawnSync(["bun", script, ...args], {

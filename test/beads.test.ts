@@ -20,6 +20,7 @@ import {
   saysNoSuchIssue,
 } from "../src/services/Beads.ts"
 import { Backlog, layer as backlogLayer, type Seed } from "../src/testing/Beads.ts"
+import { machineWhich } from "./env.ts"
 import { slow } from "./gates.ts"
 
 const fixture = (name: string) => readFileSync(join(import.meta.dir, "fixtures/bd", name), "utf8")
@@ -876,10 +877,11 @@ const scenario = Effect.gen(function* () {
   return steps
 })
 
-const bdInstalled = Bun.which("bd") !== null
+// The machine's bd, which the tests' PATH leaves out (test/env.ts).
+const bd = machineWhich("bd")
 
 describe("against a real bd", () => {
-  ;(bdInstalled ? slow.test : test.skip)(
+  ;(bd !== null ? slow.test : test.skip)(
     "the in-memory backlog's ready queue, labels and links match bd's",
     async () => {
       const dir = mkdtempSync(join(tmpdir(), "tutti-bd-"))
@@ -888,9 +890,12 @@ describe("against a real bd", () => {
         if (result.exitCode !== 0) throw new Error(`${cmd.join(" ")}: ${result.stderr}`)
       }
       sh("git", "init", "-q")
-      sh("bd", "init", "--quiet", "--prefix", "slow", "--skip-hooks", "--skip-agents")
+      sh(bd ?? "bd", "init", "--quiet", "--prefix", "slow", "--skip-hooks", "--skip-agents")
       const real = await Effect.runPromise(
-        Effect.provide(scenario, Beads.layer({ cwd: dir }).pipe(Layer.provide(BunServices.layer))),
+        Effect.provide(
+          scenario,
+          Beads.layer({ cwd: dir, command: bd ?? "bd" }).pipe(Layer.provide(BunServices.layer)),
+        ),
       )
       const memory = await Effect.runPromise(Effect.provide(scenario, backlogLayer()))
       expect(memory).toEqual(real)

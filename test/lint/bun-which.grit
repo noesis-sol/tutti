@@ -1,0 +1,8 @@
+// Bun.which in the tests (biome.json): it searches the process's PATH, where a test can find the
+// machine's own claude or bd and pass, or skip, only where they are installed. test/env.ts has
+// which, for the tests' PATH, and machineWhich, for a slow or live test that runs the real tool.
+language js
+
+`Bun.which` as $which where {
+  register_diagnostic(span=$which, message="Bun.which searches the process's PATH: use which or machineWhich from test/env.ts.")
+}

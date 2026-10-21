@@ -32,6 +32,7 @@ import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
+import { testEnv } from "./env.ts"
 
 /**
  * A repository and a folder beside it, both real paths: in the repository `src/a.ts`, `inner`
@@ -241,7 +242,7 @@ describe("the scout's options", () => {
             Layer.provideMerge(
               liveModel({
                 account: { subscription: true },
-                env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
+                env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
               }),
             ),
             Layer.provideMerge(

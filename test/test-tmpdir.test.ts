@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os"
 import { basename, dirname, join, resolve } from "node:path"
 import { removeStaleRuns, runTempBase, runTempPid } from "../scripts/test.ts"
+import { testEnv } from "./env.ts"
 
 const script = resolve(import.meta.dir, "../scripts/test.sh")
 
@@ -30,7 +31,7 @@ const runScript = (fail: boolean, base: string) => {
   const folder = mkdtempSync(join(tmpdir(), "tutti-test-tmpdir-"))
   const seen = join(folder, "tmpdir")
   const env: Record<string, string | undefined> = {
-    ...process.env,
+    ...testEnv,
     TUTTI_FIXTURE_TMPDIR: seen,
     TUTTI_TEST_TMPDIR: base,
   }

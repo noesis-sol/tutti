@@ -14,6 +14,7 @@ import { compose, costTotal } from "../src/run/report.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
+import { testEnv } from "./env.ts"
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
@@ -29,7 +30,7 @@ const run = <A, E>(
       Effect.provide(
         layer({
           account: { subscription: true },
-          env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
+          env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
         }).pipe(
           Layer.provideMerge(
             Layer.mergeAll(

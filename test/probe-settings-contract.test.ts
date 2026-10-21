@@ -12,6 +12,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk"
 import { probeEnv } from "../src/agent/env.ts"
 import { probeOptions } from "../src/agent/options.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
+import { testEnv } from "./env.ts"
 import { live } from "./gates.ts"
 
 /** A prompt that sends nothing until `signal` aborts. */
@@ -30,7 +31,7 @@ const answers = async (repo: string): Promise<{ init: unknown; settings: unknown
     prompt: nothing(abortController.signal),
     options: probeOptions({
       config: TestAppConfig.appConfig({}, repo),
-      env: probeEnv({ env: process.env }),
+      env: probeEnv({ env: testEnv }),
       stderr: () => {},
       spawned: (child: ChildProcess) => {
         closed = new Promise((resolve) => child.once("close", () => resolve()))

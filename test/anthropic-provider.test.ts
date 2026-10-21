@@ -24,6 +24,7 @@ import { make, type Organ, Organs } from "../src/organs/Organs.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
+import { testEnv } from "./env.ts"
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
@@ -258,7 +259,7 @@ describe("chosenLayer", () => {
       eofAfterTurn: true,
     }
     const env = {
-      ...process.env,
+      ...testEnv,
       [providerVariable]: undefined,
       ANTHROPIC_API_KEY: "sk-ant-test",
       FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario),

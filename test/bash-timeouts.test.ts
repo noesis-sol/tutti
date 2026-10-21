@@ -19,6 +19,7 @@ import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.t
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { testEnv } from "./env.ts"
 
 // The live host's test starts the fake Claude Code as a process: up to a second on an idle machine.
 setDefaultTimeout(30_000)
@@ -114,7 +115,7 @@ describe("a worker's session", () => {
       servers: { servers: [], note: noServersNote },
       account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
       env: {
-        ...process.env,
+        ...testEnv,
         BASH_DEFAULT_TIMEOUT_MS: "120000",
         FAKE_CLAUDE_SCENARIO: JSON.stringify({ log, env: timeoutVariables }),
       },

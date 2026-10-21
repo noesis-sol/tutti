@@ -25,6 +25,7 @@ import {
   staleCopies,
   tidyExtracted,
 } from "../src/agent/claudeExtract.ts"
+import { testEnv, withVariable } from "./env.ts"
 
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-${name}-`)))
 
@@ -46,14 +47,10 @@ const embedded = (content = "#!/bin/sh\necho '2.1.301 (Claude Code)'\n") => {
 /** `extractFromBunfs` of `file` with CLAUDE_CODE_TMPDIR at a new folder: its copy and its base. */
 const extracted = (file: string) => {
   const tmp = folder("claude-tmp")
-  const before = process.env.CLAUDE_CODE_TMPDIR
-  process.env.CLAUDE_CODE_TMPDIR = tmp
-  try {
-    return { copy: extractFromBunfs(file), base: join(tmp, `claude-${uid}`) }
-  } finally {
-    if (before === undefined) delete process.env.CLAUDE_CODE_TMPDIR
-    else process.env.CLAUDE_CODE_TMPDIR = before
-  }
+  return withVariable("CLAUDE_CODE_TMPDIR", tmp, () => ({
+    copy: extractFromBunfs(file),
+    base: join(tmp, `claude-${uid}`),
+  }))
 }
 
 const daysAgo = (path: string, days: number) => {
@@ -222,7 +219,7 @@ describe("a compiled build's start", () => {
     try {
       const ran = Bun.spawnSync([process.execPath, "--eval", script], {
         cwd: root,
-        env: { ...process.env, CLAUDE_CODE_TMPDIR: tmp },
+        env: { ...testEnv, CLAUDE_CODE_TMPDIR: tmp },
       })
       expect(ran.stderr.toString()).toBe("")
       expect(JSON.parse(ran.stdout.toString())).toEqual({ path: copy, warnings: [], problems: [] })

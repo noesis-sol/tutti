@@ -42,6 +42,7 @@ import {
   windowOf,
 } from "../src/ui/transcriptItems.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
+import { testEnv } from "./env.ts"
 import { type Rendered, withRender } from "./render.ts"
 
 const sdk = (message: Record<string, unknown>): SDKMessage => message as unknown as SDKMessage
@@ -140,7 +141,7 @@ describe("the live host records what it sends", () => {
       servers: { servers: [], note: noServersNote },
       account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
       env: {
-        ...process.env,
+        ...testEnv,
         FAKE_CLAUDE_SCENARIO: JSON.stringify({ log: join(dir, "fake.jsonl") }),
       },
     })

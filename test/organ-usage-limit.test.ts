@@ -21,6 +21,7 @@ import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
 import { layer as cannedLayer } from "../src/testing/Organs.ts"
 import { Reported, layer as usageLayer } from "../src/testing/UsageLimits.ts"
+import { testEnv } from "./env.ts"
 import {
   advance,
   backlog,
@@ -76,7 +77,7 @@ describe("AgentSdkLanguageModel on the usage limit", () => {
         Effect.provide(
           layer({
             account: { subscription: true },
-            env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify(fakeScenario) },
+            env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(fakeScenario) },
           }).pipe(
             Layer.provideMerge(
               Layer.mergeAll(

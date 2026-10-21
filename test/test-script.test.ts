@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { testEnv } from "./env.ts"
 
 const script = resolve(import.meta.dir, "../scripts/test.sh")
 
@@ -12,7 +13,7 @@ const script = resolve(import.meta.dir, "../scripts/test.sh")
 const runScript = (fixture: string) => {
   const counter = join(mkdtempSync(join(tmpdir(), "tutti-test-script-")), "runs")
   const proc = Bun.spawnSync([script, `./test/fixtures/flaky/${fixture}`], {
-    env: { ...process.env, TUTTI_FIXTURE_COUNTER: counter },
+    env: { ...testEnv, TUTTI_FIXTURE_COUNTER: counter },
     stdout: "pipe",
     stderr: "pipe",
   })

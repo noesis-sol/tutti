@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { muslReport } from "../src/native/musl.ts"
+import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 
 const checkout = resolve(import.meta.dir, "..")
@@ -41,7 +42,7 @@ process.report.getReport = () => ({ header: ${JSON.stringify(glibc === undefined
 await import(${JSON.stringify(join(checkout, "src/native/detectMusl.ts"))})
 console.log(JSON.stringify(process.env.OPENTUI_LIBC ?? null))
 `
-  const base: Record<string, string | undefined> = { ...process.env }
+  const base: Record<string, string | undefined> = { ...testEnv }
   delete base.OPENTUI_LIBC
   const proc = Bun.spawnSync(["bun", "-e", script], {
     cwd: checkout,

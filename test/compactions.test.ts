@@ -32,6 +32,7 @@ import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { testEnv } from "./env.ts"
 import { backlog, expectLog, scenario, type World } from "./harness.ts"
 
 const folder = (name: string) =>
@@ -85,7 +86,7 @@ describe("the live host's PreCompact callback", () => {
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: { servers: [], note: noServersNote },
       account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
+      env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
     })
     const config = appConfig({ claude: fake, settings: defaultSettings }, dir)
     const seen = await Effect.runPromise(

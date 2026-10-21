@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { testEnv } from "./env.ts"
 
 // Runs a test file using test/gates.ts in a fresh folder, with the given environment, and returns
 // the names of the tests that ran.
@@ -20,7 +21,7 @@ slow.describe("slow group", () => { test("inside", () => ran("slow group")) })
 live.test("live test", () => ran("live test"))
 `,
   )
-  const { TUTTI_SLOW: _slow, TUTTI_LIVE: _live, ...rest } = process.env
+  const { TUTTI_SLOW: _slow, TUTTI_LIVE: _live, ...rest } = testEnv
   const proc = Bun.spawnSync(["bun", "test", "./g.test.ts"], {
     cwd: dir,
     env: { ...rest, ...env },

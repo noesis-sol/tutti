@@ -27,6 +27,7 @@ import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { testEnv } from "./env.ts"
 
 const canUseTool: CanUseTool = async () => ({ behavior: "allow" })
 const onElicitation: OnElicitation = async () => ({ action: "decline" })
@@ -212,7 +213,7 @@ describe("spawnInOwnProcessGroup", () => {
       command: "/bin/sh",
       args: ["-c", script],
       cwd: "/",
-      env: { PATH: process.env.PATH },
+      env: { PATH: testEnv.PATH },
       signal: new AbortController().signal,
     } satisfies SpawnOptions)
 
@@ -248,7 +249,7 @@ describe("spawnInOwnProcessGroup", () => {
     })({
       command: "/bin/sh",
       args: ["-c", "echo oops >&2; echo done"],
-      env: { PATH: process.env.PATH },
+      env: { PATH: testEnv.PATH },
       signal: new AbortController().signal,
     })
     expect(await stdoutOf(child)).toBe("done\n")

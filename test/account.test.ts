@@ -22,6 +22,7 @@ import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
+import { testEnv } from "./env.ts"
 import { live } from "./gates.ts"
 
 const key = "sk-ant-test"
@@ -89,7 +90,7 @@ describe("workerEnv", () => {
 
   test("starts from process.env by default", () => {
     const result = workerEnv({ subscription: false, billing: "subscription" })
-    expect(result.PATH).toBe(process.env.PATH as string)
+    expect(result.PATH).toBe(testEnv.PATH as string)
   })
 
   test("removes the key beside a subscription login", () => {

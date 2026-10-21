@@ -7,6 +7,7 @@ import { unusedTools } from "../src/agent/unusedTools.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { efforts, permissionModes } from "../src/project/settings.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
+import { testEnv } from "./env.ts"
 
 /** A config whose workers' settings have `workers` laid over the defaults. */
 const configWith = (
@@ -152,7 +153,7 @@ describe("probeOptions", () => {
       command: "/bin/sh",
       args: ["-c", 'echo "$$ $(ps -o pgid= -p $$)"; echo oops >&2'],
       cwd: "/",
-      env: { PATH: process.env.PATH },
+      env: { PATH: testEnv.PATH },
       signal: new AbortController().signal,
     } satisfies SpawnOptions) as ChildProcessWithoutNullStreams
     expect(children).toEqual([child])

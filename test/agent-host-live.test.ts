@@ -19,6 +19,7 @@ import { allowAll, layer as attentionLayer, waitForTest } from "../src/testing/A
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { testEnv } from "./env.ts"
 
 // Each test starts the fake Claude Code as a process, up to a second on an idle machine: bun's 5 s
 // default fails them when other checks run beside this one.
@@ -121,7 +122,7 @@ const run = <A, E>(
       billing: setup.billing ?? { _tag: "Subscription", keyUnused: false },
       subscription: true,
     },
-    env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log: where.log }) },
+    env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log: where.log }) },
   })
   return Effect.runPromise(
     effect(where).pipe(

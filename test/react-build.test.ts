@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 
 const checkout = join(import.meta.dir, "..")
@@ -15,7 +16,7 @@ const production = { reconciler: "production", react: "production" }
 
 /** The environment without NODE_ENV, as a shell that doesn't set it passes it on. */
 const shellEnv = (): Record<string, string | undefined> => {
-  const env: Record<string, string | undefined> = { ...process.env }
+  const env: Record<string, string | undefined> = { ...testEnv }
   delete env.NODE_ENV
   return env
 }

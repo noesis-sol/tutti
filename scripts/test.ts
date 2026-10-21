@@ -24,9 +24,25 @@
 // compiler threads as the machine has cores (8 and 7 of 10, Bun 1.4.3), and so does each bun the
 // suites start: given a share below the machine's cores, the run keeps them to it
 // (coreThreadVariables).
-import { lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
+//
+// The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
+// with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or
+// bd and passes, or skips, only where they are installed (orchestra-nqbn, orchestra-163s); and none
+// of the variables of the terminal, the Claude Code session or the tools the tests run under, which
+// reached the live tests' sessions (tutti-y0e). Tests read it through test/env.ts, which Biome's
+// rules hold them to (biome.json, test/lint/).
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs"
 import { availableParallelism, tmpdir } from "node:os"
-import { join } from "node:path"
+import { delimiter, join, resolve } from "node:path"
+import { paneVariable } from "../src/agent/env.ts"
 
 export interface TestCase {
   /** The test file, relative to the folder bun test ran in. */
@@ -160,10 +176,119 @@ export const coreThreadVariables = (
   return result
 }
 
+/**
+ * The tools tutti looks for on the PATH (Claude Code, Beads, Homebrew) and the terminals it runs in.
+ * No test finds the machine's: one that needs a tool puts a fake of it on the PATH it gives, and a
+ * slow or live test that uses the real one on purpose finds it on TUTTI_TEST_MACHINE_PATH.
+ */
+export const hiddenTools: ReadonlyArray<string> = ["claude", "bd", "brew", "tmux", "herdr", "cmux"]
+
+// The test gates and the variables tests give scripts/test.sh's own fixtures: tutti's other
+// variables are settings (TUTTI_CONCURRENT, TUTTI_CLAUDE, …), which the machine's mustn't change.
+const keptTuttiVariable = (name: string): boolean =>
+  name === "TUTTI_SLOW" ||
+  name === "TUTTI_LIVE" ||
+  name.startsWith("TUTTI_TEST_") ||
+  name.startsWith("TUTTI_FIXTURE_")
+
+const machinePrefixes: ReadonlyArray<string> = [
+  // terminals', beside the pane's (paneVariable)
+  "ITERM_",
+  "KITTY_",
+  "GHOSTTY_",
+  "WEZTERM_",
+  // Claude Code's in a session, and orchestra's for its workers
+  "CLAUDE_CODE_",
+  "ORCHESTRA_",
+  // Beads'
+  "BD_",
+  "BEADS_",
+]
+
+const machineNames: ReadonlySet<string> = new Set([
+  "TERM",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "TERMINFO",
+  "COLORTERM",
+  "NO_COLOR",
+  "FORCE_COLOR",
+  "LC_TERMINAL",
+  "LC_TERMINAL_VERSION",
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "SSH_CONNECTION",
+  "SSH_CLIENT",
+  "SSH_TTY",
+  "CLAUDECODE",
+  "CLAUDE_PID",
+  "CLAUDE_EFFORT",
+  "AI_AGENT",
+  "BASH_DEFAULT_TIMEOUT_MS",
+  "BASH_MAX_TIMEOUT_MS",
+])
+
+/**
+ * Whether a variable is the machine's rather than the tests': the terminal's (its pane's included),
+ * the Claude Code session's or orchestra worker's the tests may run in, Beads', or tutti's settings.
+ */
+export const machineVariable = (name: string): boolean =>
+  paneVariable(name) ||
+  machineNames.has(name) ||
+  machinePrefixes.some((prefix) => name.startsWith(prefix)) ||
+  (name.startsWith("TUTTI_") && !keptTuttiVariable(name))
+
+/**
+ * `path` without hiddenTools: each of its folders that holds one is replaced by a folder made in
+ * `shadows` with links to all else it holds, so the order the PATH finds tools in is kept. Empty
+ * entries (the current folder) and folders that aren't there are left out.
+ */
+export const airtightPath = (path: string, shadows: string): string => {
+  const hidden = (name: string): boolean => hiddenTools.includes(name.toLowerCase())
+  const folders: Array<string> = []
+  for (const [index, entry] of path.split(delimiter).entries()) {
+    if (entry === "") continue
+    const folder = resolve(entry)
+    let names: ReadonlyArray<string>
+    try {
+      names = readdirSync(folder)
+    } catch {
+      continue
+    }
+    if (!names.some(hidden)) {
+      folders.push(folder)
+      continue
+    }
+    const shadow = join(shadows, String(index))
+    mkdirSync(shadow, { recursive: true })
+    for (const name of names) if (!hidden(name)) symlinkSync(join(folder, name), join(shadow, name))
+    folders.push(shadow)
+  }
+  return folders.join(delimiter)
+}
+
+/**
+ * The suites' environment: `env` without the machine's variables (machineVariable), its PATH made
+ * airtight in `shadows` (airtightPath), and the machine's PATH as TUTTI_TEST_MACHINE_PATH.
+ */
+export const testEnvironment = (
+  env: Readonly<Record<string, string | undefined>>,
+  shadows: string,
+): Record<string, string> => {
+  const result: Record<string, string> = {}
+  for (const [name, value] of Object.entries(env)) {
+    if (value !== undefined && !machineVariable(name)) result[name] = value
+  }
+  result.PATH = airtightPath(env.PATH ?? "", shadows)
+  result.TUTTI_TEST_MACHINE_PATH = env.PATH ?? ""
+  return result
+}
+
 const runBunTest = async (
   args: ReadonlyArray<string>,
   report: string,
   temp: string,
+  environment: Readonly<Record<string, string>>,
 ): Promise<{ readonly code: number; readonly output: string }> => {
   const proc = Bun.spawn(
     [
@@ -179,7 +304,7 @@ const runBunTest = async (
       stdin: "inherit",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, ...coreThreadVariables(process.env), TMPDIR: temp },
+      env: { ...environment, TMPDIR: temp },
     },
   )
   const [out, err, code] = await Promise.all([
@@ -200,8 +325,13 @@ const readReport = (report: string): ReadonlyArray<TestCase> => {
 
 const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> => {
   const reports = mkdtempSync(join(temp, "tutti-test-reports-"))
+  // The share is read from the machine's variables, which the suites' environment leaves out.
+  const environment = {
+    ...testEnvironment(process.env, join(temp, "tutti-test-path")),
+    ...coreThreadVariables(process.env),
+  }
   const first = join(reports, "first.xml")
-  const { code, output } = await runBunTest(args, first, temp)
+  const { code, output } = await runBunTest(args, first, temp, environment)
   if (code === 0) return 0
   const failed = readReport(first).filter((test) => test.failed)
   // A failure outside any test (a file that doesn't load, an error between tests) isn't in the
@@ -216,6 +346,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
       [fileArgument(test.file), "--test-name-pattern", exactNamePattern(test.name)],
       report,
       temp,
+      environment,
     )
     const reran = readReport(report)
     if (rerun.code === 0 && reran.length > 0 && reran.every((t) => !t.failed)) {

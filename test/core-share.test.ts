@@ -28,6 +28,7 @@ import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.t
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { testEnv } from "./env.ts"
 
 // The live host's test starts the fake Claude Code as a process: up to a second on an idle machine.
 setDefaultTimeout(30_000)
@@ -155,7 +156,7 @@ const sessionShare = (concurrent: number, cores: number) => {
   const log = join(dir, "fake.jsonl")
   const config = appConfig({ claude: fake, settings: { ...defaultSettings, concurrent } }, dir)
   const env: Record<string, string | undefined> = {
-    ...process.env,
+    ...testEnv,
     FAKE_CLAUDE_SCENARIO: JSON.stringify({ log, env: shareVariables }),
   }
   delete env.GOFLAGS

@@ -27,6 +27,19 @@
       "preset": "recommended"
     }
   },
+  "overrides": [
+    {
+      "includes": ["test/**", "!test/env.ts", "!test/contract/**", "!test/fixtures/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noProcessEnv": "error"
+          }
+        }
+      },
+      "plugins": ["./test/lint/bun-which.grit"]
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": {

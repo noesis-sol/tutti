@@ -15,6 +15,7 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { testEnv } from "./env.ts"
 
 const script = resolve(import.meta.dir, "../scripts/fetch-shellcheck.sh")
 // The sha256 pinned for the linux x86_64 archive, which the fake uname makes this machine.
@@ -55,8 +56,8 @@ const setup = (extracted: string) => {
 const run = (root: string, { tarExit = 0, curlExit = 0 } = {}) => {
   const proc = Bun.spawnSync(["sh", join(root, "scripts/fetch-shellcheck.sh")], {
     env: {
-      ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
+      ...testEnv,
+      PATH: `${bin}:${testEnv.PATH}`,
       FAKE_EXTRACTED: join(root, "extracted"),
       FAKE_TAR_EXIT: String(tarExit),
       FAKE_CURL_EXIT: String(curlExit),

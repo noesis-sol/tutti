@@ -56,6 +56,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as memoryGit } from "../src/testing/Git.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
+import { testEnv } from "./env.ts"
 
 /** A new folder, its real path: the main checkout, where .tutti/run/ is written. */
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-interview-")))
@@ -721,7 +722,7 @@ describe("the interview's session, with the live host over the fake Claude Code"
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: noServers,
       account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
+      env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
     })
     const lines = () =>
       existsSync(log)

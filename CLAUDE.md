@@ -104,6 +104,11 @@ _Add a brief overview of your project architecture_
 - **Tests** are in `test/<part>.test.ts`, one file per part, with `bun:test`. Mark slow tests (real
   git) with `slow.test` / `slow.describe` from `test/gates.ts`, and contract tests against the real
   Agent SDK with `live.test` / `live.describe`.
+- **Tests' environment.** `scripts/test.sh` gives the suites a PATH without claude, bd, brew, tmux,
+  herdr or cmux, and none of the terminal's or a Claude Code session's variables. Tests read it
+  through `test/env.ts` (`testEnv`, `which`, `machineWhich` for a real tool on purpose,
+  `withVariable`); Biome fails `process.env` and `Bun.which` elsewhere in `test/` but the live
+  tests in `test/contract/` and the fixtures.
 - **Property tests** use `fast-check`, for every function that reads text a model, worker or ticket
   author wrote.
 - **Style** is Biome's (`bunx biome check --write .`): no semicolons, double quotes, 100 columns.

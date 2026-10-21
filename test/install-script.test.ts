@@ -19,6 +19,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { signChecksums } from "../scripts/sign-checksums.ts"
 import { parsePublicKey, releaseKeys } from "../src/update/keys.ts"
+import { testEnv, which } from "./env.ts"
 
 const script = readFileSync(resolve(import.meta.dir, "../scripts/install.sh"))
 
@@ -68,7 +69,7 @@ for (const tool of ["uname", "ldd", "libressl"]) symlinkSync("fake", join(bin, t
 
 /** Whether an OpenSSL 3, which can verify ed25519, is where the script looks for one. */
 const hasOpenssl3 = ["openssl", "/opt/homebrew/bin/openssl", "/usr/local/opt/openssl@3/bin/openssl"]
-  .map((candidate) => Bun.which(candidate))
+  .map((candidate) => which(candidate))
   .some((path) => {
     if (path === null) return false
     const out = Bun.spawnSync([path, "version"], { stdout: "pipe", stderr: "ignore" })
@@ -84,7 +85,7 @@ const tarGz = (files: Record<string, string>): Uint8Array => {
   }
   const proc = Bun.spawnSync(["tar", "-czf", "archive.tar.gz", ...Object.keys(files)], {
     cwd: dir,
-    env: { ...process.env, COPYFILE_DISABLE: "1" },
+    env: { ...testEnv, COPYFILE_DISABLE: "1" },
   })
   if (proc.exitCode !== 0) throw new Error(`tar failed: ${proc.stderr.toString()}`)
   return readFileSync(join(dir, "archive.tar.gz"))
@@ -156,7 +157,7 @@ const install = (options: Install): Ran => {
   for (const loader of options.loaders ?? []) writeFileSync(join(lib, loader), "")
   // The machine's own TUTTI_* settings stay out of it.
   const env: Record<string, string> = {}
-  for (const [name, value] of Object.entries(process.env)) {
+  for (const [name, value] of Object.entries(testEnv)) {
     if (!name.startsWith("TUTTI_") && value !== undefined) env[name] = value
   }
   Object.assign(env, {
@@ -215,7 +216,7 @@ describe("scripts/install.sh", () => {
   const releases = releasesFolder(key.privateKey, [{ tag: "v0.1.0" }, { tag: "v0.2.0" }])
 
   for (const shell of ["sh", "dash", "bash"]) {
-    test.skipIf(Bun.which(shell) === null)(
+    test.skipIf(which(shell) === null)(
       `piped into ${shell}, installs the latest release, verified, and says how to put it on the PATH`,
       () => {
         const ran = install({ releases, key: publicPem(key), shell })
@@ -482,7 +483,7 @@ describe("scripts/install.sh", () => {
       const ran = install({
         releases,
         key: publicPem(key),
-        env: { TUTTI_INSTALL_DIR: dir, PATH: `${earlier}:${dir}:${process.env.PATH}` },
+        env: { TUTTI_INSTALL_DIR: dir, PATH: `${earlier}:${dir}:${testEnv.PATH}` },
       })
       expect(ran.code, ran.out).toBe(0)
       expect(installed(dir)?.version).toBe("tutti v0.2.0")

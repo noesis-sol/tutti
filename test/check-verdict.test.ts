@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test"
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { testEnv } from "./env.ts"
 
 const script = resolve(import.meta.dir, "../scripts/check.sh")
 
@@ -36,7 +37,7 @@ const runCheck = (env: Record<string, string>) => {
   const { root, bin } = project()
   const proc = Bun.spawnSync([join(root, "scripts", "check.sh")], {
     env: {
-      ...process.env,
+      ...testEnv,
       TUTTI_SLOW: "",
       TUTTI_FAKE_FAIL: "",
       ...env,
