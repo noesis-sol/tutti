@@ -190,6 +190,10 @@ lines; `Ctrl+D` cancels.
   - **Manual**: the one command `scripts/check-fast.sh` runs.
 
   A runner already there that differs from the choice is kept unless you say to replace it.
+  With the suites found, the worker prompt `init` writes lists each suite with how to run it on part
+  of the project, as the scout found it (`go test ./<package>/...`, `bun test <files>`), or whole
+  where its tool can't: workers check their own change with those and leave the whole suite to the
+  merge check.
 - **Setup command**, where the project has a lockfile at its top: the command that installs the
   dependencies in a ticket's worktree before its check, when a rebase changes a dependency file
   (`npm ci`, `bun install --frozen-lockfile`, `uv sync`, …). See [The checks](#the-checks).
@@ -305,6 +309,17 @@ runs always before the full check, which runs in a fresh worktree. A merge that 
 `checks.setup` in `.tutti/settings.json` has the run use the new one from then on (`SETUP: <id>'s
 merge changed .tutti/settings.json on main: the setup is 'npm ci' from now on`).
 
+### A worker's own check
+
+A worker doesn't run the whole merge check before it closes its ticket: tutti runs that on every
+ticket before it merges it, and hands the ticket back when it fails. The worker prompt has a worker
+check its own change instead: the suites on what it touches, the slower ones where they cover it,
+and lint and type checks on the files it changed. A project with a script for that, such as
+`scripts/check-own.sh`, names it in `"checks": { "own": { "command" } }`: the note on running a
+check once (see [The worker prompt](workers.md#the-worker-prompt)) then gives it as the check to
+run, in place of the merge check. tutti never runs it itself, and its files, as the other checks',
+count as no ticket's in footprints.
+
 ## The verifier
 
 The verifier is a subagent, `.claude/agents/verifier.md`, that checks a ticket's change against the
@@ -336,6 +351,7 @@ for a project that sets them all; the table below gives each one's default:
   "checks": {
     "fast": { "command": "scripts/check-fast.sh", "timeout": "30m" },
     "full": { "command": "scripts/check-full.sh", "timeout": "60m" },
+    "own": { "command": null },
     "setup": { "command": "bun install --frozen-lockfile", "files": ["bun.lock", "package.json"] }
   },
   "workers": {
@@ -363,6 +379,7 @@ for a project that sets them all; the table below gives each one's default:
 | `checks.fast.timeout` | `"30m"` | its time limit; `--check-timeout` for a run |
 | `checks.full.command` | none | the full check |
 | `checks.full.timeout` | `"60m"` | its time limit; `--check-full-timeout` for a run |
+| `checks.own.command` | none | a worker's check of its own change; [A worker's own check](#a-workers-own-check) |
 | `checks.setup.command` | none | installs the dependencies in a worktree |
 | `checks.setup.files` | lockfiles and manifests | the files (globs) whose change has the setup run |
 | `workers.mcp_servers` | `[]` | the MCP servers workers get, by name: none by default; [MCP servers](workers.md#mcp-servers) |

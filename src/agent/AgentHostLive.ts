@@ -45,6 +45,7 @@ import {
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
+import { checkCommands } from "../project/settings.ts"
 import { detail, Log, line } from "../run/log.ts"
 import { type AccountProbe, type Billing, permissionModeLine } from "./Account.ts"
 import {
@@ -227,11 +228,7 @@ export const layer = (
       const config = yield* AppConfig
       const log = yield* Log
       const fs = yield* FileSystem.FileSystem
-      const checks = [
-        config.settings.checks.fast.command,
-        config.settings.checks.full.command,
-      ].filter((command): command is string => typeof command === "string" && command !== "")
-      const workers = yield* makeWorkers(checks)
+      const workers = yield* makeWorkers(checkCommands(config.settings))
       const scope = yield* Effect.scope
       const services = yield* Effect.context<Attention | Transcripts>()
       const env = workerEnv({

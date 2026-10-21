@@ -56,7 +56,9 @@ start alone: the ticket's ID, the spec it is part of (its `spec` metadata), how 
 After the prompt, tutti adds a note to every worker's rules, whatever prompt it was given: run a
 check once, its whole output saved to `.tutti/run/worker-check.log` (which git ignores) and its exit
 status printed, as in `scripts/check-fast.sh > .tutti/run/worker-check.log 2>&1; echo "exit $?"`
-(the project's `checks.fast.command`), then read the file rather than run the check again. Workers
+(the project's `checks.own.command` where it names [a worker's own
+check](setup.md#a-workers-own-check), else its `checks.fast.command`), then read the file rather
+than run the check again. Workers
 piped a check through `tail`, which hides its exit status, then ran the whole check again to learn
 whether it passed. A check script whose last line says `PASS` or `FAIL` and the step, as tutti's own
 `scripts/check.sh` does, lets the file's end alone answer.
@@ -73,8 +75,13 @@ Each rule of the template prevents a way a run goes wrong:
 
 - **Its own worktree; never push; tutti merges.** Workers can't disturb each other or the branch
   finished tickets land on.
-- **Commit with the ticket's ID, and close only when `scripts/check-fast.sh` passes.** A ticket merges
-  only if a commit names it and its worktree is clean.
+- **Check your own change; leave the whole suite to tutti.** A worker runs the suites on what its
+  change touches (each on part of the project, as the prompt `init` writes lists them), the slower
+  ones where they cover it, and lint and type checks on the files it changed. The merge check runs
+  on every ticket before it merges, and hands it back when the change broke something else: a whole
+  suite per ticket on top of that was the slowest part of a worker's time on a loaded machine.
+- **Commit with the ticket's ID, and close only when your checks pass.** A ticket merges only if a
+  commit names it and its worktree is clean.
 - **Checks in the foreground.** A worker waiting on a background command holds its slot doing
   nothing, and its ticket can't merge until the command ends. tutti sets Bash's default timeout
   (`BASH_DEFAULT_TIMEOUT_MS`) to `checks.fast.timeout`, and its maximum to that or 10 minutes,

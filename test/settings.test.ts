@@ -91,6 +91,7 @@ describe("settings", () => {
       checks: {
         fast: { command: "scripts/check-fast.sh", timeout: minutes(30) },
         full: { command: "scripts/check-full.sh", timeout: minutes(60) },
+        own: { command: null },
         setup: { command: "bun install --frozen-lockfile", files: ["bun.lock"] },
       },
       workers: {
@@ -115,6 +116,7 @@ describe("settings", () => {
     checks: {
       fast: { command: null, timeout: minutes(30) },
       full: { command: null, timeout: minutes(60) },
+      own: { command: null },
       setup: { command: null, files: defaultSetupFiles },
     },
     workers: {

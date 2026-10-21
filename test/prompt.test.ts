@@ -88,7 +88,7 @@ describe("the built-in worker prompt", () => {
     expect(rules).toContain("tutti merges your branch")
     expect(rules).toContain("Never push.")
     expect(rules).toContain("with the ticket ID in the message")
-    expect(rules).toContain("Close the ticket only when `scripts/check-fast.sh` passes")
+    expect(rules).toContain("Close the ticket only when your checks pass")
     expect(rules).toContain("Run the checks in the foreground")
     expect(rules).toContain("your ticket can't merge until the\n  command ends")
     expect(rules).toContain("--labels human --deps blocks:bd-7")

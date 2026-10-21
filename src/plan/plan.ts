@@ -8,7 +8,7 @@
 // warning when a run holds the repository's lock.
 import { Console, Effect, type FileSystem } from "effect"
 import type { ConfigFileInvalid } from "../project/configFile.ts"
-import { readSettings } from "../project/settings.ts"
+import { checkCommands, readSettings } from "../project/settings.ts"
 import { branchThere } from "../run/closedBranches.ts"
 import {
   branchFootprint,
@@ -268,16 +268,16 @@ export const plan = (
     const open = listed.filter((issue) =>
       takes({ excludeTypes: settings.queue.exclude_types }, issue),
     )
-    const check = settings.checks.fast.command
+    const checks = checkCommands(settings)
     const git = yield* Git
     const repoFilesNow = yield* git.trackedFiles(repo).pipe(
       Effect.flatMap((files) =>
         git.mergedByUnion(repo, files).pipe(
           Effect.orElseSucceed((): ReadonlyArray<string> => []),
-          Effect.map((union) => repoFiles(files, check === null ? [] : [check], union)),
+          Effect.map((union) => repoFiles(files, checks, union)),
         ),
       ),
-      Effect.orElseSucceed(() => repoFiles(undefined, check === null ? [] : [check])),
+      Effect.orElseSucceed(() => repoFiles(undefined, checks)),
     )
     const branches = yield* branchChanges(repo, open)
     const sources = yield* readSources(

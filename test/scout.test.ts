@@ -19,6 +19,7 @@ import { type OrganError, Organs } from "../src/organs/Organs.ts"
 import {
   confinement,
   globBase,
+  hasPlaceholder,
   inside,
   realPath,
   type Scouting,
@@ -278,6 +279,7 @@ const canned = {
       name: " the check ",
       kind: "unit",
       command: " scripts/check.sh\n",
+      targeted: " scripts/check.sh ",
       found_in: " scripts/check.sh:1 ",
       tier: "fast",
       parallel_safe: true,
@@ -287,6 +289,7 @@ const canned = {
       name: "e2e",
       kind: "e2e",
       command: "npm run e2e",
+      targeted: " npm run e2e -- <files>\n",
       found_in: "package.json:9",
       tier: "full",
       parallel_safe: false,
@@ -332,6 +335,7 @@ describe("the scout's answer", () => {
           name: "the check",
           kind: "unit",
           command: "scripts/check.sh",
+          targeted: "",
           found_in: "scripts/check.sh:1",
           tier: "fast",
           parallel_safe: true,
@@ -341,6 +345,7 @@ describe("the scout's answer", () => {
           name: "e2e",
           kind: "e2e",
           command: "npm run e2e",
+          targeted: "npm run e2e -- <files>",
           found_in: "package.json:9",
           tier: "full",
           parallel_safe: false,
@@ -380,6 +385,10 @@ describe("the scout's answer", () => {
       name: text.filter((s) => s.trim() !== ""),
       kind: fc.constantFrom("unit", "lint", "other" as const),
       command: text.filter((s) => s.trim() !== ""),
+      targeted: fc.oneof(
+        text,
+        text.map((s) => `bun test <${s}x>`),
+      ),
       found_in: text,
       tier: fc.constantFrom("fast", "full" as const),
       parallel_safe: fc.boolean(),
@@ -397,8 +406,12 @@ describe("the scout's answer", () => {
         expect(tidy(once)).toEqual(once)
         expect(new Set(once.stack).size).toBe(once.stack.length)
         for (const item of once.stack) expect(item).toBe(item.trim())
-        for (const s of once.suites)
+        for (const s of once.suites) {
           expect(s.needs.every((n) => n !== "" && n === n.trim())).toBe(true)
+          // A command for part of the project has a placeholder for the part, or is none.
+          if (s.targeted !== "") expect(s.targeted).toBe(s.targeted.trim())
+          expect(s.targeted === "" || hasPlaceholder(s.targeted)).toBe(true)
+        }
       }),
     )
   })

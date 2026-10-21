@@ -41,6 +41,7 @@ const twoSuites: Scouting = {
       name: "unit tests",
       kind: "unit",
       command: "npm test",
+      targeted: "npm test -- <files>",
       found_in: "package.json:7",
       tier: "fast",
       parallel_safe: true,
@@ -50,6 +51,7 @@ const twoSuites: Scouting = {
       name: "e2e",
       kind: "e2e",
       command: "npx playwright test",
+      targeted: "",
       found_in: "playwright.config.ts:1",
       tier: "full",
       parallel_safe: false,
@@ -289,12 +291,19 @@ describe("init's form in the renderer", () => {
       checks: {
         kind: "found",
         fast: [
-          { name: "unit tests", command: "npm test", foundIn: "package.json:7", serial: false },
+          {
+            name: "unit tests",
+            command: "npm test",
+            targeted: "npm test -- <files>",
+            foundIn: "package.json:7",
+            serial: false,
+          },
         ],
         full: [
           {
             name: "e2e",
             command: "npx playwright test",
+            targeted: "",
             foundIn: "playwright.config.ts:1",
             serial: true,
           },
@@ -418,12 +427,19 @@ describe("init's form in lines", () => {
         checks: {
           kind: "found",
           fast: [
-            { name: "unit tests", command: "npm test", foundIn: "package.json:7", serial: false },
+            {
+              name: "unit tests",
+              command: "npm test",
+              targeted: "npm test -- <files>",
+              foundIn: "package.json:7",
+              serial: false,
+            },
           ],
           full: [
             {
               name: "e2e",
               command: "npx playwright test",
+              targeted: "",
               foundIn: "playwright.config.ts:1",
               serial: true,
             },

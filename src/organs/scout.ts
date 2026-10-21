@@ -46,6 +46,11 @@ export const Suite = Schema.Struct({
   kind: Schema.Literals(suiteKinds),
   /** As the project runs it, from the repository's root. */
   command: Schema.String,
+  /**
+   * Runs the suite on part of the project, a <placeholder> for the part, such as
+   * "go test ./<package>/..." or "pytest <paths>"; "" where its tool can only run it whole.
+   */
+  targeted: Schema.String,
   /** Where it is defined, as `path:line`. */
   found_in: Schema.String,
   tier: Schema.Literals(tiers),
@@ -68,9 +73,17 @@ export const ScoutAnswer = Schema.Struct({
 export type Scouting = typeof ScoutAnswer.Type
 
 /**
- * The answer tidied, as orchestra's: names, commands and places trimmed, blank needs and stack
- * items dropped, stack items' spaces collapsed and duplicates dropped. A suite with no name or no
- * command is the reason it can't be used.
+ * Whether a suite's command for part of the project has a placeholder for the part, such as
+ * <paths> or ./<package>/...: without one it would run the whole suite, or nothing a worker can
+ * fill in.
+ */
+export const hasPlaceholder = (command: string): boolean => /<[^<>]*\S[^<>]*>/.test(command)
+
+/**
+ * The answer tidied, as orchestra's: names, commands and places trimmed, a command for part of the
+ * project without a placeholder dropped, blank needs and stack items dropped, stack items' spaces
+ * collapsed and duplicates dropped. A suite with no name or no command is the reason it can't be
+ * used.
  */
 export const tidy = (answer: Scouting): Scouting | string => {
   const suites: Array<Suite> = []
@@ -80,10 +93,12 @@ export const tidy = (answer: Scouting): Scouting | string => {
     if (name === "" || command === "") {
       return `a suite with no name or no command: ${JSON.stringify(suite)}`
     }
+    const targeted = suite.targeted.trim()
     suites.push({
       ...suite,
       name,
       command,
+      targeted: hasPlaceholder(targeted) ? targeted : "",
       found_in: suite.found_in.trim(),
       needs: suite.needs.map((need) => need.trim()).filter((need) => need !== ""),
     })

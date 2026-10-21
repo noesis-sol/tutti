@@ -647,8 +647,9 @@ tutti's built-in worker prompt is orchestra's, rewritten where the tmux world sh
 - **Checks in the foreground**: the rule stays, with a new reason. A worker waiting on a background command holds its slot while doing nothing, and its ticket can't merge until the command ends. Bash's default timeout is the merge check's time limit (§4.1), so the rule says to pass Bash no timeout: a shorter one moves the check to the background when it runs out.
 - **Working unattended** stays, and adds that the maintainer may sometimes send a message: follow it, then carry on with the ticket.
 - **Never push, commit with the ticket ID, close only when the checks pass**, and the rest of orchestra's rules stay as they are.
+- **A worker checks its own change**, as orchestra's prompt has it since 0.9.0: the suites on what its change touches (the modules it changes and their tests), the slower suites where they cover it, and lint and type checks on the files it changed. It leaves the whole suite to tutti: the merge check runs on every ticket before it merges and hands it back when it fails, and the full check runs once at the end of a run. A whole suite per ticket on top of the merge check was the slowest part of a worker's time on a loaded machine. Where init knows the suites (the scout's, used as they are), the prompt lists each with the scout's command for part of the project (§6.3), or whole where there is none; a suite that takes turns is left to the merge check. Elsewhere it says the suites are the runners' lines.
 - **Removals**: orchestra's rule against removing a target built from a variable or a glob stays, with tutti's reason: the safety check refuses such a removal unless a person approves it, and in auto mode refuses it outright (§4.5). The worker overwrites instead, writes to a new name, or removes a file by its literal absolute path.
-- **A check run once**: a note after the prompt, as orchestra's `checkNote` (0.9.0), has the worker run a check once, its whole output saved to `.tutti/run/worker-check.log` in its worktree (git ignores it; the run's own check writes `check.log`) and its exit status printed, as in `<checks.fast.command> > .tutti/run/worker-check.log 2>&1; echo "exit $?"` (`<the check>` without one), then read the file rather than run the check again to see what it said. Workers piped a check through `tail`, which hides its exit status, then ran it again to learn whether it passed. A note, not a line of the template, so a project's own worker prompt gets it too, naming its merge check. Its last sentence says other workers' checks run beside the worker's, and that `TUTTI_CORES` (and `ORCHESTRA_CORES`) in its environment is its share of the machine's cores (§4.1), for a check that runs things side by side to keep to; `GOFLAGS` keeps Go to it already.
+- **A check run once**: a note after the prompt, as orchestra's `checkNote` (0.9.0), has the worker run a check once, its whole output saved to `.tutti/run/worker-check.log` in its worktree (git ignores it; the run's own check writes `check.log`) and its exit status printed, as in `<checks.fast.command> > .tutti/run/worker-check.log 2>&1; echo "exit $?"` (`checks.own.command`, a worker's own check such as `scripts/check-own.sh`, in its place where the project names one; `<the check>` without either), then read the file rather than run the check again to see what it said. Workers piped a check through `tail`, which hides its exit status, then ran it again to learn whether it passed. A note, not a line of the template, so a project's own worker prompt gets it too, naming its merge check. Its last sentence says other workers' checks run beside the worker's, and that `TUTTI_CORES` (and `ORCHESTRA_CORES`) in its environment is its share of the machine's cores (§4.1), for a check that runs things side by side to keep to; `GOFLAGS` keeps Go to it already.
 - **Moved out of the system prompt**: the time it has and the `--ticket` line go in the first message (§4.1), so a resumed session gets current values.
 
 ### 4.12 Usage limits
@@ -951,7 +952,7 @@ As orchestra: every section of evidence goes between `<evidence id="<random>">` 
 - **Working directory:** `cwd` is the repository's root.
 - **Confinement:** a `PreToolUse` hook denies any call whose path argument, resolved with `realpath`, lies outside the repository. Hooks come first in the SDK's evaluation order, so this holds whatever the settings allow, replacing orchestra's `--restricted`. `permissionPrompts: "none"` replaces `--permission-prompts none`.
 - **Limits:** `maxBudgetUsd: 2.00`, 5 minutes, `persistSession: false`.
-- **Its answer schema is orchestra's:** suites with name, kind, command, `file:line`, tier, whether parallel runs are safe, needs; and the project's stack.
+- **Its answer schema is orchestra's:** suites with name, kind, command, the command for part of the project (`targeted`, with a placeholder for the part, such as `go test ./<package>/...` or `pytest <paths>`; empty where the suite runs only whole, and dropped where it has no placeholder), `file:line`, tier, whether parallel runs are safe, needs; and the project's stack.
 
 ---
 
@@ -1457,6 +1458,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
   "checks": {
     "fast": { "command": "scripts/check-fast.sh", "timeout": "30m" },
     "full": { "command": "scripts/check-full.sh", "timeout": "60m" },
+    "own": { "command": null },
     "setup": { "command": "bun install --frozen-lockfile", "files": ["bun.lock"] }
   },
   "workers": {
@@ -1475,6 +1477,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
 }
 ```
 
+- `checks.own.command` is orchestra's `check_own`: a worker's check of its own change, such as `scripts/check-own.sh`, which the note on running a check once names in place of the merge check (§4.11). tutti never runs it; its files count as no ticket's in footprints, as the other checks' do. None by default.
 - `workers.mcp_servers` absent means no servers, unlike orchestra (§15, Q5).
 - `workers.permission_mode` is `auto` (default), `default` or `acceptEdits`; anything else is a setup problem.
 - `ui.colour_scheme` is the project's default colour scheme (§7.11). Your user config's choice wins over it. A scheme that can't be used falls back to `orchestra` with a warning, never a setup problem.

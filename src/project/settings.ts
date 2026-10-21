@@ -97,6 +97,13 @@ export const Settings = Schema.Struct({
     fast: Check("30m").pipe(withDefault({})),
     /** Every check, run once at the end of a run. */
     full: Check("60m").pipe(withDefault({})),
+    /**
+     * A worker's check of its own change, such as scripts/check-own.sh: its rules name it as the
+     * check to run once, in place of the merge check, which tutti runs itself. tutti never runs it.
+     */
+    own: Schema.Struct({
+      command: Schema.NullOr(Text).pipe(withDefault(null)),
+    }).pipe(withDefault({})),
     /** Installs the dependencies in a worktree whose rebase changed one of `files` (globs). */
     setup: Schema.Struct({
       command: Schema.NullOr(Text).pipe(withDefault(null)),
@@ -153,6 +160,15 @@ export const Settings = Schema.Struct({
 }).annotate({ title: "tutti settings", description: "a project's .tutti/settings.json" })
 
 export type Settings = typeof Settings.Type
+
+/**
+ * The check commands `settings` name: the merge check, the full check and a worker's own. Their
+ * files count as no ticket's in footprints, and a worker running one is testing.
+ */
+export const checkCommands = (settings: Settings): ReadonlyArray<string> =>
+  [settings.checks.fast.command, settings.checks.full.command, settings.checks.own.command].filter(
+    (command): command is string => command !== null,
+  )
 
 /** Reads the settings of the project at `repo`; a missing file gives the defaults. */
 export const readSettings = (repo: string) => readConfigFile(Settings, settingsPath(repo))

@@ -24,7 +24,7 @@ import { definedServers } from "../agent/mcp.ts"
 import { AppConfig, type AppConfigValue, type SetupProblem } from "../cli/AppConfig.ts"
 import type { Scouting } from "../organs/scout.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
-import { builtInWorkerPrompt } from "../project/prompt.ts"
+import { builtInWorkerPrompt, withSuites } from "../project/prompt.ts"
 import { maxConcurrent, Settings, settingsFile } from "../project/settings.ts"
 import settingsTemplate from "../project/templates/settings.json" with { type: "json" }
 import gitignoreTemplate from "../project/templates/tutti-gitignore" with { type: "text" }
@@ -40,8 +40,10 @@ import {
   type ChecksQuestions,
   fileTestWork,
   findSetup,
+  runnersDiffer,
   setupSteps,
   skillState,
+  suiteLines,
   usesVerifier,
   verifierPath,
 } from "./checks.ts"
@@ -366,12 +368,18 @@ const writeIfMissing = (repo: string, path: string, text: string, replace = fals
   })
 
 /**
- * The worker prompt's steps: the built-in template where none is there, or with --force; or
- * orchestra's `imported` prompt, then the changes § 4.11 needs in it.
+ * The worker prompt's steps: the built-in template where none is there, or with --force, with
+ * `suites`, the lines on how to run each suite on part of the project where init knows the suites
+ * ("" where it doesn't); or orchestra's `imported` prompt, then the changes § 4.11 needs in it.
  */
-const writePrompt = (repo: string, force: boolean, imported: string | null) =>
+const writePrompt = (repo: string, force: boolean, imported: string | null, suites: string) =>
   Effect.map(
-    writeIfMissing(repo, workerPromptPath, imported ?? builtInWorkerPrompt, force),
+    writeIfMissing(
+      repo,
+      workerPromptPath,
+      imported ?? withSuites(builtInWorkerPrompt, suites),
+      force,
+    ),
     (did): ReadonlyArray<Step> =>
       did === "kept"
         ? [
@@ -386,7 +394,7 @@ const writePrompt = (repo: string, force: boolean, imported: string | null) =>
               step(
                 "done",
                 "worker prompt",
-                `${did} ${workerPromptPath} from the built-in template`,
+                `${did} ${workerPromptPath} from the built-in template${suites === "" ? "" : ", with how to run each suite on part of the project"}`,
                 [workerPromptPath],
               ),
             ]
@@ -779,6 +787,18 @@ export const init = <R>(options: InitOptions<R>) =>
           : choice?.kind === "scratch"
             ? { suites: [], replace: checked.replaceFull ?? false }
             : { suites: null, replace: false }
+    // How to run each suite on part of the project, for the worker prompt, where the runners are
+    // written from the suites found: none where a runner there that differs from them is kept.
+    const differ =
+      choice?.kind === "found" && checksQuestions.checks !== null
+        ? runnersDiffer(checksQuestions.checks.runners, choice)
+        : { fast: false, full: false }
+    const promptSuites =
+      choice?.kind === "found" &&
+      (!differ.fast || checked.replaceFast === true) &&
+      (!differ.full || checked.replaceFull === true)
+        ? suiteLines(choice.fast, choice.full)
+        : ""
     const setup = flags.setup ?? checked.setup
     const verifierConsent = consent(flags.verifier, checksQuestions.verifier, checked.verifier)
 
@@ -792,7 +812,9 @@ export const init = <R>(options: InitOptions<R>) =>
         )
         if (prefix !== null) steps.push(...(yield* applyPrefix(machine, repo, prefix)))
         if (found !== null) steps.push(...importSteps(found, importConsent))
-        steps.push(...(yield* writePrompt(repo, flags.force, importing ? found.prompt : null)))
+        steps.push(
+          ...(yield* writePrompt(repo, flags.force, importing ? found.prompt : null, promptSuites)),
+        )
         steps.push(...(yield* writeRunners(repo, { fast: fastPlan, full: fullPlan })))
         steps.push(...(yield* applySkill(repo, choice, checked.replaceSkill ?? false)))
         steps.push(

@@ -187,6 +187,7 @@ export const offeredSuites = (
           name: "check",
           kind: "other",
           command: checkScript,
+          targeted: "",
           found_in: `${checkScript}:1`,
           tier: "fast",
           parallel_safe: false,
@@ -252,6 +253,7 @@ export const suiteLabel = (suite: ScoutSuite): string => {
 export const runnerSuite = (suite: ScoutSuite): Suite => ({
   name: suite.name,
   command: suite.command,
+  targeted: suite.targeted,
   foundIn: suite.found_in,
   serial: !suite.parallel_safe,
 })
@@ -466,13 +468,13 @@ export const verifierPath = join(".claude", "agents", "verifier.md")
 /** The worker prompt's section that has workers run the verifier: TICKET_ID filled in per ticket. */
 export const verifierSection = `
 ## Verify
-- Before you close the ticket, once \`${fastRunner}\` passes after your last commit, have the
-  verifier subagent (${verifierPath}) check your change: give it the ticket's ID, TICKET_ID, the
+- Before you close the ticket, once your checks pass after your last commit, have the verifier
+  subagent (${verifierPath}) check your change: give it the ticket's ID, TICKET_ID, the
   commit at which your checks passed (\`git rev-parse HEAD\`), the commands you ran there, and the
   file their output is in where you kept one, so that it needn't run them again; nothing of your
   reasoning. Run it in the foreground and wait for its answer.
-- Fix each gap it reports that affects correctness or the ticket's requirements, commit, run the
-  check again, and ask it again with the new commit and commands. The rest is optional: note on
+- Fix each gap it reports that affects correctness or the ticket's requirements, commit, run your
+  checks again, and ask it again with the new commit and commands. The rest is optional: note on
   the ticket any you leave.
 - From the second round on, give it the earlier rounds' findings too: each round's verdict and the
   gaps it raised, as it gave them, still nothing of your reasoning, so that it weighs them rather
@@ -482,6 +484,44 @@ export const verifierSection = `
 - After three rounds that still end in FAIL, note its findings on the ticket. Close the ticket only
   when you judge them outside the ticket's requirements; otherwise defer it, as under Close.
 `
+
+/** The worker prompt's line before its bullets on running each suite on part of the project. */
+export const suitesIntro = "  The suites, and how to run each on part of the project:\n"
+
+/** `text` as Markdown code on one line: in double backticks where it has a backtick. */
+const codeSpan = (text: string): string => {
+  const line = sanitizeLine(text).trim().split(/\s+/).join(" ")
+  return line.includes("`") ? `\`\` ${line} \`\`` : `\`${line}\``
+}
+
+/**
+ * The worker prompt's lines on how to run each suite on part of the project, a bullet a suite, for
+ * the suites check-fast.sh runs (`fast`) and those check-full.sh runs after it (`full`): the command
+ * the scout gave for part of the project, or else the whole suite, the slower ones where the change
+ * touches what they cover. A suite that takes turns is left to the merge check, which takes turns on
+ * it with the other worktrees' checks. "" with no suites: the template's lines then say where the
+ * suites are.
+ */
+export const suiteLines = (fast: ReadonlyArray<Suite>, full: ReadonlyArray<Suite>): string => {
+  const quick = withoutRunners(fast).kept
+  const slow = withoutRunners(full).kept
+  const bullets = [...quick, ...slow].map((suite, index) => {
+    const slower = index >= quick.length
+    const label = sanitizeLine(suite.name).trim().split(/\s+/).join(" ")
+    const command = codeSpan(suite.command)
+    const name = `${label === "" ? command : label}${slower ? " (slower)" : ""}`
+    const whole = label === "" ? "whole" : `${command}, whole`
+    const targeted = suite.targeted?.trim() ?? ""
+    if (suite.serial) {
+      return `  - ${name}: leave it to the merge check; two copies at once, in two worktrees, collide\n`
+    }
+    if (targeted !== "") return `  - ${name}: ${codeSpan(targeted)}\n`
+    return slower
+      ? `  - ${name}: ${whole}, where the change touches what it covers\n`
+      : `  - ${name}: ${whole}, as it doesn't run on part of the project\n`
+  })
+  return bullets.length === 0 ? "" : suitesIntro + bullets.join("")
+}
 
 /** Whether a worker prompt has workers run the verifier. */
 export const usesVerifier = (prompt: string): boolean => prompt.includes(verifierPath)

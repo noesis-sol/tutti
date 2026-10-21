@@ -3,11 +3,16 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
 - You are in your own git worktree on branch tutti/TICKET_ID. Commit there. Do not switch branches,
   stash, merge, or touch any other checkout; tutti merges your branch.
 - Claim it with `bd update TICKET_ID --claim`, then read it with `bd show TICKET_ID`.
-- Check your work with `scripts/check-fast.sh`, the check tutti runs on each ticket before it merges
-  it. It runs the project's fast suites, a command a line.
-  While iterating, run only the checks you need, e.g. a suite's command from `scripts/check-fast.sh`.
-- When your change touches what the slower suites cover, also run `scripts/check-full.sh`: every
-  check, `scripts/check-fast.sh` then the slower suites. tutti runs it once at the end of a run.
+- Check your own change before you close the ticket: run the project's suites on what it touches
+  (the modules or packages it changes and their tests, existing ones included), the slower suites
+  too where they cover it, and lint and type checks on the files you changed. While iterating, run
+  only the checks you need.
+  The suites are the commands `scripts/check-fast.sh` and `scripts/check-full.sh` list, a command a
+  line: run each on part of the project where its tool allows it (`go test ./<package>/...`,
+  `pytest <paths>`, `eslint <files>`), and whole where it doesn't.
+- Leave the whole suite to tutti: its merge check, `scripts/check-fast.sh`, runs on every ticket
+  before it merges it, and hands the ticket back to you when your change breaks something you
+  didn't consider; the full check, `scripts/check-full.sh`, runs every suite once at the end of a run.
 - Run the checks in the foreground, never in the background: while you wait on a background
   command you hold your place in the run doing nothing, and your ticket can't merge until the
   command ends. tutti sets Bash's default timeout to as long as the merge check may take, so pass
@@ -41,10 +46,10 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   `--labels solo`, so it runs with no other ticket beside it.
 
 ## Close
-- Close the ticket only when `scripts/check-fast.sh` passes after your last change.
+- Close the ticket only when your checks pass after your last change.
 - If a change can only be verified by CI (for example `.github/workflows/`, or a platform the
-  local checks don't cover), close the ticket once `scripts/check-fast.sh` passes, with a note naming the
-  CI job that will verify it ("Awaits CI: <job>"). The batch's pull request runs every CI job
+  local checks don't cover), close the ticket once your checks pass, with a note naming the CI
+  job that will verify it ("Awaits CI: <job>"). The batch's pull request runs every CI job
   before anything reaches the main branch.
 - If the ticket needs a decision only the maintainer can make, one that blocks the ticket and can
   wait for them, ask it as a question ticket and stop; don't wait for an answer in this session.

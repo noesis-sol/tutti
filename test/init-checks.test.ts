@@ -97,6 +97,7 @@ const scriptedMachine = (
 
 const suite = (over: Partial<ScoutSuite> & Pick<ScoutSuite, "name" | "command">): ScoutSuite => ({
   kind: "unit",
+  targeted: "",
   found_in: "package.json:7",
   tier: "fast",
   parallel_safe: true,
@@ -737,12 +738,19 @@ describe("the Checks step in lines", () => {
       checks: {
         kind: "found",
         fast: [
-          { name: "unit tests", command: "npm test", foundIn: "package.json:7", serial: false },
+          {
+            name: "unit tests",
+            command: "npm test",
+            targeted: "",
+            foundIn: "package.json:7",
+            serial: false,
+          },
         ],
         full: [
           {
             name: "e2e",
             command: "npx playwright test",
+            targeted: "",
             foundIn: "playwright.config.ts:1",
             serial: true,
           },

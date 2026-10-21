@@ -75,6 +75,7 @@ const setPath = (json: Json, path: ReadonlyArray<string>, value: unknown) => {
 const mapped: Readonly<Record<string, ReadonlyArray<string>>> = {
   check_fast: ["checks", "fast", "command"],
   check_full: ["checks", "full", "command"],
+  check_own: ["checks", "own", "command"],
   check_fast_timeout: ["checks", "fast", "timeout"],
   check_full_timeout: ["checks", "full", "timeout"],
   setup: ["checks", "setup", "command"],

@@ -178,7 +178,10 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
         : {
             append:
               forTicket(input.prompt, input.ticket) +
-              checkNote(input.config.settings.checks.fast.command),
+              checkNote(
+                input.config.settings.checks.own.command ??
+                  input.config.settings.checks.fast.command,
+              ),
           }),
       snapshot: true,
     },

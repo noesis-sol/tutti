@@ -29,6 +29,11 @@ export interface Suite {
   readonly name: string
   /** Run from the repository's root, such as "npm test". */
   readonly command: string
+  /**
+   * Runs it on part of the project, a <placeholder> for the part, such as "bun test <files>", for a
+   * worker's check of its own change; absent or "" where it runs only whole.
+   */
+  readonly targeted?: string
   /** Where it was found, such as "package.json:7", or "--check-fast". */
   readonly foundIn: string
   /** It can't run in two worktrees at once (a fixed port, a shared database): it takes turns. */

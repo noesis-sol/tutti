@@ -13,6 +13,20 @@ import builtIn from "./templates/worker-prompt.md" with { type: "text" }
 /** tutti's built-in worker prompt, as `tutti init` writes it to .tutti/worker-prompt.md. */
 export const builtInWorkerPrompt: string = builtIn
 
+/**
+ * The template's lines on how to run each suite on part of the project, where init doesn't know the
+ * suites: they say where the suites are. Where it knows them, init puts a bullet a suite in their
+ * place (`withSuites`).
+ */
+export const unknownSuitesLines =
+  "  The suites are the commands `scripts/check-fast.sh` and `scripts/check-full.sh` list, a command a\n" +
+  "  line: run each on part of the project where its tool allows it (`go test ./<package>/...`,\n" +
+  "  `pytest <paths>`, `eslint <files>`), and whole where it doesn't.\n"
+
+/** `prompt` with `lines` on how to run each suite on part of the project; as it is with none. */
+export const withSuites = (prompt: string, lines: string): string =>
+  lines === "" ? prompt : prompt.replace(unknownSuitesLines, lines)
+
 /** The worker prompt's placeholder for the ticket's ID. */
 export const ticketIdPlaceholder = "TICKET_ID"
 
@@ -70,7 +84,8 @@ export const workerCheckLog = ".tutti/run/worker-check.log"
  * workerCheckLog and its exit status printed, then read the file rather than run the check again to
  * see what it said: workers piped a check through tail, which hides its exit status, then ran it
  * again, minutes of a full check each time, to learn whether it passed. Its example is the
- * project's merge check (checks.fast.command) when it has one. It ends with coresNote.
+ * worker's own check (checks.own.command) when the project has one, else its merge check
+ * (checks.fast.command). It ends with coresNote.
  */
 export const checkNote = (command: string | null): string =>
   `\n\nRun a check (tests, linters, a build) once, its whole output saved to a file in .tutti/run ` +

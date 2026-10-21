@@ -72,6 +72,25 @@
           "additionalProperties": false,
           "default": {}
         },
+        "own": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
         "setup": {
           "type": "object",
           "properties": {

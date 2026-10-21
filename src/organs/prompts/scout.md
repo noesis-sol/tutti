@@ -6,6 +6,7 @@ List each suite: a command that tests, lints, type-checks or builds the project.
 - name: short, such as "unit tests" or "eslint".
 - kind: unit, integration, e2e, lint, typecheck, build or other.
 - command: the command as the project runs it, from the repository's root, such as "npm test" or "make lint". Prefer the project's own entry point (a package script, a make target, its own script) to the tool it calls.
+- targeted: the command that runs the same suite on part of the project, where its tool allows it, for a coding agent to check its own change before the orchestrator runs the whole suite: the files or the module given as a placeholder in angle brackets, from the repository's root, such as "go test ./<package>/...", "bun test <files>", "npx jest <paths>", "pytest <paths>", "npx eslint <files>" or "cargo test -p <crate>". Keep the flags and the configuration the project's command passes to the tool. Empty when the suite can only run whole, as a build or a script that runs several tools.
 - found_in: the file and line that define it, as path:line from the root.
 - tier: fast for unit tests, lint, type checks and one smoke e2e suite; full for the rest.
 - parallel_safe: false when two copies run at once, in two checkouts of the repository, would collide: a fixed port, a shared database, a fixed container or network name, a shared file outside the checkout and the like; true otherwise.

@@ -87,6 +87,7 @@ import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
 import { Ending, printSummary, type Summary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
+import { checkCommands } from "../project/settings.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { Notifier } from "../services/Notifier.ts"
@@ -555,14 +556,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // the checks' scripts count as no ticket's. A ticket works in the worktree the Store saved for
     // it, wherever git had it (a reused one, or one an earlier run's --worktrees put elsewhere), or
     // else in <worktrees>/<id>.
-    const checks = config.settings.checks
     const footprints = config.settings.queue.footprint
       ? yield* footprintsOf({
           repo: config.repo,
           base,
-          checkCommands: [checks.fast.command, checks.full.command].filter(
-            (command): command is string => command !== null,
-          ),
+          checkCommands: checkCommands(config.settings),
           worktree: (ticket) =>
             Effect.map(
               store.ticket(ticket),

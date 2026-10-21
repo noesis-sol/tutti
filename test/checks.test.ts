@@ -32,6 +32,7 @@ const checksLayer = (commands: Commands) => {
   const settings = {
     ...defaultSettings,
     checks: {
+      ...checks,
       setup: { ...checks.setup, command: commands.setup ?? null },
       fast: {
         command: commands.fast ?? null,
