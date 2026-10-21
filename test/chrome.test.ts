@@ -25,6 +25,7 @@ import {
   type WorkerCallbacks,
   workerOptions,
 } from "../src/agent/options.ts"
+import { mcpSteps } from "../src/init/workers.ts"
 import { organOptions } from "../src/organs/AgentSdkLanguageModel.ts"
 import { type Started, startBlock } from "../src/run/startup.ts"
 import * as TestAccount from "../src/testing/Account.ts"
@@ -137,6 +138,14 @@ describe("choosing Chrome in workers.mcp_servers", () => {
   test("left out, sessions don't get it", async () => {
     expect((await resolve(["exa"])).chrome).toBeUndefined()
     expect(await resolve([])).toEqual({ servers: [], note: noServersNote })
+  })
+
+  test("tutti init doesn't call it missing: no config file defines it", () => {
+    expect(mcpSteps([chromeServer], []).map((s) => s.kind)).toEqual(["done"])
+    expect(mcpSteps([chromeServer, "redis"], ["exa"]).map((s) => s.kind)).toEqual([
+      "done",
+      "missing",
+    ])
   })
 
   test("the START block names it with the servers", () => {

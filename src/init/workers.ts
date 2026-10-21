@@ -17,6 +17,7 @@ import {
   permissionModeLine,
   UntrustedCheckout,
 } from "../agent/Account.ts"
+import { chromeServer } from "../agent/mcp.ts"
 import { accountLine } from "../cli/login.ts"
 import { unmergedLabel } from "../run/scope.ts"
 import { memoryEstimate } from "../run/startup.ts"
@@ -75,12 +76,15 @@ export const concurrencyStep = (concurrent: number, asked: boolean): Step => {
   )
 }
 
-/** The summary's step for the MCP servers workers get, and those not defined here. */
+/**
+ * The summary's step for the MCP servers workers get, and those not defined here: Claude in Chrome
+ * is built into Claude Code, defined in no config file, and never missing.
+ */
 export const mcpSteps = (
   chosen: ReadonlyArray<string>,
   available: ReadonlyArray<string>,
 ): ReadonlyArray<Step> => {
-  const undefinedNames = chosen.filter((name) => !available.includes(name))
+  const undefinedNames = chosen.filter((name) => name !== chromeServer && !available.includes(name))
   return [
     chosen.length === 0
       ? step(
