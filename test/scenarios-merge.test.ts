@@ -694,7 +694,9 @@ describe("the environment hold", () => {
       "Merging",
       "Done",
     ])
-  })
+    // Slow under load, not racing: the 10 minutes wake the attention folder's 2-second poll
+    // (attentionFiles.ts pollEvery) 300 times, each a few scheduler turns.
+  }, 30_000)
 
   test("the probe failing: the run ends ENVIRONMENT, exit 7, the tickets reopened", async () => {
     const ran = await runs({
@@ -722,7 +724,8 @@ describe("the environment hold", () => {
     for (const id of ["a", "b"]) {
       expect(ran.issues.find((issue) => issue.id === id)?.status).toBe("open")
     }
-  })
+    // Slow under load, as the probe passing: its 10 minutes wake the poll 300 times.
+  }, 30_000)
 })
 
 describe("the usage-limit hold", () => {
