@@ -117,6 +117,8 @@ const runs = (plan: {
       ...defaults.checks,
       fast: { ...defaults.checks.fast, command: "scripts/check-fast.sh" },
     },
+    // Each ticket checked in its turn alone, no merge train: a merge takes its own check's time.
+    merge: { ...defaults.merge, train: 0 },
   }
   const tickets = plan.backlog.seeds.map((seed) => seed.id)
   return scenario(

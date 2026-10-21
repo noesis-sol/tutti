@@ -106,7 +106,12 @@ describe("settings", () => {
       templates: { worker_prompt: 5, verifier: 2 },
       organs: { effort: null, model: null, triage: true, review: true },
       queue: { exclude_types: ["epic"], footprint: true },
-      merge: { resolve_conflicts: true, resolve_timeout: minutes(20), check_hand_backs: 2 },
+      merge: {
+        resolve_conflicts: true,
+        resolve_timeout: minutes(20),
+        check_hand_backs: 2,
+        train: 1,
+      },
       environment_hold: { count: 2, window: minutes(2), probe: minutes(10) },
       ui: { colour_scheme: "orchestra" },
     })
@@ -132,7 +137,12 @@ describe("settings", () => {
     templates: { worker_prompt: 0, verifier: 0 },
     organs: { effort: null, model: null, triage: true, review: true },
     queue: { exclude_types: ["epic"], footprint: true },
-    merge: { resolve_conflicts: true, resolve_timeout: minutes(20), check_hand_backs: 2 },
+    merge: {
+      resolve_conflicts: true,
+      resolve_timeout: minutes(20),
+      check_hand_backs: 2,
+      train: 1,
+    },
     environment_hold: { count: 2, window: minutes(2), probe: minutes(10) },
     ui: { colour_scheme: "orchestra" },
   }

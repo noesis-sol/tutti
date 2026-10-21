@@ -290,7 +290,7 @@ export const recheckDue = (
         )`${id}'s check failed on ${options.base} at ${recheck.onto.slice(0, 7)}, which has moved on since; rebasing ${branch} and checking it once more`
         yield* events.emit({ kind: "info", ticket: id, text })
         yield* logs.write(text)
-        const moved = yield* queue.offer(recheck.ticket, (place) => Cause.Recheck({ place }))
+        const moved = yield* queue.offer(recheck.ticket, (place) => Cause.Recheck({ place }), false)
         if (Result.isSuccess(moved)) back.push(id)
       })
       yield* put.pipe(Effect.ensuring(Deferred.succeed(offered, undefined)))

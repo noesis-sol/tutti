@@ -355,6 +355,30 @@ its turn (`◼ to merge`). Tickets merge one at a time, in the order they finish
 A ticket closed with nothing of its own to merge, or whose commits together change nothing, or whose
 rebase leaves nothing because the base has its changes already, is done with `no change to merge`.
 
+**The next merge is checked while the one before it is.** Each merge holds the queue through its
+check, which would bound how many tickets an hour merge. So while a ticket is checked in its turn,
+the next one waiting is rebased onto that ticket's branch as it is checked, in its own worktree, and
+checked there beside it (the setup first if a dependency file changed):
+`checking tutti/<next> ahead of its turn to merge, rebased onto tutti/<id> as it is checked`, then
+`'<check>' passes on tutti/<next> ahead of its turn, on top of tutti/<id>`. When the ticket ahead
+merges as it was checked, the next one's branch is on top of the base exactly as it was checked, and
+it merges in its turn with no second check (`tutti/<next> was checked ahead of its turn on top of
+tutti/<id>, which merged as it was checked: merging it with no further check`). When it doesn't (its
+check failed, it went back to its worker, or the base moved another way), the next one's branch is
+put back as its worker left it (`… which did not merge as it was checked: put back as its worker left
+it`), and rebased and checked in its turn as any merge is. So is one whose own check failed ahead of
+its turn (`… which merged as it was checked, but '<check>' fails on tutti/<next> on top of it (output
+is in <file>): put back as its worker left it`): a failure ahead of its turn says nothing of the
+ticket, and is neither handed back to its worker nor sets it aside. A branch that doesn't rebase
+cleanly onto the one ahead isn't checked ahead (`tutti/<next> is not checked ahead of its turn: it
+does not rebase cleanly onto tutti/<id>`): its turn rebases it onto the base, handing back a conflict
+if it has one. Each check ahead competes with the workers' for the CPU, so only the first ticket in
+line is checked ahead by default (`"merge": { "train": 1 }` in `.tutti/settings.json`: how many, each
+on the branch of the one before it; `0` checks each in its turn alone), none is while the run holds
+at the machine's cap on workers (`HOLD: MACHINE`), and a ticket queued again after a hand-back to its
+worker, or checked once more, is checked in its turn. Quitting, or the merges stopping, puts back the
+branches rebased ahead of their turn.
+
 What can go wrong, and what becomes of the ticket:
 
 | | |

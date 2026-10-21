@@ -1481,12 +1481,13 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
   "templates": { "worker_prompt": 5, "verifier": 2 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "queue": { "exclude_types": ["epic"], "footprint": true },
-  "merge": { "resolve_conflicts": true, "resolve_timeout": "20m", "check_hand_backs": 2 },
+  "merge": { "resolve_conflicts": true, "resolve_timeout": "20m", "check_hand_backs": 2, "train": 1 },
   "environment_hold": { "count": 2, "window": "2m", "probe": "10m" },
   "ui": { "colour_scheme": "orchestra" }
 }
 ```
 
+- `merge.train` is orchestra's `merge_train`: how many tickets waiting to merge are checked ahead of their turn, each rebased onto the branch ahead as that one is checked, and merged with no second check when it merges as checked (`src/run/mergetrain.ts`); `0` checks each in its turn alone, and none is checked ahead while the run holds at the machine's cap. 1 by default.
 - `checks.own.command` is orchestra's `check_own`: a worker's check of its own change, such as `scripts/check-own.sh`, which the note on running a check once names in place of the merge check (§4.11). tutti never runs it; its files count as no ticket's in footprints, as the other checks' do. None by default.
 - `workers.mcp_servers` absent means no servers, unlike orchestra (§15, Q5).
 - `workers.effort` absent means `high`, as orchestra's (orchestra-jvi4), for workers, the login probe and the feature interview; `null` leaves the effort to Claude Code.
@@ -1879,7 +1880,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | a deleted ticket's ID not taken for one it prefixes; nothing filed under a deleted parent | Planned (tutti-kkb.39) |
 | 0.8.6 | the tickets table without the tickets Current shows | Done (tutti-kkb.30) |
 | | a shared file holds two tickets apart only when one of them is to change it | Done (tutti-kkb.16) |
-| | the merge train, `merge_train`, and the latest action of a ticket checked ahead | Planned (tutti-kkb.18) |
+| | the merge train, `merge_train`, and the latest action of a ticket checked ahead | Done (tutti-kkb.18), as `merge.train`; the latest action on the dashboard is planned (tutti-6c8) |
 | | a blank line between the title line and the load line | Planned (tutti-kkb.25) |
 | | a spec run starts on its environment ticket while the breakdown files the rest; the breakdown files only the root epic and that ticket, and orchestra the rest without a `bd show` each | Planned (tutti-kkb.28) |
 | | fewer git commands for the same results, and a merge naming its commit from what it read | Not needed: orchestra's own git calls; tutti's Git service is its own |
@@ -1897,7 +1898,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | `CLOSED_UNCOMMITTED` names the files left uncommitted | Done (tutti-kkb.19) |
 | | a verifier round sees the earlier rounds' findings, `DISAGREES WITH ROUND <n>:` | Done (tutti-kkb.9) |
 | | a stop as a spec run commits its setup says it was committed | Planned (tutti-kkb.28) |
-| | a ticket checked ahead whose own check failed blames itself, not the branch ahead | Planned (tutti-kkb.18) |
+| | a ticket checked ahead whose own check failed blames itself, not the branch ahead | Done (tutti-kkb.18) |
 | | a worker its terminal doesn't show read again for 30 s; one PAUSED twice, then found back in its tab, adopted | Not needed: no terminals; a session's state is the SDK's (§4.2, §4.8) |
 | | a ticket set aside and merged by hand mid-run found as the base moves; a drain names the tickets it keeps from their recheck; a dropped carried-over ticket's worktree and branch removed | Done (tutti-kkb.20) |
 | | a conflict hand-back told to run the setup when its rebase brought in a setup file's change | Done (tutti-kkb.4) |

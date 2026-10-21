@@ -217,7 +217,7 @@ const block = (ticket: FinishedTicket, why: string, record: Event, text: Line) =
   })
 
 /** A merge that stops the merges: DIRTY_TREE and GIT_FAILED hold the run, MERGE_FAILED stops it. */
-const stopOver = (ticket: FinishedTicket, why: StopWhy, blocked: string, reason: string) =>
+export const stopOver = (ticket: FinishedTicket, why: StopWhy, blocked: string, reason: string) =>
   Effect.gen(function* () {
     const text =
       why === "MERGE_FAILED" ? tagged(why)`${reason}` : tagged(Tag.hold)`${line`${why}: ${reason}`}`
@@ -280,6 +280,17 @@ export const abandonRebase = (worktree: string) =>
     if (yield* git.rebaseInProgress(worktree)) yield* git.abortRebase(worktree)
   }).pipe(Effect.ignore)
 
+/**
+ * What the merge train (mergetrain.ts) is told of the merge check of the ticket whose turn it is:
+ * the tickets behind it may be checked ahead of their turn, on top of its branch, while it runs.
+ */
+export interface CheckWatch {
+  /** Its check, the setup first if need be, starts on its branch at commit `at`. */
+  starts(ticket: FinishedTicket, at: string): Effect.Effect<void>
+  /** Its check, or the setup before it, ended: passed or not. */
+  ends(passed: boolean): Effect.Effect<void>
+}
+
 /** What a merge keeps of each ticket for the run: rechecks due, setups done, passes, hand-backs. */
 export interface MergeMemory {
   readonly rechecks: Rechecks
@@ -289,6 +300,8 @@ export interface MergeMemory {
   readonly handBacks: HandBacks
   /** The check hand-backs. */
   readonly fixes: Fixes
+  /** The merge train, told of each check in a ticket's turn; none without it. */
+  readonly train?: CheckWatch
 }
 
 /** Keeps the commit the ticket's branch is at as one its merge check passed on, if git can say. */
@@ -479,10 +492,19 @@ const setUpAndCheck = (
         yield* checksFailed(ticket, options, memory.rechecks, onto, error, output, tried, onTop)
         return false
       })
+    // The tickets behind it may be checked ahead of their turn meanwhile, on top of its branch.
+    const train = memory.train
+    const at = yield* Effect.result(git.revParse(options.repo, branch))
+    if (train !== undefined && Result.isSuccess(at)) yield* train.starts(ticket, at.success)
+    const ends = (passed: boolean) => (train === undefined ? Effect.void : train.ends(passed))
     const setup = yield* setUp(ticket, options, memory.setUps, fork, onto, carried?.fix)
-    if (setup._tag === "Failed") return yield* failed(setup.error, setup.output)
+    if (setup._tag === "Failed") {
+      yield* ends(false)
+      return yield* failed(setup.error, setup.output)
+    }
     yield* ledger.refine(id, Detail.Step({ step: "check" }))
     const checked = yield* runMergeCheck(ticket)
+    yield* ends(checked._tag !== "Failed")
     switch (checked._tag) {
       case "Unchecked":
         yield* log.write(

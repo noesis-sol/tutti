@@ -239,7 +239,8 @@ workers get, as the run's `START` block says them, or what is missing.
 In a project with `.orchestra/` and no `.tutti/`, `init` first offers to import orchestra's settings
 and worker prompt. It imports the checks and their time limits, the setup command and its files,
 `concurrent`, `ticket_limit`, `mcp_servers`, the worker and organ effort, `exclude_types`,
-`footprint`, `resolve_conflicts`, `resolve_timeout`, `check_hand_backs` and `environment_hold`, and
+`footprint`, `resolve_conflicts`, `resolve_timeout`, `check_hand_backs`, `merge_train` and
+`environment_hold`, and
 names what it can't import (`terminal`: tutti has no terminals). The worker prompt is copied with your
 changes, and the summary lists, line by line, what it still needs for tutti: `.tutti/` for
 `.orchestra/`, `tutti/` branches for `wt/`, no tabs, and the like. `.orchestra/` is left as it is.
@@ -387,7 +388,12 @@ for a project that sets them all; the table below gives each one's default:
   "templates": { "worker_prompt": 5, "verifier": 2 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "queue": { "exclude_types": ["epic"], "footprint": true },
-  "merge": { "resolve_conflicts": true, "resolve_timeout": "20m", "check_hand_backs": 2 },
+  "merge": {
+    "resolve_conflicts": true,
+    "resolve_timeout": "20m",
+    "check_hand_backs": 2,
+    "train": 1
+  },
   "environment_hold": { "count": 2, "window": "2m", "probe": "10m" },
   "ui": { "colour_scheme": "orchestra" }
 }
@@ -420,6 +426,7 @@ for a project that sets them all; the table below gives each one's default:
 | `merge.resolve_conflicts` | `true` | hand a rebase's conflicts back to the ticket's worker; `--resolve-conflicts` for a run |
 | `merge.resolve_timeout` | `"20m"` | how long the worker has for a hand-back |
 | `merge.check_hand_backs` | `2` | how often a check failing on the rebased branch is handed back; `0` for never |
+| `merge.train` | `1` | how many tickets waiting to merge are checked ahead of their turn; `0` for none; [The merge queue](running.md#the-merge-queue) |
 | `environment_hold.count` | `2` | tickets in a row failing at once that hold the run; `0` turns the hold off |
 | `environment_hold.window` | `"2m"` | how soon after dispatch a failure counts as at once |
 | `environment_hold.probe` | `"10m"` | how long after the hold the machine is probed; `"0"` for no probe |

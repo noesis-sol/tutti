@@ -153,6 +153,11 @@ export const Settings = Schema.Struct({
     resolve_timeout: PositiveDuration.pipe(withDefault("20m")),
     /** How many times a check failing before a merge is handed back; 0 sets it aside at once. */
     check_hand_backs: Count.pipe(withDefault(2)),
+    /**
+     * How many of the tickets waiting to merge are checked ahead of their turn, each rebased onto
+     * the branch ahead as that one is checked (mergetrain.ts); 0 checks each in its turn alone.
+     */
+    train: Count.pipe(withDefault(1)),
   }).pipe(withDefault({})),
   environment_hold: Schema.Struct({
     /** How many tickets in a row failing at once hold the run; 0 turns the hold off. */

@@ -28,6 +28,11 @@
 // Once a ticket's merge, or a hand-back to its worker, is over, its session is closed if its phase
 // no longer needs it (sessions.ts): merged, blocked (unless its hand-back waits for its steered
 // worker), or set aside and not to be checked again.
+//
+// While a ticket's check runs in its turn, the next in line, waiting for its first turn, is checked
+// ahead of it on top of its branch (mergetrain.ts): its turn then merges it with no second check when
+// the ticket ahead merged as it was checked. Quitting, or the merges stopping, puts back the branches
+// the trains rebased.
 import {
   Effect,
   FiberSet,
@@ -55,6 +60,7 @@ import {
   type MergeStop,
   prepare,
 } from "./merge.ts"
+import { make as makeTrain } from "./mergetrain.ts"
 import { Cause, Detail, type InvalidTransition, type TicketPhase } from "./phase.ts"
 import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
 import { fit } from "./sessions.ts"
@@ -80,11 +86,13 @@ export interface MergeQueue {
   /**
    * Puts the ticket in line behind the tickets already in it, ToMerge at its place there, by
    * `cause` (Verified, from Working, unless given). A transition the ledger refuses (PHASE_BUG)
-   * leaves it out of the queue.
+   * leaves it out of the queue. `ahead`: it waits for its first turn in its merge, and may be
+   * checked ahead of it (mergetrain.ts); true unless given.
    */
   offer(
     ticket: FinishedTicket,
     cause?: (place: number) => Cause,
+    ahead?: boolean,
   ): Effect.Effect<Result.Result<TicketPhase | null, InvalidTransition>>
   readonly state: Effect.Effect<QueueState>
   /** The state now, then each new one. */
@@ -113,7 +121,8 @@ export interface MergeQueue {
    * Holds the queue as quitting begins (quit.ts): no ticket takes its turn and none is handed back
    * from now on (a merge under way that would hand its ticket back puts it back in line instead,
    * ToMerge), and the hand-backs under way stop, their tickets left Resolving or Fixing, their
-   * rebases or fixes as they are, for the run's end to stop them.
+   * rebases or fixes as they are, for the run's end to stop them. The checks ahead of their turn
+   * stop, and the branches they rebased are put back as their workers left them.
    */
   readonly hold: Effect.Effect<void>
   /**
@@ -134,7 +143,10 @@ export const isSettled = (state: QueueState): boolean =>
  * then quits, PANIC); the ticket whose merge it cut short before the fast-forward is back in line.
  */
 export const make = (
-  options: MergeOptions,
+  options: MergeOptions & {
+    /** Whether the run holds at the machine's cap on workers: no check ahead starts then. */
+    readonly machineFull?: Effect.Effect<boolean>
+  },
   onPanic?: (where: string, defect: unknown) => Effect.Effect<void>,
 ): Effect.Effect<MergeQueue, never, MergeEnv | RunFibers | Scope.Scope> =>
   Effect.gen(function* () {
@@ -150,10 +162,19 @@ export const make = (
     const handBacks = yield* makeHandBacks
     const fixes = yield* makeFixes
     const passes = yield* makePasses
-    const memory = { rechecks, setUps, passes, handBacks, fixes }
     // Changes to the line and the places it gives, one at a time.
     const lock = yield* Semaphore.make(1)
     const state = SubscriptionRef.get(ref)
+    const guarded = <A, E, R>(where: string, effect: Effect.Effect<A, E, R>) =>
+      onPanic === undefined
+        ? effect
+        : Effect.catchDefect(effect, (defect) => onPanic(where, defect))
+    const train = yield* makeTrain(
+      { ...options, waiting: Effect.map(state, (now) => now.waiting) },
+      { rechecks, setUps, passes, handBacks, fixes },
+      guarded,
+    )
+    const memory = { rechecks, setUps, passes, handBacks, fixes, train }
 
     // The places of the tickets waiting, from 1.
     const renumber = (waiting: ReadonlyArray<string>) =>
@@ -161,20 +182,29 @@ export const make = (
         discard: true,
       })
 
-    const offer: MergeQueue["offer"] = (ticket, cause = (place) => Cause.Verified({ place })) =>
-      lock.withPermit(
-        Effect.uninterruptible(
-          Effect.gen(function* () {
-            const state = yield* SubscriptionRef.get(ref)
-            const moved = yield* ledger.transition(ticket.id, cause(state.waiting.length + 1), {
-              title: ticket.title,
-            })
-            if (Result.isFailure(moved)) return moved
-            yield* SubscriptionRef.set(ref, { ...state, waiting: [...state.waiting, ticket.id] })
-            yield* Queue.offer(line, ticket)
-            return moved
-          }),
+    const offer: MergeQueue["offer"] = (
+      ticket,
+      cause = (place) => Cause.Verified({ place }),
+      ahead = true,
+    ) =>
+      Effect.tap(
+        lock.withPermit(
+          Effect.uninterruptible(
+            Effect.gen(function* () {
+              const state = yield* SubscriptionRef.get(ref)
+              const moved = yield* ledger.transition(ticket.id, cause(state.waiting.length + 1), {
+                title: ticket.title,
+              })
+              if (Result.isFailure(moved)) return moved
+              if (ahead) yield* train.mayCheckAhead(ticket)
+              yield* SubscriptionRef.set(ref, { ...state, waiting: [...state.waiting, ticket.id] })
+              yield* Queue.offer(line, ticket)
+              return moved
+            }),
+          ),
         ),
+        // The check under way may have it checked ahead of its turn.
+        (moved) => (Result.isSuccess(moved) && ahead ? train.start : Effect.void),
       )
 
     // Its turn: out of the line and Merging, the others moved up. False when the merges have
@@ -215,10 +245,6 @@ export const make = (
       )
 
     const handBacksSet = yield* fibers.make("hand-backs")
-    const guarded = <A, E, R>(where: string, effect: Effect.Effect<A, E, R>) =>
-      onPanic === undefined
-        ? effect
-        : Effect.catchDefect(effect, (defect) => onPanic(where, defect))
 
     // A ticket merged by hand since the base last moved on isn't checked again: it is looked for
     // first, one look at a time, the first look asking of every one.
@@ -234,12 +260,17 @@ export const make = (
       ).pipe(Effect.provideContext(context)),
     )
 
+    // The merges stopping leave the tickets behind waiting: the branches their trains rebased are
+    // put back.
     const merged = (stop: MergeStop | undefined) =>
-      SubscriptionRef.update(ref, (state) => ({
-        ...state,
-        merging: null,
-        stop: state.stop ?? stop ?? null,
-      }))
+      Effect.andThen(
+        SubscriptionRef.update(ref, (state) => ({
+          ...state,
+          merging: null,
+          stop: state.stop ?? stop ?? null,
+        })),
+        stop === undefined ? Effect.void : train.leave,
+      )
 
     // A hand-back to the ticket's worker, `handed` when the ledger took it: `work` in a fiber of
     // its own, the ticket's merge over for the queue. Verified puts it back in line; the run's end
@@ -267,7 +298,8 @@ export const make = (
             `${id}'s hand-back`,
             Effect.interruptible(
               Effect.gen(function* () {
-                if (yield* work) yield* offer(ticket)
+                // Back in line in the same merge: checked in its turn, not ahead of it.
+                if (yield* work) yield* offer(ticket, undefined, false)
                 yield* fit(id, rechecks, handBacks)
               }),
             ).pipe(Effect.ensuring(done), Effect.provideContext(context)),
@@ -312,14 +344,20 @@ export const make = (
       })
 
     // Its turn and its merge, under one mask: a quit as its turn starts finds it Merging, and puts
-    // it back in line, as does a defect before the fast-forward.
+    // it back in line, as does a defect before the fast-forward. A ticket checked ahead of its turn
+    // boards its train first (mergetrain.ts): over when git can't put its branch back.
     const merge = (ticket: FinishedTicket) =>
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           if (!(yield* turn(ticket))) return
-          const prepared = yield* restore(prepare(ticket, options, memory)).pipe(
+          const boarded = yield* restore(train.board(ticket)).pipe(
             Effect.onError(() => backInLine(ticket)),
           )
+          const prepared =
+            boarded ??
+            (yield* restore(prepare(ticket, options, memory)).pipe(
+              Effect.onError(() => backInLine(ticket)),
+            ))
           const handingBack = prepared._tag === "HandBack" || prepared._tag === "FixBack"
           if (handingBack && (yield* Ref.get(held))) return yield* backInLine(ticket)
           if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
@@ -341,7 +379,7 @@ export const make = (
           yield* merged(stop)
           yield* fit(ticket.id, rechecks, handBacks)
         }),
-      )
+      ).pipe(Effect.ensuring(train.holderDone))
 
     const consume = Effect.forever(
       Effect.gen(function* () {
@@ -366,7 +404,10 @@ export const make = (
       handBacks,
       recheck,
       mergedByHand,
-      hold: Effect.andThen(Ref.set(held, true), FiberSet.clear(handBacksSet)),
-      stopMerges: FiberSet.clear(set),
+      hold: Effect.andThen(
+        Ref.set(held, true),
+        Effect.andThen(train.leave, FiberSet.clear(handBacksSet)),
+      ),
+      stopMerges: Effect.andThen(FiberSet.clear(set), train.leave),
     } satisfies MergeQueue
   })

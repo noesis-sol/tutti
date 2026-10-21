@@ -212,7 +212,8 @@ export interface Fix {
  * from `fork`, when the base's commits since its dependencies were last set up change a file
  * the run's setup files names (setUps.now), or, after its worker's `fix`, the branch's commits since
  * then do, or git can't say whether they do; Merging{setup} while it runs, unless it is for a `fix`
- * (checked again in Fixing or Resolving).
+ * (checked again in Fixing or Resolving), or `ahead` of its turn to merge (mergetrain.ts), its
+ * branch rebased onto the branch ahead of it at `onto` and its phase left as it is.
  */
 export const setUp = (
   ticket: FinishedTicket,
@@ -221,6 +222,7 @@ export const setUp = (
   fork: string,
   onto: string,
   fix?: Fix,
+  ahead = false,
 ): Effect.Effect<SetUp, never, Checks | Git | Worktrees | Ledger | Log> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
@@ -249,7 +251,9 @@ export const setUp = (
     }
     if (why.length === 0) return { _tag: "Unneeded" } satisfies SetUp
     const what = why.join(" and ")
-    if (fix === undefined) yield* (yield* Ledger).refine(ticket.id, Detail.Step({ step: "setup" }))
+    if (fix === undefined && !ahead) {
+      yield* (yield* Ledger).refine(ticket.id, Detail.Step({ step: "setup" }))
+    }
     yield* (yield* Log).write(detail`${ticket.id}: ${what}; running '${command}' before the check`)
     const checks = yield* Checks
     const output = join(ticket.worktree, runFolder, setupLogName)

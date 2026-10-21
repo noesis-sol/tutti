@@ -191,7 +191,12 @@ export const runMergeCheck = (
     checked._tag === "Failed" ? Effect.void : clearUnchecked(ticket.id),
   )
 
-const checkOnce = (
+/**
+ * Runs the merge check in the ticket's worktree, its output in check.log, and says how it went,
+ * leaving its rebased-and-unchecked mark as it is: as for a check ahead of its turn to merge
+ * (mergetrain.ts), on a branch that may yet be put back.
+ */
+export const checkOnce = (
   ticket: CheckedTicket,
 ): Effect.Effect<Checked, never, Checks | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {

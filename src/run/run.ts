@@ -509,8 +509,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       Effect.flatMap(Ref.get(slots), (take) =>
         take === undefined ? Effect.succeed(false) : take(ticket, work),
       )
+    // Whether the run holds at --machine-workers (below): no ticket is checked ahead of its turn to
+    // merge then (mergetrain.ts).
+    const machineFull = yield* Ref.make(false)
     const queue = yield* makeQueue(
-      { repo: config.repo, base, noMore, recheckSlot, setUps },
+      { repo: config.repo, base, noMore, recheckSlot, setUps, machineFull: Ref.get(machineFull) },
       (where, defect) =>
         panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
     )
@@ -595,7 +598,6 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       (state) =>
         [...state.tickets.values()].filter((entry) => running.has(entry.phase._tag)).length,
     )
-    const machineFull = yield* Ref.make(false)
     // The scheduler's queue record, once it is made: the hold's start and end each write one.
     const queueRecord = yield* Ref.make<Effect.Effect<void>>(Effect.void)
     const atCap = Effect.gen(function* () {

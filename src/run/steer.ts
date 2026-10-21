@@ -150,7 +150,7 @@ const handOver = (
     yield* events.emit({ kind: "info", ticket, text })
     yield* logs.write(text)
     if (waive) yield* queue.handBacks.waive(ticket)
-    const moved = yield* queue.offer(stop.ticket, (place) => Cause.HandedOver({ place }))
+    const moved = yield* queue.offer(stop.ticket, (place) => Cause.HandedOver({ place }), false)
     if (Result.isSuccess(moved)) return true
     // The ledger refused (PHASE_BUG, logged): the hand-back waits as it did.
     if (waive) yield* queue.handBacks.waived(ticket)
