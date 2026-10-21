@@ -321,7 +321,8 @@ later ticket fixes. Once the base has moved on, a ticket set aside with `CHECKS_
 checked once more, through the merge queue:
 `RECHECK: <id>'s check failed on main at 3c4d5e6, which has moved on since; rebasing tutti/<id> and
 checking it once more`. Not when it failed in files its own commits change, nor once the ticket has
-been taken up since.
+been taken up since. It takes a slot as a running ticket does, until its merge is over, and none is
+checked again while the run holds or winds down, or while a solo ticket runs or is next.
 
 ## Holds and stops
 

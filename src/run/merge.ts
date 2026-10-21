@@ -68,6 +68,12 @@ export interface MergeOptions {
    * it does. A failed check isn't handed back to its worker then. Without it, only a drain counts.
    */
   readonly noMore?: Effect.Effect<string | undefined>
+  /**
+   * Takes a slot for a ticket checked once more (recheck.ts) and runs `work` in it, as a running
+   * ticket's: false, taking none, while a solo ticket runs or is next, no slot is free, or the
+   * ticket holds one still (the scheduler's recheckSlot). Without it, a recheck takes no slot.
+   */
+  readonly recheckSlot?: (ticket: string, work: Effect.Effect<void>) => Effect.Effect<boolean>
 }
 
 /** What stops the merges, and the exit code the run ends with for it (§ 5 item 10). */

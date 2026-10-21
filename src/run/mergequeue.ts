@@ -210,9 +210,11 @@ export const make = (
         ? effect
         : Effect.catchDefect(effect, (defect) => onPanic(where, defect))
 
-    const recheck = recheckDue(rechecks, { offer, state }, options).pipe(
-      Effect.provideContext(context),
-    )
+    const recheck = recheckDue(
+      rechecks,
+      { offer, state, changes: SubscriptionRef.changes(ref) },
+      options,
+    ).pipe(Effect.provideContext(context))
 
     const merged = (stop: MergeStop | undefined) =>
       SubscriptionRef.update(ref, (state) => ({

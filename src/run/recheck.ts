@@ -8,10 +8,13 @@
 // Each ticket is checked again at most once a run, set up first if its setup failed (setup.ts). One
 // whose check failed in a folder its own commits change isn't kept: another ticket's change won't fix that. Nor is one that something
 // has touched since, as when you have taken it up: reopened, its worktree changed, its branch moved,
-// or its worker steered. None is checked again while the run winds down or the merges have
-// stopped. Its session stays open while it may be checked again (§ 4.8).
+// or its worker steered. None is checked again while the run winds down or holds (a stop, or the
+// usage limit), or the merges have stopped; nor while a solo ticket runs or is next. Each takes a
+// slot as a running ticket does, until its merge is over, and waits for one to be free: the run
+// looks for those due each time it looks for work, before new tickets start. Its session stays open
+// while it may be checked again (§ 4.8).
 import { posix } from "node:path"
-import { Effect, Ref, Result } from "effect"
+import { Deferred, Effect, Ref, Result, Stream } from "effect"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
@@ -186,41 +189,71 @@ const whyNot = (recheck: Recheck, options: MergeOptions) =>
     return undefined
   })
 
+/** Waits until ticket `id` has left the merge queue (merged, set aside or blocked), or the merges stop. */
+const mergeOver = (queue: Pick<MergeQueue, "changes">, id: string) =>
+  queue.changes.pipe(
+    Stream.filter(
+      (state) =>
+        state.stop !== null ||
+        (state.merging !== id && !state.waiting.includes(id) && !state.resolving.includes(id)),
+    ),
+    Stream.runHead,
+    Effect.asVoid,
+  )
+
+/** Whether no ticket is checked again now: the run winds down or holds, or the merges have stopped. */
+const notNow = (queue: Pick<MergeQueue, "state">, options: MergeOptions) =>
+  Effect.gen(function* () {
+    if ((yield* (yield* Ledger).current).windDown !== null) return true
+    if ((yield* queue.state).stop !== null) return true
+    return options.noMore !== undefined && (yield* options.noMore) !== undefined
+  })
+
 /**
  * Puts back in the merge queue, ToMerge by RECHECK, each ticket waiting to be checked once more
- * whose base has moved on since its check failed; none while the run winds down or the merges
- * have stopped. A ticket touched since stays set aside, and the log says why. The tickets it put
- * back.
+ * whose base has moved on since its check failed, each in a slot of its own until its merge is
+ * over (`options.recheckSlot`); none while the run winds down or holds, the merges have stopped, a
+ * solo ticket runs or is next, or no slot is free. A ticket touched since stays set aside, and the
+ * log says why. The tickets it put back.
  */
 export const recheckDue = (
   rechecks: Rechecks,
-  queue: Pick<MergeQueue, "offer" | "state">,
+  queue: Pick<MergeQueue, "offer" | "state" | "changes">,
   options: MergeOptions,
 ): Effect.Effect<ReadonlyArray<string>, never, Beads | Git | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
-    const ledger = yield* Ledger
     const logs = yield* Log
     const events = yield* EventStream
     const back: Array<string> = []
     for (const recheck of yield* rechecks.waiting) {
-      if ((yield* ledger.current).windDown !== null || (yield* queue.state).stop !== null) break
+      if (yield* notNow(queue, options)) break
       if (!(yield* movedOn(options, recheck.onto))) continue
       const { id, branch } = recheck.ticket
-      if (!(yield* rechecks.take(id))) continue
-      const why = yield* whyNot(recheck, options)
-      if (why !== undefined) {
-        const text = detail`${id} is not checked again: ${why}; it stays set aside`
+      // Its slot is held from before its offer until its merge is over: a slot that waited for
+      // nothing to start waiting would see it out of the queue before it went in.
+      const offered = yield* Deferred.make<void>()
+      if (options.recheckSlot !== undefined) {
+        const work = Effect.andThen(Deferred.await(offered), mergeOver(queue, id))
+        if (!(yield* options.recheckSlot(id, work))) break
+      }
+      const put = Effect.gen(function* () {
+        if (!(yield* rechecks.take(id))) return
+        const why = yield* whyNot(recheck, options)
+        if (why !== undefined) {
+          const text = detail`${id} is not checked again: ${why}; it stays set aside`
+          yield* events.emit({ kind: "info", ticket: id, text })
+          yield* logs.write(text)
+          return
+        }
+        const text = ticketLine(
+          Tag.recheck,
+        )`${id}'s check failed on ${options.base} at ${recheck.onto.slice(0, 7)}, which has moved on since; rebasing ${branch} and checking it once more`
         yield* events.emit({ kind: "info", ticket: id, text })
         yield* logs.write(text)
-        continue
-      }
-      const text = ticketLine(
-        Tag.recheck,
-      )`${id}'s check failed on ${options.base} at ${recheck.onto.slice(0, 7)}, which has moved on since; rebasing ${branch} and checking it once more`
-      yield* events.emit({ kind: "info", ticket: id, text })
-      yield* logs.write(text)
-      const moved = yield* queue.offer(recheck.ticket, (place) => Cause.Recheck({ place }))
-      if (Result.isSuccess(moved)) back.push(id)
+        const moved = yield* queue.offer(recheck.ticket, (place) => Cause.Recheck({ place }))
+        if (Result.isSuccess(moved)) back.push(id)
+      })
+      yield* put.pipe(Effect.ensuring(Deferred.succeed(offered, undefined)))
     }
     return back
   })

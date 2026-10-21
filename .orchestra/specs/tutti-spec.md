@@ -708,7 +708,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
    - the setup when `setup_files` changed
    - `check_fast` within its limit (output kept, `FLAKY:` warnings, `CHECKS_FAILED` with hand-back)
    - fast-forward (`MERGE_FAILED`, exit 6); cleanup; epics closed when their last subticket merges, up the tree
-8. **Recheck**: a ticket set aside for a failed check is checked once more after the base moves on, unless it failed in its own code.
+8. **Recheck**: a ticket set aside for a failed check is checked once more after the base moves on, unless it failed in its own code. It takes a slot as a running ticket does, until its merge is over, and none is checked again while the run winds down or holds (a stop, or the usage limit), or while a solo ticket runs or is next, as orchestra's recheckTickets has it.
 9. **Waits for merge**: a worker that stops with nothing done, having linked a blocker that hasn't merged, puts its ticket back in the queue.
 10. **Holds and stops**:
     - `HOLD` drains: no new tickets, the running ones finish

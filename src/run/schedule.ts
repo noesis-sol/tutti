@@ -187,6 +187,12 @@ export interface Scheduler {
    * issue, its footprint, its parent and its solo label count as a dispatched ticket's do.
    */
   carry(ticket: string, work: Effect.Effect<void>, issue?: Issue): Effect.Effect<void>
+  /**
+   * Runs `work` in a slot for a ticket checked once more (recheck.ts), as a running ticket's,
+   * counting toward no limit: only with a slot free, no solo ticket running or first in line at
+   * the last pick, and the ticket holding none still. Whether it took one.
+   */
+  recheckSlot(ticket: string, work: Effect.Effect<void>): Effect.Effect<boolean>
   /** The tickets this run has started: what --limit counts. */
   readonly started: Effect.Effect<number>
   /** The tickets holding a slot now. */
@@ -292,6 +298,9 @@ export const make = (
     const skipSaid = sayOnce()
     // The solo ticket next, which holds back the others while a slot is free, and its line last said.
     let soloNext: string | null = null
+    // The solo ticket first in line at the last pick, even one made with every slot taken: no
+    // recheck takes a slot ahead of it.
+    let soloFirst: string | null = null
     let soloSaid = ""
     // The LIKELY_CONFLICT lines said, each once.
     const warned = new Set<string>()
@@ -619,6 +628,7 @@ export const make = (
             else start = first
           }
           soloNext = slot ? next : null
+          soloFirst = next
           const soloWhy =
             slot && start === undefined && free.length > 0 && s.solo !== null
               ? soloLine(s.solo, false)
@@ -684,6 +694,19 @@ export const make = (
       fillTrying: fillTries(1),
       freed: Queue.take(freed),
       carry: (ticket, work, issue) => occupy(ticket, work, issue),
+      recheckSlot: (ticket, work) =>
+        oneFill.withPermit(
+          Effect.gen(function* () {
+            const s = yield* Ref.get(slots)
+            const free =
+              s.running.size < options.concurrent &&
+              s.solo === null &&
+              soloFirst === null &&
+              !s.running.has(ticket)
+            if (free) yield* occupy(ticket, work)
+            return free
+          }),
+        ),
       started: Effect.map(Ref.get(slots), (s) => s.started),
       running: Effect.map(Ref.get(slots), (s) => s.running),
       interrupt: FiberSet.clear(tickets),

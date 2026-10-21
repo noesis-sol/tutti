@@ -3,8 +3,9 @@
 // watchers of the merge queue and of drain requests, and one fiber per running ticket, each into a
 // FiberSet of the run's scope (§ 3.4), and drives the scheduler itself: it fills the free slots as
 // the run starts, whenever a ticket's fiber ends or a merge finishes, and on each ready poll. Each
-// such look first puts back the Waiting tickets whose blockers merged and resumes the Asked ones
-// whose questions are answered (asked.ts), unless the run holds or winds down.
+// such look first puts back the Waiting tickets whose blockers merged, checks once more in a slot
+// each ticket set aside for a failed check whose base has moved on (recheck.ts), and resumes the
+// Asked ones whose questions are answered (asked.ts), unless the run holds or winds down.
 //
 // Holds and stops (§ 5 item 10): a stop holds the run (no new tickets, the running ones finish and
 // merge), and the run ends once nothing runs or waits to merge, with the stops' line and the first
@@ -141,7 +142,7 @@ import {
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
-import { footprintsOf, make as makeScheduler, readyPoll } from "./schedule.ts"
+import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, Screen, show } from "./screen.ts"
 import { handBackNow, interrupt, releaseAndHandOver, sendMessage } from "./steer.ts"
@@ -468,8 +469,17 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       Effect.all([Ref.get(stops), usage.held, ledger.current]),
       ([all, held, state]) => noMoreWork(all, held, state.windDown !== null),
     )
-    const queue = yield* makeQueue({ repo: config.repo, base, noMore }, (where, defect) =>
-      panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
+    // A ticket checked once more takes a slot from the scheduler, made after the queue it starts
+    // tickets with: none before it is.
+    const slots = yield* Ref.make<Scheduler["recheckSlot"] | undefined>(undefined)
+    const recheckSlot = (ticket: string, work: Effect.Effect<void>) =>
+      Effect.flatMap(Ref.get(slots), (take) =>
+        take === undefined ? Effect.succeed(false) : take(ticket, work),
+      )
+    const queue = yield* makeQueue(
+      { repo: config.repo, base, noMore, recheckSlot },
+      (where, defect) =>
+        panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
     )
     // The merge that stopped the merges, taken up once, by its watcher or by the end.
     const mergeStopSeen = yield* Ref.make(false)
@@ -561,6 +571,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       show: ({ solo, unclosed }) =>
         SubscriptionRef.update(status, (now) => ({ ...now, solo, unclosed })),
     })
+    yield* Ref.set(slots, scheduler.recheckSlot)
 
     // The tickets earlier runs left unmerged, checked before the first dispatch: one merged by hand
     // since loses its label, so the tickets it blocks can start.
@@ -821,6 +832,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // ticket limit left out, as the run doesn't wait for them.
     const nothingLeft = Effect.gen(function* () {
       yield* requeueWaiting
+      // The tickets set aside for a failed check whose base has moved on are checked once more
+      // first, each in a slot: each is done but for its merge, and others may wait on it. One left
+      // for a hold, a solo ticket or a slot is due again at a later look (recheck.ts).
+      yield* queue.recheck
       // The answered tickets come back before new ones start, each in a slot of its own and
       // counting toward no limit (asked.ts); not while the run holds or winds down, which takes up
       // only what is running: the next run resumes them.
