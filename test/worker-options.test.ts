@@ -20,7 +20,7 @@ import {
 } from "../src/agent/options.ts"
 import { unusedTools } from "../src/agent/unusedTools.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
-import { checkNote } from "../src/project/prompt.ts"
+import { checkNote, usageLimitNote } from "../src/project/prompt.ts"
 import { permissionModes } from "../src/project/settings.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
@@ -94,7 +94,7 @@ describe("workerOptions", () => {
       systemPrompt: {
         type: "preset",
         preset: "claude_code",
-        append: `You work on tutti-abc.1. Close tutti-abc.1 when done.${checkNote(null)}`,
+        append: `You work on tutti-abc.1. Close tutti-abc.1 when done.${checkNote(null)}${usageLimitNote}`,
         snapshot: true,
       },
       sessionId: "11111111-2222-4333-8444-555555555555",
@@ -201,7 +201,9 @@ describe("workerOptions", () => {
         if (typeof system !== "object" || Array.isArray(system) || system.type !== "preset") {
           throw new Error("not a preset system prompt")
         }
-        expect(system.append).toBe(prompt.text.replaceAll("TICKET_ID", ticket) + checkNote(null))
+        expect(system.append).toBe(
+          prompt.text.replaceAll("TICKET_ID", ticket) + checkNote(null) + usageLimitNote,
+        )
       }),
     )
   })

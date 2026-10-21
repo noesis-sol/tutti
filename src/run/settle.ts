@@ -12,6 +12,10 @@
 // be nudged: it pauses at once. One whose session went is resumed once in this run and told to carry
 // on (sessions.ts); gone again, or steered, it pauses, and one whose session can't be resumed is
 // dropped (WORKER_GONE).
+//
+// A worker that stops at the account's usage limit with its ticket deferred, as orchestra 0.8.1 has
+// it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
+// worker carries on after the reset, rather than the ticket being set aside as deferred.
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Clock, Data, Duration, Effect, Option, Queue, Result, Schedule, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
@@ -254,6 +258,11 @@ const nudge = (ticket: string, n: number) =>
     }),
   )
 
+/** The note on a ticket put back in progress as its worker stopped at the usage limit. */
+export const limitDeferralNote =
+  "tutti: deferred as its worker stopped at the account's usage limit; back in progress, its " +
+  "worker carries on after the reset"
+
 /** The ticket as bd show gives it, read again a few seconds later while bd fails. */
 const show = (id: string) =>
   Effect.gen(function* () {
@@ -382,6 +391,32 @@ const grace = (ticket: string, at: number) =>
     }
   })
 
+/**
+ * Watches the ticket's worker: each time it stops at the usage limit (UsageLimited) with its ticket
+ * deferred, the ticket is put back in progress, so that it waits for the reset in the hold and its
+ * worker, told to carry on then, finds it as it left it.
+ */
+const undeferAtLimit = (id: string) =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const beads = yield* Beads
+    const logs = yield* Log
+    const back = Effect.gen(function* () {
+      if ((yield* show(id)).status !== "deferred") return
+      yield* beads.update(id, { status: "in_progress", appendNotes: limitDeferralNote })
+      yield* logs.write(
+        detail`${id}: its worker deferred it as it stopped at the usage limit; back in progress, it waits for the reset`,
+      )
+    })
+    yield* host.state(id).pipe(
+      Stream.map((state) => state._tag === "UsageLimited"),
+      Stream.changes,
+      Stream.filter((limited) => limited),
+      Stream.runForEach(() => Effect.ignore(back)),
+      Effect.ignore,
+    )
+  })
+
 /** How the worker settled, for the log. */
 const how = (state: WorkerState): string => {
   switch (state._tag) {
@@ -403,46 +438,49 @@ export const settle = (
   base: string,
   closed?: ClosedBranches,
 ): Effect.Effect<Settled, BeadsError | GitError, SettleEnv> =>
-  Effect.gen(function* () {
-    const ledger = yield* Ledger
-    const logs = yield* Log
-    const id = worker.ticket
-    let told = 0
-    for (;;) {
-      const state = yield* untilSettled(id)
-      const reading = yield* read(worker, base, closed)
-      if (reading._tag !== "InProgress") {
-        yield* logs.write(detail`${id} settled: ${how(state)}`)
-        return Settled.Read({ reading, state })
+  Effect.scoped(
+    Effect.gen(function* () {
+      const ledger = yield* Ledger
+      const logs = yield* Log
+      const id = worker.ticket
+      yield* Effect.forkScoped(undeferAtLimit(id), { startImmediately: true })
+      let told = 0
+      for (;;) {
+        const state = yield* untilSettled(id)
+        const reading = yield* read(worker, base, closed)
+        if (reading._tag !== "InProgress") {
+          yield* logs.write(detail`${id} settled: ${how(state)}`)
+          return Settled.Read({ reading, state })
+        }
+        const steered = (yield* ledger.current).tickets.get(id)?.steered ?? false
+        if (state._tag === "Gone" && steered) {
+          // A steered worker is told nothing, so it isn't resumed to carry on (§ 4.3).
+          return Settled.Paused({
+            gone: `${how(state)}; you have steered it, so tutti did not resume it to carry on, and the next run resumes it`,
+          })
+        }
+        if (state._tag === "Gone") {
+          // Resumed once in this run, told to carry on; gone again, it pauses (§ 4.8).
+          const back = yield* resumeGone(id, state.why)
+          if (back._tag === "Resumed") continue
+          if (back._tag === "Failed") return Settled.Dropped({ why: back.reason })
+          return Settled.Paused({
+            gone: `${how(state)}; its session was resumed once in this run already, and the next run resumes it again`,
+          })
+        }
+        if (!idle(state)) return Settled.Paused({ gone: how(state) })
+        if (!steered && told < nudges) {
+          told++
+          if (yield* nudge(id, told)) continue
+        }
+        if (yield* grace(id, state.at)) continue
+        // The grace ran out: what the ticket says now decides.
+        const last = yield* read(worker, base, closed)
+        if (last._tag !== "InProgress") {
+          yield* logs.write(detail`${id} settled: ${how(state)}`)
+          return Settled.Read({ reading: last, state })
+        }
+        return Settled.Paused({ gone: null })
       }
-      const steered = (yield* ledger.current).tickets.get(id)?.steered ?? false
-      if (state._tag === "Gone" && steered) {
-        // A steered worker is told nothing, so it isn't resumed to carry on (§ 4.3).
-        return Settled.Paused({
-          gone: `${how(state)}; you have steered it, so tutti did not resume it to carry on, and the next run resumes it`,
-        })
-      }
-      if (state._tag === "Gone") {
-        // Resumed once in this run, told to carry on; gone again, it pauses (§ 4.8).
-        const back = yield* resumeGone(id, state.why)
-        if (back._tag === "Resumed") continue
-        if (back._tag === "Failed") return Settled.Dropped({ why: back.reason })
-        return Settled.Paused({
-          gone: `${how(state)}; its session was resumed once in this run already, and the next run resumes it again`,
-        })
-      }
-      if (!idle(state)) return Settled.Paused({ gone: how(state) })
-      if (!steered && told < nudges) {
-        told++
-        if (yield* nudge(id, told)) continue
-      }
-      if (yield* grace(id, state.at)) continue
-      // The grace ran out: what the ticket says now decides.
-      const last = yield* read(worker, base, closed)
-      if (last._tag !== "InProgress") {
-        yield* logs.write(detail`${id} settled: ${how(state)}`)
-        return Settled.Read({ reading: last, state })
-      }
-      return Settled.Paused({ gone: null })
-    }
-  })
+    }),
+  )

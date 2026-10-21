@@ -27,7 +27,13 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
 import type { AppConfigValue } from "../cli/AppConfig.ts"
-import { askUserQuestionTool, checkNote, forTicket, type WorkerPrompt } from "../project/prompt.ts"
+import {
+  askUserQuestionTool,
+  checkNote,
+  forTicket,
+  usageLimitNote,
+  type WorkerPrompt,
+} from "../project/prompt.ts"
 import { reap } from "../services/reaper.ts"
 import type { InterviewSetup } from "./AgentHost.ts"
 import { Attention } from "./Attention.ts"
@@ -181,7 +187,8 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
               checkNote(
                 input.config.settings.checks.own.command ??
                   input.config.settings.checks.fast.command,
-              ),
+              ) +
+              usageLimitNote,
           }),
       snapshot: true,
     },

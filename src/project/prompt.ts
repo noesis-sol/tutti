@@ -104,6 +104,16 @@ export const coresNote =
   `so a check that runs things side by side (test files or packages, a linter's jobs, a build) ` +
   `runs no more than that many at once; GOFLAGS has Go's commands keep to it already (-p).`
 
+/**
+ * The note appended to a worker's standing rules after checkNote on the account's usage limit, as
+ * orchestra 0.8.1's: a worker stopped by the limit waits in the run's hold and is told to carry on
+ * after the reset (§ 4.12), so it commits what it has and stops, rather than deferring or closing
+ * its ticket. A note, not a line of the template, so a project's own worker prompt gets it too.
+ */
+export const usageLimitNote =
+  "\nAt the account's usage limit, commit what you have and stop, without deferring or closing " +
+  "the ticket for it: you'll carry on after the reset.\n"
+
 /** `file` as a problem names it: from the project's top when it is inside it. */
 const shown = (repo: string, file: string): string => {
   const rel = relative(repo, file)

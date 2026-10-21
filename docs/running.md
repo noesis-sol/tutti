@@ -467,6 +467,10 @@ Claude Code reports:
   resets at 14:05`. Workers whose turn ended on the limit wait (`usage limit · resets 14:05`); they
   aren't nudged, triaged or counted toward the environment hold. Organ calls are skipped meanwhile. A
   notification says so once.
+- **A worker's rules** tell it to commit what it has and stop at the limit, without deferring or
+  closing its ticket for it. One that defers it all the same as it stops has the ticket put back in
+  progress (`<id>: its worker deferred it as it stopped at the usage limit; back in progress, it waits
+  for the reset`), so it waits with the others rather than being set aside.
 - **A minute after the reset**, the hold lifts (`USAGE_LIMIT lifted`), and each waiting worker is told
   to carry on.
 - **With nothing else to do**, the run waits for the reset, dashboard or not, counting down:

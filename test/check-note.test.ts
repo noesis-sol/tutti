@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { workerOptions } from "../src/agent/options.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
-import { checkNote, workerCheckLog } from "../src/project/prompt.ts"
+import { checkNote, usageLimitNote, workerCheckLog } from "../src/project/prompt.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 
 const prompt = { text: "You work on TICKET_ID.", file: null }
@@ -69,8 +69,10 @@ describe("the check note", () => {
   })
 
   test("follows the worker prompt in a worker's standing rules, naming the merge check", () => {
-    expect(rules("bun run check")).toBe(`You work on bd-7.${checkNote("bun run check")}`)
+    expect(rules("bun run check")).toBe(
+      `You work on bd-7.${checkNote("bun run check")}${usageLimitNote}`,
+    )
     expect(rules("bun run check")).toContain(`'bun run check > ${workerCheckLog} 2>&1;`)
-    expect(rules(null)).toBe(`You work on bd-7.${checkNote(null)}`)
+    expect(rules(null)).toBe(`You work on bd-7.${checkNote(null)}${usageLimitNote}`)
   })
 })

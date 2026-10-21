@@ -22,6 +22,7 @@ import {
   builtInWorkerPrompt,
   checkNote,
   unknownSuitesLines,
+  usageLimitNote,
   withSuites,
 } from "../src/project/prompt.ts"
 import { checkCommands, Settings } from "../src/project/settings.ts"
@@ -295,10 +296,10 @@ describe("checks.own", () => {
 
   test("the check note gives it in place of the merge check", () => {
     expect(rules(configWith("scripts/check-own.sh", "scripts/check-fast.sh"))).toEndWith(
-      checkNote("scripts/check-own.sh"),
+      checkNote("scripts/check-own.sh") + usageLimitNote,
     )
     expect(rules(configWith(null, "scripts/check-fast.sh"))).toEndWith(
-      checkNote("scripts/check-fast.sh"),
+      checkNote("scripts/check-fast.sh") + usageLimitNote,
     )
   })
 
