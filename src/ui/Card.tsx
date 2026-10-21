@@ -46,9 +46,12 @@ export const elapsed = (millis: number): string => {
   return `${Math.floor(minutes / 60)}h${pad(minutes % 60)}m`
 }
 
-/** Whether the card's worker waits for you: a request open, or the CLI says it needs you. */
+/**
+ * Whether the card's worker waits for you: a request open, the CLI says it needs you, or its
+ * ticket is Blocked with its conflict hand-back waiting (§ 4.3).
+ */
 export const waitsForYou = (card: Card): boolean =>
-  card.requests.length > 0 || card.state?._tag === "NeedsYou"
+  card.requests.length > 0 || card.state?._tag === "NeedsYou" || card.phase._tag === "Blocked"
 
 /** The look of a card's status (§ 7.11's Statuses). */
 export const statusLook = (card: Card, theme: Theme): Look => {

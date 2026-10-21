@@ -386,6 +386,8 @@ These stay, as orchestra has them:
 
 - **tutti sends a steered worker nothing automatically:** no continue nudges, no hand-backs, no "carry on".
 - **A hand-back due to it waits.** It appears in its view as a notice with **Hand it the conflict now**. Its ticket is `Blocked{MERGE_CONFLICT}` meanwhile, and its session stays open (§4.8): its view still takes your messages, interrupts and **Release**.
+  - **It stays within reach.** The ticket keeps its worker's number and its card meanwhile, the card's status `conflict waits for you`, with no spinner, so `1`–`9` or a click opens its view as before; no other worker takes its number.
+  - **The run waits for it**, with a dashboard, as for a worker waiting on you (D19, §5 item 14): the end-of-run box names it, `a (a merge conflict waits for you)`, until it is handed over, its worker is released, or `q` ends the run, leaving it `Blocked`. In plain mode, where nothing can hand it over, the run ends as usual.
   - **Hand it the conflict now** hands the conflict over. The ticket, `Blocked` on `MERGE_CONFLICT`, goes back in the merge queue (§5.1) and is rebased again. If it still conflicts, the conflict is handed back to the worker, steered as it is: the steered check is waived for that one hand-back.
 - **A message you type may join a turn of tutti's.** Sent while a nudge or hand-back runs, it can be folded into that turn (§4.1), and one turn then answers both. The worker is steered from your send. tutti sends nothing after that turn, but it still reads the ticket and verifies what a hand-back left (§4.7): reading and verifying send nothing.
 - **The idle grace for `PAUSED` counts from your last message.**
@@ -723,6 +725,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
 13. **Organs**: triage in the background per deferred ticket; the predictor in the background; the reviewer at the end; the screen and the plan for `--feature`; the scout for `init`.
 14. **The end** (D19). Nothing left to start or merge ends the run, except while workers wait on you.
     - **With a dashboard**, a run whose only remaining work is open attention requests doesn't end. It shows a box: `Everything else is done. 2 workers wait for you: tut-9a1 (Allow Bash(rm -rf build)?), tut-7k2 (a question)`.
+      - A conflict hand-back waiting for a steered worker (§4.3) keeps it open too, named `tut-3c4 (a merge conflict waits for you)`; handing it over, or releasing the worker, lets it merge, and `q` leaves it `Blocked`.
       - Answering lets them carry on; the run continues, and they may finish and merge.
       - `q` ends the run, suspending them (§4.8).
       - The workers that stopped the run (`PAUSED`, `TICKET_LIMIT`) don't keep it open; they are suspended.
@@ -866,7 +869,7 @@ Merging a ticket rebases it again if more landed meanwhile, so a ticket can go f
 #### How the phases are shown
 
 - **One row per ticket**, from the moment the run picks it up until the run ends. The row keeps its place in the tickets table and changes as the phase does. A ticket that comes back, such as `Waiting` → `Queued` → `Working`, keeps its row. One that leaves `bd ready` while `Queued` again leaves the run, and its row with it.
-- **Cards** exist for the phases with work under way: `Working`, `Resolving`, `Fixing`, `ToMerge`, `Merging`. A `Review{CHECKS_FAILED}` ticket checked once more has a card again while it is `ToMerge` and `Merging`, its action line reading `checking again: <base> moved on since its check failed`.
+- **Cards** exist for the phases with work under way: `Working`, `Resolving`, `Fixing`, `ToMerge`, `Merging`. A `Blocked{MERGE_CONFLICT}` ticket whose hand-back waits for its steered worker (§4.3) keeps its card, `conflict waits for you`, framed `needsYou`. A `Review{CHECKS_FAILED}` ticket checked once more has a card again while it is `ToMerge` and `Merging`, its action line reading `checking again: <base> moved on since its check failed`.
 - **Motion means a worker at work.** The spinner turns in `Working` while the worker works, and in `Resolving` and `Fixing`. Otherwise a static mark replaces it: `◷` in `ToMerge`, `◆` in `Merging`, `•` once a worker's turn has ended.
 - **The totals count phases**, as the table above says. `ToMerge` and `Merging` count as completed only once they reach `Done`.
 - **The wind-down line** gives each ticket running when the wind-down began a `■`:

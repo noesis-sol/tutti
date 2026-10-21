@@ -121,7 +121,7 @@ import {
   stopOfLine,
   stopsLine,
 } from "./holds.ts"
-import { Ledger, type State } from "./ledger.ts"
+import { handBackWaits, Ledger, type State } from "./ledger.ts"
 import { detail, hold, type Line, Log, line, Tag } from "./log.ts"
 import { beadsWhy, closedAfter, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
@@ -858,7 +858,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     })
     // Fills the free slots, then says whether nothing else runs, waits to merge or could start, and
     // which workers wait on you (an open request) besides, oldest request first: those past their
-    // ticket limit left out, as the run doesn't wait for them.
+    // ticket limit left out, as the run doesn't wait for them; then, with a dashboard, those a
+    // conflict hand-back waits for.
     const nothingLeft = Effect.gen(function* () {
       yield* requeueWaiting
       // The tickets set aside for a failed check whose base has moved on are checked once more
@@ -915,7 +916,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         !toStart &&
         isSettled(yield* queue.state) &&
         (yield* triage.pending) === 0
-      return { done, waiting }
+      // With a dashboard, a conflict hand-back waiting for its steered worker keeps the run open as
+      // a request does, until you hand it over from the worker's view or release it (§ 4.3).
+      const conflicts =
+        screen === null
+          ? []
+          : [...now.tickets.values()]
+              .filter((entry) => handBackWaits(entry) && !waiting.includes(entry.ticket))
+              .map((entry) => entry.ticket)
+      return { done, waiting: [...waiting, ...conflicts] }
     })
     // Whether nothing runs but workers waiting for the usage limit.
     const limitedOnly = Effect.gen(function* () {
@@ -930,9 +939,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // Waits until nothing is left. With the usage-limit hold on, the run waits for its reset
     // instead, unless a stop ends it anyway; it ends USAGE_LIMIT when it can't wait for it: whether
     // it does. With everything else done and workers waiting on you (D19), a dashboard shows the
-    // end-of-run box and waits, until they are answered or the box's `q` ends the run; plain, the
-    // run waits only until a stop holds it. Gives whether the usage limit ends it, whether the box's
-    // `q` did, and the count of the screen's commands acted on before its last look.
+    // end-of-run box and waits, until they are answered, their conflicts handed over (§ 4.3), or the
+    // box's `q` ends the run; plain, the run waits only until a stop holds it. Gives whether the
+    // usage limit ends it, whether the box's `q` did, and the count of the screen's commands acted
+    // on before its last look.
     const settle = Effect.gen(function* () {
       for (;;) {
         const seen = yield* Ref.get(acted)

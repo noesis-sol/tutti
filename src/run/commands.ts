@@ -5,7 +5,7 @@
 // command, so a key pressed as a worker finishes can't reach another one (OpenTUI #1660).
 import { Data, type Effect, Queue, Result, Schema } from "effect"
 import type { Answer as AttentionAnswer, AttentionRequest } from "../agent/Attention.ts"
-import { holdsWorker, type State, ticketOfWorker } from "./ledger.ts"
+import { keepsWorker, type State, ticketOfWorker } from "./ledger.ts"
 
 /** A command from the screen. */
 export type UiCommand = Data.TaggedEnum<{
@@ -71,16 +71,16 @@ export interface Current {
   readonly requests: ReadonlyArray<AttentionRequest>
 }
 
-// The ticket, if it has a worker now: a phase that holds one, or a steered worker, whose session
-// may stay open outside one (Blocked, its hand-back waiting, § 4.3). steer.ts acts on the session:
-// a send to one that has ended is dropped there.
+// The ticket, if it has a worker now: one it keeps (a phase that holds one, or Blocked with its
+// hand-back waiting, § 4.3), or a steered worker, whose session may stay open outside one. steer.ts
+// acts on the session: a send to one that has ended is dropped there.
 const withWorker = (
   command: UiCommand,
   ticket: string,
   current: Current,
 ): Result.Result<Resolved, Stale> => {
   const entry = current.ledger.tickets.get(ticket)
-  return entry !== undefined && (holdsWorker(entry.phase) || entry.steered)
+  return entry !== undefined && (keepsWorker(entry) || entry.steered)
     ? Result.succeed({ command, ticket })
     : Result.fail(new Stale({ command: command._tag, why: `${ticket} has no worker` }))
 }

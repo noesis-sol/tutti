@@ -23,8 +23,8 @@ import type { WorkerState } from "../agent/WorkerState.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
-import type { Entry, State } from "./ledger.ts"
-import { type Activity, countsUnder, hasCard, type PhaseTag, TicketPhase } from "./phase.ts"
+import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
+import { type Activity, countsUnder, type PhaseTag, TicketPhase } from "./phase.ts"
 
 /** A hold on the run, for its banner: `BLOCKED`, `USAGE_LIMIT` with its reset, … */
 export interface RunHold {
@@ -70,8 +70,9 @@ export interface Status {
   /** The run is quitting (§ 4.8): `Quitting… waiting for t-1's worker`; null when it isn't. */
   readonly quitting: string | null
   /**
-   * Everything else is done and these tickets' workers wait on you (D19, § 5 item 14): the run
-   * stays open for them, showing the end-of-run box; null when it isn't so.
+   * Everything else is done and these tickets' workers wait on you (D19, § 5 item 14), by a request
+   * open or a conflict hand-back waiting (§ 4.3): the run stays open for them, showing the end-of-run
+   * box; null when it isn't so.
    */
   readonly endOfRun: ReadonlyArray<string> | null
   readonly solo: Solo | null
@@ -197,10 +198,10 @@ export const Banner = Data.taggedEnum<Banner>()
 /** A ticket's `■` on the wind-down line (§ 5.1). */
 export type WindDownMark = "windingDown" | "done" | "needsYou" | "faint"
 
-/** A worker the end-of-run box names, and what each of its open requests asks. */
+/** A worker the end-of-run box names, what each of its open requests asks, and its hand-back. */
 export interface Waiting {
   readonly ticket: string
-  /** `Allow Bash(rm -rf build)?`, `a question`. */
+  /** `Allow Bash(rm -rf build)?`, `a question`, `a merge conflict waits for you`. */
   readonly asks: ReadonlyArray<string>
 }
 
@@ -419,6 +420,9 @@ export const asks = (request: AttentionRequest): string => {
   }
 }
 
+/** What the end-of-run box names for a worker a conflict hand-back waits for (§ 4.3). */
+export const conflictWaits = "a merge conflict waits for you"
+
 /** What a card's status says of a worker in `state` with `requests` open (§ 4.2). */
 export const stateStatus = (
   state: WorkerState | undefined,
@@ -475,6 +479,9 @@ const cardStatus = (
   }
   return rowStatus(phase).word
 }
+
+/** The status of a Blocked ticket's card while its conflict hand-back waits for you (§ 4.3). */
+export const handBackStatus = "conflict waits for you"
 
 /** Whether a worker in `state` with `requests` open is at work, so its card's spinner turns. */
 const working = (state: WorkerState | undefined, requests: ReadonlyArray<AttentionRequest>) =>
@@ -663,15 +670,16 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         },
       })
     }
-    if (hasCard(entry.phase) && entry.worker !== null) {
+    if (showsCard(entry) && entry.worker !== null) {
+      const waits = handBackWaits(entry)
       cards.push({
         ticket: entry.ticket,
         title,
         worker: entry.worker,
         phase: entry.phase,
         state: atWork.has(entry.phase._tag) ? (state ?? null) : null,
-        status: cardStatus(phase, state, open),
-        motion: motionOf(entry.phase, state, open),
+        status: waits ? handBackStatus : cardStatus(phase, state, open),
+        motion: waits ? "•" : motionOf(entry.phase, state, open),
         since: entry.since,
         action: actionOf(entry, branch),
         latest: latestOf(actions.get(entry.ticket)),
@@ -714,10 +722,15 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         : { ticket: sanitizeLine(status.solo.ticket), running: status.solo.running },
   }
   const warnings = [...new Set(status.warnings.map(sanitizeLine))]
-  // The box names each worker the run waits on that still has a request open.
+  // The box names each worker the run waits on that still has a request open, or a conflict
+  // hand-back waiting for it (§ 4.3).
   const waiting = (status.endOfRun ?? []).flatMap((ticket): ReadonlyArray<Waiting> => {
-    const open = requestsOf.get(ticket) ?? []
-    return open.length === 0 ? [] : [{ ticket: sanitizeLine(ticket), asks: open.map(asks) }]
+    const entry = ledger.tickets.get(ticket)
+    const all = [
+      ...(requestsOf.get(ticket) ?? []).map(asks),
+      ...(entry !== undefined && handBackWaits(entry) ? [conflictWaits] : []),
+    ]
+    return all.length === 0 ? [] : [{ ticket: sanitizeLine(ticket), asks: all }]
   })
   const endOfRun = waiting.length === 0 ? null : waiting
 

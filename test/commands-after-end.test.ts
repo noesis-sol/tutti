@@ -1,6 +1,6 @@
-// The screen's commands after the run's end: a whole run with its screen ends with a's conflict
-// handed back and waiting for its steered worker (Blocked); HandBackNow sent after the end is
-// dropped, so nothing merges or steers after the end record's phases are read.
+// The screen's commands after the run's end: a whole run with its screen ends, by the end-of-run
+// box's `q`, with a's conflict handed back and waiting for its steered worker (Blocked); HandBackNow
+// sent after the end is dropped, so nothing merges or steers after the end record's phases are read.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -155,7 +155,14 @@ describe("the screen's commands after the run's end", () => {
         const request = yield* requestOf
         if (request === undefined) throw new Error("a has no request open")
         yield* send(UiCommand.Answer({ requestId: request.id, answer: { _tag: "Allow" } }))
-        // a's conflict waits for its steered worker; nothing else is left, so the run ends.
+        // a's conflict waits for its steered worker; nothing else is left, so the run waits for it
+        // (§ 4.3) until the end-of-run box's `q` ends it.
+        for (let i = 0; i < 400; i++) {
+          if ((yield* SubscriptionRef.get(inputs.handBacks)).includes("a")) break
+          yield* advance("1 second")
+          yield* Effect.promise(() => Bun.sleep(2))
+        }
+        yield* send(UiCommand.EndRun())
         for (let i = 0; i < 400 && outcome === undefined; i++) {
           yield* advance("1 second")
           yield* Effect.promise(() => Bun.sleep(2))

@@ -14,7 +14,7 @@ import { Attention } from "../agent/Attention.ts"
 import { type LatestAction, Transcripts } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { type Commands, makeCommands } from "./commands.ts"
-import { holdsWorker, Ledger } from "./ledger.ts"
+import { keepsWorker, Ledger } from "./ledger.ts"
 import { make as makeView, type RunView, type Sources, type Status, same } from "./runView.ts"
 
 /** The screen the run shows. */
@@ -98,7 +98,7 @@ export const latestActions: Effect.Effect<
     const state = yield* ledger.current
     const found = new Map<string, LatestAction>()
     for (const entry of state.tickets.values()) {
-      if (!holdsWorker(entry.phase)) continue
+      if (!keepsWorker(entry)) continue
       const action = yield* transcripts.action(entry.ticket)
       if (action !== undefined) found.set(entry.ticket, action)
     }

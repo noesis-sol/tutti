@@ -304,7 +304,11 @@ export const notHandedBack = (
       Result.isSuccess(stuck) && !stuck.success
         ? ""
         : line`; its rebase could not be aborted, so ${worktree} is left mid-rebase`
-    if (not.waits) yield* handBacks.wait(stop)
+    if (not.waits) {
+      yield* handBacks.wait(stop)
+      // Blocked on it, the ticket keeps its worker's number and card meanwhile (§ 4.3).
+      yield* (yield* Ledger).handBackWaits(stop.ticket.id)
+    }
     yield* block(stop, options.base, `not handed back to its worker: ${not.why}${left}`)
   })
 

@@ -13,7 +13,7 @@ import { Clock, Context, Effect, Layer, Ref, Result, type Stream, SubscriptionRe
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import * as log from "./log.ts"
-import { Log } from "./log.ts"
+import { Log, Tag } from "./log.ts"
 import {
   type Cause,
   type Detail,
@@ -60,6 +60,12 @@ export interface Entry {
    * it: tutti sends it nothing automatically (§ 4.3).
    */
   readonly steered: boolean
+  /**
+   * A conflict hand-back waits for its steered worker (§ 4.3): set as the hand-back is kept, before
+   * the ticket is Blocked on it, and cleared as the ticket leaves Blocked. Blocked meanwhile, it keeps
+   * its worker's number and its card.
+   */
+  readonly handBack?: boolean
   /** When you last sent its worker a message; its idle grace for PAUSED counts from then. */
   readonly lastMessage: number | null
   readonly tallies: Tallies
@@ -93,6 +99,21 @@ const rowless: ReadonlySet<PhaseTag> = new Set(["Queued", "HeldBack"])
  */
 export const holdsWorker = (phase: TicketPhase): boolean =>
   hasCard(phase) || (phase._tag === "Review" && phase.why === "CHECKS_FAILED")
+
+/** Whether `entry` is Blocked on a conflict whose hand-back waits for its steered worker (§ 4.3). */
+export const handBackWaits = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
+  entry.handBack === true && entry.phase._tag === "Blocked" && entry.phase.why === Tag.mergeConflict
+
+/**
+ * Whether `entry` keeps its worker's number: in a phase that holds one, or Blocked with its
+ * hand-back waiting, its session open for it (§ 4.3, § 4.8).
+ */
+export const keepsWorker = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
+  holdsWorker(entry.phase) || handBackWaits(entry)
+
+/** Whether `entry` has a card: a phase with one, or Blocked with its hand-back waiting (§ 4.3). */
+export const showsCard = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
+  hasCard(entry.phase) || handBackWaits(entry)
 
 /** The lowest number from 1 that no ticket's worker has. */
 export const lowestFree = (tickets: ReadonlyMap<string, Entry>): number => {
@@ -161,12 +182,16 @@ const moved = (
   now: number,
 ): State => {
   const row = entry.row ?? (rowless.has(phase._tag) ? null : state.rows)
-  const worker = holdsWorker(phase) ? (entry.worker ?? lowestFree(state.tickets)) : null
+  // A hand-back waits only while the ticket is Blocked on it.
+  const handBack = entry.handBack === true && phase._tag === "Blocked"
+  const worker = keepsWorker({ phase, handBack })
+    ? (entry.worker ?? lowestFree(state.tickets))
+    : null
   const rechecking =
     cause._tag === "Recheck" ||
     (entry.rechecking && (phase._tag === "ToMerge" || phase._tag === "Merging"))
   const tickets = new Map(state.tickets)
-  tickets.set(entry.ticket, { ...entry, phase, since: now, row, worker, rechecking })
+  tickets.set(entry.ticket, { ...entry, phase, since: now, row, worker, rechecking, handBack })
   return {
     ...state,
     tickets,
@@ -237,6 +262,11 @@ export class Ledger extends Context.Service<
     steer(ticket: string, by: "message" | "interrupt"): Effect.Effect<void>
     /** Releases `ticket`'s worker: it is no longer steered. */
     release(ticket: string): Effect.Effect<void>
+    /**
+     * Notes that a conflict hand-back waits for `ticket`'s steered worker (§ 4.3), as it is kept:
+     * Blocked on it, the ticket keeps its worker's number and its card until it leaves Blocked.
+     */
+    handBackWaits(ticket: string): Effect.Effect<void>
     /**
      * Claims `ticket`'s one resume of a session that ended unexpectedly (Gone) in this run (§ 4.8):
      * true the first time, false after.
@@ -364,6 +394,19 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
     const release: Ledger["Service"]["release"] = (ticket) =>
       updateEntry(ticket, (entry) => ({ ...entry, steered: false }))
 
+    const handBackWaitsFor: Ledger["Service"]["handBackWaits"] = (ticket) =>
+      SubscriptionRef.update(ref, (state) => {
+        const entry = state.tickets.get(ticket)
+        if (entry === undefined) return state
+        const marked = { ...entry, handBack: true }
+        const worker = keepsWorker(marked)
+          ? (entry.worker ?? lowestFree(state.tickets))
+          : entry.worker
+        const tickets = new Map(state.tickets)
+        tickets.set(ticket, { ...marked, worker })
+        return { ...state, tickets }
+      })
+
     const claimGoneResume: Ledger["Service"]["claimGoneResume"] = (ticket) =>
       Ref.modify(goneResumed, (resumed) =>
         resumed.has(ticket) ? [false, resumed] : [true, new Set([...resumed, ticket])],
@@ -395,6 +438,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       refine,
       steer,
       release,
+      handBackWaits: handBackWaitsFor,
       claimGoneResume,
       goneResumed: goneResumedOf,
       count,
