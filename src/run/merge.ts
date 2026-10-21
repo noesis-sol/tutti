@@ -63,6 +63,11 @@ export interface MergeOptions {
   readonly repo: string
   /** The branch finished tickets land on. */
   readonly base: string
+  /**
+   * Why the run takes on no more work, as the merges say it (holds.ts's noMoreWork): undefined when
+   * it does. A failed check isn't handed back to its worker then. Without it, only a drain counts.
+   */
+  readonly noMore?: Effect.Effect<string | undefined>
 }
 
 /** What stops the merges, and the exit code the run ends with for it (§ 5 item 10). */
@@ -374,7 +379,7 @@ const setUpAndCheck = (
           error,
           output,
         }
-        const not = yield* whyNotFix(stop, yield* memory.fixes.count(id))
+        const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(id))
         if (not === undefined) return stop
         const tried = not === "" ? "" : line`; not handed back to its worker: ${not}`
         yield* checksFailed(ticket, options, memory.rechecks, onto, error, output, tried)

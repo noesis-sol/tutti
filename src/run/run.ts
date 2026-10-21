@@ -106,6 +106,7 @@ import {
   exitCodes,
   isBlockedOn,
   liftStops,
+  noMoreWork,
   noStops,
   type StopReason,
   type Stops,
@@ -459,7 +460,12 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           Effect.provideService(Organs, organs.value),
         )
 
-    const queue = yield* makeQueue({ repo: config.repo, base }, (where, defect) =>
+    // Why the run takes on no more work, for the merges: no failed check is handed back then.
+    const noMore = Effect.map(
+      Effect.all([Ref.get(stops), usage.held, ledger.current]),
+      ([all, held, state]) => noMoreWork(all, held, state.windDown !== null),
+    )
+    const queue = yield* makeQueue({ repo: config.repo, base, noMore }, (where, defect) =>
       panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
     )
     // The merge that stopped the merges, taken up once, by its watcher or by the end.

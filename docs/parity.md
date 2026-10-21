@@ -5,17 +5,16 @@ The audit against the spec's parity matrix (`.orchestra/specs/tutti-spec.md`, Ap
 and the tests that show it. *Kept* means as orchestra v0.7.7 has it; the other dispositions point to
 the spec's section. Back to the [README](../README.md).
 
-Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 72 are as the spec says:
-40 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 11
+Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 73 are as the spec says:
+41 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 10
 aren't yet:
 
 - **Missing** (5): the START block's `DEFERRED_FREE` lines (tutti-psr), counting and logging compactions (tutti-4sa), the predictor, in the
   footprints' row and the organs' (tutti-76k), and the run's notifications (tutti-i0y). The
   dispatch's footprint line is logged since tutti-d6q.
-- **Differs** (6): the run lock's refusal during init and its emptied files (tutti-d5g), the setup
-  after a fix (tutti-ry9), check hand-backs while the run holds (tutti-8dt), rechecks while it holds
-  or a solo ticket runs (tutti-t4y), the full check's output end (tutti-zfj), and the wind-down
-  line's narrow and empty forms (tutti-upv).
+- **Differs** (5): the run lock's refusal during init and its emptied files (tutti-d5g), the setup
+  after a fix (tutti-ry9), rechecks while it holds or a solo ticket runs (tutti-t4y), the full
+  check's output end (tutti-zfj), and the wind-down line's narrow and empty forms (tutti-upv).
 
 Rows marked *untested details* do what the spec says, but some detail of them is shown by no test
 yet; tutti-b3k (the run loop) and tutti-178 (startup, the interface and init) list them. Each
@@ -69,7 +68,7 @@ file and test name given here is there.
 | Merge | queue, rebase, `OFF_BRANCH`, `DIRTY_WORKTREE`, `REBASE_FAILED` | Kept | `src/run/mergequeue.ts`, `src/run/merge.ts`, `src/services/Git.ts` | `test/merge-queue.test.ts` "tickets merge one at a time in the order they finished, their places kept current", "OFF_BRANCH: the worktree on a detached HEAD is set aside before anything is done", "DIRTY_WORKTREE: uncommitted changes keep the branch from its rebase", "REBASE_FAILED: git refuses the rebase without stopping on conflicts" |
 |  | setup command on dependency changes | Differs: tutti-ry9 (a fix's own change to a setup file doesn't run the setup before its check) | `src/run/setup.ts`, `src/run/merge.ts`, `src/run/checkback.ts` | `test/setup.test.ts` "runs in the worktree when the rebase changed a setup file, and the log says so", "doesn't run when the rebase changed no setup file", "runs anyway when git can't say what the rebase changed"; `test/resolution-setup.test.ts` "runs in the worktree when the base brought a setup file, then the check" |
 |  | merge check, its limit, `check.log`, `FLAKY:` | Kept | `src/run/check.ts`, `src/services/Checks.ts` | `test/merge-queue.test.ts` "a ticket behind the base is rebased and checked, its check.log in its worktree", "FLAKY: lines of a passing check are warnings naming the ticket", "CHECKS_FAILED: a check past its time limit"; `test/checks.test.ts` "counts every FLAKY: line, keeping the first maxFlaky" |
-|  | conflict hand-back, check hand-back, verification of the result | Differs: tutti-8dt (a failed check is handed back while a stop holds the run) | `src/run/handback.ts`, `src/run/checkback.ts`, `src/run/steer.ts` | `test/handback.test.ts` "is verified, checked, and merges: Merging → Resolving → ToMerge → Done", "a steered worker isn't sent it: the hand-back waits, and the line says why"; `test/checkback.test.ts` "on the first attempt: Merging → Fixing → ToMerge → Done, the fix merged", "while the run winds down: Review, the line saying why"; `test/steer.test.ts` "hands a steered worker its waiting conflict: Blocked → ToMerge, rebased, handed back" |
+|  | conflict hand-back, check hand-back, verification of the result | Kept | `src/run/handback.ts`, `src/run/checkback.ts`, `src/run/steer.ts` | `test/handback.test.ts` "is verified, checked, and merges: Merging → Resolving → ToMerge → Done", "a steered worker isn't sent it: the hand-back waits, and the line says why"; `test/checkback.test.ts` "on the first attempt: Merging → Fixing → ToMerge → Done, the fix merged", "while the run winds down: Review, the line saying why"; `test/check-hand-back-hold.test.ts` "PAUSED holds the run: b's failed check isn't handed back, Review, the line saying why"; `test/steer.test.ts` "hands a steered worker its waiting conflict: Blocked → ToMerge, rebased, handed back" |
 |  | recheck after the base moves on | Differs: tutti-t4y (rechecks while a stop holds the run or a solo ticket runs, without a slot) | `src/run/recheck.ts`, `src/run/mergequeue.ts` | `test/recheck.test.ts` "is checked once more after another ticket merges, and merges when it passes", "isn't checked again when it failed in a folder its own commits change", "is checked again only once a run" |
 |  | fast-forward, cleanup, `MERGE_FAILED` (exit 6) | Kept; untested details: tutti-b3k | `src/run/merge.ts`, `src/services/Worktrees.ts` | `test/merge-queue.test.ts` "a ticket on top of the base fast-forwards it, unchecked, and is cleaned up", "MERGE_FAILED: the branch doesn't fast-forward; Blocked, exit 6"; `test/run.test.ts` "MERGE_FAILED: the branch doesn't fast-forward, exit 6" |
 |  | one git writer at a time | Kept | `src/services/Git.ts` | `test/git-service.test.ts` "lets one writer in at a time", "a write waits for the writer holding GitWriter"; `test/git-memory.test.ts` "writes take the layer's GitWriter" |

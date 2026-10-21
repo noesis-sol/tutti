@@ -5,7 +5,7 @@
 // fails where its change meets what landed meanwhile: a test another ticket added for the code as
 // it was. So the failure is handed back to the ticket's worker, which has the change in mind, when
 // it can take it: hand-backs on (merge.check_hand_backs), attempts left of them, a failure to show
-// it (the check finished), git able to say what the check failed on, the run not winding down, and
+// it (the check finished), git able to say what the check failed on, the run neither holding nor winding down, and
 // its worker Idle or Failed and not steered, or its session closed by tutti, which is resumed, or
 // Gone with its ticket's one Gone resume of the run left, resumed too (handback.ts's give).
 //
@@ -98,10 +98,12 @@ const short = (hash: string) => hash.slice(0, 10)
 
 /**
  * Why `stop`'s failure can't be handed back to the ticket's worker, the `fixed`th time so far:
- * undefined when it can, "" when check hand-backs are turned off (nothing to say).
+ * undefined when it can, "" when check hand-backs are turned off (nothing to say). While the run
+ * holds or winds down it takes on no more work, as `options.noMore` says.
  */
 export const whyNotFix = (
   stop: CheckStop,
+  options: MergeOptions,
   fixed: number,
 ): Effect.Effect<string | undefined, never, MergeEnv> =>
   Effect.gen(function* () {
@@ -118,6 +120,8 @@ export const whyNotFix = (
       return "it could not be run, so there is no failure to show its worker"
     }
     if (stop.at === "" || stop.head === "") return "git could not say what the check failed on"
+    const noMore = options.noMore === undefined ? undefined : yield* options.noMore
+    if (noMore !== undefined) return noMore
     const state = yield* ledger.current
     if (state.windDown !== null) return "the run is winding down"
     if (state.tickets.get(id)?.steered === true) return "you have steered its worker"
@@ -389,7 +393,7 @@ export const fixCheck = (
         error: checked.error,
         output: checked.output,
       }
-      const not = yield* whyNotFix(stop, yield* memory.fixes.count(id))
+      const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(id))
       if (not !== undefined) {
         yield* setAside(stop, options, memory, tries, not)
         return "aside"
@@ -424,7 +428,7 @@ export const fixResolution = (
       output,
       resolved: rebase,
     }
-    const not = yield* whyNotFix(stop, yield* memory.fixes.count(rebase.ticket.id))
+    const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(rebase.ticket.id))
     if (not === undefined && (yield* handOverFix(stop, options, memory.fixes))) {
       return yield* fixCheck(stop, options, memory)
     }
