@@ -610,6 +610,25 @@ describe("the hold for setups failing", () => {
     expect(ran.events.some((r) => r.kind === "reopened")).toBe(false)
   })
 
+  test("a setup that takes minutes isn't its worker's time: workers failing at once still hold", async () => {
+    // Each setup takes 3 minutes, longer than the hold's 2-minute window.
+    const slow = () => Effect.as(advance("3 minutes"), passed("setup"))
+    const givesUp = turn([], result("Every command was refused."))
+    const ran = await runs({
+      tickets: ["a", "b", "c"],
+      checks: { setup: [slow, slow, slow] },
+      scripts: () => ({ a: [givesUp], b: [givesUp], c: [givesUp], [probeWorker]: [turn([])] }),
+      during: probing,
+    })
+    expectClean(ran, 7)
+    expectPhases(ran, { a: "Waiting", b: "Waiting", c: "Queued" })
+    expectLog(ran, [
+      "  a reopened: its worker failed at once, like the tickets before it",
+      "  b reopened: its worker failed at once, like the tickets before it",
+      /^ENVIRONMENT: the last 2 tickets \(a, b\) each settled within 2m of starting without being claimed or changed; /,
+    ])
+  })
+
   test("a worker failing at once and a setup failing after it are one row", async () => {
     const ran = await runs({
       tickets: ["a", "b", "c"],

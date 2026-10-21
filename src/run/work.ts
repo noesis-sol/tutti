@@ -330,7 +330,6 @@ export const work = (
 ): Effect.Effect<Worked, WorkError, WorkEnv> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const dispatched = yield* Clock.currentTimeMillis
     const started = yield* start(ticket, options.base, options.setUps)
     let stop: RunStop | null = null
     // A setup that failed before its worker could start counts toward the environment hold as a
@@ -338,6 +337,9 @@ export const work = (
     let settling: Settling = started._tag === "SetupFailed" ? "setup" : "uncounted"
     if (started._tag === "Started") {
       const { worker } = started
+      // Its clocks, the hold's window and its time limit, start with its worker, once the setup
+      // before it is done: a setup that takes minutes is no time of the worker's.
+      const dispatched = yield* Clock.currentTimeMillis
       const followed = yield* follow(ticket, worker, options, dispatched)
       const { settled, limited } = followed
       stop = followed.stop
