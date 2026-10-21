@@ -81,9 +81,6 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
 - The only stops are the ones under Close: DONE once the ticket is closed, a question when only the
   maintainer can decide, a wait for another ticket to merge, a deferral when you cannot finish.
 - Your context is compacted as it fills, so don't cut work short because the conversation is long;
-  keep the checklist and the ticket's notes current, so you can carry on after it.
-- For a ticket with several parts, keep its acceptance criteria as a todo checklist (TodoWrite or
-  TaskCreate; this overrides the Beads instructions against them) and tick items off as you go.
-  Beads stays the record of the ticket.
+  keep the ticket's notes current, so you can carry on after it.
 
 When you are finished, say DONE and stop.
