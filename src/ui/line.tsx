@@ -3,7 +3,7 @@
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
 import { RGBA, TextAttributes } from "@opentui/core"
 import { createContext, useContext } from "react"
-import type { Role, Style, Theme } from "./theme.ts"
+import { orchestra, type Role, rgbaOf, type Style, type Theme } from "./theme.ts"
 
 /** What a segment is drawn in: a style's colours and attributes. */
 export type Look = Pick<Style, "fg" | "bg" | "attributes">
@@ -89,15 +89,18 @@ export interface SelectionColours {
  * Selected text in the theme's `selection` and `selectionText` roles (§ 7.11). A role left to the
  * terminal's default colour, as every role is under NO_COLOR, would draw selected text as the text
  * around it (OpenTUI's own selection swaps a cell's colours, and both are the terminal's): it is
- * the palette's black on its white instead, slots 0 and 7, which follow the terminal's theme, so
- * that what is selected still shows.
+ * the default scheme's, orchestra's, instead, so that what is selected still shows.
  */
 export const selectionLookOf = (theme: Theme): SelectionColours => {
-  const given = (role: "selection" | "selectionText") =>
-    !theme.noColor && theme.scheme.colours[role][theme.appearance]._tag !== "Default"
+  const colourOf = (role: "selection" | "selectionText", layer: "fg" | "bg") => {
+    const given = theme.scheme.colours[role][theme.appearance]
+    return !theme.noColor && given._tag !== "Default"
+      ? theme.rgba(role)
+      : rgbaOf(orchestra.colours[role][theme.appearance], layer)
+  }
   return {
-    selectionBg: given("selection") ? theme.rgba("selection") : RGBA.fromIndex(7),
-    selectionFg: given("selectionText") ? theme.rgba("selectionText") : RGBA.fromIndex(0),
+    selectionBg: colourOf("selection", "bg"),
+    selectionFg: colourOf("selectionText", "fg"),
   }
 }
 

@@ -1079,8 +1079,10 @@ describe("NO_COLOR", () => {
             const fg = recordOf(cell.fg)
             const bg = recordOf(cell.bg)
             const same = cell.attributes === was[y]?.[x]?.attributes
-            // Selected text is the palette's black on its white, which follow the terminal's theme.
-            const selected = fg === "indexed 0" && bg === "indexed 7"
+            // Selected text is the one exception: orchestra's selection colours (§ 7.11).
+            const selected =
+              fg === recorded(orchestraColours.selectionText[1]) &&
+              bg === recorded(orchestraColours.selection[1])
             const plain =
               (fg === "default" || cell.char === " ") && (bg === "default" || bg === "none")
             return (plain || selected) && same
@@ -1797,11 +1799,13 @@ test(
 )
 
 test(
-  "NO_COLOR draws selected text in the palette's black on its white",
+  "NO_COLOR draws selected text in orchestra's selection colours",
   async () => {
     const frame = await draw(sceneOf("selected text"), themeIn(orchestra, true), "dark")
+    const [, text] = orchestraColours.selectionText
+    const [, background] = orchestraColours.selection
     for (const cell of find(frame, { text: "Title of tut-1" })) {
-      expect([recordOf(cell.fg), recordOf(cell.bg)]).toEqual(["indexed 0", "indexed 7"])
+      expect([recordOf(cell.fg), recordOf(cell.bg)]).toEqual([recorded(text), recorded(background)])
     }
   },
   renderTime,

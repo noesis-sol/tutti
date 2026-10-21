@@ -29,7 +29,7 @@ import {
 } from "../src/ui/clipboard.ts"
 import { Line, seg, selectionLookOf } from "../src/ui/line.tsx"
 import { rendererConfig } from "../src/ui/renderer.ts"
-import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme, orchestra, type Scheme } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Rendered, withRender } from "./render.ts"
 
@@ -207,11 +207,30 @@ describe("the selection's colours", () => {
     })
   })
 
-  test("are the palette's black on its white under NO_COLOR, so the selection still shows", () => {
-    expect(selectionLookOf(themeOf("dark", true))).toEqual({
-      selectionBg: RGBA.fromIndex(7),
-      selectionFg: RGBA.fromIndex(0),
-    })
+  test("are orchestra's under NO_COLOR, so the selection still shows", () => {
+    for (const appearance of ["light", "dark"] as const) {
+      expect(selectionLookOf(themeOf(appearance, true))).toEqual({
+        selectionBg: RGBA.fromHex("#7D56F4"),
+        selectionFg: RGBA.fromHex("#FAFAFA"),
+      })
+    }
+  })
+
+  test("are orchestra's for a role a scheme leaves to the terminal's default", () => {
+    const own = { _tag: "Hex", hex: "#123456" } as const
+    const scheme: Scheme = {
+      ...orchestra,
+      colours: {
+        ...orchestra.colours,
+        selection: { light: { _tag: "Default" }, dark: { _tag: "Default" } },
+        selectionText: { light: own, dark: own },
+      },
+    }
+    expect(
+      selectionLookOf(
+        makeTheme(scheme, { appearance: "dark", depth: "truecolor", noColor: false }),
+      ),
+    ).toEqual({ selectionBg: RGBA.fromHex("#7D56F4"), selectionFg: RGBA.fromHex("#123456") })
   })
 })
 
