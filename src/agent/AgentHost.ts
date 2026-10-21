@@ -216,6 +216,11 @@ export class AgentHost extends Context.Service<
     readonly compactions: Stream.Stream<Compaction>
     /** What the sessions' first system/init said of the setup, so far. */
     readonly setup: Effect.Effect<SetupFindings>
+    /**
+     * The process of each open session's Claude Code, by ticket: the leader of a process group of
+     * its own (§ 3.2), for its memory on the dashboard's load line (src/run/load.ts).
+     */
+    readonly processes: Effect.Effect<ReadonlyMap<string, number>>
   }
 >()("tutti/agent/AgentHost") {}
 

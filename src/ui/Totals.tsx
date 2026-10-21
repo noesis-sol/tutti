@@ -1,8 +1,9 @@
 // The dashboard's totals (§ 7.2, § 7.11): a strip in a rounded frame, a column a total with its
 // label faint over its count, or on one line in a pane too narrow for the strip, or too small for
 // the dashboard (below 60×16). Completed `✓ n`, Set aside `↷ n` with ` ◆ n` triaged, Needs you,
-// Workers `n of N`, and In queue `n of N` with ` · N held back`, ` · N setup failed` and ` · held`;
-// zeros are faint.
+// and In queue `n of N` with ` · N held back`, ` · N setup failed` and ` · held`; zeros are faint.
+// The workers are on the load line above the strip (LoadLine.tsx), and on the one line, `▶ n/N`,
+// which is drawn without it.
 import type { Totals as TotalsView } from "../run/runView.ts"
 import { cut, framed, frameLook, Lines, type Look, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
@@ -14,16 +15,10 @@ const columns = (t: TotalsView, theme: Theme): ReadonlyArray<readonly [string, S
   const count = (n: number, mark: string, look: Look): Segments =>
     n === 0 ? [zero("0")] : [seg(mark === "" ? String(n) : `${mark} ${n}`, look)]
   const triaged: Segments = t.triaged > 0 ? [seg(` ◆ ${t.triaged}`, styles.organ)] : []
-  const of = ` of ${t.slots}`
-  const workers: Segments =
-    t.workers === 0
-      ? [zero(`0${of}`)]
-      : [seg(String(t.workers), styles.picked), seg(of, styles.dim)]
   return [
     ["Completed", count(t.completed, "✓", styles.closed)],
     ["Set aside", [...count(t.deferred + t.review, "↷", styles.deferred), ...triaged]],
     ["Needs you", count(t.needsYou, "", styles.stop)],
-    ["Workers", workers],
     ["In queue", queue(t, theme, " · ")],
   ]
 }
@@ -45,8 +40,16 @@ const queue = (t: TotalsView, theme: Theme, held: string): Segments => {
   ]
 }
 
-/** The totals on one line, `width` wide: `✓ 2 · ↷ 1 · ? 1 · ▶ 3/3 · queue 9 of 16`. */
-export const totalsLine = (t: TotalsView, theme: Theme, width: number): Segments => {
+/**
+ * The totals on one line, `width` wide: `✓ 2 · ↷ 1 · ? 1 · ▶ 3/3 · queue 9 of 16`, the workers left
+ * out when not `workers`, as the load line says them.
+ */
+export const totalsLine = (
+  t: TotalsView,
+  theme: Theme,
+  width: number,
+  workers = true,
+): Segments => {
   const { styles } = theme
   const dot = seg(" · ", styles.dim)
   const parts: ReadonlyArray<Segments> = [
@@ -56,7 +59,7 @@ export const totalsLine = (t: TotalsView, theme: Theme, width: number): Segments
       ...(t.triaged > 0 ? [seg(` ◆ ${t.triaged}`, styles.organ)] : []),
     ],
     [seg(`? ${t.needsYou}`, styles.stop)],
-    [seg(`▶ ${t.workers}`, styles.picked), seg(`/${t.slots}`, styles.dim)],
+    ...(workers ? [[seg(`▶ ${t.workers}`, styles.picked), seg(`/${t.slots}`, styles.dim)]] : []),
     [seg("queue ", styles.dim), ...queue(t, theme, " ")],
   ]
   return cut([seg(" "), ...parts.flatMap((part, i) => (i === 0 ? part : [dot, ...part]))], width)
@@ -84,14 +87,19 @@ export const totalsStrip = (
   )
 }
 
-/** The totals' lines: the strip, or the one line when `oneLine` or the pane is too narrow for it. */
+/**
+ * The totals' lines: the strip, or the one line when `oneLine` (a pane too small for the dashboard,
+ * which has no load line, so the line says the workers) or the pane is too narrow for the strip.
+ */
 export const totalsLines = (
   t: TotalsView,
   theme: Theme,
   width: number,
   oneLine: boolean,
 ): ReadonlyArray<Segments> =>
-  (oneLine ? null : totalsStrip(t, theme, width)) ?? [totalsLine(t, theme, width)]
+  oneLine
+    ? [totalsLine(t, theme, width)]
+    : (totalsStrip(t, theme, width) ?? [totalsLine(t, theme, width, false)])
 
 /** The totals, as totalsLines gives them. */
 export const Totals = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => (

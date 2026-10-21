@@ -585,6 +585,16 @@ export const layer = (
         workers: workers.workers,
         compactions: workers.compactions,
         setup: Ref.get(findings),
+        processes: Effect.sync(() => {
+          const pids = new Map<string, number>()
+          for (const [ticket, session] of open) {
+            const child = session.spawned.child
+            const pid = (child as { pid?: unknown } | undefined)?.pid
+            if (child !== undefined && !exited(child) && typeof pid === "number")
+              pids.set(ticket, pid)
+          }
+          return pids
+        }),
       })
     }),
   )

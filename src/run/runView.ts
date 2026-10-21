@@ -24,6 +24,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
+import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
 import type { CheckAhead } from "./mergetrain.ts"
 import { type Activity, countsUnder, type PhaseTag, TicketPhase } from "./phase.ts"
 
@@ -79,6 +80,8 @@ export interface Status {
   readonly solo: Solo | null
   /** How many other tutti and orchestra runs share the machine, as the last look found them. */
   readonly shared: number
+  /** The machine's load, as the run last read it (load.ts); null until it has, or when it doesn't. */
+  readonly load: Reading | null
   /** The tickets not closed that the queue draws from (`9 of 16`); null until the run says. */
   readonly unclosed: number | null
   /** The triage organ's verdicts on tickets set aside, by ticket: `environment · high · …`. */
@@ -104,6 +107,7 @@ export const emptyStatus: Status = {
   endOfRun: null,
   solo: null,
   shared: 0,
+  load: null,
   unclosed: null,
   verdicts: new Map(),
   checksAhead: new Map(),
@@ -197,6 +201,11 @@ export interface Card {
   readonly steered: boolean
   /** Its worker's open requests, oldest first. */
   readonly requests: ReadonlyArray<AttentionRequest>
+  /**
+   * The memory its worker's processes take, in bytes, as the run last read it: unknownMemory when
+   * they can't be found; absent when the reading has none for it.
+   */
+  readonly memory?: number
 }
 
 /** A banner on the title line. */
@@ -245,8 +254,30 @@ export interface TitleView {
   readonly shared: number
 }
 
+/** What the load line says of the machine (load.ts's Reading), the memory summed. */
+export interface LoadView {
+  /** The memory of the workers whose processes were found, in bytes. */
+  readonly workers: number
+  /** How many running workers' processes couldn't be found. */
+  readonly unknown: number
+  /** The memory of what tutti runs besides its workers, its merge check above all, in bytes. */
+  readonly check: number
+  readonly pressure: Pressure
+  /** The memory available, in bytes, where the kernel says (Linux); -1 where it doesn't. */
+  readonly available: number
+  /** The pages swapped in and out a minute; -1 before two readings tell. */
+  readonly swapping: number
+  /** The 1-minute load average; -1 when not known. */
+  readonly load1: number
+  /** 0 when not known. */
+  readonly cores: number
+  readonly levels: Levels
+}
+
 export interface RunView {
   readonly title: TitleView
+  /** The load line's figures; null until the run has read the machine's load. */
+  readonly load: LoadView | null
   readonly totals: Totals
   readonly rows: ReadonlyArray<Row>
   /** In their workers' number order. */
@@ -273,6 +304,7 @@ export const emptyView: RunView = {
     solo: null,
     shared: 0,
   },
+  load: null,
   totals: {
     completed: 0,
     deferred: 0,
@@ -518,7 +550,11 @@ const motionOf = (
 }
 
 /** The environment probe's card, worker 0, as a Working ticket's, its session in `state`. */
-const probeCard = (probe: ProbeView, state: WorkerState | undefined): Card => {
+const probeCard = (
+  probe: ProbeView,
+  state: WorkerState | undefined,
+  load: Reading | null,
+): Card => {
   const phase = TicketPhase.Working({ activity: "working" })
   return {
     ticket: probeLabel,
@@ -533,6 +569,7 @@ const probeCard = (probe: ProbeView, state: WorkerState | undefined): Card => {
     latest: null,
     steered: false,
     requests: [],
+    ...memoryOf(load, probeWorker),
   }
 }
 
@@ -625,6 +662,29 @@ const hintOf = (
   else keys.push({ keys: "s", does: windingDown ? "keep taking tickets" : "stop after current" })
   keys.push({ keys: "?", does: "keys" })
   return keys
+}
+
+/** A card's memory from `load`, for its worker on `ticket`: none when the reading has none. */
+const memoryOf = (load: Reading | null, ticket: string): { readonly memory?: number } => {
+  const memory = load?.workers.get(ticket)
+  return memory === undefined ? {} : { memory }
+}
+
+/** The load line's figures from `reading`. */
+export const loadView = (reading: Reading): LoadView => {
+  const memories = [...reading.workers.values()]
+  const { kernel } = reading
+  return {
+    workers: memories.reduce((sum, memory) => sum + Math.max(memory, 0), 0),
+    unknown: memories.filter((memory) => memory === unknownMemory).length,
+    check: reading.check,
+    pressure: kernel.pressure,
+    available: kernel.available,
+    swapping: reading.swapping,
+    load1: kernel.load1,
+    cores: kernel.cores,
+    levels: reading.levels,
+  }
 }
 
 /** Whether `a` and `b` are the same data: equal primitives, or arrays and objects of such. */
@@ -720,10 +780,12 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         latest: latestOf(actions.get(entry.ticket)),
         steered: entry.steered,
         requests: open,
+        ...memoryOf(status.load, entry.ticket),
       })
     }
   }
-  if (status.probe !== null) cards.push(probeCard(status.probe, workers.get(probeWorker)))
+  if (status.probe !== null)
+    cards.push(probeCard(status.probe, workers.get(probeWorker), status.load))
   totals.needsYou = needsYou.size
   totals.queueHeld = ledger.windDown !== null || status.holds.length > 0
 
@@ -758,6 +820,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     shared: status.shared,
   }
   const warnings = [...new Set(status.warnings.map(sanitizeLine))]
+  const load = status.load === null ? null : loadView(status.load)
   // The box names each worker the run waits on that still has a request open, or a conflict
   // hand-back waiting for it (§ 4.3).
   const waiting = (status.endOfRun ?? []).flatMap((ticket): ReadonlyArray<Waiting> => {
@@ -773,6 +836,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   cards.sort((a, b) => a.worker - b.worker)
   const next: RunView = {
     title: keep(previous.title, heading),
+    load: keep(previous.load, load),
     totals: keep(previous.totals, totals),
     rows: keepAll(
       previous.rows,

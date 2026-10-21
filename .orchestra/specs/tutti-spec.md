@@ -1248,11 +1248,11 @@ As orchestra draws it:
   - `· stopping` `needsYou` bold; `· solo <id> next` `notice`; `· solo <id> running` `live` bold
   - `· shared with N runs` faint, after them, while other tutti or orchestra runs share the machine (§5 item 5)
   - tutti's banners (§7.2): the usage line `notice`, bold once the limit is reached; `BLOCKED` `needsYou` bold
+- **Load line** (orchestra 0.8.5), under the title line, a blank line between (dropped first in a pane too short for a line a worker): `▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · CPU 9.8/10 cores`, read every 5 s while the dashboard shows (`src/run/load.ts`): the memory of each worker's processes (its Claude Code, its process group and all below them) and of what tutti runs besides, the kernel's memory pressure (with the memory available on Linux), `swapping N pages/min` while under way, and the 1-minute load against the cores; `sysctl` and `vm_stat` on macOS, `/proc` on Linux, `ps` on both. Each figure in its own signal's colour: the CPU `notice` past 1.5 times the cores and `needsYou` bold past 3 times for a minute, else `done`; the pressure `needsYou` bold at warn or worse, else `done`; swapping `notice`; the memory uncoloured. Workers `live` bold, ` of N workers` faint. Each worker's memory faint after its time on its card's first line (`1.2 GB`, `? GB` when its processes can't be found)
 - **Totals strip** (a rounded `frame`, faint header row):
   - Completed `✓ n` `done` bold
   - Set aside `↷ n` `notice`, with ` ◆ n` triaged in `organ` bold
   - Needs you `needsYou` bold
-  - Workers `live` bold, ` of N` faint; zeros faint
   - In queue: ` · N held back` `notice`, ` · held` `windingDown`
 - **Section labels**: `Tickets` `emphasis` bold; `Current` `live` bold.
 - **Ticket rows** (a rounded `frame`). The glyph and word take the state's style; for a finished ticket, the rest of its row is faint.
@@ -1865,7 +1865,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | footprints leave out the files the full check names | Already so: footprints leave out the files the fast and the full check commands name (`src/run/run.ts`) |
 | | a worker that lost its name is found in its pane when set aside or handed back | Not needed: no terminals (D3) |
 | 0.8.5 | `check_own`: workers check their own change; the scout's command for each suite on part of the project | Planned (tutti-kkb.8) |
-| | the dashboard's load line: workers' memory, memory pressure, CPU | Planned (tutti-kkb.25) |
+| | the dashboard's load line: workers' memory, memory pressure, CPU | Done (tutti-kkb.25) |
 | | `SHARED_MACHINE`, `--machine-workers` and `HOLD: MACHINE`, read every 2 s while held; a registration whose PID was reused ignored | Planned (tutti-kkb.23); the title line's `· shared with N runs` (tutti-kkb.38) |
 | | `◼ to merge`, and `◷` only for a ticket waiting on another | Done (tutti-kkb.30); tutti's own `◷ limit` keeps its clock |
 | | a handed-back ticket checked once, after rebasing onto the moved base; the hand-back asks for what failed | Planned (tutti-kkb.17) |
@@ -1895,7 +1895,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | 0.8.6 | the tickets table without the tickets Current shows | Done (tutti-kkb.30) |
 | | a shared file holds two tickets apart only when one of them is to change it | Done (tutti-kkb.16) |
 | | the merge train, `merge_train`, and the latest action of a ticket checked ahead | Done (tutti-kkb.18), as `merge.train`, with the action line of a ticket checked ahead (tutti-6c8) |
-| | a blank line between the title line and the load line | Planned (tutti-kkb.25) |
+| | a blank line between the title line and the load line | Done (tutti-kkb.25) |
 | | a spec run starts on its environment ticket while the breakdown files the rest; the breakdown files only the root epic and that ticket, and orchestra the rest without a `bd show` each | Planned (tutti-kkb.28) |
 | | fewer git commands for the same results, and a merge naming its commit from what it read | Not needed: orchestra's own git calls; tutti's Git service is its own |
 | | the feature interview's line keeps the epic's ticket count in a narrow pane | Not needed: orchestra's pane; tutti's interview view is its own (§4.10) |
@@ -1903,7 +1903,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | a predicted footprint for a running ticket leaves out union-merged files | Done (tutti-kkb.16) |
 | | a ticket dispatched again while its earlier worker waits on the limit adopts that worker | Not needed: the ledger keeps one session for a ticket, and no ticket is taken twice (§5) |
 | | Ctrl+C while `init` writes the setup writes all of it, then says `stopped`, exit 130 | Planned (tutti-kkb.31) |
-| | each figure on the load line in the colour of its own signal | Planned (tutti-kkb.25) |
+| | each figure on the load line in the colour of its own signal | Done (tutti-kkb.25) |
 | 0.9.0 | a worker prompt or verifier older than the templates said under START; `templates` in the settings; `init --update`, keeping the lines for each suite on part of the project | Planned (tutti-kkb.15) |
 | | each worker's share of the cores, `ORCHESTRA_CORES` and `GOFLAGS` `-p` | Done (tutti-kkb.24), the other runs' workers counted (tutti-kkb.37) |
 | | the verifier passes Bash no timeout; `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS`; the rules on giving a check its time | Done (tutti-kkb.11) |

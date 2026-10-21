@@ -11,10 +11,12 @@ terminal shows what it showed before, followed by the run's summary.
 
 ```
  tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2    usage 85% of the five-hour limit · resets 14:05
-╭────────────┬───────────┬───────────┬───────────┬───────────────────────╮
-│ Completed  │ Set aside │ Needs you │ Workers   │ In queue              │
-│ ✓ 2        │ ↷ 1 ◆ 1   │ 1         │ 3 of 3    │ 9 of 16 · 2 held back │
-╰────────────┴───────────┴───────────┴───────────┴───────────────────────╯
+
+ ▶ 3 of 3 workers · memory 4.1 GB (workers 3.2, merge check 0.9) · pressure normal · CPU 9.8/10 cores
+╭────────────┬───────────┬───────────┬───────────────────────────────────╮
+│ Completed  │ Set aside │ Needs you │ In queue                          │
+│ ✓ 2        │ ↷ 1 ◆ 1   │ 1         │ 9 of 16 · 2 held back             │
+╰────────────┴───────────┴───────────┴───────────────────────────────────╯
   Tickets
 ╭────────────┬─────────────┬─────────────────────────────────────────────╮
 │ ✓ done     │ tut-dwv     │ ffd6ce4 merged into batch/2026-10-20        │
@@ -24,12 +26,12 @@ terminal shows what it showed before, followed by the run's summary.
 ╰────────────┴─────────────┴─────────────────────────────────────────────╯
   Current
 ╭──────────────────────────────────╮╭──────────────────────────────────╮
-│ 1 ◆  tut-kco  merging  6m31s     ││ 2 ⣾  tut-zq4  testing  1m07s     │
+│ 1 ◆  tut-kco  merging  6m31s  1… ││ 2 ⣾  tut-zq4  testing  1m07s  1… │
 │   Open the property model: Int…  ││   Add an undo stack for propert… │
 │   merging into batch/2026-10-20  ││   ▸ Bash(scripts/check-fast.sh)  │
 ╰──────────────────────────────────╯╰──────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────╮
-│ 3 •  tut-9a1  permission — waiting for you  2m10s                    │
+│ 3 •  tut-9a1  permission — waiting for you  2m10s  0.9 GB            │
 │   Bash: Remove the build cache                                       │
 │   rm -rf build                                                       │
 │   [ Deny ]  [ Allow ]                                                │
@@ -53,6 +55,33 @@ On the right, the banners:
   `USAGE_LIMIT · resets 14:05` while the usage limit does, with `· in 1h12m` while the run has
   nothing else to do but wait for it (see [The usage limit](running.md#the-usage-limit)).
 
+### The load line
+
+Under the title line, a blank line between, a line says whether the workers are overloading the
+machine, read every 5 seconds:
+
+```
+ ▶ 4 of 4 workers · memory 6.2 GB (workers 4.8, merge check 1.4) · pressure normal · CPU 9.8/10 cores
+```
+
+- **Workers**: workers at work out of how many may run (`-c`).
+- **Memory**: what the workers' processes take (each worker's Claude Code, its process group and all
+  below them) and what tutti runs besides, its merge check above all; `· 1 unknown` for a worker
+  whose processes can't be found. Each worker's own is on its line in Current, `1.2 GB`, or `? GB`.
+- **Pressure**: the kernel's memory pressure, `normal`, `warn` or `critical`, with the memory
+  available on Linux. On macOS memory used against the total says little, as the kernel keeps spare
+  memory full of cache and compressed pages; the pressure level and the swap rate do.
+- **Swapping**, `swapping 840 pages/min`, while the machine swaps 600 pages a minute or more.
+- **CPU**: the 1-minute load average against the cores.
+
+Each figure is in the colour of its own signal: the CPU amber once the load passes 1.5 times the
+cores and red once it has stayed past 3 times the cores for a minute; the pressure red at `warn` or
+worse; swapping amber. The memory, which has no threshold, is uncoloured. On macOS tutti reads
+`sysctl` and `vm_stat`, on Linux `/proc` (the pressure stall information where the kernel has it,
+else the share of memory available), and `ps` on both. A pane too narrow for the whole line drops the
+memory's breakdown, then the memory; a pane too short for a line for each worker drops the blank line
+above it first.
+
 ### The totals
 
 One strip for the run:
@@ -62,14 +91,15 @@ One strip for the run:
   verdict on, `◆ n`.
 - **Needs you**: each ticket once whose worker waits on you (a permission request or a question),
   that waits on a question ticket for you, or whose work is done but can't merge until you act.
-- **Workers**: workers at work out of how many may run (`-c`).
 - **In queue**: ready tickets waiting for a slot, out of the tickets not closed (`9 of 16`); then
   `· 2 held back` for ready tickets that wait for something besides a slot (an overlap, their
   subtickets, a blocker not merged, a solo ticket), `· 1 setup failed` for ready tickets whose
   worktree's setup failed, waiting for a ticket to merge or a probe, and `· held` while the run takes
   no new tickets.
 
-A pane too narrow for the strip gets the totals on one line: `✓ 2 · ↷ 1 · ? 1 · ▶ 3/3 · queue 9 of 16`.
+The workers are on the load line above. A pane too narrow for the strip gets the totals on one line:
+`✓ 2 · ↷ 1 · ? 1 · queue 9 of 16`, and a pane too small for the dashboard, which has no load line,
+`✓ 2 · ↷ 1 · ? 1 · ▶ 3/3 · queue 9 of 16`.
 
 ### The tickets table
 

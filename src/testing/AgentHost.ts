@@ -194,6 +194,8 @@ export interface Options {
    * false`, as for a message its turn has already taken. A message not dropped stays queued and runs.
    */
   readonly cancelAsync?: "refuse" | "notQueued"
+  /** The process each ticket's Claude Code would have while its session is open: none by default. */
+  readonly processes?: ReadonlyMap<string, number>
 }
 
 /**
@@ -492,6 +494,12 @@ export const layer = (
         workers: workers.workers,
         compactions: workers.compactions,
         setup: Effect.succeed(options.setup ?? noFindings),
+        processes: Effect.sync(
+          () =>
+            new Map(
+              [...(options.processes ?? [])].filter(([ticket]) => running.has(ticket)),
+            ) as ReadonlyMap<string, number>,
+        ),
       })
 
       const recording = Recording.of({

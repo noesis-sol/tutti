@@ -138,10 +138,12 @@ describe("frames", () => {
       "
 
        tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
-      ╭─────────────┬─────────────┬─────────────┬───────────┬────────────────────────╮
-      │ Completed   │ Set aside   │ Needs you   │ Workers   │ In queue               │
-      │ ✓ 1         │ ↷ 1 ◆ 1     │ 1           │ 2 of 3    │ 1 of 16 · 1 held back  │
-      ╰─────────────┴─────────────┴─────────────┴───────────┴────────────────────────╯
+
+       ▶ 2 of 3 workers
+      ╭────────────────┬────────────────┬────────────────┬───────────────────────────╮
+      │ Completed      │ Set aside      │ Needs you      │ In queue                  │
+      │ ✓ 1            │ ↷ 1 ◆ 1        │ 1              │ 1 of 16 · 1 held back     │
+      ╰────────────────┴────────────────┴────────────────┴───────────────────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
       │             │ +2      │ earlier tickets, see the log                         │
@@ -157,8 +159,6 @@ describe("frames", () => {
 
 
 
-
-
         s stop after current · ? keys
       "
     `)
@@ -170,10 +170,12 @@ describe("frames", () => {
       "
 
        tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                      usage 85% · resets 14:05
-      ╭─────────────────────┬─────────────────────┬─────────────────────┬───────────────────┬────────────────────────────────╮
-      │ Completed           │ Set aside           │ Needs you           │ Workers           │ In queue                       │
-      │ ✓ 1                 │ ↷ 1 ◆ 1             │ 1                   │ 2 of 3            │ 1 of 16 · 1 held back          │
-      ╰─────────────────────┴─────────────────────┴─────────────────────┴───────────────────┴────────────────────────────────╯
+
+       ▶ 2 of 3 workers
+      ╭──────────────────────────┬──────────────────────────┬──────────────────────────┬─────────────────────────────────────╮
+      │ Completed                │ Set aside                │ Needs you                │ In queue                            │
+      │ ✓ 1                      │ ↷ 1 ◆ 1                  │ 1                        │ 1 of 16 · 1 held back               │
+      ╰──────────────────────────┴──────────────────────────┴──────────────────────────┴─────────────────────────────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────────────────────────────────────────────╮
       │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                                                         │
@@ -195,8 +197,6 @@ describe("frames", () => {
 
 
 
-
-
         s stop after current · ? keys
       "
     `)
@@ -208,13 +208,13 @@ describe("frames", () => {
       "
 
        tutti  0.1.0   batch/2026-10-20 …  usage 85% · resets 14:05
-       ✓ 1 · ↷ 1 ◆ 1 · ? 1 · ▶ 2/3 · queue 1 of 16 · 1 held back
+
+       ▶ 2 of 3 workers
+       ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
         Current
       ╭──────────────────────────────────────────────────────────╮
       │ ⣾ picking the next ticket…                               │
       ╰──────────────────────────────────────────────────────────╯
-
-
 
 
 
@@ -485,8 +485,8 @@ describe("the tickets table", () => {
 
   test("a pane too short for it and a line a worker leaves it out", async () => {
     const view = viewOf([entry("tut-1", "One", working("editing"), 0)])
-    expect((await draw(view, { width: 80, height: 19 })).text).not.toContain("Tickets")
-    expect((await draw(view, { width: 80, height: 20 })).text).toContain("Tickets")
+    expect((await draw(view, { width: 80, height: 20 })).text).not.toContain("Tickets")
+    expect((await draw(view, { width: 80, height: 21 })).text).toContain("Tickets")
     const more = viewOf([entry("tut-1", "One", working("editing"), 0)], { concurrency: 8 })
     expect((await draw(more, { width: 80, height: 24 })).text).not.toContain("Tickets")
   })

@@ -52,6 +52,7 @@ import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
 import { interview, interviewEnding } from "./run/interview.ts"
 import { keepAwake, keepAwakePlan } from "./run/keepAwake.ts"
+import { Load, liveLoad } from "./run/load.ts"
 import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
 import { otherWorkers } from "./run/machine.ts"
 import {
@@ -125,6 +126,8 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     fibersLayer,
     // The other runs' workers, which the run reads and its workers' share of the cores counts.
     otherWorkers,
+    // The machine's load, which the run reads for the dashboard's load line.
+    Layer.succeed(Load, liveLoad()),
   )
   const second = Layer.mergeAll(
     Checks.layer,

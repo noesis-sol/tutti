@@ -2,19 +2,21 @@
 // `Current` label, a card for each ticket with work under way, in its worker's number order. A card
 // says its worker's stable number, its mark (the spinner while the worker works, `◼` to merge, `◆`
 // merging, `•` once its turn has ended), its ticket, its status (`steered` beside it), how long it
-// has been in its phase, its title, and its action line: the phase's (a merge's step, a recheck), or
+// has been in its phase, the memory its worker's processes take once the run has read it (`1.2 GB`,
+// `? GB` when they can't be found, src/run/load.ts), its title, and its action line: the phase's (a merge's step, a recheck), or
 // else the worker's latest action behind `▸`, a denied call `notice` for its 10 seconds.
 //
 // A card is framed `live` while its worker works and `needsYou` when it waits for you, `frame`
 // otherwise; the highlighted one keeps its colour, bold in the heavy border style. From 120 columns
 // the cards go two to a row, every one as tall as the tallest. When the pane can't hold a card each,
 // they go one line each in a single compact box, framed `needsYou` when any of them waits for you,
-// their numbers, tickets, statuses and times lined up as columns, each as wide as the widest.
+// their numbers, tickets, statuses, times and memory lined up as columns, each as wide as the widest.
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
 import { type MouseEvent, TextAttributes } from "@opentui/core"
 import type { Card } from "../run/runView.ts"
 import { AttentionLines, attentionInside, attentionLines } from "./AttentionCard.tsx"
+import { workerMemory } from "./LoadLine.tsx"
 import {
   type Border,
   boxed,
@@ -129,19 +131,27 @@ const frameOf = (card: Card, theme: Theme): Look =>
 const steeredOf = (card: Card, theme: Theme): Segments =>
   card.steered ? [seg("  "), seg("steered", roleLook(theme, "emphasis"))] : []
 
-/** The cells of a card's first line but its mark: its number, ticket, status and elapsed time. */
+/**
+ * The cells of a card's first line but its mark: its number, ticket, status, elapsed time and its
+ * worker's memory.
+ */
 interface HeadCells {
   readonly number: Segments
   readonly ticket: Segments
   /** Its status, `steered` beside it. */
   readonly status: Segments
   readonly time: Segments
+  /** None before the run has read it. */
+  readonly memory: Segments
 }
 
-/** The widths of the compact box's columns: the widest number, ticket, status and time on screen. */
+/**
+ * The widths of the compact box's columns: the widest number, ticket, status, time and memory on
+ * screen.
+ */
 type HeadColumns = { readonly [K in keyof HeadCells]: number }
 
-const noColumns: HeadColumns = { number: 0, ticket: 0, status: 0, time: 0 }
+const noColumns: HeadColumns = { number: 0, ticket: 0, status: 0, time: 0, memory: 0 }
 
 const cellsOf = (card: Card, theme: Theme, now: number, status: Segments): HeadCells => {
   const { styles } = theme
@@ -150,6 +160,7 @@ const cellsOf = (card: Card, theme: Theme, now: number, status: Segments): HeadC
     ticket: [seg(sanitizeLine(card.ticket), styles.picked)],
     status: [...status, ...steeredOf(card, theme)],
     time: [seg(elapsed(now - card.since), styles.dim)],
+    memory: card.memory === undefined ? [] : [seg(workerMemory(card.memory), styles.dim)],
   }
 }
 
@@ -159,6 +170,7 @@ const fit = (cols: HeadColumns, cells: HeadCells): HeadColumns => ({
   ticket: Math.max(cols.ticket, widthOf(cells.ticket)),
   status: Math.max(cols.status, widthOf(cells.status)),
   time: Math.max(cols.time, widthOf(cells.time)),
+  memory: Math.max(cols.memory, widthOf(cells.memory)),
 })
 
 /** The spaces that make `segments` `width` wide; none when they are as wide or wider. */
@@ -169,7 +181,7 @@ const padding = (segments: Segments, width: number): Segments => {
 
 /**
  * A card's first line from its cells and `mark`, its ticket and status padded to `cols` and its
- * number and time right-aligned in them, so that their digits line up with the other lines'.
+ * number, time and memory right-aligned in them, so that their digits line up with the other lines'.
  */
 const headLine = (cells: HeadCells, mark: Segment, cols: HeadColumns): Segments => [
   ...padding(cells.number, cols.number),
@@ -185,9 +197,12 @@ const headLine = (cells: HeadCells, mark: Segment, cols: HeadColumns): Segments 
   seg("  "),
   ...padding(cells.time, cols.time),
   ...cells.time,
+  ...(cells.memory.length === 0 && cols.memory === 0
+    ? []
+    : [seg("  "), ...padding(cells.memory, cols.memory), ...cells.memory]),
 ]
 
-/** The card's first line: its number, mark, ticket, status and elapsed time. */
+/** The card's first line: its number, mark, ticket, status, elapsed time and memory. */
 export const headOf = (
   card: Card,
   theme: Theme,

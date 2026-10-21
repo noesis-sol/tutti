@@ -117,6 +117,8 @@ export interface Setup {
    * scripts can change the in-memory Beads and Git as the worker's commands would.
    */
   readonly scripts?: Scripts | ((world: World) => Scripts)
+  /** The process each ticket's Claude Code has while its session is open: none by default. */
+  readonly processes?: ReadonlyMap<string, number>
   /** How Attention answers requests as they open; it allows everything by default. */
   readonly policy?: Policy
   readonly checks?: ChecksScript
@@ -186,6 +188,10 @@ export const environment = (
     checkCommand,
   ].flatMap((command) => (command === null ? [] : [command]))
   const scripts = setup.scripts ?? {}
+  const hostOptions = {
+    checks,
+    ...(setup.processes === undefined ? {} : { processes: setup.processes }),
+  }
   const host =
     typeof scripts === "function"
       ? Layer.unwrap(
@@ -195,10 +201,10 @@ export const environment = (
               backlog: yield* Backlog,
               repository: yield* Repository,
             }
-            return hostLayer(scripts(world), { checks })
+            return hostLayer(scripts(world), hostOptions)
           }),
         )
-      : hostLayer(scripts, { checks })
+      : hostLayer(scripts, hostOptions)
   return host.pipe(
     Layer.provideMerge(
       Layer.mergeAll(attentionLayer(setup.policy ?? allowAll), transcriptsLayer(), usageLayer),

@@ -126,7 +126,8 @@ import {
   stopsLine,
 } from "./holds.ts"
 import { type Entry, handBackWaits, Ledger, type State } from "./ledger.ts"
-import { detail, hold, type Line, Log, line, Tag } from "./log.ts"
+import { Load, watchLoad } from "./load.ts"
+import { detail, hold, type Line, Log, line, Tag, tagged } from "./log.ts"
 import {
   holdLine as machineHoldLine,
   machinePoll,
@@ -820,6 +821,28 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         SubscriptionRef.update(status, (now) => ({ ...now, probe })),
       ),
     )
+    // With the dashboard shown, the machine's load (load.ts), for its load line and each worker's
+    // memory in Current. A reading that fails stops the reading, not the run: the line stays as it
+    // was last read.
+    const loadSource = yield* Load
+    if (screen !== null && loadSource !== null) {
+      yield* watch(
+        watchLoad({
+          source: loadSource,
+          roots: host.processes,
+          self: process.pid,
+          show: (load) => SubscriptionRef.update(status, (now) => ({ ...now, load })),
+        }).pipe(
+          Effect.catchDefect((defect) =>
+            logs.write(
+              tagged(
+                "LOAD_FAILED",
+              )`${firstLine(defect)}; the machine's load is not shown for the rest of the run`,
+            ),
+          ),
+        ),
+      )
+    }
     // The hand-backs waiting on steered workers, for their views' notices (§ 4.3).
     if (screen !== null) {
       yield* watch(

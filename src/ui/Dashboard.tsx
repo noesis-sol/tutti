@@ -1,11 +1,13 @@
-// The dashboard (§ 7.2), drawn from RunView alone: the title line, the totals strip, the tickets
-// table (without the tickets Current shows), the workers' cards (Current) and at the foot the
+// The dashboard (§ 7.2), drawn from RunView alone: the title line, the load line (LoadLine.tsx), a
+// blank line between, the totals strip, the tickets table (without the tickets Current shows), the workers' cards (Current) and at the foot the
 // wind-down line, the warning line and the hint; `?` opens the key help over it.
 //
 // As orchestra lays it out, the tickets table's height comes from the pane's alone, and the table is
 // left out of a pane too short for it and a line for each worker the run may have, so it stays put
-// while workers come and go. The cards take what is left, one line each when they don't fit. Below
-// the minimum size, 60×16 (§ 7.7), only the totals, on one line, and the hint are drawn.
+// while workers come and go. The cards take what is left, one line each when they don't fit. A pane
+// too short for a line each drops the blank line above the load line first, before any line with
+// something on it. Below the minimum size, 60×16 (§ 7.7), only the totals, on one line, and the hint
+// are drawn.
 //
 // The keys (§ 7.3), in the view's input layer (keys.ts): `Tab`, `Shift+Tab` and the arrows move the
 // highlight between cards, `Enter` opens the highlighted card, `1`–`9` open that worker, and a click
@@ -33,7 +35,8 @@ import { EndOfRunBox, endOfRunLines } from "./EndOfRunBox.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
-import { cut, Lines, type Segments, seg } from "./line.tsx"
+import { LoadLine, loadSegments } from "./LoadLine.tsx"
+import { cut, Line, Lines, type Segments, seg } from "./line.tsx"
 import {
   rowsBesideCurrent,
   sectionChrome,
@@ -51,8 +54,8 @@ import { WindDown, windDownSegments } from "./WindDown.tsx"
 export const minWidth = 60
 export const minHeight = 16
 
-/** The title line and the blank line above it. */
-const titleLines = 2
+/** The title line and the blank line above it, and the load line under it. */
+const titleLines = 3
 
 /** The foot's lines besides the warnings: the wind-down line, there or not, and the hint. */
 const footLines = 2
@@ -68,6 +71,18 @@ export const warningLines = (
 /** Whether a pane `height` tall has room for the tickets table, besides what it always shows. */
 export const showsTable = (height: number, totals: number, slots: number, foot: number): boolean =>
   titleLines + totals + Math.max(slots, 1) + sectionChrome + foot + tableLines(height) <= height
+
+/**
+ * Whether a pane `height` tall has room for the blank line between the title line and the load
+ * line, besides the rest, `table` lines of tickets table among them, and a line for each worker.
+ */
+export const showsGap = (
+  height: number,
+  totals: number,
+  table: number,
+  slots: number,
+  foot: number,
+): boolean => titleLines + 1 + totals + table + Math.max(slots, 1) + sectionChrome + foot <= height
 
 /** The worker `step` cards on from `from` in number order, round; the first or last from none. */
 export const moveHighlight = (
@@ -112,7 +127,9 @@ export const Dashboard = () => {
   const warnings = warningLines(view.warnings, theme, width)
   const foot = footLines + warnings.length
   const table = showsTable(height, totals.length, view.totals.slots, foot)
-  const room = height - titleLines - totals.length - (table ? tableLines(height) : 0) - foot
+  const tableHeight = table ? tableLines(height) : 0
+  const gap = showsGap(height, totals.length, tableHeight, view.totals.slots, foot)
+  const room = height - titleLines - (gap ? 1 : 0) - totals.length - tableHeight - foot
   const ending = view.endOfRun === null ? null : endOfRunLines(view.endOfRun, theme, width)
   // Behind the end-of-run box no card's buttons are drawn: Enter opens the Answer box, as on a
   // compact line.
@@ -191,6 +208,8 @@ export const Dashboard = () => {
   return (
     <box flexDirection="column" width={width} height={height}>
       <TitleLine width={width} />
+      {gap ? <Line segments={[]} /> : null}
+      <LoadLine segments={loadSegments(view.totals, view.load, theme, width)} />
       <Totals lines={totals} />
       {table ? <TicketsTable lines={ticketsLines(rows, theme, width, tableLines(height))} /> : null}
       {ending !== null ? (
