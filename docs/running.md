@@ -286,7 +286,11 @@ Tickets that touch the same code don't run side by side. Each ticket has a **foo
   which say what happened to it;
 - its `area:<name>` labels;
 - the files its `files` metadata lists (`bd update <id> --set-metadata files=a.ts,b.ts`), where a folder
-  (`src/run/`) means every file under it and a glob (`src/**/*.test.ts`) every file it matches;
+  (`src/run/`) means every file under it and a glob (`src/**/*.test.ts`) every file it matches,
+  as well as the files another ticket adds where it matches (`src/run/*.ts` holds a new
+  `src/run/cart.ts`) and, matching none yet, those it would match from the repository's root
+  (`web/src/*.ts` before there is a `web/`); a name with a `[` (`pages/[id].tsx`) is that file or
+  folder as well as the glob;
 - for a ticket naming none of these, the `predicted_files` metadata, if it has one;
 - once it runs, the files its worktree has changed, read every 30 seconds.
 

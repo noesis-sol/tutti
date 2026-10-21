@@ -1,7 +1,8 @@
 // Footprints (§ 5 item 5, § 2): where a ticket works, as orchestra v0.9.0 reads it. The files and
 // functions its title, description, design and acceptance criteria name, its area:<name> labels and
 // the files its `files` metadata lists (folders and globs among them), resolved against git
-// ls-files; with none of these, its `predicted_files`. Not its notes: they say what happened to it
+// ls-files, and the globs it lists, which hold the files other tickets add where they match; with
+// none of these, its `predicted_files`. Not its notes: they say what happened to it
 // (the run's notes, its workers', a reopening's), naming files and functions it doesn't change. The
 // files the project's check commands name are left out unless the metadata lists them, as is the
 // spec the ticket's `spec` metadata cites: nearly every ticket asks for the check to pass, and cites
@@ -24,6 +25,14 @@ export interface Footprint {
    * included, and is all there is of a folder the ticket adds.
    */
   readonly files: ReadonlyArray<string>
+  /**
+   * The globs the files metadata lists, sorted, cleaned and in NFC: one that matches none of the
+   * repository's files (any, the files unknown) as it is (web/src/*.ts, listed before there is any),
+   * one that matches some anchored at each folder it matched in (run/*.ts as src/run/*.ts), beside
+   * those files in `files`. Each holds the files and folders other footprints name that it would
+   * match from the repository's root (`globHolds`): those another ticket adds there.
+   */
+  readonly globs: ReadonlyArray<string>
   /** Functions and types, as named: Loop.merge, refreshBranch. Sorted. */
   readonly funcs: ReadonlyArray<string>
   /** The ticket's area:<name> labels, sorted. */
@@ -67,6 +76,7 @@ export const SpecKey = "spec"
 /** The footprint of a ticket naming nothing. */
 export const emptyFootprint: Footprint = {
   files: [],
+  globs: [],
   funcs: [],
   areas: [],
   cited: [],
@@ -78,13 +88,22 @@ export const emptyFootprint: Footprint = {
 
 /** Whether the footprint names nothing (its worktree's changes aside). */
 export const isEmpty = (fp: Footprint): boolean =>
-  fp.files.length + fp.funcs.length + fp.areas.length === 0
+  fp.files.length + fp.globs.length + fp.funcs.length + fp.areas.length === 0
 
-/** The footprint for the log: functions, files, then areas (`<id> footprint: …`). */
+/**
+ * The footprint for the log: functions, files, globs, then areas (`<id> footprint: …`). A glob
+ * written as a file or folder among the files (a route the ticket adds, pages/[slug].tsx) is
+ * named once.
+ */
 export const showFootprint = (fp: Footprint): string =>
   isEmpty(fp)
     ? "nothing named"
-    : [...fp.funcs, ...fp.files, ...fp.areas].join(", ") +
+    : [
+        ...fp.funcs,
+        ...fp.files,
+        ...fp.globs.filter((g) => !fp.files.includes(g) && !fp.files.includes(`${g}/`)),
+        ...fp.areas,
+      ].join(", ") +
       (fp.predicted ? " (predicted)" : "") +
       (fp.branch ? " (from its branch)" : "")
 
@@ -346,6 +365,121 @@ export const globMatch = (
   )
 }
 
+/** Whether a files metadata entry is a glob: it has a *, a ? or a [. */
+const isGlob = (name: string): boolean => /[*?[]/.test(name)
+
+/**
+ * A part of a path as partsMeet takes it: a glob's (`glob`), matching the names partMatch does and
+ * the name it is written as, or a file's or a folder's, matching its name alone.
+ */
+interface Part {
+  readonly s: string
+  readonly glob: boolean
+}
+
+/** Whether p is **, the part of a glob matching any number of folders, which ends a folder's parts too. */
+const anyFolders = (p: Part): boolean => p.glob && p.s === "**"
+
+const partMatches = (p: Part, name: string): boolean =>
+  p.s === name || (p.glob && partMatch(p.s, name))
+
+/** A glob's parts, followed by **: its last part a folder's name as well as a file's, as for glob. */
+const globParts = (g: string): ReadonlyArray<Part> => [
+  ...g.split("/").map((s) => ({ s, glob: true })),
+  { s: "**", glob: true },
+]
+
+/** The parts of p, a file or a folder (ending in /), in NFC, a folder's followed by ** for its files. */
+const pathParts = (p: string): ReadonlyArray<Part> => {
+  const folder = p.endsWith("/")
+  const parts: Array<Part> = nfc(folder ? p.slice(0, -1) : p)
+    .split("/")
+    .map((s) => ({ s, glob: false }))
+  return folder ? [...parts, { s: "**", glob: true }] : parts
+}
+
+/**
+ * The one name a glob's part matches, its escapes undone; undefined when it matches others (a *, a
+ * ? or a [class]) or none (a \ ending it).
+ */
+const literalPart = (s: string): string | undefined => {
+  if (!/[*?[\\]/.test(s)) return s
+  let out = ""
+  const chars = [...s]
+  for (let i = 0; i < chars.length; i++) {
+    let c = chars[i] ?? ""
+    if (c === "*" || c === "?" || c === "[") return undefined
+    if (c === "\\") {
+      i++
+      if (i === chars.length) return undefined
+      c = chars[i] ?? ""
+    }
+    out += c
+  }
+  return out
+}
+
+/**
+ * Whether a name can match both x and y: the name one of them is written as, which the other
+ * matches, or, both a glob's, one both match: the name one stands for alone, which the other
+ * matches, or any name their literal beginnings and ends allow (*.ts and c*.ts meet, *.ts and *.go
+ * don't).
+ */
+const partMeet = (x: Part, y: Part): boolean => {
+  if (partMatches(x, y.s) || partMatches(y, x.s)) return true
+  if (!x.glob || !y.glob) return false
+  const lx = literalPart(x.s)
+  const ly = literalPart(y.s)
+  if (lx !== undefined && ly !== undefined) return lx === ly
+  if (ly !== undefined) return partMatch(x.s, ly)
+  if (lx !== undefined) return partMatch(y.s, lx)
+  // A pattern's literal beginning ends at its first *, ?, [ or \, and its literal end starts after
+  // its last one or ].
+  const px = x.s.slice(0, x.s.search(/[*?[\\]/))
+  const py = y.s.slice(0, y.s.search(/[*?[\\]/))
+  const sx = x.s.slice(lastSpecial(x.s) + 1)
+  const sy = y.s.slice(lastSpecial(y.s) + 1)
+  return (px.startsWith(py) || py.startsWith(px)) && (sx.endsWith(sy) || sy.endsWith(sx))
+}
+
+const lastSpecial = (s: string): number =>
+  Math.max(...["*", "?", "[", "]", "\\"].map((c) => s.lastIndexOf(c)))
+
+/**
+ * Whether a path can match both a and b, the parts of globs or paths: ** any number of folders, the
+ * others one name each, which partMeet compares.
+ */
+const partsMeet = (a: ReadonlyArray<Part>, b: ReadonlyArray<Part>): boolean => {
+  // The ways tried that met nothing: each step moves on in a or b, so none comes round again.
+  const failed = new Set<number>()
+  const meet = (i: number, j: number): boolean => {
+    const key = i * (b.length + 1) + j
+    if (failed.has(key)) return false
+    const x = a[i]
+    const y = b[j]
+    let ok: boolean
+    if (x !== undefined && anyFolders(x)) ok = meet(i + 1, j) || (j < b.length && meet(i, j + 1))
+    else if (y !== undefined && anyFolders(y))
+      ok = meet(i, j + 1) || (i < a.length && meet(i + 1, j))
+    else if (x === undefined || y === undefined) ok = x === undefined && y === undefined
+    else ok = partMeet(x, y) && meet(i + 1, j + 1)
+    if (!ok) failed.add(key)
+    return ok
+  }
+  return meet(0, 0)
+}
+
+/**
+ * Whether glob g, one of a footprint's globs, holds p, a file or a folder (ending in /) of another's:
+ * a file g matches, or a folder holding one. g matches from the repository's root, as a name kept
+ * for a file a ticket adds does (web/src/*.ts holds web/src/cart.ts, not app/web/src/cart.ts).
+ */
+export const globHolds = (g: string, p: string): boolean => partsMeet(globParts(g), pathParts(p))
+
+/** Whether two footprints' globs can match the same file. */
+export const globsMeet = (g: string, h: string): boolean =>
+  g === h || partsMeet(globParts(g), globParts(h))
+
 /**
  * The repository's files, to tell a path a ticket names from other words, to find the file a bare
  * name (run.ts) or a partial path (run/ledger.ts) means, and the files the check commands name.
@@ -357,6 +491,17 @@ export interface RepoFiles {
   readonly known: boolean
   /** The files a name means, as git lists them (see `ticketFootprint`). */
   resolve(name: string, explicit: boolean): ReadonlyArray<string>
+  /**
+   * What an entry of the files metadata means: the files resolve gives it, or, for a glob (a name
+   * with a *, ? or [), the files it matches and the globs holding those other footprints name that
+   * it would match (`Footprint.globs`): itself anchored at each folder it matched in, or, matching
+   * none of the repository's files (any, the files unknown), itself. A name with brackets and no *
+   * or ? (pages/[id].tsx, src/routes/[slug]/) also means the file or folder of that name.
+   */
+  listed(name: string): {
+    readonly files: ReadonlyArray<string>
+    readonly globs: ReadonlyArray<string>
+  }
   /** The file a name is, as git lists it; for one git doesn't track, the name in NFC. */
   file(name: string): string
   /** Whether a check command names the file. */
@@ -400,19 +545,32 @@ export const repoFiles = (
   const known = tracked !== undefined
   const formsOf = (n: string): ReadonlyArray<string> => files.get(n) ?? []
 
-  const glob = (pattern: string): ReadonlyArray<string> => {
-    // In any folder, as a partial path is; its last part a file's name or a folder's, holding every
-    // file under it. A run of ** is one.
-    const pat = ["**", ...pattern.split("/")].filter(
-      (part, i, all) => !(part === "**" && all[i - 1] === "**"),
-    )
-    return names.flatMap((n) => {
+  // The files pattern matches, in any folder as a partial path does: its last part a file's name or
+  // a folder's, holding every file under it; and pattern anchored at each folder it matched in
+  // (run/*.ts as src/run/*.ts), which holds the files another ticket adds there that it would match,
+  // from the repository's root (globHolds). A folder's name is a part of the glob as it is.
+  const glob = (
+    pattern: string,
+  ): { readonly files: ReadonlyArray<string>; readonly anchored: ReadonlyArray<string> } => {
+    const pat = pattern.split("/")
+    const anchored = new Set<string>()
+    const files = names.flatMap((n) => {
       const parts = n.split("/")
-      for (let end = 1; end <= parts.length; end++) {
-        if (globMatch(pat, parts.slice(0, end), true)) return formsOf(n)
+      // A glob starting with ** matches from the root wherever it matches deeper.
+      const starts = pat[0] === "**" ? 1 : parts.length
+      let matched = false
+      for (let start = 0; start < starts; start++) {
+        for (let end = start + 1; end <= parts.length; end++) {
+          if (globMatch(pat, parts.slice(start, end), true)) {
+            anchored.add(posix.join(...parts.slice(0, start), pattern))
+            matched = true
+            break
+          }
+        }
       }
-      return []
+      return matched ? formsOf(n) : []
     })
+    return { files, anchored: sorted(anchored) }
   }
 
   const resolve = (raw: string, explicit: boolean): ReadonlyArray<string> => {
@@ -426,14 +584,27 @@ export const repoFiles = (
       if (folder) return [`${name}/`]
       return explicit || name.includes("/") || named ? [name] : []
     }
-    if (explicit && /[*?[]/.test(name)) {
-      // A name with brackets around names and no * or ? (pages/[id].tsx, app/[[...slug]]/) also
-      // means the file or folder of that name, one the ticket adds among them.
-      const matched = glob(name)
-      if (/[*?]/.test(name) || !bracketed.test(name)) return matched
-      return sorted([...matched, ...literal(name, explicit, folder)])
-    }
     return literal(name, explicit, folder)
+  }
+
+  const listed = (
+    raw: string,
+  ): { readonly files: ReadonlyArray<string>; readonly globs: ReadonlyArray<string> } => {
+    const { name, folder } = cleanName(raw)
+    if (!isGlob(name)) return { files: resolve(raw, true), globs: [] }
+    // A name with brackets around names and no * or ? (pages/[id].tsx, app/[[...slug]]/) also
+    // means the file or folder of that name, one the ticket adds among them.
+    const named =
+      /[*?]/.test(name) || !bracketed.test(name)
+        ? []
+        : known
+          ? literal(name, true, folder)
+          : [folder ? `${name}/` : name]
+    const { files, anchored } = known ? glob(name) : { files: [], anchored: [] }
+    return {
+      files: sorted([...files, ...named]),
+      globs: files.length === 0 ? [name] : anchored,
+    }
   }
 
   // What a cleaned name means as it is written, not as a glob.
@@ -468,6 +639,7 @@ export const repoFiles = (
   return {
     known,
     resolve,
+    listed,
     file: (name) => {
       const forms = files.get(nfc(name))
       if (forms === undefined) return nfc(name)
@@ -654,7 +826,9 @@ const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string>
  *   folder or glob.
  * - **The files metadata** also takes a folder (`src/run/`, or `run/`), meaning the files under it
  *   and, kept as `src/run/`, those another ticket adds there, and a glob (`*.ts`, `src/**\/*.ts`)
- *   meaning the files it matches. A name that means none of these is a file or folder the ticket adds.
+ *   meaning the files it matches and, kept in `globs`, those another ticket adds where it matches
+ *   or, matching none, would match from the root (`repo.listed`). A name with a [ (pages/[id].tsx)
+ *   is also that file or folder. A name that means none of these is a file or folder the ticket adds.
  * - **Cited**: with files metadata, the files its text names are those it reads; without, so is a
  *   document its text names in no sentence asking to change it (`per CLAUDE.md`, not
  *   `Update docs/guide.md`). A file cited holds no other ticket apart from it (`sharedFile`).
@@ -672,11 +846,17 @@ export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footp
   const listed = ticket.files.length > 0
   // The files it changes are listed: those its text names it reads.
   if (listed) for (const f of files.keys()) files.set(f, false)
-  for (const name of ticket.files) for (const f of repo.resolve(name, true)) files.set(f, true)
+  const globs = new Set<string>()
+  for (const name of ticket.files) {
+    const entry = repo.listed(name)
+    for (const f of entry.files) files.set(f, true)
+    for (const g of entry.globs) globs.add(g)
+  }
   for (const f of [...files.keys()]) if (repo.unioned(f)) files.delete(f)
   const fp: Footprint = {
     ...emptyFootprint,
     files: sorted(files.keys()),
+    globs: sorted(globs),
     funcs: sorted(funcs),
     areas: areasOf(ticket),
     cited: sorted([...files].filter(([, change]) => !change).map(([f]) => f)),
@@ -705,10 +885,16 @@ export const branchFootprint = (
   repo: RepoFiles,
 ): Footprint => {
   const files = new Set(changed.filter(repoPath).map((f) => repo.file(f)))
-  for (const name of ticket.files) for (const f of repo.resolve(name, true)) files.add(f)
+  const globs = new Set<string>()
+  for (const name of ticket.files) {
+    const entry = repo.listed(name)
+    for (const f of entry.files) files.add(f)
+    for (const g of entry.globs) globs.add(g)
+  }
   return {
     ...emptyFootprint,
     files: sorted([...files].filter((f) => !repo.unioned(f))),
+    globs: sorted(globs),
     areas: areasOf(ticket),
     listed: true,
     branch: true,
@@ -829,9 +1015,21 @@ const funcsMeet = (a: string, b: string): boolean => {
   return na === nb && (ta === "" || tb === "" || ta === tb)
 }
 
-/** Whether p is a file or folder the footprint names, is under a folder it names, or was changed. */
+/**
+ * Whether p is a file or folder the footprint names, is under a folder it names, was changed, or is
+ * held by one of its globs (globHolds).
+ */
 const takesIn = (fp: Footprint, p: string): boolean =>
-  fp.changed.includes(p) || fp.files.some((f) => f === p || (f.endsWith("/") && p.startsWith(f)))
+  fp.changed.includes(p) ||
+  fp.files.some((f) => f === p || (f.endsWith("/") && p.startsWith(f))) ||
+  fp.globs.some((g) => globHolds(g, p))
+
+/**
+ * Whether the footprint works where glob g does: on a file or folder g holds, or by a glob of its own
+ * that can match a file g does.
+ */
+const meetsGlob = (fp: Footprint, g: string): boolean =>
+  fp.files.some((p) => globHolds(g, p)) || fp.globs.some((h) => globsMeet(g, h))
 
 /** Whether p is a folder holding a file among files: one that exists, or one a ticket adds there. */
 const holdsNamed = (p: string, files: ReadonlyArray<string>): boolean =>
@@ -843,14 +1041,17 @@ export const sharedFunc = (a: Footprint, b: Footprint): string =>
 
 /**
  * Whether the footprint is to change p, a file or a folder: its worktree changed p, it names p or
- * a folder p is under and doesn't only cite it (`cited`), or, `named` true, it names a function p
+ * a folder p is under and doesn't only cite it (`cited`), one of its globs holds p, or, `named` true, it names a function p
  * mentions while its files metadata lists none and p is no document, which mentions functions
  * without holding them.
  */
 const changes = (fp: Footprint, p: string, named: boolean): boolean =>
   fp.changed.includes(p) ||
   (named && !fp.listed && !isDocument(p)) ||
-  fp.files.some((f) => (f === p || (f.endsWith("/") && p.startsWith(f))) && !fp.cited.includes(f))
+  fp.files.some(
+    (f) => (f === p || (f.endsWith("/") && p.startsWith(f))) && !fp.cited.includes(f),
+  ) ||
+  fp.globs.some((g) => globHolds(g, p))
 
 /**
  * A file both footprints work on, for which keep holds (any, without keep), or "". A ticket works
@@ -859,7 +1060,9 @@ const changes = (fp: Footprint, p: string, named: boolean): boolean =>
  * name functions it mentions: they are compared by function instead. A folder both name is shared
  * only when neither names a file in it (a new folder): otherwise its files are compared one by one.
  * A file both work on is shared only when one of them is to change it (`changes`): two tickets that
- * only cite a document, or name files their files metadata doesn't list, don't conflict over it.
+ * only cite a document, or name files their files metadata doesn't list, don't conflict over it. A
+ * glob works on the files it holds (globHolds), and is compared itself, as a new folder is, only
+ * when it holds no file either names: its files are compared one by one too.
  */
 export const sharedFile = (
   a: Footprint,
@@ -877,6 +1080,11 @@ export const sharedFile = (
     const bIn = namesIn(b, p)
     const both = (aIn || takesIn(a, p)) && (bIn || takesIn(b, p)) && !(aIn && bIn)
     if (both && (changes(a, p, aIn) || changes(b, p, bIn)) && (keep?.(p) ?? true)) return p
+  }
+  const named = [...a.files, ...b.files]
+  for (const g of [...a.globs, ...b.globs]) {
+    const holdsFile = named.some((p) => !p.endsWith("/") && globHolds(g, p))
+    if (!holdsFile && meetsGlob(a, g) && meetsGlob(b, g) && (keep?.(g) ?? true)) return g
   }
   return ""
 }
