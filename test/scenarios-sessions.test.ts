@@ -101,6 +101,18 @@ const untilClaimed = (world: World, id: string) =>
     }),
   )
 
+/**
+ * Sleeps `duration` on TestClock, adding `id` to `asleep` as it starts, so that a `during` can wait
+ * for the sleep before it moves the clock: moved before, the clock would never wake it.
+ */
+const sleepsAs = (asleep: Set<string>, id: string, duration: Duration.Input) =>
+  step(
+    Effect.andThen(
+      Effect.sync(() => asleep.add(id)),
+      Effect.sleep(duration),
+    ),
+  )
+
 /** A turn that commits the ticket's change and closes it, after `first`, as a worker does. */
 const finishes = (
   world: World,
@@ -366,6 +378,7 @@ describe("quit mid-run, and the next run", () => {
   test("resumes the worker at work and the one waiting on you, and merges the one merging", async () => {
     let checking = false
     let answering = false
+    const asleep = new Set<string>()
     // c's check, on its branch rebased onto main, is under way when you quit, and never ends.
     const hanging = Effect.gen(function* () {
       checking = true
@@ -378,12 +391,19 @@ describe("quit mid-run, and the next run", () => {
       // Nobody answers in the first run; in the second, everything is allowed.
       policy: (request) => (answering ? allowAll(request) : undefined),
       scripts: (world, places) => ({
-        // Resumed, a and b take a minute, so c merges first in the next run.
-        a: [atWork(world, places, "a"), finishes(world, places, "a", [sleep("1 minute")])],
+        // Resumed, a takes a minute and b two, so c merges first in the next run, then a, then b.
+        a: [
+          atWork(world, places, "a"),
+          finishes(world, places, "a", [sleepsAs(asleep, "a", "1 minute")]),
+        ],
         // b asks once c is dispatched, so that all three are dispatched before its request.
         b: [
           atWork(world, places, "b", [step(untilClaimed(world, "c")), rm]),
-          finishes(world, places, "b", [sleep("1 minute"), rm, ...bash("rm -rf build")]),
+          finishes(world, places, "b", [
+            sleepsAs(asleep, "b", "2 minutes"),
+            rm,
+            ...bash("rm -rf build"),
+          ]),
         ],
         c: [finishes(world, places, "c", commands(world, places, "c").claim)],
       }),
@@ -411,7 +431,27 @@ describe("quit mid-run, and the next run", () => {
         Effect.sync(() => {
           answering = true
         }),
-      second: { during: () => passes("2 minutes") },
+      // c's merge needs no time to pass. The clock moves once c has merged and a and b are asleep,
+      // so that it doesn't pass their minutes before they sleep through them; its second minute,
+      // b's, once a has merged.
+      second: {
+        during: () =>
+          Effect.gen(function* () {
+            const merged = (id: string) =>
+              until(
+                `${id}'s merge`,
+                Effect.map(texts, (lines) => lines.some((text) => closedLine(id).test(text))),
+              )
+            yield* merged("c")
+            yield* until(
+              "a and b to sleep",
+              Effect.sync(() => asleep.size === 2),
+            )
+            yield* passes("1 minute")
+            yield* merged("a")
+            yield* passes("1 minute")
+          }),
+      },
     })
     const { first, second } = bothOf(ran)
 
