@@ -69,6 +69,8 @@ const queueFields = {
   held_by: optional(HeldBy),
   unclosed: optional(Count),
   solo: optional(Solo),
+  /** The run holds a free slot at --machine-workers (`HOLD: MACHINE`). */
+  machine_full: optional(Schema.Literal(true)),
 }
 
 // A record about one ticket, with its log line: closed, deferred, asked, answered, waits, triage.
@@ -173,6 +175,17 @@ export const Drain = lineRecord("drain")
 export const Resume = lineRecord("resume")
 /** The probe found the machine working after an environment hold. */
 export const Probed = lineRecord("probed")
+
+/** Another tutti or orchestra run on the machine started (`SHARED_MACHINE: …`), or ended. */
+export const SharedMachine = Schema.Struct({
+  ...head("shared_machine"),
+  /** How many other runs are going, which can be 0. */
+  shared: Count,
+  text: Schema.String,
+})
+
+/** A ready ticket waits for a free slot across the machine (`HOLD: MACHINE: …`), once a hold. */
+export const MachineHold = lineRecord("machine_hold")
 
 /** The words a stop's `detail` takes that are tutti's: `TERMINAL_FAILED` became `AGENT_FAILED`. */
 export const StopWord = { agentFailed: "AGENT_FAILED", usageLimit: "USAGE_LIMIT" } as const
@@ -375,6 +388,8 @@ export const kinds = {
   drain: Drain,
   resume: Resume,
   probed: Probed,
+  shared_machine: SharedMachine,
+  machine_hold: MachineHold,
   stop: Stop,
   done: Done,
   full_check: FullCheck,

@@ -28,6 +28,7 @@ import {
 } from "../src/cli/flags.ts"
 import type { Settings } from "../src/project/settings.ts"
 import type { UserConfig } from "../src/project/userConfig.ts"
+import { runsDir } from "../src/run/machine.ts"
 import { appConfig, layer as testLayer } from "../src/testing/AppConfig.ts"
 
 const repo = "/work/project"
@@ -97,6 +98,7 @@ describe("flags", () => {
   test("§ 8.2's flags are all there", () => {
     expect(Object.values(runFlags).map((flag) => flag.name)).toEqual([
       "concurrent",
+      "machine-workers",
       "tickets",
       "ticket",
       "feature",
@@ -576,7 +578,9 @@ describe("the live layer", () => {
     const dirs = setUp(undefined, undefined)
     const exit = await loadIn(dirs, noFlags)
     if (Exit.isFailure(exit)) throw new Error(`${exit.cause}`)
-    expect(exit.value).toEqual(appConfig({}, dirs.project))
+    // The folder of runs is orchestra's in HOME's cache folder (src/run/machine.ts).
+    const runs = runsDir((name) => (name === "HOME" ? "/nowhere" : undefined))
+    expect(exit.value).toEqual(appConfig({ runs }, dirs.project))
   })
 })
 

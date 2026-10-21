@@ -71,6 +71,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import type { ChildProcessSpawner } from "effect/process"
 import {
   type AgentGone,
   AgentHost,
@@ -124,6 +125,12 @@ import {
 } from "./holds.ts"
 import { handBackWaits, Ledger, type State } from "./ledger.ts"
 import { detail, hold, type Line, Log, line, Tag } from "./log.ts"
+import {
+  holdLine as machineHoldLine,
+  machinePoll,
+  holdWord as machineWord,
+  make as makeMachine,
+} from "./machine.ts"
 import { beadsWhy, closedAfter, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { finished } from "./notices.ts"
@@ -214,6 +221,7 @@ export type RunEnv =
   | UsageLimits
   | Notifier
   | FileSystem.FileSystem
+  | ChildProcessSpawner.ChildProcessSpawner
 
 /** The errors the Agent SDK fails with. */
 type AgentError = AgentStartFailed | AgentGone | AgentProtocol
@@ -552,6 +560,67 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       Effect.all([Ref.get(stops), Ref.get(ending), usage.held]),
       ([all, ended, held]) => all.first === null && !ended && !held,
     )
+
+    // The machine's other tutti and orchestra runs (machine.ts): the run registers among them, says
+    // once of each that it is going (SHARED_MACHINE), and that it has ended. With --machine-workers,
+    // the ticket about to start waits while the workers across them, this run's included, are at
+    // that cap, with one of this run's among them (HOLD: MACHINE, said once a hold): a run with no
+    // worker of its own running never waits, so one at the cap with others' workers alone gets on.
+    const machine = yield* makeMachine({
+      dir: config.runs,
+      repo: config.repo,
+      concurrent: config.settings.concurrent,
+      cannot: (why) => logs.write(detail`${why}`),
+    })
+    // The run's workers the others count: its tickets running, those merging and checked included.
+    const ownWorkers = Effect.map(
+      ledger.current,
+      (state) =>
+        [...state.tickets.values()].filter((entry) => running.has(entry.phase._tag)).length,
+    )
+    const machineFull = yield* Ref.make(false)
+    const atCap = Effect.gen(function* () {
+      const own = yield* ownWorkers
+      const cap = config.machineWorkers
+      return cap > 0 && own > 0 && own + (yield* machine.others) >= cap
+    })
+    // Sets whether the run holds a free slot at the cap, its word on the title line meanwhile, and
+    // says whether the hold began.
+    const holdMachine = (full: boolean) =>
+      Effect.gen(function* () {
+        if ((yield* Ref.getAndSet(machineFull, full)) === full) return false
+        yield* SubscriptionRef.update(status, (now) => ({
+          ...now,
+          holds: full
+            ? [...now.holds, { word: machineWord, resetsAt: null }]
+            : now.holds.filter((each) => each.word !== machineWord),
+        }))
+        return full
+      })
+    // Writes how many of the run's workers run, reads the other runs, saying which started and
+    // ended, and lifts the hold once the machine is under the cap.
+    const lookAround = Effect.gen(function* () {
+      yield* machine.running(yield* ownWorkers)
+      for (const seen of yield* machine.look) {
+        yield* events.emit({ kind: "shared_machine", shared: seen.shared, text: seen.text })
+        yield* logs.write(seen.text)
+      }
+      if (!(yield* atCap)) yield* holdMachine(false)
+    })
+    // Whether the machine has room for the ticket about to start.
+    const machineRoom = Effect.gen(function* () {
+      if (!(yield* atCap)) {
+        yield* holdMachine(false)
+        return true
+      }
+      if (yield* holdMachine(true)) {
+        const own = yield* ownWorkers
+        const text = machineHoldLine(own + (yield* machine.others), own, config.machineWorkers)
+        yield* events.emit({ kind: "machine_hold", text })
+        yield* logs.write(text)
+      }
+      return false
+    })
     // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
     // the checks' scripts count as no ticket's. A ticket works in the worktree the Store saved for
     // it, wherever git had it (a reused one, or one an earlier run's --worktrees put elsewhere), or
@@ -586,7 +655,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       scope: config.ticket,
       excludeTypes: config.settings.queue.exclude_types,
       start: { start: ticketFiber },
-      taking,
+      taking: Effect.flatMap(taking, (yes) => (yes ? machineRoom : Effect.succeed(false))),
+      machineFull: Ref.get(machineFull),
       ...(footprints === undefined ? {} : { footprints }),
       ...(predictor === undefined ? {} : { predictor }),
       closedBranches: branches,
@@ -641,6 +711,21 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
         ),
       )
+    // Held at --machine-workers, the run reads the other runs every machinePoll, and looks again once
+    // one of their workers has finished, so that the slot it freed is filled within seconds; it
+    // doesn't read bd ready meanwhile.
+    if (config.runs !== null && config.machineWorkers > 0) {
+      yield* watch(
+        Effect.forever(
+          Effect.gen(function* () {
+            yield* Effect.sleep(machinePoll)
+            if (!(yield* Ref.get(machineFull))) return
+            yield* lookAround
+            if (!(yield* Ref.get(machineFull))) yield* wakeUp
+          }),
+        ),
+      )
+    }
     // Triage's verdicts go on their tickets' rows as they come in.
     yield* watch(
       Stream.runForEach(triage.verdicts, (verdicts) =>
@@ -870,6 +955,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // A merge that ends during this look frees what it held back after the look has read it: the
       // run is done only when nothing was merging as the look began, and its wake has it look again.
       const mergedBefore = isSettled(yield* queue.state)
+      yield* lookAround
       yield* requeueWaiting
       // A ticket merged, which may bring what a setup that failed in a ticket's worktree needed.
       yield* retrySetups(setUps)
@@ -896,6 +982,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           )
         }
       }
+      // For the other runs to count before this one next looks around.
+      yield* machine.running(yield* ownWorkers)
       const now = yield* ledger.current
       const over = yield* Ref.get(overLimit)
       const requests = yield* attention.current

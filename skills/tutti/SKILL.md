@@ -173,7 +173,8 @@ take `=false` or `0`): `-c N` / `--concurrent N`, `--limit N` (tickets this run 
 `--ticket-limit 2h` (stop when a worker is still going that long; `0` for none), `--check-timeout
 30m`, `--check-full-timeout 60m`, `--worker-model`, `--worker-effort`, `--organ-model`,
 `--organ-effort`, `--triage=false`, `--review=false`, `--notify=false`, `--resolve-conflicts=false`,
-`--usage-limit-wait 6h`, `--billing api` (bill `ANTHROPIC_API_KEY` beside a subscription login: the
+`--usage-limit-wait 6h`, `--machine-workers N` (the most workers across the machine's tutti and
+orchestra runs), `--billing api` (bill `ANTHROPIC_API_KEY` beside a subscription login: the
 user's call), `--worktrees <dir>`, `--prompt <file>`, `--claude <path>`. `tutti --help` lists them
 all. orchestra's unprefixed variables (`LIMIT`, `NOTIFY`, `TRIAGE`, …) are not read.
 
@@ -301,6 +302,14 @@ On a subscription login, many workers at once reach the account's usage limits.
 Each change is a `usage_limit` record (`status`: `warning`, `rejected`, `lifted`; `limit`,
 `resets_at`, `utilization`) and, for the hold, a `hold` record whose `text` starts `HOLD:
 USAGE_LIMIT` (`lifted: true` when it lifts).
+
+## Runs that share a machine
+
+Checks slow each other down across runs. `SHARED_MACHINE: another orchestra run is going in <repo>
+with 3 workers; their checks slow each other down` (or `another tutti run`) says so once for each
+other run on the machine; tell the user, as checks failing on time limits may come of it. With
+`--machine-workers N`, `HOLD: MACHINE: …` means a free slot waits until a worker in one of the runs
+finishes: it lifts by itself, within seconds. The records are `shared_machine` and `machine_hold`.
 
 ## Quitting and resuming
 

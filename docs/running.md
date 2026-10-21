@@ -93,6 +93,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | Flag | |
 |---|---|
 | `-c N`, `--concurrent N` | tickets at the same time, 1 to 16 (default: the settings', else 1) |
+| `--machine-workers N` | start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included ([below](#runs-that-share-a-machine)); `0`, the default, for no cap |
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
 | `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |
@@ -245,6 +246,26 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
 - **IDs must be plain names.** A ticket whose ID holds a path character, or can't name a git branch, is
   set aside without a worker: `BAD_TICKET_ID: … rename it (bd rename <id> <new-id>), then bd undefer
   <new-id>`.
+
+### Runs that share a machine
+
+Runs on one machine slow each other's checks down. Each tutti run registers itself, a small file in
+the folder orchestra's runs register in (`runs/` in orchestra's cache folder:
+`~/Library/Caches/orchestra/runs` on macOS, `~/.cache/orchestra/runs` elsewhere; `ORCHESTRA_RUNS_DIR`
+names another, `off` none), for as long as it runs, so tutti and orchestra see each other's runs.
+Once for each other run, the log says
+`SHARED_MACHINE: another orchestra run is going in <repository> with 3 workers; their checks slow
+each other down` (`another tutti run` for tutti's), and `the other … run in <repository> has ended`
+as it ends.
+
+`--machine-workers N` (or `TUTTI_MACHINE_WORKERS`) caps the workers across the machine's runs, this
+one's included, merges and checks counted: a free slot waits at the cap, saying once
+`HOLD: MACHINE: the machine's tutti and orchestra runs have 4 workers running, 2 of them this run's,
+at the cap of 4 (--machine-workers); the next ticket starts once one of them finishes`, with
+`MACHINE` on the dashboard's title line while it holds. The run reads the other runs every 2 seconds
+while it holds, so the slot is filled within seconds of a worker finishing. A run with none of its
+own workers running never waits. A registration whose run is gone (its process ended, or its PID
+taken by a process started since, after a reboot or a run killed) counts nothing and is removed.
 
 ### Footprints
 

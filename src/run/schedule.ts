@@ -181,6 +181,11 @@ export interface Options {
   readonly start: Start
   /** Whether the run takes new tickets now (holds say no); the ledger's wind-down says no too. */
   readonly taking?: Effect.Effect<boolean>
+  /**
+   * Whether the run holds a free slot at --machine-workers (machine.ts), which the queue and
+   * dispatch records say with `machine_full`; never without it.
+   */
+  readonly machineFull?: Effect.Effect<boolean>
   /** Where tickets work, with the queue's `footprint` on; without it, no ticket overlaps another. */
   readonly footprints?: Footprints
   /**
@@ -394,6 +399,13 @@ export const make = (
     const freed = yield* Queue.sliding<void>(1)
     const oneFill = yield* Semaphore.make(1)
     const taking = options.taking ?? Effect.succeed(true)
+    const machineFull = options.machineFull ?? Effect.succeed(false)
+    // The queue's counts for a record, `machine_full` with them while the run holds at the cap.
+    const recorded = (...args: Parameters<typeof counts>) =>
+      Effect.map(machineFull, (full) => ({
+        ...counts(...args),
+        ...(full ? { machine_full: true as const } : {}),
+      }))
     const filter = { excludeTypes: options.excludeTypes }
     // The parents of the tickets the run took up, for those closed and not merged yet.
     const parentOf = new Map<string, string>()
@@ -503,7 +515,7 @@ export const make = (
         const s = yield* Ref.updateAndGet(slots, (s) => ({ ...s, started: s.started + 1 }))
         const text = dispatchLine(s.started, options.limit, issue)
         const solo = isSolo(issue) ? { ticket: issue.id } : soloState(s)
-        const queue = counts(yield* ledger.current, ids, solo, [
+        const queue = yield* recorded(yield* ledger.current, ids, solo, [
           issue.id,
           TicketPhase.Working({ activity: "starting" }),
         ])
@@ -572,7 +584,12 @@ export const make = (
         if (phase._tag === "HeldBack") {
           const solo = soloState(yield* Ref.get(slots))
           yield* ledger.transition(id, Cause.Released(), {
-            beside: [{ kind: "queue", ...counts(before, ids, solo, [id, TicketPhase.Queued()]) }],
+            beside: [
+              {
+                kind: "queue",
+                ...(yield* recorded(before, ids, solo, [id, TicketPhase.Queued()])),
+              },
+            ],
           })
         }
         if (held === undefined) return
@@ -580,7 +597,7 @@ export const make = (
         const solo = soloState(yield* Ref.get(slots))
         const to = TicketPhase.HeldBack({ why: held })
         yield* ledger.transition(id, Cause.Held({ why: held }), {
-          beside: [{ kind: "queue", ...counts(now, ids, solo, [id, to]) }],
+          beside: [{ kind: "queue", ...(yield* recorded(now, ids, solo, [id, to])) }],
         })
       })
 
@@ -600,7 +617,7 @@ export const make = (
           if (waiting(before, entry.ticket) && !ids.includes(entry.ticket)) {
             const solo = soloState(yield* Ref.get(slots))
             yield* ledger.transition(entry.ticket, Cause.Unready(), {
-              beside: [{ kind: "queue", ...counts(before, ids, solo) }],
+              beside: [{ kind: "queue", ...(yield* recorded(before, ids, solo)) }],
             })
             waitSaid.forget(entry.ticket)
             skipSaid.forget(entry.ticket)
@@ -610,7 +627,10 @@ export const make = (
         for (const issue of candidates) {
           if (before.tickets.has(issue.id)) continue
           const solo = soloState(yield* Ref.get(slots))
-          const queue = counts(yield* ledger.current, ids, solo, [issue.id, TicketPhase.Queued()])
+          const queue = yield* recorded(yield* ledger.current, ids, solo, [
+            issue.id,
+            TicketPhase.Queued(),
+          ])
           yield* ledger.transition(issue.id, Cause.Ready(), {
             title: issue.title,
             beside: [{ kind: "queue", ...queue }],

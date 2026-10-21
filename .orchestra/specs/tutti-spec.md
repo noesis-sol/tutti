@@ -1425,6 +1425,7 @@ Carried over too, and not part of any scheme:
 The flags are orchestra's, minus those for terminals and agent kinds:
 
 - `-c/--concurrent N` (1–16), `--tickets`, `--ticket <id>`, `--feature "<request>"`, `--yes`
+- `--machine-workers N` (orchestra 0.8.5): the most workers across the machine's tutti and orchestra runs, which register in orchestra's folder of runs (`src/run/machine.ts`); `0`, the default, for no cap
 - `--ticket-limit 2h`, `--limit N` (the most tickets this run starts; none by default, as orchestra 0.8.5's), `--worker-effort <level>`, `--worker-model <model>`
 - `--organ-model`, `--organ-effort`, `--triage=false`, `--review=false`, `--notify=false`
 - `--check-timeout`, `--check-full-timeout`, `--resolve-conflicts=false`

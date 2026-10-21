@@ -70,7 +70,10 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       text: "[1/40] kinieta-kco dispatching: Open the property model",
     },
   ],
-  queue: [{ ...head, kind: "queue", queued: 0 }],
+  queue: [
+    { ...head, kind: "queue", queued: 0 },
+    { ...head, kind: "queue", queued: 2, machine_full: true },
+  ],
   closed: [
     {
       ...head,
@@ -131,6 +134,21 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
   drain: [{ ...head, kind: "drain", text: "DRAIN" }],
   resume: [{ ...head, kind: "resume", text: "RESUME" }],
   probed: [{ ...head, kind: "probed", text: "PROBE_OK" }],
+  shared_machine: [
+    {
+      ...head,
+      kind: "shared_machine",
+      shared: 1,
+      text: "SHARED_MACHINE: another orchestra run is going in /work/other with 2 workers; their checks slow each other down",
+    },
+    {
+      ...head,
+      kind: "shared_machine",
+      shared: 0,
+      text: "  the other orchestra run in /work/other has ended",
+    },
+  ],
+  machine_hold: [{ ...head, kind: "machine_hold", text: "HOLD: MACHINE: …" }],
   stop: [
     {
       ...head,
@@ -318,6 +336,7 @@ describe("the records", () => {
       [
         ...["start", "info", "dispatch", "queue", "closed", "deferred", "asked", "answered"],
         ...["waits", "reopened", "triage", "warn", "hold", "drain", "resume", "probed", "stop"],
+        ...["shared_machine", "machine_hold"],
         ...["done", "full_check", "end", "phase", "attention", "attention_answered", "denied"],
         ...["usage_limit", "message", "steered", "released", "suspended", "resumed"],
       ].sort(),

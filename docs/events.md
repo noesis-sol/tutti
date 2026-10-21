@@ -50,6 +50,8 @@ the time.
 | `hold` | something holds the run: no new tickets while the running ones finish; or a hold is lifted | `text` (`HOLD: <WORD>: …`, or `PROBE: …` for the environment probe's wait); `ticket` and `blocked` on some; `lifted: true` when it is lifted (`HOLD lifted: …`, `HOLD: USAGE_LIMIT lifted`) |
 | `drain`, `resume` | the run was asked to wind down (`s`, SIGUSR1), or that was taken back | `text` |
 | `probed` | the probe found the machine working after an environment hold: tickets start again | `text` |
+| `shared_machine` | another tutti or orchestra run on the machine started (`SHARED_MACHINE: …`), or ended ([Runs that share a machine](running.md#runs-that-share-a-machine)) | `shared`, how many other runs are going, which can be 0; `text` |
+| `machine_hold` | a ready ticket waits for a free slot across the machine: the workers across its runs are at `--machine-workers` (`HOLD: MACHINE: …`); once a hold. `machine_full: true` is on each `queue` and `dispatch` record meanwhile | `text` |
 | `stop` | the run stopped and needs you | `detail`, the word that says why: `PAUSED`, `BLOCKED`, `TICKET_LIMIT`, `BEADS_FAILED`, `GIT_FAILED`, `AGENT_FAILED`, `WORKTREE_FAILED`, `STATE_UNWRITABLE`, `PANIC`, `DIRTY_TREE`, `MERGE_FAILED`, `ENVIRONMENT`, `USAGE_LIMIT` or `INTERRUPTED`; `ticket` and `blocked` when a ticket stopped it; `text`, every stop, joined by `; also ` |
 | `done` | the run finished by itself | `text`: `READY_EMPTY after N tickets`, `LIMIT_REACHED at N tickets` or `DRAINED after N tickets`, with `; SCOPE_DONE: …` or `; SCOPE_OPEN: …` in a scoped run; `READY_EMPTY after 0 tickets: everything is done` or `: nothing ready` when there was nothing to run |
 | `full_check` | the [full check](running.md#the-full-check) | `detail`: `passed`, `failed`, `timed out`, `skipped` or `not run`; when it failed, `suite`, `output` (where its whole output is) and `ticket` (the ticket filed for the suite, or the one open for it already); `text` |
@@ -60,7 +62,7 @@ the time.
 | `kind` | What happened | Its other fields |
 |---|---|---|
 | `phase` | a ticket moved from one phase to another | `ticket`; `from`, absent as it enters the run; `to`, absent as it leaves it (gone from `bd ready`); `cause`; and the new phase's details: `place` (`ToMerge`, 1 is next), `step` (`Merging`), `attempt` (`Resolving`, `Fixing`), `why` (`HeldBack`, `Deferred`, `Review`, `Blocked`, `Stopped`) |
-| `queue` | the number of ready tickets waiting for a slot, or held back, changed: the dashboard's **In queue** | `queued`; `held` and `held_by` while some are held back; `solo` |
+| `queue` | the number of ready tickets waiting for a slot, or held back, changed: the dashboard's **In queue** | `queued`; `held` and `held_by` while some are held back; `solo`; `machine_full: true` while the run holds at `--machine-workers` |
 | `dispatch` | a ticket was picked up | `ticket`, `title`; `n` and `limit`, as in `[n/limit]` (no `limit` for a run without one); `queued`, `held`, `held_by`, `solo` as for `queue`; `text` |
 | `closed` | a ticket merged, or closed with no change of its own to merge | `ticket`, `title`; `detail`, `ffd6ce4 merged into main` or `no change to merge`; `text` |
 | `deferred` | a ticket was set aside, deferred | `ticket`, `title`; `detail`, why (`by the worker`, `still in_progress, noted for review`, …); `text` |

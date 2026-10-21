@@ -18,6 +18,7 @@ import { Config, Context, Duration, Effect, Exit, Layer, Option, Result, Schema 
 import { type ConfigFileInvalid, type ConfigProblem, decodeConfig } from "../project/configFile.ts"
 import { readSettings, Settings, settingsFile } from "../project/settings.ts"
 import { readUserConfig, UserConfig } from "../project/userConfig.ts"
+import { runsDir, runsDirVariables } from "../run/machine.ts"
 import { type LoadedScheme, loadScheme, orchestraLoaded, schemeFolders } from "../ui/theme.ts"
 import {
   type billings,
@@ -86,6 +87,13 @@ export interface AppConfigValue {
   readonly prompt: string
   /** The folder for the tickets' worktrees, absolute and outside the repository. */
   readonly worktrees: string
+  /**
+   * The folder the machine's tutti and orchestra runs register in (src/run/machine.ts), as
+   * orchestra finds it from ORCHESTRA_RUNS_DIR, HOME and XDG_CACHE_HOME; null for none.
+   */
+  readonly runs: string | null
+  /** The most workers across the machine's runs, this one's included, before a ticket starts; 0 for no cap. */
+  readonly machineWorkers: number
   readonly billing: (typeof billings)[number]
   readonly usageLimitWait: Duration.Duration
   /**
@@ -261,6 +269,8 @@ export const resolve = (sources: Sources): Result.Result<AppConfigValue, Readonl
     mouse: !pick("noMouse", !user.mouse),
     prompt: resolvePath(repo, prompt),
     worktrees: worktreesPath,
+    runs: runsDir(env),
+    machineWorkers: pick("machineWorkers", 0),
     billing: pick("billing", user.billing),
     usageLimitWait: pick("usageLimitWait", defaultUsageLimitWait),
     claude: pick("claude", null),
@@ -305,6 +315,7 @@ const readVariables = Effect.gen(function* () {
     ...Object.values(runFlags).map((flag) => flag.variable),
     appearanceVariable,
     noColorVariable,
+    ...runsDirVariables,
   ]
   const values = new Map<string, string>()
   for (const name of names) {

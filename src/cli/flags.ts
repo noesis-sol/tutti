@@ -134,6 +134,11 @@ export const runFlags = {
     metavar: "N",
     description: `tickets to work on at the same time, 1 to ${maxConcurrent} (default: .tutti/settings.json, else 1)`,
   }),
+  machineWorkers: runFlag("machine-workers", count(0), {
+    metavar: "N",
+    description:
+      "start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included; 0 for no cap (default: none)",
+  }),
   tickets: runFlag("tickets", onOff, {
     onOff: true,
     description: "run the current tickets without first asking whether to plan a new feature",
