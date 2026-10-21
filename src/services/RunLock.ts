@@ -78,7 +78,8 @@ const clockTime = (started: string): string | undefined => {
 
 /**
  * Another run holds a lock: tutti's (`program` "tutti") or orchestra's. The caller exits 2 with
- * the message, `tutti is already running in <repo> (pid 44497, since 08:31, main)`.
+ * the message, `tutti is already running in <repo> (pid 44497, since 08:31, main)`, or with
+ * `(tutti init, pid 44497, …)` when init holds it, as orchestra says `(orchestra init, pid …)`.
  */
 export class AlreadyRunning extends Schema.TaggedError<AlreadyRunning>()("AlreadyRunning", {
   program: Schema.Literals(["tutti", "orchestra"]),
@@ -86,9 +87,10 @@ export class AlreadyRunning extends Schema.TaggedError<AlreadyRunning>()("Alread
   holder: SeenHolder,
 }) {
   override get message(): string {
-    const { pid, started, branch } = this.holder
+    const { pid, started, branch, init } = this.holder
     const since = started === undefined ? undefined : clockTime(started)
     const details = [
+      init === true ? `${this.program} init` : undefined,
       pid === undefined ? undefined : `pid ${pid}`,
       since === undefined ? undefined : `since ${since}`,
       branch === undefined || branch === "" ? undefined : sanitizeLine(branch),
