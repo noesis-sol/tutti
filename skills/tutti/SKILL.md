@@ -60,7 +60,7 @@ The project's tutti files:
 
 | File | What it is |
 |---|---|
-| `.tutti/settings.json` | committed: the checks and their time limits, `concurrent`, the workers' MCP servers, permission mode, effort and model, `ticket_limit`, the queue, merge and hold settings |
+| `.tutti/settings.json` | committed: the checks and their time limits, the `requires` list of what the machine must have, `concurrent`, the workers' MCP servers, permission mode, effort and model, `ticket_limit`, the queue, merge and hold settings |
 | `.tutti/worker-prompt.md` | committed: the worker prompt, read once as a run starts (`--prompt <file>` names another) |
 | `.tutti/tutti.log` | the log, for people; a plain run prints the same lines on stdout |
 | `.tutti/reports/<start time>.md` | the run reports: Finished, Set aside, Needs you |
@@ -390,6 +390,7 @@ ended:
 | `…; SCOPE_DONE: …` | 0 | a `--ticket` run: the ticket and its subtickets are merged | Close an epic left open (`close it with: bd close <id>`); then the batch PR. |
 | `…; SCOPE_OPEN: …` | 0 | a `--ticket` run with subtickets not done, each named with why | Handle each reason: answer a question, merge a ticket left for review, unblock or rerun. |
 | any of the lines below, after a `HOLD: …` line | as below | with several tickets at once, a stop first holds: no new tickets, the running ones finish | Handle the reason as below; the `HOLD` line names the ticket. |
+| `REQUIREMENTS_MISSING` | 2 | the machine lacks what the project's requires list (`"requires"` in `.tutti/settings.json`) names, and its install didn't help or it is a manual step; nothing started. Each one is named with what to do: its manual step, or why its install failed and where its output is (`.tutti/run/requires-<name>.log`) | Tell the user what is missing and what to do; `tutti requires` checks the list again. Install nothing the list doesn't name. |
 | `PAUSED` | 3 | a worker settled with its ticket still `in_progress`, was told twice to continue, then sat idle for 10 minutes (or its session went again after a resume) | Read the end of its transcript; relay any question to the user. Its session is saved: the next run resumes it. |
 | `BLOCKED >4min` | 3 | a worker waited on an attention request for 4 minutes, and the run ended before it was answered | Show the user the request; the next run resumes the worker, which asks again. |
 | `TICKET_LIMIT` | 3 | a worker was still going after `--ticket-limit` | Read its transcript: a hung command, or a big ticket. Tell the user; the next run resumes it. |

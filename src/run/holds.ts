@@ -260,7 +260,7 @@ export const sayOnce = (): SayOnce => {
 export const exitCodes = {
   /** Nothing left to run, the limit reached, or wound down as asked. */
   ok: 0,
-  /** A setup problem found before the run started. */
+  /** A setup problem found before the run started, or a requirement missing as it starts. */
   setup: 2,
   /** A worker needs you: PAUSED, BLOCKED, TICKET_LIMIT. */
   stuck: 3,
@@ -280,6 +280,7 @@ export const exitCodes = {
 
 /** Each stop reason's word, as its line starts, and the exit code the run ends with for it. */
 export const stopCodes = {
+  REQUIREMENTS_MISSING: exitCodes.setup,
   PAUSED: exitCodes.stuck,
   BLOCKED: exitCodes.stuck,
   TICKET_LIMIT: exitCodes.stuck,

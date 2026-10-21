@@ -152,6 +152,42 @@
       "additionalProperties": false,
       "default": {}
     },
+    "requires": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "check": {
+            "type": "string"
+          },
+          "install": {
+            "type": "string"
+          },
+          "manual": {
+            "type": "string"
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "darwin",
+                "linux"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name",
+          "check"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
     "workers": {
       "type": "object",
       "properties": {

@@ -15,8 +15,10 @@
 //
 // The Checks step (checks.ts) chooses the runners' suites, after the scout, and asks the setup
 // command, the ticket prefix and the verifier; init then writes the create-check-suite skill and the
-// verifier where they are chosen, and files the test work. Last it runs the login probe, whose
-// account, billing and permission mode its summary reports.
+// verifier where they are chosen, and files the test work. It writes the README's section on what
+// to install from the requires list, and keeps it in step (./requires.ts). Then it runs the login
+// probe, whose account, billing and permission mode its summary reports, and last it checks the
+// project's requirements as a run's start does, installing what it can.
 import { join } from "node:path"
 import {
   Clock,
@@ -67,6 +69,7 @@ import {
   orchestraPromptFile,
   promptChangeSteps,
 } from "./import.ts"
+import { readmeSteps, requiresSteps } from "./requires.ts"
 import {
   checkScript,
   checksNothing,
@@ -911,6 +914,7 @@ export const init = <R>(options: InitOptions<R>) =>
         fromTemplates,
       })
       steps.push(written.step)
+      steps.push(...(yield* readmeSteps(repo, written.settings.requires)))
       steps.push(...(yield* templateSteps(repo, written.settings.templates)))
       steps.push(
         ...setupSteps({
@@ -1003,6 +1007,13 @@ export const init = <R>(options: InitOptions<R>) =>
             run: probeAll,
             whole: false,
             stopped: () => " during the login probe, once it had written the files above",
+          },
+          {
+            name: "the requirements",
+            run: requiresSteps(repo),
+            whole: false,
+            stopped: () =>
+              " while checking the project's requirements, once it had written the files above",
           },
         ]
         const steps = [...(yield* runSteps(taken, stop, options.starting))]

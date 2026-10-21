@@ -158,6 +158,7 @@ import {
 import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
+import { requiresAtStart } from "./requires.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
 import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
 import * as scope from "./scope.ts"
@@ -708,6 +709,28 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* Ref.set(slots, scheduler.recheckSlot)
     yield* Ref.set(queueRecord, scheduler.recordQueue)
 
+    // The project's requirements, checked before the first dispatch and before any worker is
+    // carried over (requires.ts): what is still missing stops the run, REQUIREMENTS_MISSING, exit 2,
+    // and nothing starts or resumes; the workers the last run left stay for the next. A request to
+    // quit cuts an install short: it is heard once the run listens for them, below, and the run
+    // quits with nothing resumed.
+    const quitEarly = yield* Ref.make<QuitRequest | null>(null)
+    const checking = requiresAtStart(config.settings.requires, {
+      repo: config.repo,
+      installLimit: config.settings.checks.fast.timeout,
+    })
+    const quitsNow = options.quits
+    const missing =
+      quitsNow === undefined
+        ? yield* checking
+        : yield* Effect.raceFirst(
+            checking,
+            Effect.flatMap(Queue.take(quitsNow), (request) =>
+              Effect.as(Ref.set(quitEarly, request), ""),
+            ),
+          )
+    if (missing !== "") yield* stopped(stopFor("REQUIREMENTS_MISSING", missing))
+
     // The tickets earlier runs left unmerged, checked before the first dispatch: one merged by hand
     // since loses its label, so the tickets it blocks can start.
     const loaded = yield* Effect.result(loadUnmerged({ repo: config.repo, base }))
@@ -726,15 +749,19 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // The workers the last run left (carry.ts), taken up before the first dispatch: each resumed
     // takes a slot, counting toward no limit, its ticket limit counted afresh.
-    const carried = yield* carryOver({
-      base,
-      queue,
-      triage,
-      closedBranches: branches,
-      onTicketLimit: (stop) =>
-        stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop),
-      carry: (ticket, worked, issue) => scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
-    }).pipe(Effect.provideContext(context))
+    const carried =
+      missing !== "" || (yield* Ref.get(quitEarly)) !== null
+        ? new Map()
+        : yield* carryOver({
+            base,
+            queue,
+            triage,
+            closedBranches: branches,
+            onTicketLimit: (stop) =>
+              stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop),
+            carry: (ticket, worked, issue) =>
+              scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
+          }).pipe(Effect.provideContext(context))
 
     // The deferred tickets in the run's scope whose blockers have all merged, each a DEFERRED_FREE
     // line of the START block (deferredFree.ts); not when bd can't list those left unmerged.
@@ -874,6 +901,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       })
     const quits = options.quits
     if (quits !== undefined) {
+      const early = yield* Ref.get(quitEarly)
+      if (early !== null) yield* hearQuit(early)
       yield* watch(Effect.forever(Effect.flatMap(Queue.take(quits), hearQuit)))
     }
     // The screen's commands, each resolved against the ledger and the open requests as it is taken:
@@ -1225,7 +1254,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         Effect.never,
       ),
     )
-    const quit = yield* Effect.raceFirst(guardedLoop, Deferred.await(quitting))
+    // A quit heard before the loop, during the check of the requirements, starts no ticket.
+    const quit = (yield* Deferred.isDone(quitting))
+      ? yield* Deferred.await(quitting)
+      : yield* Effect.raceFirst(guardedLoop, Deferred.await(quitting))
     // The loop's end set it already, under `acting`; a quit sets it at once, without waiting for a
     // command acting now: quitting holds the merges and interrupts the workers.
     yield* Ref.set(ending, true)

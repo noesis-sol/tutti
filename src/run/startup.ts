@@ -5,7 +5,9 @@
 // database, and the ticket --ticket names (open, and work rather than a question); the login probe
 // (§ 4.13); organs' provider (§ 6.1); the settings, flags, variables and user config; the MCP names
 // (§ 4.6); the worker prompt (§ 4.11). A run that starts notes the project's worker prompt and
-// verifier where they are older than tutti's templates (src/init/templates.ts).
+// verifier where they are older than tutti's templates (src/init/templates.ts), and README_STALE
+// where the README's section on what to install differs from the requires list
+// (src/project/requires.ts).
 //
 // orchestra's run state names workers it left behind, which tutti doesn't adopt (§ 11): a warning,
 // not a problem. A run that passes gets what the checks resolved, and its START block from them.
@@ -30,12 +32,13 @@ import { templateNotes } from "../init/templates.ts"
 import { type OrganProvider, organProvider } from "../organs/AnthropicProvider.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
+import { readmeStaleLine } from "../project/requires.ts"
 import { settingsFile } from "../project/settings.ts"
 import { Beads, type BeadsError, HumanLabel } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
-import { type Line, start } from "./log.ts"
+import { type Line, start, Tag } from "./log.ts"
 
 /** The exit code of a run that can't start: a setup problem. */
 export const exitSetup = 2
@@ -433,6 +436,9 @@ export const check = <R>(checking: Checking<R>) =>
     // which `tutti init --update` takes.
     const settings = configured.value.value.settings
     const templates = yield* templateNotes(repo, settings.templates, !ownPrompt)
+    // The README's section on what to install where it differs from the requires list: a note,
+    // which `tutti requires --readme` takes.
+    const readme = yield* readmeStaleLine(repo, settings.requires)
     return {
       config: { ...configured.value.value, claude: claude.path },
       base: branch.success,
@@ -440,7 +446,11 @@ export const check = <R>(checking: Checking<R>) =>
       mcp: mcp.value.value,
       account: account.value.value,
       organs: organs.success._tag,
-      warnings: [...warnings, ...templates],
+      warnings: [
+        ...warnings,
+        ...templates,
+        ...(readme === null ? [] : [`${Tag.readmeStale}: ${readme}`]),
+      ],
     } satisfies Started
   })
 

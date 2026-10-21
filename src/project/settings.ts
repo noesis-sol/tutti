@@ -80,6 +80,103 @@ const Check = (timeout: string) =>
     timeout: PositiveDuration.pipe(withDefault(timeout)),
   })
 
+/** The operating systems a requirement can be limited to, as process.platform names them. */
+export const requirePlatforms = ["darwin", "linux"] as const
+
+/** What a requirement's name may be: it names its install's output file (requireLogName). */
+const requireName = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/u
+
+/**
+ * The commands an install can't run: each asks for a password on a terminal, and an install runs
+ * without one.
+ */
+const asksPerson = ["sudo", "su", "doas", "pkexec"]
+
+/** What splits a command line into the commands it runs one after another, or piped. */
+const shellBreaks = /&&|\|\||[;|&\n()]/u
+
+/**
+ * The command among asksPerson that one of the commands in the command line `install` starts with,
+ * past the variables it sets and env, exec or command; undefined for none.
+ */
+export const personAsked = (install: string): string | undefined => {
+  for (const part of install.split(shellBreaks)) {
+    for (const word of part.trim().split(/\s+/u)) {
+      if (word.includes("=") || word === "env" || word === "exec" || word === "command") continue
+      if (asksPerson.includes(word)) return word
+      break
+    }
+  }
+  return undefined
+}
+
+/**
+ * What is wrong with a requirement that a run couldn't check or install, as orchestra's
+ * requirementErr has it: a name that couldn't name a file, a check that is blank, neither an
+ * install nor a manual step or both, an install that runs sudo; true where nothing is.
+ */
+const requirementProblem = (r: {
+  readonly name: string
+  readonly check: string
+  readonly install?: string
+  readonly manual?: string
+}): true | string => {
+  const install = r.install ?? ""
+  const manual = r.manual ?? ""
+  if (!requireName.test(r.name)) {
+    return `needs a name of letters, digits and . _ + -, such as "jq" (got ${JSON.stringify(r.name)})`
+  }
+  if (r.check.trim() === "") {
+    return `needs a check: a command that exits 0 when it is met, such as "command -v ${r.name}"`
+  }
+  if (install.trim() === "" && manual.trim() === "") {
+    return "needs an install (a command that meets it) or manual (what a person must do)"
+  }
+  if (install !== "" && manual !== "") {
+    return "has both an install and manual: give the one that meets it"
+  }
+  const asks = personAsked(install)
+  if (asks !== undefined) {
+    return `install runs ${asks}, which asks for a password: an install runs without a terminal. Give it as manual instead, or install without ${asks} (got '${install}')`
+  }
+  return true
+}
+
+/**
+ * One entry of the requires list: something the project's machine must have (a tool, a service
+ * running, a permission), which no ticket installs. A run checks it as it starts, and `tutti init`
+ * and `tutti requires` do too (src/run/requires.ts); where its check fails, its install runs and
+ * the check again. One with manual instead is left to a person, who is told it.
+ */
+export const Requirement = Schema.Struct({
+  /** Names it in the lines that say it is missing, and its install's output file. */
+  name: Schema.String,
+  /** A shell command, run in the main checkout, that exits 0 when it is met: "command -v jq". */
+  check: Schema.String,
+  /** A shell command that meets it, run without a terminal and without sudo: "brew install jq". */
+  install: Schema.optionalKey(Schema.String),
+  /** What a person must do instead: a GUI installer, a licence, a permission, a service to start. */
+  manual: Schema.optionalKey(Schema.String),
+  /** The operating systems it applies on; none: all of them. */
+  platforms: Schema.optionalKey(Schema.Array(choice(requirePlatforms))),
+}).check(
+  Schema.makeFilter(requirementProblem, {
+    description: "a name, a check, and an install or a manual step",
+  }),
+)
+
+/** The requires list: each name once, as it names a file. */
+const Requires = Schema.Array(Requirement).check(
+  Schema.makeFilter(
+    (list: ReadonlyArray<{ readonly name: string }>) => {
+      const names = list.map((r) => r.name)
+      const twice = names.find((name, i) => names.indexOf(name) !== i)
+      return twice === undefined || `has two entries named ${JSON.stringify(twice)}`
+    },
+    { description: "each entry's name once" },
+  ),
+)
+
 /** A single issue type, as `bd ready --exclude-type` takes: bd splits its list at commas. */
 const IssueType = Schema.String.check(
   Schema.isPattern(/^[^,\s]+$/u, { expected: `an issue type such as "epic"` }),
@@ -115,6 +212,11 @@ export const Settings = Schema.Struct({
       files: Schema.Array(Text).pipe(withDefault(defaultSetupFiles)),
     }).pipe(withDefault({})),
   }).pipe(withDefault({})),
+  /**
+   * What the project's machine must have, checked at each run's start, before any ticket runs, and
+   * in `tutti init` (Requirement); none by default, as orchestra's "requires".
+   */
+  requires: Requires.pipe(withDefault([])),
   workers: Schema.Struct({
     /** The MCP servers workers get, by name; none by default (§ 15, Q5). */
     mcp_servers: Schema.Array(Text).pipe(withDefault([])),
@@ -179,6 +281,9 @@ export const Settings = Schema.Struct({
 }).annotate({ title: "tutti settings", description: "a project's .tutti/settings.json" })
 
 export type Settings = typeof Settings.Type
+
+/** One entry of the requires list, as the settings decode it. */
+export type Requirement = typeof Requirement.Type
 
 /**
  * The check commands `settings` name: the merge check, the full check and a worker's own. Their

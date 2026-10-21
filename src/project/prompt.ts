@@ -104,6 +104,44 @@ export const coresNote =
   `so a check that runs things side by side (test files or packages, a linter's jobs, a build) ` +
   `runs no more than that many at once; GOFLAGS has Go's commands keep to it already (-p).`
 
+/** The words of the worker prompt's rule on the requires list, as orchestra's RequiresRule. */
+export const requiresRule = "never by hand outside the list"
+
+/**
+ * The note appended to a worker's standing rules on the project's requires list (`requires` in
+ * .tutti/settings.json, src/project/requires.ts), naming the entries it has now, `names`: a ticket
+ * that needs a tool, service or permission the list lacks adds an entry for it, commits it with the
+ * ticket, and installs it with that entry's own install, so that the next machine has it too;
+ * workers installed what they found missing by hand, and nothing recorded it. A worker prompt,
+ * `prompt`, that says so already (requiresRule), as tutti's template does since its version 6, is
+ * told only what the list has. Where the main checkout has a README.md (`readme`), a worker that
+ * changes the list is asked to write the README's section on what to install from it again, in the
+ * same commit.
+ */
+export const requiresNote = (
+  names: ReadonlyArray<string>,
+  prompt: string,
+  readme: boolean,
+): string => {
+  const where = `"requires" in ${settingsFile}`
+  const has = names.length === 0 ? "which has no entries yet" : `which has ${names.join(", ")} now`
+  const readmeNote = readme
+    ? " A ticket that changes the list runs tutti requires --readme, which writes README.md's " +
+      "section on what to install from it, and commits that with the list."
+    : ""
+  if (prompt.includes(requiresRule)) {
+    return `\n\nThe project's requires list is ${where}, ${has}.${readmeNote}\n`
+  }
+  return (
+    `\n\nWhat this project needs of the machine (a tool, a service, a permission) is its requires ` +
+    `list, ${where}, ${has}. A ticket that needs one the list doesn't have adds an entry for it (a ` +
+    "name, a check, and an install command that runs without sudo, or a manual step for a person), " +
+    "commits it with the ticket, and installs it with that entry's own install command, " +
+    `${requiresRule}: what isn't on the list isn't on the next machine. A manual step is asked of ` +
+    `the maintainer as a question.${readmeNote}\n`
+  )
+}
+
 /**
  * The note appended to a worker's standing rules after checkNote on the account's usage limit, as
  * orchestra 0.8.1's: a worker stopped by the limit waits in the run's hold and is told to carry on

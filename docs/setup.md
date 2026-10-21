@@ -150,6 +150,7 @@ scripts/check-fast.sh            committed: the merge check, run on every ticket
 scripts/check-full.sh            committed: every check, run once at the end of a run
 .claude/agents/verifier.md       committed, if you choose it: the verifier
 .gitattributes                   committed, if you choose it: CHANGELOG.md merge=union
+README.md                        committed, where there is one: its section on what to install
 ```
 
 Commit them afterwards: a ticket's worktree has only what is committed. `init` ends with a summary
@@ -232,15 +233,17 @@ Declined, the other fix is to run `claude` once in the main checkout and accept 
 ### The login, in the summary
 
 `init` ends with the login check a run does: the account, the billing and the permission mode
-workers get, as the run's `START` block says them, or what is missing.
+workers get, as the run's `START` block says them, or what is missing. Then it checks the project's
+[requires list](#the-requires-list) as a run's start does, installing what it can: a line for each
+entry, `✗` with what to do for one still missing.
 
 ### From orchestra
 
 In a project with `.orchestra/` and no `.tutti/`, `init` first offers to import orchestra's settings
 and worker prompt. It imports the checks and their time limits, the setup command and its files,
 `concurrent`, `keep_awake`, `ticket_limit`, `mcp_servers`, the worker and organ effort, `exclude_types`,
-`footprint`, `resolve_conflicts`, `resolve_timeout`, `check_hand_backs`, `merge_train` and
-`environment_hold`, and
+`footprint`, `resolve_conflicts`, `resolve_timeout`, `check_hand_backs`, `merge_train`,
+`environment_hold` and the `requires` list, and
 names what it can't import (`terminal`: tutti has no terminals). The worker prompt is copied with your
 changes, and the summary lists, line by line, what it still needs for tutti: `.tutti/` for
 `.orchestra/`, `tutti/` branches for `wt/`, no tabs, and the like. `.orchestra/` is left as it is.
@@ -322,6 +325,42 @@ check once (see [The worker prompt](workers.md#the-worker-prompt)) then gives it
 run, in place of the merge check. tutti never runs it itself, and its files, as the other checks',
 count as no ticket's in footprints.
 
+## The requires list
+
+What the project needs of the machine (a tool, a service running, a permission) is its requires list,
+`"requires"` in `.tutti/settings.json`, as orchestra's is. Each entry has a `name` (letters, digits and
+`. _ + -`), a `check` (a shell command, run in the main checkout, that exits 0 when it is met, such as
+`command -v jq`), and either an `install` (a command that meets it, such as `brew install jq`) or a
+`manual` step for a person (`start Docker Desktop`); `platforms`, `darwin` or `linux`, limits it to
+those systems. An install runs without a terminal, so one that runs `sudo` (or `su`, `doas`,
+`pkexec`) is refused as the settings load: give it as a manual step instead.
+
+Each run checks the list as it starts, before its first ticket and before any worker it carries
+over: every check, side by side, each within a minute; for one that fails, its install, one at a
+time within the merge check's time limit, its whole output in `.tutti/run/requires-<name>.log`, then
+the check again. It says what it did under the `START` block (`REQUIRES: jq met`), and for what is
+still missing it stops at once with one line, exit 2, rather than leave every ticket to fail on it:
+
+```
+REQUIREMENTS_MISSING: docker (start Docker Desktop); meet it (each entry of 'requires' in .tutti/settings.json says how), then run again
+```
+
+`tutti init` checks the list too, installing what it can, a line of its summary for each entry.
+`tutti requires` checks it at any time and prints each entry's state (`jq: met`, `docker: missing:
+start Docker Desktop`), exit 2 for one missing; `--no-install` only checks.
+
+Workers are told of the list, with the entries it has: a ticket that needs something the list lacks
+adds an entry for it and installs it with that entry's own install, never by hand outside the list,
+so the next machine has it too; a manual step is asked of you as a question.
+
+**The README's section.** People read the README to set a machine up; written apart from the list, it
+drifts. So the README's section on what to install is generated from the list, between
+`<!-- tutti:requires -->` and `<!-- /tutti:requires -->`: `tutti requires --markdown` prints it,
+`tutti requires --readme` writes it into `README.md`, replacing the section or adding one at its end.
+`tutti init` writes it into a README that has none (where the list has entries) and keeps it up to
+date; a run's start warns `README_STALE` under its `START` line when it differs from the list; and a
+worker that changes the list is told to write it again in the same commit.
+
 ## The verifier
 
 The verifier is a subagent, `.claude/agents/verifier.md`, that checks a ticket's change against the
@@ -378,6 +417,10 @@ for a project that sets them all; the table below gives each one's default:
     "own": { "command": null },
     "setup": { "command": "bun install --frozen-lockfile", "files": ["bun.lock", "package.json"] }
   },
+  "requires": [
+    { "name": "jq", "check": "command -v jq", "install": "brew install jq", "platforms": ["darwin"] },
+    { "name": "docker", "check": "docker info", "manual": "start Docker Desktop" }
+  ],
   "workers": {
     "mcp_servers": ["postgres"],
     "permission_mode": "auto",
@@ -386,7 +429,7 @@ for a project that sets them all; the table below gives each one's default:
     "ticket_limit": "2h",
     "ask_user_question": true
   },
-  "templates": { "worker_prompt": 5, "verifier": 2 },
+  "templates": { "worker_prompt": 6, "verifier": 2 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "queue": { "exclude_types": ["epic"], "footprint": true },
   "merge": {
@@ -413,6 +456,7 @@ for a project that sets them all; the table below gives each one's default:
 | `checks.own.command` | none | a worker's check of its own change; [A worker's own check](#a-workers-own-check) |
 | `checks.setup.command` | none | installs the dependencies in a worktree |
 | `checks.setup.files` | lockfiles and manifests | the files (globs) whose change has the setup run |
+| `requires` | `[]` | what the project's machine must have, checked as each run starts; [The requires list](#the-requires-list) |
 | `workers.mcp_servers` | `[]` | the MCP servers workers get, by name: none by default; [MCP servers](workers.md#mcp-servers) |
 | `workers.permission_mode` | `"auto"` | `auto`, `default` or `acceptEdits`; [Permissions](workers.md#permissions) |
 | `workers.effort` | `"high"` | `low`, `medium`, `high`, `xhigh` or `max`, or `null` for Claude Code's; `--worker-effort` for a run; the feature interview's too |

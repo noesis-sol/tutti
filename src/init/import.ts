@@ -92,6 +92,7 @@ const mapped: Readonly<Record<string, ReadonlyArray<string>>> = {
   resolve_timeout: ["merge", "resolve_timeout"],
   check_hand_backs: ["merge", "check_hand_backs"],
   merge_train: ["merge", "train"],
+  requires: ["requires"],
 }
 
 /** orchestra's old names, read as their new ones where those aren't set, as orchestra reads them. */

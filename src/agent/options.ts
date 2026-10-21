@@ -31,6 +31,7 @@ import {
   askUserQuestionTool,
   checkNote,
   forTicket,
+  requiresNote,
   usageLimitNote,
   type WorkerPrompt,
 } from "../project/prompt.ts"
@@ -71,6 +72,11 @@ export interface WorkerOptionsInput {
   readonly servers: ChosenServers
   /** Whether the project has skills (projectHasSkills): its workers keep Skill. */
   readonly skills: boolean
+  /**
+   * Whether the main checkout has a README.md, whose section on what to install a worker that
+   * changes the requires list writes again (requiresNote).
+   */
+  readonly readme?: boolean
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
   /** workerEnv()'s environment (§ 4.13). */
@@ -184,6 +190,11 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
         : {
             append:
               forTicket(input.prompt, input.ticket) +
+              requiresNote(
+                input.config.settings.requires.map((r) => r.name),
+                input.prompt.text,
+                input.readme === true,
+              ) +
               checkNote(
                 input.config.settings.checks.own.command ??
                   input.config.settings.checks.fast.command,

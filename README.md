@@ -136,6 +136,7 @@ filing a batch of tickets: it proposes blocks links between tickets that touch t
 | `tutti answer [<request-id> allow\|allow-run\|deny] [--json]` | lists or answers the workers' open requests |
 | `tutti login` | logs in to Claude, then says which account and billing workers get |
 | `tutti colours [<name>]` | previews a colour scheme, and checks it |
+| `tutti requires [--no-install] [--markdown\|--readme]` | checks what the machine must have for the project, installing what it can, or writes the README's section on it |
 | `tutti update [--check] [--force]` | updates tutti to the latest signed release |
 | `tutti --version` | the version |
 

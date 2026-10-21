@@ -73,6 +73,8 @@ export const Tag = {
   setupFailed: "SETUP_FAILED",
   setupWaits: "SETUP_WAITS",
   settingsUnread: "SETTINGS_UNREAD",
+  requires: "REQUIRES",
+  readmeStale: "README_STALE",
   flaky: "FLAKY",
   fullCheck: "FULL_CHECK",
   fullCheckFailed: "FULL_CHECK_FAILED",

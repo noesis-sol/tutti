@@ -64,7 +64,13 @@ piped a check through `tail`, which hides its exit status, then ran the whole ch
 whether it passed. A check script whose last line says `PASS` or `FAIL` and the step, as tutti's own
 `scripts/check.sh` does, lets the file's end alone answer.
 
-The note's last sentence gives the worker its share of the machine's cores: other workers' checks
+Before it, a note names the project's [requires list](setup.md#the-requires-list) with the entries
+it has now (`"requires" in .tutti/settings.json, which has jq, docker now`), and, for a prompt
+without the template's rule on it, the rule itself; where the main checkout has a `README.md`, it
+asks a worker that changes the list to run `tutti requires --readme` and commit the README's section
+with the list.
+
+The check note's last sentence gives the worker its share of the machine's cores: other workers' checks
 run beside its own, so tutti sets `TUTTI_CORES` in its environment, and `ORCHESTRA_CORES` for check
 scripts written for orchestra, to the cores divided among the run's `concurrent` workers and those
 running in the machine's other tutti and orchestra runs ([Runs that share a
@@ -91,6 +97,10 @@ Each rule of the template prevents a way a run goes wrong:
   whichever is longer, so a worker passes Bash no timeout of its own and a check keeps its time.
 - **Tests with behaviour changes,** in the project's own frameworks; a new framework is a ticket of
   its own.
+- **What the machine needs goes in the requires list.** A ticket that needs a tool, a service or
+  a permission the list lacks adds an entry for it, commits it with the ticket and installs it with
+  that entry's own install, never by hand outside the list: workers installed what they found
+  missing, and the next machine lacked it. A manual step is asked of you as a question.
 - **Stop only your own processes, by PID.** Workers run the same tests side by side.
 - **Never `rm` a target built from a variable or a glob.** Claude Code's safety check refuses such a
   removal unless a person approves it, and in auto mode refuses it outright. Workers overwrite

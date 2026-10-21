@@ -19,6 +19,7 @@
 // startup_failure_reason, makes the worker Gone.
 import { randomUUID } from "node:crypto"
 import { availableParallelism } from "node:os"
+import { join } from "node:path"
 import {
   type Options,
   type Query,
@@ -45,6 +46,7 @@ import {
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
+import { readmeName } from "../project/requires.ts"
 import { checkCommands } from "../project/settings.ts"
 import { detail, Log, line } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
@@ -251,6 +253,10 @@ export const layer = (
       const requestedMode = config.settings.workers.permission_mode
       // Whether workers keep Skill (§ 4.1), decided once, from the main checkout, as the run begins.
       const skills = yield* projectHasSkills(config.repo)
+      // Whether workers that change the requires list write the README's section again (§ 4.11).
+      const readme = yield* fs
+        .exists(join(config.repo, readmeName))
+        .pipe(Effect.orElseSucceed(() => false))
       const findings = yield* Ref.make<SetupFindings>(noFindings)
       const open = new Map<string, Open>()
       // Tickets whose session is being made, so a second start is refused at once.
@@ -422,6 +428,7 @@ export const layer = (
                   prompt: session.probe === true ? null : options.prompt,
                   servers,
                   skills,
+                  readme,
                   callbacks,
                   session: how,
                   env,

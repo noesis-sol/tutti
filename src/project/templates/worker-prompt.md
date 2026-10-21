@@ -20,6 +20,12 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
 - Where the project has test suites, a ticket that changes behaviour adds or updates tests for it,
   in those suites and their frameworks. Never add a new test framework: setting one up is a ticket
   of its own.
+- What the project needs of the machine (a tool, a service, a permission) is its requires list,
+  `"requires"` in `.tutti/settings.json`. A ticket that needs one the list doesn't have adds an
+  entry for it (a name, a check, and an install command that runs without sudo, or a manual step
+  for a person), commits it with the ticket, and installs it with that entry's own install command,
+  never by hand outside the list: what isn't on the list isn't on the next machine. A manual step is
+  asked of the maintainer as a question (see Close).
 - Other workers run the same programs and tests on this machine. Never stop processes by name or
   pattern (`pkill`, `killall`, `pkill -f`); stop only those you started, by their PID.
 - Put throwaway files in a new folder of your scratchpad and leave them there: nothing needs

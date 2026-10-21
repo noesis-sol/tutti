@@ -161,7 +161,14 @@ const scratchForm: InitForm = {
 }
 
 /** init's steps in this scenario, in order. */
-const stepNames = ["Beads", "the ticket prefix", "the setup", "the test work", "the login probe"]
+const stepNames = [
+  "Beads",
+  "the ticket prefix",
+  "the setup",
+  "the test work",
+  "the login probe",
+  "the requirements",
+]
 
 /** Runs init in `project`, renaming its tickets to `tt`, with a stop as `stopAt` starts. */
 const runInit = (project: Project, stopAt: string | null) => {
@@ -245,6 +252,8 @@ describe("tutti init stopped", () => {
         "tutti init: stopped while filing the test work: tutti init again files what is missing",
       "the login probe":
         "tutti init: stopped during the login probe, once it had written the files above",
+      "the requirements":
+        "tutti init: stopped while checking the project's requirements, once it had written the files above",
     }
     for (const [at, name] of stepNames.entries()) {
       const project = newProject()

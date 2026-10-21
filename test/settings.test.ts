@@ -97,6 +97,7 @@ describe("settings", () => {
         own: { command: null },
         setup: { command: "bun install --frozen-lockfile", files: ["bun.lock"] },
       },
+      requires: [],
       workers: {
         mcp_servers: ["postgres"],
         permission_mode: "auto",
@@ -129,6 +130,7 @@ describe("settings", () => {
       own: { command: null },
       setup: { command: null, files: defaultSetupFiles },
     },
+    requires: [],
     workers: {
       mcp_servers: [],
       permission_mode: "auto",

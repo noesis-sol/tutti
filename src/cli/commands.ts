@@ -61,6 +61,7 @@ import {
   runFlags,
 } from "./flags.ts"
 import { login, runInTerminal } from "./login.ts"
+import { requires, requiresExits } from "./requires.ts"
 import { releaseBuild, tuttiVersion } from "./version.ts"
 
 /** The main checkout of the repository `dir` is in: the first of its worktrees. */
@@ -273,6 +274,52 @@ export const coloursCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
   ).pipe(
     Command.withDescription(
       "preview a colour scheme, the one in use by default: every role's colour and where it comes from, a mock of the dashboard, and anything that keeps the scheme from being used, which exits 1",
+    ),
+  )
+
+/** `tutti requires`, in the main checkout `repo` finds. */
+export const requiresCommand = <E extends { readonly message: string } | string, R>(
+  repo: Effect.Effect<string, E, R>,
+) =>
+  Command.make(
+    "requires",
+    {
+      noInstall: Flag.Boolean("no-install").pipe(
+        Flag.withDescription("only check: run no install, and list what is missing"),
+        Flag.withDefault(false),
+      ),
+      markdown: Flag.Boolean("markdown").pipe(
+        Flag.withDescription(
+          "check nothing: print the list as the README's section on what to install",
+        ),
+        Flag.withDefault(false),
+      ),
+      readme: Flag.Boolean("readme").pipe(
+        Flag.withDescription(
+          "check nothing: write that section into README.md, replacing the one between its markers or adding one at its end",
+        ),
+        Flag.withDefault(false),
+      ),
+    },
+    (given) =>
+      Effect.gen(function* () {
+        const found = yield* Effect.result(repo)
+        if (Result.isFailure(found)) {
+          const error = found.failure
+          yield* Console.error(
+            `tutti requires: ${typeof error === "string" ? error : error.message}`,
+          )
+          process.exitCode = exitCodes.setup
+          return
+        }
+        process.exitCode = yield* requires(found.success, given, {
+          out: (line) => process.stdout.write(`${line}\n`),
+          error: (line) => process.stderr.write(`${line}\n`),
+        })
+      }),
+  ).pipe(
+    Command.withDescription(
+      `check what this machine must have for the project, the requires list in .tutti/settings.json, as each run does before its first ticket: run each entry's check, and for one that fails, its install, then check again. It prints each entry's state; what is still missing says its manual step, or why its install failed and where its output is. --markdown and --readme give the list as the README's section on what to install instead, for people to read. ${requiresExits}`,
     ),
   )
 
@@ -692,6 +739,7 @@ export const tuttiWith = <E extends { readonly message: string } | string, R, S,
       planCommand(repo, services),
       loginCommand(repo),
       coloursCommand(repo),
+      requiresCommand(repo),
       updateCommand,
     ]),
   )

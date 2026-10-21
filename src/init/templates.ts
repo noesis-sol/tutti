@@ -12,7 +12,7 @@
 // it is.
 import { join } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
-import { builtInWorkerPrompt, withSuites } from "../project/prompt.ts"
+import { builtInWorkerPrompt, requiresRule, withSuites } from "../project/prompt.ts"
 import type { Settings } from "../project/settings.ts"
 import verifierTemplate from "../project/templates/verifier.md" with { type: "text" }
 import { lineDiff } from "../ui/transcriptItems.ts"
@@ -89,6 +89,12 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     section: "Working unattended",
     what: "no to-do checklist is asked for, which Beads' own guidance forbids",
     marker: "keep the ticket's notes current",
+  },
+  {
+    version: 6,
+    section: "",
+    what: "what a ticket needs of the machine goes in the project's requires list, never installed by hand outside it",
+    marker: requiresRule,
   },
 ]
 

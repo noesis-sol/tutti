@@ -42,9 +42,16 @@ runs while the other does ([orchestra beside tutti](#orchestra-beside-tutti)).
 
 The log, `.tutti/tutti.log`, opens with the run's `START` block: the version, the repository, the
 branch, the scope, the limits and the worktrees folder, then the billing, the permission mode in
-effect, the MCP servers, the memory the workers take, and any warning; then the tickets left
-unmerged and the workers carried over, and the deferred tickets free to run
+effect, the MCP servers, the memory the workers take, and any warning (`README_STALE` where the
+README's section on what to install differs from the requires list); then the check of the
+project's [requires list](setup.md#the-requires-list) (`REQUIRES: jq met`), the tickets left unmerged
+and the workers carried over, and the deferred tickets free to run
 ([`DEFERRED_FREE`](#nothing-to-run)).
+
+**What the machine must have.** Before its first ticket, and before any worker it carries over, the
+run checks the project's requires list, installing what it can. For what is still missing it stops
+at once, exit 2, nothing started: `REQUIREMENTS_MISSING: docker (start Docker Desktop); meet it (each
+entry of 'requires' in .tutti/settings.json says how), then run again`.
 
 **The start question.** In a terminal (its input and output both), `tutti` asks what the run should
 work on:
@@ -458,6 +465,8 @@ and then the run ends with that reason. The log says
 - **`DIRTY_TREE`**, **`GIT_FAILED`**, **`MERGE_FAILED`**: the merges stop.
 - **`BEADS_FAILED`**, **`AGENT_FAILED`**: `bd` or a worker's session failing.
 - **`ENVIRONMENT`** and **`USAGE_LIMIT`**, below.
+- **`REQUIREMENTS_MISSING`**: what the project's requires list names is missing as the run starts;
+  the run ends at once, exit 2 ([above](#starting-a-run)).
 
 **Winding down yourself.** `s` in the dashboard, then `y`, or `kill -USR1 <pid>`: no new tickets, the
 running ones finish and merge, and the run ends `DRAINED`, exit 0, with the full check and the report
@@ -576,7 +585,7 @@ finds its work merged by hand, as it starts or as the base moves on.
 | Code | Meaning |
 |---|---|
 | 0 | the run ended by itself: nothing left (`READY_EMPTY`), the limit reached (`LIMIT_REACHED`), or wound down as asked (`DRAINED`); also nothing to run, a feature plan declined, or an interview that filed nothing or wasn't run |
-| 2 | a setup problem (all are listed), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
+| 2 | a setup problem (all are listed), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
 | 3 | a worker idle with its ticket in progress (`PAUSED`), a request unanswered (`BLOCKED`), or a worker past its ticket limit (`TICKET_LIMIT`) |
 | 4 | Beads, git or a worker's session failing (`BEADS_FAILED`, `GIT_FAILED`, `AGENT_FAILED`, …), or tutti failing itself (`PANIC`) |
 | 5 | uncommitted changes in the main checkout, or it left its branch (`DIRTY_TREE`) |
@@ -616,6 +625,7 @@ workers' requests with `tutti answer`
 .tutti/run/attention/            open requests, and tutti answer's answers
 .tutti/run/workers/<id>/         tutti's transcript of each worker, and its stderr
 .tutti/run/check-full.log        the last failing full check's output
+.tutti/run/requires-<name>.log   the output of a requirement's last install
 .tutti/run/feature-request.md    the interview's description
 <worktree>/.tutti/run/           check.log and setup.log, in each ticket's worktree
 <git-common-dir>/tutti.lock      the run lock
