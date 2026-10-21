@@ -11,9 +11,12 @@
 // found not on the base is asked of again too once its branch is on another commit or gone. The
 // first time a blocker is found so, CLOSED_UNMERGED says once how to clear it.
 import { Effect, Result } from "effect"
+import type { Dependency } from "../services/Beads.ts"
 import { Git, type GitError } from "../services/Git.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import { EventStream } from "./eventstream.ts"
+import { asksGit } from "./holds.ts"
+import type { State } from "./ledger.ts"
 import { type Line, Log, Tag, ticketLine } from "./log.ts"
 import { gitWhy } from "./merge.ts"
 
@@ -74,6 +77,10 @@ export const branchOff = (
     return `${branch} is not on ${where.base}`
   })
 
+/** Why a closed ticket's work isn't known to be on the base when git fails to tell. */
+const cantTell = (id: string, base: string, error: GitError): string =>
+  `git can't tell whether ${branchOf(id)} is on ${base}: ${gitWhy(error)}`
+
 /** What git said of a closed ticket's branch: why, with the base on `head` and the branch on `tip`. */
 interface Known {
   readonly head: string
@@ -113,7 +120,7 @@ export const closedBranches = (
           const off = yield* Effect.result(branchOff(id, where))
           if (Result.isFailure(off)) {
             known.delete(id)
-            return `git can't tell whether ${branchOf(id)} is on ${where.base}: ${gitWhy(off.failure)}`
+            return cantTell(id, where.base, off.failure)
           }
           const why = off.success
           if (head === undefined) known.delete(id)
@@ -127,4 +134,57 @@ export const closedBranches = (
           return why
         }).pipe(Effect.provideContext(context)),
     }
+  })
+
+/**
+ * Why closed ticket `id`'s work is only on its branch, as ClosedBranches' `why` says it; undefined
+ * when it isn't.
+ */
+export type Branches = (id: string) => Effect.Effect<string | undefined, never, Git>
+
+/** Asks the run's ClosedBranches, the base where the first ask finds it. */
+export const asking = (closed: ClosedBranches): Branches => {
+  let head: { readonly at: string | undefined } | undefined
+  return (id) =>
+    Effect.gen(function* () {
+      head ??= { at: yield* closed.head }
+      return yield* closed.why(id, head.at)
+    })
+}
+
+/**
+ * Asks git, before the run, as the run's ClosedBranches would (orchestra's startBranches): once for
+ * each ticket, again only where git failed to tell, and without CLOSED_UNMERGED, the run's to say.
+ */
+export const startBranches = (where: Where): Branches => {
+  const known = new Map<string, string | undefined>()
+  return (id) =>
+    Effect.gen(function* () {
+      if (known.has(id)) return known.get(id)
+      const off = yield* Effect.result(branchOff(id, where))
+      if (Result.isFailure(off)) return cantTell(id, where.base, off.failure)
+      known.set(id, off.success)
+      return off.success
+    })
+}
+
+/**
+ * Why git finds each closed ticket of `links` (as bd show gives them) of the kinds `types` off the
+ * base, by ID, for those the run knows nothing of (asksGit); none without `ask`.
+ */
+export const offBase = (
+  ask: Branches | undefined,
+  state: State,
+  links: ReadonlyArray<Dependency>,
+  types: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyMap<string, string>, never, Git> =>
+  Effect.gen(function* () {
+    const found = new Map<string, string>()
+    if (ask === undefined) return found
+    for (const link of links) {
+      if (!types.includes(link.type) || !asksGit(state, link) || found.has(link.id)) continue
+      const why = yield* ask(link.id)
+      if (why !== undefined) found.set(link.id, why)
+    }
+    return found
   })

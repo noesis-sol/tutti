@@ -10,6 +10,7 @@ import { shellWord } from "../services/exec.ts"
 import { Git } from "../services/Git.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import type { Carried } from "./carry.ts"
+import { asking, type Branches, type ClosedBranches } from "./closedBranches.ts"
 import { EventStream } from "./eventstream.ts"
 import { detail, Log, line } from "./log.ts"
 import { descendants, excludedTypes, type Filter } from "./scope.ts"
@@ -75,25 +76,28 @@ export interface Freeing {
   /** Whether the ticket is in the run's scope. */
   readonly inScope: (id: string) => boolean
   /** Why the blocker `id`, closed in bd or not, hasn't merged; undefined once it has. */
-  readonly pending: (id: string, closed: boolean) => string | undefined
+  readonly pending: (id: string, closed: boolean) => Effect.Effect<string | undefined, never, Git>
 }
 
 /**
  * Why a blocker hasn't merged as a run starts, before its loop: its worker, carried over from the
- * last run, is busy with it; it isn't closed; or it is closed but not merged (`unmerged`, as the
- * run finds those left so by an earlier run). A closed blocker none of those has merged, though bd
- * may still label it `unmerged`: the run, not a label, says what has merged.
+ * last run, is busy with it; it isn't closed; it is closed but not merged (`unmerged`, as the run
+ * finds those left so by an earlier run); or, closed where no run saw it close, git finds its work
+ * only on its branch (`branches`, closedBranches.ts). A closed blocker none of those has merged,
+ * though bd may still label it `unmerged`: the run and git, not a label, say what has merged.
  */
 export const startPending =
-  (carried: ReadonlySet<string>, unmerged: ReadonlySet<string>) =>
-  (id: string, closed: boolean): string | undefined =>
+  (carried: ReadonlySet<string>, unmerged: ReadonlySet<string>, branches?: Branches) =>
+  (id: string, closed: boolean): Effect.Effect<string | undefined, never, Git> =>
     carried.has(id)
-      ? "running"
+      ? Effect.succeed("running")
       : !closed
-        ? "not closed"
+        ? Effect.succeed("not closed")
         : unmerged.has(id)
-          ? "left unmerged by an earlier run"
-          : undefined
+          ? Effect.succeed("left unmerged by an earlier run")
+          : branches === undefined
+            ? Effect.succeed(undefined)
+            : branches(id)
 
 /** Whether the ticket was deferred until a date still to come, as against `now` (epoch ms). */
 const deferredUntilLater = (issue: Issue, now: number): boolean => {
@@ -103,15 +107,20 @@ const deferredUntilLater = (issue: Issue, now: number): boolean => {
 }
 
 /** The tickets blocking `issue`, as bd show gives it, if each is closed and merged. */
-const mergedBlockers = (freeing: Freeing, issue: Issue): ReadonlyArray<string> | undefined => {
-  const ids: Array<string> = []
-  for (const link of issue.dependencies) {
-    if (link.type !== "blocks") continue
-    if (freeing.pending(link.id, link.issue?.status === "closed") !== undefined) return undefined
-    ids.push(link.id)
-  }
-  return ids
-}
+const mergedBlockers = (
+  freeing: Freeing,
+  issue: Issue,
+): Effect.Effect<ReadonlyArray<string> | undefined, never, Git> =>
+  Effect.gen(function* () {
+    const ids: Array<string> = []
+    for (const link of issue.dependencies) {
+      if (link.type !== "blocks") continue
+      const closed = link.issue?.status === "closed"
+      if ((yield* freeing.pending(link.id, closed)) !== undefined) return undefined
+      ids.push(link.id)
+    }
+    return ids
+  })
 
 /**
  * The worktree a worker left for ticket `id` when its branch has no commits beyond the base: as
@@ -163,7 +172,7 @@ export const list = (
       ) {
         continue
       }
-      const blockers = mergedBlockers(freeing, yield* beads.show(ticket.id))
+      const blockers = yield* mergedBlockers(freeing, yield* beads.show(ticket.id))
       if (blockers === undefined || blockers.length === 0) continue
       free.push({ id: ticket.id, blockers, ...(yield* leftWorktree(freeing, ticket.id)) })
     }
@@ -214,9 +223,10 @@ const underWay: ReadonlySet<Carried> = new Set<Carried>(["resumed", "asked", "to
 
 /**
  * Says, in the START block of a run scoped to `root` (--ticket, or null for all of bd ready), the
- * deferred tickets whose blockers have merged, given what became of the workers carried over and
- * the tickets left unmerged by an earlier run: the scope is the ticket and its descendants. bd
- * failing to list those drops the list, with a line in the log.
+ * deferred tickets whose blockers have merged, given what became of the workers carried over, the
+ * tickets left unmerged by an earlier run, and what the run's `closedBranches` says of a blocker
+ * closed where no run saw it close: the scope is the ticket and its descendants. bd failing to list
+ * those drops the list, with a line in the log.
  */
 export const sayAtStart = (options: {
   readonly repo: string
@@ -225,6 +235,7 @@ export const sayAtStart = (options: {
   readonly root: string | null
   readonly carried: ReadonlyMap<string, Carried>
   readonly unmerged: ReadonlySet<string>
+  readonly closedBranches?: ClosedBranches
 }): Effect.Effect<void, never, Beads | Git | Log | EventStream> =>
   Effect.gen(function* () {
     const { root } = options
@@ -244,6 +255,10 @@ export const sayAtStart = (options: {
       base: options.base,
       filter: options.filter,
       inScope: (id) => root === null || scope.has(id),
-      pending: startPending(busy, options.unmerged),
+      pending: startPending(
+        busy,
+        options.unmerged,
+        options.closedBranches === undefined ? undefined : asking(options.closedBranches),
+      ),
     })
   })

@@ -129,7 +129,10 @@ export const takeAnswers = (
           const [settled, limited] = yield* Effect.scoped(
             Effect.gen(function* () {
               const limited = yield* watchLimit(id)
-              return [yield* settle(worker, options.base), yield* Ref.get(limited)] as const
+              return [
+                yield* settle(worker, options.base, options.closedBranches),
+                yield* Ref.get(limited),
+              ] as const
             }),
           )
           const stop = yield* conclude(ticket, worker, settled, options.queue)

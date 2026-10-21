@@ -10,6 +10,7 @@ import { Beads, type BeadsError, HumanLabel, type Issue } from "../services/Bead
 import type { Git } from "../services/Git.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
+import type { Branches } from "./closedBranches.ts"
 import * as free from "./deferredFree.ts"
 import { EventStream } from "./eventstream.ts"
 import { exitCodes } from "./holds.ts"
@@ -121,8 +122,13 @@ export interface Options {
   readonly carried: ReadonlySet<string>
   /** The tickets closed but not merged, as the run finds them (merged by hand counts as merged). */
   readonly unmerged: ReadonlySet<string>
+  /**
+   * Why git finds a closed ticket's work only on its branch (closedBranches.ts's startBranches),
+   * for a blocker closed where no run saw it close; without it, such a blocker counts as merged.
+   */
+  readonly branches?: Branches
   /** What holds back a ready ticket as the run starts, or undefined when it would start. */
-  readonly held: (issue: Issue) => Effect.Effect<HoldKind | undefined, BeadsError>
+  readonly held: (issue: Issue) => Effect.Effect<HoldKind | undefined, BeadsError, Git>
 }
 
 /** Holds nothing back. */
@@ -130,22 +136,34 @@ export const noHolds = (): Effect.Effect<HoldKind | undefined> => Effect.succeed
 
 /**
  * What holds back a ready ticket as the run starts, as its scheduler would hold it back (§ 5 item
- * 5), given the tickets closed but not merged (`unmerged`): a parent whose subtickets aren't all
- * closed and merged, a ticket blocked by one not merged, a follow-up filed from one. Nothing runs
- * yet, so a blocker or a source holds it back only while closed and not merged.
+ * 5), given the tickets closed but not merged (`unmerged`) and why git finds a closed ticket's work
+ * only on its branch (`branches`): a parent whose subtickets aren't all closed and merged, a ticket
+ * blocked by one not merged, a follow-up filed from one. Nothing runs yet, so a blocker or a source
+ * holds it back only while closed and not merged: left so by an earlier run, or closed where no run
+ * saw it close with its work only on its branch.
  */
 export const heldAtStart =
-  (beads: Beads["Service"], unmerged: ReadonlySet<string>) =>
-  (issue: Issue): Effect.Effect<HoldKind | undefined, BeadsError> =>
+  (beads: Beads["Service"], unmerged: ReadonlySet<string>, branches?: Branches) =>
+  (issue: Issue): Effect.Effect<HoldKind | undefined, BeadsError, Git> =>
     Effect.gen(function* () {
       const children = yield* beads.list({ parent: issue.id, all: true })
       if (children.some((child) => child.status !== "closed" || unmerged.has(child.id))) {
         return "parent"
       }
       const links = (yield* beads.show(issue.id)).dependencies
-      const by = (type: string) => links.some((link) => link.type === type && unmerged.has(link.id))
-      if (by("blocks")) return "blocker"
-      if (by("discovered-from")) return "followUp"
+      const by = (type: string) =>
+        Effect.gen(function* () {
+          for (const link of links) {
+            if (link.type !== type) continue
+            if (unmerged.has(link.id)) return true
+            // bd ready lists a ticket once its blockers are closed: one bd show didn't describe is.
+            if (branches === undefined || (link.issue?.status ?? "closed") !== "closed") continue
+            if ((yield* branches(link.id)) !== undefined) return true
+          }
+          return false
+        })
+      if (yield* by("blocks")) return "blocker"
+      if (yield* by("discovered-from")) return "followUp"
       return undefined
     })
 
@@ -254,7 +272,7 @@ export const check = (
       base: options.base,
       filter: options.filter,
       inScope: within,
-      pending: free.startPending(options.carried, options.unmerged),
+      pending: free.startPending(options.carried, options.unmerged, options.branches),
     }
     const listed = yield* Effect.result(free.list(freeing, unclosed))
     return Result.isSuccess(listed)

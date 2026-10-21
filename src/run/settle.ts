@@ -19,6 +19,7 @@ import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type Status } from "../services/Beads.ts"
 import { type Commit, Git, type GitError, type StatusEntry } from "../services/Git.ts"
 import { runFolder } from "../services/Worktrees.ts"
+import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
 import { type MergeEnv, offBranch } from "./merge.ts"
@@ -108,9 +109,15 @@ export const openQuestion = (issue: Issue): Issue | undefined =>
 /**
  * The tickets blocking `issue` that haven't merged, as the run knows it: those not closed, those
  * the run has taken up and not finished (merging, set aside, blocked, …), and those labelled
- * unmerged. A question for you is a blocker of another kind, and isn't one of them.
+ * unmerged; and, by `branches` (closedBranches.ts's offBase), those closed where the run didn't see
+ * them close whose work git finds only on their branch, as the holds count them. A question for you
+ * is a blocker of another kind, and isn't one of them.
  */
-export const unmergedBlockers = (issue: Issue, state: State): ReadonlyArray<string> =>
+export const unmergedBlockers = (
+  issue: Issue,
+  state: State,
+  branches: ReadonlyMap<string, string> = new Map(),
+): ReadonlyArray<string> =>
   issue.dependencies
     .filter((dependency) => {
       if (dependency.type !== "blocks") return false
@@ -121,7 +128,8 @@ export const unmergedBlockers = (issue: Issue, state: State): ReadonlyArray<stri
         blocker === undefined ||
         blocker.status !== "closed" ||
         blocker.labels.includes(unmergedLabel) ||
-        (phase !== undefined && phase._tag !== "Done")
+        (phase !== undefined && phase._tag !== "Done") ||
+        branches.has(dependency.id)
       )
     })
     .map((dependency) => dependency.id)
@@ -288,11 +296,13 @@ const readClosed = (worker: StartedWorker, title: string, base: string) =>
 
 /**
  * Reads the ticket in Beads, and its worktree, as its worker left them: Beads, not the worker's
- * own words, says what happened.
+ * own words, says what happened. `closed`, the run's, says which closed blockers the run knows
+ * nothing of haven't merged.
  */
 export const read = (
   worker: StartedWorker,
   base: string,
+  closed?: ClosedBranches,
 ): Effect.Effect<Reading, BeadsError | GitError, SettleEnv> =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -303,7 +313,10 @@ export const read = (
     if (question !== undefined && issue.status !== "closed") return Reading.Asked({ question })
     const { status } = issue
     if (status === "open" || status === "in_progress") {
-      const blockers = unmergedBlockers(issue, yield* ledger.current)
+      const state = yield* ledger.current
+      const ask = closed === undefined ? undefined : asking(closed)
+      const branches = yield* offBase(ask, state, issue.dependencies, ["blocks"])
+      const blockers = unmergedBlockers(issue, state, branches)
       if (blockers.length > 0) {
         const nothingDone =
           (yield* git.log(path, base)).length === 0 && changes(yield* git.status(path)).length === 0
@@ -378,6 +391,7 @@ const how = (state: WorkerState): string => {
 export const settle = (
   worker: StartedWorker,
   base: string,
+  closed?: ClosedBranches,
 ): Effect.Effect<Settled, BeadsError | GitError, SettleEnv> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
@@ -386,7 +400,7 @@ export const settle = (
     let told = 0
     for (;;) {
       const state = yield* untilSettled(id)
-      const reading = yield* read(worker, base)
+      const reading = yield* read(worker, base, closed)
       if (reading._tag !== "InProgress") {
         yield* logs.write(detail`${id} settled: ${how(state)}`)
         return Settled.Read({ reading, state })

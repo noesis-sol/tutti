@@ -710,7 +710,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
 5. **Scheduling**:
    - `bd ready` in scope, minus questions and `exclude_types`, in priority order
    - parents after their subtickets; held for blockers not merged; follow-ups (`discovered-from`) held until their source merges
-   - a blocker closed where the run didn't see it close is not merged while git finds `tutti/<id>` off the base (commits the base lacks, changes it doesn't hold), or can't tell: `<id> closed but not merged (tutti/<id> is not on <base>)`, one `CLOSED_UNMERGED` warning; git asked once per blocker and base commit, again when its branch moves or goes
+   - a blocker closed where the run didn't see it close is not merged while git finds `tutti/<id>` off the base (commits the base lacks, changes it doesn't hold), or can't tell: `<id> closed but not merged (tutti/<id> is not on <base>)`, one `CLOSED_UNMERGED` warning; git asked once per blocker and base commit, again when its branch moves or goes; `WAITS_FOR_MERGE`, `DEFERRED_FREE` and the nothing-to-run box count it not merged the same way (before the run, git asked once per blocker, without the warning)
    - footprints, below
    - solo; no ticket twice; a ready poll every 30 s, with free slots filled at once
    - `--limit` counts the tickets this run starts (resumed and carried-over workers count toward nothing), with no limit unless it is given: a run without one ends `READY_EMPTY` or `DRAINED`, never `LIMIT_REACHED`, and its dispatch lines say `[n]` rather than `[n/limit]`; `BAD_TICKET_ID`
@@ -1828,7 +1828,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | a glob in the `files` metadata holds the files other tickets add where it matches; a name with a `[` is also that file | Planned (tutti-kkb.40) |
 | | `-h` names exit code 8 | Not needed: tutti's help lists no exit codes of a run; `docs/running.md` lists 8 |
 | | the README, the docs and the skill describe spec runs | Planned (tutti-kkb.28) |
-| 0.8.1 | `CLOSED_UNMERGED`: a blocker closed by hand while its branch is off the base holds its dependents; a deleted branch frees them | Done (tutti-kkb.3); the same answer in `WAITS_FOR_MERGE`, `DEFERRED_FREE` and the nothing-to-run box is planned (tutti-kkb.36) |
+| 0.8.1 | `CLOSED_UNMERGED`: a blocker closed by hand while its branch is off the base holds its dependents; a deleted branch frees them | Done (tutti-kkb.3); the same answer in `WAITS_FOR_MERGE`, `DEFERRED_FREE` and the nothing-to-run box, done (tutti-kkb.36) |
 | | a worker's tab closed when its ticket is dispatched again; `LATE_CLOSE`, following a worker left in its tab | Not needed: there are no tabs, and a set-aside ticket's session ends with it (§4.8) |
 | | a ticket set aside with nothing done has its worktree and branch removed | Planned (tutti-kkb.42) |
 | | a feature's session left before it hands the epic back names what it filed (`feature_run`) | Not needed: `file_feature` files the epic and its tickets in one call, and tutti keeps what it filed (§4.10) |

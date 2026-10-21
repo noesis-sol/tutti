@@ -22,10 +22,11 @@ import { Clock, Effect, Ref, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError, type Status } from "../services/Beads.ts"
-import type { GitError } from "../services/Git.ts"
+import type { Git, GitError } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview, putAside } from "./aside.ts"
+import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { type StopReason, timeLimit } from "./holds.ts"
@@ -85,6 +86,11 @@ export interface WorkOptions {
   readonly onTicketLimit?: (stop: StopReason) => Effect.Effect<void>
   /** The run's setups (setup.ts), which the merge queue shares; the settings' setup when absent. */
   readonly setUps?: SetUps
+  /**
+   * What git says of closed blockers the run knows nothing of: one whose work is only on its
+   * branch hasn't merged, for WAITS_FOR_MERGE. Without it, such a blocker counts as merged.
+   */
+  readonly closedBranches?: ClosedBranches
 }
 
 /** Its blockers, as the log names them: `a`, or `a, b`. */
@@ -321,7 +327,10 @@ export const follow = (
           since,
           options.onTicketLimit ?? (() => Effect.void),
         ).pipe(Effect.forkScoped({ startImmediately: true }))
-        return [yield* settle(worker, options.base), yield* Ref.get(limited)] as const
+        return [
+          yield* settle(worker, options.base, options.closedBranches),
+          yield* Ref.get(limited),
+        ] as const
       }),
     )
     const stop = yield* conclude(ticket, worker, settled, options.queue)
@@ -427,32 +436,35 @@ export const watchLimit = (ticket: string) =>
 
 /**
  * Puts each Waiting ticket whose blockers have all merged back in the queue (§ 5 item 9), Waiting →
- * Queued; the tickets it put back. A ticket bd can't show waits for the next look.
+ * Queued; the tickets it put back. `closed`, the run's, says which closed blockers the run knows
+ * nothing of haven't merged. A ticket bd can't show waits for the next look.
  */
-export const requeueWaiting: Effect.Effect<
-  ReadonlyArray<string>,
-  never,
-  Beads | Ledger | Log
-> = Effect.gen(function* () {
-  const beads = yield* Beads
-  const ledger = yield* Ledger
-  const logs = yield* Log
-  const back: Array<string> = []
-  for (const entry of (yield* ledger.current).tickets.values()) {
-    const { phase } = entry
-    if (phase._tag !== "Waiting" || phase.for === probeWait || phase.for === setupWait) continue
-    const issue = yield* Effect.result(beads.show(entry.ticket))
-    if (Result.isFailure(issue)) continue
-    if (unmergedBlockers(issue.success, yield* ledger.current).length > 0) continue
-    const queued =
-      [...(yield* ledger.current).tickets.values()].filter((each) => each.phase._tag === "Queued")
-        .length + 1
-    const moved = yield* ledger.transition(entry.ticket, Cause.Requeued(), {
-      beside: [{ kind: "queue", queued }],
-    })
-    if (Result.isFailure(moved)) continue
-    yield* logs.write(detail`${entry.ticket}: ${phase.for} merged; back in the queue`)
-    back.push(entry.ticket)
-  }
-  return back
-})
+export const requeueWaiting = (
+  closed?: ClosedBranches,
+): Effect.Effect<ReadonlyArray<string>, never, Beads | Git | Ledger | Log> =>
+  Effect.gen(function* () {
+    const beads = yield* Beads
+    const ledger = yield* Ledger
+    const logs = yield* Log
+    const ask = closed === undefined ? undefined : asking(closed)
+    const back: Array<string> = []
+    for (const entry of (yield* ledger.current).tickets.values()) {
+      const { phase } = entry
+      if (phase._tag !== "Waiting" || phase.for === probeWait || phase.for === setupWait) continue
+      const issue = yield* Effect.result(beads.show(entry.ticket))
+      if (Result.isFailure(issue)) continue
+      const state = yield* ledger.current
+      const branches = yield* offBase(ask, state, issue.success.dependencies, ["blocks"])
+      if (unmergedBlockers(issue.success, state, branches).length > 0) continue
+      const queued =
+        [...(yield* ledger.current).tickets.values()].filter((each) => each.phase._tag === "Queued")
+          .length + 1
+      const moved = yield* ledger.transition(entry.ticket, Cause.Requeued(), {
+        beside: [{ kind: "queue", queued }],
+      })
+      if (Result.isFailure(moved)) continue
+      yield* logs.write(detail`${entry.ticket}: ${phase.for} merged; back in the queue`)
+      back.push(entry.ticket)
+    }
+    return back
+  })

@@ -529,6 +529,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         )
       })
 
+    // A closed blocker the run knows nothing of hasn't merged while git finds its work only on its
+    // branch (closedBranches.ts): the holds, WAITS_FOR_MERGE and DEFERRED_FREE all count it so.
+    const branches = yield* closedBranches({ repo: config.repo, base })
+
     // A ticket's fiber, dispatched or carried over: its work, and the stop it ended with, if any.
     const onTicketLimit = (ticket: string) => (stop: StopReason) =>
       Effect.andThen(
@@ -557,7 +561,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const ticketFiber = (issue: Issue): Effect.Effect<void> =>
       outcomeOf(
         issue.id,
-        work(issue, { base, queue, triage, setUps, onTicketLimit: onTicketLimit(issue.id) }),
+        work(issue, {
+          base,
+          queue,
+          triage,
+          setUps,
+          closedBranches: branches,
+          onTicketLimit: onTicketLimit(issue.id),
+        }),
       ).pipe(Effect.provideContext(context))
 
     const taking = Effect.map(
@@ -658,9 +669,6 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             Effect.provideService(Organs, organs.value),
           )
         : undefined
-    // A closed blocker the run knows nothing of holds back the tickets it blocks while git finds
-    // its work only on its branch (closedBranches.ts).
-    const branches = yield* closedBranches({ repo: config.repo, base })
     const scheduler = yield* makeScheduler({
       concurrent: config.settings.concurrent,
       limit: config.limit,
@@ -696,6 +704,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       base,
       queue,
       triage,
+      closedBranches: branches,
       onTicketLimit: (stop) =>
         stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop),
       carry: (ticket, worked, issue) => scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
@@ -711,6 +720,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         root: config.ticket,
         carried,
         unmerged: new Set(loaded.success.map((left) => left.issue.id)),
+        closedBranches: branches,
       })
     }
 
@@ -976,7 +986,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // run is done only when nothing was merging as the look began, and its wake has it look again.
       const mergedBefore = isSettled(yield* queue.state)
       yield* lookAround
-      yield* requeueWaiting
+      yield* requeueWaiting(branches)
       // A ticket merged, which may bring what a setup that failed in a ticket's worktree needed.
       yield* retrySetups(setUps)
       // The tickets set aside for a failed check whose base has moved on are checked once more
@@ -991,6 +1001,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           base,
           queue,
           triage,
+          closedBranches: branches,
           carry: (ticket, fiber, issue) => scheduler.carry(ticket, outcomeOf(ticket, fiber), issue),
         })
       }

@@ -44,6 +44,7 @@ import {
   interviewUnavailable,
   ticketCount,
 } from "./run/choose.ts"
+import { startBranches } from "./run/closedBranches.ts"
 import type { DrainRequest } from "./run/drain.ts"
 import { EventStream } from "./run/eventstream.ts"
 import { type FeatureIO, inRenderer, planAndFile, scopedTo } from "./run/feature.ts"
@@ -299,6 +300,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const carried = yield* carriedTickets
       const nothingOptions = (): NothingOptions => {
         const left = Result.isSuccess(unmerged) ? unmerged.success : new Set<string>()
+        // A blocker closed by hand while its branch has commits the base lacks holds, as in the run.
+        const branches = startBranches({ repo: config.repo, base })
         return {
           scope,
           filter: { excludeTypes: config.settings.queue.exclude_types },
@@ -306,7 +309,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           base,
           carried,
           unmerged: left,
-          held: heldAtStart(beads, left),
+          branches,
+          held: heldAtStart(beads, left, branches),
         }
       }
       /** Whether there is nothing to run, which it then reports on the main screen. */

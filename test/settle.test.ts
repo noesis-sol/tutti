@@ -382,9 +382,9 @@ describe("the outcome of a settled worker", () => {
         Effect.gen(function* () {
           yield* Fiber.join(fiber)
           // t-0 isn't merged: the ticket waits.
-          expect(yield* requeueWaiting).toEqual([])
+          expect(yield* requeueWaiting()).toEqual([])
           yield* (yield* Beads).close("t-0", "done")
-          expect(yield* requeueWaiting).toEqual([id])
+          expect(yield* requeueWaiting()).toEqual([id])
           expect((yield* (yield* Ledger).current).tickets.get(id)?.phase._tag).toBe("Queued")
         }),
     )
@@ -416,7 +416,7 @@ describe("the outcome of a settled worker", () => {
           yield* ledger.transition("t-0", Cause.Dispatched())
           yield* ledger.transition("t-0", Cause.Verified({ place: 1 }))
           yield* Fiber.join(fiber)
-          expect(yield* requeueWaiting).toEqual([])
+          expect(yield* requeueWaiting()).toEqual([])
         }),
     )
     expect(phaseOf(ran)?._tag).toBe("Waiting")
