@@ -101,6 +101,7 @@ const oldNames: Readonly<Record<string, string>> = {
 /** orchestra settings tutti knows and has no place for: why. */
 const unplaced: Readonly<Record<string, string>> = {
   terminal: "tutti has no terminals; its workers run inside it",
+  templates: "the versions of orchestra's templates; tutti records those of its own",
 }
 
 const environmentHoldKeys = ["count", "window", "probe"]

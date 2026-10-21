@@ -27,6 +27,7 @@ import {
   versionWarning,
 } from "../src/agent/claudeBinary.ts"
 import { AppConfig } from "../src/cli/AppConfig.ts"
+import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { check, type Started, type StartupFailed } from "../src/run/startup.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -318,7 +319,7 @@ describe("the startup checks", () => {
     const repo = join(folder("claude-startup"), "repo")
     mkdirSync(join(repo, ".tutti"), { recursive: true })
     writeFileSync(join(repo, ".tutti", "settings.json"), "{}\n")
-    writeFileSync(join(repo, ".tutti", "worker-prompt.md"), "Work on TICKET_ID.\n")
+    writeFileSync(join(repo, ".tutti", "worker-prompt.md"), builtInWorkerPrompt)
     mkdirSync(join(repo, ".beads"))
     return repo
   }

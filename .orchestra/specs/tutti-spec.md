@@ -1447,6 +1447,7 @@ The same two steps and flags as `orchestra init` (its `docs/setup.md`), with the
 - Test-work tickets are labelled `tutti-tests`.
 - **Import.** In a project with `.orchestra/` and no `.tutti/`, init offers to import the worker prompt and the settings it understands (the checks, timeouts, concurrency, MCP names, `exclude_types`, footprint, `resolve_conflicts`, `check_hand_backs`, `environment_hold`, setup). It names what it can't import. An imported worker prompt keeps your changes but needs the changes in §4.11, which init lists. `.orchestra/` is left as it is.
 - The run lock is held while init changes the project, as `orchestra init` holds it.
+- **Template versions**, as orchestra 0.9.0's. `settings.json`'s `templates` records the version of tutti's worker prompt and verifier templates the project's files came from, as init writes them (`src/init/templates.ts` lists each version's changes: the section, what changed, and words only the new text has). A project's file that records an older version, or none (set up before, or imported from orchestra), and lacks a change's words, is older than the template: a run says so in a `templates:` note under its `START` line, naming the sections changed since and what changed in them, and init says it of the files it keeps. `tutti init --update` rewrites only those sections from the templates, keeping the rest of each file, records the versions, prints the diff and leaves the commit to you. It asks nothing and takes no other flag. A change to a template is a new version of it: a test pins the templates.
 
 ### 8.4 `.tutti/settings.json`
 
@@ -1471,6 +1472,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
     "ticket_limit": "2h",
     "ask_user_question": true
   },
+  "templates": { "worker_prompt": 4, "verifier": 2 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "queue": { "exclude_types": ["epic"], "footprint": true },
   "merge": { "resolve_conflicts": true, "resolve_timeout": "20m", "check_hand_backs": 2 },
@@ -1482,6 +1484,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
 - `checks.own.command` is orchestra's `check_own`: a worker's check of its own change, such as `scripts/check-own.sh`, which the note on running a check once names in place of the merge check (§4.11). tutti never runs it; its files count as no ticket's in footprints, as the other checks' do. None by default.
 - `workers.mcp_servers` absent means no servers, unlike orchestra (§15, Q5).
 - `workers.effort` absent means `high`, as orchestra's (orchestra-jvi4), for workers, the login probe and the feature interview; `null` leaves the effort to Claude Code.
+- `templates.worker_prompt` and `templates.verifier` are the versions of tutti's templates the worker prompt and the verifier came from (§8.3); 0 by default, for files whose text is read instead.
 - `workers.permission_mode` is `auto` (default), `default` or `acceptEdits`; anything else is a setup problem.
 - `ui.colour_scheme` is the project's default colour scheme (§7.11). Your user config's choice wins over it. A scheme that can't be used falls back to `orchestra` with a warning, never a setup problem.
 

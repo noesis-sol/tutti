@@ -4,7 +4,8 @@
 // order: the git repository and its main checkout, on a branch; a clean tree; bd and the Beads
 // database, and the ticket --ticket names (open, and work rather than a question); the login probe
 // (§ 4.13); organs' provider (§ 6.1); the settings, flags, variables and user config; the MCP names
-// (§ 4.6); the worker prompt (§ 4.11).
+// (§ 4.6); the worker prompt (§ 4.11). A run that starts notes the project's worker prompt and
+// verifier where they are older than tutti's templates (src/init/templates.ts).
 //
 // orchestra's run state names workers it left behind, which tutti doesn't adopt (§ 11): a warning,
 // not a problem. A run that passes gets what the checks resolved, and its START block from them.
@@ -25,6 +26,7 @@ import {
   workerPromptFile,
 } from "../cli/AppConfig.ts"
 import { noFlags, type RunFlags } from "../cli/flags.ts"
+import { templateNotes } from "../init/templates.ts"
 import { type OrganProvider, organProvider } from "../organs/AnthropicProvider.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
@@ -427,6 +429,10 @@ export const check = <R>(checking: Checking<R>) =>
     ) {
       return yield* new StartupFailed({ notSetUp, problems, warnings })
     }
+    // The project's worker prompt and verifier where they are older than tutti's templates: notes,
+    // which `tutti init --update` takes.
+    const settings = configured.value.value.settings
+    const templates = yield* templateNotes(repo, settings.templates, !ownPrompt)
     return {
       config: { ...configured.value.value, claude: claude.path },
       base: branch.success,
@@ -434,7 +440,7 @@ export const check = <R>(checking: Checking<R>) =>
       mcp: mcp.value.value,
       account: account.value.value,
       organs: organs.success._tag,
-      warnings,
+      warnings: [...warnings, ...templates],
     } satisfies Started
   })
 

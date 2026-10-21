@@ -13,6 +13,7 @@ import { scoutSearch } from "../init/checks.ts"
 import { cancelledLine, type InitFlags, type InitForm, init, summaryLines } from "../init/init.ts"
 import { lineForm } from "../init/lineForm.ts"
 import { liveMachine } from "../init/steps.ts"
+import { initUpdate, updateLines } from "../init/update.ts"
 import { parseMcpNames } from "../init/workers.ts"
 import { layer as languageModelLayer } from "../organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
@@ -391,12 +392,18 @@ export const initFlags = {
     Flag.withDescription("replace an existing .tutti/worker-prompt.md with the built-in template"),
     Flag.withDefault(false),
   ),
+  update: Flag.Boolean("update").pipe(
+    Flag.withDescription(
+      "bring .tutti/worker-prompt.md and .claude/agents/verifier.md up to date with tutti's templates: rewrite only the sections the templates changed since they were written, keeping the rest of each file, record the templates' versions in .tutti/settings.json, and print the diff to commit; it asks nothing and takes no other flag",
+    ),
+    Flag.withDefault(false),
+  ),
 }
 
 /** The texts of init's flags, as effect/cli parsed them. */
 export type InitFlagTexts = {
-  readonly [K in Exclude<keyof typeof initFlags, "force">]: Option.Option<string>
-} & { readonly force: boolean }
+  readonly [K in Exclude<keyof typeof initFlags, "force" | "update">]: Option.Option<string>
+} & { readonly force: boolean; readonly update?: boolean }
 
 /** Reads init's flags: their values, or every problem with them, each after `--name`. */
 export const readInitFlags = (
@@ -433,6 +440,13 @@ export const readInitFlags = (
     ...pick("checkFullTimeout", read("check-full-timeout", given.checkFullTimeout, positiveTime)),
     ...pick("setup", read("setup", given.setup, asIs)),
     force: given.force,
+    ...(given.update === true ? { update: true } : {}),
+  }
+  if (
+    given.update === true &&
+    (given.force || Object.keys(flags).some((key) => key !== "force" && key !== "update"))
+  ) {
+    problems.push("--update takes no other flag: run tutti init without it to change the rest")
   }
   return problems.length > 0 ? Result.fail(problems) : Result.succeed(flags)
 }
@@ -470,6 +484,18 @@ const runInit = (cwd: string, flags: InitFlags) =>
       yield* git.currentBranch(repo).pipe(Effect.orElseSucceed(() => Option.none<string>())),
       () => "HEAD",
     )
+    if (flags.update === true) {
+      const updated = yield* Effect.result(
+        initUpdate({ repo, commonDir: commonDir.success, branch, version: pkg.version }).pipe(
+          Effect.provide(RunLock.layer),
+        ),
+      )
+      if (Result.isFailure(updated)) {
+        return yield* initStopped([`tutti init --update: ${updated.failure.message}`])
+      }
+      yield* Console.log(updateLines(updated.success).join("\n"))
+      return
+    }
     const machine = yield* liveMachine
     const claudeConfig = yield* claudeConfigFile
     const configure = Effect.gen(function* () {

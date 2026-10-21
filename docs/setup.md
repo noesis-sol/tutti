@@ -218,6 +218,7 @@ lines; `Ctrl+D` cancels.
 | `--verifier[=false]` | write the verifier, or not |
 | `--prefix <name>` | the ticket prefix: lowercase letters, digits and hyphens, starting with a letter |
 | `--force` | replace `.tutti/worker-prompt.md` with the built-in template |
+| `--update` | take the changes to tutti's templates into the worker prompt and the verifier, and nothing else; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |
 
 ### Trusting the main checkout
 
@@ -336,6 +337,27 @@ holds rather than go round again. Each ticket then costs a
 subagent's run too. tutti runs the verifier in the foreground, whatever the worker asks for, so the
 worker's turn waits for its answer.
 
+## Keeping the worker prompt and the verifier up to date
+
+`init` writes `.tutti/worker-prompt.md` and `.claude/agents/verifier.md` from tutti's templates, and
+from then on they are the project's: `init` keeps them as they are. So that a project still hears of
+what tutti changes in its templates later, `.tutti/settings.json` records the version of each
+template its files came from (`"templates"`), as `init` writes them; a project set up before, or a
+prompt imported from orchestra, has its files read for each change's words instead.
+
+A run says under its `START` line when either file is older than tutti's template, naming the
+sections changed since and what changed in them:
+
+```
+  templates: .tutti/worker-prompt.md is older than tutti's worker prompt template, which has since changed the opening (a worker checks its own change and leaves the whole suite to the merge check) and Close (a ticket closes once the worker's own checks pass): tutti init --update rewrites those sections from the template, keeping the rest of the file, and shows the diff to commit
+```
+
+`init` says it too of the files it keeps. `tutti init --update` takes the changes: it rewrites only
+those sections from the templates, keeping the rest of each file, your own sections included (the
+worker prompt's lines on how to run each suite on part of the project among them), records the
+templates' versions in `.tutti/settings.json`, prints the diff, and leaves the commit to you. A
+section it rewrote loses your edits in it: read the diff, and carry over what you want to keep.
+
 ## The settings
 
 `.tutti/settings.json` holds the project's settings, committed and shared. Every key has a default,
@@ -362,6 +384,7 @@ for a project that sets them all; the table below gives each one's default:
     "ticket_limit": "2h",
     "ask_user_question": true
   },
+  "templates": { "worker_prompt": 4, "verifier": 2 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "queue": { "exclude_types": ["epic"], "footprint": true },
   "merge": { "resolve_conflicts": true, "resolve_timeout": "20m", "check_hand_backs": 2 },
@@ -388,6 +411,7 @@ for a project that sets them all; the table below gives each one's default:
 | `workers.model` | Claude Code's | `--worker-model` for a run |
 | `workers.ticket_limit` | none | how long a worker may go on after dispatch before the run holds; `--ticket-limit` for a run |
 | `workers.ask_user_question` | `true` | whether workers may ask you quick questions; [Attention requests](workers.md#attention-requests) |
+| `templates.worker_prompt`, `templates.verifier` | `0` | the versions of tutti's templates the worker prompt and the verifier came from, which `init` records; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |
 | `organs.effort`, `organs.model` | each organ's | every organ's effort and model; [Organs](organs.md) |
 | `organs.triage` | `true` | the triage organ; `--triage` for a run |
 | `organs.review` | `true` | the run report; `--review` for a run |

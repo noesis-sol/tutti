@@ -107,7 +107,8 @@ Each rule of the template prevents a way a run goes wrong:
 
 `tutti init --verifier` adds a `## Verify` section, which has workers run the
 [verifier](setup.md#the-verifier) before they close a ticket. `init` never replaces a prompt you
-changed, unless `--force`.
+changed, unless `--force`; `tutti init --update` takes what tutti has changed in its template since,
+section by section ([Keeping them up to date](setup.md#keeping-the-worker-prompt-and-the-verifier-up-to-date)).
 
 ## Permissions
 

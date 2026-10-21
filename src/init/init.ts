@@ -68,6 +68,7 @@ import {
   withoutRunners,
 } from "./runners.ts"
 import { joinAnd, type Machine, type Step, step, stepLine } from "./steps.ts"
+import { currentTemplates, keptNote, outdatedTemplates, type Templates } from "./templates.ts"
 import {
   applyPrefix,
   applyUnion,
@@ -115,6 +116,11 @@ export interface InitFlags {
   readonly verifier?: boolean
   /** Replace an existing .tutti/worker-prompt.md with the template. */
   readonly force: boolean
+  /**
+   * Bring the worker prompt and the verifier up to date with tutti's templates (./update.ts), and
+   * nothing else.
+   */
+  readonly update?: boolean
 }
 
 /** The offer to mark an untrusted main checkout trusted: what it explains, and what it would set. */
@@ -184,7 +190,8 @@ export class InitRefused extends Schema.TaggedError<InitRefused>()("InitRefused"
   }
 }
 
-const refused = (reason: string) => new InitRefused({ reason })
+/** init's refusal, saying why. */
+export const refused = (reason: string) => new InitRefused({ reason })
 
 /** The worker prompt, from the project's top. */
 export const workerPromptPath = join(".tutti", "worker-prompt.md")
@@ -210,7 +217,7 @@ const section = (json: Json, key: string): Json => {
  * The settings file's JSON and text as they are, null when there is none, and the settings they
  * hold; refused when they aren't settings.
  */
-const readSettingsJson = (repo: string) =>
+export const readSettingsJson = (repo: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const file = join(repo, settingsFile)
@@ -289,6 +296,8 @@ interface SettingsChanges {
   /** --check-fast or --check-full was given: the runner is the check. */
   readonly fastRunnerChecks: boolean
   readonly fullRunnerChecks: boolean
+  /** The files init wrote from tutti's templates now, whose versions the settings record. */
+  readonly fromTemplates: { readonly prompt: boolean; readonly verifier: boolean }
 }
 
 /**
@@ -333,6 +342,14 @@ const writeSettings = (
       const setup = section(checks, "setup")
       set(setup, "command", changes.setup === "" ? null : changes.setup, "checks.setup.command")
     }
+    if (changes.fromTemplates.prompt) {
+      const templates = section(json, "templates")
+      set(templates, "worker_prompt", currentTemplates.worker_prompt, "templates.worker_prompt")
+    }
+    if (changes.fromTemplates.verifier) {
+      const templates = section(json, "templates")
+      set(templates, "verifier", currentTemplates.verifier, "templates.verifier")
+    }
     const file = join(repo, settingsFile)
     const decoded = decodeConfig(Settings, file, json)
     if (Exit.isFailure(decoded)) {
@@ -370,7 +387,8 @@ const writeIfMissing = (repo: string, path: string, text: string, replace = fals
 /**
  * The worker prompt's steps: the built-in template where none is there, or with --force, with
  * `suites`, the lines on how to run each suite on part of the project where init knows the suites
- * ("" where it doesn't); or orchestra's `imported` prompt, then the changes § 4.11 needs in it.
+ * ("" where it doesn't); or orchestra's `imported` prompt, then the changes § 4.11 needs in it. And
+ * whether it wrote the template, whose version the settings then record.
  */
 const writePrompt = (repo: string, force: boolean, imported: string | null, suites: string) =>
   Effect.map(
@@ -380,33 +398,53 @@ const writePrompt = (repo: string, force: boolean, imported: string | null, suit
       imported ?? withSuites(builtInWorkerPrompt, suites),
       force,
     ),
-    (did): ReadonlyArray<Step> =>
-      did === "kept"
-        ? [
-            step(
-              "kept",
-              "worker prompt",
-              `${workerPromptPath} is there; left as it is (--force replaces it with the template)`,
-            ),
-          ]
-        : imported === null
-          ? [
-              step(
-                "done",
-                "worker prompt",
-                `${did} ${workerPromptPath} from the built-in template${suites === "" ? "" : ", with how to run each suite on part of the project"}`,
-                [workerPromptPath],
-              ),
-            ]
-          : [
-              step(
-                "done",
-                "worker prompt",
-                `imported ${orchestraPromptFile} to ${workerPromptPath}, with your changes`,
-                [workerPromptPath],
-              ),
-              ...promptChangeSteps(imported, workerPromptPath),
-            ],
+    (did): { readonly steps: ReadonlyArray<Step>; readonly fromTemplate: boolean } => ({
+      fromTemplate: did !== "kept" && imported === null,
+      steps: promptSteps(did, imported, suites),
+    }),
+  )
+
+/** The worker prompt's steps, as writePrompt `did` it. */
+const promptSteps = (
+  did: "kept" | "wrote" | "replaced",
+  imported: string | null,
+  suites: string,
+): ReadonlyArray<Step> =>
+  did === "kept"
+    ? [
+        step(
+          "kept",
+          "worker prompt",
+          `${workerPromptPath} is there; left as it is (--force replaces it with the template)`,
+        ),
+      ]
+    : imported === null
+      ? [
+          step(
+            "done",
+            "worker prompt",
+            `${did} ${workerPromptPath} from the built-in template${suites === "" ? "" : ", with how to run each suite on part of the project"}`,
+            [workerPromptPath],
+          ),
+        ]
+      : [
+          step(
+            "done",
+            "worker prompt",
+            `imported ${orchestraPromptFile} to ${workerPromptPath}, with your changes`,
+            [workerPromptPath],
+          ),
+          ...promptChangeSteps(imported, workerPromptPath),
+        ]
+
+/**
+ * The caution init gives for each of the project's worker prompt and verifier that is older than
+ * tutti's templates, as the settings will record their versions (`recorded`): the files it keeps,
+ * and an imported prompt, never one it just wrote from the template.
+ */
+const templateSteps = (repo: string, recorded: Templates) =>
+  Effect.map(outdatedTemplates(repo, recorded), (outdated) =>
+    outdated.map((each) => step("caution", "templates", keptNote(each))),
   )
 
 /** The .gitignore's step: written where it is missing. */
@@ -538,6 +576,9 @@ const nextSteps = (repo: string, machine: Machine, steps: ReadonlyArray<Step>) =
     const missing = steps.find((each) => each.kind === "missing")
     if (missing !== undefined) {
       next.push(`Fix what's missing above (${missing.label}: ${missing.detail}).`)
+    }
+    if (steps.some((each) => each.label === "templates")) {
+      next.push("Take the templates' changes with: tutti init --update")
     }
     if (steps.some((each) => each.label === "worker prompt" && each.kind === "caution")) {
       next.push(`Make the changes to ${workerPromptPath} listed above.`)
@@ -812,14 +853,26 @@ export const init = <R>(options: InitOptions<R>) =>
         )
         if (prefix !== null) steps.push(...(yield* applyPrefix(machine, repo, prefix)))
         if (found !== null) steps.push(...importSteps(found, importConsent))
-        steps.push(
-          ...(yield* writePrompt(repo, flags.force, importing ? found.prompt : null, promptSuites)),
+        const prompt = yield* writePrompt(
+          repo,
+          flags.force,
+          importing ? found.prompt : null,
+          promptSuites,
         )
+        steps.push(...prompt.steps)
         steps.push(...(yield* writeRunners(repo, { fast: fastPlan, full: fullPlan })))
         steps.push(...(yield* applySkill(repo, choice, checked.replaceSkill ?? false)))
-        steps.push(
-          ...(yield* applyVerifier(repo, workerPromptPath, verifierConsent, checked.stack ?? [])),
+        const verifier = yield* applyVerifier(
+          repo,
+          workerPromptPath,
+          verifierConsent,
+          checked.stack ?? [],
         )
+        steps.push(...verifier)
+        const fromTemplates = {
+          prompt: prompt.fromTemplate,
+          verifier: verifier.some((each) => each.commit?.includes(verifierPath) === true),
+        }
         const written = yield* writeSettings(repo, existing, {
           concurrent,
           mcp,
@@ -832,8 +885,10 @@ export const init = <R>(options: InitOptions<R>) =>
           ...(setup === undefined ? {} : { setup: setup.trim() }),
           fastRunnerChecks: flags.checkFast !== undefined || fastPlan.suites !== null,
           fullRunnerChecks: flags.checkFull !== undefined || fullPlan.suites !== null,
+          fromTemplates,
         })
         steps.push(written.step)
+        steps.push(...(yield* templateSteps(repo, written.settings.templates)))
         steps.push(
           ...setupSteps({
             command: written.settings.checks.setup.command,

@@ -565,6 +565,17 @@ const runnerSuites = (repo: string, path: string) =>
   })
 
 /**
+ * The verifier init writes now for the project at `repo` built with `stack`: its runners' commands
+ * as they are.
+ */
+export const verifierFor = (repo: string, stack: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const fast = yield* runnerSuites(repo, fastRunner)
+    const full = yield* runnerSuites(repo, fullRunner)
+    return verifierText(stack, fast, full)
+  })
+
+/**
  * Writes the verifier where `consent` adds it, keeping one there, and appends the section that runs
  * it to the worker prompt at `promptPath` where it lacks one. It runs once the prompt and the
  * runners are written. Its step; none where the verifier is neither chosen nor asked about.
@@ -594,10 +605,9 @@ export const applyVerifier = (
     if (yield* fs.exists(file)) {
       did.push(`${verifierPath} is there; left as it is`)
     } else {
-      const fast = yield* runnerSuites(repo, fastRunner)
-      const full = yield* runnerSuites(repo, fullRunner)
+      const text = yield* verifierFor(repo, stack)
       yield* fs.makeDirectory(join(file, ".."), { recursive: true })
-      yield* fs.writeFileString(file, verifierText(stack, fast, full))
+      yield* fs.writeFileString(file, text)
       did.push(`wrote ${verifierPath}`)
       commit.push(verifierPath)
     }

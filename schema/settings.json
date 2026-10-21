@@ -239,6 +239,25 @@
       "additionalProperties": false,
       "default": {}
     },
+    "templates": {
+      "type": "object",
+      "properties": {
+        "worker_prompt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "default": 0
+        },
+        "verifier": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
     "organs": {
       "type": "object",
       "properties": {
