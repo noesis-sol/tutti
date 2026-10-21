@@ -357,7 +357,7 @@ for a project that sets them all; the table below gives each one's default:
   "workers": {
     "mcp_servers": ["postgres"],
     "permission_mode": "auto",
-    "effort": null,
+    "effort": "high",
     "model": null,
     "ticket_limit": "2h",
     "ask_user_question": true
@@ -384,7 +384,7 @@ for a project that sets them all; the table below gives each one's default:
 | `checks.setup.files` | lockfiles and manifests | the files (globs) whose change has the setup run |
 | `workers.mcp_servers` | `[]` | the MCP servers workers get, by name: none by default; [MCP servers](workers.md#mcp-servers) |
 | `workers.permission_mode` | `"auto"` | `auto`, `default` or `acceptEdits`; [Permissions](workers.md#permissions) |
-| `workers.effort` | Claude Code's | `low`, `medium`, `high`, `xhigh` or `max`; `--worker-effort` for a run |
+| `workers.effort` | `"high"` | `low`, `medium`, `high`, `xhigh` or `max`, or `null` for Claude Code's; `--worker-effort` for a run; the feature interview's too |
 | `workers.model` | Claude Code's | `--worker-model` for a run |
 | `workers.ticket_limit` | none | how long a worker may go on after dispatch before the run holds; `--ticket-limit` for a run |
 | `workers.ask_user_question` | `true` | whether workers may ask you quick questions; [Attention requests](workers.md#attention-requests) |

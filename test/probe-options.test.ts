@@ -66,7 +66,7 @@ describe("probeOptions", () => {
   })
 
   test("it has no prompt, session, callbacks, hooks or MCP servers of a worker's", () => {
-    const options = probeFor()
+    const options = probeFor(configWith({ effort: null }))
     for (const key of [
       "systemPrompt",
       "sessionId",

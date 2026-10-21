@@ -99,7 +99,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `--yes` | with `--feature`, file the plan without asking |
 | `--limit N` | the most tickets this run starts (default: no limit) |
 | `--ticket-limit 2h` | hold the run when a worker is still going this long after dispatch; `0` for none |
-| `--worker-effort <level>` | the effort workers start at: `low`, `medium`, `high`, `xhigh` or `max` |
+| `--worker-effort <level>` | the effort workers and the feature interview start at: `low`, `medium`, `high` (default), `xhigh` or `max` |
 | `--worker-model <model>` | the model workers run |
 | `--organ-model <model>`, `--organ-effort <level>` | every organ's model and effort ([Organs](organs.md)) |
 | `--triage=false`, `--review=false` | no triage; no run report |

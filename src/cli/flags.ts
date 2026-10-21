@@ -161,7 +161,7 @@ export const runFlags = {
   }),
   workerEffort: runFlag("worker-effort", oneOf(efforts), {
     metavar: "level",
-    description: `the effort workers start at: ${efforts.join(", ")} (default: .tutti/settings.json, else Claude Code's)`,
+    description: `the effort workers start at: ${efforts.join(", ")} (default: .tutti/settings.json, else high)`,
   }),
   workerModel: runFlag("worker-model", text("a model"), {
     metavar: "model",

@@ -114,8 +114,8 @@ export const Settings = Schema.Struct({
     /** The MCP servers workers get, by name; none by default (§ 15, Q5). */
     mcp_servers: Schema.Array(Text).pipe(withDefault([])),
     permission_mode: choice(permissionModes, unsuitedModes).pipe(withDefault("auto")),
-    /** null: Claude Code's own default. */
-    effort: Effort.pipe(withDefault(null)),
+    /** high by default, as orchestra's; null: Claude Code's own default. */
+    effort: Effort.pipe(withDefault("high")),
     /** null: Claude Code's own default. */
     model: Schema.NullOr(Text).pipe(withDefault(null)),
     /** How long a ticket's worker may go on, from dispatch; null: no limit. */

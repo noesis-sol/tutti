@@ -148,7 +148,7 @@ describe("workerOptions", () => {
   })
 
   test("Claude Code's defaults are left to it: no model, effort or executable when unset", () => {
-    const options = optionsFor({ _tag: "New", sessionId: "s" })
+    const options = optionsFor({ _tag: "New", sessionId: "s" }, configWith({ effort: null }))
     expect("model" in options).toBe(false)
     expect("effort" in options).toBe(false)
     expect("pathToClaudeCodeExecutable" in options).toBe(false)

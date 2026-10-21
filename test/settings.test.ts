@@ -122,7 +122,7 @@ describe("settings", () => {
     workers: {
       mcp_servers: [],
       permission_mode: "auto",
-      effort: null,
+      effort: "high",
       model: null,
       ticket_limit: null,
       ask_user_question: true,

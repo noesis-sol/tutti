@@ -23,8 +23,9 @@ Each worker runs:
   ReportFindings, ScheduleWakeup, SendFeedback and Workflow, and Skill unless the project has skills
   of its own;
 - with the model and effort of `workers.model` and `workers.effort` in the settings, or
-  `--worker-model` and `--worker-effort` (`low`, `medium`, `high`, `xhigh` or `max`) for a run;
-  Claude Code's own defaults otherwise;
+  `--worker-model` and `--worker-effort` (`low`, `medium`, `high`, `xhigh` or `max`) for a run:
+  Claude Code's own model otherwise, and effort `high` unless `workers.effort` is `null`, which
+  leaves it to Claude Code. The feature interview starts at the same effort;
 - with your environment, less `ANTHROPIC_API_KEY` on a subscription login (see
   [Login and billing](setup.md#login-and-billing)).
 

@@ -1480,6 +1480,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
 
 - `checks.own.command` is orchestra's `check_own`: a worker's check of its own change, such as `scripts/check-own.sh`, which the note on running a check once names in place of the merge check (§4.11). tutti never runs it; its files count as no ticket's in footprints, as the other checks' do. None by default.
 - `workers.mcp_servers` absent means no servers, unlike orchestra (§15, Q5).
+- `workers.effort` absent means `high`, as orchestra's (orchestra-jvi4), for workers, the login probe and the feature interview; `null` leaves the effort to Claude Code.
 - `workers.permission_mode` is `auto` (default), `default` or `acceptEdits`; anything else is a setup problem.
 - `ui.colour_scheme` is the project's default colour scheme (§7.11). Your user config's choice wins over it. A scheme that can't be used falls back to `orchestra` with a warning, never a setup problem.
 
