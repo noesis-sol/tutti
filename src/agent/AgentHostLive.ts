@@ -149,9 +149,14 @@ const capabilitiesOf = (value: unknown): ReadonlyArray<string> => {
   return Array.isArray(listed) ? listed.filter((c) => typeof c === "string") : []
 }
 
-/** Whether `child` has exited. */
+/**
+ * Whether `child` has exited, or never started: a spawn that failed has no PID, and its process,
+ * which never ran, never exits.
+ */
 const exited = (child: SpawnedProcess): boolean =>
-  child.exitCode !== null || (child.signalCode ?? null) !== null
+  (child as { pid?: unknown }).pid === undefined ||
+  child.exitCode !== null ||
+  (child.signalCode ?? null) !== null
 
 /** Kills `child`'s process group (it leads one, § 3.2); never a missing or bad PID. */
 const killGroup = (child: SpawnedProcess) =>

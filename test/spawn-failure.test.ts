@@ -1,8 +1,9 @@
 // Sessions that can't start (§ 4.8), outside the live tests: AgentHost's live layer, over the Agent
 // SDK, with no real Claude Code. A Claude Code whose spawn fails is AgentStartFailed with the reason
 // `Claude Code couldn't be launched`, not the SDK's libc wording, and its worker Gone with the same
-// reason; a session whose folder isn't there
-// is AgentStartFailed with `its folder isn't there: <path>`, Claude Code never spawned. Through the
+// reason, and closing the host doesn't wait out closeLimit for the process that never started; a
+// session whose folder isn't there is AgentStartFailed with `its folder isn't there: <path>`,
+// Claude Code never spawned. Through the
 // run's start and resume, the first sets the ticket aside (START_FAILED) and the second fails the
 // resume with the folder's reason.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
@@ -10,7 +11,7 @@ import { chmodSync, existsSync, mkdtempSync, realpathSync, writeFileSync } from 
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Deferred, Effect, Exit, Fiber, Layer } from "effect"
+import { Effect, Exit, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
@@ -61,26 +62,23 @@ const hostOptions = (log: string) => ({
   env: { ...process.env, FAKE_CLAUDE_SCENARIO: JSON.stringify({ log }) },
 })
 
+/** How long, in real time, a test's host may take to close. */
+const promptly = 5_000
+
 /**
- * Runs `work`, which closes a live host's scope as it ends, under TestClock: once `work` has
- * called the `worked` it is given, the clock moves on until it ends. A session whose spawn failed
- * has no process to see exit, so closing it waits out closeLimit.
+ * `run`, which must end within `promptly`. Under TestClock time moves only when a test moves it,
+ * so a close that waited out closeLimit for a Claude Code that never started would never end.
  */
-const closing = <A, E, R>(
-  work: (worked: Effect.Effect<void>) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> =>
-  Effect.gen(function* () {
-    const done = yield* Deferred.make<void>()
-    const fiber = yield* Effect.forkChild(work(Deferred.succeed(done, undefined)))
-    yield* Effect.raceFirst(Deferred.await(done), Fiber.await(fiber))
-    const ticking = Effect.forever(
-      Effect.andThen(
-        TestClock.adjust("1 second"),
-        Effect.promise(() => Bun.sleep(1)),
-      ),
+const closesPromptly = <A>(run: Promise<A>): Promise<A> => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`the host didn't close within ${promptly} ms`)),
+      promptly,
     )
-    return yield* Effect.raceFirst(Fiber.join(fiber), ticking)
   })
+  return Promise.race([run, late]).finally(() => clearTimeout(timer))
+}
 
 /** Runs `effect` with the live host, its Claude Code `claude`, in a fresh folder, under TestClock. */
 const withHost = <A, E>(
@@ -100,10 +98,10 @@ const withHost = <A, E>(
       ),
     ),
   )
-  return Effect.runPromise(
-    closing((worked) =>
-      Effect.tap(effect({ dir, log }), () => worked).pipe(Effect.provide(host)),
-    ).pipe(Effect.provide(TestClock.layer())),
+  return closesPromptly(
+    Effect.runPromise(
+      effect({ dir, log }).pipe(Effect.provide(host), Effect.provide(TestClock.layer())),
+    ),
   )
 }
 
@@ -137,22 +135,37 @@ describe("a failed spawn", () => {
     expect(state).toEqual({ _tag: "Gone", why: launchFailed })
   })
 
+  test("closing the host doesn't wait out closeLimit for a Claude Code that never started", async () => {
+    const claude = unlaunchable()
+    const began = Date.now()
+    const exit = await withHost(claude, ({ dir }) =>
+      Effect.gen(function* () {
+        const host = yield* AgentHost
+        return yield* Effect.exit(
+          host.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir }),
+        )
+      }),
+    )
+    expect(startFailedOf(exit)).toMatchObject({ reason: launchFailed })
+    // withHost runs under TestClock, which no one moves: a close waiting out closeLimit never ends.
+    expect(Date.now() - began).toBeLessThan(promptly)
+  })
+
   test("the run's start sets the ticket aside: START_FAILED, its worker didn't start: Claude Code couldn't be launched", async () => {
     const root = folder("worktrees")
     const claude = unlaunchable()
-    const ran = await scenario(
-      {
-        config: { claude },
-        backlog: backlog().ticket("t-1", { title: "One ticket" }).seeds,
-        worktrees: { root },
-      },
-      closing((worked) =>
+    const ran = await closesPromptly(
+      scenario(
+        {
+          config: { claude },
+          backlog: backlog().ticket("t-1", { title: "One ticket" }).seeds,
+          worktrees: { root },
+        },
         Effect.gen(function* () {
           const ledger = yield* Ledger
           yield* ledger.transition("t-1", Cause.Ready(), { title: "One ticket" })
           yield* ledger.transition("t-1", Cause.Dispatched())
           const started = yield* start({ id: "t-1", title: "One ticket", metadata: {} }, "main")
-          yield* worked
           return {
             started,
             phase: (yield* ledger.current).tickets.get("t-1")?.phase,
