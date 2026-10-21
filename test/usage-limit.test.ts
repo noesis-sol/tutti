@@ -2,7 +2,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { Duration, Effect, Fiber, Layer, SubscriptionRef } from "effect"
+import { Deferred, Duration, Effect, Exit, Fiber, Layer, SubscriptionRef } from "effect"
 import { rateLimitOf, UsageLimits } from "../src/agent/UsageLimits.ts"
 import { OrganHold } from "../src/organs/Organs.ts"
 import { line } from "../src/run/log.ts"
@@ -27,6 +27,7 @@ import {
   result,
   type Sent,
   type SessionScript,
+  run as step,
   turn,
   wait,
 } from "../src/testing/AgentHost.ts"
@@ -83,10 +84,21 @@ const finishes = (world: World, root: string, id: string): SessionScript =>
     close: Effect.asVoid(Effect.orDie(world.beads.close(id, "done"))),
   })
 
-/** Hits the limit resetting at `at` (seconds), then carries on when told to and finishes. */
-const limitedThenFinishes = (world: World, root: string, id: string, at: number) => [
-  [...hitsUsageLimit(at), ...finishes(world, root, id)],
-]
+/**
+ * Hits the limit resetting at `at` (seconds), then carries on when told to and finishes; `first`
+ * runs as its turn starts, before the limit.
+ */
+const limitedThenFinishes = (
+  world: World,
+  root: string,
+  id: string,
+  at: number,
+  first: SessionScript = [],
+) => {
+  // After its wait for the prompt, which starts the turn.
+  const limited = hitsUsageLimit(at)
+  return [[...limited.slice(0, 1), ...first, ...limited.slice(1), ...finishes(world, root, id)]]
+}
 
 /** Waits, in real time, until a log line matches `pattern`. */
 const untilLogged = (pattern: RegExp) =>
@@ -228,11 +240,17 @@ describe("the usage-limit hold", () => {
     const ran = await runs({
       tickets: ["t-1", "t-2", "t-3"],
       concurrent: 2,
-      scripts: (world, root) => ({
-        "t-1": limitedThenFinishes(world, root, "t-1", hour),
-        "t-2": limitedThenFinishes(world, root, "t-2", hour),
-        "t-3": [finishes(world, root, "t-3")],
-      }),
+      scripts: (world, root) => {
+        const started = Deferred.makeUnsafe<void>()
+        return {
+          // t-1 hits the limit once t-2 has started, so that both are dispatched before the hold.
+          "t-1": limitedThenFinishes(world, root, "t-1", hour, [step(Deferred.await(started))]),
+          "t-2": limitedThenFinishes(world, root, "t-2", hour, [
+            step(Effect.asVoid(Deferred.done(started, Exit.void))),
+          ]),
+          "t-3": [finishes(world, root, "t-3")],
+        }
+      },
       during: (view) =>
         Effect.gen(function* () {
           yield* untilLogged(/^USAGE_LIMIT: nothing else runs/)

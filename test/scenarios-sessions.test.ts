@@ -641,23 +641,37 @@ describe("a worker gone", () => {
 describe("the end of a run while a worker waits on you (D19)", () => {
   test("q suspends it; the next run resumes it, asks again, and it merges", async () => {
     let answering = false
+    const asleep = new Set<string>()
     const ran = await runs({
       backlog: backlog().ticket("a").ticket("b").seeds,
       worktrees: ["a", "b"],
       policy: (request) => (answering ? allowAll(request) : undefined),
       scripts: (world, places) => ({
+        // a asks once b is dispatched, so that both are dispatched before its request.
         a: [
-          finishes(world, places, "a", [...commands(world, places, "a").claim, rm]),
+          finishes(world, places, "a", [
+            ...commands(world, places, "a").claim,
+            step(untilClaimed(world, "b")),
+            rm,
+          ]),
           finishes(world, places, "a", [rm, ...bash("rm -rf build")]),
         ],
         b: [
-          finishes(world, places, "b", [...commands(world, places, "b").claim, sleep("1 minute")]),
+          finishes(world, places, "b", [
+            ...commands(world, places, "b").claim,
+            sleepsAs(asleep, "b", "1 minute"),
+          ]),
         ],
       }),
       first: {
         dashboard: true,
         during: ({ command, ended }) =>
           Effect.gen(function* () {
+            // Moved before b sleeps, the clock would never wake it.
+            yield* until(
+              "b to sleep",
+              Effect.sync(() => asleep.has("b")),
+            )
             yield* passes("2 minutes")
             yield* until(
               "b to merge",
