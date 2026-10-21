@@ -16,7 +16,7 @@ import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { init, result, type SessionScript, sessionState, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
-import { type Files, Repository } from "../src/testing/Git.ts"
+import { Repository } from "../src/testing/Git.ts"
 import { backlog, type Env, expectLog, type Ran, type Setup, scenario } from "./harness.ts"
 
 const options = { repo: "/repo", base: "main" }
