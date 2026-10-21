@@ -5,7 +5,10 @@
 // a ticket with commits on its branch is footprinted from what the branch changes, as a run does,
 // and the files git merges by union link nothing.
 // Without --apply the proposal is only printed; with it each link is added with bd dep add, after a
-// warning when a run holds the repository's lock.
+// warning when a run holds the repository's lock. A stop (Ctrl+C, SIGTERM: an interruption) as it
+// reads says it changed nothing, and one during --apply stops it between two links, saying which it
+// added and which not: the link under way is added whole, its bd uninterruptible and, as exec starts
+// every command, in a process group of its own, out of the terminal's Ctrl+C. runMain exits 130.
 import { Console, Effect, type FileSystem } from "effect"
 import type { ConfigFileInvalid } from "../project/configFile.ts"
 import { checkCommands, readSettings } from "../project/settings.ts"
@@ -190,6 +193,22 @@ export const plural = (n: number, noun: string): string => (n === 1 ? `1 ${noun}
 export const linkLine = (link: Link, priorities: ReadonlyMap<string, number>): string =>
   `  ${link.blocked} (P${priorities.get(link.blocked) ?? 9}) waits for ${link.blocker} (P${priorities.get(link.blocker) ?? 9}): both touch ${link.why}`
 
+/** A link as a stop names it: `<blocked> waits for <blocker>`. */
+const waits = (link: Link): string => `${link.blocked} waits for ${link.blocker}`
+
+/** What plan says on stderr when stopped before it proposed a link. */
+export const stoppedReadingLine = "tutti plan: stopped before proposing any link; nothing changed."
+
+/**
+ * What plan --apply says on stderr when stopped between two links: `tutti plan: stopped. Added 1 of
+ * 3 links: t-2 waits for t-1. Not added: t-3 waits for t-1, t-4 waits for t-3.`
+ */
+export const stoppedLine = (added: ReadonlyArray<Link>, notAdded: ReadonlyArray<Link>): string => {
+  const total = plural(added.length + notAdded.length, "link")
+  const named = added.length > 0 ? `: ${added.map(waits).join(", ")}` : ""
+  return `tutti plan: stopped. Added ${added.length} of ${total}${named}. Not added: ${notAdded.map(waits).join(", ")}.`
+}
+
 const settingsProblem = (error: ConfigFileInvalid): string =>
   error.problems
     .map((problem) =>
@@ -251,14 +270,16 @@ const warnOfRun = (repo: string): Effect.Effect<void, never, Git | RunLock> =>
   }).pipe(Effect.ignore)
 
 /**
- * Proposes the links between the open tickets of the project at repo, on stdout, and adds them with
- * apply, warning first when a run holds the lock. Fails with what went wrong, said on stderr:
- * settings that can't be read, bd failing to list the tickets, or a link bd didn't add.
+ * The open tickets of the project at repo that a run takes, and the links between them planLinks
+ * proposes. Fails with what went wrong: settings that can't be read, or bd failing to list them.
  */
-export const plan = (
+const proposal = (
   repo: string,
-  apply: boolean,
-): Effect.Effect<void, string, Beads | Git | RunLock | FileSystem.FileSystem> =>
+): Effect.Effect<
+  { readonly open: ReadonlyArray<Issue>; readonly links: ReadonlyArray<Link> },
+  string,
+  Beads | Git | FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const settings = yield* readSettings(repo).pipe(Effect.mapError(settingsProblem))
@@ -291,6 +312,25 @@ export const plan = (
       (file) => sources.get(file),
       branches,
     )
+    return { open, links }
+  })
+
+/**
+ * Proposes the links between the open tickets of the project at repo, on stdout, and adds them with
+ * apply, warning first when a run holds the lock. Fails with what went wrong, said on stderr:
+ * settings that can't be read, bd failing to list the tickets, or a link bd didn't add. Interrupted
+ * (a stop), it says on stderr that it changed nothing, before it proposes a link, or, as it adds
+ * them, which links it added and which not; the link under way is added whole.
+ */
+export const plan = (
+  repo: string,
+  apply: boolean,
+): Effect.Effect<void, string, Beads | Git | RunLock | FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const beads = yield* Beads
+    const { open, links } = yield* proposal(repo).pipe(
+      Effect.onInterrupt(() => Console.error(stoppedReadingLine)),
+    )
     if (links.length === 0) {
       return yield* Console.log(
         `No links to add: no two of the ${plural(open.length, "open ticket")} touch the same code without being ordered already.`,
@@ -301,19 +341,34 @@ export const plan = (
     yield* Console.log(
       `${apply ? "Adding" : "Proposed"} ${plural(links.length, "blocks link")} between the ${plural(open.length, "open ticket")}:`,
     )
-    let failed = 0
-    for (const link of links) {
-      yield* Console.log(linkLine(link, priorities))
-      if (!apply) continue
-      const added = yield* Effect.result(beads.addDependency(link.blocked, link.blocker))
-      if (added._tag === "Failure") {
-        failed++
-        yield* Console.error(
-          `tutti plan: bd dep add ${link.blocked} ${link.blocker}: ${beadsProblem(added.failure)}`,
-        )
-      }
+    if (!apply) {
+      for (const link of links) yield* Console.log(linkLine(link, priorities))
+      return yield* Console.log("Nothing changed. Add them with: tutti plan --apply")
     }
-    if (!apply) return yield* Console.log("Nothing changed. Add them with: tutti plan --apply")
+    const added: Array<Link> = []
+    const notAdded: Array<Link> = []
+    // Each link is said and added whole; a stop comes between two.
+    const add = (link: Link) =>
+      Effect.gen(function* () {
+        yield* Console.log(linkLine(link, priorities))
+        const result = yield* Effect.result(beads.addDependency(link.blocked, link.blocker))
+        if (result._tag === "Success") {
+          added.push(link)
+          return
+        }
+        notAdded.push(link)
+        yield* Console.error(
+          `tutti plan: bd dep add ${link.blocked} ${link.blocker}: ${beadsProblem(result.failure)}`,
+        )
+      }).pipe(Effect.uninterruptible)
+    yield* Effect.forEach(links, add, { discard: true }).pipe(
+      Effect.onInterrupt(() =>
+        Console.error(
+          stoppedLine(added, [...notAdded, ...links.slice(added.length + notAdded.length)]),
+        ),
+      ),
+    )
+    const failed = notAdded.length
     if (failed === 0) return yield* Console.log(`Added ${plural(links.length, "link")}.`)
     yield* Console.log(`Added ${links.length - failed} of ${plural(links.length, "link")}.`)
     return yield* Effect.fail(`bd didn't add ${plural(failed, "link")}`)

@@ -1419,7 +1419,7 @@ Carried over too, and not part of any scheme:
 |---|---|
 | `tutti` | a run (§5) |
 | `tutti init` | sets the project up (§8.3) |
-| `tutti plan [--apply]` | proposes blocks links between open tickets that touch the same code, as `orchestra plan` does |
+| `tutti plan [--apply]` | proposes blocks links between open tickets that touch the same code, as `orchestra plan` does; a stop (Ctrl+C, SIGTERM) during `--apply` comes between two links, says which it added and which not, exit 130 |
 | `tutti answer [<request-id> <answer> …] [--json]` | lists or answers open attention requests (§4.5, D20) |
 | `tutti login` | runs the embedded Claude Code's `auth login`, the claude.ai login (§4.13) |
 | `tutti colours [<name>]` | previews and checks a colour scheme, the one in use by default (§7.11) |
@@ -1906,7 +1906,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | a ticket coming to an end not shown twice, in Current and the table | Done (tutti-kkb.30): one projection gives both, the table leaving out every ticket with a card |
 | | git failing told from git saying no: dependents wait while git can't tell; `WORKTREE_FAILED`, `GIT_FAILED` | Done (tutti-kkb.3) for the dependents; the rest already so: git's errors are typed, never read as an answer, and stop the run with `GIT_FAILED` or `WORKTREE_FAILED` (`src/run/run.ts`) |
 | | a check that fails as a hold comes up isn't handed back | Already so: a check hand-back reads the holds as it decides (`src/run/checkback.ts`) |
-| | Ctrl+C during `plan --apply` says which links it added, exit 130 | Planned (tutti-kkb.43) |
+| | Ctrl+C during `plan --apply` says which links it added, exit 130 | Done (tutti-kkb.43): the link under way is added whole (`src/plan/plan.ts`) |
 | 0.9.1 | the `requires` list: checked and installed at each run's start, `REQUIREMENTS_MISSING`, `orchestra requires`, the README's section from it, workers told of it | Planned (tutti-kkb.27) |
 | | a spec's environment ticket writes the `requires` list | Planned (tutti-kkb.28) |
 | | no to-do checklist in the worker prompt | Planned (tutti-kkb.12) |
