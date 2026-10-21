@@ -24,6 +24,7 @@ import {
   result,
   type SessionScript,
   sleep,
+  run as step,
   turn,
   wait,
 } from "../src/testing/AgentHost.ts"
@@ -184,6 +185,18 @@ const untilLogged = (pattern: RegExp) =>
     }
     throw new Error(`no log line matched ${pattern}:\n${(yield* texts).join("\n")}`)
   })
+
+/** Waits, in real time, until `id`'s worker has claimed it: the run has dispatched it. */
+const untilClaimed = (world: World, id: string) =>
+  Effect.orDie(
+    Effect.gen(function* () {
+      for (let i = 0; i < 2000; i++) {
+        if ((yield* world.beads.show(id)).status === "in_progress") return
+        yield* Effect.promise(() => Bun.sleep(2))
+      }
+      throw new Error(`${id} was never claimed`)
+    }),
+  )
 
 /** Moves TestClock on by `total`, a minute at a time, letting the run catch up after each. */
 const passes = (total: Duration.Input) =>
@@ -492,7 +505,13 @@ describe("the base moving on", () => {
       tickets: ["a", "b", "c"],
       settings: () => ({ concurrent: 3 }),
       scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: { "shared.txt": "a\n" } })],
+        // a finishes once c is dispatched, so that all three are dispatched before any closes.
+        a: [
+          works(world, places, "a", {
+            files: { "shared.txt": "a\n" },
+            first: [step(untilClaimed(world, "c"))],
+          }),
+        ],
         b: [
           [
             ...works(world, places, "b", { files: { "shared.txt": "b\n" }, takes: "1 minute" }),
@@ -501,7 +520,12 @@ describe("the base moving on", () => {
         ],
         c: [works(world, places, "c", { takes: "3 minutes" })],
       }),
-      during: () => passes("8 minutes"),
+      // The clock starts once a has landed, so that b conflicts with it at 1m.
+      during: () =>
+        Effect.gen(function* () {
+          yield* untilLogged(closedLine("a"))
+          yield* passes("8 minutes")
+        }),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", c: "Done" })
