@@ -139,6 +139,8 @@ export const dropNothingDone = (worktree: {
     const why =
       removed.failure._tag === "BadTicketId" ? removed.failure.why : gitWhy(removed.failure)
     const text = log.detail`${log.Tag.cleanupFailed} for ${path} / ${branch}: ${why}`
-    yield* (yield* EventStream).emit({ kind: "warn", ticket: id, text })
-    yield* (yield* Log).write(text)
+    yield* (yield* Log).writeWith(
+      [text],
+      (yield* EventStream).emit({ kind: "warn", ticket: id, text }),
+    )
   })
