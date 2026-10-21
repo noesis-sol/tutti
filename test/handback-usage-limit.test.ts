@@ -490,6 +490,7 @@ describe("a hand-back past resolve_timeout", () => {
       "  b's worker was stopped and told its hand-back is over",
       /^ {2}CHECKS_FAILED: /,
     ])
+    expect(interrupted(ran)).toBe(true)
     const [, over] = composed(ran)
     expect(over).toContain(", where the check failed, and sets b aside for review.")
     expect(over).toContain(
