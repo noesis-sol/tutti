@@ -394,6 +394,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const overLimit = yield* Ref.make<ReadonlySet<string>>(new Set())
     // Set once the run ends, so that nothing starts after it.
     const ending = yield* Ref.make(false)
+    // The screen's commands that act on the run act one at a time under `acting`, each counted in
+    // `acted`; the run's end is set under it too, once its last look saw every command acted on, so
+    // that none acts after the end (a hand-back merged, a worker steered, after the summary).
+    const acting = yield* Semaphore.make(1)
+    const acted = yield* Ref.make(0)
     // Wakes the run to look again: a merge, a stop, a drain request, the ready poll.
     const wake = yield* Queue.sliding<void>(1)
     const wakeUp = Queue.offer(wake, undefined)
@@ -658,8 +663,42 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // The screen's commands, each resolved against the ledger and the open requests as it is taken:
     // one that no longer names anything (the worker finished, the request was answered) is dropped.
     // The end-of-run box's `q` (EndRun) ends the run. Quit without `now` is the quit box's to ask.
-    // Steering's commands (SendMessage, Interrupt, Release, HandBackNow) go to steer.ts.
+    // Steering's commands (SendMessage, Interrupt, Release, HandBackNow) go to steer.ts. Once the
+    // run ends, only moving between the views and quitting act: the others are dropped.
     if (screen !== null) {
+      // A command that acts on the run, once resolved.
+      const act = (command: UiCommand) =>
+        Effect.gen(function* () {
+          switch (command._tag) {
+            case "OpenWorker":
+            case "CloseWorker":
+            case "Quit":
+              return
+            case "Answer":
+              return yield* attention
+                .answer(command.requestId, command.answer, "screen")
+                .pipe(Effect.catch((error) => Effect.logDebug(`dropped Answer: ${error.message}`)))
+            case "Drain":
+            case "Undrain":
+              yield* hear({ on: command._tag === "Drain", how: fromDashboard.how })
+              return yield* wakeUp
+            case "EndRun":
+              yield* Ref.set(endAsked, true)
+              return yield* wakeUp
+            case "SendMessage":
+              return yield* sendMessage(command.ticket, command.text, command.uuid)
+            case "Interrupt":
+              return yield* interrupt(command.ticket)
+            case "Release":
+              if (yield* releaseAndHandOver(command.ticket, queue, { repo: config.repo, base })) {
+                yield* wakeUp
+              }
+              return
+            case "HandBackNow":
+              yield* handBackNow(command.ticket, queue, { repo: config.repo, base })
+              return yield* wakeUp
+          }
+        })
       const take = (command: UiCommand) =>
         Effect.gen(function* () {
           const resolved = resolve(command, {
@@ -678,33 +717,20 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
               )
             case "CloseWorker":
               return yield* SubscriptionRef.set(screen.screen, Screen.Dashboard())
-            case "Answer":
-              return yield* attention
-                .answer(command.requestId, command.answer, "screen")
-                .pipe(Effect.catch((error) => Effect.logDebug(`dropped Answer: ${error.message}`)))
-            case "Drain":
-            case "Undrain":
-              yield* hear({ on: command._tag === "Drain", how: fromDashboard.how })
-              return yield* wakeUp
             case "Quit":
               if (command.now) yield* hearQuit(fromDashboard)
               return
-            case "EndRun":
-              yield* Ref.set(endAsked, true)
-              return yield* wakeUp
-            case "SendMessage":
-              return yield* sendMessage(command.ticket, command.text, command.uuid)
-            case "Interrupt":
-              return yield* interrupt(command.ticket)
-            case "Release":
-              if (yield* releaseAndHandOver(command.ticket, queue, { repo: config.repo, base })) {
-                yield* wakeUp
-              }
-              return
-            case "HandBackNow":
-              yield* handBackNow(command.ticket, queue, { repo: config.repo, base })
-              return yield* wakeUp
           }
+          yield* acting.withPermits(1)(
+            Effect.gen(function* () {
+              if (yield* Ref.get(ending)) {
+                yield* Effect.logDebug(`dropped ${command._tag}: the run has ended`)
+                return
+              }
+              yield* act(command)
+              yield* Ref.update(acted, (n) => n + 1)
+            }),
+          )
         })
       yield* watch(Effect.forever(Effect.flatMap(Queue.take(screen.commands), take)))
     }
@@ -842,38 +868,59 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // instead, unless a stop ends it anyway; it ends USAGE_LIMIT when it can't wait for it: whether
     // it does. With everything else done and workers waiting on you (D19), a dashboard shows the
     // end-of-run box and waits, until they are answered or the box's `q` ends the run; plain, the
-    // run waits only until a stop holds it.
+    // run waits only until a stop holds it. Gives whether the usage limit ends it, and the count of
+    // the screen's commands acted on before its last look.
     const settle = Effect.gen(function* () {
       for (;;) {
+        const seen = yield* Ref.get(acted)
         const { done, waiting } = yield* nothingLeft
         const limit = yield* usage.look(yield* limitedOnly)
         if (limit !== null) {
           yield* scheduler.interrupt
           yield* stopped(limit)
-          return true
+          return { limited: true, seen }
         }
         const held = (yield* Ref.get(stops)).first !== null
         const boxed = done && waiting.length > 0 && screen !== null
         yield* showEndOfRun(boxed ? waiting : null)
         const endNow = yield* Ref.getAndSet(endAsked, false)
         if (done) {
-          if (waiting.length === 0 && (held || !(yield* usage.held))) return false
-          if (waiting.length > 0 && (screen === null ? held : endNow)) return false
+          if (waiting.length === 0 && (held || !(yield* usage.held)))
+            return { limited: false, seen }
+          if (waiting.length > 0 && (screen === null ? held : endNow))
+            return { limited: false, seen }
         }
         yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
       }
     })
-    // Nothing left: a hold for the environment probes the machine, and goes on or ends the run.
+    // The run ends, with nothing acting after it, unless one of the screen's commands acted since
+    // the look that saw `seen` of them (the usage limit's end, null, doesn't look again).
+    const endAfter = (seen: number | null) =>
+      acting.withPermits(1)(
+        Effect.gen(function* () {
+          if (seen !== null && (yield* Ref.get(acted)) !== seen) return false
+          yield* Ref.set(ending, true)
+          return true
+        }),
+      )
+    // Nothing left: a hold for the environment probes the machine, and goes on or ends the run. A
+    // command acted on meanwhile (a hand-back handed over, an answer) has the run look again.
     const loop = Effect.gen(function* () {
       for (;;) {
-        if (yield* settle) break
-        const probed = yield* environment.probe(yield* Ref.get(stops))
-        if (probed._tag === "Ends") break
-        if (probed._tag === "Failed") {
-          yield* updateStops((all) => ({ ...all, first: probed.stop }))
+        const { limited, seen } = yield* settle
+        if (limited) {
+          yield* endAfter(null)
           break
         }
-        yield* updateStops(() => noStops)
+        const probed = yield* environment.probe(yield* Ref.get(stops))
+        if (probed._tag === "Resumed") {
+          yield* updateStops(() => noStops)
+          continue
+        }
+        if (probed._tag === "Failed") {
+          yield* updateStops((all) => ({ ...all, first: probed.stop }))
+        }
+        if (yield* endAfter(seen)) break
       }
     })
 
@@ -925,6 +972,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       ),
     )
     const quit = yield* Effect.raceFirst(guardedLoop, Deferred.await(quitting))
+    // The loop's end set it already, under `acting`; a quit sets it at once, without waiting for a
+    // command acting now: quitting holds the merges and interrupts the workers.
     yield* Ref.set(ending, true)
     yield* showEndOfRun(null)
     if (quit !== null) yield* quitNow(quit)
