@@ -1893,7 +1893,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | a ticket set aside and merged by hand mid-run found as the base moves; a drain names the tickets it keeps from their recheck; a dropped carried-over ticket's worktree and branch removed | Planned (tutti-kkb.20) |
 | | a conflict hand-back told to run the setup when its rebase brought in a setup file's change | Done (tutti-kkb.4) |
 | | a hand-back at the limit or past its time limit takes a finished result from git, else stops its worker and says so | Planned (tutti-kkb.2) |
-| | the failure lines of jest, vitest, node, pytest, cargo, mocha and TAP | Planned (tutti-kkb.21) |
+| | the failure lines of jest, vitest, node, pytest, cargo, mocha and TAP | Done (tutti-kkb.21) |
 | | a ticket coming to an end not shown twice, in Current and the table | Planned (tutti-kkb.30) |
 | | git failing told from git saying no: dependents wait while git can't tell; `WORKTREE_FAILED`, `GIT_FAILED` | Done (tutti-kkb.3) for the dependents; the rest already so: git's errors are typed, never read as an answer, and stop the run with `GIT_FAILED` or `WORKTREE_FAILED` (`src/run/run.ts`) |
 | | a check that fails as a hold comes up isn't handed back | Already so: a check hand-back reads the holds as it decides (`src/run/checkback.ts`) |

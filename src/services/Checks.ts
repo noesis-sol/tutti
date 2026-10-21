@@ -4,8 +4,9 @@
 // a descriptor the caller opened for it through the symlink guard; in
 // memory, only what is said of it is kept, each part bounded, as orchestra keeps it: its last lines,
 // the lines that say what failed, its FLAKY: lines and the suites its SUITE: lines name. The lines
-// that say what failed are picked as orchestra picks them, for Go's tools and generic errors, and
-// also for bun test, tsc and Biome, the tools of a TypeScript project such as tutti's own. A check
+// that say what failed are picked as orchestra picks them, for Go's tools, generic errors and the
+// test runners of other languages (bun, jest, vitest, node, pytest, cargo, mocha and TAP), and also
+// for tsc and Biome, the tools of a TypeScript project such as tutti's own. A check
 // that loops printing until its time limit holds no more of tutti's memory than one that prints a
 // page. Interrupting a check kills its process group, and no result comes of it (§ 3.4).
 import { Context, Duration, Effect, type FileSystem, Layer, Schema } from "effect"
@@ -53,17 +54,40 @@ const failedAnywhere = /^(FAIL\W+\S|--- FAIL|=== FAIL)|DATA RACE|race detected/
 // starts with its file's position. A failing test's own messages are indented.
 const failedAtStart =
   /^(panic:|[Ee][Rr][Rr][Oo][Rr]\b|fatal:|level=error|DONE \d.*fail|\d+ issues?:|[^\s:]+\.\w+:\d+(:\d+)?: )/
-// failedInTypeScript matches a line, unindented, that tsc, Biome or bun test prints for what failed:
-// tsc's error at its file's position, `src/a.ts(10,5): error TS2322: …`, Biome's and tsc's count of
-// errors, `Found 3 errors.`, and bun test's line for a failing test, `(fail) group > name [1.20ms]`.
-const failedInTypeScript = /^([^\s(]+\(\d+,\d+\): error TS\d|Found \d+ errors?\b|\(fail\) \S)/
-// bunFailCount matches, trimmed, bun test's count of failing tests at its end, ` 2 fail`.
-const bunFailCount = /^\d+ fail$/
+// failedInTypeScript matches a line, unindented, that tsc or Biome prints for what failed: tsc's
+// error at its file's position, `src/a.ts(10,5): error TS2322: …`, and Biome's and tsc's count of
+// errors, `Found 3 errors.`.
+const failedInTypeScript = /^([^\s(]+\(\d+,\d+\): error TS\d|Found \d+ errors?\b)/
+// failedMarks are the marks test runners put before a test that failed (see failedTest).
+const failedMarks = "✕×✗✖●"
+// failedTest matches a line of a check's output, trimmed, in which another test runner than go test
+// says a test failed, naming it, or counts the failures: bun's (fail), jest's ✕ and ● (its FAIL line
+// is failedAnywhere's), vitest's ×, bun's ✗ and node's ✖ (vitest's FAIL and cargo nextest's are
+// failedAnywhere's too), pytest's FAILED in its summary or after the test's path, cargo's
+// `test … ... FAILED`, `test result: FAILED` and a test's panic, mocha's `1) …` and `N failing`,
+// TAP's `not ok`, and the counts of failures jest, vitest, pytest and bun end with.
+const failedTest = new RegExp(
+  String.raw`^(\(fail\) |[${failedMarks}] \S|FAILED |\S+::\S+ FAILED\b|` +
+    String.raw`test .* \.\.\. FAILED$|test result: FAILED|thread '.*' panicked at |\d+\) \S|not ok \d|` +
+    String.raw`[1-9]\d* fail(ing)?$|(Tests|Test Suites|Test Files):?\s+[1-9]\d* failed\b|=+ (.*\D)?[1-9]\d* failed\b)`,
+)
 // biomeHeader matches the line that starts one of Biome's diagnostics: its file, with the position
 // when it has one, its category and a rule, `src/a.ts:10:5 lint/style/useConst  FIXABLE  ━━━━`. The
 // diagnostic is an error, not a warning, when its first line after it starts with ×.
 const biomeHeader = /^\S+ [a-z][\w/]*( +[A-Z]+)* +━/
 const biomeError = "× "
+
+/**
+ * Whether `trimmed` holds text every line failedTest matches holds: a word for failing, a panic, a
+ * numbered item's ") ", TAP's "not ok", or a runner's mark for a failed test at its start.
+ */
+const mayFailTest = (trimmed: string): boolean =>
+  trimmed.includes("FAIL") ||
+  trimmed.includes("fail") ||
+  trimmed.includes(") ") ||
+  trimmed.includes("panicked") ||
+  trimmed.startsWith("not ok") ||
+  failedMarks.includes(trimmed.charAt(0))
 
 /**
  * Whether `line`, `trimmed` once trimmed, says what failed. Each pattern is tried only on a line
@@ -79,12 +103,12 @@ const saysFailed = (trimmed: string, line: string): boolean => {
     return true
   }
   if (
-    (line.startsWith("(fail) ") || line.startsWith("Found ") || line.includes("): error TS")) &&
+    (line.startsWith("Found ") || line.includes("): error TS")) &&
     failedInTypeScript.test(line)
   ) {
     return true
   }
-  if (trimmed.endsWith(" fail") && bunFailCount.test(trimmed)) return true
+  if (mayFailTest(trimmed) && failedTest.test(trimmed)) return true
   // A colon, but for a tool's own error and gotestsum's DONE line.
   const may =
     line.includes(":") ||
@@ -157,7 +181,10 @@ export class CheckOutput {
   private readonly seen = new Set<number | bigint>()
   /** In the tests named after "running tests:", until a blank line. */
   private running = false
-  /** The line that started a Biome diagnostic, until its first line after it says what it is. */
+  /**
+   * The line that started a Biome diagnostic, until its first line after it says what it is; "" after
+   * Biome's other lines drawn.
+   */
   private biome: string | null = null
   private readonly flaky: Array<string> = []
   private flakyCount = 0
@@ -253,7 +280,8 @@ export class CheckOutput {
    * Keeps `line`, trimmed, if it says what failed: saysFailed matches it, or it is "running tests:"
    * (a Go test binary timing out) or one of the tests named under it, up to a blank line, or it
    * starts a Biome diagnostic that is an error, which is kept, without the line drawn after it,
-   * with the error's first line.
+   * with the error's first line. The × line after Biome's other lines drawn, such as its closing
+   * `check ━━━━`, is Biome's, not a failed test's (failedTest's ×): it says nothing more.
    */
   private scanFailure(line: string): void {
     const trimmed = line.trim()
@@ -264,6 +292,7 @@ export class CheckOutput {
     const biome = this.biome
     this.biome = null
     if (biome !== null && trimmed.startsWith(biomeError)) {
+      if (biome === "") return
       this.say(biome)
       this.say(trimmed)
       return
@@ -272,7 +301,10 @@ export class CheckOutput {
     else if (!this.running && line.includes("━") && biomeHeader.test(line)) {
       this.biome = trimmed.replace(/ *━+$/, "")
       return
-    } else if (!this.running && !saysFailed(trimmed, line)) return
+    } else if (!this.running && !saysFailed(trimmed, line)) {
+      if (trimmed.endsWith("━")) this.biome = ""
+      return
+    }
     this.say(trimmed)
   }
 
