@@ -455,6 +455,13 @@ describe("quitting", () => {
         }),
       during: () =>
         Effect.gen(function* () {
+          // t-2 is dispatched, in real time, before the clock moves t-1 on to its panic.
+          const beads = yield* Beads
+          for (let i = 0; i < 2000; i++) {
+            const shown = yield* Effect.result(beads.show("t-2"))
+            if (shown._tag === "Success" && shown.success.status === "in_progress") break
+            yield* Effect.promise(() => Bun.sleep(2))
+          }
           for (let i = 0; i < 20; i++) {
             for (let j = 0; j < 200; j++) yield* Effect.yieldNow
             yield* advance("10 seconds")
