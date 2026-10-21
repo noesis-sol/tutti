@@ -42,7 +42,7 @@ import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { Cause, Detail } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
-import { unmergedLabel } from "./scope.ts"
+import { excludedTypes, unmergedLabel } from "./scope.ts"
 import { type SetUps, setUp } from "./setup.ts"
 import { ignoredFolders } from "./startup.ts"
 import { unlabel } from "./unmerged.ts"
@@ -594,9 +594,9 @@ const closeEpics = (id: string) =>
         return
       }
       const { issue, children } = read.success
-      if (issue.status === "closed" || !config.settings.queue.exclude_types.includes(issue.type)) {
-        return
-      }
+      // A type the run never takes, epics whatever exclude_types holds, is tutti's to close.
+      const left = excludedTypes({ excludeTypes: config.settings.queue.exclude_types })
+      if (issue.status === "closed" || !left.includes(issue.type)) return
       const state = yield* ledger.current
       const merged = children.every(
         (child) =>
