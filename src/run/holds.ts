@@ -100,31 +100,52 @@ export const parentHold: Held = {
 export const unreadableHold: Held = { why: "merge", text: "its dependencies could not be read" }
 
 /**
+ * Whether the run knows nothing of the linked ticket that says it hasn't merged, though bd shows it
+ * closed: not merged by the run, nor running, waiting to merge or set aside unmerged in it, nor
+ * labelled. Only git can say then whether its work is on the base (closedBranches.ts).
+ */
+export const asksGit = (state: State, link: Dependency): boolean => {
+  if ((link.issue?.status ?? "closed") !== "closed") return false
+  const phase = state.tickets.get(link.id)?.phase
+  if (phase !== undefined && (phase._tag === "Done" || busy.has(phase._tag))) return false
+  return ledgerView(state).unmerged(link.issue ?? closedLink(link)) === undefined
+}
+
+/** A link bd show didn't describe, taken for closed: bd ready lists a ticket once its blockers are. */
+const closedLink = (link: Dependency) => ({ id: link.id, status: "closed", labels: [] })
+
+/**
  * Why the linked ticket hasn't merged, as the run knows it: its worker runs or waits on a question
- * (`running`), or it is closed and not merged (`closed`, with the reason); undefined once it has
- * merged. One open and not running holds nothing, as it may never run.
+ * (`running`), or it is closed and not merged (`closed`, with the reason, the run's or else git's
+ * from `branches`, by ID); undefined once it has merged. One open and not running holds nothing, as
+ * it may never run.
  */
 const notMerged = (
   state: State,
   link: Dependency,
+  branches: ReadonlyMap<string, string>,
 ): { readonly running: true } | { readonly closed: string } | undefined => {
   const phase = state.tickets.get(link.id)?.phase
   if (phase !== undefined && busy.has(phase._tag)) return { running: true }
-  // bd ready lists a ticket once its blockers are closed: one bd show didn't describe is taken so.
-  const why = ledgerView(state).unmerged(
-    link.issue ?? { id: link.id, status: "closed", labels: [] },
-  )
-  return why === undefined ? undefined : { closed: why }
+  const why = ledgerView(state).unmerged(link.issue ?? closedLink(link))
+  if (why !== undefined) return { closed: why }
+  const off = asksGit(state, link) ? branches.get(link.id) : undefined
+  return off === undefined ? undefined : { closed: off }
 }
 
 /**
  * What holds `issue` (as bd show gives it, with its links) back for a ticket not merged yet: a
- * blocker, then the ticket it was filed from. Undefined when nothing does.
+ * blocker, then the ticket it was filed from. `branches` says, by ID, why git finds a closed one's
+ * work only on its branch, for those the run knows nothing of (asksGit). Undefined when nothing does.
  */
-export const mergeHold = (state: State, issue: Pick<Issue, "dependencies">): Held | undefined => {
+export const mergeHold = (
+  state: State,
+  issue: Pick<Issue, "dependencies">,
+  branches: ReadonlyMap<string, string> = new Map(),
+): Held | undefined => {
   for (const link of issue.dependencies) {
     if (link.type !== "blocks") continue
-    const why = notMerged(state, link)
+    const why = notMerged(state, link, branches)
     if (why === undefined) continue
     const text =
       "running" in why
@@ -134,7 +155,7 @@ export const mergeHold = (state: State, issue: Pick<Issue, "dependencies">): Hel
   }
   for (const link of issue.dependencies) {
     if (link.type !== "discovered-from") continue
-    const why = notMerged(state, link)
+    const why = notMerged(state, link, branches)
     if (why === undefined) continue
     const text =
       "running" in why
@@ -144,6 +165,10 @@ export const mergeHold = (state: State, issue: Pick<Issue, "dependencies">): Hel
   }
   return undefined
 }
+
+/** Whether `issue`, as bd ready gives it, links to a ticket it waits on: a blocker or a source. */
+export const waitsOnLinks = (issue: Pick<Issue, "dependencies">): boolean =>
+  issue.dependencies.some((link) => link.type === "blocks" || link.type === "discovered-from")
 
 /**
  * What holds a ticket with footprint `fp` back for a running ticket's (`running`, by ID): the first,

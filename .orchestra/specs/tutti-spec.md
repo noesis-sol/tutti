@@ -697,6 +697,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
 5. **Scheduling**:
    - `bd ready` in scope, minus questions and `exclude_types`, in priority order
    - parents after their subtickets; held for blockers not merged; follow-ups (`discovered-from`) held until their source merges
+   - a blocker closed where the run didn't see it close is not merged while git finds `tutti/<id>` off the base (commits the base lacks, changes it doesn't hold), or can't tell: `<id> closed but not merged (tutti/<id> is not on <base>)`, one `CLOSED_UNMERGED` warning; git asked once per blocker and base commit, again when its branch moves or goes
    - footprints, below
    - solo; no ticket twice; a ready poll every 30 s, with free slots filled at once
    - `--limit` counts the tickets this run starts (resumed and carried-over workers count toward nothing); `BAD_TICKET_ID`

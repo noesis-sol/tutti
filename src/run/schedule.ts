@@ -35,6 +35,7 @@ import {
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { ticketIdProblem } from "../services/Worktrees.ts"
+import type { ClosedBranches } from "./closedBranches.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
@@ -49,6 +50,7 @@ import {
   worktreeChanges,
 } from "./footprint.ts"
 import {
+  asksGit,
   type Held,
   isSolo,
   leftUnmerged,
@@ -65,6 +67,7 @@ import {
   unmerged,
   unreadableHold,
   waitsLine,
+  waitsOnLinks,
 } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
@@ -147,6 +150,12 @@ export interface Options {
    * footprints are on: its guesses join their footprints as they come in.
    */
   readonly predictor?: Predictor
+  /**
+   * What git says of closed blockers the run knows nothing of (closed by hand, by another tool,
+   * under an earlier tutti): one whose work is only on its branch holds back the tickets it blocks.
+   * Without it, such a blocker counts as merged.
+   */
+  readonly closedBranches?: ClosedBranches
   /** Shows the queue as the dashboard draws it, on each change (§ 7.2). */
   readonly show?: (queue: QueueShown) => Effect.Effect<void>
 }
@@ -571,14 +580,44 @@ export const make = (
           }
         }
 
-        // What holds a waiting ticket back for a parent or a ticket not merged, saying why once.
+        // Why git finds a closed blocker's work only on its branch, asked once a fill, the base where
+        // the fill first found it.
+        const closed = options.closedBranches
+        let head: { readonly at: string | undefined } | undefined
+        const offBase = new Map<string, string | undefined>()
+        const branchesOf = (state: State, links: Issue) =>
+          Effect.gen(function* () {
+            const found = new Map<string, string>()
+            if (closed === undefined) return found
+            for (const link of links.dependencies) {
+              if (link.type !== "blocks" && link.type !== "discovered-from") continue
+              if (!asksGit(state, link)) continue
+              if (!offBase.has(link.id)) {
+                head ??= { at: yield* closed.head }
+                offBase.set(link.id, yield* closed.why(link.id, head.at))
+              }
+              const why = offBase.get(link.id)
+              if (why !== undefined) found.set(link.id, why)
+            }
+            return found
+          })
+
+        // What holds a waiting ticket back for a parent or a ticket not merged, saying why once. With
+        // nothing of the run's pending, only a closed blocker's branch could hold one back: a ticket
+        // whose links bd can't show then goes ahead, as orchestra's does.
         const heldFor = (issue: Issue, state: State) =>
           Effect.gen(function* () {
             let held: Held | undefined
             if (parents.has(issue.id)) held = parentHold
             else if (left.length > 0 || pending(state)) {
               const links = yield* linksOf(issue.id)
-              held = links === null ? unreadableHold : mergeHold(state, links)
+              held =
+                links === null
+                  ? unreadableHold
+                  : mergeHold(state, links, yield* branchesOf(state, links))
+            } else if (closed !== undefined && waitsOnLinks(issue)) {
+              const links = yield* linksOf(issue.id)
+              if (links !== null) held = mergeHold(state, links, yield* branchesOf(state, links))
             }
             if (waitSaid.changed(issue.id, held?.text ?? "")) {
               yield* logs.write(waitsLine(issue.id, held?.text ?? ""))

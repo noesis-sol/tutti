@@ -206,7 +206,13 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
   merges the last of its subtickets: `closed epic <id>: all 3 subtickets are merged`.
 - **Blockers must merge, not only close.** `bd ready` counts a closed blocker as done, but its code
   isn't on the base until it merges, so a ticket waits for that:
-  `<id> waits: <blocker> closed but not merged (…)`.
+  `<id> waits: <blocker> closed but not merged (…)`. A blocker closed where the run didn't see it
+  close (by hand, by another tool, under an earlier tutti) hasn't merged while `tutti/<blocker>` has
+  commits the base lacks and the base doesn't hold its changes:
+  `<id> waits: <blocker> closed but not merged (tutti/<blocker> is not on <base>)`, warned of once
+  with `CLOSED_UNMERGED`, which says how to clear it. Merge the branch, or delete it if its work isn't
+  wanted, and the tickets it blocks start at the next poll. Where git can't tell, they wait, saying
+  so (`git can't tell whether tutti/<blocker> is on <base>: …`), until git answers.
 - **A follow-up waits for the ticket it was filed from.** A ticket filed `discovered-from` another
   was written against that ticket's code, so it waits until that one merges too:
   `<id> waits: filed by <source>'s worker; waiting for it to merge`.

@@ -76,6 +76,7 @@ export const Tag = {
   fullCheckSkipped: "FULL_CHECK_SKIPPED",
   cleanupFailed: "CLEANUP_FAILED",
   labelFailed: "LABEL_FAILED",
+  closedUnmerged: "CLOSED_UNMERGED",
   notifyFailed: "NOTIFY_FAILED",
   dirtyTree: "DIRTY_TREE",
   gitFailed: "GIT_FAILED",

@@ -95,6 +95,7 @@ import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
 import { carryOver, saveAsked, saveLeft } from "./carry.ts"
+import { closedBranches } from "./closedBranches.ts"
 import { resolve, type UiCommand } from "./commands.ts"
 import { noteCompactions } from "./compactions.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
@@ -570,6 +571,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             Effect.provideService(Organs, organs.value),
           )
         : undefined
+    // A closed blocker the run knows nothing of holds back the tickets it blocks while git finds
+    // its work only on its branch (closedBranches.ts).
+    const branches = yield* closedBranches({ repo: config.repo, base })
     const scheduler = yield* makeScheduler({
       concurrent: config.settings.concurrent,
       limit: config.limit,
@@ -579,6 +583,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       taking,
       ...(footprints === undefined ? {} : { footprints }),
       ...(predictor === undefined ? {} : { predictor }),
+      closedBranches: branches,
       show: ({ solo, unclosed }) =>
         SubscriptionRef.update(status, (now) => ({ ...now, solo, unclosed })),
     })
