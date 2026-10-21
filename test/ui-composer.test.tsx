@@ -250,11 +250,12 @@ describe("the composer", () => {
   test("drawn under the rule: the prompt formAccent, the placeholder formPlaceholder", async () => {
     await scene(async ({ rendered }) => {
       const frame = await until(rendered, has("Working on it."))
-      expect(footOf(frame, 3)).toMatchInlineSnapshot(`
+      expect(footOf(frame, 4)).toMatchInlineSnapshot(`
         "
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? key…
+          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
+          PgUp/PgDn scroll · g/G top/end · 1–9 workers
         "
       `)
       expect(colourOf(frame, ">")).toEqual(rgb(theme.form.selector))
@@ -473,12 +474,13 @@ describe("releasing", () => {
       async ({ rendered, commands }) => {
         const frame = await until(rendered, has("Working on it."))
         expect(linesOf(frame)[0]).toContain("working  steered")
-        expect(footOf(frame, 4)).toMatchInlineSnapshot(`
+        expect(footOf(frame, 5)).toMatchInlineSnapshot(`
           "
           ────────────────────────────────────────────────────────────────────────────────
             steered: tutti sends it nothing until you release it       [ Release ]  Ctrl+R
            > i to write to the worker
-            Esc dashboard · i write · Ctrl+X interrupt · Ctrl+R release · ↑↓ select · Ent…
+            Esc dashboard · i write · Ctrl+X interrupt · Ctrl+R release · ↑↓ select
+            Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end · 1–9 workers
           "
         `)
         expect(colourOf(frame, "steered")).toEqual(rgb(theme.styles.key))

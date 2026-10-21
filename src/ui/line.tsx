@@ -73,6 +73,71 @@ export const cut = (segments: Segments, width: number): Segments => {
   return width > 0 ? kept : []
 }
 
+/**
+ * `segments` wrapped onto lines `width` wide, broken between words: the spaces at a break go, each
+ * line after the first starts with `indent`, and a word wider than a line is broken where it
+ * reaches the edge. `start` columns of the first line are taken already, by what is drawn before it.
+ */
+export const wrapped = (
+  segments: Segments,
+  width: number,
+  options: { readonly indent?: string; readonly start?: number } = {},
+): ReadonlyArray<Segments> => {
+  const indent = Bun.stringWidth(options.indent ?? "") < width ? (options.indent ?? "") : ""
+  const lines: Array<Array<Segment>> = [[]]
+  let col = options.start ?? 0
+  let fresh = false
+  let spaces: Array<Segment> = []
+  const room = () => width - col
+  const put = (each: Segment) => {
+    lines[lines.length - 1]?.push(each)
+    col += Bun.stringWidth(each.text)
+    fresh = false
+  }
+  const breakLine = () => {
+    lines.push(indent === "" ? [] : [seg(indent)])
+    col = Bun.stringWidth(indent)
+    fresh = true
+    spaces = []
+  }
+  for (const each of segments) {
+    for (const word of each.text.match(/\s+|\S+/g) ?? []) {
+      if (/^\s/.test(word)) {
+        spaces.push(seg(word, each.look))
+        continue
+      }
+      const before = widthOf(spaces)
+      const w = Bun.stringWidth(word)
+      if (before + w <= room()) {
+        for (const space of spaces) put(space)
+        spaces = []
+        put(seg(word, each.look))
+        continue
+      }
+      if (!fresh && col > 0) breakLine()
+      spaces = []
+      let rest = word
+      while (Bun.stringWidth(rest) > room()) {
+        let piece = ""
+        for (const char of rest) {
+          if (Bun.stringWidth(piece + char) > room()) break
+          piece += char
+        }
+        if (piece === "") {
+          // Not even one character fits on a line this narrow: it goes on a line of its own.
+          piece = [...rest][0] ?? ""
+          if (!fresh && col > 0) breakLine()
+        }
+        put(seg(piece, each.look))
+        rest = rest.slice(piece.length)
+        if (rest !== "") breakLine()
+      }
+      if (rest !== "") put(seg(rest, each.look))
+    }
+  }
+  return lines
+}
+
 /** `segments` padded with spaces to `width` columns. */
 export const padded = (segments: Segments, width: number): Segments => {
   const short = width - widthOf(segments)

@@ -1,11 +1,12 @@
 // The worker view (§ 7.5, § 7.3, § 7.11): tutti's transcript of one worker, drawn by tutti, under
 // orchestra-style chrome: `← Dashboard`, then the worker's card head (number, mark, ticket, status,
-// elapsed time) and its title, over a rule. Below the transcript, the attention panel shows the
-// worker's open requests with the card's buttons and rules (attentionKeys.ts), each with its
-// description, its reason and its whole input, and a conflict hand-back waiting for a steered
-// worker (§ 4.3) as a notice with Hand it the conflict now. Answer in view, for what a card can't
-// hold, opens the answer form over the view (AnswerForm.tsx). Under them and the rule, the composer
-// (Composer.tsx): the steered line with its Release button, your messages still queued, the field.
+// elapsed time) and its title, wrapped onto more lines in a narrow pane, over a rule. Below the
+// transcript, the attention panel shows the worker's open requests with the card's buttons and
+// rules (attentionKeys.ts), each with its description, its reason and its whole input, and a
+// conflict hand-back waiting for a steered worker (§ 4.3) as a notice with Hand it the conflict
+// now. Answer in view, for what a card can't hold, opens the answer form over the view
+// (AnswerForm.tsx). Under them and the rule, the composer (Composer.tsx): the steered line with its
+// Release button, your messages still queued, the field.
 //
 // The items (transcriptItems.ts): assistant text as Markdown (<markdown>, in the theme's heading,
 // code and link roles); each tool call one line, `Tool  summary`, its result at the end of it (`✓`,
@@ -65,7 +66,7 @@ import {
   SteeredLine,
   useSends,
 } from "./Composer.tsx"
-import { Hint, hintSegments } from "./Hint.tsx"
+import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
 import {
@@ -80,8 +81,10 @@ import {
   seg,
   styled,
   widthOf,
+  wrapped,
 } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
+import { useHintHeight } from "./Toasts.tsx"
 import type { Role, Theme } from "./theme.ts"
 import {
   bounded,
@@ -972,6 +975,12 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   ])
 
   const inner = Math.max(width, 1)
+  const hint = hintLines(
+    hintKeys(requests.length > 0, typing, card?.steered === true),
+    theme,
+    inner,
+  )
+  useHintHeight(input.toasts, hint.length)
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
   const head: Segments =
     card === undefined
@@ -982,6 +991,12 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
           seg(sanitizeLine(card.title)),
         ]
   const dashboardLink = " ← Dashboard"
+  // The header wraps rather than cut the title (tutti-rfs): its lines after the first are under the
+  // head, not in the transcript's scrollbox, so their height doesn't touch #1514.
+  const headLines = wrapped([seg("   "), ...head], inner, {
+    indent: "    ",
+    start: Bun.stringWidth(dashboardLink),
+  })
   const panelWidth = Math.max(inner - 2, 8)
   const inputRoom = Math.max(inputLines, Math.floor(height / 4))
   return (
@@ -1001,8 +1016,9 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
           >
             {dashboardLink}
           </text>
-          <Line segments={cut([seg("   "), ...head], Math.max(inner - dashboardLink.length, 0))} />
+          <Line segments={headLines[0] ?? []} />
         </box>
+        {headLines.length > 1 ? <Lines lines={headLines.slice(1)} /> : null}
         <Line segments={rule} />
         <scrollbox
           ref={scroll}
@@ -1064,13 +1080,7 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
           focus={() => setComposing(true)}
           send={send}
         />
-        <Hint
-          segments={hintSegments(
-            hintKeys(requests.length > 0, typing, card?.steered === true),
-            theme,
-            inner,
-          )}
-        />
+        <Lines lines={hint} />
         {help ? (
           <KeyHelp theme={theme} width={width} height={height} keys={workerViewKeys} />
         ) : null}

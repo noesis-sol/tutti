@@ -518,7 +518,8 @@ describe("the worker view", () => {
           .
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? key…
+          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
+          PgUp/PgDn scroll · g/G top/end · 1–9 workers
         "
       `)
     })
@@ -554,7 +555,8 @@ describe("the worker view", () => {
           .
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? key…
+          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
+          PgUp/PgDn scroll · g/G top/end · 1–9 workers
         "
       `)
       // Enter again collapses it, back to its one line.
@@ -600,7 +602,8 @@ describe("the worker view", () => {
           │   Grep  undo                                                               ✓
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? key…
+          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
+          PgUp/PgDn scroll · g/G top/end · 1–9 workers
         "
       `)
     })
@@ -701,7 +704,8 @@ describe("the attention panel", () => {
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           ────────────────────────────────────────────────────────────────────────────────
            > i to write to the worker
-            Esc dashboard · i write · d deny · Ctrl+X interrupt · ↑↓ select · Enter expan…
+            Esc dashboard · i write · d deny · Ctrl+X interrupt · ↑↓ select · Enter expand
+            ? keys · PgUp/PgDn scroll · g/G top/end · 1–9 workers
           "
         `)
       },

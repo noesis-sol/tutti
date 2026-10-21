@@ -1122,6 +1122,7 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
   - `Enter` on a selected item, or a click, expands it: an edit's diff (`<diff>`), a command's output (`<code>`), a read's range.
   - Subagent work (forwarded with `forwardSubagentText`) is nested under its Agent call by `parent_tool_use_id`, collapsed by default.
   - Thinking is hidden.
+- **A narrow pane.** The header wraps the ticket's whole title onto lines under it, and the hint every key onto as many lines as it takes, breaking between words and between keys: neither is cut. Both are outside the transcript's `scrollbox`, so their height doesn't touch #1514.
 - **Attention.** Open requests show as a panel above the composer, with the same buttons and rules as the card (§4.5). A pending hand-back for a steered worker shows there too (§4.3).
 - **The composer** sends your message into the worker's inbox (§4.1). The worker becomes steered.
   - While a turn is under way, the message is shown as `queued` until the CLI reports it `started` in `command_lifecycle`, or a `result` lists it. An interrupt that cancels it removes the mark (Ctrl+X, below). It may be folded into the running turn or start a later one, perhaps with another message (§4.1).
