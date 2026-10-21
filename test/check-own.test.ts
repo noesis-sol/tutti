@@ -7,6 +7,7 @@ import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, resolve } from "node:path"
 import fc from "fast-check"
 import { pathMentions, resolveSpecifier, specifiers, testsFor } from "../scripts/check-own.ts"
+import { testEnv, which } from "./env.ts"
 import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
 
@@ -149,11 +150,11 @@ const project = () => {
     "test/b.test.ts": 'import { b } from "../src/b.ts"\n',
   })
   repo.git(["checkout", "--quiet", "-b", "work"])
-  const tools = [process.execPath, Bun.which("git") ?? "/usr/bin/git"].map((tool) => dirname(tool))
+  const tools = [process.execPath, which("git") ?? "/usr/bin/git"].map((tool) => dirname(tool))
   const run = () => {
     const proc = Bun.spawnSync([join(repo.dir, "scripts", "check-own.sh")], {
       cwd: repo.dir,
-      env: { HOME: process.env.HOME ?? "", PATH: [bin, ...tools, "/usr/bin", "/bin"].join(":") },
+      env: { HOME: testEnv.HOME ?? "", PATH: [bin, ...tools, "/usr/bin", "/bin"].join(":") },
       stdout: "pipe",
       stderr: "pipe",
     })
