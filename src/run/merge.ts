@@ -716,7 +716,7 @@ export const closeUnchanged = (
   })
 
 /** The epics `id` was the last subticket to merge under, closed, each then its own parent's. */
-const closeEpics = (id: string) =>
+export const closeEpics = (id: string) =>
   Effect.gen(function* () {
     const { config, beads, ledger, log, events } = yield* services
     const say = (text: Line, ticket: string) =>

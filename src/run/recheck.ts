@@ -6,15 +6,18 @@
 // checked once more: it merges if the check passes now, and is set aside again if it fails again.
 //
 // Each ticket is checked again at most once a run, set up first if its setup failed (setup.ts). One
-// whose check failed in a folder its own commits change isn't kept: another ticket's change won't fix that. Nor is one that something
-// has touched since, as when you have taken it up: reopened, its worktree changed, its branch moved,
-// or its worker steered. None is checked again while the run winds down or holds (a stop, or the
-// usage limit), or the merges have stopped; nor while a solo ticket runs or is next. Each takes a
-// slot as a running ticket does, until its merge is over, and waits for one to be free: the run
-// looks for those due each time it looks for work, before new tickets start. Its session stays open
-// while it may be checked again (§ 4.8).
+// whose check failed in a folder its own commits change isn't kept: another ticket's change won't
+// fix that. Nor is one that something has touched since, as when you have taken it up: reopened, its
+// worktree changed, its branch moved, or its worker steered, nor one merged by hand meanwhile
+// (handMerged.ts). None is checked again while the run winds down or holds (a stop, or the usage
+// limit), or the merges have stopped; nor while a solo ticket runs or is next. A drain, or a run that
+// ends stopped, gives up the tickets waiting and names each (dropRechecks); one set aside while the
+// run winds down isn't kept. Each takes a slot as a running ticket does, until its merge is over, and
+// waits for one to be free: the run looks for those due each time it looks for work, before new
+// tickets start. Its session stays open while it may be checked again (§ 4.8).
 import { posix } from "node:path"
 import { Deferred, Effect, Ref, Result, Stream } from "effect"
+import type { AgentHost } from "../agent/AgentHost.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
@@ -24,6 +27,7 @@ import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, type FinishedTicket, type MergeOptions, uncommitted } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause } from "./phase.ts"
+import { fit } from "./sessions.ts"
 
 /** A ticket set aside for a failed check, to be checked once more once the base moves on. */
 export interface Recheck {
@@ -47,6 +51,10 @@ export interface Rechecks {
   keep(recheck: Recheck): Effect.Effect<void>
   /** Takes the ticket out of those waiting, as checked once more; false when it wasn't waiting. */
   take(id: string): Effect.Effect<boolean>
+  /** Takes the ticket out of those waiting, not checked once more; false when it wasn't waiting. */
+  drop(id: string): Effect.Effect<boolean>
+  /** Takes every ticket out of those waiting, not checked once more: those that were. */
+  readonly dropAll: Effect.Effect<ReadonlyArray<Recheck>>
   /** Keeps what the ticket's check said as it set the ticket aside, in place of what it said before. */
   noteFailure(id: string, evidence: string): Effect.Effect<void>
   /** What the check said of each ticket it set aside, by ticket, in the order they were first. */
@@ -79,6 +87,12 @@ export const makeRechecks: Effect.Effect<Rechecks> = Effect.gen(function* () {
           },
         ]
       }),
+    drop: (id) =>
+      Ref.modify(ref, (state) => {
+        const waiting = state.waiting.filter((each) => each.ticket.id !== id)
+        return [waiting.length < state.waiting.length, { ...state, waiting }]
+      }),
+    dropAll: Ref.modify(ref, (state) => [state.waiting, { ...state, waiting: [] }]),
     noteFailure: (id, evidence) => Ref.update(failures, (said) => new Map(said).set(id, evidence)),
     failures: Ref.get(failures),
   } satisfies Rechecks
@@ -133,7 +147,7 @@ export const keepForRecheck = (
   rechecks: Rechecks,
   onto: string,
   error: CheckError,
-): Effect.Effect<Line | "", never, Git> =>
+): Effect.Effect<Line | "", never, Git | Ledger> =>
   Effect.gen(function* () {
     const git = yield* Git
     const { id, branch } = ticket
@@ -150,8 +164,34 @@ export const keepForRecheck = (
     const head = yield* Effect.result(git.revParse(options.repo, branch))
     // Without its commit, a branch moved since couldn't be told from one left as it was.
     if (Result.isFailure(head)) return ""
+    // The run winding down dropped the tickets waiting (dropRechecks): one set aside since isn't kept.
+    if ((yield* (yield* Ledger).current).windDown !== null) {
+      return line`; not checked again in this run, as it winds down`
+    }
     yield* rechecks.keep({ ticket, onto, head: head.success })
     return line`; checked once more if ${options.base} moves on in this run`
+  })
+
+/**
+ * Gives up checking once more the tickets waiting to be, as `why` rules it out (`the run winds
+ * down`, `the run stopped`), saying so of each: they stay set aside, their sessions closed. The
+ * tickets it gave up.
+ */
+export const dropRechecks = (
+  rechecks: Pick<Rechecks, "dropAll">,
+  why: string,
+): Effect.Effect<ReadonlyArray<string>, never, AgentHost | Ledger | Log | EventStream> =>
+  Effect.gen(function* () {
+    const logs = yield* Log
+    const events = yield* EventStream
+    const dropped = (yield* rechecks.dropAll).map((recheck) => recheck.ticket.id)
+    for (const id of dropped) {
+      const text = detail`${id} is not checked again in this run, as ${why}; it stays set aside`
+      yield* events.emit({ kind: "info", ticket: id, text })
+      yield* logs.write(text)
+      yield* fit(id)
+    }
+    return dropped
   })
 
 /** Whether the base has moved on from `onto`: on from it, not merely elsewhere. */

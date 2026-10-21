@@ -164,6 +164,8 @@ export type Cause = Data.TaggedEnum<{
   Recheck: { readonly place: number }
   /** You handed its steered worker the conflict that waited for it: rebased again, handed back. */
   HandedOver: { readonly place: number }
+  /** Set aside or blocked, its branch was merged into the base by hand: `commit` there names it. */
+  MergedByHand: { readonly commit: string }
   /** Carried over from an earlier run with its session, which is resumed. */
   Resumed: Empty
   /** Carried over from an earlier run, still waiting on its question. */
@@ -514,6 +516,22 @@ export const transitions: ReadonlyArray<Transition> = [
     recorded: { kinds: ["phase"] },
     only: ({ why }) => why === "MERGE_CONFLICT",
     next: (_, { place }) => TicketPhase.ToMerge({ place }),
+  }),
+  // A ticket set aside or blocked whose branch was merged by hand while the run went on, found as
+  // the base moves on (handMerged.ts).
+  row({
+    from: "Review",
+    when: "MergedByHand",
+    to: "Done",
+    recorded: { kinds: ["closed"], detail: "merged by hand" },
+    next: (_, { commit }) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) }),
+  }),
+  row({
+    from: "Blocked",
+    when: "MergedByHand",
+    to: "Done",
+    recorded: { kinds: ["closed"], detail: "merged by hand" },
+    next: (_, { commit }) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) }),
   }),
   row({
     from: null,

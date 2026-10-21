@@ -416,7 +416,7 @@ describe("carry-over: the other cases", () => {
     })
     expectPhases(ran, {})
     expectLog(ran, [
-      /^ {2}t-1, carried over from the last run, is dropped: tutti\/t-1 is on main already \([0-9a-f]{7} Change \(t-1\)\)$/,
+      /^ {2}t-1, carried over from the last run, is dropped: tutti\/t-1 is on main already \([0-9a-f]{7} Change \(t-1\)\); worktree and branch removed$/,
     ])
     expect(state.tickets["t-1"]).toBeUndefined()
   })

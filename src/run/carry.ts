@@ -7,7 +7,9 @@
 // - one whose ticket bd has no trace of, deleted from Beads, is dropped;
 // - one whose worktree is gone is dropped, found before anything resumes it (§ 4.8's Resume limits);
 // - one whose ticket is closed is merged: in line, ToMerge (§ 5.1's Unmerged), or dropped when its
-//   branch is on the base already, merged by hand (unmerged.ts's mergedSince);
+//   branch is on the base already, merged by hand (unmerged.ts's mergedSince), its worktree and
+//   branch removed as after a merge, unless the worktree has uncommitted changes
+//   (handMerged.ts's removeMerged);
 // - one deferred meanwhile is shown as deferred, and dropped: undeferred, it comes back through bd
 //   ready, its worktree reused;
 // - one waiting on a question, or asked as the last run ended, comes back Asked (§ 5.1's StillAsked);
@@ -38,6 +40,7 @@ import { type PhaseName, type State, Store, type TicketRecord } from "../service
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
 import { EventStream } from "./eventstream.ts"
+import { removeMerged } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
@@ -318,12 +321,13 @@ export const carryOver = (
         const found = yield* mergedSince(issue, { repo: config.repo, base })
         if (found.merged !== undefined) {
           const commit = found.merged
+          const removed = yield* removeMerged(id, worktree, branch, { repo: config.repo, base })
           yield* dropped(
             id,
             "merged",
             carriedLine(
               id,
-              line`is dropped: ${branch} is on ${base} already (${commit.hash.slice(0, 7)} ${commit.subject})`,
+              line`is dropped: ${branch} is on ${base} already (${commit.hash.slice(0, 7)} ${commit.subject})${removed.text}`,
             ),
           )
           continue

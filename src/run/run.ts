@@ -38,9 +38,11 @@
 // keep it open with a dashboard (D19): it shows the end-of-run box until you answer them, and they
 // carry on, or end the run with the box's `q`. Plain, the run waits for them only until a stop holds
 // it, BLOCKED at the latest; then it ends as usual. Those past their ticket limit never keep it
-// open. The tickets still in a phase a run can't end in are Stopped and their sessions suspended
-// (§ 4.8), as are the sessions of those that stopped the run, a worker still waiting on you
-// suspended so (`waiting on you`); each ticket closed and not merged is labelled `unmerged`; then
+// open. A run not quit looks once more for tickets merged by hand (handMerged.ts). The tickets still
+// in a phase a run can't end in are Stopped and their sessions suspended (§ 4.8), as are the
+// sessions of those that stopped the run, a worker still waiting on you suspended so (`waiting on
+// you`); each ticket closed and not merged is labelled `unmerged`; a stopped run names the tickets
+// it leaves without their promised check once more (recheck.ts); then
 // the summary lines, the closing line (the stops', or READY_EMPTY, LIMIT_REACHED or DRAINED, with
 // a scoped run's SCOPE_ part), the full check when the run ended by itself having merged a ticket
 // (fullcheck.ts), and the end record. In plain mode (§ 7.6) every line goes to stdout as the Log writes it; a worker's attention request is a
@@ -152,6 +154,7 @@ import {
   unansweredLine,
   underWayLine,
 } from "./quit.ts"
+import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
@@ -765,7 +768,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     )
     const drains = options.drains
     if (drains !== undefined) {
-      yield* watch(Effect.forever(Effect.andThen(Effect.flatMap(Queue.take(drains), hear), wakeUp)))
+      yield* watch(
+        Effect.forever(
+          Effect.andThen(
+            Effect.flatMap(Queue.take(drains), (request) => hear(request, queue.rechecks)),
+            wakeUp,
+          ),
+        ),
+      )
     }
 
     // Requests to quit (quit.ts): the first quits, the second says what is under way and how to
@@ -840,7 +850,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
                 .pipe(Effect.catch((error) => Effect.logDebug(`dropped Answer: ${error.message}`)))
             case "Drain":
             case "Undrain":
-              yield* hear({ on: command._tag === "Drain", how: fromDashboard.how })
+              yield* hear({ on: command._tag === "Drain", how: fromDashboard.how }, queue.rechecks)
               return yield* wakeUp
             case "EndRun":
               yield* Ref.set(endAsked, true)
@@ -1165,6 +1175,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* showEndOfRun(null)
     if (quit !== null) yield* quitNow(quit)
     yield* mergeStop(yield* queue.state)
+    // A ticket set aside and merged by hand since the base last moved counts closed, for the end
+    // line and the report (handMerged.ts).
+    if (quit === null) yield* queue.mergedByHand
 
     // The end: the tickets a run can't end in Stopped, and every stopped ticket's session suspended;
     // a worker past its ticket limit, or waiting on you, is still at it, its fiber stopped first.
@@ -1224,6 +1237,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }))
     }
     const all = yield* Ref.get(stops)
+    // A stopped run names the tickets it leaves without the check once more it promised them.
+    if (quit === null && all.first !== null) yield* dropRechecks(queue.rechecks, "the run stopped")
 
     const state = yield* ledger.current
     const view = project({

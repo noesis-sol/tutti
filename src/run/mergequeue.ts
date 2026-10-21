@@ -13,7 +13,8 @@
 // for the run loop, and no ticket merges after it: those behind it stay ToMerge.
 //
 // A ticket set aside as its check failed is kept in the queue's rechecks, and after each merge the
-// ones whose base has moved on since are put back in line, ToMerge by RECHECK (recheck.ts).
+// ones whose base has moved on since are put back in line, ToMerge by RECHECK (recheck.ts): first,
+// those merged by hand since the base last moved are taken as merged (handMerged.ts).
 //
 // A ticket whose rebase stopped on conflicts its worker can take is handed back to it, Merging →
 // Resolving (handback.ts), and its merge is over for the queue, which goes on with the tickets behind
@@ -42,6 +43,7 @@ import { makePasses } from "./check.ts"
 import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from "./checkback.ts"
 import { RunFibers } from "./fibers.ts"
 import { type HandBacks, handOver, makeHandBacks, type RebaseStop, resolve } from "./handback.ts"
+import { mergedByHand as handMerged } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
 import {
   abandonRebase,
@@ -101,6 +103,12 @@ export interface MergeQueue {
    * failed, as the queue does after each merge; the tickets it put back.
    */
   readonly recheck: Effect.Effect<ReadonlyArray<string>>
+  /**
+   * Takes as merged the tickets closed but not merged that were merged by hand since the base last
+   * moved on (handMerged.ts), as `recheck` does first, and the run's end once more; the tickets it
+   * found merged.
+   */
+  readonly mergedByHand: Effect.Effect<ReadonlyArray<string>>
   /**
    * Holds the queue as quitting begins (quit.ts): no ticket takes its turn and none is handed back
    * from now on (a merge under way that would hand its ticket back puts it back in line instead,
@@ -212,11 +220,19 @@ export const make = (
         ? effect
         : Effect.catchDefect(effect, (defect) => onPanic(where, defect))
 
-    const recheck = recheckDue(
-      rechecks,
-      { offer, state, changes: SubscriptionRef.changes(ref) },
-      options,
-    ).pipe(Effect.provideContext(context))
+    // A ticket merged by hand since the base last moved on isn't checked again: it is looked for
+    // first, one look at a time, the first look asking of every one.
+    const looking = yield* Semaphore.make(1)
+    const seen = yield* Ref.make<string | undefined>(undefined)
+    const mergedByHand = looking.withPermits(1)(
+      handMerged(seen, { rechecks, handBacks }, options).pipe(Effect.provideContext(context)),
+    )
+    const recheck = looking.withPermits(1)(
+      Effect.andThen(
+        handMerged(seen, { rechecks, handBacks }, options),
+        recheckDue(rechecks, { offer, state, changes: SubscriptionRef.changes(ref) }, options),
+      ).pipe(Effect.provideContext(context)),
+    )
 
     const merged = (stop: MergeStop | undefined) =>
       SubscriptionRef.update(ref, (state) => ({
@@ -349,6 +365,7 @@ export const make = (
       rechecks,
       handBacks,
       recheck,
+      mergedByHand,
       hold: Effect.andThen(Ref.set(held, true), FiberSet.clear(handBacksSet)),
       stopMerges: FiberSet.clear(set),
     } satisfies MergeQueue

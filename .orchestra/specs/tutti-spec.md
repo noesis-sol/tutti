@@ -728,7 +728,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
    - a branch on top of the base already, as when nothing merged while its ticket ran, is checked too, set up first if a dependency file changed since its last setup, as orchestra 0.8.5 has it: no ticket reaches the base unchecked (`tutti/<id> is on top of <base> already: checking it with '<check>' before it merges`). A failure there is handed back or sets the ticket aside as on a rebased branch; a branch whose commits change nothing needs no check, and one the check passed on in this run, as its worker fixed it or resolved its rebase, isn't checked again
    - a hand-back's branch is checked once, on the base it merges onto, as orchestra 0.8.5 has it: when another ticket merged while its worker resolved its rebase or fixed its check, what the worker left goes back in line unchecked (`<id>'s worker finished the rebase, but <base> moved on meanwhile: rebasing tutti/<id> onto it before checking it`; `<id>'s worker committed <n commits>, but …` for a fix), and the merge rebases it and checks it there, a fix carried to that check as if checked in Fixing: a pass says `as its worker fixed it`, a failure is handed back again or sets the ticket aside with every attempt in its notes, and a conflict goes back to the worker as any does
    - fast-forward (`MERGE_FAILED`, exit 6); cleanup; epics closed when their last subticket merges, up the tree
-8. **Recheck**: a ticket set aside for a failed check is checked once more after the base moves on, unless it failed in its own code. It takes a slot as a running ticket does, until its merge is over, and none is checked again while the run winds down or holds (a stop, or the usage limit), or while a solo ticket runs or is next, as orchestra's recheckTickets has it.
+8. **Recheck**: a ticket set aside for a failed check is checked once more after the base moves on, unless it failed in its own code. It takes a slot as a running ticket does, until its merge is over, and none is checked again while the run winds down or holds (a stop, or the usage limit), or while a solo ticket runs or is next, as orchestra's recheckTickets has it. A drain, or a run that ends stopped, names each ticket it keeps from its recheck (`<id> is not checked again in this run, as the run winds down; it stays set aside`), and a ticket set aside while the run winds down isn't promised one. Each time the base moves on, first, and once more as a run not quit ends, the run asks git of each ticket closed but not merged (set aside or blocked in the run, or labelled `unmerged` by an earlier one) whether it was merged by hand, as at the start: one that was is `Done`, merged by hand, its worktree and branch removed as after a merge unless the worktree has uncommitted changes, its label removed, and the tickets it blocks start, as orchestra 0.9.0's mergedByHand has it.
 9. **Waits for merge**: a worker that stops with nothing done, having linked a blocker that hasn't merged, puts its ticket back in the queue.
 10. **Holds and stops**:
     - `HOLD` drains: no new tickets, the running ones finish
@@ -837,6 +837,8 @@ stateDiagram-v2
     Fixing --> Blocked: the same, after a resolution
     Fixing --> Stopped: run ended
     Review --> ToMerge: CHECKS_FAILED, base moved on, checked once more
+    Review --> Done: merged by hand
+    Blocked --> Done: merged by hand
     Done --> [*]
 ```
 
@@ -878,6 +880,7 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `Fixing{afterResolution}` | `Blocked` | the same, after a resolution | `warn` with `blocked` |
 | `Resolving`, `Fixing` | `Stopped` | the run ended during the hand-back; its rebase or fix is left as it is, and the `INTERRUPTED` line says so | `suspended` |
 | `Review{CHECKS_FAILED}` | `ToMerge` | the base moved on since the check failed; the failure isn't in the ticket's own code; it hasn't been checked again in this run | the log's `RECHECK` |
+| `Review`, `Blocked` | `Done{merged}` | the base moved on, and git finds the ticket, closed, merged by hand (§5 item 8); not one whose conflict hand-back waits for its steered worker | `closed` (`<commit> merged by hand`) |
 | `Blocked{MERGE_CONFLICT}` | `ToMerge` | you pressed **Hand it the conflict now** (§4.3) for a hand-back waiting on its steered worker. It is rebased again, and the conflict is handed back with the steered check waived once. Releasing the worker (§4.3) does the same, with no waiver | `phase` |
 
 Merging a ticket rebases it again if more landed meanwhile, so a ticket can go from `Merging` to `Resolving`, back to `ToMerge`, and through `Merging` again. Each pass counts toward its attempts.
@@ -1893,7 +1896,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | a stop as a spec run commits its setup says it was committed | Planned (tutti-kkb.28) |
 | | a ticket checked ahead whose own check failed blames itself, not the branch ahead | Planned (tutti-kkb.18) |
 | | a worker its terminal doesn't show read again for 30 s; one PAUSED twice, then found back in its tab, adopted | Not needed: no terminals; a session's state is the SDK's (§4.2, §4.8) |
-| | a ticket set aside and merged by hand mid-run found as the base moves; a drain names the tickets it keeps from their recheck; a dropped carried-over ticket's worktree and branch removed | Planned (tutti-kkb.20) |
+| | a ticket set aside and merged by hand mid-run found as the base moves; a drain names the tickets it keeps from their recheck; a dropped carried-over ticket's worktree and branch removed | Done (tutti-kkb.20) |
 | | a conflict hand-back told to run the setup when its rebase brought in a setup file's change | Done (tutti-kkb.4) |
 | | a hand-back at the limit or past its time limit takes a finished result from git, else stops its worker and says so | Planned (tutti-kkb.2) |
 | | the failure lines of jest, vitest, node, pytest, cargo, mocha and TAP | Done (tutti-kkb.21) |

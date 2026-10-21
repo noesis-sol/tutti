@@ -4,11 +4,15 @@
 // latest request counts, and one that changes nothing says nothing.
 //
 // The wind-down itself is the ledger's (it notes the tickets running as it begins, for the
-// wind-down line), and the scheduler takes no new tickets while it lasts.
+// wind-down line), and the scheduler takes no new tickets while it lasts. Beginning, it gives up the
+// tickets waiting to be checked once more, naming each (recheck.ts's dropRechecks): taken back, it
+// doesn't promise them again.
 import { Effect } from "effect"
+import type { AgentHost } from "../agent/AgentHost.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, Log, line } from "./log.ts"
+import { dropRechecks, type Rechecks } from "./recheck.ts"
 
 /** A request to wind down (`on`) or to take tickets again, and who asked: `by SIGUSR1`. */
 export interface DrainRequest {
@@ -56,12 +60,14 @@ export const undrainLine = (how: string): Line => {
 export const drainedLine = (n: number): Line => line`DRAINED after ${n} tickets`
 
 /**
- * Hears `request`: begins the wind-down, saying so with a `drain` record and its line, or ends it
- * with a `resume` record; nothing when the run already does as asked. Whether it winds down now.
+ * Hears `request`: begins the wind-down, saying so with a `drain` record and its line, then giving
+ * up the tickets waiting in `rechecks` to be checked once more, or ends it with a `resume` record;
+ * nothing when the run already does as asked. Whether it winds down now.
  */
 export const hear = (
   request: DrainRequest,
-): Effect.Effect<boolean, never, Ledger | Log | EventStream> =>
+  rechecks?: Pick<Rechecks, "dropAll">,
+): Effect.Effect<boolean, never, AgentHost | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const logs = yield* Log
@@ -80,5 +86,6 @@ export const hear = (
     const text = drainLine(running, request.how)
     yield* events.emit({ kind: "drain", text })
     yield* logs.write(text)
+    if (rechecks !== undefined) yield* dropRechecks(rechecks, "the run winds down")
     return true
   })

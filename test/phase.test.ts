@@ -255,6 +255,18 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
     Cause.HandedOver({ place: 1 }),
     ToMerge({ place: 1 }),
   ],
+  [
+    "Review → Done, merged by hand",
+    Review({ why: "CHECKS_FAILED" }),
+    Cause.MergedByHand({ commit: "abc" }),
+    Done({ outcome: Outcome.Merged({ commit: "abc" }) }),
+  ],
+  [
+    "Blocked → Done, merged by hand",
+    Blocked({ why: "MERGE_CONFLICT" }),
+    Cause.MergedByHand({ commit: "abc" }),
+    Done({ outcome: Outcome.Merged({ commit: "abc" }) }),
+  ],
   ["carried over: → Working", null, Cause.Resumed(), Working({ activity: "starting" })],
   [
     "carried over: → Asked",
@@ -321,6 +333,7 @@ const causeOf: { readonly [C in CauseTag]: Extract<Cause, { readonly _tag: C }> 
   Block: Cause.Block({ why: "GIT_FAILED" }),
   Recheck: Cause.Recheck({ place: 1 }),
   HandedOver: Cause.HandedOver({ place: 1 }),
+  MergedByHand: Cause.MergedByHand({ commit: "abc" }),
   Resumed: Cause.Resumed(),
   StillAsked: Cause.StillAsked({ question: "tut-q1" }),
   Unmerged: Cause.Unmerged({ place: 1 }),

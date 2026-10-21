@@ -398,7 +398,17 @@ checked once more, through the merge queue:
 `RECHECK: <id>'s check failed on main at 3c4d5e6, which has moved on since; rebasing tutti/<id> and
 checking it once more`. Not when it failed in files its own commits change, nor once the ticket has
 been taken up since. It takes a slot as a running ticket does, until its merge is over, and none is
-checked again while the run holds or winds down, or while a solo ticket runs or is next.
+checked again while the run holds or winds down, or while a solo ticket runs or is next. Winding down,
+or stopped as it ends, the run names each ticket it won't check again (`<id> is not checked again in
+this run, as the run winds down; it stays set aside`), and one set aside while it winds down says so.
+
+**A ticket merged by hand during the run.** You may merge a ticket set aside or blocked yourself
+while the run goes on. Each time the base moves on, and once more as the run ends, the run asks git
+of each ticket closed but not merged, as it does of those left `unmerged` as it starts. One on the
+base now is done, merged by hand: `<id>, set aside in this run, is on main now (3c4d5e6 …): merged by
+hand, so no longer set aside; worktree and branch removed`. It isn't checked again, the tickets it
+blocks start, its `unmerged` label goes, and the end line and the report count it closed. A worktree
+with uncommitted changes is left, with its branch, and the line says so.
 
 ## Holds and stops
 
@@ -506,7 +516,8 @@ what becomes of each, `<id>, carried over from the last run, …`:
 - a ticket waiting on a question is resumed once you answer it, and told so;
 - a ticket deferred meanwhile is left deferred; one deleted from Beads, or whose worktree is gone, is
   dropped;
-- a ticket merged by hand meanwhile is dropped;
+- a ticket merged by hand meanwhile is dropped, its worktree and branch removed as after a merge
+  (unless the worktree has uncommitted changes, which the line names);
 - a run that crashed (`kill -9`, a power cut) suspended nothing: its tickets still in progress are
   resumed, told the last run crashed.
 
@@ -516,7 +527,7 @@ followed.
 **The `unmerged` label.** A ticket that is closed but not merged when a run ends (it waits to merge,
 or was set aside) is labelled `unmerged`: the tickets it blocks wait, in later runs too, until its
 branch `tutti/<id>` is on the base. The run that merges it removes the label, as does any run that
-finds its work merged by hand.
+finds its work merged by hand, as it starts or as the base moves on.
 
 ## Exit codes
 
