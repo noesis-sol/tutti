@@ -184,7 +184,8 @@ export interface Scheduler {
   readonly freed: Effect.Effect<void>
   /**
    * Runs a resumed or carried-over worker's `work` in a slot, counting toward no limit. With its
-   * issue, its footprint, its parent and its solo label count as a dispatched ticket's do.
+   * issue, its footprint, its parent and its solo label count as a dispatched ticket's do, and,
+   * with footprints on, its `<id> footprint: …` line is logged as a dispatched ticket's is.
    */
   carry(ticket: string, work: Effect.Effect<void>, issue?: Issue): Effect.Effect<void>
   /**
@@ -417,6 +418,20 @@ export const make = (
         if (footprint !== undefined) yield* logs.write(footprintLine(issue.id, footprint))
         yield* occupy(issue.id, options.start.start(issue), issue, true)
         return true
+      })
+
+    // A resumed or carried-over ticket's footprint, logged as a dispatched ticket's is, as
+    // orchestra's startFootprint does for a ticket it adopts or resumes.
+    const carriedFootprint = (issue: Issue | undefined) =>
+      Effect.gen(function* () {
+        const footprints = options.footprints
+        if (issue === undefined || footprints === undefined) return
+        const repo = yield* footprints.repo
+        const predicted: ReadonlyMap<string, ReadonlyArray<string>> = options.predictor ===
+        undefined
+          ? new Map()
+          : yield* options.predictor.predicted
+        yield* logs.write(footprintLine(issue.id, footprintOf(issue, repo, predicted)))
       })
 
     const mayStart = Effect.gen(function* () {
@@ -693,7 +708,8 @@ export const make = (
       run,
       fillTrying: fillTries(1),
       freed: Queue.take(freed),
-      carry: (ticket, work, issue) => occupy(ticket, work, issue),
+      carry: (ticket, work, issue) =>
+        Effect.andThen(carriedFootprint(issue), occupy(ticket, work, issue)),
       recheckSlot: (ticket, work) =>
         oneFill.withPermit(
           Effect.gen(function* () {
