@@ -80,7 +80,7 @@ What changes from orchestra:
 
 ### 1.1 Goals
 
-1. Behavioural parity with orchestra v0.7.7 in everything that isn't about Herdr, tmux, cmux, screen reading or other agent kinds. The parity matrix (Appendix A) lists each feature and what becomes of it.
+1. Behavioural parity with orchestra v0.7.7 in everything that isn't about Herdr, tmux, cmux, screen reading or other agent kinds. The parity matrix (Appendix A) lists each feature and what becomes of it, and what orchestra changed since, up to 0.9.1 and its unreleased changes, each with tutti's ticket for it.
 2. One process, one binary, any terminal on macOS or Linux.
 3. Every external effect (bd, git, the SDK, the filesystem, the clock, the terminal) behind an Effect service with a test layer, so whole runs are tested deterministically with `TestClock` and fakes.
 4. A dashboard as legible as orchestra's, plus a worker view and attention handling that orchestra delegated to its terminals.
@@ -1714,7 +1714,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 
 ## Appendix A: Parity matrix
 
-*Kept* means as orchestra v0.7.7 has it. *Changed* points to the section that says how. *Dropped* is gone, with the reason.
+*Kept* means as orchestra v0.7.7 has it. *Changed* points to the section that says how. *Dropped* is gone, with the reason. What orchestra changed since v0.7.7 is in the second table, [Since orchestra v0.7.7](#since-orchestra-v077).
 
 | Area | Feature | Disposition |
 |---|---|---|
@@ -1801,6 +1801,106 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | | billing: subscription unless chosen otherwise | New (§4.13) |
 | | event stream | Changed: `.tutti/run/events.jsonl` v1 (§10) |
 | | the skill for running through an agent | Changed: rewritten for tutti, using `--plain` and `tutti answer` (M8) |
+
+### Since orchestra v0.7.7
+
+orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its changelog had them on 2026-10-21 (0.8.3 was tagged but never released), oldest first, each with what tutti does about it. *Done* names the ticket that brought it to tutti; *Planned* the ticket that will (under tutti-kkb, unless it says otherwise); *Already so* says where tutti has it without a ticket; *Not needed* says why tutti needs none. Bringing orchestra's own run of tutti up to 0.9.0 (its worker prompt, verifier and `check_own`) is tutti-kkb.34, not a row.
+
+| Version | orchestra's change | Disposition |
+|---|---|---|
+| 0.8.0 | `--spec` runs: the breakdown, headless or `--refine`; carrying on by `spec_sha256`, update mode; an empty repository; the start question's Spec option; the spec line in a worker's first message; `.orchestra/specs/` left out of footprints | Planned (tutti-kkb.28) |
+| | `worker_permission_mode`, `--worker-permission-mode`; `manual` as `default`'s new name | Already so: `workers.permission_mode`, `auto` unless chosen (§4.5); the SDK names the modes, so there is no `--help` to read |
+| | the usage-limit hold, `usage_limit_wait`, exit 8; a worker cut off by the limit shown `limited` | Already so: the usage-limit hold (§4.12), the matrix's usage-limits row |
+| | a turn that ends on an API error other than the limit counts as its end (`StopFailure`) | Already so: the result message ends the turn, its error status read (§4.2) |
+| | a worker at the limit while it resolves or fixes: the wait doesn't count toward `resolve_timeout` | Planned (tutti-kkb.2) |
+| | the spec a ticket's `spec` metadata names is left out of its footprint | Already so: `src/run/footprint.ts` leaves it out unless the `files` metadata lists it |
+| | paths with a `+` (`+page.svelte`) or brackets (`pages/[id].tsx`) in a ticket's text | Done (tutti-kkb.16) |
+| | a folder in the `files` metadata holds the files other tickets add in it, there yet or not | Already so: a folder kept as `src/run/` holds the files another ticket adds there (`src/run/footprint.ts`) |
+| | a glob in the `files` metadata holds the files other tickets add where it matches; a name with a `[` is also that file | Planned (tutti-kkb.40) |
+| | `-h` names exit code 8 | Not needed: tutti's help lists no exit codes of a run; `docs/running.md` lists 8 |
+| | the README, the docs and the skill describe spec runs | Planned (tutti-kkb.28) |
+| 0.8.1 | `CLOSED_UNMERGED`: a blocker closed by hand while its branch is off the base holds its dependents; a deleted branch frees them | Done (tutti-kkb.3); the same answer in `WAITS_FOR_MERGE`, `DEFERRED_FREE` and the nothing-to-run box is planned (tutti-kkb.36) |
+| | a worker's tab closed when its ticket is dispatched again; `LATE_CLOSE`, following a worker left in its tab | Not needed: there are no tabs, and a set-aside ticket's session ends with it (§4.8) |
+| | a ticket set aside with nothing done has its worktree and branch removed | Planned (tutti-kkb.42) |
+| | a feature's session left before it hands the epic back names what it filed (`feature_run`) | Not needed: `file_feature` files the epic and its tickets in one call, and tutti keeps what it filed (§4.10) |
+| | a worker that deferred its ticket as it stopped at the limit keeps it in progress; the rules say to commit and stop at the limit | Planned (tutti-kkb.41); the limit itself is read from the SDK's rate-limit events (§4.12) |
+| | an organ call refused for the limit starts the hold | Done (tutti-kkb.26) |
+| | a Stop isn't a turn's end until the transcript logs it | Not needed: the SDK's result message is the turn's end (§4.2) |
+| | `scripts/check.sh` keeps `go test -json` for its `DATA RACE` lines | Not needed: orchestra's own Go check |
+| | a feature talked through in the breakdown's session in a feature mode, `--feature` included; no plan shown and no `[y/N]`; a feature run takes a spec run's defaults; the START line's `talked through from` | Planned (tutti-kkb.29) |
+| | `--yes`, the screen organ and the plan organ removed | Planned (tutti-kkb.29) |
+| 0.8.2 | workers, the refinement and the feature interview at `--effort high` unless chosen | Planned (tutti-kkb.14) |
+| | a spec's environment setup ticket first, which every other ticket waits for | Planned (tutti-kkb.28) |
+| | long flags written with two dashes everywhere | Not needed: tutti's flags have two dashes (§8.2) |
+| | a worker whose terminal drops its agent name is found in its pane and named again | Not needed: no terminals (D3) |
+| | the setup in each new worktree before its worker; `SETUP_FAILED` back in the queue; a merged change to the setup settings taken up | Done (tutti-kkb.4) |
+| 0.8.4 | `SETUP_WAITS` on the end line, `held_by.setup`, `its setup failed` in `SCOPE_OPEN` | Done (tutti-kkb.4) |
+| | footprints leave out the files the full check names | Already so: footprints leave out the files the fast and the full check commands name (`src/run/run.ts`) |
+| | a worker that lost its name is found in its pane when set aside or handed back | Not needed: no terminals (D3) |
+| 0.8.5 | `check_own`: workers check their own change; the scout's command for each suite on part of the project | Planned (tutti-kkb.8) |
+| | the dashboard's load line: workers' memory, memory pressure, CPU | Planned (tutti-kkb.25) |
+| | `SHARED_MACHINE`, `--machine-workers` and `HOLD: MACHINE`, read every 2 s while held; a registration whose PID was reused ignored | Planned (tutti-kkb.23); the title line's `· shared with N runs` (tutti-kkb.38) |
+| | `◼ to merge`, and `◷` only for a ticket waiting on another | Planned (tutti-kkb.30) |
+| | a handed-back ticket checked once, after rebasing onto the moved base; the hand-back asks for what failed | Planned (tutti-kkb.17) |
+| | the verifier checks only what a change touches, and quotes the worker's passing check | Done (tutti-kkb.9) |
+| | files git merges by union left out of footprints, `LIKELY_CONFLICT` and `plan` | Done (tutti-kkb.16) |
+| | a finished ticket frees its slot as it goes to merge; at most `concurrent` merge without one | Done (tutti-kkb.1) |
+| | a check run once, its output kept and its exit status printed; check scripts end with a verdict line | Done (tutti-kkb.10) |
+| | every merge checked, a branch already on top of the base included | Done (tutti-kkb.6) |
+| | no ticket limit unless `--limit` gives one | Done (tutti-kkb.22) |
+| | workers start without the tools they never use; Skill kept for enabled plugins | Done (tutti-kkb.13) |
+| | the breakdown, the refinement and the interview get the workers' MCP servers, `--strict-mcp-config` | Already so: every session has `strictMcpConfig`, and the interview's one server is tutti's own (§4.6, §4.10) |
+| | the compact Current list's IDs, statuses and times in columns | Planned (tutti-kkb.30) |
+| | Ctrl+C keeps a ticket waiting to merge from rebasing after the stop | Already so: a quit interrupts the merge queue, and an interrupted rebase is aborted (§3.4) |
+| | a file renamed or copied in the work tree read under its new name | Already so: `git status --porcelain -z`, a rename's old path read apart (`src/services/Git.ts`) |
+| | a setup cut short runs again (`setup.started`); a ticket back from a question whose setup fails is requeued | Done (tutti-kkb.4) |
+| | the log and the event stream give events emitted at once in one order | Planned (tutti-kkb.44) |
+| | `· machine full` clears once the hold ends | Planned (tutti-kkb.23) |
+| | a hook input with an argument of another type loses only that argument | Not needed: the SDK gives hook input typed (§4.2) |
+| | git reads no longer take `.git/index.lock` | Already so: reads run with `GIT_OPTIONAL_LOCKS=0` (`src/services/Git.ts`) |
+| | Ctrl+C during `update` cancels the download and removes its file; the new binary synced to disk | Already so: `src/update/update.ts` (§12) |
+| | away from macOS, a screen's `●` read as `⏺` | Not needed: no screen reading (D3) |
+| | a usage-limit hold lifts at its reset while workers run | Done (tutti-kkb.26) |
+| | orchestra's own sessions get `--chrome` or `--no-chrome` | Done (tutti-kkb.5) |
+| | a check hand-back whose worker commits nothing is checked again | Done (tutti-kkb.7) |
+| | a release's GitHub Release carries its changelog section | Already so: the release workflow's notes are `scripts/release-notes.sh`'s |
+| | a deleted ticket's ID not taken for one it prefixes; nothing filed under a deleted parent | Planned (tutti-kkb.39) |
+| 0.8.6 | the tickets table without the tickets Current shows | Planned (tutti-kkb.30) |
+| | a shared file holds two tickets apart only when one of them is to change it | Done (tutti-kkb.16) |
+| | the merge train, `merge_train`, and the latest action of a ticket checked ahead | Planned (tutti-kkb.18) |
+| | a blank line between the title line and the load line | Planned (tutti-kkb.25) |
+| | a spec run starts on its environment ticket while the breakdown files the rest; the breakdown files only the root epic and that ticket, and orchestra the rest without a `bd show` each | Planned (tutti-kkb.28) |
+| | fewer git commands for the same results, and a merge naming its commit from what it read | Not needed: orchestra's own git calls; tutti's Git service is its own |
+| | the feature interview's line keeps the epic's ticket count in a narrow pane | Not needed: orchestra's pane; tutti's interview view is its own (§4.10) |
+| | a worker's own `/resume` not read as gone | Not needed: no terminals (D3) |
+| | a predicted footprint for a running ticket leaves out union-merged files | Done (tutti-kkb.16) |
+| | a ticket dispatched again while its earlier worker waits on the limit adopts that worker | Not needed: the ledger keeps one session for a ticket, and no ticket is taken twice (§5) |
+| | Ctrl+C while `init` writes the setup writes all of it, then says `stopped`, exit 130 | Planned (tutti-kkb.31) |
+| | each figure on the load line in the colour of its own signal | Planned (tutti-kkb.25) |
+| 0.9.0 | a worker prompt or verifier older than the templates said under START; `templates` in the settings; `init --update`, keeping the lines for each suite on part of the project | Planned (tutti-kkb.15) |
+| | each worker's share of the cores, `ORCHESTRA_CORES` and `GOFLAGS` `-p` | Done (tutti-kkb.24); other runs' workers counted is planned (tutti-kkb.37) |
+| | the verifier passes Bash no timeout; `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS`; the rules on giving a check its time | Done (tutti-kkb.11) |
+| | a hand-back's time limit leaves out the time the machine is loaded | Planned (tutti-kkb.2) |
+| | footprints leave out notes; a ticket with commits footprinted from its branch, in the run and in `plan` | Done (tutti-kkb.16) |
+| | `CLOSED_UNCOMMITTED` names the files left uncommitted | Planned (tutti-kkb.19) |
+| | a verifier round sees the earlier rounds' findings, `DISAGREES WITH ROUND <n>:` | Done (tutti-kkb.9) |
+| | a stop as a spec run commits its setup says it was committed | Planned (tutti-kkb.28) |
+| | a ticket checked ahead whose own check failed blames itself, not the branch ahead | Planned (tutti-kkb.18) |
+| | a worker its terminal doesn't show read again for 30 s; one PAUSED twice, then found back in its tab, adopted | Not needed: no terminals; a session's state is the SDK's (§4.2, §4.8) |
+| | a ticket set aside and merged by hand mid-run found as the base moves; a drain names the tickets it keeps from their recheck; a dropped carried-over ticket's worktree and branch removed | Planned (tutti-kkb.20) |
+| | a conflict hand-back told to run the setup when its rebase brought in a setup file's change | Done (tutti-kkb.4) |
+| | a hand-back at the limit or past its time limit takes a finished result from git, else stops its worker and says so | Planned (tutti-kkb.2) |
+| | the failure lines of jest, vitest, node, pytest, cargo, mocha and TAP | Planned (tutti-kkb.21) |
+| | a ticket coming to an end not shown twice, in Current and the table | Planned (tutti-kkb.30) |
+| | git failing told from git saying no: dependents wait while git can't tell; `WORKTREE_FAILED`, `GIT_FAILED` | Done (tutti-kkb.3) for the dependents; the rest already so: git's errors are typed, never read as an answer, and stop the run with `GIT_FAILED` or `WORKTREE_FAILED` (`src/run/run.ts`) |
+| | a check that fails as a hold comes up isn't handed back | Already so: a check hand-back reads the holds as it decides (`src/run/checkback.ts`) |
+| | Ctrl+C during `plan --apply` says which links it added, exit 130 | Planned (tutti-kkb.43) |
+| 0.9.1 | the `requires` list: checked and installed at each run's start, `REQUIREMENTS_MISSING`, `orchestra requires`, the README's section from it, workers told of it | Planned (tutti-kkb.27) |
+| | a spec's environment ticket writes the `requires` list | Planned (tutti-kkb.28) |
+| | no to-do checklist in the worker prompt | Planned (tutti-kkb.12) |
+| Unreleased | the answer talk: `a` on the dashboard, `orchestra answer`, `"questions"`; a decision about another ticket filed as a question with options | Planned (tutti-kkb.35) |
+| | `--overnight`: the pre-flight checklist, its fixes, the open questions put before the first ticket | Planned (tutti-kkb.46) |
+| | `keep_awake`, and an overnight run kept awake | Planned (tutti-kkb.45) |
 
 ## Appendix B: Where orchestra's code goes
 

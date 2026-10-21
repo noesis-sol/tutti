@@ -21,6 +21,12 @@ No row is marked *untested details* any more: the run loop's details, which tutt
 those of startup, the interface and init, which tutti-178 listed, have their tests. Each follow-up
 ticket says what to change. The week of real runs 1.0 also needs is the maintainer's.
 
+This audit is of the matrix's first table, orchestra v0.7.7. Its second table, *Since orchestra
+v0.7.7*, lists orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, each done,
+planned or not needed in tutti; its planned rows are their tickets' to audit, under tutti-kkb.
+`test/parity-since.test.ts` checks that table: every version from 0.8.0 on, and each row done or
+planned with its ticket, or already so or not needed with the reason.
+
 `test/parity-doc.test.ts` checks this file against the spec and the code: a row per row of the
 matrix, in its order; each with a disposition, and each gap with its ticket; and every module, test
 file and test name given here is there.
