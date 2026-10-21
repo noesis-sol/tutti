@@ -81,6 +81,7 @@ const mapped: Readonly<Record<string, ReadonlyArray<string>>> = {
   setup: ["checks", "setup", "command"],
   setup_files: ["checks", "setup", "files"],
   concurrent: ["concurrent"],
+  keep_awake: ["keep_awake"],
   ticket_limit: ["workers", "ticket_limit"],
   mcp_servers: ["workers", "mcp_servers"],
   worker_effort: ["workers", "effort"],

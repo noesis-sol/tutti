@@ -238,7 +238,7 @@ workers get, as the run's `START` block says them, or what is missing.
 
 In a project with `.orchestra/` and no `.tutti/`, `init` first offers to import orchestra's settings
 and worker prompt. It imports the checks and their time limits, the setup command and its files,
-`concurrent`, `ticket_limit`, `mcp_servers`, the worker and organ effort, `exclude_types`,
+`concurrent`, `keep_awake`, `ticket_limit`, `mcp_servers`, the worker and organ effort, `exclude_types`,
 `footprint`, `resolve_conflicts`, `resolve_timeout`, `check_hand_backs`, `merge_train` and
 `environment_hold`, and
 names what it can't import (`terminal`: tutti has no terminals). The worker prompt is copied with your
@@ -371,6 +371,7 @@ for a project that sets them all; the table below gives each one's default:
   "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/settings.json",
   "version": 1,
   "concurrent": 1,
+  "keep_awake": false,
   "checks": {
     "fast": { "command": "scripts/check-fast.sh", "timeout": "30m" },
     "full": { "command": "scripts/check-full.sh", "timeout": "60m" },
@@ -404,6 +405,7 @@ for a project that sets them all; the table below gives each one's default:
 | `$schema` | | the published [JSON Schema](../schema/settings.json), so editors complete and check the file |
 | `version` | `1` | the format |
 | `concurrent` | `1` | tickets at the same time, 1 to 16; `-c` for a run |
+| `keep_awake` | `false` | keep the machine from sleeping while a run goes, its report included: `caffeinate` on macOS, `systemd-inhibit` on Linux; the `START` block warns where there is none |
 | `checks.fast.command` | none | the merge check; [The checks](#the-checks) |
 | `checks.fast.timeout` | `"30m"` | its time limit; `--check-timeout` for a run |
 | `checks.full.command` | none | the full check |

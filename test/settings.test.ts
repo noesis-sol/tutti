@@ -23,6 +23,7 @@ const example = {
   $schema: "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/settings.json",
   version: 1,
   concurrent: 2,
+  keep_awake: false,
   checks: {
     fast: { command: "scripts/check-fast.sh", timeout: "30m" },
     full: { command: "scripts/check-full.sh", timeout: "60m" },
@@ -89,6 +90,7 @@ describe("settings", () => {
       $schema: example.$schema,
       version: 1,
       concurrent: 2,
+      keep_awake: false,
       checks: {
         fast: { command: "scripts/check-fast.sh", timeout: minutes(30) },
         full: { command: "scripts/check-full.sh", timeout: minutes(60) },
@@ -120,6 +122,7 @@ describe("settings", () => {
   const defaults: Settings = {
     version: 1,
     concurrent: 1,
+    keep_awake: false,
     checks: {
       fast: { command: null, timeout: minutes(30) },
       full: { command: null, timeout: minutes(60) },

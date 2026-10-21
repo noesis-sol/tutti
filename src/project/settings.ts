@@ -92,6 +92,11 @@ export const Settings = Schema.Struct({
   concurrent: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: maxConcurrent })).pipe(
     withDefault(1),
   ),
+  /**
+   * Whether the machine is kept from sleeping while a run goes, its organs included: caffeinate on
+   * macOS, systemd-inhibit on Linux (src/run/keepAwake.ts). Off by default, as orchestra's.
+   */
+  keep_awake: Schema.Boolean.pipe(withDefault(false)),
   checks: Schema.Struct({
     /** The merge check, run on each finished ticket. */
     fast: Check("30m").pipe(withDefault({})),

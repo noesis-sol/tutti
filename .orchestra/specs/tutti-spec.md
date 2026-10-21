@@ -1451,7 +1451,7 @@ The same two steps and flags as `orchestra init` (its `docs/setup.md`), with the
 - **Checks** runs the scout (§6.3), then *use them as they are*, *create from scratch* (the create-check-suite skill) or *manual*. It also asks the setup command, the ticket prefix and the verifier.
 - **An untrusted main checkout.** When the probe finds one (§4.13), init explains that Claude Code ignores the project's allow rules there. It offers to mark it trusted, naming the file and the key it would set: `projects["<main checkout>"].hasTrustDialogAccepted: true` in the user's `.claude.json` (in `CLAUDE_CONFIG_DIR` when that is set), Claude Code's own suggested fix. It writes only after you say yes. It re-reads the file just before writing, changes that one key and leaves everything else, and replaces the file atomically (a temporary file in the same folder, renamed over it, with the same mode). Declined, it prints the other fix: run `claude` once in the main checkout and accept the trust dialog. After writing, it runs the probe again to confirm the line is gone.
 - Test-work tickets are labelled `tutti-tests`.
-- **Import.** In a project with `.orchestra/` and no `.tutti/`, init offers to import the worker prompt and the settings it understands (the checks, timeouts, concurrency, MCP names, `exclude_types`, footprint, `resolve_conflicts`, `check_hand_backs`, `environment_hold`, setup). It names what it can't import. An imported worker prompt keeps your changes but needs the changes in §4.11, which init lists. `.orchestra/` is left as it is.
+- **Import.** In a project with `.orchestra/` and no `.tutti/`, init offers to import the worker prompt and the settings it understands (the checks, timeouts, concurrency, MCP names, `exclude_types`, footprint, `resolve_conflicts`, `check_hand_backs`, `environment_hold`, `keep_awake`, setup). It names what it can't import. An imported worker prompt keeps your changes but needs the changes in §4.11, which init lists. `.orchestra/` is left as it is.
 - The run lock is held while init changes the project, as `orchestra init` holds it.
 - **Template versions**, as orchestra 0.9.0's. `settings.json`'s `templates` records the version of tutti's worker prompt and verifier templates the project's files came from, as init writes them (`src/init/templates.ts` lists each version's changes: the section, what changed, and words only the new text has). A project's file that records an older version, or none (set up before, or imported from orchestra), and lacks a change's words, is older than the template: a run says so in a `templates:` note under its `START` line, naming the sections changed since and what changed in them, and init says it of the files it keeps. `tutti init --update` rewrites only those sections from the templates, keeping the rest of each file, records the versions, prints the diff and leaves the commit to you. It asks nothing and takes no other flag. A change to a template is a new version of it: a test pins the templates.
 
@@ -1464,6 +1464,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
   "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/settings.json",
   "version": 1,
   "concurrent": 2,
+  "keep_awake": false,
   "checks": {
     "fast": { "command": "scripts/check-fast.sh", "timeout": "30m" },
     "full": { "command": "scripts/check-full.sh", "timeout": "60m" },
@@ -1487,6 +1488,7 @@ Plain JSON: no comments, which the example below doesn't need. It is defined wit
 }
 ```
 
+- `keep_awake`, as orchestra's: `true` keeps the machine from sleeping while a run goes, the organs of its report included. As the run begins (after the start question, before `--feature`'s plan), tutti starts the system's keep-awake command with its PID through `effect/process`, in the scope of the run's services, which stops it as the run ends: `caffeinate -i -w <pid>` on macOS, `systemd-inhibit --what=idle:sleep … tail --pid=<pid> -f /dev/null` on Linux (`src/run/keepAwake.ts`). The log says `keeping the machine awake while the run goes: <command>`, and says so should the command end by itself. Where the system has none, or it isn't on the PATH, the START block warns once, and the run goes on. `false` by default.
 - `merge.train` is orchestra's `merge_train`: how many tickets waiting to merge are checked ahead of their turn, each rebased onto the branch ahead as that one is checked, and merged with no second check when it merges as checked (`src/run/mergetrain.ts`); `0` checks each in its turn alone, and none is checked ahead while the run holds at the machine's cap. 1 by default.
 - `checks.own.command` is orchestra's `check_own`: a worker's check of its own change, such as `scripts/check-own.sh`, which the note on running a check once names in place of the merge check (§4.11). tutti never runs it; its files count as no ticket's in footprints, as the other checks' do. None by default.
 - `workers.mcp_servers` absent means no servers, unlike orchestra (§15, Q5).
@@ -1913,7 +1915,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | no to-do checklist in the worker prompt | Planned (tutti-kkb.12) |
 | Unreleased | the answer talk: `a` on the dashboard, `orchestra answer`, `"questions"`; a decision about another ticket filed as a question with options | Planned (tutti-kkb.35) |
 | | `--overnight`: the pre-flight checklist, its fixes, the open questions put before the first ticket | Planned (tutti-kkb.46) |
-| | `keep_awake`, and an overnight run kept awake | Planned (tutti-kkb.45) |
+| | `keep_awake`, and an overnight run kept awake | Done (tutti-kkb.45) for `keep_awake`; the overnight run's, Planned (tutti-kkb.46) |
 
 ## Appendix B: Where orchestra's code goes
 

@@ -51,6 +51,7 @@ import { type FeatureIO, inRenderer, planAndFile, scopedTo } from "./run/feature
 import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
 import { interview, interviewEnding } from "./run/interview.ts"
+import { keepAwake, keepAwakePlan } from "./run/keepAwake.ts"
 import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
 import { otherWorkers } from "./run/machine.ts"
 import {
@@ -212,7 +213,18 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const failed = checked.failure
       return yield* cannotStart(failed instanceof StartupFailed ? failed.message : String(failed))
     }
-    const started = checked.success
+    // keep_awake (src/run/keepAwake.ts): the command started as the run begins, or the warning the
+    // START block gives where there is none.
+    const awake = keepAwakePlan({
+      on: checked.success.config.settings.keep_awake,
+      platform: process.platform,
+      pid: process.pid,
+      which: (command) => Bun.which(command),
+    })
+    const started: Started =
+      awake._tag === "Missing"
+        ? { ...checked.success, warnings: [...checked.success.warnings, awake.warning] }
+        : checked.success
     const { config, base } = started
     const at = new Date(yield* Clock.currentTimeMillis).toISOString()
 
@@ -253,6 +265,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       ),
       (made) => made.disposeEffect,
     )
+    // The scope the run's services and the keep-awake command close with, once the report is done.
+    const runScope = yield* Effect.scope
     const services = yield* Effect.result(runtime.contextEffect)
     if (Result.isFailure(services)) {
       return yield* cannotStart(`tutti cannot start its run: ${String(services.failure)}`)
@@ -329,9 +343,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       })
       const count = asks === "no" ? TicketCount.Unknown() : yield* ticketCount(nothingOptions())
 
-      /** The run begins on `work`: the feature chosen named in the lock, and the start event. */
+      /**
+       * The run begins on `work`: the machine kept awake until the run's scope closes, the feature
+       * chosen named in the lock, and the start event.
+       */
       const begin = (work: Work) =>
         Effect.gen(function* () {
+          if (awake._tag === "Command") {
+            yield* keepAwake(awake.command, config.repo).pipe(Scope.provide(runScope))
+          }
           const feature = work._tag === "Feature" ? work.description : config.feature
           // The lock is held all the same if its holder can't be rewritten.
           if (work._tag === "Feature") {
