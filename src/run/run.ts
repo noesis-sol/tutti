@@ -1316,16 +1316,17 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       const text = stopsLine(all)
       closing = text
       closed = Ending.Stopped({ text: `${text}${yield* scopePart}` })
-      if (!first.recorded || all.others.length > 0) {
-        yield* events.emit({
-          kind: "stop",
-          detail: first.why,
-          ...(first.ticket === undefined ? {} : { ticket: first.ticket }),
-          ...(first.blocked === undefined ? {} : { blocked: first.blocked }),
-          text,
-        })
-      }
-      yield* logs.write(text)
+      const record =
+        !first.recorded || all.others.length > 0
+          ? events.emit({
+              kind: "stop",
+              detail: first.why,
+              ...(first.ticket === undefined ? {} : { ticket: first.ticket }),
+              ...(first.blocked === undefined ? {} : { blocked: first.blocked }),
+              text,
+            })
+          : Effect.void
+      yield* logs.writeWith([text], record)
     } else {
       const n = yield* scheduler.started
       const how =
