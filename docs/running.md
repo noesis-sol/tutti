@@ -1,8 +1,8 @@
 # Running
 
 Starting a run and its options, scoped and feature runs, several tickets at once, the merge queue,
-holds and stops, the usage limit, quitting and carrying on, exit codes, and orchestra beside tutti.
-Back to the [README](../README.md).
+holds and stops, the usage limit, quitting and carrying on, exit codes, running through an agent, and
+orchestra beside tutti. Back to the [README](../README.md).
 
 ## Starting a run
 
@@ -454,6 +454,25 @@ finds its work merged by hand.
 | 130 | quit (`INTERRUPTED`); its workers' sessions are saved for the next run |
 
 The first stop decides the code; the closing line names every stop, joined by `; also`.
+
+## Running through an agent
+
+A coding agent can run tutti for you with the tutti skill,
+[`skills/tutti/SKILL.md`](../skills/tutti/SKILL.md) in tutti's repository. Install it by copying
+the `skills/tutti/` folder to `~/.claude/skills/tutti/`, for every project, or to
+`.claude/skills/tutti/` in one project:
+
+```
+git clone https://github.com/noesis-sol/tutti
+mkdir -p ~/.claude/skills
+cp -R tutti/skills/tutti ~/.claude/skills/tutti
+```
+
+Then ask the agent to "run tutti". The skill has it find out where the project stands first, set
+it up with `tutti init`'s flags, launch `tutti --plain --tickets` in the background, answer the
+workers' requests with `tutti answer`
+([Answering without the dashboard](workers.md#answering-without-the-dashboard)), follow the
+[event stream](events.md), and read the stop lines and [exit codes](#exit-codes) when the run ends.
 
 ## Files
 

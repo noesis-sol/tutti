@@ -154,13 +154,22 @@ it never takes over orchestra's workers, and each refuses to start while the oth
 repository. Finish an orchestra run with orchestra. See
 [orchestra beside tutti](docs/running.md#orchestra-beside-tutti).
 
+## Running tutti through an agent
+
+[`skills/tutti/SKILL.md`](skills/tutti/SKILL.md) is a skill for a coding agent that runs tutti for
+you: setting a project up, launching `tutti --plain --tickets`, answering the workers' requests with
+`tutti answer`, quitting and resuming, and finding out why a run stopped. Copy the `skills/tutti/`
+folder to `~/.claude/skills/tutti/` (every project) or to `.claude/skills/tutti/` in one project,
+then ask the agent to "run tutti". See
+[Running through an agent](docs/running.md#running-through-an-agent).
+
 ## Documentation
 
 - [docs/setup.md](docs/setup.md): installing and updating, logging in and billing, `tutti init`, the
   checks, the verifier, the settings and your user config
 - [docs/running.md](docs/running.md): starting a run and its options, scoped and feature runs,
   several tickets at once, the merge queue, holds, the usage limit, quitting and carrying on, exit
-  codes, orchestra beside tutti
+  codes, running through an agent, orchestra beside tutti
 - [docs/dashboard.md](docs/dashboard.md): the dashboard, the worker view, the keys and the mouse,
   plain output, terminals, notifications
 - [docs/workers.md](docs/workers.md): the worker prompt, permissions, attention requests and
