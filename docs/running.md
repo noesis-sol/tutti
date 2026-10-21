@@ -296,8 +296,11 @@ its turn (`◷ to merge`). Tickets merge one at a time, in the order they finish
 2. **Setup.** If the rebase changed a dependency file, the setup command runs in its worktree
    ([The checks](setup.md#the-checks)). Before the check on a worker's fix of a failed check, or on
    its resolution of a conflict, it also runs if the worker's own commits changed one.
-3. **Check.** The merge check, `scripts/check-fast.sh`, runs on the rebased branch. A branch the base
-   didn't move under is the code its worker checked before closing, and merges as it is.
+3. **Check.** The merge check, `scripts/check-fast.sh`, runs on the branch, rebased or on top of the
+   base already, so no ticket reaches the base unchecked:
+   `tutti/<id> is on top of main already: checking it with 'scripts/check-fast.sh' before it merges`.
+   A branch the check passed on in this run, as its worker fixed it or resolved its rebase, isn't
+   checked again.
 4. **Fast-forward** the base to the branch. The worktree and branch are removed:
    `<id> closed (ffd6ce4 Add a --json flag (tut-12)); merged into main, worktree and branch removed`.
 

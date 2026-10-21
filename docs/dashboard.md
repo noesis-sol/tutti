@@ -82,7 +82,7 @@ changes as the ticket moves through its phases:
 | `◷ to merge` | its work is verified, and it waits for its turn to merge |
 | `◆ merging` | its merge is under way: the rebase, the setup, the check, the fast-forward |
 | `⟳ resolving` | its rebase stopped on conflicts, handed back to its worker |
-| `⟳ fixing` | its check failed on the rebased branch, handed back to its worker |
+| `⟳ fixing` | its check failed on its branch before it merged, handed back to its worker |
 | `✓ done` | merged (`ffd6ce4 merged into <branch>`), or closed with `no change to merge` |
 | `? for you` | waits on a question ticket for you |
 | `◷ waiting` | back in the queue until a blocker merges, or reopened by an environment hold |

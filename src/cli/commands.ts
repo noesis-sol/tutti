@@ -344,7 +344,7 @@ export const initFlags = {
   ),
   checkFastTimeout: initFlag(
     "check-fast-timeout",
-    "how long check-fast may run on a rebased ticket, e.g. 5m (default 30m)",
+    "how long check-fast may run on a ticket before it merges, e.g. 5m (default 30m)",
     { alias: "check-timeout", metavar: "time" },
   ),
   checkFullTimeout: initFlag(

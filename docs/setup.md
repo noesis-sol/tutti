@@ -246,8 +246,8 @@ them none, and the summary says so.
 
 `tutti` runs two checks, both ordinary shell scripts that `init` writes and the project owns:
 
-- **`scripts/check-fast.sh`**, the merge check: run on each finished ticket, rebased onto what merged
-  meanwhile, before it merges. Keep it to what runs in a few minutes, as every merge waits for it.
+- **`scripts/check-fast.sh`**, the merge check: run on each finished ticket before it merges,
+  rebased onto what merged meanwhile, or on top of the base already. Keep it to what runs in a few minutes, as every merge waits for it.
 - **`scripts/check-full.sh`**: `scripts/check-fast.sh`, then the suites too slow or too demanding for
   every merge. tutti runs it once, after a run that ended by itself and merged something (see
   [The full check](running.md#the-full-check)).
@@ -256,7 +256,7 @@ Each is one command per suite, run from the repository's root:
 
 ```sh
 #!/bin/sh
-# scripts/check-fast.sh: tutti's merge check, run on every ticket rebased onto work merged while it ran.
+# scripts/check-fast.sh: tutti's merge check, run on every ticket before it merges.
 set -e
 cd "$(dirname "$0")/.."
 

@@ -135,7 +135,7 @@ export const Settings = Schema.Struct({
     resolve_conflicts: Schema.Boolean.pipe(withDefault(true)),
     /** How long its worker may take to resolve the conflicts. */
     resolve_timeout: PositiveDuration.pipe(withDefault("20m")),
-    /** How many times a check failing on a rebased ticket is handed back; 0 sets it aside at once. */
+    /** How many times a check failing before a merge is handed back; 0 sets it aside at once. */
     check_hand_backs: Count.pipe(withDefault(2)),
   }).pipe(withDefault({})),
   environment_hold: Schema.Struct({

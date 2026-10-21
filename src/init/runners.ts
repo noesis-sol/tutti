@@ -1,7 +1,7 @@
 // The project's checks are two runners, shell scripts tutti init writes in the project from its
 // suites and the project then owns (§ 8.3, § 9.1):
 //
-//   scripts/check-fast.sh   the merge check, run on every ticket rebased before it merges
+//   scripts/check-fast.sh   the merge check, run on every ticket before it merges
 //   scripts/check-full.sh   everything: check-fast.sh, then the slower suites, run once at the end
 //
 // Their format is orchestra's, so runners orchestra wrote work as they are: a suite a line, each in

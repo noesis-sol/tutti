@@ -776,7 +776,7 @@ A ticket is finished when its phase is `Done`: closed in Beads, merged into the 
 | `ToMerge{place}` | its work verified, waiting for its turn in the merge queue. `place` 1 is next | `◷ to merge` | `to merge (2nd)` | not counted yet |
 | `Merging{step}` | its merge under way. `step` is `rebase`, `setup`, `check` or `fast-forward` | `◆ merging` | `merging`; the action line names the step (`running the check on main`) | not counted yet |
 | `Resolving{attempt}` | its rebase stopped on conflicts, which were handed back to its worker | `⟳ resolving` | `resolving` | Workers |
-| `Fixing{attempt, afterResolution}` | its check failed on the rebased branch, and the failure was handed back to its worker | `⟳ fixing` | `fixing check` | Workers |
+| `Fixing{attempt, afterResolution}` | its check failed on its branch before it merged, and the failure was handed back to its worker | `⟳ fixing` | `fixing check` | Workers |
 | `Done{merged \| noChange}` | merged (with its commit), or closed with no change of its own to merge | `✓ done` | none | Completed |
 | `Asked{question}` | waits on a question ticket for you | `? for you` | none | Needs you |
 | `Waiting{for}` | back in the queue until a blocker merges (`WAITS_FOR_MERGE`), or reopened by an environment hold | `◷ waiting` | none | nowhere, not even In queue |

@@ -56,7 +56,7 @@ export type TicketPhase = Data.TaggedEnum<{
   Merging: { readonly step: MergeStep }
   /** Its rebase stopped on conflicts, which were handed back to its worker. */
   Resolving: { readonly attempt: number }
-  /** Its check failed on the rebased branch, and the failure was handed back to its worker. */
+  /** Its check failed on its branch before it merged, and the failure was handed back. */
   Fixing: { readonly attempt: number; readonly afterResolution: boolean }
   /** Merged, or closed with no change of its own to merge. The only final phase. */
   Done: { readonly outcome: Outcome }
