@@ -5,17 +5,18 @@ The audit against the spec's parity matrix (`.orchestra/specs/tutti-spec.md`, Ap
 and the tests that show it. *Kept* means as orchestra v0.7.7 has it; the other dispositions point to
 the spec's section. Back to the [README](../README.md).
 
-Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 80 are as the spec says:
-48 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 3
+Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 81 are as the spec says:
+49 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 2
 aren't yet:
 
 - **Missing** (2): the START block's `DEFERRED_FREE` lines (tutti-psr), and counting and logging
   compactions (tutti-4sa). The dispatch's footprint line is logged since tutti-d6q, the run's
   notifications are sent since tutti-sla, and the predictor runs in real runs since tutti-76k.
-- **Differs** (1): the run lock's files emptied on release (tutti-d5g). The wind-down line's
-  narrow and empty forms are orchestra's since tutti-upv, the setup after a fix since tutti-ry9, a
-  failed full check's last 40 lines reach the log, the reviewer and the report since tutti-zfj, and
-  rechecks wait out holds and solo tickets, each in a slot, since tutti-t4y.
+- **Differs** (0): the run lock's refusal names init, and § 9.2 says its files are emptied on
+  release, since tutti-d5g. The wind-down line's narrow and empty forms are orchestra's since
+  tutti-upv, the setup after a fix since tutti-ry9, a failed full check's last 40 lines reach the
+  log, the reviewer and the report since tutti-zfj, and rechecks wait out holds and solo tickets,
+  each in a slot, since tutti-t4y.
 
 Rows marked *untested details* do what the spec says, but some detail of them is shown by no test
 yet; tutti-178 (startup, the interface and init) lists them. The run loop's, which tutti-b3k
@@ -32,7 +33,7 @@ file and test name given here is there.
 |---|---|---|---|---|
 | Start | startup checks, every problem listed, exit 2 | Kept: every problem in one report, exit 2; no terminal checks; the login probe and settings errors added | `src/run/startup.ts`, `src/agent/Account.ts`, `src/main.ts` | `test/startup.test.ts` "several problems together, in one report, in § 5's order", "not logged in to Claude"; `test/smoke.test.ts` "a bare tutti outside a git repository fails its startup checks with exit 2"; `test/untrusted-checkout.test.ts` "an untrusted main checkout is a setup problem" |
 |  | not set up → `run init` first | Kept (tutti-04w: with `.tutti/settings.json` there and no worker prompt, a setup problem naming the file and `tutti init`) | `src/run/startup.ts`, `src/project/prompt.ts` | `test/startup.test.ts` "says so first, then the other problems", "alone, it is the whole report", "a worker prompt of its own sets it up enough"; `test/prompt-missing.test.ts` "list the missing worker prompt with the other problems", "a missing project prompt beside the settings is a setup problem" |
-|  | run lock, its JSON, `flock` | Differs: tutti-d5g (both lock files are emptied on release, which § 9.2 doesn't say) | `src/services/RunLock.ts`, `src/native/libc.ts` | `test/run-lock.test.ts` "takes both files for the scope, naming the run, and releases them when it closes", "a second process is refused with the holder's pid, start time and branch", "orchestra holding its lock refuses the run, which then holds neither lock", "both locks are released when the holder is killed with kill -9", "the files are close-on-exec: a child the holder started keeps neither lock"; `test/run-lock-init-refusal.test.ts` "a run refused by init's held lock says init holds it" |
+|  | run lock, its JSON, `flock` | Kept: a run refused while init holds the lock says `tutti init`, as orchestra's says `orchestra init`; both files emptied on release, as § 9.2 says (tutti-d5g) | `src/services/RunLock.ts`, `src/native/libc.ts` | `test/run-lock.test.ts` "takes both files for the scope, naming the run, and releases them when it closes", "a second process is refused with the holder's pid, start time and branch", "orchestra holding its lock refuses the run, which then holds neither lock", "both locks are released when the holder is killed with kill -9", "the files are close-on-exec: a child the holder started keeps neither lock"; `test/run-lock-init-refusal.test.ts` "a run refused by init's held lock says init holds it" |
 |  | start question: Current tickets or New feature | Kept; untested details: tutti-178 | `src/run/choose.ts`, `src/ui/StartQuestion.tsx`, `src/ui/plain/forms.ts` | `test/run-start-question.test.ts` "on two TTYs with no deciding flag, in the renderer with the dashboard", "not when a flag decides: --tickets, --ticket, --feature, --plain, a --limit reached"; `test/start-question.test.tsx` "offers the current tickets, with their count, then a new feature" |
 |  | `--tickets`, `--ticket`, `--feature`, `--yes` | Kept: `--ticket` naming a ticket bd can't show, a closed one or a question, and `--feature` with `--limit 0`, are startup problems | `src/cli/flags.ts`, `src/cli/AppConfig.ts`, `src/run/startup.ts`, `src/run/scope.ts` | `test/app-config.test.ts` "§ 8.2's flags are all there", "flags that don't go together"; `test/startup-ticket-scope.test.ts` "a ticket bd has no issue for is a setup problem", "a closed ticket is a setup problem, with the command that reopens it", "a question is a setup problem, with the command that answers it", "--limit 0 is a setup problem: the plan would be filed and none of it started"; `test/scenarios-scheduling.test.ts` "--ticket runs that ticket's subtickets only: SCOPE_DONE, tutti closing its epic" |
 |  | nothing to run, its box and reasons, `DEFERRED_FREE` | Missing: tutti-psr (the box lists the deferred tickets, but the START block's `DEFERRED_FREE` lines are never written) | `src/run/nothing.ts`, `src/run/deferredFree.ts` | `test/nothing.test.ts` "each reason has its line and its command, in orchestra's words", "nothing ready counts each ticket left by what holds it", "prints the box, records its done line and ends: no dashboard", "in the box, below the reasons, with the command that reopens each" |

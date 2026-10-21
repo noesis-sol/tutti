@@ -1503,9 +1503,10 @@ It is `flock(LOCK_EX|LOCK_NB)` on `<git-common-dir>/tutti.lock`, so the system r
 - **How it is taken.** Bun has no `flock` in its standard library, so tutti calls libc's through `bun:ffi` (macOS and Linux both have it).
 - **Close-on-exec.** The file is opened with `O_CLOEXEC`, and M0 checks the flags Bun uses. A child that inherited the descriptor (a `claude`, a git command, a check) would keep the lock after tutti dies, and the next run would be refused.
 - **What the file holds**: JSON naming the run that holds it (PID, start time, version, branch, scope or feature, and `"init": true` for init).
-- **A second run** is refused with exit 2: `tutti is already running in <repo> (pid 44497, since 08:31, main)`.
+- **A second run** is refused with exit 2: `tutti is already running in <repo> (pid 44497, since 08:31, main)`. While init holds the lock it says so, as orchestra says `orchestra init`: `(tutti init, pid 44497, since 08:31, main)`.
+- **On release** tutti empties the file before its descriptor closes, so it never names a run that has ended; whether a run is going is whether a process holds the lock (`lsof -t <git-common-dir>/tutti.lock`). orchestra leaves its file naming the last run.
 
-**orchestra's lock.** tutti also takes `<git-common-dir>/orchestra.lock` for the same span, writing the JSON orchestra writes there (`pid`, `started`, `version` as `tutti <version>`, `branch`). An orchestra started meanwhile then refuses with its own message, naming tutti's PID. If orchestra holds that lock, tutti refuses with exit 2: `orchestra is running in <repo> (pid …)`.
+**orchestra's lock.** tutti also takes `<git-common-dir>/orchestra.lock` for the same span, writing the JSON orchestra writes there (`pid`, `started`, `version` as `tutti <version>`, `branch`), and empties it on release as it does its own. An orchestra started meanwhile then refuses with its own message, naming tutti's PID. If orchestra holds that lock, tutti refuses with exit 2: `orchestra is running in <repo> (pid …)`.
 
 ---
 
@@ -1693,7 +1694,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 |---|---|---|
 | Start | startup checks, every problem listed, exit 2 | Kept (terminal checks dropped; login probe and settings errors added, §4.13) |
 | | not set up → `run init` first | Kept |
-| | run lock, its JSON, `flock` | Kept (§9.2), file renamed; orchestra's lock taken too |
+| | run lock, its JSON, `flock` | Kept (§9.2), file renamed; orchestra's lock taken too; both files emptied on release |
 | | start question: Current tickets or New feature | Kept (§7.1) |
 | | `--tickets`, `--ticket`, `--feature`, `--yes` | Kept |
 | | nothing to run, its box and reasons, `DEFERRED_FREE` | Kept |
