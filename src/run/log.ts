@@ -69,6 +69,10 @@ export const Tag = {
   offBranch: "OFF_BRANCH",
   dirtyWorktree: "DIRTY_WORKTREE",
   rebaseFailed: "REBASE_FAILED",
+  setup: "SETUP",
+  setupFailed: "SETUP_FAILED",
+  setupWaits: "SETUP_WAITS",
+  settingsUnread: "SETTINGS_UNREAD",
   flaky: "FLAKY",
   fullCheck: "FULL_CHECK",
   fullCheckFailed: "FULL_CHECK_FAILED",
@@ -147,10 +151,12 @@ export const resolving = (r: {
   readonly files: ReadonlyArray<string>
   /** How long the worker has, as in `20m`. */
   readonly limit: string
+  /** What the worker is told of the setup, as `; told to run '<setup>' …` (setup.ts); "" for nothing. */
+  readonly told?: Line
 }): Line =>
   ticketLine(
     Tag.resolving,
-  )`${branch(r.id)} conflicts with ${r.base} in ${r.files}; handed back to its worker to resolve (up to ${r.limit})`
+  )`${branch(r.id)} conflicts with ${r.base} in ${r.files}; handed back to its worker to resolve (up to ${r.limit})${r.told ?? ""}`
 
 /**
  * FIXING: the check failed on a ticket's branch, rebased or on top of the base already, handed back

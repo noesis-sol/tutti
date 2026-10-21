@@ -12,12 +12,16 @@
 //
 // A worker seen UsageLimited in its attempt counts for nothing (§ 4.12), as do a ticket back in
 // the queue to wait for a merge and one set aside as it started; any other settling ends the row.
-// A ticket failing at once while the run holds is reopened too.
+// A ticket failing at once while the run holds is reopened too. A setup that failed in a ticket's
+// worktree before its worker could start (setup.ts) adds to the row as a worker failing at once
+// does, so that setups failing ticket after ticket hold the run rather than leave the queue to
+// them; its ticket is back in the queue already, Waiting{setup}, and isn't reopened.
 //
 // Once nothing runs or waits to merge, and environment_hold.probe after, one session without a
 // ticket is started in the main checkout, with no MCP servers and no worker prompt, and asked to
 // run one command, which writes .tutti/run/probe. If it does within probeLimit, PROBE_OK: the hold
-// ends, the reopened tickets go back to Queued and the run takes tickets again. If not, the run
+// ends, the reopened tickets, and those whose setup failed, go back to Queued and the run takes
+// tickets again. If not, the run
 // ends ENVIRONMENT (exit 7). The machine is probed once per run, so an environment that keeps
 // failing ends the run the second time it holds. Triage's verdicts on tickets queued for it before
 // the probe ended the hold count for nothing (the generation): they can come long after the probe
@@ -47,15 +51,22 @@ import { type StopReason, type Stops, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
-import { Cause } from "./phase.ts"
+import { Cause, probeWait, setupWait } from "./phase.ts"
 import { changes, type Settled } from "./settle.ts"
 import type { StartedWorker } from "./start.ts"
 
 /**
- * How a ticket's worker settled, as the hold counts it: failed at once (`atOnce`), adding to the
- * row; any other way (`other`), ending it; or counting for nothing (`uncounted`).
+ * How a ticket's worker settled, as the hold counts it: failed at once (`atOnce`), or no worker
+ * started as the setup failed in its worktree (`setup`), adding to the row; any other way
+ * (`other`), ending it; or counting for nothing (`uncounted`).
  */
-export type Settling = "atOnce" | "other" | "uncounted"
+export type Settling = "atOnce" | "setup" | "other" | "uncounted"
+
+/** A ticket in the row failing at once, and whether that was its worktree's setup failing. */
+export interface FastFail {
+  readonly ticket: string
+  readonly setup: boolean
+}
 
 /** Triage's verdict on a deferred ticket, as the hold counts it (§ 6.2). */
 export interface Verdict {
@@ -108,6 +119,25 @@ export const probePrompt = (file: string): string =>
 /** Why the row of tickets failing at once holds the run. */
 export const atOnceWhy = (tickets: ReadonlyArray<string>, window: Duration.Duration): string =>
   `the last ${tickets.length} tickets (${tickets.join(", ")}) each settled within ${formatDuration(window)} of starting without being claimed or changed`
+
+/**
+ * Why the row of tickets failing at once holds the run: their workers settled at once, the setup
+ * (`command`) failed in their worktrees, or some of each.
+ */
+export const fastFailsWhy = (
+  row: ReadonlyArray<FastFail>,
+  window: Duration.Duration,
+  command: string | null,
+): string => {
+  const tickets = row.map((each) => each.ticket)
+  const setups = row.filter((each) => each.setup).length
+  const setup = command === null ? "" : ` '${command}'`
+  if (setups === 0) return atOnceWhy(tickets, window)
+  if (setups === row.length) {
+    return `the setup${setup} failed in the worktrees of the last ${tickets.length} tickets (${tickets.join(", ")})`
+  }
+  return `the last ${tickets.length} tickets (${tickets.join(", ")}) each failed at once: the setup${setup} failed in their worktree, or their worker settled within ${formatDuration(window)} of starting without being claimed or changed`
+}
 
 /** Why the row of tickets triage blamed on the environment holds the run. */
 export const blamedWhy = (tickets: ReadonlyArray<string>, summary: string): string =>
@@ -177,8 +207,8 @@ export interface EnvironmentHold {
 }
 
 interface HoldState {
-  /** The row of tickets whose workers failed at once. */
-  readonly atOnce: ReadonlyArray<string>
+  /** The row of tickets whose workers failed at once, or whose setup failed. */
+  readonly atOnce: ReadonlyArray<FastFail>
   /** The row of tickets triage blamed on the environment. */
   readonly blamed: ReadonlyArray<string>
   /** The hold's stop, while the run holds for the environment. */
@@ -203,6 +233,8 @@ const fresh: HoldState = {
  */
 export const make = (options: {
   readonly onHold: (stop: StopReason) => Effect.Effect<void>
+  /** The run's setup command now, for the hold's why; checks.setup's by default. */
+  readonly setup?: Effect.Effect<string | null>
 }): Effect.Effect<
   EnvironmentHold,
   never,
@@ -256,7 +288,9 @@ export const make = (options: {
         const stop = holdStop(why)
         yield* Ref.set(state, { ...now, stop, why })
         yield* options.onHold(stop)
-        yield* Effect.forEach(now.atOnce, reopen, { discard: true })
+        // A ticket whose setup failed is back in the queue already.
+        const failed = now.atOnce.filter((each) => !each.setup).map((each) => each.ticket)
+        yield* Effect.forEach(failed, reopen, { discard: true })
       })
 
     const settled = (ticket: string, how: Settling) =>
@@ -266,10 +300,17 @@ export const make = (options: {
           yield* Ref.update(state, (now) => ({ ...now, atOnce: [] }))
           return
         }
-        const now = yield* Ref.updateAndGet(state, (s) => ({ ...s, atOnce: [...s.atOnce, ticket] }))
-        if (now.stop !== null) yield* reopen(ticket)
-        else if (now.atOnce.length >= count) {
-          yield* hold(atOnceWhy(now.atOnce, config.settings.environment_hold.window))
+        const setup = how === "setup"
+        const now = yield* Ref.updateAndGet(state, (s) => ({
+          ...s,
+          atOnce: [...s.atOnce, { ticket, setup }],
+        }))
+        if (now.stop !== null) {
+          if (!setup) yield* reopen(ticket)
+        } else if (now.atOnce.length >= count) {
+          const command = yield* options.setup ??
+            Effect.succeed(config.settings.checks.setup.command)
+          yield* hold(fastFailsWhy(now.atOnce, config.settings.environment_hold.window, command))
         }
       }).pipe(one.withPermit)
 
@@ -356,10 +397,13 @@ export const make = (options: {
       Effect.ensuring(Effect.andThen(host.end(probeWorker), SubscriptionRef.set(probing, null))),
     )
 
-    // Puts each ticket the hold reopened back in the queue, Waiting → Queued.
+    // Puts each ticket the hold reopened, or whose setup failed, back in the queue, Waiting → Queued.
     const requeue = Effect.gen(function* () {
       for (const entry of (yield* ledger.current).tickets.values()) {
-        if (entry.phase._tag !== "Waiting" || entry.phase.for !== "probe") continue
+        const { phase } = entry
+        if (phase._tag !== "Waiting" || (phase.for !== probeWait && phase.for !== setupWait)) {
+          continue
+        }
         const queued =
           [...(yield* ledger.current).tickets.values()].filter(
             (each) => each.phase._tag === "Queued",

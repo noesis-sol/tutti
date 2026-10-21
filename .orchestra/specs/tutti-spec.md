@@ -717,10 +717,12 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
    Footprints are built from names, files metadata, folders and globs, and functions, resolved against `git ls-files`, with the check's own files left out and predicted files added. A ticket's notes name nothing of its footprint; the files git merges by union are left out of every footprint, its worktree's changes and `tutti plan`'s; a ticket with commits on `tutti/<id>` is footprinted from the files its branch changes, its files metadata and its area labels (`(from its branch)`); a file two footprints share holds them apart only when one is to change it (its files metadata lists it, its text names it, a document only in a sentence asking to change it, or its worktree changed it); and a path keeps its brackets and a `+` starting a name (`pages/[id].tsx`, `+page.svelte`), as orchestra 0.9.0 has it. A running ticket's footprint also grows with the files its worktree has changed (`git diff --name-only <base>...HEAD` plus `git status`, read every 30 s with the ready poll). Unlike orchestra's hook-reported edits, this survives resumes and runs, and sees edits made with Bash.
 6. **Per ticket**:
    - the worktree and branch (reused when an earlier attempt left work, and the worker told what it left)
+   - the setup (`checks.setup.command`) in the worktree before its worker starts, within the merge check's time limit: always in a new one, and in one an earlier attempt left when the last setup there failed or didn't finish (`.tutti/run/setup.started`, written before it runs and removed once one works, so a quit that cuts it short has the next run set up again), or when the branch has changed a file `setup_files` names since it was last set up in the run. tutti doesn't rebase a reused worktree before its worker, so nothing else changes one; a ticket back from a question resumes its session in its worktree, with no setup. The first message says how the dependencies are installed. A setup that fails there starts no worker (`SETUP_FAILED`): the ticket is reopened if it wasn't open, keeps its worktree and the setup's output, and is `Waiting{setup}`, back in the queue but out of the run until a ticket merges or a probe ends an environment hold; it counts toward no `--limit`, and toward the environment hold as a worker failing at once does
    - the session (§4); settle; read the ticket; the outcome: closed, asked, deferred, waits for merge, still in progress (continue nudges, then `PAUSED`), closed with no commit
 7. **The merge queue**:
    - `OFF_BRANCH`, `DIRTY_WORKTREE`, rebase (`REBASE_FAILED`, `MERGE_CONFLICT` with hand-back)
-   - the setup when `setup_files` changed
+   - the setup when `setup_files` changed; a conflict handed back after a rebase that brings in such a change tells the worker to run the setup once the rebase has finished, before the check, and its `RESOLVING` line says so
+   - a merge that changes `checks.setup` in `.tutti/settings.json` on the base has the run use it from then on (`SETUP: …`); one that can't be read is warned of (`SETTINGS_UNREAD`) and the setup stays as it was
    - `check_fast` within its limit (output kept, `FLAKY:` warnings, `CHECKS_FAILED` with hand-back)
    - a branch on top of the base already, as when nothing merged while its ticket ran, is checked too, set up first if a dependency file changed since its last setup, as orchestra 0.8.5 has it: no ticket reaches the base unchecked (`tutti/<id> is on top of <base> already: checking it with '<check>' before it merges`). A failure there is handed back or sets the ticket aside as on a rebased branch; a branch whose commits change nothing needs no check, and one the check passed on in this run, as its worker fixed it or resolved its rebase, isn't checked again
    - fast-forward (`MERGE_FAILED`, exit 6); cleanup; epics closed when their last subticket merges, up the tree
@@ -731,7 +733,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
     - the stop reasons `PAUSED`, `BLOCKED` (lifted when its requests are answered, §4.3), `TICKET_LIMIT`, `DIRTY_TREE`, `GIT_FAILED`, `BEADS_FAILED`, …
     - `USAGE_LIMIT` (§4.12) holds until the reset and doesn't end the run
     - exit codes as orchestra's, except: 4 covers Beads, git and the Agent SDK (`AGENT_FAILED` replaces `TERMINAL_FAILED`); 8 is new, `USAGE_LIMIT` (§4.12)
-11. **Environment hold**: 2 tickets in a row settled within 2 minutes with nothing done, or blamed on the environment by triage. Reopen them, probe once, exit 7. `UsageLimited` workers never count.
+11. **Environment hold**: 2 tickets in a row settled within 2 minutes with nothing done, or whose setup failed before their worker could start, or blamed on the environment by triage. Reopen those whose workers failed (those whose setup failed are back in the queue already), probe once, exit 7; a probe that passes takes both again. `UsageLimited` workers never count.
 12. **The full check** after a run that ended by itself and merged something: its own worktree, the setup first, `FULL_CHECK_FAILED` files a P2 ticket per suite.
 13. **Organs**: triage in the background per deferred ticket; the predictor in the background; the reviewer at the end; the screen and the plan for `--feature`; the scout for `init`.
 14. **The end** (D19). Nothing left to start or merge ends the run, except while workers wait on you.
@@ -741,7 +743,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
       - `q` ends the run, suspending them (§4.8).
       - The workers that stopped the run (`PAUSED`, `TICKET_LIMIT`) don't keep it open; they are suspended.
     - **In plain mode**, the run ends as usual and suspends them. `tutti answer` works for as long as the run goes.
-    - **Then**: the summary, the closing line, the scope line (`SCOPE_DONE`, `SCOPE_OPEN`), the report, notifications, the event stream's `end`.
+    - **Then**: the summary, the closing line (a run that ended by itself adds `SETUP_WAITS: …` for the tickets still `Waiting{setup}`, each with where its setup's output is, leaving out one bd failed to reopen), the scope line (`SCOPE_DONE`, `SCOPE_OPEN`, which says `its setup failed` for such a ticket), the report, notifications, the event stream's `end`.
 
 Removed: everything about tabs, panes, workspaces, terminals, screens, other agent kinds, prompt pasting, and hook record files (§4.3).
 
@@ -780,7 +782,7 @@ A ticket is finished when its phase is `Done`: closed in Beads, merged into the 
 | `Fixing{attempt, afterResolution}` | its check failed on its branch before it merged, and the failure was handed back to its worker | `⟳ fixing` | `fixing check` | Workers |
 | `Done{merged \| noChange}` | merged (with its commit), or closed with no change of its own to merge | `✓ done` | none | Completed |
 | `Asked{question}` | waits on a question ticket for you | `? for you` | none | Needs you |
-| `Waiting{for}` | back in the queue until a blocker merges (`WAITS_FOR_MERGE`), or reopened by an environment hold | `◷ waiting` | none | nowhere, not even In queue |
+| `Waiting{for}` | back in the queue until a blocker merges (`WAITS_FOR_MERGE`), reopened by an environment hold (`probe`), or its worktree's setup failed before its worker started (`setup`, until a ticket merges or a probe passes) | `◷ waiting` | none | nowhere, not even In queue; `setup` counts in In queue's `setup failed` (and in queue records' `held_by.setup`) |
 | `Deferred{why}` | set aside: deferred by its worker or by tutti | `↷ deferred`; triage's verdict replaces its note once in | none | Set aside |
 | `Review{why}` | left for review: `CHECKS_FAILED`, closed without a commit, `DIRTY_WORKTREE`, `REBASE_FAILED`, `OFF_BRANCH`, … | `! review` | none | Set aside |
 | `Blocked{why}` | its work is done, but it can't merge until you act: a conflict left unresolved (`MERGE_CONFLICT`), `DIRTY_TREE`, `GIT_FAILED` or `MERGE_FAILED` | `■ blocked` | none | Needs you |
@@ -809,12 +811,12 @@ stateDiagram-v2
     Working --> ToMerge: closed, committed, verified
     Working --> Done: closed with nothing to merge
     Working --> Asked: filed a question
-    Working --> Waiting: stopped for an unmerged blocker
+    Working --> Waiting: stopped for an unmerged blocker · setup failed
     Working --> Deferred: deferred
     Working --> Review: closed without a commit · off its branch
     Working --> Stopped: PAUSED · TICKET_LIMIT · run ended
     Asked --> Working: answered, session resumed
-    Waiting --> Queued: blocker merged · probe passed
+    Waiting --> Queued: blocker merged · a ticket merged · probe passed
     Deferred --> Waiting: reopened by an environment hold
     ToMerge --> Merging: its turn
     ToMerge --> Stopped: run ended
@@ -849,11 +851,12 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `Working` | `Done{noChange}` | closed with no commits of its own and a clean worktree, or with commits that together change nothing | `closed` (`no change to merge`) |
 | `Working` | `Asked` | its worker filed a question ticket that blocks it, then settled | `asked` |
 | `Working` | `Waiting` | its worker stopped with nothing done, having linked a blocker that hasn't merged | `waits` |
+| `Working` | `Waiting{setup}` | the setup failed in its worktree before its worker could start (`SETUP_FAILED`) | `warn` |
 | `Working` | `Deferred` | its worker deferred it, or tutti set it aside as it started (`BAD_TICKET_ID`, `RUN_FILES_OUTSIDE`, a start that failed) | `deferred` |
 | `Working` | `Review` | closed without a commit naming it while it has changes, left off its branch, … | `warn` with `aside` |
 | `Working` | `Stopped` | it stopped the run (`PAUSED` after the nudges and the idle grace; `TICKET_LIMIT`), or the run ended with its worker at it | `hold`, `stop`, `suspended` |
 | `Asked` | `Working` | its question is answered: its session is resumed and told so | `answered`, `resumed` |
-| `Waiting` | `Queued` | the blocker merged, or the environment probe passed | `queue` |
+| `Waiting` | `Queued` | the blocker merged, or the environment probe passed; for `Waiting{setup}`, a ticket merged since its setup failed, or the probe passed | `queue` |
 | `Deferred` | `Waiting` | an environment hold reopened it: it failed at once and did nothing | `reopened` |
 | `ToMerge` | `Merging` | its turn: every ticket ahead of it has merged or left the queue | `phase` |
 | `ToMerge` | `Stopped` | the run ended with it in the queue. It is closed but not merged, so it is labelled `unmerged` | `suspended` |

@@ -266,6 +266,8 @@ export class Git extends Context.Service<
       from: string,
       to: string,
     ): Effect.Effect<ReadonlyArray<string>, GitError>
+    /** git show <commit>:<path>: the file at `path` from the repository's top, as `commit` has it. */
+    fileAt(dir: string, commit: string, path: string): Effect.Effect<string, GitError>
     /** git ls-files: the files git tracks. */
     trackedFiles(dir: string): Effect.Effect<ReadonlyArray<string>, GitError>
     /**
@@ -566,6 +568,8 @@ export class Git extends Context.Service<
               ]),
               splitNul,
             ),
+          fileAt: (dir, commit, path) =>
+            read("show", dir, ["show", "--end-of-options", `${commit}:${path}`]),
           trackedFiles: (dir) => Effect.map(read("ls-files", dir, ["ls-files", "-z"]), splitNul),
           // The paths go in on stdin, NUL-separated, so a repository of any size fits; -z gives
           // back a path, the attribute and its value for each.

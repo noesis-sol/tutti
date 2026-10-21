@@ -116,6 +116,7 @@ export const takeAnswers = (
           branch: saved?.branch ?? "",
           path: saved?.worktree ?? "",
           reused: true,
+          fresh: false,
           earlier: nothingEarlier,
         },
         session: saved?.session ?? "",

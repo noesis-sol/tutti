@@ -29,7 +29,12 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Seed } from "../src/testing/Beads.ts"
-import type { CheckRun, Script as ChecksScript, Scripted } from "../src/testing/Checks.ts"
+import {
+  type CheckRun,
+  type Script as ChecksScript,
+  passed,
+  type Scripted,
+} from "../src/testing/Checks.ts"
 import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
 import { backlog, expectEvents, expectLog, type Ran, scenario, type World } from "./harness.ts"
@@ -180,7 +185,10 @@ describe("when the full check runs", () => {
       backlog: backlog().ticket("t-1").seeds,
       workers: { "t-1": "finishes" },
     })
-    const [setup, full] = ran.checkRuns.filter((each) => each.check !== "fast")
+    // The setup in t-1's new worktree came before its worker, the full check's after the run.
+    const [setup, full] = ran.checkRuns.filter(
+      (each) => each.check === "full" || each.before === "full",
+    )
     expect(setup).toEqual(expect.objectContaining({ check: "setup", before: "full" }))
     expect(full).toEqual(expect.objectContaining({ check: "full" }))
     const added = ran.worktreeCalls.find((call) => call.op === "addDetached")
@@ -207,7 +215,9 @@ describe("when the full check runs", () => {
       backlog: backlog().ticket("t-1").seeds,
       workers: { "t-1": "defers" },
     })
-    expect(ran.checkRuns.filter((each) => each.check !== "fast")).toEqual([])
+    expect(ran.checkRuns.filter((each) => each.check === "full" || each.before === "full")).toEqual(
+      [],
+    )
     expect(ran.worktreeCalls.filter((call) => call.op === "addDetached")).toEqual([])
     expect(recordsOf(ran, "full_check")).toEqual([])
   })
@@ -368,7 +378,9 @@ describe("FULL_CHECK_FAILED", () => {
       backlog: backlog().ticket("t-1").seeds,
       workers: { "t-1": "finishes" },
       checks: {
+        // The setup in t-1's new worktree passes; the one before the full check fails.
         setup: [
+          passed("setup"),
           new CheckFailed({
             check: "setup",
             command: setupCommand,

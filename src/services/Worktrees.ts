@@ -132,6 +132,8 @@ export interface TicketWorktree {
   readonly path: string
   /** Its worktree or its branch was there already, left by an earlier attempt. */
   readonly reused: boolean
+  /** Its worktree's folder was made now: nothing is installed in it. */
+  readonly fresh: boolean
   readonly earlier: Earlier
 }
 
@@ -362,13 +364,13 @@ export class Worktrees extends Context.Service<
                 const existing = yield* worktreeOf(branch)
                 if (existing !== undefined) {
                   const earlier = yield* earlierIn(existing.path)
-                  return { id, branch, path: existing.path, reused: true, earlier }
+                  return { id, branch, path: existing.path, reused: true, fresh: false, earlier }
                 }
                 const path = join(root, id)
                 const branchLeft = yield* hasBranch(branch)
                 yield* git.addWorktree(repo, path, branchLeft ? { branch } : { branch, base })
                 const earlier = branchLeft ? yield* earlierIn(path) : nothingEarlier
-                return { id, branch, path, reused: branchLeft, earlier }
+                return { id, branch, path, reused: branchLeft, fresh: true, earlier }
               }),
             )
           })

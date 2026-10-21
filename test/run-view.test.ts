@@ -120,6 +120,7 @@ describe("totals", () => {
       queued: 1,
       unclosed: null,
       heldBack: 1,
+      setupFailed: 0,
       queueHeld: false,
     })
     const status = (ticket: string) => {

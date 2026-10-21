@@ -281,11 +281,29 @@ and the ticket set aside; the full check after 60, `"checks": { "full": { "timeo
 `--check-timeout` and `--check-full-timeout` change them for a run. Set them to a few times the
 check's usual running time.
 
-**The setup command.** A finished ticket's worktree has the dependencies its worker installed. When a
+**The setup command.** With `"checks": { "setup": { "command": "npm ci" } }`, tutti runs it in each
+new worktree before its worker starts there, within the merge check's time limit, so workers start
+with the dependencies installed, and their first message says how they were installed:
+`<id>: running 'npm ci' in its new worktree before its worker starts`. It runs again in a worktree an
+earlier attempt left when the last setup there failed or didn't finish (a quit cut it short), and
+when the branch has changed a file `"files"` names since it was last set up in the run.
+
+A setup that fails there isn't the ticket's fault: no worker starts (`SETUP_FAILED: 'npm ci' fails in
+<worktree> for <id>; the whole output is in <worktree>/.tutti/run/setup.log`), and the ticket goes back
+in the queue, open, its worktree kept, until a ticket merges, which may bring what the setup needs, or
+a probe ends a hold for the environment. Setups failing ticket after ticket hold the run for the
+environment, as workers failing at once do. A run that ends with tickets still waiting on their setup
+names them: `SETUP_WAITS: <id> waits on the setup that failed in its worktree (the whole output is in
+…); fix the setup, then run again`.
+
+A finished ticket's worktree has the dependencies set up for its code as it closed the ticket. When a
 ticket that bumps one merges meanwhile, the rebase brings in the new lockfile, and the check would run
-against the old dependencies. With `"checks": { "setup": { "command": "npm ci" } }`, tutti runs it in
-the worktree before the check whenever the rebase changes a file `"files"` names (lockfiles and
-manifests by default), and always before the full check, which runs in a fresh worktree.
+against the old dependencies, so tutti runs the setup before the check whenever the rebase changes a
+file `"files"` names (lockfiles and manifests by default). A conflict handed back to its worker after
+such a rebase tells it to run the setup once the rebase has finished, before the check. The setup
+runs always before the full check, which runs in a fresh worktree. A merge that changes
+`checks.setup` in `.tutti/settings.json` has the run use the new one from then on (`SETUP: <id>'s
+merge changed .tutti/settings.json on main: the setup is 'npm ci' from now on`).
 
 ## The verifier
 

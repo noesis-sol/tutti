@@ -216,9 +216,10 @@ describe("the temp-folder layer", () => {
       branch: "tutti/t-1",
       path: join(root, "t-1"),
       reused: false,
+      fresh: true,
       earlier: { commits: [], status: [] },
     })
-    expect(second).toMatchObject({ reused: true, earlier })
+    expect(second).toMatchObject({ reused: true, fresh: false, earlier })
     expect(existsSync(join(root, "t-1"))).toBe(false)
     expect(calls).toEqual([
       { op: "prepare", id: "t-1" },
@@ -257,6 +258,7 @@ slow.describe("worktrees in a real repository", () => {
       branch: "tutti/demo-1",
       path: join(root, "demo-1"),
       reused: false,
+      fresh: true,
       earlier: { commits: [], status: [] },
     })
     expect(repo.git(["symbolic-ref", "--short", "HEAD"], worktree.path).trim()).toBe("tutti/demo-1")
@@ -287,7 +289,7 @@ slow.describe("worktrees in a real repository", () => {
     repo.git(["worktree", "remove", "--force", first.path])
 
     const again = await run(withWorktrees((w) => w.prepare("demo-1")))
-    expect(again).toMatchObject({ path: join(root, "demo-1"), reused: true })
+    expect(again).toMatchObject({ path: join(root, "demo-1"), reused: true, fresh: true })
     expect(again.earlier.commits.map((commit) => commit.subject)).toEqual(["demo-1: Some work"])
     expect(again.earlier.status).toEqual([])
   })

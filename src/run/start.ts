@@ -7,6 +7,11 @@
 // rules (in the system prompt), the spec it comes from, the time it has, the --ticket scope line,
 // and what an earlier attempt left on the branch. There is no prompt file and no paste.
 //
+// Before the session, the project's setup runs in the worktree when it is new, or when the last
+// setup there failed or didn't finish (setup.ts's setUpWorktree), and the first message says how its
+// dependencies are installed. A setup that fails there starts no worker: SETUP_FAILED, the ticket
+// back in the queue, Working → Waiting{setup}, until a ticket merges or a probe passes.
+//
 // A ticket whose ID can't name a worktree (BAD_TICKET_ID), whose worktree's run folder is a
 // symbolic link (RUN_FILES_OUTSIDE), or whose worker didn't start (START_FAILED) is set aside:
 // Working → Deferred. git failing to make the worktree, and a state.json that can't be written, are
@@ -17,7 +22,8 @@ import { AgentHost, type AgentStartFailed } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Beads } from "../services/Beads.ts"
-import type { Commit, GitError, StatusEntry } from "../services/Git.ts"
+import type { Checks } from "../services/Checks.ts"
+import type { Commit, Git, GitError, StatusEntry } from "../services/Git.ts"
 import { Store, type StoreWriteFailed } from "../services/Store.ts"
 import {
   type Earlier,
@@ -35,11 +41,14 @@ import { EventStream } from "./eventstream.ts"
 import type { Ledger } from "./ledger.ts"
 import * as log from "./log.ts"
 import { Log } from "./log.ts"
+import { leaveSetupFailed, makeSetUps, type SetUps, setUpWorktree, setupNote } from "./setup.ts"
 
 /** The ticket to start, as bd ready gives it. */
 export interface StartTicket extends AsideTicket {
   /** Its custom metadata: `spec` names the spec it comes from. */
   readonly metadata: Readonly<Record<string, unknown>>
+  /** Its status in bd ready: one not open is reopened when its setup fails. Open unless given. */
+  readonly status?: string
 }
 
 /** A ticket's worker, started and sent its first message. */
@@ -57,6 +66,8 @@ export type Start = Data.TaggedEnum<{
   Started: { readonly worker: StartedWorker }
   /** Deferred, or kept out of this run when bd couldn't defer it; `why` in a few words. */
   SetAside: { readonly why: string; readonly deferred: boolean }
+  /** The setup failed in its worktree, so no worker started: back in the queue, Waiting{setup}. */
+  SetupFailed: { readonly output: string }
 }>
 
 export const Start = Data.taggedEnum<Start>()
@@ -85,6 +96,8 @@ export interface FirstMessage {
   readonly spec: string | null
   /** What an earlier attempt left on the branch. */
   readonly earlier: Earlier
+  /** The setup command the worktree's dependencies are installed with; null or absent: none. */
+  readonly setup?: string | null
 }
 
 /**
@@ -182,6 +195,7 @@ export const firstMessage = (m: FirstMessage): string => {
             "before you start, and treat the spec as settled.",
         ]),
     ...runFacts(m),
+    setupNote(m.setup ?? null),
     earlierNote(m.branch, m.base, m.earlier),
   ]
   return `${paragraphs.filter((p) => p !== "").join("\n\n")}\n`
@@ -258,16 +272,18 @@ const runFolderFailed = (id: string, worktree: string, error: RunFilesError): Se
   })
 
 /**
- * Starts the dispatched ticket's worker on `base`: its worktree, its session (its ID saved first)
- * and its first message. A ticket that can't be started is set aside (Working → Deferred).
+ * Starts the dispatched ticket's worker on `base`: its worktree, set up for it (the run's
+ * `setUps`), its session (its ID saved first) and its first message. A ticket that can't be
+ * started is set aside (Working → Deferred); one whose setup fails is back in the queue.
  */
 export const start = (
   ticket: StartTicket,
   base: string,
+  setUps?: SetUps,
 ): Effect.Effect<
   Start,
   StartError,
-  AppConfig | Worktrees | Store | AgentHost | Beads | Ledger | Log | EventStream
+  AppConfig | Worktrees | Store | AgentHost | Beads | Ledger | Log | EventStream | Checks | Git
 > =>
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -297,6 +313,14 @@ export const start = (
       .checkRunFolder(path)
       .pipe(Effect.mapError((error) => runFolderFailed(id, path, error)))
 
+    // The worker starts with the project's dependencies installed (setup.ts).
+    const setups = setUps ?? (yield* makeSetUps)
+    const setup = yield* setUpWorktree(worktree, setups, config.repo)
+    if (setup._tag === "Failed") {
+      yield* leaveSetupFailed(ticket, path, setup, setups)
+      return Start.SetupFailed({ output: setup.output })
+    }
+
     // Saved before the session starts, so a crash can't lose it (§ 4.8).
     const session = crypto.randomUUID()
     yield* store.saveSession(id, { session, worktree: path, branch })
@@ -309,6 +333,7 @@ export const start = (
       scope: config.ticket,
       spec: specOf(ticket.metadata),
       earlier: worktree.earlier,
+      setup: (yield* setups.now).command,
     })
     const sent = yield* Effect.andThen(
       host.start(id, { sessionId: session, cwd: path }),

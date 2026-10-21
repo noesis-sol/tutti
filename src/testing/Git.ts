@@ -961,6 +961,21 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
                 return changedPaths(treeOf(a), treeOf(b))
               }),
           ),
+        fileAt: (dir, commit, path) =>
+          operation(
+            "read",
+            "show",
+            dir,
+            ["show", "--end-of-options", `${commit}:${path}`],
+            (refuse) =>
+              Effect.gen(function* () {
+                const hash = resolve(yield* inRepo(refuse, dir), commit)
+                const text = hash === undefined ? undefined : treeOf(hash).get(path)
+                return text === undefined
+                  ? yield* refuse(128, `fatal: path '${path}' does not exist in '${commit}'`)
+                  : text
+              }),
+          ),
         trackedFiles: (dir) =>
           operation("read", "ls-files", dir, ["ls-files", "-z"], (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => [...checkout.index.keys()].sort()),

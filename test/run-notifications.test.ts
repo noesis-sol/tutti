@@ -27,7 +27,7 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Seed } from "../src/testing/Beads.ts"
-import type { Script as ChecksScript } from "../src/testing/Checks.ts"
+import { type Script as ChecksScript, passed } from "../src/testing/Checks.ts"
 import { Repository } from "../src/testing/Git.ts"
 import { backlog, expectExitCode, type Ran, scenario, type World } from "./harness.ts"
 
@@ -237,7 +237,8 @@ describe("a whole run notifies", () => {
       config: withFullCheck(),
       backlog: backlog().ticket("t-1", { title: "One" }).seeds,
       workers: { "t-1": "finishes" },
-      checks: { setup: [failed("setup", null)] },
+      // The setup in t-1's new worktree passes; the one before the full check fails.
+      checks: { setup: [passed("setup"), failed("setup", null)] },
     })
     expect(ran.notices.at(-1)).toBe("Full check failed · setup")
   })

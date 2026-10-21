@@ -141,7 +141,8 @@ The run ends as any other, followed by whether the scope is finished:
   subticket merges, `SCOPE_DONE: tut-8f2's 3 subtickets are merged; tutti closed tut-8f2`;
 - `SCOPE_OPEN: tut-8f2: 2 of its 5 subtickets not done: tut-8f2.2 (blocked by tut-x7 outside the
   scope), tut-8f2.4 (waiting on your answer to tut-q1)`, naming why each isn't: set aside in this run,
-  deferred, closed but not merged, in progress, blocked, waiting for its subtickets, not started.
+  deferred, closed but not merged, in progress, blocked, waiting for its subtickets, its setup failed
+  (with where its output is), not started.
 
 Both exit with 0. With nothing under `<id>` ready, the box says `○ Nothing under <id> is ready to run`,
 with each ticket not done and why.
@@ -222,6 +223,13 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
 - **A follow-up waits for the ticket it was filed from.** A ticket filed `discovered-from` another
   was written against that ticket's code, so it waits until that one merges too:
   `<id> waits: filed by <source>'s worker; waiting for it to merge`.
+- **Workers start set up.** With a setup command (see [The checks](setup.md#the-checks)), it runs in a
+  ticket's new worktree before its worker starts. One that fails starts no worker (`SETUP_FAILED`):
+  the ticket goes back in the queue until a ticket merges or a probe passes, counted apart in **In
+  queue** (`· 1 setup failed`), and setups failing ticket after ticket hold the run for the
+  environment. A run that ends with tickets still waiting on their setup names them, each with where
+  its output is: `READY_EMPTY after 4 tickets; SETUP_WAITS: tut-3 waits on the setup that failed in
+  its worktree (…); fix the setup, then run again`. They count toward no `--limit`.
 - **A ticket that started too early goes back in the queue.** A worker that finds its ticket needs
   another ticket's unmerged work links it as a blocker and stops with nothing done; tutti removes its
   worktree and branch, which hold nothing, and puts the ticket back until the blocker merges
@@ -394,7 +402,10 @@ within 2 minutes without claiming the ticket, committing or changing anything, o
 HOLD: ENVIRONMENT: the last 2 tickets (tut-a, tut-b) each settled within 2m of starting without being claimed or changed; check the machine, then restart
 ```
 
-Tickets whose workers failed at once did nothing, so they are reopened. Once nothing runs, the run
+A setup that failed in a ticket's worktree before its worker could start counts as a worker failing
+at once: `the setup 'npm ci' failed in the worktrees of the last 2 tickets (tut-a, tut-b)`. Tickets
+whose workers failed at once did nothing, so they are reopened; those whose setup failed are back in
+the queue already, and the probe passing lets them be taken again too. Once nothing runs, the run
 waits 10 minutes, then asks one session in the main checkout to run a command. If it does, the run
 goes on: `PROBE_OK: a session without a ticket ran a command 10m after the hold; taking tickets
 again`. If not within 5 minutes, the run ends `ENVIRONMENT`, exit 7. The machine is probed once per

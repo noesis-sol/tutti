@@ -65,7 +65,9 @@ One strip for the run:
 - **Workers**: workers at work out of how many may run (`-c`).
 - **In queue**: ready tickets waiting for a slot, out of the tickets not closed (`9 of 16`); then
   `· 2 held back` for ready tickets that wait for something besides a slot (an overlap, their
-  subtickets, a blocker not merged, a solo ticket), and `· held` while the run takes no new tickets.
+  subtickets, a blocker not merged, a solo ticket), `· 1 setup failed` for ready tickets whose
+  worktree's setup failed, waiting for a ticket to merge or a probe, and `· held` while the run takes
+  no new tickets.
 
 A pane too narrow for the strip gets the totals on one line: `✓ 2 · ↷ 1 · ? 1 · ▶ 3/3 · queue 9 of 16`.
 

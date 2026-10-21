@@ -598,6 +598,8 @@ describe("the setup command", () => {
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done" })
     expectLog(ran, [
+      `  a: running '${setup}' in its new worktree before its worker starts`,
+      `  b: running '${setup}' in its new worktree before its worker starts`,
       closedLine("a"),
       "  rebased tutti/b onto main, which moved on while it ran",
       `  b: bun.lock changed in the rebase; running '${setup}' before the check`,
@@ -606,9 +608,11 @@ describe("the setup command", () => {
     ])
     expectEvents(ran, ["dispatch", "dispatch", "closed", "closed", "end"])
     expect(pathOf(ran, "b")).toEqual(["Queued", "Working", "ToMerge", "Merging", "Done"])
-    // a, on top of main, was checked without a setup; the setup ran in b's worktree, before the
-    // check there.
+    // The setup ran in each new worktree before its worker; a, on top of main, was checked without
+    // one; the setup ran in b's worktree again before the check there.
     expect(ran.checkRuns.map((each) => [each.check, each.cwd])).toEqual([
+      ["setup", join(ran.root, "a")],
+      ["setup", join(ran.root, "b")],
       ["fast", join(ran.root, "a")],
       ["setup", join(ran.root, "b")],
       ["fast", join(ran.root, "b")],

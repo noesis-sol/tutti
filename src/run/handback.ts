@@ -54,7 +54,7 @@ import {
 import { Cause } from "./phase.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
 import { answers, namesTicket, untilSettled } from "./settle.ts"
-import { setUp } from "./setup.ts"
+import { type SetUps, setUp, setupToResolve } from "./setup.ts"
 
 /** How many times a ticket's rebase conflicts are handed back to its worker in a run. */
 export const maxHandBacks = 2
@@ -232,8 +232,11 @@ export const workerAway = (
     return saved?.session === undefined ? "its worker has no session to resume" : undefined
   })
 
-/** What the worker is asked to do with a rebase stopped on conflicts, as orchestra asks it. */
-export const resolvePrompt = (stop: RebaseStop, base: string, check: string): string =>
+/**
+ * What the worker is asked to do with a rebase stopped on conflicts, as orchestra asks it; `setup`
+ * says when to run the project's setup, if it is to (setup.ts's setupToResolve).
+ */
+export const resolvePrompt = (stop: RebaseStop, base: string, check: string, setup = ""): string =>
   `tutti: ${base} moved on while you worked; rebasing ${stop.ticket.branch} onto it stopped on ` +
   `conflicts in ${stop.files.join(", ")}. ` +
   `Resolve them keeping the intent of both your change and what landed on ${base}, ` +
@@ -241,6 +244,7 @@ export const resolvePrompt = (stop: RebaseStop, base: string, check: string): st
   "if the rebase stops on another commit, resolve that one the same way. " +
   `If ${base} has a commit's change already, wholly or as the part that conflicts, run git rebase ` +
   "--skip for that commit instead of resolving it. " +
+  setup +
   `Once the rebase has finished, run '${check}' in the foreground until it passes, since the ` +
   "commits that applied cleanly may break it too; fold any fix into the branch's last commit with " +
   "git commit --amend --no-edit. " +
@@ -322,6 +326,7 @@ export const handOver = (
   stop: RebaseStop,
   options: MergeOptions,
   handBacks: HandBacks,
+  setUps: SetUps,
 ): Effect.Effect<boolean, never, MergeEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -341,6 +346,7 @@ export const handOver = (
       base: options.base,
       files: stop.files,
       limit: formatDuration(config.settings.merge.resolve_timeout),
+      told: (yield* setupToResolve(stop, options, setUps)).told,
     })
     yield* events.emit({ kind: "info", ticket: id, text })
     yield* logs.write(text)
@@ -604,7 +610,8 @@ export const resolve = (
     const check = config.settings.checks.fast.command ?? ""
     const limit = config.settings.merge.resolve_timeout
     const what = line`${id}'s conflicts with ${base} are handed back to its worker`
-    let why = yield* give(stop.ticket, resolvePrompt(stop, base, check), what, limit)
+    const setup = (yield* setupToResolve(stop, options, memory.setUps)).prompt
+    let why = yield* give(stop.ticket, resolvePrompt(stop, base, check, setup), what, limit)
     if (why === undefined) why = yield* verifyResolved(stop, options)
     if (why === undefined) {
       const { branch } = stop.ticket

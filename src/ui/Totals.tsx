@@ -1,7 +1,8 @@
 // The dashboard's totals (§ 7.2, § 7.11): a strip in a rounded frame, a column a total with its
 // label faint over its count, or on one line in a pane too narrow for the strip, or too small for
 // the dashboard (below 60×16). Completed `✓ n`, Set aside `↷ n` with ` ◆ n` triaged, Needs you,
-// Workers `n of N`, and In queue `n of N` with ` · N held back` and ` · held`; zeros are faint.
+// Workers `n of N`, and In queue `n of N` with ` · N held back`, ` · N setup failed` and ` · held`;
+// zeros are faint.
 import type { Totals as TotalsView } from "../run/runView.ts"
 import { cut, framed, frameLook, Lines, type Look, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
@@ -27,7 +28,10 @@ const columns = (t: TotalsView, theme: Theme): ReadonlyArray<readonly [string, S
   ]
 }
 
-/** The queue's count, out of the tickets not closed, then those held back and `held`. */
+/**
+ * The queue's count, out of the tickets not closed, then those held back, those whose setup failed
+ * and `held`.
+ */
 const queue = (t: TotalsView, theme: Theme, held: string): Segments => {
   const { styles } = theme
   const of = t.unclosed === null ? "" : ` of ${t.unclosed}`
@@ -36,6 +40,7 @@ const queue = (t: TotalsView, theme: Theme, held: string): Segments => {
       ? [seg(`0${of}`, styles.dim)]
       : [seg(String(t.queued)), ...(of === "" ? [] : [seg(of, styles.dim)])]),
     ...(t.heldBack > 0 ? [seg(` · ${t.heldBack} held back`, styles.heldBack)] : []),
+    ...(t.setupFailed > 0 ? [seg(` · ${t.setupFailed} setup failed`, styles.deferred)] : []),
     ...(t.queueHeld ? [seg(`${held}held`, styles.windDown)] : []),
   ]
 }

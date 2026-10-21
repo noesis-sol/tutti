@@ -310,7 +310,14 @@ describe("the worker's transcript as triage reads it", () => {
 /** The worker of ticket `id`, in its worktree `path`. */
 const workerOf = (id: string, path = `/worktrees/${id}`): StartedWorker => ({
   ticket: id,
-  worktree: { id, branch: `tutti/${id}`, path, reused: false, earlier: nothingEarlier },
+  worktree: {
+    id,
+    branch: `tutti/${id}`,
+    path,
+    reused: false,
+    fresh: true,
+    earlier: nothingEarlier,
+  },
   session: "s-1",
   message: "",
 })

@@ -143,6 +143,8 @@ export interface Totals {
   /** The tickets not closed the queue draws from; null until the run says. */
   readonly unclosed: number | null
   readonly heldBack: number
+  /** Back in the queue as the setup failed in their worktrees, until a ticket merges or a probe. */
+  readonly setupFailed: number
   /** The queue takes no new tickets: the run winds down, or is held. */
   readonly queueHeld: boolean
 }
@@ -269,6 +271,7 @@ export const emptyView: RunView = {
     queued: 0,
     unclosed: null,
     heldBack: 0,
+    setupFailed: 0,
     queueHeld: false,
   },
   rows: [],

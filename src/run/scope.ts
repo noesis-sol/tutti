@@ -114,6 +114,11 @@ export interface View {
   aside(id: string): boolean
   /** Whether the run closed the ticket, an epic, as its last subticket merged. */
   closedByRun(id: string): boolean
+  /**
+   * Where the whole output is of the setup that failed in the ticket's worktree, keeping it out of
+   * the run, Waiting{setup}; undefined when it didn't.
+   */
+  setupFailed?(id: string): string | undefined
 }
 
 /** The label of a ticket closed but not merged, which later runs read (§ 5.1). */
@@ -122,9 +127,14 @@ export const unmergedLabel = "unmerged"
 /**
  * The View the ledger gives: a closed ticket the run still has short of Done is not merged (for
  * the reason its phase gives, if any), and so is one labelled `unmerged`; one Deferred, left for
- * Review or Blocked was set aside; `closed` names the epics the run closed.
+ * Review or Blocked was set aside; `closed` names the epics the run closed; `setups` gives, by
+ * ticket, where the output is of the setup that failed in its worktree.
  */
-export const ledgerView = (state: State, closed: ReadonlySet<string> = new Set()): View => ({
+export const ledgerView = (
+  state: State,
+  closed: ReadonlySet<string> = new Set(),
+  setups: ReadonlyMap<string, string> = new Map(),
+): View => ({
   unmerged: (issue) => {
     const phase = state.tickets.get(issue.id)?.phase
     if (issue.status !== "closed" || phase?._tag === "Done") return undefined
@@ -146,6 +156,7 @@ export const ledgerView = (state: State, closed: ReadonlySet<string> = new Set()
     return tag === "Deferred" || tag === "Review" || tag === "Blocked"
   },
   closedByRun: (id) => closed.has(id),
+  setupFailed: (id) => setups.get(id),
 })
 
 /** A ticket of the scope that isn't closed and merged, and why, as SCOPE_OPEN names it. */
@@ -211,6 +222,8 @@ const notDoneWhy = (
     const question = openQuestion(issue)
     if (question !== undefined) return `waiting on your answer to ${question.id}`
     if (view.aside(issue.id)) return "set aside in this run"
+    const setup = view.setupFailed?.(issue.id)
+    if (setup !== undefined) return `its setup failed; the whole output is in ${setup}`
     if (issue.status === "deferred") return "deferred"
     if (issue.status === "in_progress") return "in progress"
     for (const link of issue.dependencies) {

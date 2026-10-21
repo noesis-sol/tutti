@@ -79,7 +79,7 @@ import {
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
-import { Cause, type Hold, type PhaseTag, TicketPhase } from "./phase.ts"
+import { Cause, type Hold, type PhaseTag, probeWait, setupWait, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import type { Solo } from "./runView.ts"
 import { ready, unclosedIn, unmergedLabel } from "./scope.ts"
@@ -307,6 +307,12 @@ const mergingIn = (state: State, running: ReadonlySet<string>): ReadonlyArray<st
 export const slotsTaken = (running: number, merging: number, concurrent: number): number =>
   running + Math.max(0, merging - concurrent)
 
+/** Whether the ticket is back in the queue as its worktree's setup failed, Waiting{setup}. */
+const setupFailed = (state: State, id: string): boolean => {
+  const phase = state.tickets.get(id)?.phase
+  return phase?._tag === "Waiting" && phase.for === setupWait
+}
+
 /** Whether the ledger lets the run take `id` from bd ready: not taken up yet, or still waiting. */
 const candidate = (state: State, id: string): boolean =>
   !state.tickets.has(id) || waiting(state, id)
@@ -325,11 +331,13 @@ const counts = (
   change?: readonly [string, TicketPhase],
 ) => {
   let queued = 0
-  const by: Partial<Record<Hold, number>> = {}
+  const by: Partial<Record<Hold | "setup", number>> = {}
   for (const id of ids) {
     const phase = change?.[0] === id ? change[1] : state.tickets.get(id)?.phase
     if (phase?._tag === "Queued") queued++
     if (phase?._tag === "HeldBack") by[phase.why] = (by[phase.why] ?? 0) + 1
+    // Back in the queue as its setup failed, it is held back until a ticket merges or a probe.
+    if (phase?._tag === "Waiting" && phase.for === setupWait) by.setup = (by.setup ?? 0) + 1
   }
   const held = Object.values(by).reduce((sum, n) => sum + n, 0)
   return {
@@ -438,7 +446,7 @@ export const make = (
     const requeued = (state: State, ticket: string) => {
       const phase = state.tickets.get(ticket)?.phase
       if (phase === undefined) return true
-      return phase._tag === "Waiting" ? phase.for !== "probe" : waiting(state, ticket)
+      return phase._tag === "Waiting" ? phase.for !== probeWait : waiting(state, ticket)
     }
 
     const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue, counted = false) =>
@@ -581,7 +589,10 @@ export const make = (
         const found = yield* ready(beads, options.scope, filter)
         const before = yield* ledger.current
         const candidates = found.filter((issue) => candidate(before, issue.id))
-        const ids = candidates.map((issue) => issue.id)
+        // The queue's counts take in the tickets whose setup failed, held back apart.
+        const ids = found
+          .filter((issue) => candidate(before, issue.id) || setupFailed(before, issue.id))
+          .map((issue) => issue.id)
         const setAsideNow: Array<string> = []
         // A ticket waiting in the queue that bd ready no longer lists (closed, deferred or blocked
         // outside the run) leaves it; it is queued anew if it is ready again.
@@ -846,7 +857,7 @@ export const make = (
           dispatched,
           setAside: setAsideNow,
           queued: after.queued,
-          heldBack: after.held ?? 0,
+          heldBack: (after.held ?? 0) - (after.held_by?.setup ?? 0),
         }
       }),
     )

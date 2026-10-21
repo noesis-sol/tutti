@@ -87,7 +87,7 @@ the time.
 `Merging`, `Resolving`, `Fixing`, `Done`, `Asked`, `Waiting`, `Deferred`, `Review`, `Blocked` and
 `Stopped` (the dashboard's rows, see [The tickets table](dashboard.md#the-tickets-table)). Its `cause`
 names the transition: `Ready`, `Held`, `Released`, `Unready`, `Dispatched`, `Verified`, `NoChange`,
-`FiledQuestion`, `WaitsForMerge`, `Defer`, `Aside`, `StopRun`, `RunEnded`, `Answered`, `Requeued`,
+`FiledQuestion`, `WaitsForMerge`, `SetupFailed`, `Defer`, `Aside`, `StopRun`, `RunEnded`, `Answered`, `Requeued`,
 `Reopened`, `ItsTurn`, `FastForwarded`, `MergeInterrupted`, `ConflictsHandedBack`,
 `CheckHandedBack`, `Block`, `Recheck`, `HandedOver`, and for tickets carried over from the last run,
 `Resumed`, `StillAsked` and `Unmerged`. A ticket's `phase` record comes before the records of other
@@ -95,7 +95,9 @@ kinds the same change writes (`dispatch`, `closed`, …).
 
 `held_by` says how many ready tickets each reason holds back, as in `{"overlap":3,"merge":1}`:
 `overlap`, a footprint overlapping a running ticket's; `parent`, subtickets not all merged; `merge`, a
-blocker, or the ticket it was filed from, not merged yet; `solo`, a solo ticket running or next.
+blocker, or the ticket it was filed from, not merged yet; `solo`, a solo ticket running or next;
+`setup`, the setup failed in its worktree (`SETUP_FAILED`, a `warn` record), until a ticket merges or
+a probe passes.
 `solo` is `{"ticket":"<id>"}` while a ticket labelled `solo` runs, `{"ticket":"<id>","next":true}`
 while it is next.
 

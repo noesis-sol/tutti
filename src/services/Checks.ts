@@ -367,6 +367,11 @@ export interface RunOptions {
 export interface SetupOptions extends RunOptions {
   /** The check the setup comes before, whose time limit it runs within, as in orchestra. */
   readonly before: "fast" | "full"
+  /**
+   * The command to run in place of checks.setup.command: the run's setup, which a merge that
+   * changed .tutti/settings.json sets from then on (setup.ts); null runs nothing.
+   */
+  readonly command?: string | null
 }
 
 /**
@@ -445,9 +450,12 @@ export class Checks extends Context.Service<
       const limit = { fast: checks.fast.timeout, full: checks.full.timeout }
       return {
         setup: (options) =>
-          runCheck("setup", checks.setup.command, limit[options.before], options).pipe(
-            Effect.provideContext(context),
-          ),
+          runCheck(
+            "setup",
+            options.command === undefined ? checks.setup.command : options.command,
+            limit[options.before],
+            options,
+          ).pipe(Effect.provideContext(context)),
         fast: (options) =>
           runCheck("fast", checks.fast.command, limit.fast, options).pipe(
             Effect.provideContext(context),

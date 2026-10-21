@@ -149,6 +149,7 @@ import { emptyStatus, project, type Row, type Status, same, type Totals } from "
 import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type Dashboard, Screen, show } from "./screen.ts"
+import { makeSetUps, retrySetups, setupWaiting, setupWaitsPart } from "./setup.ts"
 import { handBackNow, interrupt, releaseAndHandOver, sendMessage } from "./steer.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
@@ -449,8 +450,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         yield* wakeUp
       })
 
-    // Workers failing at once hold the run, as a stop does, until the probe (environment.ts).
-    const environment = yield* makeEnvironmentHold({ onHold: stopped })
+    // The run's setups (setup.ts): the setup before each worker and before each check, and the
+    // tickets whose setup failed, which the merge queue and the tickets' starts share.
+    const setUps = yield* makeSetUps
+    // Workers failing at once, or setups failing, hold the run, as a stop does, until the probe
+    // (environment.ts).
+    const environment = yield* makeEnvironmentHold({
+      onHold: stopped,
+      setup: Effect.map(setUps.now, (setup) => setup.command),
+    })
 
     // The account's usage limit holds the run until it resets, without a stop (usageLimit.ts).
     const usage = yield* makeUsageHold({
@@ -489,7 +497,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         take === undefined ? Effect.succeed(false) : take(ticket, work),
       )
     const queue = yield* makeQueue(
-      { repo: config.repo, base, noMore, recheckSlot },
+      { repo: config.repo, base, noMore, recheckSlot, setUps },
       (where, defect) =>
         panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
     )
@@ -536,7 +544,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const ticketFiber = (issue: Issue): Effect.Effect<void> =>
       outcomeOf(
         issue.id,
-        work(issue, { base, queue, triage, onTicketLimit: onTicketLimit(issue.id) }),
+        work(issue, { base, queue, triage, setUps, onTicketLimit: onTicketLimit(issue.id) }),
       ).pipe(Effect.provideContext(context))
 
     const taking = Effect.map(
@@ -865,6 +873,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // run is done only when nothing was merging as the look began, and its wake has it look again.
       const mergedBefore = isSettled(yield* queue.state)
       yield* requeueWaiting
+      // A ticket merged, which may bring what a setup that failed in a ticket's worktree needed.
+      yield* retrySetups(setUps)
       // The tickets set aside for a failed check whose base has moved on are checked once more
       // first, each in a slot: each is done but for its merge, and others may wait on it. One left
       // for a hold, a solo ticket or a slot is due again at a later look (recheck.ts).
@@ -1143,7 +1153,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const scopePart = Effect.gen(function* () {
       const root = config.ticket
       if (root === null) return ""
-      const view = scope.ledgerView(state, yield* closedByRun(beads, root, state))
+      const view = scope.ledgerView(
+        state,
+        yield* closedByRun(beads, root, state),
+        new Map(setupWaiting(state, yield* setUps.failures)),
+      )
       const end = yield* scope.end(beads, root, view, {
         excludeTypes: config.settings.queue.exclude_types,
       })
@@ -1170,7 +1184,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       const n = yield* scheduler.started
       const how =
         state.windDown !== null ? "drained" : (yield* scheduler.limitReached) ? "limit" : "empty"
-      const text = line`${doneLine(n, how)}${yield* scopePart}`
+      const waits = setupWaitsPart(setupWaiting(state, yield* setUps.failures))
+      const text = line`${doneLine(n, how)}${waits}${yield* scopePart}`
       closing = text
       closed = Ending.Done({ text, tickets: n, limit: config.limit, took: now - begun })
       yield* events.emit({ kind: "done", text })
@@ -1196,7 +1211,12 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // INTERRUPTED (130), or PANIC (4), after all.
     if (fullCheckDue(command, all.first !== null, Object.values(phases))) {
       const checked = yield* Effect.raceFirst(
-        Effect.map(fullCheck({ base, started: begun }), (done) => ({ done })),
+        Effect.map(
+          Effect.flatMap(setUps.now, (setup) =>
+            fullCheck({ base, started: begun, setup: setup.command }),
+          ),
+          (done) => ({ done }),
+        ),
         Effect.map(Deferred.await(quitting), (quit) => ({ quit })),
       )
       if ("done" in checked) {

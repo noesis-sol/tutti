@@ -56,7 +56,7 @@ import {
 import { Cause, Detail, type InvalidTransition, type TicketPhase } from "./phase.ts"
 import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
 import { fit } from "./sessions.ts"
-import { makeSetUps } from "./setup.ts"
+import { makeSetUps, takeSettings } from "./setup.ts"
 
 export interface QueueState {
   /** The tickets waiting for their turn, next first. */
@@ -138,7 +138,7 @@ export const make = (
     const rechecks = yield* makeRechecks
     // Set as quitting begins: no more turns or hand-backs.
     const held = yield* Ref.make(false)
-    const setUps = yield* makeSetUps
+    const setUps = options.setUps ?? (yield* makeSetUps)
     const handBacks = yield* makeHandBacks
     const fixes = yield* makeFixes
     const passes = yield* makePasses
@@ -264,7 +264,7 @@ export const make = (
     // or is blocked (checkback.ts).
     const handBack = (stop: RebaseStop) =>
       Effect.gen(function* () {
-        const handed = yield* handOver(stop, options, handBacks)
+        const handed = yield* handOver(stop, options, handBacks, memory.setUps)
         const work = Effect.gen(function* () {
           const resolved = yield* resolve(stop, options, memory)
           if (resolved._tag === "Unchanged") {
@@ -315,6 +315,10 @@ export const make = (
               : prepared._tag === "Ready"
                 ? yield* fastForward(ticket, options, prepared.onto)
                 : undefined
+          // A merge that changed .tutti/settings.json may set the setup the run uses from now on.
+          if (stop === undefined && prepared._tag === "Ready") {
+            yield* takeSettings(ticket.id, options, setUps, prepared.onto)
+          }
           // A merge moves the base on, which may be what a ticket's failed check waits for: the
           // tickets it puts back are in line before this merge is over, so `settled` waits for them.
           if (stop === undefined && prepared._tag === "Ready") yield* Effect.exit(restore(recheck))

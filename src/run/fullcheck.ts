@@ -220,6 +220,8 @@ export interface FullCheckOptions {
   readonly base: string
   /** When the run started, for the ticket filed: epoch milliseconds. */
   readonly started: number
+  /** The setup command as the run has it now, a merge's settings taken (setup.ts); checks.setup's when absent. */
+  readonly setup?: string | null
 }
 
 /**
@@ -237,7 +239,10 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
     const logs = yield* Log
     const events = yield* EventStream
     const { base } = options
-    const { full, setup } = config.settings.checks
+    const { full } = config.settings.checks
+    const setup = {
+      command: options.setup === undefined ? config.settings.checks.setup.command : options.setup,
+    }
     const command = full.command ?? ""
     const say = (record: {
       readonly detail: FullCheckOutcome
@@ -278,7 +283,9 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       if (setup.command !== null) {
         const ran = yield* Effect.scoped(
           Effect.flatMap(outputIn(path, setupLogName), (to) =>
-            Effect.result(checks.setup({ cwd: path, ...to, before: "full" })),
+            Effect.result(
+              checks.setup({ cwd: path, ...to, before: "full", command: setup.command }),
+            ),
           ),
         )
         if (Result.isFailure(ran)) {

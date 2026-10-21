@@ -54,6 +54,8 @@ export const HeldBy = Schema.Struct({
   parent: optional(Count),
   merge: optional(Count),
   solo: optional(Count),
+  /** Back in the queue as the setup failed in their worktrees, until a ticket merges or a probe. */
+  setup: optional(Count),
 })
 
 /** The solo ticket running, or next. */

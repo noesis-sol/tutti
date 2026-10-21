@@ -33,9 +33,10 @@ import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
-import { Cause, type TicketPhase } from "./phase.ts"
+import { Cause, probeWait, setupWait, type TicketPhase } from "./phase.ts"
 import { fit, workerGone } from "./sessions.ts"
 import { idleGrace, type Settled, type SettleEnv, settle, unmergedBlockers } from "./settle.ts"
+import type { SetUps } from "./setup.ts"
 import { type StartError, type StartedWorker, type StartTicket, start } from "./start.ts"
 import type { Deferral, Triage } from "./triage.ts"
 
@@ -75,6 +76,8 @@ export interface WorkOptions {
   readonly triage?: Triage
   /** Takes the TICKET_LIMIT stop of a worker still going --ticket-limit after its dispatch. */
   readonly onTicketLimit?: (stop: StopReason) => Effect.Effect<void>
+  /** The run's setups (setup.ts), which the merge queue shares; the settings' setup when absent. */
+  readonly setUps?: SetUps
 }
 
 /** Its blockers, as the log names them: `a`, or `a, b`. */
@@ -328,9 +331,11 @@ export const work = (
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const dispatched = yield* Clock.currentTimeMillis
-    const started = yield* start(ticket, options.base)
+    const started = yield* start(ticket, options.base, options.setUps)
     let stop: RunStop | null = null
-    let settling: Settling = "uncounted"
+    // A setup that failed before its worker could start counts toward the environment hold as a
+    // worker failing at once does.
+    let settling: Settling = started._tag === "SetupFailed" ? "setup" : "uncounted"
     if (started._tag === "Started") {
       const { worker } = started
       const followed = yield* follow(ticket, worker, options, dispatched)
@@ -423,7 +428,7 @@ export const requeueWaiting: Effect.Effect<
   const back: Array<string> = []
   for (const entry of (yield* ledger.current).tickets.values()) {
     const { phase } = entry
-    if (phase._tag !== "Waiting" || phase.for === "probe") continue
+    if (phase._tag !== "Waiting" || phase.for === probeWait || phase.for === setupWait) continue
     const issue = yield* Effect.result(beads.show(entry.ticket))
     if (Result.isFailure(issue)) continue
     if (unmergedBlockers(issue.success, yield* ledger.current).length > 0) continue

@@ -90,6 +90,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
     Waiting({ for: "tut-b1" }),
   ],
   [
+    "Working → Waiting{setup}",
+    Working({ activity: "starting" }),
+    Cause.SetupFailed(),
+    Waiting({ for: "setup" }),
+  ],
+  [
     "Working → Deferred",
     Working({ activity: "working" }),
     Cause.Defer({ why: "BAD_TICKET_ID" }),
@@ -120,6 +126,7 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
     Working({ activity: "starting" }),
   ],
   ["Waiting → Queued", Waiting({ for: "tut-b1" }), Cause.Requeued(), Queued()],
+  ["Waiting{setup} → Queued", Waiting({ for: "setup" }), Cause.Requeued(), Queued()],
   ["Deferred → Waiting", Deferred({ why: "x" }), Cause.Reopened(), Waiting({ for: "probe" })],
   ["ToMerge → Merging", ToMerge({ place: 1 }), Cause.ItsTurn(), Merging({ step: "rebase" })],
   [
@@ -279,6 +286,7 @@ const phases: ReadonlyArray<TicketPhase | null> = [
   Asked({ question: "tut-q1" }),
   Waiting({ for: "tut-b1" }),
   Waiting({ for: "probe" }),
+  Waiting({ for: "setup" }),
   Deferred({ why: "x" }),
   Review({ why: "CHECKS_FAILED" }),
   Review({ why: "DIRTY_WORKTREE" }),
@@ -297,6 +305,7 @@ const causeOf: { readonly [C in CauseTag]: Extract<Cause, { readonly _tag: C }> 
   NoChange: Cause.NoChange(),
   FiledQuestion: Cause.FiledQuestion({ question: "tut-q1" }),
   WaitsForMerge: Cause.WaitsForMerge({ for: "tut-b1" }),
+  SetupFailed: Cause.SetupFailed(),
   Defer: Cause.Defer({ why: "x" }),
   Aside: Cause.Aside({ why: "CHECKS_FAILED" }),
   StopRun: Cause.StopRun({ why: "TICKET_LIMIT" }),

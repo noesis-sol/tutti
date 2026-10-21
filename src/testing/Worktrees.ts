@@ -44,7 +44,7 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
             const path = join(root, id)
             const made = mkdirSync(path, { recursive: true }) !== undefined
             const earlier = made ? nothingEarlier : (options.earlier?.[id] ?? nothingEarlier)
-            return { id, branch: branchOf(id), path, reused: !made, earlier }
+            return { id, branch: branchOf(id), path, reused: !made, fresh: made, earlier }
           }),
         ),
       remove: (id, removal = {}) =>

@@ -397,7 +397,14 @@ export const carryOver = (
       const since = yield* Clock.currentTimeMillis
       const worker: StartedWorker = {
         ticket: id,
-        worktree: { id, branch, path: worktree, reused: true, earlier: nothingEarlier },
+        worktree: {
+          id,
+          branch,
+          path: worktree,
+          reused: true,
+          fresh: false,
+          earlier: nothingEarlier,
+        },
         session: record.session ?? "",
         message: resumed.success,
       }

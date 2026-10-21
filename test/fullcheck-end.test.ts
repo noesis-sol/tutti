@@ -194,7 +194,11 @@ describe("a failed full check's last 40 lines", () => {
   })
 
   test("of the setup before it: the report says the check did not run", async () => {
-    const ran = await reviewed({ setup: [fails("setup", "resolving\nerror: no left-pad\n")] }, true)
+    // The setup in the ticket's new worktree passes; the one before the full check fails.
+    const ran = await reviewed(
+      { setup: [passed("setup"), fails("setup", "resolving\nerror: no left-pad\n")] },
+      true,
+    )
     const { input, report } = gotten(ran)
     expectLog(ran, [
       /^ {2}FULL_CHECK_FAILED: the setup 'bun install', run before /,
