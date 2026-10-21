@@ -219,6 +219,7 @@ const direct = (repo: string, cwd: string, how: SessionStart): Direct => {
       worktree: cwd,
       prompt: workerPrompt,
       servers: noServers,
+      skills: false,
       callbacks: {
         canUseTool: async (_tool, input) => ({ behavior: "allow", updatedInput: input }),
         onElicitation: async () => ({ action: "decline" }),

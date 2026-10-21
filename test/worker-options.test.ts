@@ -18,6 +18,7 @@ import {
   workerCallbacks,
   workerOptions,
 } from "../src/agent/options.ts"
+import { unusedTools } from "../src/agent/unusedTools.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { checkNote } from "../src/project/prompt.ts"
 import { permissionModes } from "../src/project/settings.ts"
@@ -66,6 +67,7 @@ const optionsFor = (
     worktree: "/work/project-tutti/tutti-abc.1",
     prompt,
     servers,
+    skills: false,
     callbacks,
     session,
     env: { PATH: "/usr/bin", CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
@@ -101,6 +103,7 @@ describe("workerOptions", () => {
       },
       strictMcpConfig: true,
       extraArgs: { "no-chrome": null },
+      disallowedTools: [...unusedTools, "Skill"],
       canUseTool,
       onElicitation,
       hooks,
@@ -151,12 +154,14 @@ describe("workerOptions", () => {
   })
 
   test("AskUserQuestion is disallowed only when workers.ask_user_question is false", () => {
-    expect("disallowedTools" in optionsFor({ _tag: "New", sessionId: "s" })).toBe(false)
+    expect(optionsFor({ _tag: "New", sessionId: "s" }).disallowedTools).not.toContain(
+      "AskUserQuestion",
+    )
     const options = optionsFor(
       { _tag: "New", sessionId: "s" },
       configWith({ ask_user_question: false }),
     )
-    expect(options.disallowedTools).toEqual(["AskUserQuestion"])
+    expect(options.disallowedTools).toEqual([...unusedTools, "Skill", "AskUserQuestion"])
   })
 
   test("no servers chosen gives none, strictly", () => {
@@ -166,6 +171,7 @@ describe("workerOptions", () => {
       worktree: "/w",
       prompt,
       servers: { servers: [], note: "none" },
+      skills: false,
       callbacks,
       session: { _tag: "New", sessionId: "s" },
       env: {},
@@ -184,6 +190,7 @@ describe("workerOptions", () => {
           worktree: "/w",
           prompt,
           servers,
+          skills: false,
           callbacks,
           session: { _tag: "New", sessionId: "s" },
           env: {},

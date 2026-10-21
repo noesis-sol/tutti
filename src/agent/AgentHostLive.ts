@@ -66,6 +66,7 @@ import { serverName } from "./interviewTools.ts"
 import { type ChosenServers, checkInit, inProcess, noServers } from "./mcp.ts"
 import { interviewOptions, type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
 import type { Transcripts } from "./Transcripts.ts"
+import { projectHasSkills } from "./unusedTools.ts"
 import { WorkerEvent } from "./WorkerState.ts"
 
 /** How long a session has to start: Claude Code spawned and its initialize answered. */
@@ -237,6 +238,8 @@ export const layer = (
         ...(options.env === undefined ? {} : { env: options.env }),
       })
       const requestedMode = config.settings.workers.permission_mode
+      // Whether workers keep Skill (§ 4.1), decided once, from the main checkout, as the run begins.
+      const skills = yield* projectHasSkills(config.repo)
       const findings = yield* Ref.make<SetupFindings>(noFindings)
       const open = new Map<string, Open>()
       // Tickets whose session is being made, so a second start is refused at once.
@@ -406,6 +409,7 @@ export const layer = (
                   worktree: session.cwd,
                   prompt: session.probe === true ? null : options.prompt,
                   servers,
+                  skills,
                   callbacks,
                   session: how,
                   env,

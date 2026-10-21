@@ -49,6 +49,7 @@ const worker = (servers: ChosenServers) =>
     worktree: "/work/project-tutti/tutti-abc.1",
     prompt: { text: "You work on TICKET_ID.", file: null },
     servers,
+    skills: false,
     callbacks,
     session: { _tag: "New", sessionId: "s" },
     env,

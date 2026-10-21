@@ -3,6 +3,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import type { SpawnOptions } from "@anthropic-ai/claude-agent-sdk"
 import fc from "fast-check"
 import { probeOptions, type WorkerCallbacks, workerOptions } from "../src/agent/options.ts"
+import { unusedTools } from "../src/agent/unusedTools.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { efforts, permissionModes } from "../src/project/settings.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -52,7 +53,7 @@ describe("probeOptions", () => {
       mcpServers: {},
       strictMcpConfig: true,
       extraArgs: { "no-chrome": null },
-      disallowedTools: ["AskUserQuestion"],
+      disallowedTools: [...unusedTools, "Skill", "AskUserQuestion"],
       persistSession: false,
       stderr,
       env,
@@ -127,6 +128,7 @@ describe("probeOptions", () => {
             worktree: "/work/project-tutti/tutti-abc.1",
             prompt: { text: "You work on TICKET_ID.", file: null },
             servers: { servers: [], note: null },
+            skills: false,
             callbacks: workerCallbacks,
             session: { _tag: "New", sessionId: "s" },
             env,

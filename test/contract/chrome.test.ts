@@ -75,6 +75,7 @@ const firstInit = async (servers: ChosenServers): Promise<SDKSystemMessage> => {
         worktree: dir,
         prompt: null,
         servers,
+        skills: false,
         callbacks,
         session: { _tag: "New", sessionId: crypto.randomUUID() },
         env: hostEnv(),

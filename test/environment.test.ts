@@ -373,6 +373,7 @@ describe("the probe's session", () => {
       worktree: config.repo,
       prompt: null,
       servers: noServers,
+      skills: false,
       callbacks: {
         canUseTool: async () => ({ behavior: "deny", message: "" }),
         onElicitation: async () => ({ action: "decline" }),

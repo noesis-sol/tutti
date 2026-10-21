@@ -19,6 +19,9 @@ Each worker runs:
   worktree;
 - in the [permission mode](#permissions) the settings choose, `auto` by default;
 - with the MCP servers the project chose, and no others ([MCP servers](#mcp-servers));
+- without the tools workers never use ([Tools left out](#tools-left-out)): Artifact, ListAgents,
+  ReportFindings, ScheduleWakeup, SendFeedback and Workflow, and Skill unless the project has skills
+  of its own;
 - with the model and effort of `workers.model` and `workers.effort` in the settings, or
   `--worker-model` and `--worker-effort` (`low`, `medium`, `high`, `xhigh` or `max`) for a run;
   Claude Code's own defaults otherwise;
@@ -280,6 +283,28 @@ When a run ends with workers still at it (you quit, a worker stopped the run, or
 you), their sessions are **suspended**: interrupted, closed, and saved in `state.json` with why. The
 next run resumes each and tells it the last run ended while it worked, to carry on where it left
 off. See [Quitting and the next run](running.md#quitting-and-the-next-run).
+
+## Tools left out
+
+Claude Code describes each tool it offers in every request a worker makes. Workers never call
+Artifact, ListAgents, ReportFindings, ScheduleWakeup, SendFeedback, Workflow or Skill (none of
+orchestra's 484 worker sessions did), and their descriptions, with the listing of your skills that
+comes with Skill, came to about 28,000 tokens a call: a worker's first call opened with about 11,900
+tokens rather than 39,200 without them. So every worker's session, resumed ones too, is started with
+them denied (`disallowedTools`); a denied tool isn't described to the model. The login probe's is
+too.
+
+Workers keep the rest, and any tool a later Claude Code adds: Bash, Read, Edit and Write; Agent,
+which runs the verifier; ToolSearch, which loads the tools of the project's MCP servers; the task
+tools and the other deferred tools such as Monitor; and AskUserQuestion unless
+`workers.ask_user_question` is off.
+
+A project with skills of its own keeps Skill, as its workers reach those skills only through it:
+anything in `.claude/skills` or `.claude/commands` (which Claude Code runs as skills), or a plugin
+enabled in its Claude settings, `enabledPlugins` in `.claude/settings.json` or
+`.claude/settings.local.json` with an entry not set to `false`. The listing then names your own skills
+too. tutti decides once, from the main checkout, as the run begins: skills or plugins added during
+the run count from the next one.
 
 ## MCP servers
 

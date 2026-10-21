@@ -251,6 +251,7 @@ const q = query({
     // resume: savedSessionId,         // instead of sessionId when resuming (§4.8)
     mcpServers: chosenServers,         // definitions resolved by name (§4.6)
     strictMcpConfig: true,             // no other MCP server loads
+    disallowedTools: unusedTools,      // the tools workers never use (below)
     canUseTool: attention.request(ticketId),   // §4.5
     hooks: activityHooks(ticketId),    // in-process callbacks (§4.2), the verifier's foreground hook
     onElicitation: attention.elicitation(ticketId),
@@ -283,6 +284,12 @@ It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 - The stream's `assistant` message still shows the model's input, without `run_in_background`. The transcript shows what the model asked for, not what ran.
 
 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` would also keep the verifier in the foreground, with no hook, but tutti doesn't set it. It turns off every background task in the session: other subagents, and background Bash. "Checks in the foreground" (§4.11) stays a rule of the worker prompt, not a switch.
+
+**The tools workers never use are denied.** Claude Code describes each tool it offers in every request. Artifact, ListAgents, ReportFindings, ScheduleWakeup, SendFeedback and Workflow, which no worker of orchestra's 484 sessions called, and Skill, with its listing of the user's skills, came to about 28k tokens a call: a worker's first call opened with 11.9k tokens rather than 39.2k without them (orchestra, Claude Code 2.1.303). So every worker's session, new or resumed, and the login probe's, gets them in `disallowedTools` (`src/agent/unusedTools.ts`); a denied tool isn't described to the model. Workers keep the rest, and any tool a later Claude Code adds: Bash, Read, Edit, Write, Agent (the verifier), ToolSearch (the MCP servers' tools), the task tools and the other deferred tools, and `AskUserQuestion` unless `workers.ask_user_question` is off (§15, Q3), which adds it to the list.
+
+- **Skill stays when the project has skills of its own**, which its workers reach only through it: anything in the main checkout's `.claude/skills` or `.claude/commands`, or a plugin enabled in its `.claude/settings.json` or `.claude/settings.local.json` (an `enabledPlugins` entry not `false`; any enabled plugin counts as having skills). The live AgentHost decides once, from the main checkout, as the run begins. The login probe, sent no prompt, is denied Skill whatever the project has.
+- The feature interview isn't given the list: its `tools` are its whole built-in set (§4.10).
+- `test/contract/tools.test.ts` reads a worker's first `system/init`: its `tools` lack exactly the denied ones Claude Code has, and keep Skill in a project with skills.
 
 **Permission mode and settings.**
 

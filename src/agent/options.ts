@@ -35,6 +35,7 @@ import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
 import { qualifiedToolNames, serverName } from "./interviewTools.ts"
 import { type ChosenServers, chromeArgs, mcpServers } from "./mcp.ts"
 import { Transcripts } from "./Transcripts.ts"
+import { deniedTools } from "./unusedTools.ts"
 
 /** How a worker's session starts: a new one with the ID tutti drew, or a saved one resumed. */
 export type SessionStart =
@@ -62,6 +63,8 @@ export interface WorkerOptionsInput {
   /** The run's worker prompt, TICKET_ID still in it: the standing rules; null for the probe. */
   readonly prompt: WorkerPrompt | null
   readonly servers: ChosenServers
+  /** Whether the project has skills (projectHasSkills): its workers keep Skill. */
+  readonly skills: boolean
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
   /** workerEnv()'s environment (§ 4.13). */
@@ -110,6 +113,8 @@ interface SharedInput {
   readonly abortController: AbortController
   /** Whether the session gets Claude in Chrome: the project's choice, never the probe's. */
   readonly chrome: boolean
+  /** Whether the session keeps Skill, the project having skills (projectHasSkills). */
+  readonly skills: boolean
   /** Told of Claude Code's process once the SDK has spawned it. */
   readonly spawned?: (child: ChildProcessWithoutNullStreams) => void
 }
@@ -117,8 +122,9 @@ interface SharedInput {
 /**
  * The options a worker's session and the login probe's share (§ 4.13: the probe runs with the
  * workers' options), so the two can't drift: the settings Claude Code reads, the permission mode,
- * model and effort, strict MCP config and Chrome (chromeArgs), the environment, and the spawn into
- * a process group.
+ * model and effort, strict MCP config and Chrome (chromeArgs), the tools denied (the unused ones,
+ * deniedTools, and AskUserQuestion when workers.ask_user_question is off), the environment, and the
+ * spawn into a process group.
  */
 const sharedOptions = (input: SharedInput) => {
   const workers = input.config.settings.workers
@@ -132,7 +138,10 @@ const sharedOptions = (input: SharedInput) => {
     ...(workers.effort === null ? {} : { effort: workers.effort }),
     strictMcpConfig: true,
     extraArgs: chromeArgs(input),
-    ...(workers.ask_user_question ? {} : { disallowedTools: [askUserQuestionTool] }),
+    disallowedTools: [
+      ...deniedTools(input.skills),
+      ...(workers.ask_user_question ? [] : [askUserQuestionTool]),
+    ],
     stderr: input.stderr,
     env: input.env,
     ...(input.config.claude === null ? {} : { pathToClaudeCodeExecutable: input.config.claude }),
@@ -158,6 +167,7 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
       stderr: callbacks.stderr,
       abortController: input.abortController,
       chrome: input.servers.chrome === true,
+      skills: input.skills,
     }),
     cwd: input.worktree,
     systemPrompt: {
@@ -199,10 +209,11 @@ export interface ProbeOptionsInput {
 /**
  * The login probe's SDK options (§ 4.13): the workers' shared options, in the main checkout, with
  * no MCP servers, no Chrome and no session saved. It is sent no prompt, so it has no ticket, standing rules,
- * session ID, permission callbacks or hooks: nothing it could call them for.
+ * session ID, permission callbacks or hooks: nothing it could call them for. Nor does it need Skill,
+ * whatever skills the project has.
  */
 export const probeOptions = (input: ProbeOptionsInput): Options => ({
-  ...sharedOptions({ ...input, chrome: false }),
+  ...sharedOptions({ ...input, chrome: false, skills: false }),
   cwd: input.config.repo,
   mcpServers: {},
   persistSession: false,
@@ -257,13 +268,15 @@ export interface InterviewOptionsInput {
  */
 export const interviewOptions = (input: InterviewOptionsInput): Options => {
   const { callbacks } = input
-  // The workers' ask_user_question setting is theirs: the interview always has AskUserQuestion.
+  // The workers' denied tools are theirs: the interview's are its whole set, and it always has
+  // AskUserQuestion.
   const { disallowedTools: _, ...shared } = sharedOptions({
     config: input.config,
     env: input.env,
     stderr: callbacks.stderr,
     abortController: input.abortController,
     chrome: input.chrome,
+    skills: false,
   })
   return {
     ...shared,
