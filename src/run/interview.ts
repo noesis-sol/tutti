@@ -187,6 +187,7 @@ export const interview = <E>(
           screen: yield* SubscriptionRef.make<Screen>(Screen.Interview()),
           commands,
           transcripts,
+          handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
           description,
           filing: session.filing,
         })

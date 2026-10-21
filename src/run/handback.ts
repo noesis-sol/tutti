@@ -25,7 +25,7 @@
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { type Duration, Effect, Option, Queue, Ref, Result, Stream } from "effect"
+import { type Duration, Effect, Option, Queue, Ref, Result, Stream, SubscriptionRef } from "effect"
 import { AgentHost, type From } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -83,6 +83,8 @@ export interface HandBacks {
    * ticket's latest, in the order they came.
    */
   readonly waiting: Effect.Effect<ReadonlyArray<RebaseStop>>
+  /** The hand-backs waiting now, then on each change: for the worker view's notice (§ 4.3). */
+  readonly changes: Stream.Stream<ReadonlyArray<RebaseStop>>
   /** Keeps a hand-back due to a steered worker, in place of any earlier one of its ticket's. */
   wait(stop: RebaseStop): Effect.Effect<void>
   /** Takes the ticket's waiting hand-back out of those waiting; undefined when it has none. */
@@ -100,9 +102,10 @@ export interface HandBacks {
 export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
   const ref = yield* Ref.make<{
     readonly counts: ReadonlyMap<string, number>
-    readonly waiting: ReadonlyArray<RebaseStop>
     readonly waived: ReadonlySet<string>
-  }>({ counts: new Map(), waiting: [], waived: new Set() })
+  }>({ counts: new Map(), waived: new Set() })
+  // Those waiting apart, so that their changes can be followed.
+  const waiting = yield* SubscriptionRef.make<ReadonlyArray<RebaseStop>>([])
   return {
     count: (id) => Effect.map(Ref.get(ref), (state) => state.counts.get(id) ?? 0),
     next: (id) =>
@@ -110,17 +113,18 @@ export const makeHandBacks: Effect.Effect<HandBacks> = Effect.gen(function* () {
         const n = (state.counts.get(id) ?? 0) + 1
         return [n, { ...state, counts: new Map([...state.counts, [id, n]]) }]
       }),
-    waiting: Effect.map(Ref.get(ref), (state) => state.waiting),
+    waiting: SubscriptionRef.get(waiting),
+    changes: SubscriptionRef.changes(waiting),
     wait: (stop) =>
-      Ref.update(ref, (state) => ({
-        ...state,
-        waiting: [...state.waiting.filter((each) => each.ticket.id !== stop.ticket.id), stop],
-      })),
+      SubscriptionRef.update(waiting, (all) => [
+        ...all.filter((each) => each.ticket.id !== stop.ticket.id),
+        stop,
+      ]),
     take: (id) =>
-      Ref.modify(ref, (state) => {
-        const found = state.waiting.find((each) => each.ticket.id === id)
-        if (found === undefined) return [undefined, state]
-        return [found, { ...state, waiting: state.waiting.filter((each) => each !== found) }]
+      SubscriptionRef.modify(waiting, (all) => {
+        const found = all.find((each) => each.ticket.id === id)
+        if (found === undefined) return [undefined, all]
+        return [found, all.filter((each) => each !== found)]
       }),
     waive: (id) =>
       Ref.update(ref, (state) => ({ ...state, waived: new Set([...state.waived, id]) })),

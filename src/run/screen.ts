@@ -35,6 +35,8 @@ export interface ScreenInputs {
   readonly commands: Commands
   /** The workers' transcripts, which a worker view reads its own from (§ 3.5, § 7.5). */
   readonly transcripts: Transcripts["Service"]
+  /** The tickets whose steered worker has a conflict hand-back waiting, for its view (§ 4.3). */
+  readonly handBacks: SubscriptionRef.SubscriptionRef<ReadonlyArray<string>>
 }
 
 /** A dashboard: shows `inputs` until the scope closes. */
@@ -135,8 +137,8 @@ export const sources = (
 
 /**
  * Shows `dashboard` for the rest of the scope: RunView projected from the run's sources, `status`
- * now and on each change among them, the screen at the dashboard, an empty command queue, and the
- * transcripts.
+ * now and on each change among them, the screen at the dashboard, an empty command queue, the
+ * transcripts, and no hand-backs waiting yet (the run follows its merge queue's into them).
  */
 export const show = (
   dashboard: Dashboard,
@@ -148,6 +150,7 @@ export const show = (
       screen: yield* SubscriptionRef.make<Screen>(Screen.Dashboard()),
       commands: yield* makeCommands,
       transcripts: yield* Transcripts,
+      handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
     }
     yield* dashboard(inputs)
     return inputs

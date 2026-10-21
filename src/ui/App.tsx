@@ -2,8 +2,9 @@
 // Screen (the dashboard, a worker's view, the interview).
 //
 // dashboard() is the Dashboard a run shows (src/run/screen.ts): it bridges the run's RunView and
-// Screen into React (useRunView.ts), and the workers' transcripts for their views
-// (transcriptItems.ts), and mounts the tree into the renderer until the run's scope closes.
+// Screen into React (useRunView.ts), the workers' transcripts for their views (transcriptItems.ts)
+// and the hand-backs waiting for their notices, and mounts the tree into the renderer until the
+// run's scope closes.
 // interviewScreen() is the Interview view's (src/run/interview.ts), mounted the same way, with the
 // description and what file_feature has filed beside it.
 import { createRoot } from "@opentui/react"
@@ -76,6 +77,7 @@ const shellValue = (
       appearance: shell.appearance,
       themeOf,
       transcripts: yield* transcriptFeed(inputs.transcripts),
+      handBacks: yield* bridge(inputs.handBacks),
       ...(desktop.clipboard === undefined ? {} : { clipboard: desktop.clipboard }),
       ...(desktop.urlOpener === undefined ? {} : { urlOpener: desktop.urlOpener }),
     } satisfies ShellValue

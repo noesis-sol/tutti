@@ -581,6 +581,17 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         SubscriptionRef.update(status, (now) => ({ ...now, probe })),
       ),
     )
+    // The hand-backs waiting on steered workers, for their views' notices (§ 4.3).
+    if (screen !== null) {
+      yield* watch(
+        Stream.runForEach(queue.handBacks.changes, (stops) =>
+          SubscriptionRef.set(
+            screen.handBacks,
+            stops.map((stop) => stop.ticket.id),
+          ),
+        ),
+      )
+    }
     yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp)))
     yield* watch(
       Stream.runForEach(queue.changes, (state) => Effect.andThen(mergeStop(state), wakeUp)),
