@@ -247,6 +247,15 @@ export class Git extends Context.Service<
       base: string,
       head?: string,
     ): Effect.Effect<ReadonlyArray<string>, GitError>
+    /**
+     * git diff --name-only from to: the files whose content differs between the two commits,
+     * whatever their history, a renamed file under both its paths.
+     */
+    filesBetween(
+      dir: string,
+      from: string,
+      to: string,
+    ): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git ls-files: the files git tracks. */
     trackedFiles(dir: string): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git rev-parse --verify: the full hash `rev` names; GitFailed when it names none. */
@@ -519,6 +528,20 @@ export class Git extends Context.Service<
                 "--name-only",
                 "-z",
                 `${base}...${head}`,
+                "--",
+              ]),
+              splitNul,
+            ),
+          filesBetween: (dir, from, to) =>
+            Effect.map(
+              read("diff --name-only", dir, [
+                "diff",
+                "--no-renames",
+                "--name-only",
+                "-z",
+                "--end-of-options",
+                from,
+                to,
                 "--",
               ]),
               splitNul,

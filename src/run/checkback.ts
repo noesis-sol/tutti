@@ -330,7 +330,10 @@ const setAside = (
 /** The setup, if need be, and the check again on the fixed branch, in Fixing. */
 const checkFix = (stop: CheckStop, options: MergeOptions, memory: MergeMemory) =>
   Effect.gen(function* () {
-    const setup = yield* setUp(stop.ticket, options, memory.setUps, stop.fork, stop.onto, false)
+    const setup = yield* setUp(stop.ticket, options, memory.setUps, stop.fork, stop.onto, {
+      what: "fix",
+      from: stop.at,
+    })
     if (setup._tag === "Failed") return setup
     return yield* runMergeCheck(stop.ticket)
   })

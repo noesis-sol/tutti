@@ -608,7 +608,10 @@ export const resolve = (
       )
       if (nothing !== undefined) return { _tag: "Unchanged", unchanged: nothing } satisfies Resolved
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
-      const setup = yield* setUp(stop.ticket, options, setUps, stop.fork, stop.onto, false)
+      const setup = yield* setUp(stop.ticket, options, setUps, stop.fork, stop.onto, {
+        what: "resolution",
+        from: stop.head,
+      })
       const checked = setup._tag === "Failed" ? setup : yield* runMergeCheck(stop.ticket)
       if (checked._tag !== "Failed") return { _tag: "Verified" } satisfies Resolved
       return {

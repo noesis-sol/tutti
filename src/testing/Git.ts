@@ -914,6 +914,25 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
                 return changedPaths(treeOf(since), treeOf(to))
               }),
           ),
+        filesBetween: (dir, from, to) =>
+          operation(
+            "read",
+            "diff --name-only",
+            dir,
+            ["diff", "--no-renames", "--name-only", "-z", "--end-of-options", from, to, "--"],
+            (refuse) =>
+              Effect.gen(function* () {
+                const checkout = yield* inRepo(refuse, dir)
+                const [a, b] = [resolve(checkout, from), resolve(checkout, to)]
+                if (a === undefined || b === undefined) {
+                  return yield* refuse(
+                    128,
+                    `fatal: ambiguous argument '${a === undefined ? from : to}': unknown revision or path not in the working tree.`,
+                  )
+                }
+                return changedPaths(treeOf(a), treeOf(b))
+              }),
+          ),
         trackedFiles: (dir) =>
           operation("read", "ls-files", dir, ["ls-files", "-z"], (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => [...checkout.index.keys()].sort()),

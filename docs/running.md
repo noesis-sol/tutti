@@ -273,7 +273,8 @@ its turn (`◷ to merge`). Tickets merge one at a time, in the order they finish
 
 1. **Rebase.** If the base moved on while the ticket ran, its branch is rebased onto it.
 2. **Setup.** If the rebase changed a dependency file, the setup command runs in its worktree
-   ([The checks](setup.md#the-checks)).
+   ([The checks](setup.md#the-checks)). Before the check on a worker's fix of a failed check, or on
+   its resolution of a conflict, it also runs if the worker's own commits changed one.
 3. **Check.** The merge check, `scripts/check-fast.sh`, runs on the rebased branch. A branch the base
    didn't move under is the code its worker checked before closing, and merges as it is.
 4. **Fast-forward** the base to the branch. The worktree and branch are removed:

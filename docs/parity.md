@@ -5,17 +5,17 @@ The audit against the spec's parity matrix (`.orchestra/specs/tutti-spec.md`, Ap
 and the tests that show it. *Kept* means as orchestra v0.7.7 has it; the other dispositions point to
 the spec's section. Back to the [README](../README.md).
 
-Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 77 are as the spec says:
-45 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 6
+Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 78 are as the spec says:
+46 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 5
 aren't yet:
 
 - **Missing** (2): the START block's `DEFERRED_FREE` lines (tutti-psr), and counting and logging
   compactions (tutti-4sa). The dispatch's footprint line is logged since tutti-d6q, the run's
   notifications are sent since tutti-sla, and the predictor runs in real runs since tutti-76k.
-- **Differs** (4): the run lock's refusal during init and its emptied files (tutti-d5g), the setup
-  after a fix (tutti-ry9), rechecks while it holds or a solo ticket runs (tutti-t4y), and the full
-  check's output end (tutti-zfj). The wind-down line's narrow and empty forms are orchestra's since
-  tutti-upv.
+- **Differs** (3): the run lock's refusal during init and its emptied files (tutti-d5g), rechecks
+  while it holds or a solo ticket runs (tutti-t4y), and the full check's output end (tutti-zfj). The
+  wind-down line's narrow and empty forms are orchestra's since tutti-upv, and the setup after a fix
+  since tutti-ry9.
 
 Rows marked *untested details* do what the spec says, but some detail of them is shown by no test
 yet; tutti-b3k (the run loop) and tutti-178 (startup, the interface and init) list them. Each
@@ -67,7 +67,7 @@ file and test name given here is there.
 |  | `LIMIT`, `DONE_SO_FAR` | Changed as specified (§ 8.2): `--limit` kept, `DONE_SO_FAR` gone | `src/cli/flags.ts`, `src/run/schedule.ts`, `src/run/run.ts` | `test/schedule.test.ts` "counts the tickets this run starts, and stops starting them once reached"; `test/scenarios-scheduling.test.ts` "counts the tickets the run starts, and the run ends LIMIT_REACHED, exit 0"; `test/app-config.test.ts` "orchestra's unprefixed variables are not read" |
 |  | `--ticket-limit`, `LONG_RUNNING` | Kept | `src/run/holds.ts`, `src/run/work.ts`, `src/run/carry.ts` | `test/holds-time.test.ts` "TICKET_LIMIT holds the run; its worker goes on, isn't waited for, and is suspended", "LONG_RUNNING is said once at 2h without a limit, and holds nothing"; `test/carry.test.ts` "has its ticket limit counted afresh from its resume" |
 | Merge | queue, rebase, `OFF_BRANCH`, `DIRTY_WORKTREE`, `REBASE_FAILED` | Kept | `src/run/mergequeue.ts`, `src/run/merge.ts`, `src/services/Git.ts` | `test/merge-queue.test.ts` "tickets merge one at a time in the order they finished, their places kept current", "OFF_BRANCH: the worktree on a detached HEAD is set aside before anything is done", "DIRTY_WORKTREE: uncommitted changes keep the branch from its rebase", "REBASE_FAILED: git refuses the rebase without stopping on conflicts" |
-|  | setup command on dependency changes | Differs: tutti-ry9 (a fix's own change to a setup file doesn't run the setup before its check) | `src/run/setup.ts`, `src/run/merge.ts`, `src/run/checkback.ts` | `test/setup.test.ts` "runs in the worktree when the rebase changed a setup file, and the log says so", "doesn't run when the rebase changed no setup file", "runs anyway when git can't say what the rebase changed"; `test/resolution-setup.test.ts` "runs in the worktree when the base brought a setup file, then the check" |
+|  | setup command on dependency changes | Kept: a check fix's or a resolution's own change to a setup file runs the setup before its check too (tutti-ry9) | `src/run/setup.ts`, `src/run/merge.ts`, `src/run/checkback.ts`, `src/run/handback.ts` | `test/setup.test.ts` "runs in the worktree when the rebase changed a setup file, and the log says so", "doesn't run when the rebase changed no setup file", "runs anyway when git can't say what the rebase changed"; `test/resolution-setup.test.ts` "runs in the worktree when the base brought a setup file, then the check"; `test/fix-setup.test.ts` "runs when the fix changes a setup file, though the rebase brought none", "runs when the resolution changes a setup file, though the base brought none" |
 |  | merge check, its limit, `check.log`, `FLAKY:` | Kept | `src/run/check.ts`, `src/services/Checks.ts` | `test/merge-queue.test.ts` "a ticket behind the base is rebased and checked, its check.log in its worktree", "FLAKY: lines of a passing check are warnings naming the ticket", "CHECKS_FAILED: a check past its time limit"; `test/checks.test.ts` "counts every FLAKY: line, keeping the first maxFlaky" |
 |  | conflict hand-back, check hand-back, verification of the result | Kept | `src/run/handback.ts`, `src/run/checkback.ts`, `src/run/steer.ts` | `test/handback.test.ts` "is verified, checked, and merges: Merging → Resolving → ToMerge → Done", "a steered worker isn't sent it: the hand-back waits, and the line says why"; `test/checkback.test.ts` "on the first attempt: Merging → Fixing → ToMerge → Done, the fix merged", "while the run winds down: Review, the line saying why"; `test/check-hand-back-hold.test.ts` "PAUSED holds the run: b's failed check isn't handed back, Review, the line saying why"; `test/steer.test.ts` "hands a steered worker its waiting conflict: Blocked → ToMerge, rebased, handed back" |
 |  | recheck after the base moves on | Differs: tutti-t4y (rechecks while a stop holds the run or a solo ticket runs, without a slot) | `src/run/recheck.ts`, `src/run/mergequeue.ts` | `test/recheck.test.ts` "is checked once more after another ticket merges, and merges when it passes", "isn't checked again when it failed in a folder its own commits change", "is checked again only once a run" |
