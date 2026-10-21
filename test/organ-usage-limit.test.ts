@@ -240,12 +240,12 @@ describe("the usage-limit hold from an organ", () => {
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done", "t-2": "Done", "t-3": "Done" })
     expectLog(ran, [
-      "[1/40] t-1 dispatching: t-1",
-      "[2/40] t-2 dispatching: t-2",
+      "[1] t-1 dispatching: t-1",
+      "[2] t-2 dispatching: t-2",
       `USAGE_LIMIT: the five-hour limit is reached; no new tickets until it resets at ${clock(2 * hour * 1000)}`,
       closed("t-2"),
       "USAGE_LIMIT lifted",
-      "[3/40] t-3 dispatching: t-3",
+      "[3] t-3 dispatching: t-3",
       closed("t-1"),
     ])
     expect(ran.log.some((text) => text.includes("nothing else runs"))).toBe(false)
