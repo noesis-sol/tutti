@@ -1238,6 +1238,7 @@ As orchestra draws it:
   - the pill ` tutti `, bold `pillText` on `pill`, with a blank line above
   - the version, the branch and the run time faint
   - `· stopping` `needsYou` bold; `· solo <id> next` `notice`; `· solo <id> running` `live` bold
+  - `· shared with N runs` faint, after them, while other tutti or orchestra runs share the machine (§5 item 5)
   - tutti's banners (§7.2): the usage line `notice`, bold once the limit is reached; `BLOCKED` `needsYou` bold
 - **Totals strip** (a rounded `frame`, faint header row):
   - Completed `✓ n` `done` bold

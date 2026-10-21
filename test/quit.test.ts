@@ -706,6 +706,7 @@ describe("the lines", () => {
         { ticket: "t-2", what: "merge" },
       ]),
       solo: null,
+      shared: 0,
     }
     const text = titleSegments(title, [], 0, theme, 120)
       .map((segment) => segment.text)

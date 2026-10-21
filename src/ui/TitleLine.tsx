@@ -1,6 +1,6 @@
 // The dashboard's title line (§ 7.2, § 7.11), under a blank line: the tutti pill, the version, and
-// whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next;
-// then, faint, the branch, the run's time and a scoped run's ticket; and on the right tutti's
+// whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next,
+// and how many other runs share the machine; then, faint, the branch, the run's time and a scoped run's ticket; and on the right tutti's
 // banners, the usage and the holds. The states come first, so a narrow pane cuts the branch and the
 // time, then drops them.
 import { runTime } from "../print/summary.ts"
@@ -65,6 +65,11 @@ export const titleSegments = (
       title.solo.running
         ? seg(`  · solo ${title.solo.ticket} running`, styles.picked)
         : seg(`  · solo ${title.solo.ticket} next`, styles.deferred),
+    )
+  }
+  if (title.shared > 0) {
+    left.push(
+      seg(`  · shared with ${title.shared} run${title.shared === 1 ? "" : "s"}`, styles.dim),
     )
   }
   const scoped = title.scope === null ? "" : ` · ticket ${title.scope}`

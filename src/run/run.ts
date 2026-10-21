@@ -618,13 +618,20 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         return full
       })
     // Writes how many of the run's workers run, reads the other runs, saying which started and
-    // ended and keeping how many workers they run (OtherWorkers), and lifts the hold once the
-    // machine is under the cap.
+    // ended and keeping how many workers they run (OtherWorkers) and how many runs share the machine
+    // (the title line's `· shared with 1 run`), and lifts the hold once the machine is under the cap.
     const lookAround = Effect.gen(function* () {
       yield* machine.running(yield* ownWorkers)
-      for (const seen of yield* machine.look) {
-        yield* events.emit({ kind: "shared_machine", shared: seen.shared, text: seen.text })
-        yield* logs.write(seen.text)
+      const seen = yield* machine.look
+      for (const each of seen) {
+        yield* events.emit({ kind: "shared_machine", shared: each.shared, text: each.text })
+        yield* logs.write(each.text)
+      }
+      const last = seen.at(-1)
+      if (last !== undefined) {
+        yield* SubscriptionRef.update(status, (now) =>
+          now.shared === last.shared ? now : { ...now, shared: last.shared },
+        )
       }
       yield* otherWorkers.set(yield* machine.others)
       if (!(yield* atCap)) yield* holdMachine(false)

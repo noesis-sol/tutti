@@ -259,7 +259,8 @@ names another, `off` none), for as long as it runs, so tutti and orchestra see e
 Once for each other run, the log says
 `SHARED_MACHINE: another orchestra run is going in <repository> with 3 workers; their checks slow
 each other down` (`another tutti run` for tutti's), and `the other … run in <repository> has ended`
-as it ends.
+as it ends. Meanwhile the dashboard's title line says `· shared with 1 run`, counting the other runs
+going as the run last read them.
 
 `--machine-workers N` (or `TUTTI_MACHINE_WORKERS`) caps the workers across the machine's runs, this
 one's included, merges and checks counted: a free slot waits at the cap, saying once

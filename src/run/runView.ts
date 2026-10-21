@@ -76,6 +76,8 @@ export interface Status {
    */
   readonly endOfRun: ReadonlyArray<string> | null
   readonly solo: Solo | null
+  /** How many other tutti and orchestra runs share the machine, as the last look found them. */
+  readonly shared: number
   /** The tickets not closed that the queue draws from (`9 of 16`); null until the run says. */
   readonly unclosed: number | null
   /** The triage organ's verdicts on tickets set aside, by ticket: `environment · high · …`. */
@@ -98,6 +100,7 @@ export const emptyStatus: Status = {
   quitting: null,
   endOfRun: null,
   solo: null,
+  shared: 0,
   unclosed: null,
   verdicts: new Map(),
   probe: null,
@@ -234,6 +237,8 @@ export interface TitleView {
   /** What quitting waits for, shown in place of `· stopping`; null when the run isn't quitting. */
   readonly quitting: string | null
   readonly solo: Solo | null
+  /** How many other runs share the machine: `· shared with 2 runs` when any. */
+  readonly shared: number
 }
 
 export interface RunView {
@@ -262,6 +267,7 @@ export const emptyView: RunView = {
     stopping: false,
     quitting: null,
     solo: null,
+    shared: 0,
   },
   totals: {
     completed: 0,
@@ -726,6 +732,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       status.solo === null
         ? null
         : { ticket: sanitizeLine(status.solo.ticket), running: status.solo.running },
+    shared: status.shared,
   }
   const warnings = [...new Set(status.warnings.map(sanitizeLine))]
   // The box names each worker the run waits on that still has a request open, or a conflict

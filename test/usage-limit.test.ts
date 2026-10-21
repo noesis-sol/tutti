@@ -478,6 +478,7 @@ describe("what the hold says", () => {
       stopping: false,
       quitting: null,
       solo: null,
+      shared: 0,
     }
     const text = (banners: Parameters<typeof titleSegments>[1], now: number) =>
       titleSegments(title, banners, now, theme, 120)
