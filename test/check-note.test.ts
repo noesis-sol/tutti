@@ -27,6 +27,7 @@ const rules = (command: string | null): string => {
     worktree: "/w",
     prompt,
     servers: { servers: [], note: null },
+    skills: false,
     callbacks: {
       canUseTool: async () => ({ behavior: "allow" }),
       onElicitation: async () => ({ action: "decline" }),
