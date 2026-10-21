@@ -507,7 +507,8 @@ describe("the worker view", () => {
         "
          ← Dashboard   1 •  t-1  done  1m07s   Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
-          › Work on tut-zq4. …
+          › Work on tut-zq4.
+            Read the ticket first.
           I'll read the undo module first.
           Read  internal/history/undo.ts                                               ✓
           Edit  internal/history/undo.ts                                           +2 −1
@@ -535,7 +536,8 @@ describe("the worker view", () => {
         "
          ← Dashboard   1 •  t-1  done  1m07s   Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
-          › Work on tut-zq4. …
+          › Work on tut-zq4.
+            Read the ticket first.
           I'll read the undo module first.
         ▸ Read  internal/history/undo.ts                                               ✓
             lines 40–42
@@ -567,14 +569,28 @@ describe("the worker view", () => {
   })
 
   test("the prompt expands to its whole text", async () => {
+    const steps = Array.from({ length: 8 }, (_, i) => `Step ${i + 1}.`)
     await scene(
-      itemsOf([prompt("Work on tut-zq4.\nRead the ticket first.")]),
+      itemsOf([prompt(`Work on tut-zq4.\n${steps.join("\n")}`)]),
       async ({ rendered }) => {
+        // Collapsed, its first lines, the last ending ` …`.
+        const collapsed = await until(rendered, has("Step 5."))
+        expect(linesOf(collapsed).slice(2, 9)).toEqual([
+          "  › Work on tut-zq4.",
+          "    Step 1.",
+          "    Step 2.",
+          "    Step 3.",
+          "    Step 4.",
+          "    Step 5. …",
+          "",
+        ])
+        expect(collapsed.chars).not.toContain("Step 6.")
         await press(rendered, "up", "enter")
-        const frame = await until(rendered, has("Read the ticket first."))
-        expect(linesOf(frame).slice(2, 4)).toEqual([
-          "▸ › Work on tut-zq4. …",
-          "    Work on tut-zq4.",
+        const frame = await until(rendered, has("Step 8."))
+        expect(linesOf(frame).slice(2, 12)).toEqual([
+          "▸ › Work on tut-zq4.",
+          ...steps.map((step) => `    ${step}`),
+          "",
         ])
       },
     )

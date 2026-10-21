@@ -9,16 +9,17 @@
 // Release button, your messages still queued, the field.
 //
 // The items (transcriptItems.ts): assistant text as Markdown (<markdown>, in the theme's heading,
-// code and link roles); each tool call one line, `Tool  summary`, its result at the end of it (`✓`,
-// an error's first line, `+N −M`); Enter or a click expands one: an edit's diff (<diff>), a
-// command's output (<code>), a read's range, an Agent call's subagent work behind a faint `│`.
+// code and link roles); each tool call `Tool  summary`, wrapped, its result at the end of it (`✓`,
+// an error's first line, `+N −M`); a message sent to the worker wrapped, `› ` before it. Enter or a
+// click expands one: an edit's diff (<diff>), a command's output (<code>), a read's range, an Agent
+// call's subagent work behind a faint `│`, a message's lines past the first `itemLines`.
 // Thinking is hidden. While the view is open, its transcript's open flag is set, and partial text
 // shows as it streams.
 //
 // Bounded rendering: the window of the transcript mounted is at most the last 200 items, sticking
 // to the bottom while you're there; scrolling past the top (the wheel, PgUp, `g`) loads 200 older
-// from the file, letting the newest beyond 600 go, and keeps your place. Collapsed items are one
-// line tall, a fixed height (#1514).
+// from the file, letting the newest beyond 600 go, and keeps your place. Collapsed items are a fixed
+// height, their lines wrapped beforehand to the pane's width, at most `itemLines` (#1514).
 //
 // The keys, in the view's layer: `Tab`, `Shift+Tab` and the arrows move between the items and the
 // panel's requests, and between a request's buttons; `Enter` expands or collapses the selected item
@@ -81,6 +82,7 @@ import {
   seg,
   styled,
   widthOf,
+  wrap,
   wrapped,
 } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
@@ -257,38 +259,58 @@ const gutter = (selected: boolean, theme: Theme): Segments => [
   seg(selected ? "▸ " : "  ", theme.styles.key),
 ]
 
-/** A tool call's line, `width` wide: `▸ Bash  scripts/check-fast.sh` and its mark at the end. */
-export const toolLine = (
+/** The most lines a collapsed tool call or message takes; the last is cut with `…` (§ 7.5). */
+export const itemLines = 6
+
+/**
+ * A tool call's lines, `width` wide: `▸ Bash  scripts/check-fast.sh` wrapped under its summary, and
+ * its mark at the end of the last line, or on a line of its own when it doesn't fit there. How many
+ * there are depends only on the call and `width`, and they only grow as its result comes.
+ */
+export const toolLines = (
   tool: ToolEntry,
   theme: Theme,
   width: number,
   selected: boolean,
-): Segments => {
+): ReadonlyArray<Segments> => {
   const head: Segments = [
     ...gutter(selected, theme),
     seg(tool.name, theme.styles.key),
     ...(tool.summary === "" ? [] : [seg("  "), seg(tool.summary)]),
     ...(tool.live ? [seg("  …", theme.styles.dim)] : []),
   ]
+  // Under the summary, or under the name when that's more than half the line.
+  const indent =
+    tool.summary === "" ? 4 : Math.min(2 + widthOf([seg(tool.name)]) + 2, Math.floor(width / 2))
+  const lines = wrap(head, width, { indent, limit: itemLines })
   const mark = markSegments(markOf(tool), theme, Math.floor(width / 2))
-  if (mark.length === 0) return cut(head, width)
+  if (mark.length === 0) return lines
   const room = Math.max(width - widthOf(mark) - 2, 0)
-  return [...padded(cut(head, room), room), seg("  "), ...mark]
+  const last = lines.at(-1) ?? []
+  return widthOf(last) <= room
+    ? [...lines.slice(0, -1), [...padded(last, room), seg("  "), ...mark]]
+    : [...lines, [...padded([], room), seg("  "), ...mark]]
 }
 
-/** A message sent to the worker, on one line: `› Carry on with the ticket …`. */
-const promptLine = (text: string, theme: Theme, width: number, selected: boolean): Segments => {
-  const lines = text.split("\n").filter((line) => line.trim() !== "")
-  const first = sanitizeLine(lines[0] ?? "")
-  return cut(
-    [
-      ...gutter(selected, theme),
-      seg("› ", theme.styles.dim),
-      seg(first),
-      ...(lines.length > 1 ? [seg(" …", theme.styles.dim)] : []),
-    ],
-    width,
-  )
+/**
+ * A message sent to the worker, `width` wide: `› Carry on with the ticket`, its lines wrapped under
+ * its text, at most `limit` of them.
+ */
+const promptLines = (
+  text: string,
+  theme: Theme,
+  width: number,
+  selected: boolean,
+  limit: number,
+): ReadonlyArray<Segments> => {
+  const lines = sanitize(text).replace(/\t/g, " ").split("\n")
+  const from = lines.findIndex((line) => line.trim() !== "")
+  const to = lines.findLastIndex((line) => line.trim() !== "")
+  const body = from === -1 ? "" : lines.slice(from, to + 1).join("\n")
+  return wrap([...gutter(selected, theme), seg("› ", theme.styles.dim), seg(body)], width, {
+    indent: 4,
+    limit,
+  })
 }
 
 /** What an entry is drawn with besides itself. */
@@ -301,17 +323,21 @@ interface EntryProps {
   readonly click: (key: string) => void
 }
 
-/** A one-line, fixed-height row that a click selects and expands. */
-const ClickLine = ({
-  segments,
+/**
+ * Rows of a fixed height, as many as its lines, that a click selects and expands: lines wrapped
+ * beforehand to the pane's width, so that OpenTUI never lays them out a second time (#1514).
+ */
+const ClickLines = ({
+  lines,
   onClick,
 }: {
-  readonly segments: Segments
+  readonly lines: ReadonlyArray<Segments>
   readonly onClick: () => void
 }) => (
   // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's; Enter is its key
   <box
-    height={1}
+    flexDirection="column"
+    height={lines.length}
     flexShrink={0}
     onMouseDown={(event: MouseEvent) => {
       if (event.button !== 0) return
@@ -319,7 +345,10 @@ const ClickLine = ({
       onClick()
     }}
   >
-    <Line segments={segments} />
+    {lines.map((segments, i) => (
+      // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
+      <Line key={i} segments={segments} />
+    ))}
   </box>
 )
 
@@ -472,32 +501,34 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
     case "Prompt":
       return (
         <box id={entryId(entry.key)} flexDirection="column" flexShrink={0}>
-          <ClickLine
-            segments={promptLine(entry.text, theme, width, isSelected)}
+          {/* Expanded, the whole message, in place of the lines it shows collapsed. */}
+          <ClickLines
+            lines={promptLines(
+              entry.text,
+              theme,
+              width,
+              isSelected,
+              open ? Number.POSITIVE_INFINITY : itemLines,
+            )}
             onClick={() => click(entry.key)}
           />
-          {open ? (
-            <box paddingLeft={4} flexShrink={0}>
-              <text wrapMode="word" {...styled(theme.styles.dim)}>
-                {sanitize(entry.text)}
-              </text>
-            </box>
-          ) : null}
         </box>
       )
     case "Nested":
       return (
         <box id={entryId(entry.key)} flexDirection="column" flexShrink={0}>
-          <ClickLine
-            segments={cut(
-              [
-                ...gutter(isSelected, theme),
-                seg("Agent", theme.styles.key),
-                seg("  "),
-                seg("subagent work of an earlier call", theme.styles.dim),
-              ],
-              width,
-            )}
+          <ClickLines
+            lines={[
+              cut(
+                [
+                  ...gutter(isSelected, theme),
+                  seg("Agent", theme.styles.key),
+                  seg("  "),
+                  seg("subagent work of an earlier call", theme.styles.dim),
+                ],
+                width,
+              ),
+            ]}
             onClick={() => click(entry.key)}
           />
           {open ? <Children entries={entry.children} {...props} /> : null}
@@ -506,8 +537,8 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
     case "Tool":
       return (
         <box id={entryId(entry.key)} flexDirection="column" flexShrink={0}>
-          <ClickLine
-            segments={toolLine(entry, theme, width, isSelected)}
+          <ClickLines
+            lines={toolLines(entry, theme, width, isSelected)}
             onClick={() => click(entry.key)}
           />
           {open ? <Expanded tool={entry} {...props} /> : null}

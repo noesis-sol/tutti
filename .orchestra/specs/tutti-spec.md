@@ -1118,8 +1118,10 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
 
 - **Items.**
   - Assistant text renders as Markdown (`<markdown>`).
-  - Each tool call is one line, `Tool  summary`, its result collapsed to one line: `✓`, an error's first line, or `+N −M` for edits.
-  - `Enter` on a selected item, or a click, expands it: an edit's diff (`<diff>`), a command's output (`<code>`), a read's range.
+  - Each tool call is `Tool  summary`, wrapped to the pane's width under its summary, its result collapsed to a mark at the end of its last line, or on a line of its own when it doesn't fit there: `✓`, an error's first line, or `+N −M` for edits.
+  - A message sent to the worker (tutti's prompt, a nudge, yours) is `› ` and its text, its lines wrapped to the pane's width.
+  - A collapsed tool call or message takes at most 6 lines; the last is cut with `…` when there is more.
+  - `Enter` on a selected item, or a click, expands it: an edit's diff (`<diff>`), a command's output (`<code>`), a read's range, a message's whole text.
   - Subagent work (forwarded with `forwardSubagentText`) is nested under its Agent call by `parent_tool_use_id`, collapsed by default.
   - Thinking is hidden.
 - **A narrow pane.** The header wraps the ticket's whole title onto lines under it, and the hint every key onto as many lines as it takes, breaking between words and between keys: neither is cut. Both are outside the transcript's `scrollbox`, so their height doesn't touch #1514.
@@ -1133,7 +1135,7 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
   - Scrolling past the top loads older items from tutti's transcript of the worker (§4.4), 200 at a time, unmounting the newest beyond 600 in all.
   - Why: OpenTUI's `scrollbox` culls but still lays out every child, and OpenTUI's native memory grows with the mounted items (#1493). With OpenTUI 0.6.6, frequently updated texts (16 cards at 10 Hz, a streamed message) leave it flat. What grows it is each mounted transcript item once drawn: about 0.75 MB an item, 0.12 MB when an item is on screen only briefly. Unmounting gives it back: going from 600 items to 200 dropped it from 389 to 166 MB within a minute. So the bounds hold it: 200 items level off at about 170 MB of native memory, 600 at about 470 MB, while unbounded it grows 46 MB a minute (docs/spikes/05-opentui-soak.md, §§ 1–3).
   - Scrolled back, 600 items cost about 300 MB more than the view at the bottom, and native memory still creeps about 3 MB a minute after 30 minutes. That is acceptable for a view you only visit: once the view is back to 200 items, the memory goes back to the system.
-  - Collapsed items have a fixed height, which avoids `stickyScroll`'s pull back to the bottom after the layout shrinks (#1514).
+  - Collapsed items have a fixed height, which avoids `stickyScroll`'s pull back to the bottom after the layout shrinks (#1514). tutti wraps a tool call or a message itself, to the pane's width, and gives its box the height of its lines, rather than leaving OpenTUI to wrap and measure the text. The height changes only with the pane's width, and grows, never shrinks, as a call's result comes.
 - **Branding** (the Agent SDK's guidelines): no Claude Code-branded ASCII art or "visual elements that mimic Claude Code". The view uses tutti's own glyphs and layout, and the colour scheme's colours (§7.11; `orchestra` by default). The SDK's guidelines allow "Claude" in a menu already labelled "Agents" and "Powered by Claude", and forbid naming the product "Claude Code". tutti's chrome names neither.
 
 ### 7.6 Plain output

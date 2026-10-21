@@ -138,6 +138,148 @@ export const wrapped = (
   return lines
 }
 
+/** A grapheme of a segment's text, in its look, and the columns it takes. */
+interface Cell {
+  readonly text: string
+  readonly look: Look | null
+  readonly width: number
+}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" })
+
+/** The graphemes of `segments`, one at a time, so that a long text is read only as far as needed. */
+function* cellsOf(segments: Segments): Generator<Cell> {
+  for (const each of segments) {
+    for (const { segment } of graphemes.segment(each.text)) {
+      yield { text: segment, look: each.look, width: Bun.stringWidth(segment) }
+    }
+  }
+}
+
+/** Cells as segments, a segment a run of one look. */
+const segmentsOf = (cells: ReadonlyArray<Cell>): Segments => {
+  const out: Array<Segment> = []
+  for (const cell of cells) {
+    const last = out.at(-1)
+    if (last !== undefined && last.look === cell.look) {
+      out[out.length - 1] = seg(last.text + cell.text, last.look)
+    } else out.push(seg(cell.text, cell.look))
+  }
+  return out
+}
+
+const isSpace = (cell: Cell): boolean => cell.text === " "
+
+/** `cells` without the spaces at their end. */
+const trimmed = (cells: ReadonlyArray<Cell>): ReadonlyArray<Cell> => {
+  let end = cells.length
+  while (end > 0 && isSpace(cells[end - 1] as Cell)) end--
+  return cells.slice(0, end)
+}
+
+/** What a text is wrapped by: a line's end, a space, a word (`long` when it's cut in pieces). */
+type Token =
+  | { readonly _tag: "End" }
+  | { readonly _tag: "Space"; readonly cell: Cell }
+  | { readonly _tag: "Word"; readonly cells: ReadonlyArray<Cell>; readonly long: boolean }
+
+/** The tokens of `segments`, a word at most `longest` graphemes before it is passed on in pieces. */
+function* tokensOf(segments: Segments, longest: number): Generator<Token> {
+  let word: Array<Cell> = []
+  let long = false
+  const flush = function* (): Generator<Token> {
+    if (word.length > 0) yield { _tag: "Word", cells: word, long }
+    word = []
+    long = false
+  }
+  for (const cell of cellsOf(segments)) {
+    if (cell.text === "\n" || cell.text === "\r\n") {
+      yield* flush()
+      yield { _tag: "End" }
+    } else if (isSpace(cell)) {
+      yield* flush()
+      yield { _tag: "Space", cell }
+    } else {
+      word.push(cell)
+      if (word.length > longest) {
+        yield { _tag: "Word", cells: word, long: true }
+        word = []
+        long = true
+      }
+    }
+  }
+  yield* flush()
+}
+
+/**
+ * `segments` wrapped to `width` columns: before a word that doesn't fit the line, within a word
+ * longer than a line, and at each `\n`. The lines after the first start `indent` columns in, without
+ * the spaces a wrap left at their start. At most `limit` lines: the last is cut with `…` when there
+ * is more. A long text is read only as far as the lines it fills.
+ */
+export const wrap = (
+  segments: Segments,
+  width: number,
+  options: { readonly indent?: number; readonly limit?: number } = {},
+): ReadonlyArray<Segments> => {
+  const indent = Math.min(Math.max(options.indent ?? 0, 0), Math.max(width - 1, 0))
+  const limit = Math.max(options.limit ?? Number.POSITIVE_INFINITY, 1)
+  const lines: Array<Segments> = []
+  const room = () => (lines.length === 0 ? width : width - indent)
+  const lineOf = (text: Segments): Segments =>
+    lines.length === 0 || indent === 0 ? text : [seg(" ".repeat(indent)), ...text]
+  let line: Array<Cell> = []
+  let used = 0
+  // Whether the line was begun by a wrap, which drops the spaces at its start.
+  let afterWrap = false
+  /** Ends the line, and begins the next; false when it was the last, cut with `rest` after it. */
+  const next = (rest: Segments, wrapping: boolean): boolean => {
+    if (lines.length === limit - 1) {
+      lines.push(lineOf(cut([...segmentsOf(line), ...rest], room())))
+      return false
+    }
+    lines.push(lineOf(segmentsOf(trimmed(line))))
+    line = []
+    used = 0
+    afterWrap = wrapping
+    return true
+  }
+  const add = (cell: Cell) => {
+    line.push(cell)
+    used += cell.width
+  }
+  for (const token of tokensOf(segments, Math.max(width, 1))) {
+    switch (token._tag) {
+      case "End":
+        // The last line, with lines after it, ends ` …`, or is cut with `…` when that doesn't fit.
+        if (!next([seg(used + 2 <= room() ? " …" : "  ")], false)) return lines
+        break
+      case "Space":
+        // A space that doesn't fit the line goes, as the wrap would take it.
+        if (!(afterWrap && line.length === 0) && used + 1 <= room()) add(token.cell)
+        break
+      case "Word": {
+        const w = token.cells.reduce((sum, cell) => sum + cell.width, 0)
+        if (used + w <= room()) {
+          for (const cell of token.cells) add(cell)
+        } else if (!token.long && w <= width - indent && !line.every(isSpace)) {
+          if (!next(segmentsOf(token.cells), true)) return lines
+          for (const cell of token.cells) add(cell)
+        } else {
+          for (const cell of token.cells) {
+            if (used + cell.width > room() && line.length > 0) {
+              if (!next(segmentsOf([cell]), true)) return lines
+            }
+            add(cell)
+          }
+        }
+      }
+    }
+  }
+  lines.push(lineOf(segmentsOf(trimmed(line))))
+  return lines
+}
+
 /** `segments` padded with spaces to `width` columns. */
 export const padded = (segments: Segments, width: number): Segments => {
   const short = width - widthOf(segments)
