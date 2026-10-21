@@ -20,6 +20,13 @@
 // line after a hand-back to its worker, a recheck or a conflict you handed over is checked in its
 // turn. Quitting, or the merges stopping, stops the trains and puts back the branches they rebased:
 // the tickets are left waiting to merge, for the next run to merge as any other.
+//
+// A run killed outright (SIGKILL, a crash, a power cut) puts nothing back, and a branch it left
+// rebased onto the branch ahead would merge with that branch's commits. So before a train rebases
+// a branch, the ticket is marked in state.json (`checked_ahead`) with the branch's commit as its
+// worker left it, and then with the commit it was rebased to; boarding the train or putting the
+// branch back clears the mark. As the next run starts (putBackLeft), a branch still marked and at
+// the commit it was rebased to is put back as its worker left it.
 import {
   Effect,
   Exit,
@@ -27,6 +34,7 @@ import {
   FiberSet,
   Option,
   Result,
+  type Schema,
   type Scope,
   Semaphore,
   type Stream,
@@ -34,6 +42,8 @@ import {
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Git } from "../services/Git.ts"
+import { Store } from "../services/Store.ts"
+import { branchOf } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
 import { checkOnce, clearUnchecked, failedHow } from "./check.ts"
 import { RunFibers } from "./fibers.ts"
@@ -51,7 +61,7 @@ import {
   stopOver,
   uncommitted,
 } from "./merge.ts"
-import { setUp } from "./setup.ts"
+import { type SetUps, setUp } from "./setup.ts"
 
 /**
  * How the check of a ticket ahead of its turn goes, for the dashboard (orchestra's
@@ -86,6 +96,142 @@ interface Run {
   /** What failed on it and how, and where the output is, when its check failed. */
   why: Line | ""
 }
+
+/** The Store metadata key marking a ticket's branch as rebased by its train onto the branch ahead. */
+export const aheadKey = "checked_ahead"
+
+/** Where a branch a train rebased onto the branch ahead was, and what it was rebased to. */
+export interface RebasedAhead {
+  /** Its commit as its worker left it. */
+  readonly orig: string
+  /** The commit it is rebased onto: the branch ahead as it was checked. */
+  readonly onto: string
+  /** Its commit once rebased; "" until the rebase is over, or when git couldn't say. */
+  readonly head: string
+  /** The branch ahead of it. */
+  readonly behind: string
+  /** The setup may have run in its worktree, on top of the branch ahead. */
+  readonly setUp: boolean
+}
+
+/**
+ * The mark `value` holds, or undefined when it holds none, or none with the commit to put the
+ * branch back to. state.json is anyone's to edit, so only a commit hash is taken for a commit.
+ */
+export const rebasedAheadOf = (value: Schema.Json | undefined): RebasedAhead | undefined => {
+  if (value === undefined || value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined
+  }
+  const fields = value as Readonly<Record<string, Schema.Json>>
+  const field = (key: string) => (Object.hasOwn(fields, key) ? fields[key] : undefined)
+  const hash = (key: string) => {
+    const it = field(key)
+    return typeof it === "string" && /^[0-9a-f]{7,64}$/.test(it) ? it : ""
+  }
+  const orig = hash("orig")
+  if (orig === "") return undefined
+  const behind = field("behind")
+  return {
+    orig,
+    onto: hash("onto"),
+    head: hash("head"),
+    behind: typeof behind === "string" && behind !== "" ? behind : "the branch ahead of it",
+    setUp: field("setUp") === true,
+  }
+}
+
+/** Marks the ticket's branch as rebased onto the branch ahead; a Store that can't be written doesn't. */
+const markAhead = (id: string, mark: RebasedAhead): Effect.Effect<void, never, Store> =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    yield* Effect.ignore(store.setMetadata(id, aheadKey, { ...mark }))
+  })
+
+/** Clears the ticket's mark, its branch boarded or put back, if it has one. */
+const clearAhead = (id: string): Effect.Effect<void, never, Store> =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    if (!Object.hasOwn(yield* store.metadata(id), aheadKey)) return
+    yield* Effect.ignore(store.unsetMetadata(id, aheadKey))
+  })
+
+/** Why a ticket's dependencies are set up again before its next check, after its train's setup. */
+const setUpOnTop = (behind: string) =>
+  line`its dependencies were set up on top of ${behind}, ahead of its turn`
+
+/**
+ * As the run starts, puts back each branch an earlier run's train left rebased onto the branch
+ * ahead, that run killed before it could: one still marked and at the commit it was rebased to
+ * (or, the rebase's end unrecorded, on top of the commit it was rebased onto) is reset to where
+ * its worker left it, with a line saying so. One whose setup may have run on top of the branch
+ * ahead is set up again before its next check. The mark is cleared, but kept where git fails, for
+ * the next run to try again.
+ */
+export const putBackLeft = (
+  repo: string,
+  setUps: SetUps,
+): Effect.Effect<void, never, Git | Store | Log> =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const store = yield* Store
+    const log = yield* Log
+    for (const [id, record] of Object.entries((yield* store.state).tickets)) {
+      if (!Object.hasOwn(record.metadata, aheadKey)) continue
+      const mark = rebasedAheadOf(record.metadata[aheadKey])
+      const worktree = record.worktree ?? ""
+      if (mark === undefined || worktree === "") {
+        yield* clearAhead(id)
+        continue
+      }
+      const branch = record.branch ?? branchOf(id)
+      if (mark.setUp) yield* setUps.offBase(id, setUpOnTop(mark.behind))
+      // Killed during the rebase: it is undone, the branch where its worker left it.
+      if (mark.head === "") {
+        yield* Effect.ignore(
+          Effect.flatMap(git.rebaseInProgress(worktree), (rebasing) =>
+            rebasing ? git.abortRebase(worktree) : Effect.void,
+          ),
+        )
+      }
+      const at = yield* Effect.result(git.revParse(repo, branch))
+      if (Result.isFailure(at)) {
+        yield* Effect.logDebug(`${id}: ${gitWhy(at.failure)}`)
+        continue
+      }
+      if (at.success === mark.orig) {
+        yield* clearAhead(id)
+        continue
+      }
+      const fork =
+        mark.head === "" && mark.onto !== ""
+          ? yield* Effect.result(git.mergeBase(repo, mark.onto, at.success))
+          : undefined
+      const rebased =
+        mark.head !== ""
+          ? at.success === mark.head
+          : fork !== undefined && Result.isSuccess(fork) && fork.success === mark.onto
+      if (!rebased) {
+        yield* clearAhead(id)
+        yield* log.write(
+          detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn by a run that was killed before its turn, but has moved since: left as it is`,
+        )
+        continue
+      }
+      const back = yield* Effect.result(git.resetBranch(worktree, mark.orig))
+      if (Result.isFailure(back)) {
+        yield* log.write(
+          ticketLine(
+            Tag.rebaseFailed,
+          )`${id}: git could not put ${branch} back as its worker left it, at ${mark.orig.slice(0, 7)}, after a run that was killed left it rebased onto ${mark.behind} to be checked ahead of its turn: ${gitWhy(back.failure)}; check ${worktree} before it merges`,
+        )
+        continue
+      }
+      yield* clearAhead(id)
+      yield* log.write(
+        detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn by a run that was killed before its turn: put back as its worker left it, at ${mark.orig.slice(0, 7)}`,
+      )
+    }
+  })
 
 export interface MergeTrain extends CheckWatch {
   /** The ticket, in line for its first turn in its merge, may be checked ahead of its turn. */
@@ -157,6 +303,16 @@ export const make = (
     const lock = yield* Semaphore.make(1)
     const set = yield* (yield* RunFibers).make<void, never>("merge train")
 
+    // The ticket's mark in state.json, as its train has it now.
+    const mark = (run: Run) =>
+      markAhead(run.ticket.id, {
+        orig: run.orig,
+        onto: run.onto,
+        head: run.head,
+        behind: run.behind,
+        setUp: run.setUp,
+      })
+
     // Stops the train without waiting for it: its turn puts its branch back.
     const cancel = (run: Run) => Effect.sync(() => run.fiber?.interruptUnsafe())
     const cancelAll = Effect.suspend(() =>
@@ -181,9 +337,12 @@ export const make = (
         if (Result.isFailure(before)) return false
         run.orig = before.success.orig
         run.fork = before.success.fork
+        // Marked before git touches the branch: a run killed before it is put back leaves the mark.
+        yield* mark(run)
         const rebased = yield* Effect.result(git.rebase(worktree, run.onto))
         if (Result.isFailure(rebased)) {
           yield* abandonRebase(worktree)
+          yield* clearAhead(id)
           yield* log.write(
             detail`${branch} is not checked ahead of its turn: it does not rebase cleanly onto ${run.behind}`,
           )
@@ -192,12 +351,15 @@ export const make = (
         const head = yield* Effect.result(git.revParse(repo, branch))
         if (Result.isFailure(head)) return false
         run.head = head.success
+        yield* mark(run)
         const changed = yield* Effect.result(git.changedFiles(repo, run.onto, branch))
         if (Result.isSuccess(changed) && changed.success.length > 0) return true
         // Changing nothing on top of the branch ahead, or git can't tell: put back for its turn.
         const back = yield* Effect.result(git.resetBranch(worktree, run.orig))
-        if (Result.isSuccess(back)) run.head = ""
-        else yield* Effect.logDebug(`${id}: ${gitWhy(back.failure)}`)
+        if (Result.isSuccess(back)) {
+          run.head = ""
+          yield* clearAhead(id)
+        } else yield* Effect.logDebug(`${id}: ${gitWhy(back.failure)}`)
         return false
       })
 
@@ -231,6 +393,7 @@ export const make = (
           detail`checking ${branch} ahead of its turn to merge, rebased onto ${run.behind} as it is checked`,
         )
         run.setUp = true
+        yield* mark(run)
         const setup = yield* setUp(
           run.ticket,
           options,
@@ -240,7 +403,10 @@ export const make = (
           undefined,
           true,
         )
-        if (setup._tag === "Unneeded") run.setUp = false
+        if (setup._tag === "Unneeded") {
+          run.setUp = false
+          yield* mark(run)
+        }
         const checked =
           setup._tag === "Failed"
             ? ({ _tag: "Failed", error: setup.error, output: setup.output } as const)
@@ -324,19 +490,15 @@ export const make = (
 
     // Puts the ticket's branch, at `head`, back as its worker left it when its train rebased it and
     // it hasn't moved since: whether it did, or git's error when it could not. Dependencies set up
-    // on top of the branch ahead are set up again before its next check.
+    // on top of the branch ahead are set up again before its next check. Its mark is cleared once
+    // its branch is back, or was not the train's to put back.
     const putBack = (run: Run, head: string) =>
       Effect.andThen(
-        run.setUp
-          ? memory.setUps.offBase(
-              run.ticket.id,
-              line`its dependencies were set up on top of ${run.behind}, ahead of its turn`,
-            )
-          : Effect.void,
+        run.setUp ? memory.setUps.offBase(run.ticket.id, setUpOnTop(run.behind)) : Effect.void,
         run.head === "" || head !== run.head
           ? Effect.succeed(false)
           : Effect.as(git.resetBranch(run.ticket.worktree, run.orig), true),
-      )
+      ).pipe(Effect.tap(() => clearAhead(run.ticket.id)))
 
     const watch: CheckWatch = {
       starts: (ticket, at) =>
@@ -445,6 +607,7 @@ export const make = (
           if (run.passed !== "" && at.success === run.passed && now) {
             yield* memory.passes.set(id, run.passed)
             yield* clearUnchecked(id)
+            yield* clearAhead(id)
             yield* log.write(
               detail`${branch} was checked ahead of its turn on top of ${run.behind}, which merged as it was checked: merging it with no further check`,
             )

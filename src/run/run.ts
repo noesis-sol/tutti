@@ -136,6 +136,7 @@ import {
 } from "./machine.ts"
 import { beadsWhy, closedAfter, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
+import { putBackLeft } from "./mergetrain.ts"
 import { finished } from "./notices.ts"
 import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
 import { make as makePredictor } from "./predict.ts"
@@ -718,6 +719,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         ),
       )
     }
+
+    // The branches a killed run's trains left rebased onto the branch ahead, put back before their
+    // tickets are carried over to merge (mergetrain.ts).
+    yield* putBackLeft(config.repo, setUps)
 
     // The workers the last run left (carry.ts), taken up before the first dispatch: each resumed
     // takes a slot, counting toward no limit, its ticket limit counted afresh.

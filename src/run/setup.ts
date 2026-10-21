@@ -34,13 +34,14 @@
 // from then on (takeSettings).
 import { unlinkSync } from "node:fs"
 import { basename, join } from "node:path"
-import { Effect, Ref, Result } from "effect"
+import { Effect, Option, Ref, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
 import { Settings, settingsFile } from "../project/settings.ts"
 import { Beads } from "../services/Beads.ts"
 import { type CheckError, Checks, setupLogName } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
+import { Store } from "../services/Store.ts"
 import {
   checkRunFolder,
   readRunFile,
@@ -118,7 +119,7 @@ export interface SetUps {
   /**
    * The ticket's dependencies were set up off the base, `why` saying how: on top of the branch
    * ahead of it in the merge queue, its branch since put back (mergetrain.ts). Its next setup runs
-   * whatever the base changed, until `set` says otherwise.
+   * whatever the base changed, until `set` says otherwise, in a later run too (offBaseKey).
    */
   offBase(id: string, why: string): Effect.Effect<void>
   /** How the ticket's dependencies were set up off the base, if they were, as offBase says. */
@@ -133,13 +134,33 @@ interface SetUpFor {
   readonly off?: string
 }
 
-/** A run's setups: none yet, its setup checks.setup. */
+/**
+ * The Store metadata key holding how a ticket's dependencies were set up off the base, as offBase
+ * says: a run that ends before its next setup leaves it for the next run's.
+ */
+export const offBaseKey = "set_up_off_base"
+
+/**
+ * A run's setups, its setup checks.setup: none yet, but those an earlier run left set up off the
+ * base, as state.json says when there is a Store.
+ */
 export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(function* () {
   const { command, files } = (yield* AppConfig).settings.checks.setup
+  const store = yield* Effect.serviceOption(Store)
   const setup = yield* Ref.make<SetupConf>({ command, files })
   const heads = yield* Ref.make<ReadonlyMap<string, string>>(new Map())
   const failures = yield* Ref.make<ReadonlyMap<string, FailedSetup>>(new Map())
-  const commits = yield* Ref.make<ReadonlyMap<string, SetUpFor>>(new Map())
+  const left = new Map<string, SetUpFor>()
+  if (Option.isSome(store)) {
+    for (const [id, record] of Object.entries((yield* store.value.state).tickets)) {
+      const off = Object.hasOwn(record.metadata, offBaseKey) ? record.metadata[offBaseKey] : null
+      if (typeof off === "string" && off !== "") left.set(id, { off })
+    }
+  }
+  const commits = yield* Ref.make<ReadonlyMap<string, SetUpFor>>(left)
+  // Writes to state.json, when there is a Store; one that can't be written doesn't.
+  const persist = (write: (store: Store["Service"]) => Effect.Effect<void, unknown>) =>
+    Option.isSome(store) ? Effect.ignore(write(store.value)) : Effect.void
   const setWorktree = (id: string, head: string) =>
     Effect.andThen(
       Ref.update(heads, (now) => new Map(now).set(id, head)),
@@ -167,12 +188,19 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
     from: (id, fork) => get(id, "base", fork),
     since: (id, at) => get(id, "head", at),
     set: (id, onto, head) =>
-      Effect.andThen(
-        Ref.update(commits, (setUps) => new Map(setUps).set(id, { base: onto, head })),
-        head === "" ? Effect.void : setWorktree(id, head),
-      ),
+      Effect.gen(function* () {
+        const was = yield* Ref.modify(commits, (setUps) => [
+          setUps.get(id)?.off,
+          new Map(setUps).set(id, { base: onto, head }),
+        ])
+        if (was !== undefined) yield* persist((store) => store.unsetMetadata(id, offBaseKey))
+        if (head !== "") yield* setWorktree(id, head)
+      }),
     offBase: (id, why) =>
-      Ref.update(commits, (setUps) => new Map(setUps).set(id, { ...setUps.get(id), off: why })),
+      Effect.andThen(
+        Ref.update(commits, (setUps) => new Map(setUps).set(id, { ...setUps.get(id), off: why })),
+        persist((store) => store.setMetadata(id, offBaseKey, why)),
+      ),
     off: (id) => Effect.map(Ref.get(commits), (setUps) => setUps.get(id)?.off),
   } satisfies SetUps
 })
