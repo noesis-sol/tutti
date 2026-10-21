@@ -231,7 +231,9 @@ Tickets that touch the same code don't run side by side. Each ticket has a **foo
 - once it runs, the files its worktree has changed, read every 30 seconds.
 
 The files the checks' commands name are left out, unless the `files` metadata lists them: nearly every
-ticket says "`scripts/check-fast.sh` passes" without changing it. Two tickets overlap when they share
+ticket says "`scripts/check-fast.sh` passes" without changing it. The log shows each ticket's footprint
+as it is dispatched: `<id> footprint: Loop.merge, src/run/merge.ts, area:run`, the predicted files
+marked `(predicted)`, or `nothing named`. Two tickets overlap when they share
 an area label, a function or a file; in a file both name functions in, they are compared by function.
 A ticket that overlaps a running one is skipped, not waited for:
 `skipping <id>: touches merge.ts, like running <other>`. When two running workers change the same

@@ -44,6 +44,7 @@ import {
   type RepoFiles,
   readMentions,
   repoFiles,
+  showFootprint,
   withChanges,
   worktreeChanges,
 } from "./footprint.ts"
@@ -204,6 +205,10 @@ export const dispatchLine = (n: number, limit: number, issue: Issue): Line =>
   isSolo(issue)
     ? line`[${n}/${limit}] ${issue.id} dispatching solo: ${issue.title}`
     : line`[${n}/${limit}] ${issue.id} dispatching: ${issue.title}`
+
+/** `<id> footprint: …`, under the dispatch's line with footprints on (§ 5 item 5). */
+export const footprintLine = (id: string, fp: Footprint): Line =>
+  detail`${id} footprint: ${showFootprint(fp)}`
 
 /** The BAD_TICKET_ID line, as orchestra words it. */
 export const badTicketIdLine = (id: string, why: string): Line =>
@@ -375,7 +380,7 @@ export const make = (
         }
       })
 
-    const dispatch = (issue: Issue, ids: ReadonlyArray<string>) =>
+    const dispatch = (issue: Issue, ids: ReadonlyArray<string>, footprint?: Footprint) =>
       Effect.gen(function* () {
         const s = yield* Ref.updateAndGet(slots, (s) => ({ ...s, started: s.started + 1 }))
         const text = dispatchLine(s.started, options.limit, issue)
@@ -400,6 +405,7 @@ export const make = (
           return false
         }
         yield* logs.write(text)
+        if (footprint !== undefined) yield* logs.write(footprintLine(issue.id, footprint))
         yield* occupy(issue.id, options.start.start(issue), issue, true)
         return true
       })
@@ -634,7 +640,8 @@ export const make = (
             break
           }
           yield* settle(start.id, undefined, ids)
-          if (!(yield* dispatch(start, ids))) break
+          const footprint = repo === undefined ? undefined : footprintOf(start, repo, predicted)
+          if (!(yield* dispatch(start, ids, footprint))) break
           dispatched.push(start.id)
         }
         yield* showQueue
