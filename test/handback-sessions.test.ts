@@ -130,6 +130,18 @@ const fixes = (world: World) =>
     ),
   ])
 
+/** A hand-back turn in which the worker commits a fix that doesn't name the ticket: rejected. */
+const fixesUnnamed = (world: World) =>
+  turn([
+    run(
+      Effect.suspend(() =>
+        Effect.asVoid(
+          world.repository.commit(worktreeOf("a"), "Fix the check", { "fix.txt": "fixed\n" }),
+        ),
+      ),
+    ),
+  ])
+
 /** How ticket a's worker is when it reaches the merge queue. */
 type Worker = "idle" | "closed" | "gone"
 
@@ -373,10 +385,10 @@ describe("the session, once a hand-back is over", () => {
   })
 
   test("a fix rejected, Review not to be checked again: closed", async () => {
-    // The worker commits nothing.
+    // The worker's fix doesn't name the ticket.
     const ran = await handedBack(
       { checks: { fast: [ownFailure] } },
-      () => ({ a: [finishedSession(turn([]))] }),
+      (world) => ({ a: [finishedSession(fixesUnnamed(world))] }),
       "idle",
       { landed: { "b.txt": "b\n" } },
     )
@@ -412,7 +424,7 @@ describe("the session, once a hand-back is over", () => {
     const ran = await handedBack(
       { checks: { fast: [ownFailure] } },
       (world) => ({
-        a: [finishedSession([...resolves(world, { "a.txt": "both\n" }), ...turn([])])],
+        a: [finishedSession([...resolves(world, { "a.txt": "both\n" }), ...fixesUnnamed(world)])],
       }),
       "idle",
     )

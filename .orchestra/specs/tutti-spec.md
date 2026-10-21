@@ -856,9 +856,9 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `Resolving` | `Done{noChange}` | tutti verified the resolution, and it leaves the branch changing nothing: its worker skipped every commit, the base having their changes already, or its commits together change nothing. It is closed at once, unchecked, its worktree and branch removed as after a merge, as orchestra does | `closed` (`no change to merge`) |
 | `Resolving` | `Fixing{afterResolution}` | the resolution is verified, but its check fails, and the failure is handed back | the log's `FIXING` |
 | `Resolving` | `Blocked` | the resolution was rejected, or wasn't done within `resolve_timeout`. The branch is put back as the ticket closed it | `warn` with `blocked` |
-| `Fixing` | `ToMerge` | tutti verified the fix (new commits naming the ticket; the worktree clean and on its branch) and the check passes | `phase` |
+| `Fixing` | `ToMerge` | tutti verified the fix (new commits naming the ticket; the worktree clean and on its branch) and the check passes; or its worker committed nothing, finding nothing to fix, and the check passes on a second run | `phase` |
 | `Fixing` | `Fixing` | the check fails again, with attempts left (`check_hand_backs`) | the log's `FIXING` |
-| `Fixing` | `Review` | the attempts are used up, or the fix can't be accepted. The branch is reset to where the check failed | `warn` with `aside` |
+| `Fixing` | `Review` | the attempts are used up, or the fix can't be accepted. The branch is reset to where the check failed. Or its worker committed nothing and the check fails on a second run too: not handed back again | `warn` with `aside` |
 | `Fixing{afterResolution}` | `Blocked` | the same, after a resolution | `warn` with `blocked` |
 | `Resolving`, `Fixing` | `Stopped` | the run ended during the hand-back; its rebase or fix is left as it is, and the `INTERRUPTED` line says so | `suspended` |
 | `Review{CHECKS_FAILED}` | `ToMerge` | the base moved on since the check failed; the failure isn't in the ticket's own code; it hasn't been checked again in this run | the log's `RECHECK` |

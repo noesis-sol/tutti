@@ -17,7 +17,10 @@
 // for it: no rebase in progress, the worktree clean and on its branch, and the branch as the check
 // failed on it with new commits on top, each naming the ticket. Then it sets up and checks it again:
 // a check that passes puts the ticket back in the merge queue, ToMerge; one that fails again is
-// handed back again while attempts are left, Fixing again. Each pass through Merging counts toward
+// handed back again while attempts are left, Fixing again. A worker that finds nothing to fix (a
+// test timing out on a loaded machine, say) commits nothing: the check then runs a second time, as
+// orchestra's does, a pass putting the ticket back in the merge queue and a failure setting it
+// aside with no further hand-back, as its worker found nothing to fix. Each pass through Merging counts toward
 // the attempts, which a run keeps per ticket.
 //
 // A fix that can't be accepted is undone, the branch reset to where the check failed, and nothing
@@ -200,15 +203,19 @@ export const handOverFix = (
     return true
   })
 
-/** What the worker left after a check hand-back: its fix, or why it is rejected. */
+/**
+ * What the worker left after a check hand-back: its fix, the branch as the check failed on it (it
+ * found nothing to fix), or why it is rejected.
+ */
 export type Verified =
   | { readonly _tag: "Fixed"; readonly commits: string }
+  | { readonly _tag: "Unchanged" }
   | { readonly _tag: "Rejected"; readonly why: string }
 
 /**
  * Looks at what the worker left after `stop`'s failure was handed back, without taking its word for
  * it: no rebase in progress, the worktree clean and on its branch, and the branch at `stop.at` with
- * new commits on top, each naming the ticket. The check runs next on what the worktree has checked
+ * new commits on top, each naming the ticket, or with none (Unchanged). The check runs next on what the worktree has checked
  * out, and the merge then brings in the branch: they must be the same.
  */
 export const verifyFixed = (
@@ -234,7 +241,7 @@ export const verifyFixed = (
           return reject(line`its worker rewrote the commits on ${branch} rather than add to them`)
         }
         const commits = yield* git.log(options.repo, stop.at, branch)
-        if (commits.length === 0) return reject("its worker committed nothing")
+        if (commits.length === 0) return { _tag: "Unchanged" } satisfies Verified
         const other = commits.find((commit) => !namesTicket(commit.message, id))
         if (other !== undefined) {
           return reject(line`its worker's commit ${short(other.hash)} does not name ${id}`)
@@ -344,7 +351,8 @@ export type Fixed = "verified" | "aside"
 /**
  * The hand-back of `stop`'s failure to the ticket's worker, its ticket Fixing already: the hand-back
  * given, what the worker left verified, set up and checked, and handed back again while the check
- * fails with attempts left. Verified: the caller puts it back in the merge queue. Else it is set
+ * fails on its fix with attempts left. A worker that committed nothing has the check run once more,
+ * and is handed nothing again. Verified: the caller puts it back in the merge queue. Else it is set
  * aside here, a rejected fix undone.
  */
 export const fixCheck = (
@@ -381,6 +389,21 @@ export const fixCheck = (
         return "aside"
       }
       const checked = yield* checkFix(stop, options, memory)
+      if (verified._tag === "Unchanged") {
+        if (checked._tag !== "Failed") {
+          tries.push("its worker committed nothing and the check passes on a second run")
+          yield* logs.write(
+            detail`'${check}' passes on ${branch} on a second run; its worker committed nothing`,
+          )
+          return "verified"
+        }
+        tries.push(
+          line`its worker committed nothing, and ${failedHow(checked.error)} again (output is in ${checked.output})`,
+        )
+        const again = { ...stop, error: checked.error, output: checked.output }
+        yield* setAside(again, options, memory, tries, "its worker found nothing to fix")
+        return "aside"
+      }
       if (checked._tag !== "Failed") {
         tries.push(`its worker committed ${verified.commits} and the check passes`)
         yield* logs.write(detail`'${check}' passes on ${branch} as its worker fixed it`)

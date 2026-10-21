@@ -324,7 +324,11 @@ FIXING: 'scripts/check-fast.sh' fails on tutti/tut-12 rebased onto main; handed 
 
 The merge queue doesn't wait meanwhile. When the worker is done, tutti checks what it left (the
 rebase finished, the worktree clean and on its branch, only the ticket's commits on top of the base,
-the check passing) and queues the ticket again. A ticket that can't be handed back (the worker busy
+the check passing) and queues the ticket again. A worker that finds nothing to fix in a failed check
+(a test timing out on a loaded machine, say) commits nothing: the check runs a second time, and a
+pass queues the ticket (`'<check>' passes on tutti/<id> on a second run; its worker committed
+nothing`), while a second failure sets it aside with no further hand-back, its notes saying `not
+handed back again: its worker found nothing to fix`. A ticket that can't be handed back (the worker busy
 or steered, the attempts used up, a check that timed out, the run winding down) is set aside, its line
 saying why. `"merge": { "resolve_conflicts": false }` (or `--resolve-conflicts=false`) and
 `"check_hand_backs": 0` turn them off.
