@@ -29,6 +29,7 @@ import {
 import { constants as osConstants } from "node:os"
 import { join } from "node:path"
 import {
+  Context,
   Duration,
   Effect,
   Layer,
@@ -69,6 +70,15 @@ export const maxAnswerBytes = 64 * 1024
 
 /** How often the run reads the folder besides fs.watch's events (§ 4.5). */
 export const pollEvery: Duration.Duration = Duration.seconds(2)
+
+/**
+ * The poll `serve` uses when its options name none: `pollEvery` by default. The scenarios set it
+ * past any advance of TestClock, which would otherwise wake the poll 1800 times an hour.
+ */
+export const AttentionPoll = Context.Reference<Duration.Duration>(
+  "tutti/agent/attentionFiles/AttentionPoll",
+  { defaultValue: () => pollEvery },
+)
 
 /** The version of the files' format this tutti writes and reads. */
 export const fileVersion = 1
@@ -442,7 +452,7 @@ export interface ServeOptions {
   readonly repo: string
   /** The run's user, whose answer files alone are taken; the process's by default. */
   readonly uid?: number
-  /** How often the folder is read besides fs.watch's events; `pollEvery` by default. */
+  /** How often the folder is read besides fs.watch's events; `AttentionPoll` by default. */
   readonly poll?: Duration.Input
 }
 
@@ -475,7 +485,7 @@ export const serve = (
     const logs = yield* Log
     const repo = options.repo
     const uid = options.uid ?? process.getuid?.() ?? 0
-    const poll = options.poll ?? pollEvery
+    const poll = options.poll ?? (yield* AttentionPoll)
 
     const folder = yield* Effect.try({
       try: () => {

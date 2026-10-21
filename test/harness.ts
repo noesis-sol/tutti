@@ -10,11 +10,12 @@
 // scenario's frames move only as `advance` moves the clock.
 import { expect } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
-import { type Duration, Effect, Exit, Layer, type Scope } from "effect"
+import { Duration, Effect, Exit, Layer, type Scope } from "effect"
 import { TestClock } from "effect/testing"
 import type { Account, AccountError, AccountProbe } from "../src/agent/Account.ts"
 import type { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Attention, Policy } from "../src/agent/Attention.ts"
+import { AttentionPoll } from "../src/agent/attentionFiles.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import type { UsageLimits } from "../src/agent/UsageLimits.ts"
 import type { AppConfig, AppConfigValue } from "../src/cli/AppConfig.ts"
@@ -221,6 +222,9 @@ export const environment = (
         BunServices.layer,
       ),
     ),
+    // The attention folder's poll never wakes: an hour's advance would wake its 2 seconds 1800
+    // times, each a few scheduler turns and a readdir. fs.watch's events still wake the scan.
+    Layer.provideMerge(Layer.succeed(AttentionPoll, Duration.infinity)),
     Layer.provideMerge(TestClock.layer()),
   )
 }
