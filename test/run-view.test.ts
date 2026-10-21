@@ -132,7 +132,7 @@ describe("totals", () => {
     expect(status("working")).toBe("▶ starting")
     expect(status("asking")).toBe("■ allow?")
     expect(status("needs")).toBe("■ allow?")
-    expect(status("to-merge")).toBe("◷ to merge")
+    expect(status("to-merge")).toBe("◼ to merge")
     expect(status("merging")).toBe("◆ merging")
     expect(status("merged")).toBe("✓ done")
     expect(status("asked")).toBe("? for you")
@@ -154,7 +154,7 @@ describe("totals", () => {
     expect(view.cards.find((card) => card.ticket === "merging")?.action).toBe("rebasing onto main")
   })
 
-  test("rows keep the order the run picked their tickets up in", async () => {
+  test("rows keep the order the run picked their tickets up in, but as they leave Current", async () => {
     const view = await run(
       Effect.gen(function* () {
         yield* go("b", Cause.Ready())
@@ -167,11 +167,12 @@ describe("totals", () => {
         return project(inputs(yield* current))
       }),
     )
-    // a came back to Queued and keeps its row; b's row came after c's.
+    // b's row came after c's; a, leaving Current to wait for c, moved to the end, and came back to
+    // Queued keeping its row.
     expect(view.rows.map((row) => `${row.ticket} ${row.word}`)).toEqual([
-      "a queued",
       "c starting",
       "b starting",
+      "a queued",
     ])
   })
 

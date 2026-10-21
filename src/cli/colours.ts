@@ -191,7 +191,7 @@ const rows: ReadonlyArray<Row> = [
     note: "Retry a merge that lost the race",
     verdict: null,
   },
-  { ticket: "tut-13", mark: "◷", word: "to merge", title: "", note: "Tidy the log", verdict: null },
+  { ticket: "tut-13", mark: "◼", word: "to merge", title: "", note: "Tidy the log", verdict: null },
   {
     ticket: "tut-14",
     mark: "■",

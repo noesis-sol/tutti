@@ -73,15 +73,17 @@ A pane too narrow for the strip gets the totals on one line: `✓ 2 · ↷ 1 · 
 
 ### The tickets table
 
-One row per ticket the run has taken up, in the order it took them up. A row keeps its place and
-changes as the ticket moves through its phases:
+One row per ticket the run has taken up but those Current shows, so that no ticket is shown twice:
+the tickets that came to an end, in that order, a ticket's row coming in under the others as its
+card leaves Current. With the end-of-run box in Current's place, the running tickets keep their
+rows. A row changes as the ticket moves through its phases:
 
 | Row | The ticket |
 |---|---|
 | `▶ working`, `▶ editing`, `▶ reading`, `▶ testing`, `▶ subagent`, `▶ starting`, `▶ retrying` | is with its worker, and what the worker is doing |
 | `■ allow?`, `■ answer?` | its worker waits on you: a permission request, or a question it asked |
 | `◷ limit` | its worker stopped on the account's usage limit, until it resets |
-| `◷ to merge` | its work is verified, and it waits for its turn to merge |
+| `◼ to merge` | its work is verified, and it waits for its turn to merge |
 | `◆ merging` | its merge is under way: the rebase, the setup, the check, the fast-forward |
 | `⟳ resolving` | its rebase stopped on conflicts, handed back to its worker |
 | `⟳ fixing` | its check failed on its branch before it merged, handed back to its worker |
@@ -105,7 +107,7 @@ or the last line the worker wrote).
 
 - **Numbers are stable.** A worker keeps its number for its whole session; a new one takes the
   lowest free number. `1` to `9` open workers 1 to 9; those above are reached with `Tab` or a click.
-- **The mark** is a spinner while the worker works, `◷` while its ticket waits to merge, `◆` while it
+- **The mark** is a spinner while the worker works, `◼` while its ticket waits to merge, `◆` while it
   merges, and `•` once the worker's turn has ended: motion means a worker at work.
 - **The status** is the worker's (`working`, `editing`, `reading`, `testing`, `subagent`,
   `starting`, `retrying 3/10 (529)`, `done`, `stopped`, `failed`, `gone`,
@@ -119,7 +121,8 @@ or the last line the worker wrote).
   highlighted card.
 
 Cards go two to a row from 120 columns, all as tall as the tallest. When the pane can't hold a card
-each, they take one line each in a single box. With nothing running, a box says
+each, they take one line each in a single box, their numbers, tickets, statuses and times lined up
+as columns, so that the titles start at one column. With nothing running, a box says
 `picking the next ticket…`, or `stopping…`. The environment probe has a card of its own, labelled
 `probe`. Elapsed times update every 3 seconds.
 

@@ -1,6 +1,6 @@
 // The dashboard (§ 7.2), drawn from RunView alone: the title line, the totals strip, the tickets
-// table, the workers' cards (Current) and at the foot the wind-down line, the warning line and the
-// hint; `?` opens the key help over it.
+// table (without the tickets Current shows), the workers' cards (Current) and at the foot the
+// wind-down line, the warning line and the hint; `?` opens the key help over it.
 //
 // As orchestra lays it out, the tickets table's height comes from the pane's alone, and the table is
 // left out of a pane too short for it and a line for each worker the run may have, so it stays put
@@ -34,7 +34,13 @@ import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
 import { cut, Lines, type Segments, seg } from "./line.tsx"
-import { sectionChrome, TicketsTable, tableLines, ticketsLines } from "./TicketsTable.tsx"
+import {
+  rowsBesideCurrent,
+  sectionChrome,
+  TicketsTable,
+  tableLines,
+  ticketsLines,
+} from "./TicketsTable.tsx"
 import { TitleLine } from "./TitleLine.tsx"
 import { Totals, totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
@@ -112,6 +118,8 @@ export const Dashboard = () => {
   // compact line.
   const layout: CardsLayout =
     small || ending !== null ? { _tag: "Compact" } : layoutOf(cards, width, room)
+  // Beside Current, the table leaves out the tickets it shows; the end-of-run box shows none.
+  const rows = ending === null ? rowsBesideCurrent(view.rows, cards) : view.rows
   const endingNow = useRef(false)
   endingNow.current = ending !== null
 
@@ -184,9 +192,7 @@ export const Dashboard = () => {
     <box flexDirection="column" width={width} height={height}>
       <TitleLine width={width} />
       <Totals lines={totals} />
-      {table ? (
-        <TicketsTable lines={ticketsLines(view.rows, theme, width, tableLines(height))} />
-      ) : null}
+      {table ? <TicketsTable lines={ticketsLines(rows, theme, width, tableLines(height))} /> : null}
       {ending !== null ? (
         <box height={Math.min(ending.length, Math.max(room, 0))} flexShrink={0}>
           <EndOfRunBox lines={ending} />

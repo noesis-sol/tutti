@@ -51,7 +51,10 @@ export interface Entry {
   readonly since: number
   /** Its worker's number, held for as long as its session is open; null without one. */
   readonly worker: number | null
-  /** Its place in the tickets table, from the first phase that has a row; null before. */
+  /**
+   * Its place in the tickets table, from the first phase that has a row; null before. It takes the
+   * next place again as the ticket leaves Current.
+   */
   readonly row: number | null
   /** Checked once more after a failed check (§ 5.1's RECHECK), while it is ToMerge or Merging. */
   readonly rechecking: boolean
@@ -181,9 +184,13 @@ const moved = (
   cause: Cause,
   now: number,
 ): State => {
-  const row = entry.row ?? (rowless.has(phase._tag) ? null : state.rows)
   // A hand-back waits only while the ticket is Blocked on it.
   const handBack = entry.handBack === true && phase._tag === "Blocked"
+  // A row whose ticket leaves Current moves to the end, so that the rows are in the order their
+  // tickets came to an end, and one leaving Current comes in under the others in the tickets table
+  // beside it (§ 7.2).
+  const leaves = entry.row !== null && showsCard(entry) && !showsCard({ phase, handBack })
+  const row = leaves ? state.rows : (entry.row ?? (rowless.has(phase._tag) ? null : state.rows))
   const worker = keepsWorker({ phase, handBack })
     ? (entry.worker ?? lowestFree(state.tickets))
     : null
@@ -195,7 +202,7 @@ const moved = (
   return {
     ...state,
     tickets,
-    rows: entry.row === null && row !== null ? state.rows + 1 : state.rows,
+    rows: row !== null && row !== entry.row ? state.rows + 1 : state.rows,
   }
 }
 

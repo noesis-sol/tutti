@@ -760,7 +760,7 @@ Changed:
 
 Every ticket a run takes up moves through a **state machine**: a fixed set of **phases** and the transitions allowed between them. A ticket can pass through many phases, some of them more than once, before it is merged and finally closed. For example, it can be picked up, worked on, wait its turn to merge, start merging, go back to its worker to resolve a conflict, wait in line again, and merge.
 
-orchestra's dashboard already shows these phases (`▶ working`, `◷ to merge`, `◆ merging`, `⟳ resolving`, `⟳ fixing`, `✓ done`, …), though its code never states them as one machine. In tutti they are an explicit, typed machine. The run loop drives it, and everything else reads it: the dashboard's rows, cards and totals, the log, the event stream, notifications and the run report.
+orchestra's dashboard already shows these phases (`▶ working`, `◼ to merge`, `◆ merging`, `⟳ resolving`, `⟳ fixing`, `✓ done`, …), though its code never states them as one machine. In tutti they are an explicit, typed machine. The run loop drives it, and everything else reads it: the dashboard's rows, cards and totals, the log, the event stream, notifications and the run report.
 
 **Two layers:**
 
@@ -778,7 +778,7 @@ A ticket is finished when its phase is `Done`: closed in Beads, merged into the 
 | `Queued` | ready, waiting for a free slot | none | none | In queue |
 | `HeldBack{why}` | ready, but waiting for something other than a slot. `why` is one of: `overlap` (its footprint overlaps a running ticket's), `parent` (its subtickets aren't all merged), `merge` (a blocker, or the ticket it was filed from, isn't merged yet), `solo` (a solo ticket runs or is next) | none | none | In queue's `held back` |
 | `Working{activity}` | picked up, with its worker at it | `▶ working`, or the worker's activity: `▶ editing`, `▶ reading`, `▶ testing`, `▶ subagent`, `▶ starting`, `▶ retrying`, `■ allow?` (a permission request), `■ answer?` (a question it asked), `◷ limit` (a usage limit) | the worker's state (§4.2) | Workers |
-| `ToMerge{place}` | its work verified, waiting for its turn in the merge queue. `place` 1 is next | `◷ to merge` | `to merge (2nd)` | not counted yet |
+| `ToMerge{place}` | its work verified, waiting for its turn in the merge queue. `place` 1 is next | `◼ to merge` | `to merge (2nd)` | not counted yet |
 | `Merging{step}` | its merge under way. `step` is `rebase`, `setup`, `check` or `fast-forward` | `◆ merging` | `merging`; the action line names the step (`running the check on main`) | not counted yet |
 | `Resolving{attempt}` | its rebase stopped on conflicts, which were handed back to its worker | `⟳ resolving` | `resolving` | Workers |
 | `Fixing{attempt, afterResolution}` | its check failed on its branch before it merged, and the failure was handed back to its worker | `⟳ fixing` | `fixing check` | Workers |
@@ -887,9 +887,10 @@ Merging a ticket rebases it again if more landed meanwhile, so a ticket can go f
 
 #### How the phases are shown
 
-- **One row per ticket**, from the moment the run picks it up until the run ends. The row keeps its place in the tickets table and changes as the phase does. A ticket that comes back, such as `Waiting` → `Queued` → `Working`, keeps its row. One that leaves `bd ready` while `Queued` again leaves the run, and its row with it.
+- **One row per ticket**, from the moment the run picks it up until the run ends. The row changes as the phase does, and keeps its place in the tickets table but as its ticket leaves Current (it no longer has a card), when it moves to the end: the rows are in the order their tickets came to an end, as orchestra 0.8.6's (orchestra-60xg). A ticket that comes back, such as `Waiting` → `Queued` → `Working`, keeps its row. One that leaves `bd ready` while `Queued` again leaves the run, and its row with it.
+- **Shown once.** Beside Current, the tickets table leaves out the rows of the tickets Current shows, whatever their phase, so that no ticket is shown twice in a frame: a ticket's row comes in under the others as its card goes (orchestra-60xg, orchestra-lx4d.4). Where Current isn't drawn (the end-of-run box), the running tickets keep their rows; the run's summary lists every ticket.
 - **Cards** exist for the phases with work under way: `Working`, `Resolving`, `Fixing`, `ToMerge`, `Merging`. A `Blocked{MERGE_CONFLICT}` ticket whose hand-back waits for its steered worker (§4.3) keeps its card, `conflict waits for you`, framed `needsYou`. A `Review{CHECKS_FAILED}` ticket checked once more has a card again while it is `ToMerge` and `Merging`, its action line reading `checking again: <base> moved on since its check failed`.
-- **Motion means a worker at work.** The spinner turns in `Working` while the worker works, and in `Resolving` and `Fixing`. Otherwise a static mark replaces it: `◷` in `ToMerge`, `◆` in `Merging`, `•` once a worker's turn has ended.
+- **Motion means a worker at work.** The spinner turns in `Working` while the worker works, and in `Resolving` and `Fixing`. Otherwise a static mark replaces it: `◼` in `ToMerge`, `◆` in `Merging`, `•` once a worker's turn has ended.
 - **The totals count phases**, as the table above says. `ToMerge` and `Merging` count as completed only once they reach `Done`.
 - **The wind-down line** gives each ticket running when the wind-down began a `■`:
   - `windingDown` while it is in `Working`, `ToMerge`, `Merging`, `Resolving` or `Fixing`
@@ -998,9 +999,8 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
   Tickets
 ╭────────────┬─────────────┬─────────────────────────────────────────────╮
 │ ✓ done     │ tut-dwv     │ ffd6ce4 merged into batch/2026-10-20        │
-│ ◆ merging  │ tut-kco     │ Open the property model: Interpolatable p…  │
-│ ▶ testing  │ tut-zq4     │ Add an undo stack for property edits        │
-│ ■ allow?   │ tut-9a1     │ Remove the build cache                      │
+│ ↷ deferred │ tut-4hm     │ ◆ needs the maintainer's signing key        │
+│ ✓ done     │ tut-b2e     │ 0c1a9e7 merged into batch/2026-10-20        │
 ╰────────────┴─────────────┴─────────────────────────────────────────────╯
   Current
 ╭──────────────────────────────────╮╭──────────────────────────────────╮
@@ -1028,7 +1028,7 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
 - **The hint** names the keys there are. `?` opens a key-help overlay.
 - **Unchanged from orchestra:**
   - the tickets table's stable height (about a third of the pane), its `+N earlier tickets` row, and leaving it out in short panes
-  - cards two to a row from 120 columns, all as tall as the tallest (attention cards excepted); the one-line compact mode when the pane can't hold a card each
+  - cards two to a row from 120 columns, all as tall as the tallest (attention cards excepted); the one-line compact mode when the pane can't hold a card each, its numbers, IDs, statuses and times lined up as columns, each as wide as the widest on screen, the numbers and times right-aligned, so that the titles start at one column; spaces only, no lines (orchestra-1dvh)
   - the wind-down line (`■ ■ ■ ■  Winding down · 3 running, no new tickets`) and the queue marked `held`
   - a 3-second tick for elapsed times
 
@@ -1192,7 +1192,7 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `frame` | grey | `#9CA3AF` | `#6B7280` | frames: the totals strip, the tickets table, the `picking the next ticket…` box |
 | `organ` | purple | `#6D28D9` | `#A78BFA` | organs: triage verdicts (`◆`), organ lines, `init`'s marks of its own |
 | `organText` | lilac | `#7C3AED` | `#C4B5FD` | the organ phase's progress text |
-| `toMerge` | blue | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◷ to merge`, `to merge (2nd)`) |
+| `toMerge` | blue | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | pink | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`, bold) |
 | `emphasis` | chalk | `#374151` | `#E5E7EB` | emphasis near the text's own colour: keys to press, the `Tickets` label, worker numbers, tool names, `steered` |
 | `pill` | Charm purple | `#7D56F4` | `#7D56F4` | the title pill's background and init's **Next** frame: the Charm purple of the Bubble Tea and Lip Gloss examples |
@@ -1255,13 +1255,13 @@ As orchestra draws it:
   | `done` bold | `✓ done` |
   | `notice` | `↷ deferred`, `! review`, `⟳ resolving`, `⟳ fixing`, `▶ retrying`, `◷ limit` |
   | `needsYou` bold | `■ stopped`, `■ blocked`, `? for you`, `■ allow?`, `■ answer?` |
-  | `toMerge` | `◷ to merge` |
+  | `toMerge` | `◼ to merge` |
   | `merging` bold | `◆ merging` |
   | faint | `◷ waiting`, `+N earlier tickets` |
   | `organ` bold | a triage verdict, `◆ …` |
 - **Worker cards** (rounded): framed `live` while the worker runs, `needsYou` when it, or any worker in a compact box, waits for you.
   - The number `emphasis` bold; the ticket ID `live` bold; the elapsed time and the latest action faint.
-  - The mark: the spinner `live` bold while it works, `◷` `toMerge`, `◆` `merging`, `•` `done`.
+  - The mark: the spinner `live` bold while it works, `◼` `toMerge`, `◆` `merging`, `•` `done`.
   - Statuses: `working`, `editing`, `reading`, `subagent` `live` bold; `testing` `notice` bold; `idle`, `unknown`, `resolving`, `fixing check`, `retrying 3/10 (529)`, `usage limit · resets 14:05`, `stopped` `notice`; `blocked — waiting for you` and `permission — waiting for you` `needsYou` bold; `failed`, `gone` `needsYou`; `done` `done`; `to merge (2nd)` `toMerge`; `merging` `merging` bold; `steered` beside a status `emphasis`.
   - The box with no worker (`picking the next ticket…`, `stopping…`): framed `frame`, the spinner `live`, the text faint.
 - **The wind-down line**: one `■` per ticket, `windingDown` while it runs, `done` once merged, `needsYou` (not bold) once set aside or waiting on you; `Winding down` `windingDown` bold; the rest faint.
@@ -1383,7 +1383,7 @@ A role's light or dark variant is picked from the terminal's background, as Lip 
 
 #### Colour depth and `NO_COLOR`
 
-On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI uses the nearest, as Lip Gloss degrades (§7.7). With `NO_COLOR` set, every role becomes the terminal's default colour, whatever the scheme; bold, faint, glyphs and words remain. Colour is never the only signal: every state also has its glyph and its word, as in orchestra (`■ blocked`, `◷ to merge`).
+On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI uses the nearest, as Lip Gloss degrades (§7.7). With `NO_COLOR` set, every role becomes the terminal's default colour, whatever the scheme; bold, faint, glyphs and words remain. Colour is never the only signal: every state also has its glyph and its word, as in orchestra (`■ blocked`, `◼ to merge`).
 
 #### One module
 
@@ -1403,7 +1403,7 @@ Carried over too, and not part of any scheme:
 
 - rounded frames (`╭╮╰╯`)
 - the spinner, Bubbles' `Dot`: frames `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷`, ten a second
-- the state glyphs `▶ ✓ ↷ ! ■ ? ◷ ◆ ⟳ •`, and `○ ♪`
+- the state glyphs `▶ ✓ ↷ ! ■ ? ◷ ◼ ◆ ⟳ •`, and `○ ♪`
 - tutti's latest-action glyph, `▸`
 
 ---
@@ -1849,7 +1849,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | 0.8.5 | `check_own`: workers check their own change; the scout's command for each suite on part of the project | Planned (tutti-kkb.8) |
 | | the dashboard's load line: workers' memory, memory pressure, CPU | Planned (tutti-kkb.25) |
 | | `SHARED_MACHINE`, `--machine-workers` and `HOLD: MACHINE`, read every 2 s while held; a registration whose PID was reused ignored | Planned (tutti-kkb.23); the title line's `· shared with N runs` (tutti-kkb.38) |
-| | `◼ to merge`, and `◷` only for a ticket waiting on another | Planned (tutti-kkb.30) |
+| | `◼ to merge`, and `◷` only for a ticket waiting on another | Done (tutti-kkb.30); tutti's own `◷ limit` keeps its clock |
 | | a handed-back ticket checked once, after rebasing onto the moved base; the hand-back asks for what failed | Planned (tutti-kkb.17) |
 | | the verifier checks only what a change touches, and quotes the worker's passing check | Done (tutti-kkb.9) |
 | | files git merges by union left out of footprints, `LIKELY_CONFLICT` and `plan` | Done (tutti-kkb.16) |
@@ -1859,7 +1859,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | no ticket limit unless `--limit` gives one | Done (tutti-kkb.22) |
 | | workers start without the tools they never use; Skill kept for enabled plugins | Done (tutti-kkb.13) |
 | | the breakdown, the refinement and the interview get the workers' MCP servers, `--strict-mcp-config` | Already so: every session has `strictMcpConfig`, and the interview's one server is tutti's own (§4.6, §4.10) |
-| | the compact Current list's IDs, statuses and times in columns | Planned (tutti-kkb.30) |
+| | the compact Current list's IDs, statuses and times in columns | Done (tutti-kkb.30), the workers' numbers too |
 | | Ctrl+C keeps a ticket waiting to merge from rebasing after the stop | Already so: a quit interrupts the merge queue, and an interrupted rebase is aborted (§3.4) |
 | | a file renamed or copied in the work tree read under its new name | Already so: `git status --porcelain -z`, a rename's old path read apart (`src/services/Git.ts`) |
 | | a setup cut short runs again (`setup.started`); a ticket back from a question whose setup fails is requeued | Done (tutti-kkb.4) |
@@ -1874,7 +1874,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | a check hand-back whose worker commits nothing is checked again | Done (tutti-kkb.7) |
 | | a release's GitHub Release carries its changelog section | Already so: the release workflow's notes are `scripts/release-notes.sh`'s |
 | | a deleted ticket's ID not taken for one it prefixes; nothing filed under a deleted parent | Planned (tutti-kkb.39) |
-| 0.8.6 | the tickets table without the tickets Current shows | Planned (tutti-kkb.30) |
+| 0.8.6 | the tickets table without the tickets Current shows | Done (tutti-kkb.30) |
 | | a shared file holds two tickets apart only when one of them is to change it | Done (tutti-kkb.16) |
 | | the merge train, `merge_train`, and the latest action of a ticket checked ahead | Planned (tutti-kkb.18) |
 | | a blank line between the title line and the load line | Planned (tutti-kkb.25) |
@@ -1900,7 +1900,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | a conflict hand-back told to run the setup when its rebase brought in a setup file's change | Done (tutti-kkb.4) |
 | | a hand-back at the limit or past its time limit takes a finished result from git, else stops its worker and says so | Planned (tutti-kkb.2) |
 | | the failure lines of jest, vitest, node, pytest, cargo, mocha and TAP | Done (tutti-kkb.21) |
-| | a ticket coming to an end not shown twice, in Current and the table | Planned (tutti-kkb.30) |
+| | a ticket coming to an end not shown twice, in Current and the table | Done (tutti-kkb.30): one projection gives both, the table leaving out every ticket with a card |
 | | git failing told from git saying no: dependents wait while git can't tell; `WORKTREE_FAILED`, `GIT_FAILED` | Done (tutti-kkb.3) for the dependents; the rest already so: git's errors are typed, never read as an answer, and stop the run with `GIT_FAILED` or `WORKTREE_FAILED` (`src/run/run.ts`) |
 | | a check that fails as a hold comes up isn't handed back | Already so: a check hand-back reads the holds as it decides (`src/run/checkback.ts`) |
 | | Ctrl+C during `plan --apply` says which links it added, exit 130 | Planned (tutti-kkb.43) |

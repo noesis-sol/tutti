@@ -121,7 +121,7 @@ describe("the preview", () => {
     expect(text).toContain("▸ Edit src/run/merge.ts")
     expect(text).toContain("tut-14  permission — waiting for you")
     expect(text).toContain("[ Deny ]  [ Allow ]")
-    expect(lines.some((line) => /│ ◷ to merge\s+│ tut-13\s+│ Tidy the log/.test(line))).toBe(true)
+    expect(lines.some((line) => /│ ◼ to merge\s+│ tut-13\s+│ Tidy the log/.test(line))).toBe(true)
     expect(text).toContain("Tab select · Enter open")
   })
 

@@ -149,7 +149,10 @@ export interface Totals {
   readonly queueHeld: boolean
 }
 
-/** A row of the tickets table, which keeps its place from the moment the run picks it up. */
+/**
+ * A row of the tickets table, from the moment the run picks its ticket up. It keeps its place but
+ * as its ticket leaves Current, when it moves to the end.
+ */
 export interface Row {
   readonly ticket: string
   readonly title: string
@@ -163,7 +166,7 @@ export interface Row {
 }
 
 /** What a card shows instead of a spinner when its worker isn't at work (§ 5.1). */
-export type Motion = "spinner" | "◷" | "◆" | "•"
+export type Motion = "spinner" | "◼" | "◆" | "•"
 
 /** A card, for a ticket with work under way. */
 export interface Card {
@@ -376,7 +379,7 @@ export const rowStatus = (phase: TicketPhase): { readonly mark: string; readonly
       }
       return { mark: "▶", word: phase.activity }
     case "ToMerge":
-      return { mark: "◷", word: "to merge" }
+      return { mark: "◼", word: "to merge" }
     case "Merging":
       return { mark: "◆", word: "merging" }
     case "Resolving":
@@ -499,7 +502,7 @@ const motionOf = (
   state: WorkerState | undefined,
   requests: ReadonlyArray<AttentionRequest>,
 ): Motion => {
-  if (phase._tag === "ToMerge") return "◷"
+  if (phase._tag === "ToMerge") return "◼"
   if (phase._tag === "Merging") return "◆"
   return working(state, requests) ? "spinner" : "•"
 }

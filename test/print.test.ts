@@ -97,7 +97,7 @@ describe("the summary", () => {
       ended([
         row("tut-1", "✓", "done", "abc1234 merged into main"),
         row("tut-2", "■", "stopped", "Two"),
-        row("tut-3", "◷", "to merge", "Three"),
+        row("tut-3", "◼", "to merge", "Three"),
       ]),
       theme,
       80,
@@ -109,7 +109,7 @@ describe("the summary", () => {
     expect(out).toContain(stop.paint("■ stopped"))
     expect(out).toContain(stop.paint("tut-2"))
     expect(out).not.toContain(dim.paint("Two"))
-    expect(out).toContain(toMerge.paint("◷ to merge"))
+    expect(out).toContain(toMerge.paint("◼ to merge"))
   })
 
   test("a long ticket ID never makes the table wider than the terminal", () => {

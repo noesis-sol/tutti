@@ -558,11 +558,8 @@ const scenes: ReadonlyArray<Scene> = [
       ["✓ done", look("done", "bold")],
       ["tut-dwv", look("done", "bold")],
       ["ffd6ce4 merged into batch/2026-10-20", look("text", "faint")],
-      ["◆ merging", look("merging", "bold")],
-      ["▶ testing", look("notice", "bold")],
-      ["tut-zq4", look("notice", "bold")],
+      // Beside Current, the table leaves out the tickets it shows (rows at work has their rows).
       ["Add an undo stack for property edits", look("text")],
-      ["■ allow?", look("needsYou", "bold")],
       ["↷ deferred", look("notice")],
       ["◆ environment · high", look("organ", "bold")],
       // The cards: a worker testing, a merge, and one waiting for you, highlighted.
@@ -616,7 +613,7 @@ const scenes: ReadonlyArray<Scene> = [
       ["▶ retrying", look("notice")],
       ["◷ limit", look("notice")],
       ["■ answer?", look("needsYou", "bold")],
-      ["◷ to merge", look("toMerge")],
+      ["◼ to merge", look("toMerge")],
       ["⟳ resolving", look("notice")],
       ["tut-9", look("toMerge")],
       // The box with no worker.
@@ -637,10 +634,15 @@ const scenes: ReadonlyArray<Scene> = [
       TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
       TicketPhase.Stopped({ why: "PAUSED" }),
       working("working"),
+      TicketPhase.Merging({ step: "check" }),
+      working("allow"),
     ]),
     ready: "picking",
     checks: [
       ["▶ working", look("live", "bold")],
+      ["◆ merging", look("merging", "bold")],
+      ["■ allow?", look("needsYou", "bold")],
+      ["Title of tut-8", look("text")],
       ["⟳ fixing", look("notice")],
       ["no change to merge", look("text", "faint")],
       ["? for you", look("needsYou", "bold")],
@@ -712,7 +714,7 @@ const scenes: ReadonlyArray<Scene> = [
       [{ text: "stopped", on: head(2) }, look("notice")],
       [{ text: "failed", on: head(3) }, look("needsYou")],
       [{ text: "gone", on: head(4) }, look("needsYou")],
-      [{ text: "◷", on: head(5) }, look("toMerge")],
+      [{ text: "◼", on: head(5) }, look("toMerge")],
       ["to merge (2nd)", look("toMerge")],
       ["fixing check", look("notice")],
       ["question — waiting for you", look("needsYou", "bold")],
@@ -1128,16 +1130,16 @@ describe("layouts", () => {
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
       │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                 │
-      │ ◆ merging   │ tut-kco │ Open the property model                              │
-      │ ▶ testing   │ tut-zq4 │ Add an undo stack for property edits                 │
-      │ ■ allow?    │ tut-9a1 │ Remove the build cache                               │
       │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted        │
+      │             │         │                                                      │
+      │             │         │                                                      │
+      │             │         │                                                      │
       │             │         │                                                      │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ 1 ⣾  tut-zq4  testing  18m40s  Add an undo stack for property edits          │
-      │ 2 ◆  tut-kco  merging  18m40s  Open the property model                       │
+      │ 1 ⣾  tut-zq4  testing   18m40s  Add an undo stack for property edits         │
+      │ 2 ◆  tut-kco  merging   18m40s  Open the property model                      │
       ┃ 3 •  tut-9a1  ■ allow?  18m40s  Remove the build cache                       │
       ╰──────────────────────────────────────────────────────────────────────────────╯
 
@@ -1171,10 +1173,10 @@ describe("layouts", () => {
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────────────────────────────────────────────╮
       │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                                                         │
-      │ ◆ merging   │ tut-kco │ Open the property model                                                                      │
-      │ ▶ testing   │ tut-zq4 │ Add an undo stack for property edits                                                         │
-      │ ■ allow?    │ tut-9a1 │ Remove the build cache                                                                       │
       │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted                                                │
+      │             │         │                                                                                              │
+      │             │         │                                                                                              │
+      │             │         │                                                                                              │
       │             │         │                                                                                              │
       │             │         │                                                                                              │
       │             │         │                                                                                              │
@@ -1220,8 +1222,8 @@ describe("layouts", () => {
        ✓ 1 · ↷ 1 ◆ 1 · ? 1 · ▶ 2/3 · queue 1 of 16 · 1 held back
         Current
       ╭──────────────────────────────────────────────────────────╮
-      │ 1 ⣾  tut-zq4  testing  18m40s  Add an undo stack for pr… │
-      │ 2 ◆  tut-kco  merging  18m40s  Open the property model   │
+      │ 1 ⣾  tut-zq4  testing   18m40s  Add an undo stack for p… │
+      │ 2 ◆  tut-kco  merging   18m40s  Open the property model  │
       ┃ 3 •  tut-9a1  ■ allow?  18m40s  Remove the build cache   │
       ╰──────────────────────────────────────────────────────────╯
 
@@ -1282,8 +1284,8 @@ describe("layouts", () => {
       ╰────────────────┴────────────────┴───────────────┴─────────────┴──────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-      │ ■ allow?    │ t-1     │ Title of t-1                                         │
-      │ ■ allow?    │ t-2     │ Title of t-2                                         │
+      │             │         │                                                      │
+      │             │         │                                                      │
       │             │         │                                                      │
       │             │         │                                                      │
       │             │         │                                                      │
@@ -1400,10 +1402,10 @@ describe("layouts", () => {
       ╰────────────────┴────────────────┴───────────────┴─────────────┴──────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-      │ ▶ editing   │ a       │ Title of a                                           │
       │ ✓ done      │ b       │ abc1234 merged into batch/2026-10-20                 │
       │ ! review    │ c       │ Title of c                                           │
       │ ◷ waiting   │ d       │ Title of d                                           │
+      │             │         │                                                      │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
@@ -1521,7 +1523,7 @@ test(
     ╰────────────────┴────────────────┴───────────────┴─────────────┴──────────────╯
       Tickets
     ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-    │ ▶ editing   │ tut-1   │ Add an undo stack for property edits                 │
+    │             │         │                                                      │
     │             │         │                                                      │
     │             │         │                                                      │
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
@@ -1544,13 +1546,13 @@ test(
     ╰────────────────┴────────────────┴───────────────┴─────────────┴──────────────╯
       Tickets
     ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-    │ ◷ to merge  │ tut-1   │ Add an undo stack for property edits                 │
+    │             │         │                                                      │
     │             │         │                                                      │
     │             │         │                                                      │
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ 1 ◷  tut-1  to merge (2nd)  18m40s                                           │
+    │ 1 ◼  tut-1  to merge (2nd)  18m40s                                           │
     │   Add an undo stack for property edits                                       │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
@@ -1567,7 +1569,7 @@ test(
     ╰────────────────┴────────────────┴───────────────┴─────────────┴──────────────╯
       Tickets
     ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-    │ ◆ merging   │ tut-1   │ Add an undo stack for property edits                 │
+    │             │         │                                                      │
     │             │         │                                                      │
     │             │         │                                                      │
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
@@ -1590,7 +1592,7 @@ test(
     ╰────────────────┴────────────────┴───────────────┴─────────────┴──────────────╯
       Tickets
     ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-    │ ⟳ resolving │ tut-1   │ Add an undo stack for property edits                 │
+    │             │         │                                                      │
     │             │         │                                                      │
     │             │         │                                                      │
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
@@ -1613,7 +1615,7 @@ test(
     ╰────────────────┴────────────────┴───────────────┴─────────────┴──────────────╯
       Tickets
     ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-    │ ⟳ fixing    │ tut-1   │ Add an undo stack for property edits                 │
+    │             │         │                                                      │
     │             │         │                                                      │
     │             │         │                                                      │
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯

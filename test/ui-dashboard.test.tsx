@@ -377,7 +377,7 @@ describe("the tickets table", () => {
     ["◷ limit", working("limit"), "The ticket's title", "deferred"],
     ["■ allow?", working("allow"), "The ticket's title", "stop"],
     ["■ answer?", working("answer"), "The ticket's title", "stop"],
-    ["◷ to merge", TicketPhase.ToMerge({ place: 2 }), "The ticket's title", "toMerge"],
+    ["◼ to merge", TicketPhase.ToMerge({ place: 2 }), "The ticket's title", "toMerge"],
     ["◆ merging", TicketPhase.Merging({ step: "rebase" }), "The ticket's title", "merging"],
     ["⟳ resolving", TicketPhase.Resolving({ attempt: 1 }), "The ticket's title", "deferred"],
     [

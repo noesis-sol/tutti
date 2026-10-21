@@ -1,14 +1,16 @@
 // The dashboard's tickets table (§ 5.1 "How the phases are shown", § 7.2, § 7.11): under its
-// `Tickets` label, a rounded frame with a row per ticket the run picked up, in the order it picked
-// them up, each keeping its place as its phase changes. A row's glyph, word and ID take its state's
-// style; the rest of a finished ticket's row is faint, and a ticket set aside shows the triage
-// organ's verdict, `◆ …`, once it is in.
+// `Tickets` label, a rounded frame with a row per ticket the run picked up but those Current shows,
+// whatever their phase, so that no ticket is shown twice: the tickets that came to an end, in that
+// order, a ticket's row coming in under the others as it leaves Current. Where Current isn't drawn
+// (the end-of-run box), the running tickets keep their rows. A row's glyph, word and ID take its
+// state's style; the rest of a finished ticket's row is faint, and a ticket set aside shows the
+// triage organ's verdict, `◆ …`, once it is in.
 //
 // The table is as tall as the pane makes it, not as its tickets do: about a third of the pane, room
 // for 3 to 10 tickets, blank rows filling it until the run has that many, after which the oldest
 // give way to a `+N earlier tickets` row. Only a resize changes it.
 import { fit, rowLooks } from "../print/summary.ts"
-import type { Row } from "../run/runView.ts"
+import type { Card, Row } from "../run/runView.ts"
 import { framed, frameLook, Lines, type Segments, seg } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
@@ -29,6 +31,15 @@ const stateWidth = 11
 /** The narrowest an ID column and the last column are. */
 const minIdWidth = 7
 const minAboutWidth = 8
+
+/** The rows the table has when Current is drawn with it: all but those of the tickets it shows. */
+export const rowsBesideCurrent = (
+  rows: ReadonlyArray<Row>,
+  cards: ReadonlyArray<Card>,
+): ReadonlyArray<Row> => {
+  const current = new Set(cards.map((card) => card.ticket))
+  return rows.filter((row) => !current.has(row.ticket))
+}
 
 /** The table's lines, `lines` in all with its label, `width` wide. */
 export const ticketsLines = (

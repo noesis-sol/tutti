@@ -337,7 +337,7 @@ Nothing changed. Add them with: tutti plan --apply
 ## The merge queue
 
 A finished ticket (closed, with a commit naming it, its worktree clean and on its branch) waits for
-its turn (`◷ to merge`). Tickets merge one at a time, in the order they finish (`◆ merging`):
+its turn (`◼ to merge`). Tickets merge one at a time, in the order they finish (`◆ merging`):
 
 1. **Rebase.** If the base moved on while the ticket ran, its branch is rebased onto it.
 2. **Setup.** If the rebase changed a dependency file, the setup command runs in its worktree

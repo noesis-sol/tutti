@@ -237,14 +237,14 @@ describe("a card for each status", () => {
     }
   })
 
-  test("the marks: the spinner while it works, ◷ to merge, ◆ merging, • after a turn", () => {
+  test("the marks: the spinner while it works, ◼ to merge, ◆ merging, • after a turn", () => {
     const head = (card: Card) => textOf(drawn(card)).split("\n")[2]
     expect(head(cardOf(working, states(WS.Working({ doing: "editing" }))))).toContain("1 ⣾  t-1")
     expect(head(cardOf(TicketPhase.Resolving({ attempt: 1 })))).toContain("1 ⣾  t-1")
-    expect(head(cardOf(TicketPhase.ToMerge({ place: 1 })))).toContain("1 ◷  t-1")
+    expect(head(cardOf(TicketPhase.ToMerge({ place: 1 })))).toContain("1 ◼  t-1")
     expect(head(cardOf(TicketPhase.Merging({ step: "rebase" })))).toContain("1 ◆  t-1")
     expect(head(cardOf(working, states(WS.Idle({ at: now }))))).toContain("1 •  t-1")
-    sameLook(lookOf(drawn(cardOf(TicketPhase.ToMerge({ place: 1 }))), "◷"), theme.styles.toMerge)
+    sameLook(lookOf(drawn(cardOf(TicketPhase.ToMerge({ place: 1 }))), "◼"), theme.styles.toMerge)
     sameLook(lookOf(drawn(cardOf(working, states(WS.Idle({ at: now })))), "•"), theme.styles.done)
   })
 
@@ -410,7 +410,7 @@ describe("the Current section", () => {
       │   merging into batch/2026-10-20                          ││   ▸ Bash(scripts/check-fast.sh)                          │
       ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
       ╭──────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────╮
-      │ 3 ◷  tut-9a1  to merge (1st)  1m07s                      ││ 4 •  tut-b7c  done  1m07s                                │
+      │ 3 ◼  tut-9a1  to merge (1st)  1m07s                      ││ 4 •  tut-b7c  done  1m07s                                │
       │   Title of tut-9a1                                       ││   Title of tut-b7c                                       │
       │                                                          ││                                                          │
       ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
@@ -451,10 +451,10 @@ describe("the Current section", () => {
       "
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ 1 ◆  tut-kco  merging  1m07s  Title of tut-kco                               │
-      │ 2 ⣯  tut-zq4  testing  1m07s  Title of tut-zq4                               │
-      │ 3 ◷  tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                        │
-      ┃ 4 •  tut-b7c  ■ allow?  1m07s  Title of tut-b7c                              │
+      │ 1 ◆  tut-kco  merging         1m07s  Title of tut-kco                        │
+      │ 2 ⣯  tut-zq4  testing         1m07s  Title of tut-zq4                        │
+      │ 3 ◼  tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                        │
+      ┃ 4 •  tut-b7c  ■ allow?        1m07s  Title of tut-b7c                        │
       ╰──────────────────────────────────────────────────────────────────────────────╯
         Tab select · 1–4 open · d deny · a allow · s stop after current · ? keys
       "
@@ -537,7 +537,7 @@ describe("opening a worker", () => {
       { width: 120, height: 40 },
       async (rendered) => {
         const lines = linesOf(await rendered.capture())
-        const y = lines.findIndex((line) => line.includes("3 ◷  tut-9a1"))
+        const y = lines.findIndex((line) => line.includes("3 ◼  tut-9a1"))
         await rendered.input((setup) => setup.mockMouse.click(10, y))
         await rendered.input((setup) => setup.mockMouse.click(70, y))
         expect(taken(commands)).toEqual([

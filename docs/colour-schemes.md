@@ -12,7 +12,7 @@ Others are JSON files that a project or a person adds.
 A scheme gives colours to **roles**, never to screen elements. A role is a meaning, such as `live`
 (live work) or `needsYou`. Each part of the screen uses a role, and everything else is the same in
 every scheme: bold, faint, italic, the glyphs, the words and the border shapes. So every state reads
-the same whatever the colours, and colour is never the only signal: `■ blocked` and `◷ to merge`
+the same whatever the colours, and colour is never the only signal: `■ blocked` and `◼ to merge`
 keep their glyphs and words.
 
 Each role has a variant for light backgrounds and one for dark ones. In the `orchestra` scheme:
@@ -29,7 +29,7 @@ Each role has a variant for light backgrounds and one for dark ones. In the `orc
 | `frame` | `#9CA3AF` | `#6B7280` | frames: the totals strip, the tickets table, the `picking the next ticket…` box |
 | `organ` | `#6D28D9` | `#A78BFA` | organs: triage verdicts (`◆`), organ lines, `tutti init`'s marks |
 | `organText` | `#7C3AED` | `#C4B5FD` | the organ lines' text |
-| `toMerge` | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◷ to merge`, `to merge (2nd)`) |
+| `toMerge` | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`) |
 | `emphasis` | `#374151` | `#E5E7EB` | keys to press, the `Tickets` label, worker numbers, tool names, `steered` |
 | `pill` | `#7D56F4` | `#7D56F4` | the title pill's background, and the frame of `tutti init`'s **Next** box |

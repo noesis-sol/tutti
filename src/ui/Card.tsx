@@ -1,6 +1,6 @@
 // The dashboard's Current section (§ 5.1 "How the phases are shown", § 7.2, § 7.11): under its
 // `Current` label, a card for each ticket with work under way, in its worker's number order. A card
-// says its worker's stable number, its mark (the spinner while the worker works, `◷` to merge, `◆`
+// says its worker's stable number, its mark (the spinner while the worker works, `◼` to merge, `◆`
 // merging, `•` once its turn has ended), its ticket, its status (`steered` beside it), how long it
 // has been in its phase, its title, and its action line: the phase's (a merge's step, a recheck), or
 // else the worker's latest action behind `▸`, a denied call `notice` for its 10 seconds.
@@ -8,7 +8,8 @@
 // A card is framed `live` while its worker works and `needsYou` when it waits for you, `frame`
 // otherwise; the highlighted one keeps its colour, bold in the heavy border style. From 120 columns
 // the cards go two to a row, every one as tall as the tallest. When the pane can't hold a card each,
-// they go one line each in a single compact box, framed `needsYou` when any of them waits for you.
+// they go one line each in a single compact box, framed `needsYou` when any of them waits for you,
+// their numbers, tickets, statuses and times lined up as columns, each as wide as the widest.
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
 import { type MouseEvent, TextAttributes } from "@opentui/core"
@@ -21,8 +22,10 @@ import {
   Lines,
   type Look,
   roleLook,
+  type Segment,
   type Segments,
   seg,
+  widthOf,
 } from "./line.tsx"
 import { sanitizeLine } from "./sanitize.ts"
 import type { Theme } from "./theme.ts"
@@ -105,8 +108,8 @@ const markOf = (card: Card, theme: Theme, spin: string) => {
   switch (card.motion) {
     case "spinner":
       return seg(spin, styles.picked)
-    case "◷":
-      return seg("◷", styles.toMerge)
+    case "◼":
+      return seg("◼", styles.toMerge)
     case "◆":
       return seg("◆", styles.merging)
     case "•":
@@ -126,6 +129,64 @@ const frameOf = (card: Card, theme: Theme): Look =>
 const steeredOf = (card: Card, theme: Theme): Segments =>
   card.steered ? [seg("  "), seg("steered", roleLook(theme, "emphasis"))] : []
 
+/** The cells of a card's first line but its mark: its number, ticket, status and elapsed time. */
+interface HeadCells {
+  readonly number: Segments
+  readonly ticket: Segments
+  /** Its status, `steered` beside it. */
+  readonly status: Segments
+  readonly time: Segments
+}
+
+/** The widths of the compact box's columns: the widest number, ticket, status and time on screen. */
+type HeadColumns = { readonly [K in keyof HeadCells]: number }
+
+const noColumns: HeadColumns = { number: 0, ticket: 0, status: 0, time: 0 }
+
+const cellsOf = (card: Card, theme: Theme, now: number, status: Segments): HeadCells => {
+  const { styles } = theme
+  return {
+    number: [seg(String(card.worker), styles.key)],
+    ticket: [seg(sanitizeLine(card.ticket), styles.picked)],
+    status: [...status, ...steeredOf(card, theme)],
+    time: [seg(elapsed(now - card.since), styles.dim)],
+  }
+}
+
+/** `cols` widened to hold `cells`. */
+const fit = (cols: HeadColumns, cells: HeadCells): HeadColumns => ({
+  number: Math.max(cols.number, widthOf(cells.number)),
+  ticket: Math.max(cols.ticket, widthOf(cells.ticket)),
+  status: Math.max(cols.status, widthOf(cells.status)),
+  time: Math.max(cols.time, widthOf(cells.time)),
+})
+
+/** The spaces that make `segments` `width` wide; none when they are as wide or wider. */
+const padding = (segments: Segments, width: number): Segments => {
+  const short = width - widthOf(segments)
+  return short > 0 ? [seg(" ".repeat(short))] : []
+}
+
+/**
+ * A card's first line from its cells and `mark`, its ticket and status padded to `cols` and its
+ * number and time right-aligned in them, so that their digits line up with the other lines'.
+ */
+const headLine = (cells: HeadCells, mark: Segment, cols: HeadColumns): Segments => [
+  ...padding(cells.number, cols.number),
+  ...cells.number,
+  seg(" "),
+  mark,
+  seg("  "),
+  ...cells.ticket,
+  ...padding(cells.ticket, cols.ticket),
+  seg("  "),
+  ...cells.status,
+  ...padding(cells.status, cols.status),
+  seg("  "),
+  ...padding(cells.time, cols.time),
+  ...cells.time,
+]
+
 /** The card's first line: its number, mark, ticket, status and elapsed time. */
 export const headOf = (
   card: Card,
@@ -133,21 +194,7 @@ export const headOf = (
   now: number,
   spin: string,
   status: Segments,
-): Segments => {
-  const { styles } = theme
-  return [
-    seg(String(card.worker), styles.key),
-    seg(" "),
-    markOf(card, theme, spin),
-    seg("  "),
-    seg(sanitizeLine(card.ticket), styles.picked),
-    seg("  "),
-    ...status,
-    ...steeredOf(card, theme),
-    seg("  "),
-    seg(elapsed(now - card.since), styles.dim),
-  ]
-}
+): Segments => headLine(cellsOf(card, theme, now, status), markOf(card, theme, spin), noColumns)
 
 /** The card's action line: the phase's, else its worker's latest action behind `▸`; null for none. */
 export const actionLine = (card: Card, theme: Theme): Segments | null => {
@@ -200,9 +247,22 @@ const compactStatus = (card: Card, theme: Theme): Segments => {
   return [seg(first.kind._tag === "Question" ? "■ answer?" : "■ allow?", theme.styles.stop)]
 }
 
-/** A card on one line, for the compact box: its head, then its title faint. */
-export const compactLine = (card: Card, theme: Theme, now: number, spin: string): Segments => [
-  ...headOf(card, theme, now, spin, compactStatus(card, theme)),
+/**
+ * A card on one line, for the compact box: its head, its cells padded to `cols`, then its title
+ * faint.
+ */
+const compactLine = (
+  card: Card,
+  theme: Theme,
+  now: number,
+  spin: string,
+  cols: HeadColumns,
+): Segments => [
+  ...headLine(
+    cellsOf(card, theme, now, compactStatus(card, theme)),
+    markOf(card, theme, spin),
+    cols,
+  ),
   seg("  "),
   seg(card.title, theme.styles.dim),
 ]
@@ -212,8 +272,9 @@ const heavyBar = (frame: Look) =>
   seg("┃", { ...frame, attributes: frame.attributes | TextAttributes.BOLD })
 
 /**
- * The compact box's lines `width` wide, a line a card: framed `needsYou` when any of them waits for
- * you, `live` while any works, `frame` otherwise. The highlighted card's line has a heavy left bar.
+ * The compact box's lines `width` wide, a line a card, its number, ticket, status and time in
+ * columns: framed `needsYou` when any of them waits for you, `live` while any works, `frame`
+ * otherwise. The highlighted card's line has a heavy left bar.
  */
 export const compactLines = (
   cards: ReadonlyArray<Card>,
@@ -230,8 +291,13 @@ export const compactLines = (
     : cards.some((card) => card.motion === "spinner")
       ? roleLook(theme, "live")
       : frameLook(theme)
+  // The numbers, tickets, statuses and times line up as columns, each as wide as the widest.
+  const cols = cards.reduce(
+    (widths, card) => fit(widths, cellsOf(card, theme, options.now, compactStatus(card, theme))),
+    noColumns,
+  )
   const lines = boxed(
-    cards.map((card) => compactLine(card, theme, options.now, options.spin)),
+    cards.map((card) => compactLine(card, theme, options.now, options.spin, cols)),
     options.width,
     frame,
   )
