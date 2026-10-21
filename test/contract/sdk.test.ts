@@ -6,8 +6,9 @@
 // asking, the held removal (defaultToNo in default mode, a safetyCheck denial in auto mode),
 // interrupt() and its receipt, resume with the session's ID, and strictMcpConfig against the init's
 // mcp_servers; and the rest of § 13's list: idle with a background task live and the turn the CLI
-// starts to report it, sends folded into a running turn or sharing a queued one,
-// cancel_async_message on a queued send, the resume of a removed worktree, a session quit as § 4.8
+// starts to report it, a background subagent keeping its worker Working until that turn, sends
+// folded into a running turn or sharing a queued one, cancel_async_message on a queued send, the
+// resume of a removed worktree, a session quit as § 4.8
 // does and resumed with a carry-on message, the verifier in the foreground through its hook, and
 // the account probe's stderr line on an untrusted checkout. What AgentHost doesn't expose (a
 // cancel_async_message of its own, a spawn into a missing folder) goes through the SDK's query()
@@ -626,6 +627,106 @@ live.describe("Agent SDK contract: background tasks", () => {
         return worker.state._tag
       })
       expect(new Set(folded.slice(idle, report + 1))).toEqual(new Set(["Working"]))
+      const settled = all.findLastIndex((m) => stateOf(m) === "idle")
+      expect(settled).toBeGreaterThan(report)
+      expect(folded[settled]).toBe("Idle")
+      expect(state._tag).toBe("Idle")
+    },
+    testLimit,
+  )
+
+  live.test(
+    "a subagent in the background keeps the worker Working until the turn that reports it",
+    async () => {
+      const dir = repository()
+      const code = `HELPED-${randomBytes(3).toString("hex").toUpperCase()}`
+      mkdirSync(join(dir, ".claude", "agents"), { recursive: true })
+      writeFileSync(
+        join(dir, ".claude", "agents", "helper.md"),
+        [
+          "---",
+          "name: helper",
+          "description: Waits a while, then says so.",
+          "tools: Bash",
+          "model: haiku",
+          "---",
+          `Run exactly this Bash command: ./wait.sh 20\nThen reply with the single line ${code}.`,
+          "",
+        ].join("\n"),
+      )
+      const { all, uuid, whileLive, state } = await run(
+        dir,
+        Effect.gen(function* () {
+          const host = yield* AgentHost
+          yield* host.start(ticket, session(dir))
+          const uuid = yield* host.send(
+            ticket,
+            'Use the Agent tool once, with subagent_type "helper", run_in_background: true and the prompt "Wait". Don\'t wait for it: reply with the single word STARTED right away.',
+            "clientComposed",
+          )
+          // The send's result, with the subagent still at work: no idle comes with it.
+          yield* messagesUntil("the send's result", (all) => resultsFor(all, uuid).length > 0)
+          const whileLive = yield* host.current(ticket)
+          yield* messagesUntil("the subagent's report", (all) => {
+            const answer = all.findIndex((m) => resultsFor([m], uuid).length > 0)
+            const emptied = all.findIndex((m, at) => at > answer && tasksOf(m)?.length === 0)
+            return (
+              emptied > answer &&
+              answered()(all.slice(emptied)) &&
+              all.slice(emptied).some(isResult)
+            )
+          })
+          return {
+            all: yield* messages,
+            uuid,
+            whileLive,
+            state: yield* stateUntil((s) => s._tag === "Idle"),
+          }
+        }),
+        { policy: allowAll },
+      )
+      // Not the verifier, so the hook leaves it in the background: it is launched, not awaited.
+      const calls = toolCalls(all).filter(
+        (c) =>
+          c.parent === null &&
+          (c.name === "Agent" || c.name === "Task") &&
+          c.input.subagent_type === "helper",
+      )
+      expect(calls).toHaveLength(1)
+      const call = calls[0] as ToolCall
+      const launched = all[toolResultAt(all, call.id)] as { tool_use_result?: { status?: unknown } }
+      expect(launched.tool_use_result?.status).toBe("async_launched")
+      // The send's turn ends with the subagent live in background_tasks_changed, not ambient.
+      const answer = all.findIndex((m) => resultsFor([m], uuid).length > 0)
+      const setAtAnswer = all
+        .slice(0, answer)
+        .map(tasksOf)
+        .filter((t) => t !== undefined)
+        .at(-1)
+      expect(setAtAnswer?.length).toBe(1)
+      expect(setAtAnswer?.[0]?.ambient ?? false).toBe(false)
+      expect(whileLive._tag).toBe("Working")
+      // The subagent ends: the set empties, then a turn of the CLI's own reports it (its
+      // system/init and a result that lists no send), and idle.
+      const emptied = all.findIndex((m, at) => at > answer && tasksOf(m)?.length === 0)
+      expect(emptied).toBeGreaterThan(answer)
+      const after = all.slice(emptied)
+      expect(after.filter(isInit)).toHaveLength(1)
+      const reports = after.filter(isResult)
+      expect(reports).toHaveLength(1)
+      expect(reports[0]?.user_message_uuids ?? []).toEqual([])
+      const report = all.indexOf(reports[0] as SDKMessage)
+      // Folded as AgentHost folds them: Working at the send's result and at the report, and never
+      // settled between them (the subagent's own requests make it NeedsYou a moment), until the
+      // idle after the report settles the worker.
+      let worker = initial()
+      const folded = all.map((message) => {
+        worker = step(worker, WorkerEvent.Message({ message }), Date.now())
+        return worker.state._tag
+      })
+      expect([folded[answer], folded[report]]).toEqual(["Working", "Working"])
+      const between = new Set(folded.slice(answer, report + 1))
+      expect([between.has("Idle"), between.has("Failed")]).toEqual([false, false])
       const settled = all.findLastIndex((m) => stateOf(m) === "idle")
       expect(settled).toBeGreaterThan(report)
       expect(folded[settled]).toBe("Idle")
