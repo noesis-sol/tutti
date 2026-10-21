@@ -868,8 +868,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // instead, unless a stop ends it anyway; it ends USAGE_LIMIT when it can't wait for it: whether
     // it does. With everything else done and workers waiting on you (D19), a dashboard shows the
     // end-of-run box and waits, until they are answered or the box's `q` ends the run; plain, the
-    // run waits only until a stop holds it. Gives whether the usage limit ends it, and the count of
-    // the screen's commands acted on before its last look.
+    // run waits only until a stop holds it. Gives whether the usage limit ends it, whether the box's
+    // `q` did, and the count of the screen's commands acted on before its last look.
     const settle = Effect.gen(function* () {
       for (;;) {
         const seen = yield* Ref.get(acted)
@@ -878,7 +878,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         if (limit !== null) {
           yield* scheduler.interrupt
           yield* stopped(limit)
-          return { limited: true, seen }
+          return { limited: true, asked: false, seen }
         }
         const held = (yield* Ref.get(stops)).first !== null
         const boxed = done && waiting.length > 0 && screen !== null
@@ -886,9 +886,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         const endNow = yield* Ref.getAndSet(endAsked, false)
         if (done) {
           if (waiting.length === 0 && (held || !(yield* usage.held)))
-            return { limited: false, seen }
+            return { limited: false, asked: false, seen }
           if (waiting.length > 0 && (screen === null ? held : endNow))
-            return { limited: false, seen }
+            return { limited: false, asked: endNow, seen }
         }
         yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
       }
@@ -904,10 +904,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         }),
       )
     // Nothing left: a hold for the environment probes the machine, and goes on or ends the run. A
-    // command acted on meanwhile (a hand-back handed over, an answer) has the run look again.
+    // command acted on meanwhile (a hand-back handed over, an answer) has the run look again, the
+    // box's `q` it ended on still asked.
     const loop = Effect.gen(function* () {
       for (;;) {
-        const { limited, seen } = yield* settle
+        const { limited, asked, seen } = yield* settle
         if (limited) {
           yield* endAfter(null)
           break
@@ -921,6 +922,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           yield* updateStops((all) => ({ ...all, first: probed.stop }))
         }
         if (yield* endAfter(seen)) break
+        if (asked) yield* Ref.set(endAsked, true)
       }
     })
 
