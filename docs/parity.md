@@ -5,16 +5,17 @@ The audit against the spec's parity matrix (`.orchestra/specs/tutti-spec.md`, Ap
 and the tests that show it. *Kept* means as orchestra v0.7.7 has it; the other dispositions point to
 the spec's section. Back to the [README](../README.md).
 
-Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 76 are as the spec says:
-44 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 7
+Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 77 are as the spec says:
+45 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 6
 aren't yet:
 
 - **Missing** (2): the START block's `DEFERRED_FREE` lines (tutti-psr), and counting and logging
   compactions (tutti-4sa). The dispatch's footprint line is logged since tutti-d6q, the run's
   notifications are sent since tutti-sla, and the predictor runs in real runs since tutti-76k.
-- **Differs** (5): the run lock's refusal during init and its emptied files (tutti-d5g), the setup
-  after a fix (tutti-ry9), rechecks while it holds or a solo ticket runs (tutti-t4y), the full
-  check's output end (tutti-zfj), and the wind-down line's narrow and empty forms (tutti-upv).
+- **Differs** (4): the run lock's refusal during init and its emptied files (tutti-d5g), the setup
+  after a fix (tutti-ry9), rechecks while it holds or a solo ticket runs (tutti-t4y), and the full
+  check's output end (tutti-zfj). The wind-down line's narrow and empty forms are orchestra's since
+  tutti-upv.
 
 Rows marked *untested details* do what the spec says, but some detail of them is shown by no test
 yet; tutti-b3k (the run loop) and tutti-178 (startup, the interface and init) list them. Each
@@ -92,7 +93,7 @@ file and test name given here is there.
 |  | triage reads the terminal and the transcript | Changed as specified (§ 6.2) | `src/organs/triage.ts`, `src/run/triage.ts`, `src/agent/Transcripts.ts` | `test/triage.test.ts` "keeps the last 40 items, at most 8,000 characters of their text, from the end", "a ticket its worker deferred is triaged from tutti's transcript and attention record before the run ends" |
 | Feature | talked through in a pane beside orchestra | Changed as specified (§ 4.10) | `src/agent/interview.ts`, `src/agent/interviewTools.ts`, `src/run/interview.ts`, `src/ui/InterviewView.tsx` | `test/interview.test.ts` "it files a valid proposal: the epic, its tickets and their links; and gives the epic's ID", "it files once: a second call is refused and files nothing more", "its tools are the listed built-ins alone, its one MCP server tutti's, strictly"; `test/ui-interview.test.tsx` "the chat, your answer, the filing, then the confirmation: y runs the epic" |
 |  | planned by the organs (`--feature`) | Kept | `src/run/feature.ts`, `src/organs/screen.ts`, `src/organs/plan.ts` | `test/feature.test.ts` "screens, plans, confirms and files the epic with its tickets, files, solo and links", "an invalid plan is rejected with its reasons, and nothing is filed", "--yes files without asking, the plan shown", "runs scoped to the filed epic: its tickets in their order, nothing else" |
-| Dashboard | title, totals, tickets table, Current cards, wind-down line, hint, layouts | Differs: tutti-upv (the wind-down line is cut at the width, and says `0 running` where orchestra says `nothing running, ending now`) | `src/ui/Dashboard.tsx`, `src/ui/TitleLine.tsx`, `src/ui/Totals.tsx`, `src/ui/TicketsTable.tsx`, `src/ui/Card.tsx`, `src/ui/WindDown.tsx`, `src/ui/Hint.tsx` | `test/ui-dashboard.test.tsx` "80 columns", "120 columns", "the minimum size, 60×16, which has no room for the table", "rows keep their place as phases change"; `test/ui-cards.test.tsx` "two to a row from 120 columns, every card as tall as the tallest", "drawn above the hint while the run winds down" |
+| Dashboard | title, totals, tickets table, Current cards, wind-down line, hint, layouts | Kept, since tutti-upv (the wind-down line's narrow and empty forms) | `src/ui/Dashboard.tsx`, `src/ui/TitleLine.tsx`, `src/ui/Totals.tsx`, `src/ui/TicketsTable.tsx`, `src/ui/Card.tsx`, `src/ui/WindDown.tsx`, `src/ui/Hint.tsx` | `test/ui-dashboard.test.tsx` "80 columns", "120 columns", "the minimum size, 60×16, which has no room for the table", "rows keep their place as phases change"; `test/ui-cards.test.tsx` "two to a row from 120 columns, every card as tall as the tallest", "drawn above the hint while the run winds down"; `test/wind-down-line.test.tsx` "drops ', no new tickets', then the count, then the words, keeping the squares", "says the run ends now once every ticket has finished" |
 |  | latest action from Claude Code's screen (`⏺`) | Changed as specified (§ 4.4, § 7.5) | `src/agent/Transcripts.ts`, `src/ui/Card.tsx` | `test/transcripts.test.ts` "is the current tool call, else the last line of assistant text", "a tool call is shown by what its input is about, on one line"; `test/ui-worker-view.test.tsx` "the chrome names neither Claude nor its product" |
 |  | attention on cards, worker view, composer, steering, mouse, key help | Changed as specified (new: § 4.5, § 4.3, § 7.3, § 7.5); untested details: tutti-178 | `src/ui/AttentionCard.tsx`, `src/ui/WorkerView.tsx`, `src/ui/Composer.tsx`, `src/run/steer.ts`, `src/ui/keys.ts`, `src/ui/KeyHelp.tsx` | `test/ui-attention.test.tsx` "grows to show its oldest request: its line, the summary and reason faint, the buttons"; `test/ui-worker-view.test.tsx` "each tool call expanded: the read's range, the edit's diff, the command's output"; `test/ui-composer.test.tsx` "Enter sends what you typed, with its new lines, as a SendMessage with a uuid"; `test/steer.test.ts` "steers the worker and is delivered as you typed it, recorded by its length only"; `test/ui-cards.test.tsx` "? opens the key help over the dashboard, and Esc or ? closes it" |
 |  | summary, closing line, report rendered, organ spinners | Kept (§ 7.1) | `src/print/summary.ts`, `src/print/organLine.ts`, `src/print/markdown.ts`, `src/run/run.ts` | `test/print.test.ts` "has the title, the totals and every ticket, as wide as the terminal", "the spinner turns by rewriting one line, then the final line replaces it"; `test/run-finish.test.ts` "with organs, the report and its organ lines follow the summary, before the end record" |
