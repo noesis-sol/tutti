@@ -190,6 +190,14 @@ describe("scripts/check-own.sh", () => {
     expect(last).toBe("scripts/check-own.sh: PASS")
   })
 
+  slow.test("type-checks a change that only deletes a module", () => {
+    const { repo, run } = project()
+    repo.git(["rm", "--quiet", "src/b.ts"])
+    const { out } = run()
+    expect(out).toContain("bunx tsc --noEmit")
+    expect(out).toContain("test.sh ./test/b.test.ts\n")
+  })
+
   slow.test("runs the whole check when the project's setup changed", () => {
     const { repo, run } = project()
     repo.commit("Bump", { "package.json": '{ "name": "x" }\n' })

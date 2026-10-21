@@ -3,7 +3,7 @@
 # It runs scripts/check.sh's steps on what the branch changed since it left main (its commits and
 # what isn't committed yet, new files included), each step printing a SUITE: line:
 #   tsc:        bunx tsc --noEmit, on the whole project (tsc has no partial check), when a TypeScript
-#               or JSON file changed
+#               or JSON file changed, deleted ones included
 #   biome:      bunx biome check on the changed files
 #   test:       scripts/test.sh on the test files the change touches (scripts/check-own.ts): those
 #               that changed, and those that import a changed module at any depth or name a changed
@@ -77,7 +77,8 @@ run_shellcheck() {
 
 step="tsc"
 echo "SUITE: tsc"
-if [ -n "$(present '\.(ts|tsx|json)$')" ]; then
+# Deleted files count here: a module gone breaks the modules that import it.
+if printf '%s\n' "$changed" | grep -qE '\.(ts|tsx|json)$'; then
   (bunx tsc --noEmit)
 else
   echo "tsc: no TypeScript or JSON file changed"
