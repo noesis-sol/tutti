@@ -17,8 +17,15 @@
 // machine leaves its temp files in, but in /tmp, as the SDK extracts Claude Code there
 // (src/agent/claudeExtract.ts); TUTTI_TEST_TMPDIR names another. A run killed before it could
 // remove its folder (SIGKILL) leaves it, named with the run's process ID: the next run removes it.
+//
+// A worker's run is given its share of the machine's cores, TUTTI_CORES (or ORCHESTRA_CORES, under
+// orchestra), as other workers' checks run beside it (tutti-kkb.24). bun test runs the files one
+// after another, but its JavaScriptCore starts nearly as many garbage collector markers and FTL
+// compiler threads as the machine has cores (8 and 7 of 10, Bun 1.4.3), and so does each bun the
+// suites start: given a share below the machine's cores, the run keeps them to it
+// (coreThreadVariables).
 import { lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { availableParallelism, tmpdir } from "node:os"
 import { join } from "node:path"
 
 export interface TestCase {
@@ -112,6 +119,47 @@ const tee = async (stream: ReadableStream<Uint8Array>, to: NodeJS.WriteStream): 
   return text + decoder.decode()
 }
 
+/**
+ * The run's share of the machine's cores: TUTTI_CORES, or orchestra's ORCHESTRA_CORES, a whole
+ * number of at least 1; undefined when neither holds one.
+ */
+export const coreShareOf = (
+  env: Readonly<Record<string, string | undefined>>,
+): number | undefined => {
+  for (const name of ["TUTTI_CORES", "ORCHESTRA_CORES"]) {
+    const value = env[name]?.trim() ?? ""
+    if (/^\d+$/.test(value) && Number(value) >= 1) return Number(value)
+  }
+  return undefined
+}
+
+/**
+ * JavaScriptCore's options for the threads it starts as many of as there are cores, which bun reads
+ * from BUN_JSC_<option>. Its DFG compiler threads are 2 already.
+ */
+export const jscThreadVariables = [
+  "BUN_JSC_numberOfGCMarkers",
+  "BUN_JSC_numberOfFTLCompilerThreads",
+] as const
+
+/**
+ * The variables that keep bun test's threads, and those of each bun the suites start, to the
+ * share of the machine's `cores` that `env` gives (coreShareOf): JavaScriptCore's threads at the
+ * share, but those `env` sets already. None without a share, or with one of all the cores.
+ */
+export const coreThreadVariables = (
+  env: Readonly<Record<string, string | undefined>>,
+  cores: number = availableParallelism(),
+): Record<string, string> => {
+  const share = coreShareOf(env)
+  if (share === undefined || share >= cores) return {}
+  const result: Record<string, string> = {}
+  for (const name of jscThreadVariables) {
+    if ((env[name] ?? "") === "") result[name] = String(share)
+  }
+  return result
+}
+
 const runBunTest = async (
   args: ReadonlyArray<string>,
   report: string,
@@ -127,7 +175,12 @@ const runBunTest = async (
       `--reporter-outfile=${report}`,
       ...args,
     ],
-    { stdin: "inherit", stdout: "pipe", stderr: "pipe", env: { ...process.env, TMPDIR: temp } },
+    {
+      stdin: "inherit",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, ...coreThreadVariables(process.env), TMPDIR: temp },
+    },
   )
   const [out, err, code] = await Promise.all([
     tee(proc.stdout, process.stdout),

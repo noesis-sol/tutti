@@ -5,6 +5,7 @@
 // since the workers don't get the tool.
 import { isAbsolute, join, relative, resolve } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
+import { coresVariable, orchestraCoresVariable } from "../agent/env.ts"
 import { type AppConfigValue, SetupProblem, workerPromptFile } from "../cli/AppConfig.ts"
 import { settingsFile } from "./settings.ts"
 import builtIn from "./templates/worker-prompt.md" with { type: "text" }
@@ -69,14 +70,24 @@ export const workerCheckLog = ".tutti/run/worker-check.log"
  * workerCheckLog and its exit status printed, then read the file rather than run the check again to
  * see what it said: workers piped a check through tail, which hides its exit status, then ran it
  * again, minutes of a full check each time, to learn whether it passed. Its example is the
- * project's merge check (checks.fast.command) when it has one.
+ * project's merge check (checks.fast.command) when it has one. It ends with coresNote.
  */
 export const checkNote = (command: string | null): string =>
   `\n\nRun a check (tests, linters, a build) once, its whole output saved to a file in .tutti/run ` +
   `(never committed) and its exit status printed, as in ` +
   `'${command ?? "<the check>"} > ${workerCheckLog} 2>&1; echo "exit $?"', then read the file's ` +
   `end or search it, rather than running the check again to see its output or whether it ` +
-  `passed. Piping a check through tail hides its exit status.\n`
+  `passed. Piping a check through tail hides its exit status. ${coresNote}\n`
+
+/**
+ * The check note's last sentence: a worker's environment gives it its share of the machine's
+ * cores (src/agent/env.ts's coreVariables), for its checks to keep to, as orchestra 0.9.0's does.
+ */
+export const coresNote =
+  `Other workers' checks run on this machine beside yours: ${coresVariable} in your environment ` +
+  `(and ${orchestraCoresVariable}, for scripts written for orchestra) is your share of its cores, ` +
+  `so a check that runs things side by side (test files or packages, a linter's jobs, a build) ` +
+  `runs no more than that many at once; GOFLAGS has Go's commands keep to it already (-p).`
 
 /** `file` as a problem names it: from the project's top when it is inside it. */
 const shown = (repo: string, file: string): string => {

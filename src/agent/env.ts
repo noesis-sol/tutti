@@ -41,6 +41,44 @@ export const workerVariables = (
   ...(checkTimeout === undefined ? {} : bashTimeouts(checkTimeout)),
 })
 
+/** The variable that gives a worker its share of the machine's cores, for its checks to keep to. */
+export const coresVariable = "TUTTI_CORES"
+
+/** orchestra's name for it (orchestra 0.9.0), set too, for check scripts written for orchestra. */
+export const orchestraCoresVariable = "ORCHESTRA_CORES"
+
+/**
+ * A worker's share of the machine's `cores`: divided among the run's `concurrent` workers and
+ * `others`, those running in the machine's other runs, no more workers than `limit`, the cap on
+ * them across the machine (0 for none); at least 1. Workers' checks share the cores: a test
+ * runner, a linter or Go left alone runs as many things at once as there are cores, so several
+ * workers' checks crowd the machine, every check takes two or three times as long, and tests time
+ * out in code no ticket touched (tutti-0ye, tutti-kkb.24). As orchestra's coreShare.
+ */
+export const coreShare = (cores: number, concurrent: number, others = 0, limit = 0): number => {
+  const all = Math.max(concurrent, 1) + Math.max(others, 0)
+  const workers = limit > 0 ? Math.min(all, limit) : all
+  return Math.max(Math.floor(cores / workers), 1)
+}
+
+/** Whether the go command's flags, `GOFLAGS`'s words, set -p, as the maintainer may. */
+export const setsParallel = (flags: ReadonlyArray<string>): boolean =>
+  flags.some((flag) => /^-+p(=|$)/.test(flag))
+
+/**
+ * A worker's share of the cores (coreShare) in its environment: TUTTI_CORES and ORCHESTRA_CORES,
+ * for a project's check scripts, and `-p=<share>` after the GOFLAGS `goflags` has, unless those
+ * set -p already, so that `go test ./...` runs no more packages at once than that.
+ */
+export const coreVariables = (share: number, goflags = ""): Record<string, string> => {
+  const flags = goflags.split(/\s+/).filter((flag) => flag !== "")
+  return {
+    [coresVariable]: String(share),
+    [orchestraCoresVariable]: String(share),
+    ...(setsParallel(flags) ? {} : { GOFLAGS: [...flags, `-p=${share}`].join(" ") }),
+  }
+}
+
 /** Bash's own maximum timeout, 10 minutes, which BASH_MAX_TIMEOUT_MS raises. */
 export const bashMaxTimeout: Duration.Duration = Duration.minutes(10)
 
@@ -74,12 +112,15 @@ export interface WorkerEnvOptions {
   readonly version?: string
   /** The merge check's time limit (checks.fast.timeout), for Bash's timeouts; workers only. */
   readonly checkTimeout?: Duration.Duration
+  /** The worker's share of the machine's cores (coreShare), for its checks; workers only. */
+  readonly cores?: number
 }
 
 /**
  * A worker's (or an organ's) environment: `env` with tutti's variables laid over it, without
- * ANTHROPIC_API_KEY when there is a subscription login and billing isn't api. Unset variables and
- * the terminal pane's (paneVariable) are left out.
+ * ANTHROPIC_API_KEY when there is a subscription login and billing isn't api, and given its share
+ * of the cores, coreVariables (after the environment's GOFLAGS). Unset variables and the terminal
+ * pane's (paneVariable) are left out.
  */
 export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => {
   const result: Record<string, string> = {}
@@ -87,11 +128,13 @@ export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => 
     if (value !== undefined && !paneVariable(name)) result[name] = value
   }
   Object.assign(result, workerVariables(options.version, options.checkTimeout))
+  if (options.cores !== undefined)
+    Object.assign(result, coreVariables(options.cores, result.GOFLAGS))
   if (options.subscription && options.billing !== "api") delete result[apiKeyVariable]
   return result
 }
 
 /** The account probe's environment: a worker's, always without the key, to find the login (§ 4.13). */
 export const probeEnv = (
-  options: Omit<WorkerEnvOptions, "subscription" | "billing" | "checkTimeout">,
+  options: Omit<WorkerEnvOptions, "subscription" | "billing" | "checkTimeout" | "cores">,
 ): Record<string, string> => workerEnv({ ...options, subscription: true, billing: "subscription" })

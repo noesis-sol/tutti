@@ -18,6 +18,7 @@
 // within closeLimit. A stream that ends or fails without tutti closing it, or a result with a
 // startup_failure_reason, makes the worker Gone.
 import { randomUUID } from "node:crypto"
+import { availableParallelism } from "node:os"
 import {
   type Options,
   type Query,
@@ -61,7 +62,7 @@ import {
   type WorkerEntry,
 } from "./AgentHost.ts"
 import type { Attention } from "./Attention.ts"
-import { workerEnv } from "./env.ts"
+import { coreShare, workerEnv } from "./env.ts"
 import { serverName } from "./interviewTools.ts"
 import { type ChosenServers, checkInit, inProcess, noServers } from "./mcp.ts"
 import { interviewOptions, type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
@@ -116,6 +117,8 @@ export interface LiveOptions {
   readonly account: Pick<AccountProbe, "billing" | "subscription">
   /** tutti's environment, workers' is made from; process.env by default. */
   readonly env?: Readonly<Record<string, string | undefined>>
+  /** The machine's cores, divided among the run's workers (coreShare); availableParallelism(). */
+  readonly cores?: number
 }
 
 // An open session.
@@ -235,6 +238,7 @@ export const layer = (
         subscription: options.account.subscription,
         billing: config.billing,
         checkTimeout: config.settings.checks.fast.timeout,
+        cores: coreShare(options.cores ?? availableParallelism(), config.settings.concurrent),
         ...(options.env === undefined ? {} : { env: options.env }),
       })
       const requestedMode = config.settings.workers.permission_mode

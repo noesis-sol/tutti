@@ -61,6 +61,14 @@ piped a check through `tail`, which hides its exit status, then ran the whole ch
 whether it passed. A check script whose last line says `PASS` or `FAIL` and the step, as tutti's own
 `scripts/check.sh` does, lets the file's end alone answer.
 
+The note's last sentence gives the worker its share of the machine's cores: other workers' checks
+run beside its own, so tutti sets `TUTTI_CORES` in its environment, and `ORCHESTRA_CORES` for check
+scripts written for orchestra, to the cores divided among the run's `concurrent` workers (at least
+one), and adds `-p=<share>` to `GOFLAGS` unless that sets `-p` already. A check script that runs
+things side by side (a test runner's workers, a linter's jobs) keeps to it; Go's commands do
+already. Left alone, each check runs as many at once as there are cores, and several workers' checks
+crowd the machine until tests time out in code no ticket touched.
+
 Each rule of the template prevents a way a run goes wrong:
 
 - **Its own worktree; never push; tutti merges.** Workers can't disturb each other or the branch
