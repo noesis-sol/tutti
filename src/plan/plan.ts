@@ -1,13 +1,17 @@
-// tutti plan [--apply] (§ 8.1), as orchestra v0.7.7's plan: blocks links that order the open
+// tutti plan [--apply] (§ 8.1), as orchestra v0.9.0's plan: blocks links that order the open
 // tickets touching the same code, so they run one after the other instead of side by side, the
 // higher-priority ticket first. Tickets are linked when they name the same function, or work on the
-// same small file and aren't compared on it by function, read from their footprints (footprint.ts).
+// same small file and aren't compared on it by function, read from their footprints (footprint.ts):
+// a ticket with commits on its branch is footprinted from what the branch changes, as a run does,
+// and the files git merges by union link nothing.
 // Without --apply the proposal is only printed; with it each link is added with bd dep add, after a
 // warning when a run holds the repository's lock.
 import { Console, Effect, type FileSystem } from "effect"
 import type { ConfigFileInvalid } from "../project/configFile.ts"
 import { readSettings } from "../project/settings.ts"
+import { branchThere } from "../run/closedBranches.ts"
 import {
+  branchFootprint,
   emptyFootprint,
   type Footprint,
   type Mentions,
@@ -23,6 +27,7 @@ import { takes } from "../run/scope.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
+import { branchOf } from "../services/Worktrees.ts"
 
 /** A blocks link: `blocked` waits for `blocker` (bd dep add <blocked> <blocker>). */
 export interface Link {
@@ -81,10 +86,16 @@ const inOrder = (open: ReadonlyArray<Issue>): ReadonlyArray<Issue> =>
   )
 
 /**
- * The ticket's footprint for planning. A predicted footprint is a guess: good enough to keep two
- * tickets apart for a while, not to order them for good.
+ * The ticket's footprint for planning: for a ticket whose branch changes files on top of the
+ * checked-out branch (`branch`), branchFootprint's, as a run's. A predicted footprint is a guess:
+ * good enough to keep two tickets apart for a while, not to order them for good.
  */
-const planFootprint = (issue: Issue, repo: RepoFiles): Footprint => {
+const planFootprint = (
+  issue: Issue,
+  repo: RepoFiles,
+  branch: ReadonlyArray<string> = [],
+): Footprint => {
+  if (branch.length > 0) return branchFootprint(issue, branch, repo)
   const fp = ticketFootprint(issue, repo)
   return fp.predicted ? emptyFootprint : fp
 }
@@ -127,19 +138,23 @@ const planShared = (
  * The links that order the open tickets touching the same code: the higher-priority ticket (then
  * the older one, then the lower ID by compareIds) goes first. `source` gives a repository file's
  * contents, for its line count and the functions it mentions; a file it hasn't (one not written
- * yet) is small and mentions none. Area labels, predicted files and the files the check commands
- * name, unless a ticket's files metadata lists them, don't link tickets, and a pair already ordered
- * by `existing` links, directly or through other tickets, gets none. Each ticket is linked to the
- * nearest one before it first, so tickets touching one function form a chain.
+ * yet) is small and mentions none. Area labels, predicted files, the files git merges by union and
+ * the files the check commands name, unless a ticket's files metadata lists them, don't link
+ * tickets, nor does a file neither ticket is to change (one both only cite), and a pair already
+ * ordered by `existing` links, directly or through other tickets, gets none. Each ticket is linked
+ * to the nearest one before it first, so tickets touching one function form a chain. `branches`
+ * holds, by ticket, the files its branch changes on top of the checked-out branch: a ticket with
+ * some, reopened or carried over, is footprinted from them (`branchFootprint`), as a run does.
  */
 export const planLinks = (
   open: ReadonlyArray<Issue>,
   existing: ReadonlyArray<Link>,
   repo: RepoFiles,
   source: (file: string) => string | undefined,
+  branches: ReadonlyMap<string, ReadonlyArray<string>> = new Map(),
 ): ReadonlyArray<Link> => {
   const tickets = inOrder(open)
-  const fps = tickets.map((issue) => planFootprint(issue, repo))
+  const fps = tickets.map((issue) => planFootprint(issue, repo, branches.get(issue.id)))
   const contents = new Map<string, string>()
   for (const fp of fps) {
     for (const f of fp.files) {
@@ -196,6 +211,31 @@ const beadsProblem = (error: BeadsError): string => {
 }
 
 /**
+ * The files each ticket's branch changes on top of the checked-out branch, since their merge base,
+ * but those git merges by union, for the tickets with a branch. A branch git can't read is left out:
+ * its ticket is footprinted from its text.
+ */
+const branchChanges = (
+  repo: string,
+  open: ReadonlyArray<Issue>,
+): Effect.Effect<ReadonlyMap<string, ReadonlyArray<string>>, never, Git> =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const changes = new Map<string, ReadonlyArray<string>>()
+    for (const issue of open) {
+      const branch = branchOf(issue.id)
+      const read = yield* Effect.gen(function* () {
+        if (!(yield* branchThere(repo, branch))) return []
+        const files = yield* git.changedFiles(repo, "HEAD", branch)
+        const union = yield* git.mergedByUnion(repo, files)
+        return files.filter((f) => !union.includes(f))
+      }).pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
+      if (read.length > 0) changes.set(issue.id, read)
+    }
+    return changes
+  })
+
+/**
  * Warns on stderr when a run, tutti's or orchestra's, holds the lock of the project at repo: it
  * holds back the tickets it hasn't started, but one it has started keeps going whatever it now
  * waits for. A lock that can't be read warns of nothing.
@@ -229,15 +269,28 @@ export const plan = (
       takes({ excludeTypes: settings.queue.exclude_types }, issue),
     )
     const check = settings.checks.fast.command
-    const repoFilesNow = yield* (yield* Git).trackedFiles(repo).pipe(
-      Effect.map((files) => repoFiles(files, check === null ? [] : [check])),
+    const git = yield* Git
+    const repoFilesNow = yield* git.trackedFiles(repo).pipe(
+      Effect.flatMap((files) =>
+        git.mergedByUnion(repo, files).pipe(
+          Effect.orElseSucceed((): ReadonlyArray<string> => []),
+          Effect.map((union) => repoFiles(files, check === null ? [] : [check], union)),
+        ),
+      ),
       Effect.orElseSucceed(() => repoFiles(undefined, check === null ? [] : [check])),
     )
+    const branches = yield* branchChanges(repo, open)
     const sources = yield* readSources(
       repo,
-      open.map((issue) => planFootprint(issue, repoFilesNow)),
+      open.map((issue) => planFootprint(issue, repoFilesNow, branches.get(issue.id))),
     )
-    const links = planLinks(open, existingLinks(listed), repoFilesNow, (file) => sources.get(file))
+    const links = planLinks(
+      open,
+      existingLinks(listed),
+      repoFilesNow,
+      (file) => sources.get(file),
+      branches,
+    )
     if (links.length === 0) {
       return yield* Console.log(
         `No links to add: no two of the ${plural(open.length, "open ticket")} touch the same code without being ordered already.`,

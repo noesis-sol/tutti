@@ -580,7 +580,6 @@ describe("a footprint overlapping a running ticket's", () => {
                   description: "",
                   design: "",
                   acceptance: "",
-                  notes: "",
                   labels: [],
                   metadata: seed.metadata ?? {},
                   files: (seed.metadata?.files ?? []) as ReadonlyArray<string>,

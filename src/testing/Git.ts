@@ -138,6 +138,34 @@ const normalize = (path: string) => {
   return normal.length > 1 && normal.endsWith("/") ? normal.slice(0, -1) : normal
 }
 
+/**
+ * The merge attribute a root .gitattributes gives a path, as git check-attr reads it: the last line
+ * whose pattern matches says, a pattern without a / matching the path's name, one with a / the path
+ * from the root; * and ? match within a name. undefined when no line says.
+ */
+const mergeAttribute = (attributes: string) => {
+  const rules = attributes.split("\n").flatMap((line) => {
+    const [pattern, ...attrs] = line.trim().split(/\s+/)
+    if (pattern === undefined || pattern === "" || pattern.startsWith("#")) return []
+    let value: string | undefined
+    for (const attr of attrs) {
+      if (attr === "merge") value = "set"
+      else if (attr === "-merge" || attr === "!merge") value = "unset"
+      else if (attr.startsWith("merge=")) value = attr.slice("merge=".length)
+    }
+    if (value === undefined) return []
+    const anchored = pattern.includes("/")
+    const source = pattern
+      .replace(/^\//, "")
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, "[^/]*")
+      .replace(/\?/g, "[^/]")
+    return [{ match: new RegExp(anchored ? `^${source}$` : `(^|/)${source}$`), value }]
+  })
+  return (path: string): string | undefined =>
+    rules.findLast((rule) => rule.match.test(path))?.value
+}
+
 /** A message as git commit -m keeps it: trailing spaces and blank lines at either end gone. */
 const cleanMessage = (message: string) => {
   const lines = message.split("\n").map((line) => line.trimEnd())
@@ -936,6 +964,13 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
         trackedFiles: (dir) =>
           operation("read", "ls-files", dir, ["ls-files", "-z"], (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => [...checkout.index.keys()].sort()),
+          ),
+        mergedByUnion: (dir, paths) =>
+          operation("read", "check-attr", dir, ["check-attr", "-z", "--stdin", "merge"], (refuse) =>
+            Effect.map(inRepo(refuse, dir), (checkout) => {
+              const merge = mergeAttribute(checkout.work.get(".gitattributes") ?? "")
+              return paths.filter((path) => merge(path) === "union")
+            }),
           ),
         revParse: (dir, rev) =>
           operation(

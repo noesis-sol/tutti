@@ -41,8 +41,8 @@ import {
 } from "effect"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
-import { ticketIdProblem } from "../services/Worktrees.ts"
-import type { ClosedBranches } from "./closedBranches.ts"
+import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
+import { branchThere, type ClosedBranches } from "./closedBranches.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
@@ -101,16 +101,26 @@ export interface Start {
 export interface Footprints {
   /** The repository's files (git ls-files) and the files the check commands name. */
   readonly repo: Effect.Effect<RepoFiles>
-  /** The files the running ticket's worktree has changed since it left the base; none if unknown. */
+  /**
+   * The files the running ticket's worktree has changed since it left the base, but those git
+   * merges by union; none if unknown.
+   */
   changed(ticket: string): Effect.Effect<ReadonlyArray<string>>
+  /**
+   * The files the ticket's branch changes on top of the base, but those git merges by union: none
+   * without a branch, without commits on it, or if unknown. A ticket with some (reopened, carried
+   * over) is footprinted from them (`branchFootprint`); without `branch`, none is.
+   */
+  branch?(ticket: string): Effect.Effect<ReadonlyArray<string>>
   /** Places the footprints' functions in the files they work on. */
   mentions(footprints: ReadonlyArray<Footprint>): Effect.Effect<Mentions>
 }
 
 /**
- * The footprints of the checkout at `repo`: its files from git, each running ticket's changes from
- * its worktree (`worktree` gives its folder) against `base`, and its files' contents. git failing
- * leaves names judged by their look, and a ticket's changes unknown.
+ * The footprints of the checkout at `repo`: its files from git, those git merges by union among
+ * them, each running ticket's changes from its worktree (`worktree` gives its folder) against
+ * `base`, each ticket's branch's against `base`, and its files' contents. git failing leaves names
+ * judged by their look, none merged by union, and a ticket's changes unknown.
  */
 export const footprintsOf = (options: {
   readonly repo: string
@@ -121,15 +131,36 @@ export const footprintsOf = (options: {
   Effect.gen(function* () {
     const context = yield* Effect.context<Git | FileSystem.FileSystem>()
     const git = yield* Git
+    // The files but those git merges by union, as dir's .gitattributes say; all when git can't say.
+    const withoutUnion = (dir: string, files: ReadonlyArray<string>) =>
+      git.mergedByUnion(dir, files).pipe(
+        Effect.map((union) => files.filter((f) => !union.includes(f))),
+        Effect.orElseSucceed(() => files),
+      )
     return {
       repo: git.trackedFiles(options.repo).pipe(
-        Effect.map((files) => repoFiles(files, options.checkCommands)),
+        Effect.flatMap((files) =>
+          git.mergedByUnion(options.repo, files).pipe(
+            Effect.orElseSucceed((): ReadonlyArray<string> => []),
+            Effect.map((union) => repoFiles(files, options.checkCommands, union)),
+          ),
+        ),
         Effect.orElseSucceed(() => repoFiles(undefined, options.checkCommands)),
       ),
       changed: (ticket) =>
         Effect.flatMap(options.worktree(ticket), (path) =>
-          worktreeChanges(path, options.base),
+          Effect.flatMap(worktreeChanges(path, options.base), (files) => withoutUnion(path, files)),
         ).pipe(
+          Effect.orElseSucceed((): ReadonlyArray<string> => []),
+          Effect.provideContext(context),
+        ),
+      branch: (ticket) =>
+        Effect.gen(function* () {
+          const branch = branchOf(ticket)
+          if (!(yield* branchThere(options.repo, branch))) return []
+          const files = yield* git.changedFiles(options.repo, options.base, branch)
+          return yield* withoutUnion(options.repo, files)
+        }).pipe(
           Effect.orElseSucceed((): ReadonlyArray<string> => []),
           Effect.provideContext(context),
         ),
@@ -368,6 +399,9 @@ export const make = (
     let soloSaid = ""
     // The LIKELY_CONFLICT lines said, each once.
     const warned = new Set<string>()
+    // What the branch of each ticket dispatched or carried changed on top of the base as it
+    // started: one with some is footprinted from them while it runs, as it was when it started.
+    const startBranch = new Map<string, ReadonlyArray<string>>()
     // The tickets the queue draws from, as the last fill read them, and the queue last shown.
     let unclosed: number | null = null
     let shownLast = ""
@@ -497,7 +531,9 @@ export const make = (
         undefined
           ? new Map()
           : yield* options.predictor.predicted
-        yield* logs.write(footprintLine(issue.id, footprintOf(issue, repo, predicted)))
+        const branch = footprints.branch === undefined ? [] : yield* footprints.branch(issue.id)
+        startBranch.set(issue.id, branch)
+        yield* logs.write(footprintLine(issue.id, footprintOf(issue, repo, predicted, branch)))
       })
 
     // The slots as the ledger has the tickets now: those merged since let go of what they held.
@@ -627,6 +663,16 @@ export const make = (
             changes.set(id, files)
             return files
           })
+        // What a waiting ticket's branch changes, read once a fill.
+        const branches = new Map<string, ReadonlyArray<string>>()
+        const branchIn = (id: string) =>
+          Effect.gen(function* () {
+            const known = branches.get(id)
+            if (known !== undefined || footprints?.branch === undefined) return known ?? []
+            const files = yield* footprints.branch(id)
+            branches.set(id, files)
+            return files
+          })
 
         // Two running tickets' worktrees changing one file: the second to merge may conflict.
         const runningNow = (yield* Ref.get(slots)).running
@@ -718,12 +764,13 @@ export const make = (
             }
             const running = new Map<string, Footprint>()
             for (const [id, issue] of [...s.issues, ...read]) {
-              const fp = footprintOf(issue, repo, predicted)
+              const fp = footprintOf(issue, repo, predicted, startBranch.get(id) ?? [])
               running.set(id, withChanges(fp, yield* changedIn(id), repo))
             }
-            const mine = new Map(
-              asked.map((issue) => [issue.id, footprintOf(issue, repo, predicted)]),
-            )
+            const mine = new Map<string, Footprint>()
+            for (const issue of asked) {
+              mine.set(issue.id, footprintOf(issue, repo, predicted, yield* branchIn(issue.id)))
+            }
             const mentions = yield* footprints.mentions([...mine.values(), ...running.values()])
             for (const issue of asked) {
               const held = overlapHold(mine.get(issue.id) as Footprint, running, mentions)
@@ -786,7 +833,10 @@ export const make = (
             break
           }
           yield* settle(start.id, undefined, ids)
-          const footprint = repo === undefined ? undefined : footprintOf(start, repo, predicted)
+          const branch = yield* branchIn(start.id)
+          startBranch.set(start.id, branch)
+          const footprint =
+            repo === undefined ? undefined : footprintOf(start, repo, predicted, branch)
           if (!(yield* dispatch(start, ids, footprint))) break
           dispatched.push(start.id)
         }

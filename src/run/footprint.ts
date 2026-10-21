@@ -1,11 +1,17 @@
-// Footprints (§ 5 item 5, § 2): where a ticket works, as orchestra v0.7.7 reads it. The files and
-// functions its title, description, design, acceptance criteria and notes name, its area:<name>
-// labels and the files its `files` metadata lists (folders and globs among them), resolved against
-// git ls-files; with none of these, its `predicted_files`. The files the project's check commands
-// name are left out unless the metadata lists them, as is the spec the ticket's `spec` metadata
-// cites: nearly every ticket asks for the check to pass, and cites its spec, without changing them.
-// A running ticket's footprint also grows with the files its worktree has changed (§ 5). Two tickets
-// whose footprints overlap don't run side by side.
+// Footprints (§ 5 item 5, § 2): where a ticket works, as orchestra v0.9.0 reads it. The files and
+// functions its title, description, design and acceptance criteria name, its area:<name> labels and
+// the files its `files` metadata lists (folders and globs among them), resolved against git
+// ls-files; with none of these, its `predicted_files`. Not its notes: they say what happened to it
+// (the run's notes, its workers', a reopening's), naming files and functions it doesn't change. The
+// files the project's check commands name are left out unless the metadata lists them, as is the
+// spec the ticket's `spec` metadata cites: nearly every ticket asks for the check to pass, and cites
+// its spec, without changing them. The files git merges by union (`merge=union` in .gitattributes,
+// as tutti init offers for the changelog) are left out always: two tickets' lines in one can't
+// conflict, git keeps both. A ticket with commits on its branch (reopened, carried over) is
+// footprinted from what its branch changes, its files metadata and its area labels
+// (`branchFootprint`). A running ticket's footprint also grows with the files its worktree has
+// changed (§ 5). Two tickets whose footprints overlap don't run side by side; a file both name holds
+// them apart only when one of them is to change it (`sharedFile`).
 import { join, posix } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
 import type { Issue } from "../services/Beads.ts"
@@ -22,8 +28,19 @@ export interface Footprint {
   readonly funcs: ReadonlyArray<string>
   /** The ticket's area:<name> labels, sorted. */
   readonly areas: ReadonlyArray<string>
+  /**
+   * The files among `files` the ticket names only to read, sorted: those its text names when its
+   * files metadata lists others (the files it changes), and, without files metadata, a document
+   * (.md, .txt) its text names in no sentence asking to change it, as tickets cite the project's
+   * guides and spikes for conventions and findings.
+   */
+  readonly cited: ReadonlyArray<string>
+  /** The files metadata lists the files the ticket changes: a function it names changes no other. */
+  readonly listed: boolean
   /** `files` are the predictor's guess, for a ticket naming nothing. */
   readonly predicted: boolean
+  /** `files` are those the ticket's branch changes, with those its metadata lists (`branchFootprint`). */
+  readonly branch: boolean
   /** The files the ticket's worktree has changed, sorted (`withChanges`). */
   readonly changed: ReadonlyArray<string>
 }
@@ -35,7 +52,6 @@ export type FootprintTicket = Pick<
   | "description"
   | "design"
   | "acceptance"
-  | "notes"
   | "labels"
   | "metadata"
   | "files"
@@ -53,7 +69,10 @@ export const emptyFootprint: Footprint = {
   files: [],
   funcs: [],
   areas: [],
+  cited: [],
+  listed: false,
   predicted: false,
+  branch: false,
   changed: [],
 }
 
@@ -65,16 +84,36 @@ export const isEmpty = (fp: Footprint): boolean =>
 export const showFootprint = (fp: Footprint): string =>
   isEmpty(fp)
     ? "nothing named"
-    : [...fp.funcs, ...fp.files, ...fp.areas].join(", ") + (fp.predicted ? " (predicted)" : "")
+    : [...fp.funcs, ...fp.files, ...fp.areas].join(", ") +
+      (fp.predicted ? " (predicted)" : "") +
+      (fp.branch ? " (from its branch)" : "")
 
+// The rest of a run of a path token outside brackets: letters, digits, marks, _ . / -, and a +
+// starting a name after a /.
+const pathRest = String.raw`(?:/\+[\p{L}\p{M}\p{N}_]|[\p{L}\p{M}\p{N}_./-])*`
 // A path token is anything that could be a path: loop.go, src/run/loop.ts:661 (the line number is
 // left off), docs/café.md, Loop.merge (sorted out later). Letters and digits of any script count,
-// and combining marks: macOS often writes é as e and U+0301.
-const pathToken = /[\p{L}\p{M}\p{N}_./-]+/gu
+// and combining marks: macOS often writes é as e and U+0301. So do brackets, single or double,
+// around a name inside a word, as in the routes of a Next.js or SvelteKit project (pages/[id].tsx,
+// app/[[...slug]]/page.tsx), but not one starting it: [README.md](/README.md), a Markdown link,
+// names README.md. So does a + starting a name at the word's start or after a /, as in a
+// SvelteKit route's files (src/routes/[slug]/+page.svelte, +layout.ts), but no other: C++, 1.26+
+// and the + of a+b, which eachPathToken drops, are no part of a path.
+const pathToken = new RegExp(
+  String.raw`(?:\+[\p{L}\p{M}\p{N}_]|[\p{L}\p{M}\p{N}_./-])${pathRest}` +
+    String.raw`(?:(?:\[[\p{L}\p{M}\p{N}_.=-]+\]|\[\[[\p{L}\p{M}\p{N}_.=-]+\]\])${pathRest})*`,
+  "gu",
+)
+// A part of a path token without brackets or a +, which a word with them may be made of instead: an
+// index expression (files[i], Footprint.files[0]), or a + marking an added line.
+const plainPathToken = /[\p{L}\p{M}\p{N}_./-]+/gu
 // A path token's ASCII part, which may be a path run into words of a script written without spaces:
 // 修改loop.go, loop.goを直す.
 const asciiPathToken = /[\w./-]+/g
 const extension = /\.[A-Za-z][A-Za-z0-9]*$/
+// A name whose brackets, single or double, each close around a name within a part of its path, as
+// in a route of a Next.js or SvelteKit project: pages/[id].tsx, app/[[...slug]]/page.tsx.
+const bracketed = /^(?:[^[\]]|\[[^[\]/]+\]|\[\[[^[\]/]+\]\])*$/
 // Type.method, which a path token without a known extension may be.
 const typeMethod = /^[A-Z]\w*\.[A-Za-z_]\w*$/
 // A function named with its parentheses: refreshBranch(), Loop.merge(), o.log.Raw().
@@ -88,6 +127,27 @@ const callIn = /\b((?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*)\(/g
 const camelCase = /^[A-Za-z_]\w*[a-z0-9][A-Z]\w*$/
 // A word of source code, for the functions a file mentions.
 const identifier = /[A-Za-z_]\w*/g
+// The end of a sentence of a ticket's text: a line's end, or a . ! or ? and the spaces after it (a
+// closing quote or bracket between them), unless a lower-case letter follows (e.g. docs/x.md).
+const sentenceBreak = /[.!?]["'’”)\]]*\s+|\n/g
+// A word asking for a change to a document a sentence names near it (asksChange), before or after
+// it: "Update docs/running.md", "Add the result to docs/spikes/07-compile.md", "docs/x.md updated".
+const changeWord = new RegExp(
+  String.raw`\b(?:add|added|adding|update|updated|updating|change|changed|changing|edit|edited|` +
+    "editing|write|written|writing|rewrite|rewritten|reword|reworded|document|fix|fixed|" +
+    "correct|corrected|mention|say|describe|explain|note|record|remove|removed|delete|" +
+    String.raw`deleted|drop|replace|rename|move|put|pin|keep|extend|create|split|trim|shorten|expand)\b`,
+  "i",
+)
+// A word saying, after a document it follows, what the document is to do or have: "docs/setup.md
+// says how to run them". Before a document, its subject is something else ("the help says it
+// disables CLAUDE.md").
+const changesWord = new RegExp(
+  String.raw`\b(?:adds|updates|changes|edits|writes|rewrites|rewords|fixes|mentions|says|describes|` +
+    "explains|notes|records|removes|deletes|drops|replaces|renames|moves|extends|creates|" +
+    String.raw`lists|names|gives|shows|covers)\b`,
+  "i",
+)
 
 const setOf = (words: string): ReadonlySet<string> => new Set(words.split(/\s+/).filter(Boolean))
 
@@ -120,6 +180,15 @@ const goWords = setOf(`break case chan const continue default defer else fallthr
 // The names tests give a *testing.T, B or F, and those types' methods: t.Run() is no function of
 // the project's.
 const testVars = setOf("t b f tb")
+// The extensions of documents, files of prose that tickets cite for conventions and findings more
+// often than they change them.
+const docExtensions = setOf("md markdown mdx txt rst adoc")
+// The words that, among the two before a document, cite it: "per docs/setup.md", "as docs/x.md says".
+const citeWords = setOf("per see following as like cf according via")
+// Around a document a sentence names, how many words before it and after it a changeWord is looked
+// for in: "Add the result to docs/spikes/07-compile.md", "docs/running.md updated".
+const changeBefore = 8
+const changeAfter = 3
 const testingMethods = setOf(`Add Attr Chdir Cleanup Context Deadline Error Errorf Fail FailNow
   Failed Fatal Fatalf Fuzz Helper Log Logf Loop Name Output Parallel ReportAllocs ReportMetric
   ResetTimer Run RunParallel SetBytes Setenv Skip SkipNow Skipf Skipped StartTimer StopTimer TempDir`)
@@ -250,21 +319,31 @@ const partMatch = (pattern: string, name: string): boolean => {
   return partPatterns.get(pattern)?.test(name) ?? false
 }
 
-/** Whether a path's parts match the pattern's: each as partMatch, but **, which matches any number. */
+/**
+ * Whether a path's parts match the pattern's: each as partMatch, but **, which matches any number.
+ * `asWritten`, a part also matches the name it is written as: a route of a Next.js or SvelteKit
+ * project is named with brackets (pages/[id].tsx, src/routes/[slug]/), which partMatch takes for a
+ * class (i.tsx or d.tsx).
+ */
 export const globMatch = (
   pattern: ReadonlyArray<string>,
   parts: ReadonlyArray<string>,
+  asWritten = false,
 ): boolean => {
   const [first, ...rest] = pattern
   if (first === undefined) return parts.length === 0
   if (first === "**") {
     for (let i = 0; i <= parts.length; i++) {
-      if (globMatch(rest, parts.slice(i))) return true
+      if (globMatch(rest, parts.slice(i), asWritten)) return true
     }
     return false
   }
   const [name, ...others] = parts
-  return name !== undefined && partMatch(first, name) && globMatch(rest, others)
+  return (
+    name !== undefined &&
+    ((asWritten && first === name) || partMatch(first, name)) &&
+    globMatch(rest, others, asWritten)
+  )
 }
 
 /**
@@ -282,15 +361,22 @@ export interface RepoFiles {
   file(name: string): string
   /** Whether a check command names the file. */
   checks(file: string): boolean
+  /**
+   * Whether git merges the file by union (`merge=union` in .gitattributes): two tickets' lines in
+   * it can't conflict, as git keeps both, so it never holds them apart. A folder is merged by none.
+   */
+  unioned(file: string): boolean
 }
 
 /**
  * Indexes the files git tracks (undefined when git couldn't list them) and finds those the check
- * commands (`scripts/check-fast.sh`, `bun test && sh scripts/lint.sh`) name among them.
+ * commands (`scripts/check-fast.sh`, `bun test && sh scripts/lint.sh`) name among them. `union`
+ * holds the files git merges by union (`Git.mergedByUnion`), as git lists them.
  */
 export const repoFiles = (
   tracked: ReadonlyArray<string> | undefined,
   checkCommands: ReadonlyArray<string> = [],
+  union: Iterable<string> = [],
 ): RepoFiles => {
   // The files as git lists them, by their NFC form: two whose names differ only in form are both meant.
   const files = new Map<string, Array<string>>()
@@ -323,7 +409,7 @@ export const repoFiles = (
     return names.flatMap((n) => {
       const parts = n.split("/")
       for (let end = 1; end <= parts.length; end++) {
-        if (globMatch(pat, parts.slice(0, end))) return formsOf(n)
+        if (globMatch(pat, parts.slice(0, end), true)) return formsOf(n)
       }
       return []
     })
@@ -340,7 +426,18 @@ export const repoFiles = (
       if (folder) return [`${name}/`]
       return explicit || name.includes("/") || named ? [name] : []
     }
-    if (explicit && /[*?[]/.test(name)) return glob(name)
+    if (explicit && /[*?[]/.test(name)) {
+      // A name with brackets around names and no * or ? (pages/[id].tsx, app/[[...slug]]/) also
+      // means the file or folder of that name, one the ticket adds among them.
+      const matched = glob(name)
+      if (/[*?]/.test(name) || !bracketed.test(name)) return matched
+      return sorted([...matched, ...literal(name, explicit, folder)])
+    }
+    return literal(name, explicit, folder)
+  }
+
+  // What a cleaned name means as it is written, not as a glob.
+  const literal = (name: string, explicit: boolean, folder: boolean): ReadonlyArray<string> => {
     const found = [...formsOf(name)]
     for (const n of byBase.get(basename(name)) ?? []) {
       if (n.endsWith(`/${name}`)) found.push(...formsOf(n))
@@ -358,6 +455,7 @@ export const repoFiles = (
     return explicit || (name.includes("/") && dirs.has(dirname(name))) ? [name] : []
   }
 
+  const unions = new Set(union)
   const check = new Set<string>()
   for (const command of checkCommands) {
     eachPathToken(command, (token) => {
@@ -376,24 +474,47 @@ export const repoFiles = (
       return forms.includes(name) ? name : (forms[0] ?? nfc(name))
     },
     checks: (f) => check.has(f),
+    unioned: (f) => !f.endsWith("/") && unions.has(f),
   }
 }
 
 /**
  * Calls take with each word of text that may be a path: with an extension, and neither an absolute
- * path nor a URL, which aren't in the repository. take says whether the word names something. A
- * word with characters outside ASCII that names nothing is tried in its ASCII parts instead: a path
- * run into words of a script written without spaces (修改loop.go, loop.goを直す) is one of them.
+ * path nor a URL, which aren't in the repository. take says whether the word names something. A +
+ * starts a word only after a space or punctuation that isn't a closing bracket: after a letter,
+ * digit, mark, _ . - + or a closing bracket it joins two words of an expression (a+b.go, x[0]+y.go,
+ * C++), and is left off. A word with brackets or a + that names nothing is tried in its parts
+ * without them instead: an index expression (Footprint.files[0]) and a + marking an added line
+ * (+loop.go) are among them. A word with characters outside ASCII that names nothing is tried in
+ * its ASCII parts: a path run into words of a script written without spaces (修改loop.go,
+ * loop.goを直す) is one of them.
  */
 const eachPathToken = (text: string, take: (token: string) => boolean): void => {
-  for (const [match] of text.matchAll(pathToken)) {
-    const word = trimRight(match)
-    if (word.startsWith("/")) continue // an absolute path or a URL, no part of which is in the repository
-    if ((extension.test(word) && take(word)) || ![...word].some(nonASCII)) continue
-    for (const [ascii] of word.matchAll(asciiPathToken)) {
-      const part = trimRight(ascii)
-      if (!part.startsWith("/") && extension.test(part)) take(part)
-    }
+  for (const match of text.matchAll(pathToken)) {
+    const before = [...text.slice(0, match.index)].at(-1) ?? ""
+    takePath(joinsWords(before) ? match[0].replace(/^\+/, "") : match[0], take)
+  }
+}
+
+/**
+ * Whether c, the character before a + starting a path token, makes the + join two words of an
+ * expression rather than start a name: a letter, digit, mark, _ . - + or a closing bracket.
+ */
+const joinsWords = (c: string): boolean => /^[\p{L}\p{M}\p{N}_.\-+)\]}]$/u.test(c)
+
+/** Calls take with word, a path token, or with its parts, as eachPathToken says. */
+const takePath = (token: string, take: (token: string) => boolean): void => {
+  const word = trimRight(token)
+  if (word.startsWith("/")) return // an absolute path or a URL, no part of which is in the repository
+  if (extension.test(word) && take(word)) return
+  if (/[[\]+]/.test(word)) {
+    for (const [part] of word.matchAll(plainPathToken)) takePath(part, take)
+    return
+  }
+  if (![...word].some(nonASCII)) return
+  for (const [ascii] of word.matchAll(asciiPathToken)) {
+    const part = trimRight(ascii)
+    if (!part.startsWith("/") && extension.test(part)) take(part)
   }
 }
 
@@ -439,63 +560,165 @@ const specFiles = (ticket: FootprintTicket, repo: RepoFiles): ReadonlySet<string
   return new Set(typeof spec === "string" ? repo.resolve(spec, false) : [])
 }
 
+/** Whether p, a file and not a folder, is a document: prose (.md, .txt) that tickets often cite. */
+export const isDocument = (p: string): boolean =>
+  !p.endsWith("/") && docExtensions.has(extensionOf(p))
+
+/** The sentences of text (sentenceBreak), each with the break that ends it. */
+const sentences = (text: string): ReadonlyArray<string> => {
+  const out: Array<string> = []
+  let start = 0
+  for (const m of text.matchAll(sentenceBreak)) {
+    const end = m.index + m[0].length
+    // e.g. docs/x.md: the sentence goes on.
+    if (m[0] !== "\n" && /^\p{Ll}/u.test(text.slice(end))) continue
+    out.push(text.slice(start, end))
+    start = end
+  }
+  out.push(text.slice(start))
+  return out
+}
+
+const letter = /\p{L}/u
+
+/**
+ * Whether a sentence, as its words, asks to change the document its i-th word names: the document
+ * starts it, after a list's marker ("- docs/running.md: say …", "CLAUDE.md and docs/setup.md say
+ * …"), or, unless one of the two words before it is a citeWord, a changeWord is among the
+ * changeBefore words before it (none when it opens a parenthesis) or the changeAfter words after
+ * it, or a changesWord among those after it. A sentence citing it ("Reproduce per docs/setup.md",
+ * "Spike 1 (docs/spikes/01-sdk.md, item 4) found that …") does none of these.
+ */
+export const asksChange = (words: ReadonlyArray<string>, i: number): boolean => {
+  if (i === words.findIndex((w) => letter.test(w))) return true
+  for (const w of words.slice(Math.max(0, i - 2), i)) {
+    if (citeWords.has(w.replace(/^\P{L}+|\P{L}+$/gu, "").toLowerCase())) return false
+  }
+  const before = (words[i] ?? "").startsWith("(")
+    ? ""
+    : words.slice(Math.max(0, i - changeBefore), i).join(" ")
+  const after = words.slice(i + 1, i + 1 + changeAfter).join(" ")
+  return changeWord.test(before) || changeWord.test(after) || changesWord.test(after)
+}
+
+/**
+ * The repository files the words of text that may be paths name, but those named in passing, each
+ * with whether text asks to change it: any file but a document, and a document a sentence asks to
+ * change (asksChange); and the Type.method words among them that name no file.
+ */
+const pathsIn = (
+  text: string,
+  repo: RepoFiles,
+  inPassing: (file: string) => boolean,
+): { readonly files: Map<string, boolean>; readonly funcs: Set<string> } => {
+  const files = new Map<string, boolean>()
+  const funcs = new Set<string>()
+  for (const sentence of sentences(text)) {
+    // A path token holds no space, so each is in one word, and starts it as it would the text.
+    const words = sentence.split(/\s+/).filter(Boolean)
+    words.forEach((word, i) => {
+      eachPathToken(word, (token) => {
+        const found = repo.resolve(token, false)
+        if (found.length > 0) {
+          for (const f of found) {
+            if (inPassing(f)) continue // "scripts/check.sh passes" says nothing of where a ticket works
+            files.set(f, files.get(f) === true || !isDocument(f) || asksChange(words, i))
+          }
+          return true
+        }
+        if (typeMethod.test(token) && !sourceExtensions.has(extensionOf(token))) {
+          funcs.add(token)
+          return true
+        }
+        return false
+      })
+    })
+  }
+  return { files, funcs }
+}
+
+/** The ticket's area:<name> labels, sorted. */
+const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string> =>
+  sorted(ticket.labels.filter((l) => l.startsWith(AreaPrefix) && l.length > AreaPrefix.length))
+
 /**
  * Where the ticket works: the files and functions named in its title and text, its area labels and
  * the files its metadata lists; with none of these, the files predicted for it (`predicted_files`).
  *
- * - **Text** names a file by its path (`src/run/ledger.ts:120`), its base name (`ledger.ts`, every
- *   file of that name) or a partial path (`run/ledger.ts`), and a new file by its path in a folder
- *   that exists. Functions are `Type.method`, a call (`refreshBranch()`, not `len(x)`, `os.Exit()` or
+ * - **Text** is the title, description, design and acceptance criteria, not the notes. It names a
+ *   file by its path (`src/run/ledger.ts:120`), its base name (`ledger.ts`, every file of that
+ *   name) or a partial path (`run/ledger.ts`), and a new file by its path in a folder that exists.
+ *   A path keeps its brackets and a + starting a name (`src/routes/[slug]/+page.svelte`).
+ *   Functions are `Type.method`, a call (`refreshBranch()`, not `len(x)`, `os.Exit()` or
  *   `t.Run()`), or a camel-case name in backticks (`waitSettled`, not `GitHub`). Text names no
  *   folder or glob.
  * - **The files metadata** also takes a folder (`src/run/`, or `run/`), meaning the files under it
  *   and, kept as `src/run/`, those another ticket adds there, and a glob (`*.ts`, `src/**\/*.ts`)
  *   meaning the files it matches. A name that means none of these is a file or folder the ticket adds.
- * - **Left out**: names outside the repository (`../x.ts`, `/etc/passwd`), and the files the check
- *   commands name and the spec the `spec` metadata cites, unless the files metadata lists them.
+ * - **Cited**: with files metadata, the files its text names are those it reads; without, so is a
+ *   document its text names in no sentence asking to change it (`per CLAUDE.md`, not
+ *   `Update docs/guide.md`). A file cited holds no other ticket apart from it (`sharedFile`).
+ * - **Left out**: names outside the repository (`../x.ts`, `/etc/passwd`), the files git merges by
+ *   union, and the files the check commands name and the spec the `spec` metadata cites, unless
+ *   the files metadata lists them.
  */
 export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footprint => {
-  const text = [ticket.title, ticket.description, ticket.design, ticket.acceptance, ticket.notes]
+  const text = [ticket.title, ticket.description, ticket.design, ticket.acceptance].join("\n")
   const spec = specFiles(ticket, repo)
   const inPassing = (f: string) => repo.checks(f) || spec.has(f)
-  const files = new Set<string>()
-  const funcs = new Set<string>()
-  eachPathToken(text.join("\n"), (token) => {
-    const found = repo.resolve(token, false)
-    if (found.length > 0) {
-      for (const f of found) if (!inPassing(f)) files.add(f)
-      return true
-    }
-    if (typeMethod.test(token) && !sourceExtensions.has(extensionOf(token))) {
-      funcs.add(token)
-      return true
-    }
-    return false
-  })
-  for (const f of callsIn(text.join("\n"))) funcs.add(f)
-  for (const f of codeSpansIn(text.join("\n"))) funcs.add(f)
-  for (const listed of ticket.files) for (const f of repo.resolve(listed, true)) files.add(f)
-  const areas = ticket.labels.filter(
-    (l) => l.startsWith(AreaPrefix) && l.length > AreaPrefix.length,
-  )
+  const { files, funcs } = pathsIn(text, repo, inPassing)
+  for (const f of callsIn(text)) funcs.add(f)
+  for (const f of codeSpansIn(text)) funcs.add(f)
+  const listed = ticket.files.length > 0
+  // The files it changes are listed: those its text names it reads.
+  if (listed) for (const f of files.keys()) files.set(f, false)
+  for (const name of ticket.files) for (const f of repo.resolve(name, true)) files.set(f, true)
+  for (const f of [...files.keys()]) if (repo.unioned(f)) files.delete(f)
   const fp: Footprint = {
-    files: sorted(files),
+    ...emptyFootprint,
+    files: sorted(files.keys()),
     funcs: sorted(funcs),
-    areas: sorted(areas),
-    predicted: false,
-    changed: [],
+    areas: areasOf(ticket),
+    cited: sorted([...files].filter(([, change]) => !change).map(([f]) => f)),
+    listed,
   }
   if (!isEmpty(fp)) return fp
   const predicted = new Set<string>()
-  for (const listed of ticket.predictedFiles) {
-    for (const f of repo.resolve(listed, false)) if (!inPassing(f)) predicted.add(f)
+  for (const name of ticket.predictedFiles) {
+    for (const f of repo.resolve(name, false)) {
+      if (!inPassing(f) && !repo.unioned(f)) predicted.add(f)
+    }
   }
   return { ...emptyFootprint, files: sorted(predicted), predicted: predicted.size > 0 }
 }
 
 /**
+ * The footprint of a ticket whose branch changes `changed` on top of the base (reopened, or
+ * carried over): it has done its work there, and its text names what it read and was told as
+ * well. Those files and the ones its files metadata lists, all to be changed, and its area labels;
+ * not what its text names. The files git merges by union are left out; those the check commands
+ * name and its spec are kept: the branch changes them.
+ */
+export const branchFootprint = (
+  ticket: Pick<FootprintTicket, "files" | "labels">,
+  changed: ReadonlyArray<string>,
+  repo: RepoFiles,
+): Footprint => {
+  const files = new Set(changed.filter(repoPath).map((f) => repo.file(f)))
+  for (const name of ticket.files) for (const f of repo.resolve(name, true)) files.add(f)
+  return {
+    ...emptyFootprint,
+    files: sorted([...files].filter((f) => !repo.unioned(f))),
+    areas: areasOf(ticket),
+    listed: true,
+    branch: true,
+  }
+}
+
+/**
  * The footprint grown by the files its ticket's worktree has changed (`worktreeChanges`), in the
- * form the repository's files are in, so they compare with those other tickets name.
+ * form the repository's files are in, so they compare with those other tickets name; but those git
+ * merges by union.
  */
 export const withChanges = (
   fp: Footprint,
@@ -503,7 +726,13 @@ export const withChanges = (
   repo: RepoFiles,
 ): Footprint => ({
   ...fp,
-  changed: sorted([...fp.changed, ...changed.filter(repoPath).map((f) => repo.file(f))]),
+  changed: sorted([
+    ...fp.changed,
+    ...changed
+      .filter(repoPath)
+      .map((f) => repo.file(f))
+      .filter((f) => !repo.unioned(f)),
+  ]),
 })
 
 /**
@@ -613,11 +842,24 @@ export const sharedFunc = (a: Footprint, b: Footprint): string =>
   a.funcs.find((x) => b.funcs.some((y) => funcsMeet(x, y))) ?? ""
 
 /**
+ * Whether the footprint is to change p, a file or a folder: its worktree changed p, it names p or
+ * a folder p is under and doesn't only cite it (`cited`), or, `named` true, it names a function p
+ * mentions while its files metadata lists none and p is no document, which mentions functions
+ * without holding them.
+ */
+const changes = (fp: Footprint, p: string, named: boolean): boolean =>
+  fp.changed.includes(p) ||
+  (named && !fp.listed && !isDocument(p)) ||
+  fp.files.some((f) => (f === p || (f.endsWith("/") && p.startsWith(f))) && !fp.cited.includes(f))
+
+/**
  * A file both footprints work on, for which keep holds (any, without keep), or "". A ticket works
  * on a file it names, one under a folder it names and one its worktree changed (takesIn), and on
  * one the other names that mentions a function it names; a file both work on is shared unless both
  * name functions it mentions: they are compared by function instead. A folder both name is shared
  * only when neither names a file in it (a new folder): otherwise its files are compared one by one.
+ * A file both work on is shared only when one of them is to change it (`changes`): two tickets that
+ * only cite a document, or name files their files metadata doesn't list, don't conflict over it.
  */
 export const sharedFile = (
   a: Footprint,
@@ -633,9 +875,8 @@ export const sharedFile = (
     seen.add(p)
     const aIn = namesIn(a, p)
     const bIn = namesIn(b, p)
-    if ((aIn || takesIn(a, p)) && (bIn || takesIn(b, p)) && !(aIn && bIn) && (keep?.(p) ?? true)) {
-      return p
-    }
+    const both = (aIn || takesIn(a, p)) && (bIn || takesIn(b, p)) && !(aIn && bIn)
+    if (both && (changes(a, p, aIn) || changes(b, p, bIn)) && (keep?.(p) ?? true)) return p
   }
   return ""
 }

@@ -242,20 +242,30 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
 
 Tickets that touch the same code don't run side by side. Each ticket has a **footprint**:
 
-- the files and functions its title, description, design, acceptance criteria and notes name
-  (`src/run/merge.ts:120`, `merge.ts`, `Loop.merge`, `refreshBranch()`, a camel-case name in
-  backticks), checked against `git ls-files`;
+- the files and functions its title, description, design and acceptance criteria name
+  (`src/run/merge.ts:120`, `merge.ts`, `src/routes/[slug]/+page.svelte`, `Loop.merge`,
+  `refreshBranch()`, a camel-case name in backticks), checked against `git ls-files`; not its notes,
+  which say what happened to it;
 - its `area:<name>` labels;
 - the files its `files` metadata lists (`bd update <id> --set-metadata files=a.ts,b.ts`), where a folder
   (`src/run/`) means every file under it and a glob (`src/**/*.test.ts`) every file it matches;
 - for a ticket naming none of these, the `predicted_files` metadata, if it has one;
 - once it runs, the files its worktree has changed, read every 30 seconds.
 
+A ticket with commits on its branch (`tutti/<id>`: reopened, or carried over) is footprinted from the
+files its branch changes on top of the base, its `files` metadata and its area labels instead, not
+from its text, which names what it read and was told as well.
+
 The files the checks' commands name are left out, unless the `files` metadata lists them: nearly every
-ticket says "`scripts/check-fast.sh` passes" without changing it. The log shows each ticket's footprint
-as it is dispatched: `<id> footprint: Loop.merge, src/run/merge.ts, area:run`, the predicted files
-marked `(predicted)`, or `nothing named`. Two tickets overlap when they share
-an area label, a function or a file; in a file both name functions in, they are compared by function.
+ticket says "`scripts/check-fast.sh` passes" without changing it. The files git merges by union
+(`CHANGELOG.md merge=union` in `.gitattributes`) are always left out: git keeps both tickets' lines.
+The log shows each ticket's footprint as it is dispatched: `<id> footprint: Loop.merge,
+src/run/merge.ts, area:run`, the predicted files marked `(predicted)`, a branch's `(from its
+branch)`, or `nothing named`. Two tickets overlap when they share an area label, a function or a file;
+in a file both name functions in, they are compared by function. A file both name holds them apart
+only when one of them is to change it: its `files` metadata lists it, or, without `files` metadata,
+its text names it, a document (`.md`, `.txt`) only in a sentence asking to change it ("Update
+docs/guide.md", not "per CLAUDE.md"); or its worktree has changed it.
 A ticket that overlaps a running one is skipped, not waited for:
 `skipping <id>: touches merge.ts, like running <other>`. When two running workers change the same
 file anyway, the log warns: `LIKELY_CONFLICT: <a> and <b> both edit <file>; the second to merge may

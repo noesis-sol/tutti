@@ -83,6 +83,16 @@ export interface StatusEntry {
 export const splitNul = (output: string): ReadonlyArray<string> =>
   output.split("\0").filter((field) => field !== "")
 
+/** Reads `git check-attr -z merge`: a path, the attribute and its value for each; those `union`. */
+export const parseUnion = (output: string): ReadonlyArray<string> => {
+  const fields = output.split("\0")
+  const union: Array<string> = []
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    if (fields[i + 2] === "union") union.push(fields[i] ?? "")
+  }
+  return union
+}
+
 /** Reads `git worktree list --porcelain -z`: attribute lines ended by NULs, a worktree's last by two. */
 export const parseWorktrees = (output: string): ReadonlyArray<Worktree> => {
   const worktrees: Array<Worktree> = []
@@ -258,6 +268,14 @@ export class Git extends Context.Service<
     ): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git ls-files: the files git tracks. */
     trackedFiles(dir: string): Effect.Effect<ReadonlyArray<string>, GitError>
+    /**
+     * git check-attr merge: those of `paths` git merges by union (`merge=union` in .gitattributes),
+     * tracked or not, as dir's .gitattributes say.
+     */
+    mergedByUnion(
+      dir: string,
+      paths: ReadonlyArray<string>,
+    ): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git rev-parse --verify: the full hash `rev` names; GitFailed when it names none. */
     revParse(dir: string, rev: string): Effect.Effect<string, GitError>
     /** git rev-parse --git-common-dir: the absolute path of the git folder every worktree shares. */
@@ -296,6 +314,7 @@ export class Git extends Context.Service<
           args: ReadonlyArray<string>,
           timeLimit: Duration.Input,
           env?: Readonly<Record<string, string>>,
+          stdin?: string,
         ) => {
           const command: Command = {
             command: bin,
@@ -303,6 +322,7 @@ export class Git extends Context.Service<
             timeLimit,
             cwd: dir,
             maxOutputBytes,
+            ...(stdin === undefined ? {} : { stdin }),
             // No prompt for credentials or an editor can hold a command until its time limit.
             env: { GIT_TERMINAL_PROMPT: "0", GIT_EDITOR: "true", ...env },
           }
@@ -334,9 +354,9 @@ export class Git extends Context.Service<
         // A read takes no optional lock (the index's, as status refreshes it), so it can't make a
         // worker's own git command fail on a lock held for a moment. Its output past exec's cap
         // would have lost its start, a partial first field and the entries before it, so it fails.
-        const gitRead = (op: string, dir: string, args: ReadonlyArray<string>) =>
+        const gitRead = (op: string, dir: string, args: ReadonlyArray<string>, stdin?: string) =>
           Effect.flatMap(
-            git(op, dir, args, limits.read, { GIT_OPTIONAL_LOCKS: "0" }),
+            git(op, dir, args, limits.read, { GIT_OPTIONAL_LOCKS: "0" }, stdin),
             ({ shown, output }) =>
               output.truncated.stdout
                 ? Effect.fail(
@@ -350,8 +370,8 @@ export class Git extends Context.Service<
                 : Effect.succeed({ shown, output }),
           )
 
-        const read = (op: string, dir: string, args: ReadonlyArray<string>) =>
-          Effect.flatMap(gitRead(op, dir, args), succeeded(op))
+        const read = (op: string, dir: string, args: ReadonlyArray<string>, stdin?: string) =>
+          Effect.flatMap(gitRead(op, dir, args, stdin), succeeded(op))
 
         const write = (op: string, dir: string, args: ReadonlyArray<string>) =>
           writer.withLock(Effect.flatMap(git(op, dir, args, limits.write), succeeded(op)))
@@ -547,6 +567,20 @@ export class Git extends Context.Service<
               splitNul,
             ),
           trackedFiles: (dir) => Effect.map(read("ls-files", dir, ["ls-files", "-z"]), splitNul),
+          // The paths go in on stdin, NUL-separated, so a repository of any size fits; -z gives
+          // back a path, the attribute and its value for each.
+          mergedByUnion: (dir, paths) =>
+            paths.length === 0
+              ? Effect.succeed([])
+              : Effect.map(
+                  read(
+                    "check-attr",
+                    dir,
+                    ["check-attr", "-z", "--stdin", "merge"],
+                    paths.map((path) => `${path}\0`).join(""),
+                  ),
+                  parseUnion,
+                ),
           // --verify: without it, git prints back a rev it can't find as if it named a commit.
           revParse: (dir, rev) =>
             Effect.map(

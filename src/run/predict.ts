@@ -13,7 +13,13 @@ import { predictFiles } from "../organs/predictor.ts"
 import { Beads, type Issue, MetadataKey } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { RunFibers } from "./fibers.ts"
-import { type Footprint, isEmpty, type RepoFiles, ticketFootprint } from "./footprint.ts"
+import {
+  branchFootprint,
+  type Footprint,
+  isEmpty,
+  type RepoFiles,
+  ticketFootprint,
+} from "./footprint.ts"
 import { isSolo } from "./holds.ts"
 import { detail, type Line, Log } from "./log.ts"
 
@@ -30,14 +36,17 @@ export interface Predictor {
 }
 
 /**
- * The ticket's footprint: ticketFootprint's, or, for a ticket naming nothing, the files predicted
+ * The ticket's footprint: for a ticket whose branch changes files on top of the base (`branch`),
+ * branchFootprint's; else ticketFootprint's, or, for a ticket naming nothing, the files predicted
  * for it in this run when bd hasn't handed back those kept on the ticket.
  */
 export const footprintOf = (
   issue: Issue,
   repo: RepoFiles,
   predicted: ReadonlyMap<string, ReadonlyArray<string>>,
+  branch: ReadonlyArray<string> = [],
 ): Footprint => {
+  if (branch.length > 0) return branchFootprint(issue, branch, repo)
   const fp = ticketFootprint(issue, repo)
   const files = predicted.get(issue.id)
   return isEmpty(fp) && files !== undefined

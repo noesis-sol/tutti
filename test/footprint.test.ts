@@ -34,7 +34,6 @@ const ticket = (
     description: "",
     design: "",
     acceptance: "",
-    notes: "",
     labels: [],
     ...fields,
     metadata,
@@ -71,7 +70,7 @@ describe("a ticket's text", () => {
         "then refreshBranch() and `os.WriteFile(p, b, 0o644)`. The hooks write .tutti/run/activity.json " +
         "(src/agent/claude.ts). See https://github.com/gastownhall/beads/blob/main/README.md, " +
         "e.g. `bun test ./...` and v0.2.0.",
-      notes:
+      design:
         "Moved to run/merge.ts; update settings.json and README.md. Add src/run/handback.ts. " +
         "Not /Users/me/Projects/x/y.ts, nor src/nowhere/z.ts, nor (`solo`, `RESOLVING`).",
       acceptance: "Tests in a new file(s).",

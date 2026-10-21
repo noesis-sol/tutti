@@ -43,7 +43,7 @@ export const closedUnmergedLine = (id: string, base: string): Line => {
 }
 
 /** Whether the branch is there, as rev-parse --verify --quiet says: it exits 1, silent, if not. */
-const branchThere = (repo: string, branch: string): Effect.Effect<boolean, GitError, Git> =>
+export const branchThere = (repo: string, branch: string): Effect.Effect<boolean, GitError, Git> =>
   Effect.gen(function* () {
     const git = yield* Git
     return yield* git.revParse(repo, `refs/heads/${branch}`).pipe(
