@@ -9,9 +9,10 @@ import { Beads, type BeadsError, HumanLabel, type Issue } from "../services/Bead
 import { shellWord } from "../services/exec.ts"
 import { Git } from "../services/Git.ts"
 import { branchOf } from "../services/Worktrees.ts"
+import type { Carried } from "./carry.ts"
 import { EventStream } from "./eventstream.ts"
 import { detail, Log, line } from "./log.ts"
-import { excludedTypes, type Filter } from "./scope.ts"
+import { descendants, excludedTypes, type Filter } from "./scope.ts"
 
 /** A deferred ticket in the run's scope whose blockers have all merged. */
 export interface DeferredFree {
@@ -203,4 +204,43 @@ export const say = (
       yield* logs.write(text)
       yield* events.emit({ kind: "info", ticket: d.id, text })
     }
+  })
+
+/** What became of a saved worker that leaves its ticket under way in the run: not yet merged. */
+const underWay: ReadonlySet<Carried> = new Set<Carried>(["resumed", "asked", "toMerge"])
+
+/**
+ * Says, in the START block of a run scoped to `root` (--ticket, or null for all of bd ready), the
+ * deferred tickets whose blockers have merged, given what became of the workers carried over and
+ * the tickets left unmerged by an earlier run: the scope is the ticket and its descendants. bd
+ * failing to list those drops the list, with a line in the log.
+ */
+export const sayAtStart = (options: {
+  readonly repo: string
+  readonly base: string
+  readonly filter: Filter
+  readonly root: string | null
+  readonly carried: ReadonlyMap<string, Carried>
+  readonly unmerged: ReadonlySet<string>
+}): Effect.Effect<void, never, Beads | Git | Log | EventStream> =>
+  Effect.gen(function* () {
+    const { root } = options
+    const subs = yield* Effect.result(
+      root === null ? Effect.succeed([]) : descendants(yield* Beads, root),
+    )
+    if (Result.isFailure(subs)) {
+      yield* (yield* Log).write(line`${unreadable(reasonOf(subs.failure))}`)
+      return
+    }
+    const scope = new Set([...(root === null ? [] : [root]), ...subs.success.map((sub) => sub.id)])
+    const busy = new Set(
+      [...options.carried].filter(([, what]) => underWay.has(what)).map(([id]) => id),
+    )
+    yield* say({
+      repo: options.repo,
+      base: options.base,
+      filter: options.filter,
+      inScope: (id) => root === null || scope.has(id),
+      pending: startPending(busy, options.unmerged),
+    })
   })

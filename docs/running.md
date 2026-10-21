@@ -42,7 +42,9 @@ runs while the other does ([orchestra beside tutti](#orchestra-beside-tutti)).
 
 The log, `.tutti/tutti.log`, opens with the run's `START` block: the version, the repository, the
 branch, the scope, the limits and the worktrees folder, then the billing, the permission mode in
-effect, the MCP servers, the memory the workers take, and any warning.
+effect, the MCP servers, the memory the workers take, and any warning; then the tickets left
+unmerged and the workers carried over, and the deferred tickets free to run
+([`DEFERRED_FREE`](#nothing-to-run)).
 
 **The start question.** In a terminal (its input and output both), `tutti` asks what the run should
 work on:
@@ -74,6 +76,11 @@ it shows a box; otherwise the same lines.
 A deferred ticket whose blockers have all merged gets a line of its own:
 `Deferred: <id>: its blockers have merged (<blockers>); to run it: bd update <id> --status open`,
 and whether its worktree is safe to remove.
+
+A run with something to run lists those in its `START` block instead, a line each:
+`DEFERRED_FREE: <id>: its blockers have merged (<blockers>); to run it: bd update <id> --status open`,
+and whether its worktree is safe to remove. Neither reopens the ticket: a deferral can have other
+reasons, so that is yours to decide.
 
 ### Options
 

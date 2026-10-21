@@ -31,7 +31,8 @@
 // (unmerged.ts): one merged since by hand loses its label; bd failing to list them stops the run,
 // BEADS_FAILED. Then it takes up the workers the last run left in state.json (carry.ts): each
 // suspended one resumed in a slot, counting toward no limit; and as it ends, it saves the asked
-// tickets beside the suspended ones.
+// tickets beside the suspended ones. Then the START block lists, each a DEFERRED_FREE line, the
+// deferred tickets in the run's scope whose blockers have all merged (deferredFree.ts).
 //
 // The end (§ 5 item 14): nothing left to start or merge. Workers waiting on you (an open request)
 // keep it open with a dashboard (D19): it shows the end-of-run box until you answer them, and they
@@ -95,6 +96,7 @@ import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
 import { carryOver, saveAsked, saveLeft } from "./carry.ts"
 import { resolve, type UiCommand } from "./commands.ts"
+import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
@@ -587,7 +589,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // The workers the last run left (carry.ts), taken up before the first dispatch: each resumed
     // takes a slot, counting toward no limit, its ticket limit counted afresh.
-    yield* carryOver({
+    const carried = yield* carryOver({
       base,
       queue,
       triage,
@@ -595,6 +597,19 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop),
       carry: (ticket, worked, issue) => scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
     }).pipe(Effect.provideContext(context))
+
+    // The deferred tickets in the run's scope whose blockers have all merged, each a DEFERRED_FREE
+    // line of the START block (deferredFree.ts); not when bd can't list those left unmerged.
+    if (Result.isSuccess(loaded)) {
+      yield* sayDeferredFree({
+        repo: config.repo,
+        base,
+        filter: { excludeTypes: config.settings.queue.exclude_types },
+        root: config.ticket,
+        carried,
+        unmerged: new Set(loaded.success.map((left) => left.issue.id)),
+      })
+    }
 
     // The ready poll, the merge queue's changes and drain requests each wake the run. A watcher that
     // dies panics the run.
