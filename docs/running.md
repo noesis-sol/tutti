@@ -496,7 +496,8 @@ Claude Code reports:
   progress (`<id>: its worker deferred it as it stopped at the usage limit; back in progress, it waits
   for the reset`), so it waits with the others rather than being set aside.
 - **A minute after the reset**, the hold lifts (`USAGE_LIMIT lifted`), and each waiting worker is told
-  to carry on.
+  to carry on: with its ticket, or with its hand-back, whose 20 minutes don't count the wait
+  ([Hand-backs](workers.md#hand-backs)).
 - **With nothing else to do**, the run waits for the reset, dashboard or not, counting down:
   `USAGE_LIMIT: nothing else runs; waiting for the five-hour limit to reset at 14:05, in 2h10m`. It
   ends `USAGE_LIMIT`, exit 8, only when the reset is unknown or further off than `--usage-limit-wait`

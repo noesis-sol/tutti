@@ -298,6 +298,13 @@ tutti checks what the worker left rather than take its word, then runs the check
 another ticket merged meanwhile, on the branch rebased onto the base. A worker
 must be idle and not steered to be handed anything; one whose session was closed is resumed for it.
 
+The 20 minutes leave out the time the worker waits at the account's usage limit: after the reset it
+is told to carry on with the hand-back, not its ticket. A worker whose turn ended on the limit as it
+finished, the rebase done or the fix committed, has given its answer: tutti takes it from git without
+waiting for the reset. Past the 20 minutes, a rebase finished or a fix committed is taken as it is;
+otherwise the worker is stopped and told the hand-back is over, its branch put back and which commit
+its attempt had got to, which git keeps.
+
 ## Sessions
 
 tutti keeps a worker's session open only while its ticket needs it: while it runs, waits to merge,

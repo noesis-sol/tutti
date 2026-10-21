@@ -12,7 +12,12 @@
 //
 // The hand-back is a client_composed message with orchestra's instructions. It is under way from
 // its push until its send is no longer outstanding and the worker has settled, within
-// resolve_timeout from the push. Then tutti looks at what the worker left without taking its word
+// resolve_timeout from the push, the time its worker waits at the account's usage limit left out, as
+// orchestra 0.8.0 has it; the reset tells it to carry on with the hand-back (usageLimit.ts). A
+// worker seen at the limit with what it was asked done in git, its turn having ended on the limit as
+// it finished, has given its answer, and one past resolve_timeout has what git shows done taken as
+// it is, or is stopped and told the hand-back is over before its branch is put back, as orchestra's
+// orchestra-nr1v.1 and -nr1v.2 have it. Then tutti looks at what the worker left without taking its word
 // for it: the rebase finished, the worktree clean and on its branch, the branch on top of the base
 // it was rebased onto with only the ticket's own commits, and, set up if need be (setup.ts), the
 // check passing. The check runs once, where the branch merges, as orchestra 0.8.5 has it: when the
@@ -28,7 +33,17 @@
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { type Duration, Effect, Option, Queue, Ref, Result, Stream, SubscriptionRef } from "effect"
+import {
+  Clock,
+  Duration,
+  Effect,
+  Option,
+  Queue,
+  Ref,
+  Result,
+  Stream,
+  SubscriptionRef,
+} from "effect"
 import { AgentHost, type From } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -363,8 +378,78 @@ export const handOver = (
 const still = (state: WorkerState): string =>
   away(state) ?? (state._tag === "Closed" ? "its session is closed" : "its worker is idle")
 
-/** What give needs: the host, and what a resume records (sessions.ts). */
-export type GiveEnv = AgentHost | Store | Ledger | Log | EventStream
+/** What a ticket's worker is handed back: its rebase's conflicts to resolve, or a check to fix. */
+export type HandBackMode = "resolving" | "fixing"
+
+/** A hand-back to the ticket's worker, as give gives it and ends it. */
+export interface HandBack {
+  readonly ticket: FinishedTicket
+  readonly mode: HandBackMode
+  readonly prompt: string
+  /** The RESUMED line's start, should its session be resumed for it. */
+  readonly what: Line
+  /** The base's commit the branch was rebased onto, or is on top of. */
+  readonly onto: string
+  /** The commit the branch is put back at should the hand-back fail. */
+  readonly to: string
+  /**
+   * Whether git shows what the worker was asked done, its worker not settled: the rebase finished,
+   * with the branch on top of the base, or a fix committed.
+   */
+  readonly done: Effect.Effect<boolean, never, MergeEnv>
+}
+
+/** What a worker on a hand-back has done once git shows it done, for a line. */
+const doneWords = (mode: HandBackMode): string =>
+  mode === "resolving" ? "its rebase has finished" : "its fix is committed"
+
+const short = (hash: string) => hash.slice(0, 10)
+
+/**
+ * What the worker is told when its hand-back is past its time limit, `limit`, with what it was
+ * asked done already: its branch, at commit `at`, is taken as it is, to be checked with `check`.
+ */
+export const handBackTaken = (
+  handBack: HandBack,
+  limit: string,
+  at: string,
+  check: string,
+): string => {
+  const { branch, worktree } = handBack.ticket
+  const what = handBack.mode === "resolving" ? "rebase has finished" : "fix is committed"
+  return (
+    `tutti: the ${limit} for this hand-back is up, and your ${what}, so tutti has stopped you ` +
+    `and takes ${branch} as it is now, at ${short(at)}, to check with '${check}' and merge. ` +
+    `Leave ${worktree} as it is: no more commits, no amending, no git commands in it, ` +
+    "no ticket changes. Say DONE."
+  )
+}
+
+/**
+ * What the worker is told when its hand-back is past its time limit, `limit`, and not done: the
+ * hand-back is over, its branch put back at `handBack.to` and its ticket set aside, its attempt, the
+ * commit it had got to ("" for none), kept in git.
+ */
+export const handBackOver = (handBack: HandBack, limit: string, attempt: string): string => {
+  const { id, branch, worktree } = handBack.ticket
+  const to = short(handBack.to)
+  const back =
+    handBack.mode === "resolving"
+      ? `aborts the rebase if it is still in progress, puts ${branch} back at ${to}, where it was before the rebase,`
+      : `puts ${branch} back at ${to}, where the check failed,`
+  const kept =
+    attempt === ""
+      ? "Nothing of your attempt was committed, so none of it is kept."
+      : `Your attempt so far is commit ${short(attempt)}, which git keeps (git show ${short(attempt)}).`
+  return (
+    `tutti: the ${limit} for this hand-back is up, so tutti has stopped you and ends it: it ${back} ` +
+    `and sets ${id} aside for review. ${kept} Don't work on it any more: no git commands in ` +
+    `${worktree}, no ticket changes. Say DONE.`
+  )
+}
+
+/** What give needs: the host, what a resume records (sessions.ts), and git to end a hand-back. */
+export type GiveEnv = MergeEnv
 
 /**
  * Resumes the ticket's session for its hand-back, `prompt`, recording it (`why`, the RESUMED line
@@ -407,20 +492,129 @@ const resumeGoneFor = (
   })
 
 /**
- * Gives the ticket's worker a hand-back, `prompt`, resuming its session if tutti closed it or it is
- * Gone (the RESUMED line starting with `what`), and waits until its send is no longer outstanding
- * and the worker has settled, within `limit` from the push. Why it wasn't done; undefined when what
- * it left is to be looked at.
+ * Waits until the ticket's worker is in a state `wanted` takes; forever when it never is (its
+ * worker ended).
+ */
+const whenState = (
+  id: string,
+  wanted: (state: WorkerState) => boolean,
+): Effect.Effect<void, never, AgentHost> =>
+  Effect.gen(function* () {
+    const found = yield* (yield* AgentHost).state(id).pipe(
+      Stream.filter(wanted),
+      Stream.runHead,
+      Effect.catchTag("AgentGone", () => Effect.succeed(Option.none())),
+    )
+    if (Option.isNone(found)) yield* Effect.never
+  })
+
+const isLimited = (state: WorkerState) => state._tag === "UsageLimited"
+
+/**
+ * The hand-back's clock: `limit` of the time its worker isn't at the account's usage limit, as
+ * orchestra 0.8.0 counts it. Each time the worker is seen at the limit, git is asked whether it has
+ * done what it was asked, its turn having ended on the limit as it finished (a turn that has ended
+ * can't change git): "taken" when it has. "late" once the time is up.
+ */
+const clock = (
+  handBack: HandBack,
+  limit: Duration.Duration,
+): Effect.Effect<"taken" | "late", never, GiveEnv> =>
+  Effect.gen(function* () {
+    const logs = yield* Log
+    const { id, branch } = handBack.ticket
+    let left = Duration.toMillis(limit)
+    for (;;) {
+      const from = yield* Clock.currentTimeMillis
+      const limited = yield* Effect.raceFirst(
+        Effect.as(Effect.sleep(Duration.millis(left)), false),
+        Effect.as(whenState(id, isLimited), true),
+      )
+      if (!limited) return "late"
+      left = Math.max(0, left - ((yield* Clock.currentTimeMillis) - from))
+      if (yield* handBack.done) {
+        yield* logs.write(
+          detail`${id}'s worker is at the usage limit, but ${doneWords(handBack.mode)}: ${branch} is taken as it is, without waiting for the limit to lift`,
+        )
+        return "taken"
+      }
+      yield* logs.write(
+        detail`${id}'s worker is at the usage limit on its hand-back: it carries on once the limit lifts, the wait not counting toward the ${formatDuration(limit)}`,
+      )
+      yield* whenState(id, (state) => !isLimited(state))
+    }
+  })
+
+/** Stops the turn of the ticket's worker, still at its hand-back past its time limit, and tells it `text`. */
+const interruptWith = (id: string, text: string): Effect.Effect<void, never, GiveEnv> =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const logs = yield* Log
+    yield* Effect.ignore(host.interrupt(id))
+    const sent = yield* Effect.result(host.send(id, text, "clientComposed"))
+    if (Result.isFailure(sent)) {
+      yield* logs.write(
+        detail`${id}'s worker did not take the message that its hand-back is over (${sent.failure.why})`,
+      )
+    }
+  })
+
+/**
+ * Ends the hand-back of its worker, still at it past its time limit, `limit`, as orchestra does
+ * since tutti-nrg.5.9's worker lost a resolution it had committed, and worked an hour on a ticket set
+ * aside: what git shows done already is taken as it is, the worker stopped and told so; otherwise
+ * the worker is stopped and told the hand-back is over and where its attempt is kept, before the
+ * caller puts its branch back. Why it failed, `why`; undefined when it is taken.
+ */
+const endLate = (
+  handBack: HandBack,
+  limit: Duration.Duration,
+  why: string,
+): Effect.Effect<string | undefined, never, GiveEnv> =>
+  Effect.gen(function* () {
+    const config = yield* AppConfig
+    const git = yield* Git
+    const logs = yield* Log
+    const { id, branch, worktree } = handBack.ticket
+    const after = formatDuration(limit)
+    if (yield* handBack.done) {
+      const at = yield* Effect.result(git.revParse(worktree, branch))
+      yield* logs.write(
+        detail`${id}'s worker was still at its hand-back after ${after}, but ${doneWords(handBack.mode)}: ${branch} is taken as it is`,
+      )
+      const check = config.settings.checks.fast.command ?? ""
+      yield* interruptWith(
+        id,
+        handBackTaken(handBack, after, Result.isSuccess(at) ? at.success : "", check),
+      )
+      return undefined
+    }
+    const head = yield* Effect.result(git.revParse(worktree, "HEAD"))
+    const attempt =
+      Result.isFailure(head) || head.success === handBack.to || head.success === handBack.onto
+        ? ""
+        : head.success
+    yield* interruptWith(id, handBackOver(handBack, after, attempt))
+    yield* logs.write(detail`${id}'s worker was stopped and told its hand-back is over`)
+    return why
+  })
+
+/**
+ * Gives the ticket's worker a hand-back, its prompt, resuming its session if tutti closed it or it
+ * is Gone (the RESUMED line starting with its `what`), and waits until its send is no longer
+ * outstanding and the worker has settled, within `limit` from the push, the time its worker waits at
+ * the account's usage limit not counting. A worker at the limit with what it was asked done in git
+ * has given its answer; one past the limit is stopped (endLate). Why it wasn't done; undefined when
+ * what it left is to be looked at.
  */
 export const give = (
-  ticket: FinishedTicket,
-  prompt: string,
-  what: Line,
+  handBack: HandBack,
   limit: Duration.Duration,
 ): Effect.Effect<string | undefined, never, GiveEnv> =>
   Effect.scoped(
     Effect.gen(function* () {
       const host = yield* AgentHost
+      const { ticket, prompt, what } = handBack
       const { id } = ticket
       const from: From = "clientComposed"
       const state = yield* Effect.result(host.current(id))
@@ -460,14 +654,18 @@ export const give = (
         // the first of a resumed session, is over.
         taken = Effect.void
       }
-      const settled = yield* Effect.raceFirst(
-        Effect.map(Effect.andThen(taken, untilSettled(id)), Option.some),
-        Effect.as(Effect.sleep(limit), Option.none<WorkerState>()),
+      const ended = yield* Effect.raceFirst(
+        Effect.as(Effect.andThen(taken, untilSettled(id)), "settled" as const),
+        clock(handBack, limit),
       )
-      if (Option.isSome(settled)) return undefined
+      if (ended !== "late") return undefined
       const now = yield* Effect.result(host.current(id))
       const how = Result.isSuccess(now) ? still(now.success) : "its worker is gone"
-      return line`${how} after ${formatDuration(limit)}, with the hand-back not done`
+      return yield* endLate(
+        handBack,
+        limit,
+        line`${how} after ${formatDuration(limit)}, with the hand-back not done`,
+      )
     }),
   )
 
@@ -619,7 +817,18 @@ export const resolve = (
     const limit = config.settings.merge.resolve_timeout
     const what = line`${id}'s conflicts with ${base} are handed back to its worker`
     const setup = (yield* setupToResolve(stop, options, memory.setUps)).prompt
-    let why = yield* give(stop.ticket, resolvePrompt(stop, base, check, setup), what, limit)
+    let why = yield* give(
+      {
+        ticket: stop.ticket,
+        mode: "resolving",
+        prompt: resolvePrompt(stop, base, check, setup),
+        what,
+        onto: stop.onto,
+        to: stop.head,
+        done: Effect.map(verifyResolved(stop, options), (rejected) => rejected === undefined),
+      },
+      limit,
+    )
     if (why === undefined) why = yield* verifyResolved(stop, options)
     if (why === undefined) {
       const { branch } = stop.ticket

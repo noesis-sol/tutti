@@ -518,7 +518,19 @@ export const fixCheck = (
         landed !== undefined && Result.isSuccess(landed) ? landed.success : undefined,
       )
       const what = line`${id}'s failed check is handed back to its worker`
-      const why = yield* give(stop.ticket, prompt, what, limit)
+      const fixed = Effect.map(verifyFixed(stop, options), (left) => left._tag === "Fixed")
+      const why = yield* give(
+        {
+          ticket: stop.ticket,
+          mode: "fixing",
+          prompt,
+          what,
+          onto: stop.onto,
+          to: stop.at,
+          done: fixed,
+        },
+        limit,
+      )
       const verified =
         why === undefined
           ? yield* verifyFixed(stop, options)

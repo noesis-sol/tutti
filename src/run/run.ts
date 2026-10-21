@@ -125,7 +125,7 @@ import {
   stopOfLine,
   stopsLine,
 } from "./holds.ts"
-import { handBackWaits, Ledger, type State } from "./ledger.ts"
+import { type Entry, handBackWaits, Ledger, type State } from "./ledger.ts"
 import { detail, hold, type Line, Log, line, Tag } from "./log.ts"
 import {
   holdLine as machineHoldLine,
@@ -475,6 +475,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // The account's usage limit holds the run until it resets, without a stop (usageLimit.ts).
     const usage = yield* makeUsageHold({
+      base,
       wakeUp,
       show: (view) =>
         SubscriptionRef.update(status, (now) => ({
@@ -1067,14 +1068,23 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       return { done, waiting: [...waiting, ...conflicts] }
     })
     // Whether nothing runs but workers waiting for the usage limit.
+    // A worker at the limit on a hand-back (Resolving, Fixing) waits for it as one on its ticket does.
     const limitedOnly = Effect.gen(function* () {
       const limited = yield* usage.limited
       const over = yield* Ref.get(overLimit)
+      const waits = (entry: Entry) =>
+        limited.has(entry.ticket) &&
+        (entry.phase._tag === "Working" ||
+          entry.phase._tag === "Resolving" ||
+          entry.phase._tag === "Fixing")
       const others = [...(yield* ledger.current).tickets.values()].some(
-        (entry) =>
-          waitedFor(entry, over) && !(entry.phase._tag === "Working" && limited.has(entry.ticket)),
+        (entry) => waitedFor(entry, over) && !waits(entry),
       )
-      return !others && isSettled(yield* queue.state)
+      const merges = yield* queue.state
+      return (
+        !others &&
+        isSettled({ ...merges, resolving: merges.resolving.filter((id) => !limited.has(id)) })
+      )
     })
     // Waits until nothing is left. With the usage-limit hold on, the run waits for its reset
     // instead, unless a stop ends it anyway; it ends USAGE_LIMIT when it can't wait for it: whether

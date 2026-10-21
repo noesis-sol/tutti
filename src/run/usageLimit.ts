@@ -37,12 +37,15 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { OrganHold } from "../organs/Organs.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Notifier } from "../services/Notifier.ts"
+import { Store } from "../services/Store.ts"
 import { timestamp } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
+import type { HandBackMode } from "./handback.ts"
 import { type StopReason, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log, Tag, tagged, usageLimit, usageLimitLifted, usageWarning } from "./log.ts"
+import type { TicketPhase } from "./phase.ts"
 import { clock, countdown, type RunHold, type Usage } from "./runView.ts"
 
 /** How long after its reset the hold is lifted (§ 4.12). */
@@ -61,6 +64,28 @@ export const limitName = (limit: string | null): string =>
 /** The message a worker waiting for the limit is sent once it has reset. */
 export const carryOnText = (id: string): string =>
   `tutti: the account's usage limit has reset. Carry on with your ticket ${id} where you left off.`
+
+/**
+ * The message a worker waiting for the limit on its hand-back onto `base` (handback.ts) is sent once
+ * it has reset: the hand-back to carry on with, not its ticket, which it closed already, as orchestra
+ * tells it.
+ */
+export const carryOnHandBack = (
+  id: string,
+  branch: string,
+  mode: HandBackMode,
+  base: string,
+): string => {
+  const what =
+    mode === "resolving"
+      ? `the rebase of ${branch} onto ${base} tutti handed back to you, resolving its conflicts, finishing it and running the tests`
+      : `the failing check tutti handed back to you, fixing ${branch} so that it passes and committing the fix`
+  return (
+    `tutti: the account's usage limit has reset. Carry on where you left off with ${what}, ` +
+    `as tutti's message asked, not with ${id} itself, which you closed already. ` +
+    "If you had finished that before the limit, check that git shows it done and say DONE."
+  )
+}
 
 /** `3 workers wait for it`, `1 worker waits for it`; empty for none. */
 const waitFor = (n: number): string =>
@@ -165,6 +190,8 @@ export const organHold = Layer.effect(
  * for it changing); `show` shows the hold on the dashboard.
  */
 export const make = (options: {
+  /** The branch the run merges into, for a hand-back's carry-on. */
+  readonly base: string
   readonly wakeUp: Effect.Effect<void>
   readonly show: (view: UsageView) => Effect.Effect<void>
 }): Effect.Effect<
@@ -178,6 +205,7 @@ export const make = (options: {
   | EventStream
   | Notifier
   | RunFibers
+  | Store
   | Scope.Scope
 > =>
   Effect.gen(function* () {
@@ -188,6 +216,7 @@ export const make = (options: {
     const logs = yield* Log
     const events = yield* EventStream
     const notifier = yield* Notifier
+    const store = yield* Store
     const fibers = yield* RunFibers
     const watchers = yield* fibers.make("usageLimit")
     const lifter = yield* fibers.make("usageLimit lift")
@@ -253,6 +282,18 @@ export const make = (options: {
         yield* options.wakeUp
       })
 
+    // What the ticket's worker waiting for the limit is told to carry on with once it resets: its
+    // hand-back, while it is Resolving or Fixing; nothing, once what it left was taken from git and
+    // its ticket went on to merge; else its ticket.
+    const carryOn = (ticket: string, phase: TicketPhase["_tag"] | undefined) =>
+      Effect.gen(function* () {
+        if (phase === "ToMerge" || phase === "Merging" || phase === "Done") return null
+        if (phase !== "Resolving" && phase !== "Fixing") return carryOnText(ticket)
+        const branch = (yield* store.ticket(ticket))?.branch ?? "your branch"
+        const mode = phase === "Resolving" ? "resolving" : "fixing"
+        return carryOnHandBack(ticket, branch, mode, options.base)
+      })
+
     // At the reset: the hold lifted, and each worker waiting for it told to carry on.
     const lift = Effect.gen(function* () {
       const before = yield* Ref.get(state)
@@ -282,9 +323,21 @@ export const make = (options: {
           )
           continue
         }
-        const sent = yield* Effect.result(host.send(ticket, carryOnText(ticket), "clientComposed"))
+        const phase = entries.get(ticket)?.phase._tag
+        const text = yield* carryOn(ticket, phase)
+        if (text === null) {
+          yield* logs.write(
+            detail`${ticket}: the usage limit has reset; its hand-back was taken from git, so tutti tells its worker nothing`,
+          )
+          continue
+        }
+        const sent = yield* Effect.result(host.send(ticket, text, "clientComposed"))
         if (sent._tag === "Success") {
-          yield* logs.write(detail`${ticket}: the usage limit has reset; its worker carries on`)
+          yield* logs.write(
+            phase === "Resolving" || phase === "Fixing"
+              ? detail`${ticket}: the usage limit has reset; its worker carries on with its hand-back`
+              : detail`${ticket}: the usage limit has reset; its worker carries on`,
+          )
         }
       }
       yield* options.wakeUp
