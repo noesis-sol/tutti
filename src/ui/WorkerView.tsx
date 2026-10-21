@@ -264,8 +264,9 @@ export const itemLines = 6
 
 /**
  * A tool call's lines, `width` wide: `▸ Bash  scripts/check-fast.sh` wrapped under its summary, and
- * its mark at the end of the last line, or on a line of its own when it doesn't fit there. How many
- * there are depends only on the call and `width`, and they only grow as its result comes.
+ * its mark at the end of the last line, or on a line of its own when it doesn't fit there; at most
+ * `itemLines`. How many there are depends only on the call and `width`, and they only grow as its
+ * result comes.
  */
 export const toolLines = (
   tool: ToolEntry,
@@ -286,10 +287,17 @@ export const toolLines = (
   const mark = markSegments(markOf(tool), theme, Math.floor(width / 2))
   if (mark.length === 0) return lines
   const room = Math.max(width - widthOf(mark) - 2, 0)
-  const last = lines.at(-1) ?? []
-  return widthOf(last) <= room
-    ? [...lines.slice(0, -1), [...padded(last, room), seg("  "), ...mark]]
-    : [...lines, [...padded([], room), seg("  "), ...mark]]
+  const withMark = (lines: ReadonlyArray<Segments>): ReadonlyArray<Segments> => {
+    const last = lines.at(-1) ?? []
+    return widthOf(last) <= room
+      ? [...lines.slice(0, -1), [...padded(last, room), seg("  "), ...mark]]
+      : [...lines, [...padded([], room), seg("  "), ...mark]]
+  }
+  const marked = withMark(lines)
+  // A mark on a line of its own takes the last of `itemLines` from the summary.
+  return marked.length <= itemLines
+    ? marked
+    : withMark(wrap(head, width, { indent, limit: itemLines - 1 }))
 }
 
 /**

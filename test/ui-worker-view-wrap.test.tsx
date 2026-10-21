@@ -180,6 +180,19 @@ describe("a tool call's lines", () => {
     ])
   })
 
+  test("a summary cut short leaves the last of its lines to a mark that doesn't fit beside it", () => {
+    const input = { command: "word ".repeat(80) }
+    const pending = textsOf(toolLines(toolOf([call("b", "Bash", input)]), theme, 40, false))
+    const done = textsOf(
+      toolLines(toolOf([call("b", "Bash", input), answered("b", "ok")]), theme, 40, false),
+    )
+    expect(pending.length).toBe(itemLines)
+    expect(pending.at(-1)).toEndWith("…")
+    expect(done.length).toBe(itemLines)
+    expect(done.at(-2)).toEndWith("…")
+    expect(done.at(-1)).toBe(`${" ".repeat(37)}  ✓`)
+  })
+
   test("as many lines with its result as without, or one more: never fewer", () => {
     fc.assert(
       fc.property(
@@ -198,6 +211,7 @@ describe("a tool call's lines", () => {
           expect(done.length - pending.length).toBeGreaterThanOrEqual(0)
           expect(done.length - pending.length).toBeLessThanOrEqual(1)
           expect(pending.length).toBeLessThanOrEqual(itemLines)
+          expect(done.length).toBeLessThanOrEqual(itemLines)
         },
       ),
     )
@@ -275,6 +289,13 @@ const viewing = async (
 const linesOf = (frame: Frame): ReadonlyArray<string> =>
   frame.chars.split("\n").map((line) => line.trimEnd())
 
+/** The frame's first `count` lines under the rule below the header, which a narrow pane wraps. */
+const itemsIn = (frame: Frame, count: number): ReadonlyArray<string> => {
+  const lines = linesOf(frame)
+  const from = lines.findIndex((line) => line.startsWith("─")) + 1
+  return lines.slice(from, from + count)
+}
+
 describe("the worker view's wrapped items", () => {
   test("a sent message and a tool call's summary wrap to the pane's width", async () => {
     const messages = [
@@ -288,7 +309,7 @@ describe("the worker view's wrapped items", () => {
     ]
     await viewing(messages, { width: 48, height: 16 }, async (rendered) => {
       const frame = await rendered.capture()
-      expect(linesOf(frame).slice(2, 9)).toEqual([
+      expect(itemsIn(frame, 7)).toEqual([
         "  › Carry on with the ticket, and when the",
         "    checks pass, have the verifier look at the",
         "    change.",
@@ -303,13 +324,13 @@ describe("the worker view's wrapped items", () => {
 
   test("a resize wraps them anew to the new width", async () => {
     const messages = [prompt("Carry on with the ticket, and close it once the checks pass.")]
-    await viewing(messages, { width: 40, height: 10 }, async (rendered) => {
-      expect(linesOf(await rendered.capture()).slice(2, 4)).toEqual([
+    await viewing(messages, { width: 40, height: 16 }, async (rendered) => {
+      expect(itemsIn(await rendered.capture(), 2)).toEqual([
         "  › Carry on with the ticket, and close",
         "    it once the checks pass.",
       ])
-      await rendered.input((setup) => setup.resize(80, 10))
-      expect(linesOf(await rendered.capture()).slice(2, 4)).toEqual([
+      await rendered.input((setup) => setup.resize(80, 16))
+      expect(itemsIn(await rendered.capture(), 2)).toEqual([
         "  › Carry on with the ticket, and close it once the checks pass.",
         "",
       ])
