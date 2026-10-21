@@ -10,7 +10,9 @@
 //
 // Esc or Ctrl+C cancels the form, and init then changes nothing. While the scout looks for the
 // project's suites a spinner turns, with the time it has taken; Esc there skips it, and the choice
-// of checks starts on manual. Between questions, while init works, a spinner says so. The form is
+// of checks starts on manual. Between questions, while init works, a spinner says so; once init
+// takes its steps, Ctrl+C there (a key in the renderer's raw mode, not SIGINT) stops init after the
+// step under way, and the spinner says it is stopping. The form is
 // unmounted when the scope it was opened in closes; the summary is printed once the renderer is
 // gone (src/print/initSummary.ts).
 import { type InputRenderable, TextAttributes } from "@opentui/core"
@@ -104,6 +106,8 @@ export interface InitScreen {
   readonly done: ReadonlyArray<Done>
   /** Null while init works between questions. */
   readonly asking: Asking | null
+  /** What Ctrl+C does while init works between questions: stops it, once it takes its steps. */
+  readonly stop?: () => void
 }
 
 export const emptyScreen: InitScreen = { steps: [], at: null, done: [], asking: null }
@@ -403,6 +407,34 @@ const DoneLine = ({ theme, done }: { readonly theme: Theme; readonly done: Done 
     </text>
   )
 
+/** init working between questions, its spinner at `now`: Ctrl+C calls `stop` where there is one. */
+const WorkingView = ({
+  theme,
+  now,
+  stop,
+}: {
+  readonly theme: Theme
+  readonly now: number
+  readonly stop: (() => void) | undefined
+}) => {
+  const [stopping, setStopping] = useState(false)
+  useKeyboard((key) => {
+    if (!key.ctrl || key.name !== "c" || stop === undefined) return
+    stop()
+    setStopping(true)
+  })
+  return (
+    <box paddingLeft={2}>
+      <text>
+        <span {...styled(theme.styles.picked)}>{spinnerAt(now)}</span>
+        <span attributes={TextAttributes.DIM}>
+          {stopping ? " Stopping after this step…" : " Setting the project up…"}
+        </span>
+      </text>
+    </box>
+  )
+}
+
 /** The form's screen at `now` (epoch milliseconds), which turns its spinners. */
 export const InitView = ({
   theme,
@@ -419,14 +451,7 @@ export const InitView = ({
   const hint = hintOf(asking)
   let field: ReactNode
   if (asking === null) {
-    field = (
-      <box paddingLeft={2}>
-        <text>
-          <span {...styled(theme.styles.picked)}>{spinnerAt(now)}</span>
-          <span attributes={TextAttributes.DIM}> Setting the project up…</span>
-        </text>
-      </box>
-    )
+    field = <WorkingView theme={theme} now={now} stop={screen.stop} />
   } else {
     switch (asking._tag) {
       case "Confirm":
@@ -651,7 +676,19 @@ export const openInitForm = (
           {(theme) => <LiveInitView theme={theme} repo={repo} screen={screen} clock={clock} />}
         </Themed>,
       )
-      return { root, form: initForm(screenFields(screen, clock)) }
+      const form: InitForm = {
+        ...initForm(screenFields(screen, clock)),
+        catchStops: (stop) =>
+          Effect.acquireRelease(
+            Effect.sync(() => screen.set({ ...screen.get(), stop })),
+            () =>
+              Effect.sync(() => {
+                const { stop: _, ...rest } = screen.get()
+                screen.set(rest)
+              }),
+          ),
+      }
+      return { root, form }
     }),
     ({ root }) => Effect.sync(() => root.unmount()),
   ).pipe(Effect.map(({ form }) => form))

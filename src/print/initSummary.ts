@@ -8,7 +8,7 @@
 import { homedir } from "node:os"
 import type { InitSummary } from "../init/init.ts"
 import { cancelledLine, signOff } from "../init/init.ts"
-import { marks, type StepKind } from "../init/steps.ts"
+import { marks, type Step, type StepKind } from "../init/steps.ts"
 import { wrap } from "../ui/Modal.tsx"
 import type { Line } from "../ui/questions.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
@@ -106,14 +106,15 @@ const nextBox = (theme: Theme, items: ReadonlyArray<string>, width: number): Arr
   ]
 }
 
-/**
- * The summary `width` columns wide, in `theme`'s styles: the steps, the Next box when anything is
- * left for you, and the sign-off.
- */
-export const initSummary = (summary: InitSummary, theme: Theme, width: number): string => {
+/** `steps` as the summary lists them, `width` columns wide, in `theme`'s styles. */
+export const initSteps = (
+  steps: ReadonlyArray<Step>,
+  theme: Theme,
+  width: number,
+): Array<string> => {
   const { styles } = theme
   const lines: Array<string> = []
-  for (const each of summary.steps) {
+  for (const each of steps) {
     const detail = wrap(sanitizeLine(each.detail), Math.max(width - detailIndent, leastWidth))
     const detailStyle = each.kind === "caution" ? styles.deferred : styles.dim
     const label = sanitizeLine(each.label)
@@ -127,11 +128,25 @@ export const initSummary = (summary: InitSummary, theme: Theme, width: number): 
     )
     for (const line of rest) lines.push(`${" ".repeat(detailIndent)}${detailStyle.paint(line)}`)
   }
+  return lines
+}
+
+/**
+ * The summary `width` columns wide, in `theme`'s styles: the steps, the Next box when anything is
+ * left for you, and the sign-off.
+ */
+export const initSummary = (summary: InitSummary, theme: Theme, width: number): string => {
+  const { styles } = theme
+  const lines = initSteps(summary.steps, theme, width)
   if (summary.next.length > 0) lines.push("", ...nextBox(theme, summary.next, width))
   const sign = signOff(summary.ready)
   lines.push(summary.ready ? styles.organ.paint(` ${sign}`) : styles.deferred.paint(` ${sign}`))
   return lines.join("\n")
 }
+
+/** What init prints when a stop stopped it, below the steps it took: `tutti init: stopped…`. */
+export const initStoppedLine = (theme: Theme, words: string): string =>
+  theme.styles.deferred.paint(`tutti init: stopped${words}`)
 
 /** What init prints when its form was cancelled, in the notice role. */
 export const initCancelled = (theme: Theme): string =>

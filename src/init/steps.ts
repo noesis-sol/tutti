@@ -1,8 +1,9 @@
 // What tutti init did, step by step, for its summary (§ 8.3), and the machine it does it on: the
 // commands it runs (git, bd, the Beads install) and where it finds them. The live machine runs them
-// through effect/process (src/services/exec.ts); tests script one.
+// through effect/process (src/services/exec.ts); tests script one. Once its questions are answered,
+// init takes its steps in turn through runSteps, which checks for a stop after each.
 import { statSync } from "node:fs"
-import { Duration, Effect, type FileSystem } from "effect"
+import { Deferred, Duration, Effect, type FileSystem, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { exec, showCommand } from "../services/exec.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
@@ -28,6 +29,89 @@ export const step = (
   detail: string,
   commit?: ReadonlyArray<string>,
 ): Step => ({ kind, label, detail, ...(commit === undefined ? {} : { commit }) })
+
+/** A Step as a schema, for the errors that carry the steps taken. */
+const StepSchema = Schema.Struct({
+  kind: Schema.Literals(["done", "kept", "missing", "caution"]),
+  label: Schema.String,
+  detail: Schema.String,
+  commit: Schema.optionalKey(Schema.Array(Schema.String)),
+})
+
+/**
+ * One of init's steps once its questions are answered, as runSteps takes them: Beads, the ticket
+ * prefix, the setup, the test work, the login probe.
+ */
+export interface SetupStep<E, R> {
+  /** What the step sets up, as a stop during it names it. */
+  readonly name: string
+  /** Takes the step: the summary's lines for it. */
+  readonly run: Effect.Effect<ReadonlyArray<Step>, E, R>
+  /**
+   * Whether a stop waits for the step's end: one that writes files a run takes together, or renames
+   * every ticket. A stop interrupts any other step at once.
+   */
+  readonly whole: boolean
+  /**
+   * What a stop during the step says after "stopped", given the lines it took, null where the stop
+   * interrupted it.
+   */
+  readonly stopped: (took: ReadonlyArray<Step> | null) => string
+}
+
+/**
+ * init stopped at a stop signal, or Ctrl+C in its renderer: the steps it took, the step the stop
+ * came in, and what it says of the stop there.
+ */
+export class InitStopped extends Schema.TaggedError<InitStopped>()("InitStopped", {
+  steps: Schema.Array(StepSchema),
+  step: Schema.String,
+  words: Schema.String,
+}) {
+  override get message(): string {
+    return `stopped${this.words}`
+  }
+}
+
+/**
+ * Takes `steps` in turn, `starting` told each one's name as it starts, until one fails or `stop` is
+ * done, checking it after each: the lines they took; InitStopped where a stop came, with the lines
+ * taken until then. A whole step runs to its end, uninterrupted; another is interrupted by a stop,
+ * and isn't started once one has come.
+ */
+export const runSteps = <S extends SetupStep<unknown, unknown>>(
+  steps: ReadonlyArray<S>,
+  stop: Deferred.Deferred<void>,
+  starting: (name: string) => Effect.Effect<void> = () => Effect.void,
+): Effect.Effect<
+  ReadonlyArray<Step>,
+  Effect.Error<S["run"]> | InitStopped,
+  Effect.Services<S["run"]>
+> =>
+  Effect.gen(function* () {
+    const did: Array<Step> = []
+    for (const each of steps) {
+      yield* starting(each.name)
+      const halt = (took: ReadonlyArray<Step> | null) =>
+        new InitStopped({
+          steps: [...did, ...(took ?? [])],
+          step: each.name,
+          words: each.stopped(took),
+        })
+      if (!each.whole && (yield* Deferred.isDone(stop))) return yield* halt(null)
+      const took = each.whole
+        ? yield* Effect.uninterruptible(each.run)
+        : yield* Effect.raceFirst(each.run, Effect.as(Deferred.await(stop), null))
+      if (took === null) return yield* halt(null)
+      if (yield* Deferred.isDone(stop)) return yield* halt(took)
+      did.push(...took)
+    }
+    return did
+  }) as Effect.Effect<
+    ReadonlyArray<Step>,
+    Effect.Error<S["run"]> | InitStopped,
+    Effect.Services<S["run"]>
+  >
 
 /** The summary's mark for each kind. */
 export const marks: Record<StepKind, string> = {

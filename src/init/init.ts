@@ -18,7 +18,18 @@
 // verifier where they are chosen, and files the test work. Last it runs the login probe, whose
 // account, billing and permission mode its summary reports.
 import { join } from "node:path"
-import { Clock, type Duration, Effect, Exit, FileSystem, Layer, Option, Schema } from "effect"
+import {
+  Clock,
+  Deferred,
+  type Duration,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Option,
+  Schema,
+  type Scope,
+} from "effect"
 import { Account } from "../agent/Account.ts"
 import { definedServers } from "../agent/mcp.ts"
 import { AppConfig, type AppConfigValue, type SetupProblem } from "../cli/AppConfig.ts"
@@ -44,6 +55,7 @@ import {
   setupSteps,
   skillState,
   suiteLines,
+  testWork,
   usesVerifier,
   verifierPath,
 } from "./checks.ts"
@@ -67,7 +79,7 @@ import {
   type Suite,
   withoutRunners,
 } from "./runners.ts"
-import { joinAnd, type Machine, type Step, step, stepLine } from "./steps.ts"
+import { joinAnd, type Machine, runSteps, type Step, step, stepLine } from "./steps.ts"
 import { currentTemplates, keptNote, outdatedTemplates, type Templates } from "./templates.ts"
 import {
   applyPrefix,
@@ -148,6 +160,11 @@ export interface InitForm {
   readonly trust: (offer: TrustOffer) => Effect.Effect<boolean, FormCancelled>
   /** Whether to import orchestra's settings and worker prompt, asked before the Workers step. */
   readonly import: (offer: ImportOffer) => Effect.Effect<boolean, FormCancelled>
+  /**
+   * Catches Ctrl+C between questions until the scope closes, calling `stop` for each: the
+   * renderer's form, whose raw mode takes Ctrl+C as a key, not SIGINT.
+   */
+  readonly catchStops?: (stop: () => void) => Effect.Effect<void, never, Scope.Scope>
 }
 
 /** What init works on, and with. */
@@ -171,6 +188,13 @@ export interface InitOptions<R> {
   readonly account: Layer.Layer<Account, never, AppConfig | R>
   /** Claude Code's user config, .claude.json, where the trust key goes. */
   readonly claudeConfig: string
+  /**
+   * Catches stops once the questions are answered, until init ends, calling `stop` for each: a stop
+   * signal, Ctrl+C in the renderer. init then stops after the step under way. None where absent.
+   */
+  readonly catchStops?: (stop: () => void) => Effect.Effect<void, never, Scope.Scope>
+  /** Told the name of each of init's steps as it starts. */
+  readonly starting?: (step: string) => Effect.Effect<void>
 }
 
 /** What init did: its steps, what's left for you, and whether a run can start. */
@@ -843,80 +867,138 @@ export const init = <R>(options: InitOptions<R>) =>
     const setup = flags.setup ?? checked.setup
     const verifierConsent = consent(flags.verifier, checksQuestions.verifier, checked.verifier)
 
+    /**
+     * The setup, written as one group so that a run never takes it half written: the worker
+     * prompt, the runners, the skill and the verifier, the settings, the .gitignore and the
+     * changelog's merge.
+     */
+    const writeSetup = Effect.gen(function* () {
+      const steps: Array<Step> = []
+      if (found !== null) steps.push(...importSteps(found, importConsent))
+      const prompt = yield* writePrompt(
+        repo,
+        flags.force,
+        importing ? found.prompt : null,
+        promptSuites,
+      )
+      steps.push(...prompt.steps)
+      steps.push(...(yield* writeRunners(repo, { fast: fastPlan, full: fullPlan })))
+      steps.push(...(yield* applySkill(repo, choice, checked.replaceSkill ?? false)))
+      const verifier = yield* applyVerifier(
+        repo,
+        workerPromptPath,
+        verifierConsent,
+        checked.stack ?? [],
+      )
+      steps.push(...verifier)
+      const fromTemplates = {
+        prompt: prompt.fromTemplate,
+        verifier: verifier.some((each) => each.commit?.includes(verifierPath) === true),
+      }
+      const written = yield* writeSettings(repo, existing, {
+        concurrent,
+        mcp,
+        ...(flags.checkFastTimeout === undefined
+          ? {}
+          : { checkFastTimeout: flags.checkFastTimeout }),
+        ...(flags.checkFullTimeout === undefined
+          ? {}
+          : { checkFullTimeout: flags.checkFullTimeout }),
+        ...(setup === undefined ? {} : { setup: setup.trim() }),
+        fastRunnerChecks: flags.checkFast !== undefined || fastPlan.suites !== null,
+        fullRunnerChecks: flags.checkFull !== undefined || fullPlan.suites !== null,
+        fromTemplates,
+      })
+      steps.push(written.step)
+      steps.push(...(yield* templateSteps(repo, written.settings.templates)))
+      steps.push(
+        ...setupSteps({
+          command: written.settings.checks.setup.command,
+          was: setupWas,
+          offer: setupFound.offer,
+          lockfiles: setupFound.lockfiles,
+          unasked: form === null && checksQuestions.setup !== null,
+        }),
+      )
+      steps.push(yield* writeGitignore(repo))
+      steps.push(...(yield* applyUnion(machine, repo, unionConsent)))
+      steps.push(concurrencyStep(written.settings.concurrent, concurrent !== null))
+      steps.push(...mcpSteps(written.settings.workers.mcp_servers, available))
+      return steps
+    })
+
+    /** The project's configuration as a run reads it, then the login probe under it. */
+    const probeAll = Effect.gen(function* () {
+      const configured = yield* Effect.result(options.configure)
+      if (configured._tag === "Failure") {
+        return configured.failure.problems.map((problem) => step("missing", "settings", problem))
+      }
+      return [
+        ...(yield* probe(options, configured.success)),
+        ...schemeNotices(configured.success.scheme).map((notice) =>
+          step("caution", "colour scheme", notice),
+        ),
+      ]
+    })
+
     return yield* Effect.scoped(
       Effect.gen(function* () {
         // Held until init ends: no run starts in a tree init writes into, on tickets it renames.
         yield* lock.acquire(request).pipe(Effect.mapError(lockRefusal))
-        const steps: Array<Step> = []
-        steps.push(
-          ...(yield* setUpBeads(machine, repo, { install, consent: installConsent, prefix })),
-        )
-        if (prefix !== null) steps.push(...(yield* applyPrefix(machine, repo, prefix)))
-        if (found !== null) steps.push(...importSteps(found, importConsent))
-        const prompt = yield* writePrompt(
-          repo,
-          flags.force,
-          importing ? found.prompt : null,
-          promptSuites,
-        )
-        steps.push(...prompt.steps)
-        steps.push(...(yield* writeRunners(repo, { fast: fastPlan, full: fullPlan })))
-        steps.push(...(yield* applySkill(repo, choice, checked.replaceSkill ?? false)))
-        const verifier = yield* applyVerifier(
-          repo,
-          workerPromptPath,
-          verifierConsent,
-          checked.stack ?? [],
-        )
-        steps.push(...verifier)
-        const fromTemplates = {
-          prompt: prompt.fromTemplate,
-          verifier: verifier.some((each) => each.commit?.includes(verifierPath) === true),
+        // From here a stop (a stop signal, Ctrl+C in the renderer) ends init after the step under
+        // way, rather than between two of the files it writes.
+        const stop = yield* Deferred.make<void>()
+        if (options.catchStops !== undefined) {
+          yield* options.catchStops(() => Deferred.doneUnsafe(stop, Effect.void))
         }
-        const written = yield* writeSettings(repo, existing, {
-          concurrent,
-          mcp,
-          ...(flags.checkFastTimeout === undefined
-            ? {}
-            : { checkFastTimeout: flags.checkFastTimeout }),
-          ...(flags.checkFullTimeout === undefined
-            ? {}
-            : { checkFullTimeout: flags.checkFullTimeout }),
-          ...(setup === undefined ? {} : { setup: setup.trim() }),
-          fastRunnerChecks: flags.checkFast !== undefined || fastPlan.suites !== null,
-          fullRunnerChecks: flags.checkFull !== undefined || fullPlan.suites !== null,
-          fromTemplates,
-        })
-        steps.push(written.step)
-        steps.push(...(yield* templateSteps(repo, written.settings.templates)))
-        steps.push(
-          ...setupSteps({
-            command: written.settings.checks.setup.command,
-            was: setupWas,
-            offer: setupFound.offer,
-            lockfiles: setupFound.lockfiles,
-            unasked: form === null && checksQuestions.setup !== null,
-          }),
-        )
-        steps.push(yield* writeGitignore(repo))
-        steps.push(...(yield* applyUnion(machine, repo, unionConsent)))
-        steps.push(concurrencyStep(written.settings.concurrent, concurrent !== null))
-        steps.push(...mcpSteps(written.settings.workers.mcp_servers, available))
-        steps.push(...(yield* fileTestWork(choice, options.branch)))
-
-        const configured = yield* Effect.result(options.configure)
-        if (configured._tag === "Failure") {
-          steps.push(
-            ...configured.failure.problems.map((problem) => step("missing", "settings", problem)),
-          )
-        } else {
-          steps.push(...(yield* probe(options, configured.success)))
-          steps.push(
-            ...schemeNotices(configured.success.scheme).map((notice) =>
-              step("caution", "colour scheme", notice),
-            ),
-          )
-        }
+        const filesTests = testWork(choice, options.branch).length > 0
+        const beforeSetup = " before writing .tutti/"
+        const taken = [
+          {
+            name: "Beads",
+            run: setUpBeads(machine, repo, { install, consent: installConsent, prefix }),
+            whole: false,
+            stopped: (took: ReadonlyArray<Step> | null) =>
+              took === null ? ` while setting Beads up,${beforeSetup}` : beforeSetup,
+          },
+          ...(prefix === null
+            ? []
+            : [
+                {
+                  name: "the ticket prefix",
+                  run: applyPrefix(machine, repo, prefix),
+                  whole: true,
+                  stopped: () => ` once it had renamed the tickets,${beforeSetup}`,
+                },
+              ]),
+          {
+            name: "the setup",
+            run: writeSetup,
+            whole: true,
+            stopped: () =>
+              filesTests
+                ? " once it had written the files above, before filing the test work: tutti init again files it"
+                : " once it had written the files above",
+          },
+          ...(filesTests
+            ? [
+                {
+                  name: "the test work",
+                  run: fileTestWork(choice, options.branch),
+                  whole: false,
+                  stopped: () =>
+                    " while filing the test work: tutti init again files what is missing",
+                },
+              ]
+            : []),
+          {
+            name: "the login probe",
+            run: probeAll,
+            whole: false,
+            stopped: () => " during the login probe, once it had written the files above",
+          },
+        ]
+        const steps = [...(yield* runSteps(taken, stop, options.starting))]
         steps.push(...(yield* prerequisites(repo, machine)))
         const next = yield* nextSteps(repo, machine, steps)
         return {

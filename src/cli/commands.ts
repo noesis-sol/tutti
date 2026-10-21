@@ -12,17 +12,24 @@ import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import { scoutSearch } from "../init/checks.ts"
 import { cancelledLine, type InitFlags, type InitForm, init, summaryLines } from "../init/init.ts"
 import { lineForm } from "../init/lineForm.ts"
-import { liveMachine } from "../init/steps.ts"
+import { type InitStopped, liveMachine, stepLine } from "../init/steps.ts"
 import { initUpdate, updateLines } from "../init/update.ts"
 import { parseMcpNames } from "../init/workers.ts"
 import { layer as languageModelLayer } from "../organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
 import { plan } from "../plan/plan.ts"
-import { initCancelled, initHeader, initSummary } from "../print/initSummary.ts"
+import {
+  initCancelled,
+  initHeader,
+  initSteps,
+  initStoppedLine,
+  initSummary,
+} from "../print/initSummary.ts"
 import { maxConcurrent } from "../project/settings.ts"
 import { exitCodes } from "../run/holds.ts"
 import { Log } from "../run/log.ts"
+import { listen } from "../run/quit.ts"
 import { findRepository } from "../run/startup.ts"
 import { Beads } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
@@ -461,6 +468,17 @@ const initStopped = (lines: ReadonlyArray<string>) =>
   )
 
 /**
+ * What init says when a stop stopped it, and its exit code: the steps it took, on stdout, in
+ * `theme`'s styles where it has one, `width` columns wide; then on stderr that it stopped, and
+ * where; 130, as an interrupted run's.
+ */
+export const stoppedEnding = (stopped: InitStopped, theme: Theme | null, width: number) => ({
+  stdout: theme === null ? stopped.steps.map(stepLine) : initSteps(stopped.steps, theme, width),
+  stderr: theme === null ? `tutti init: ${stopped.message}` : initStoppedLine(theme, stopped.words),
+  code: exitCodes.interrupted,
+})
+
+/**
  * tutti init in the folder `cwd`: from the main checkout, asking in its own renderer where stdin and
  * stdout are a terminal that draws one, in lines with TERM=dumb, else asking nothing; then its
  * summary on the main screen.
@@ -596,6 +614,13 @@ const runInit = (cwd: string, flags: InitFlags) =>
             configure,
             account: Account.layer,
             claudeConfig,
+            // Once the questions are answered: SIGINT, SIGTERM and SIGHUP, and Ctrl+C in the
+            // renderer, stop init after the step under way rather than interrupt it.
+            catchStops: (stop) =>
+              Effect.andThen(
+                listen(() => stop()),
+                form?.catchStops === undefined ? Effect.void : form.catchStops(stop),
+              ),
           }).pipe(Effect.provide(RunLock.layer), Effect.provide(Beads.layer({ cwd: repo }))),
         )
       }),
@@ -603,6 +628,14 @@ const runInit = (cwd: string, flags: InitFlags) =>
     const { theme } = printed
     if (Result.isFailure(ran)) {
       const error = ran.failure
+      if (error._tag === "InitStopped") {
+        if (theme !== null && kind === "renderer") yield* Console.log(initHeader(theme, repo))
+        const ending = stoppedEnding(error, theme, Math.min(process.stdout.columns ?? 80, 100))
+        if (ending.stdout.length > 0) yield* Console.log(ending.stdout.join("\n"))
+        yield* Console.error(ending.stderr)
+        process.exitCode = ending.code
+        return
+      }
       if (error._tag === "FormCancelled" && theme !== null) {
         yield* Console.error(initCancelled(theme))
         process.exitCode = exitCodes.setup
