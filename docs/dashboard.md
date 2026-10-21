@@ -328,7 +328,7 @@ folder name (`jswallet`), as orchestra's do:
 | a worker asks you something (the first request in 30 seconds) | `jswallet-12 needs you · Allow Bash(rm -rf build)?` |
 | the account's usage limit holds the run (once per hold) | `The five-hour limit is reached; the run holds until it resets at 14:05` |
 | the run stops | `Stopped: PAUSED on jswallet-12`, or `Stopped: INTERRUPTED` when no ticket stopped it |
-| the run finishes | `Finished the run · 12 tickets closed · 2 set aside`, counting the tickets still set aside as it ends |
+| the run finishes | `Finished the run · 12 tickets closed · 2 set aside`, counting the tickets still set aside as it ends, those blocked from merging among them |
 | the full check after the run fails | `Full check failed · test/e2e`, or `Full check failed · setup` |
 
 A title or reason longer than 60 characters is cut with `…`; the log has the rest. Holds other than

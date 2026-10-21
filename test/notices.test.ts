@@ -11,6 +11,7 @@ import type { Event } from "../src/run/events.ts"
 import { EventStream } from "../src/run/eventstream.ts"
 import { line } from "../src/run/log.ts"
 import { about, finished, notice, noticeWidth, notifying } from "../src/run/notices.ts"
+import type { PhaseTag } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -102,16 +103,16 @@ describe("notice", () => {
     expect(notice(permission("t-1", "Bash", "ls"), false)).toBeNull()
   })
 
-  test("finished counts the tickets closed and those still set aside", () => {
-    expect(finished({ completed: 12, deferred: 1, review: 1 })).toBe(
-      "Finished the run · 12 tickets closed · 2 set aside",
-    )
-    expect(finished({ completed: 1, deferred: 0, review: 0 })).toBe(
-      "Finished the run · 1 ticket closed",
-    )
-    expect(finished({ completed: 0, deferred: 0, review: 0 })).toBe(
-      "Finished the run · no tickets closed",
-    )
+  test("finished counts the tickets closed and those still set aside, blocked ones too", () => {
+    const tags = (...all: ReadonlyArray<PhaseTag>) => all.map((_tag) => ({ _tag }))
+    expect(
+      finished([
+        ...tags(...Array<PhaseTag>(12).fill("Done")),
+        ...tags("Deferred", "Review", "Blocked", "Asked", "Queued"),
+      ]),
+    ).toBe("Finished the run · 12 tickets closed · 3 set aside")
+    expect(finished(tags("Done", "Asked"))).toBe("Finished the run · 1 ticket closed")
+    expect(finished([])).toBe("Finished the run · no tickets closed")
   })
 
   test("about cuts a title longer than 60 characters with …, on one line", () => {

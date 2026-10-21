@@ -1045,7 +1045,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       closed = Ending.Done({ text, tickets: n, limit: config.limit, took: now - begun })
       yield* events.emit({ kind: "done", text })
       yield* logs.write(text)
-      yield* notifier.notify(finished(view.totals))
+      yield* notifier.notify(finished([...state.tickets.values()].map((entry) => entry.phase)))
     }
 
     // The full check, after a run that ended by itself and merged a ticket (fullcheck.ts).
