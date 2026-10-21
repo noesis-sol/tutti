@@ -251,8 +251,11 @@ describe("a branch on top of the base already", () => {
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done" })
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast"])
-    expect(ran.log.some((text) => text.includes(`running '${setup}'`))).toBe(false)
+    // The setup ran once, in its new worktree before its worker, and not again before the check.
+    expect(ran.checkRuns.map((each) => each.check)).toEqual(["setup", "fast"])
+    expect(ran.log.filter((text) => text.includes(`running '${setup}'`))).toEqual([
+      `  a: running '${setup}' in its new worktree before its worker starts`,
+    ])
   })
 
   test("with no check command, it merges as before, without the line", async () => {
