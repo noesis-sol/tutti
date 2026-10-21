@@ -535,7 +535,7 @@ describe("the prompt", () => {
     output: "/w/a/.tutti/run/check.log",
   }
 
-  test("names what failed, where its output is, and what landed, as orchestra's does", () => {
+  test("names what failed, where its output is, what landed and what to run, as orchestra's does", () => {
     const prompt = fixPrompt(stop, "main", check, [
       { hash: "4444444444", subject: "Land b", message: "Land b" },
     ])
@@ -545,7 +545,16 @@ describe("the prompt", () => {
     expect(prompt).toContain(
       "What landed on main since your branch was cut (git log --oneline 2222222..1111111):\n4444444 Land b\n\n",
     )
-    expect(prompt).toEndWith("Say DONE when the fix is committed.")
+    expect(prompt).toContain(
+      "Run what failed (the tests or other checks the output names) and the tests of the code you changed in the foreground until they pass, then commit the fix on tutti/a with a in the commit message. ",
+    )
+    expect(prompt).toContain(
+      `Leave the whole check, '${check}', to tutti: it runs it on the branch next.`,
+    )
+    expect(prompt).not.toContain("until it passes")
+    expect(prompt).toEndWith(
+      "If what failed passes without a change, the failure not coming from tutti/a, commit nothing and say DONE: tutti runs the check again.",
+    )
   })
 
   test("lists at most 30 of what landed", () => {

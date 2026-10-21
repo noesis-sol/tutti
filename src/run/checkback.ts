@@ -15,15 +15,18 @@
 // that say so, what landed on the base since the branch was cut, and to commit a fix naming the
 // ticket and nothing else. The ticket moves to Fixing{attempt, afterResolution} with the FIXING
 // line, and the merge queue goes on with the tickets behind it meanwhile. Once the worker has
-// settled, within resolve_timeout from the push, tutti looks at what it left without taking its word
-// for it: no rebase in progress, the worktree clean and on its branch, and the branch as the check
-// failed on it with new commits on top, each naming the ticket. Then it sets up and checks it again:
-// a check that passes puts the ticket back in the merge queue, ToMerge; one that fails again is
-// handed back again while attempts are left, Fixing again. A worker that finds nothing to fix (a
-// test timing out on a loaded machine, say) commits nothing: the check then runs a second time, as
-// orchestra's does, a pass putting the ticket back in the merge queue and a failure setting it
-// aside with no further hand-back, as its worker found nothing to fix. Each pass through Merging counts toward
-// the attempts, which a run keeps per ticket.
+// settled, within resolve_timeout from the push, tutti looks at what it left without taking its
+// word for it: no rebase in progress, the worktree clean and on its branch, and the branch as the
+// check failed on it with new commits on top, each naming the ticket. When the base moved on
+// meanwhile, the fix goes back in line unchecked, carried (Carried) to the merge's check on the
+// branch rebased onto the base, which says whether it fixed it, so that a hand-back costs one
+// check, as orchestra 0.8.5 has it. Else tutti sets it up and checks it again: a check that passes
+// puts the ticket back in the merge queue, ToMerge; one that fails again is handed back again while
+// attempts are left, Fixing again. A worker that finds nothing to fix (a test timing out on a
+// loaded machine, say) commits nothing: the check then runs a second time, as orchestra's does, a
+// pass putting the ticket back in the merge queue and a failure setting it aside with no further
+// hand-back, as its worker found nothing to fix. Each pass through Merging counts toward the
+// attempts, which a run keeps per ticket.
 //
 // A fix that can't be accepted is undone, the branch reset to where the check failed, and nothing
 // more is handed back. Then, as when the attempts are used up, the ticket is set aside: Review with
@@ -37,12 +40,13 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { type Commit, Git } from "../services/Git.ts"
-import { failedHow, runMergeCheck, saidOf } from "./check.ts"
+import { type Checked, failedHow, runMergeCheck, saidOf } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { failedResolved, give, type RebaseStop, rejectResolution, workerAway } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { branchOn, detail, fixing, Log, line } from "./log.ts"
 import {
+  baseMoved,
   checksFailed,
   type FinishedTicket,
   gitWhy,
@@ -55,7 +59,7 @@ import {
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { namesTicket } from "./settle.ts"
-import { setUp } from "./setup.ts"
+import { type Fix, type SetUp, setUp } from "./setup.ts"
 
 /**
  * A check that failed on a finished ticket's branch rebased onto the base, or on top of it already
@@ -79,6 +83,25 @@ export interface CheckStop {
   readonly resolved?: RebaseStop
   /** The branch was on top of the base already, as its worker left it, not rebased. */
   readonly onTop?: boolean
+  /** What came of its earlier hand-backs in this merge, when a fix was carried to its check. */
+  readonly tried?: ReadonlyArray<string>
+}
+
+/**
+ * What a hand-back leaves for the merge's check when the base moved on while its worker worked, as
+ * orchestra's fixes has it: the branch is rebased onto the base and checked once there, rather than
+ * checked where it was, then rebased and checked again.
+ */
+export interface Carried {
+  /** Its worker's fix or resolution, whose own changes to a setup file count before that check. */
+  readonly fix?: Fix
+  /**
+   * What its worker left on its last check hand-back, not checked yet: the check says whether it
+   * fixed it. Undefined after a resolution.
+   */
+  readonly fixed?: Left
+  /** What came of the hand-backs before it, for the notes. */
+  readonly tries: ReadonlyArray<string>
 }
 
 /** How many times each ticket's failed check has been handed back to its worker in a run. */
@@ -87,17 +110,29 @@ export interface Fixes {
   count(id: string): Effect.Effect<number>
   /** Counts one more hand-back of the ticket's failed check: this one's number. */
   next(id: string): Effect.Effect<number>
+  /** Keeps what the ticket's hand-back leaves for its next merge's check, in place of any. */
+  carry(id: string, carried: Carried): Effect.Effect<void>
+  /** Takes what the ticket's hand-back left for its merge's check; undefined when nothing. */
+  carried(id: string): Effect.Effect<Carried | undefined>
 }
 
 /** A run's check hand-backs: none yet. */
 export const makeFixes: Effect.Effect<Fixes> = Effect.gen(function* () {
   const ref = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
+  const kept = yield* Ref.make<ReadonlyMap<string, Carried>>(new Map())
   return {
     count: (id) => Effect.map(Ref.get(ref), (counts) => counts.get(id) ?? 0),
     next: (id) =>
       Ref.modify(ref, (counts) => {
         const n = (counts.get(id) ?? 0) + 1
         return [n, new Map([...counts, [id, n]])]
+      }),
+    carry: (id, carried) => Ref.update(kept, (all) => new Map([...all, [id, carried]])),
+    carried: (id) =>
+      Ref.modify(kept, (all) => {
+        const found = all.get(id)
+        if (found === undefined) return [undefined, all]
+        return [found, new Map([...all].filter(([each]) => each !== id))]
       }),
   } satisfies Fixes
 })
@@ -167,11 +202,17 @@ export const fixPrompt = (
       : listed.length > maxLanded
         ? [...listed.slice(0, maxLanded), `… and ${listed.length - maxLanded} more`].join("\n")
         : listed.join("\n")
+  // What failed and the tests of its change: the whole check is tutti's, run next (orchestra
+  // 0.8.5).
   const steps =
-    `Run '${check}' in the foreground until it passes, then commit the fix on ` +
-    `${branch} with ${id} in the commit message. ` +
+    "Run what failed (the tests or other checks the output names) and the tests of the code you " +
+    `changed in the foreground until they pass, then commit the fix on ${branch} with ${id} in ` +
+    `the commit message. Leave the whole check, '${check}', to tutti: it runs it on the branch ` +
+    "next. " +
     "Don't do anything else: no rebase, no amending or rewriting of commits, no merge, no push, " +
-    "no ticket changes, and no uncommitted changes left. Say DONE when the fix is committed."
+    "no ticket changes, and no uncommitted changes left. Say DONE when the fix is committed. " +
+    `If what failed passes without a change, the failure not coming from ${branch}, commit ` +
+    "nothing and say DONE: tutti runs the check again."
   if (stop.onTop === true) {
     return (
       `tutti: Before ${branch} merges into ${base}, ${failedHow(stop.error)} on it. ` +
@@ -321,7 +362,7 @@ const handedBack = (tries: ReadonlyArray<string>, not: string): string => {
  * clean rebase, or on a branch on top of the base already, Fixing{afterResolution} → Blocked with MERGE_CONFLICT after a resolution, its notes
  * saying what came of each attempt.
  */
-const setAside = (
+export const setAside = (
   stop: CheckStop,
   options: MergeOptions,
   memory: MergeMemory,
@@ -369,12 +410,86 @@ const checkFix = (stop: CheckStop, options: MergeOptions, memory: MergeMemory) =
 /** How a check hand-back ended: the fix verified and checked, or the ticket set aside. */
 export type Fixed = "verified" | "aside"
 
+/** What its worker left on a check hand-back that is to be checked: a fix, or nothing. */
+export type Left = Exclude<Verified, { readonly _tag: "Rejected" }>
+
+/** What its worker left, `left`, in a few words: `1 commit`, or `nothing`. */
+export const committed = (left: Left): string => (left._tag === "Fixed" ? left.commits : "nothing")
+
+/** Says that the check passes on what its worker left after a check hand-back, `left`. */
+export const fixPassed = (
+  ticket: FinishedTicket,
+  left: Left,
+): Effect.Effect<void, never, AppConfig | Log> =>
+  Effect.gen(function* () {
+    const check = (yield* AppConfig).settings.checks.fast.command ?? ""
+    const { branch } = ticket
+    yield* (yield* Log).write(
+      left._tag === "Unchanged"
+        ? detail`'${check}' passes on ${branch} on a second run; its worker committed nothing`
+        : detail`'${check}' passes on ${branch} as its worker fixed it`,
+    )
+  })
+
 /**
- * The hand-back of `stop`'s failure to the ticket's worker, its ticket Fixing already: the hand-back
- * given, what the worker left verified, set up and checked, and handed back again while the check
- * fails on its fix with attempts left. A worker that committed nothing has the check run once more,
- * and is handed nothing again. Verified: the caller puts it back in the merge queue. Else it is set
- * aside here, a rejected fix undone.
+ * What came of the check, or the setup before it, on what its worker left after `stop`'s failure
+ * was handed back, `left`, `tries` saying what came of the hand-backs before it: "verified" when it
+ * passes; "aside" when its worker committed nothing and it fails again, or it fails with no
+ * hand-back left, the ticket set aside; else the failure on the fix, to be handed back again, its
+ * `tried` saying what came of each hand-back so far.
+ */
+export const afterFix = (
+  stop: CheckStop,
+  left: Left,
+  checked: SetUp | Checked,
+  tries: ReadonlyArray<string>,
+  options: MergeOptions,
+  memory: MergeMemory,
+): Effect.Effect<"verified" | "aside" | CheckStop, never, MergeEnv> =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const { id, branch } = stop.ticket
+    if (checked._tag !== "Failed") {
+      yield* fixPassed(stop.ticket, left)
+      return "verified"
+    }
+    const how = failedHow(checked.error)
+    const where = checked.output
+    if (left._tag === "Unchanged") {
+      const tried = [
+        ...tries,
+        line`its worker committed nothing, and ${how} again (output is in ${where})`,
+      ]
+      const again = { ...stop, error: checked.error, output: checked.output }
+      yield* setAside(again, options, memory, tried, "its worker found nothing to fix")
+      return "aside"
+    }
+    const tried = [
+      ...tries,
+      line`its worker committed ${left.commits}, but ${how} still (output is in ${where})`,
+    ]
+    const at = yield* Effect.result(git.revParse(options.repo, branch))
+    const next: CheckStop = {
+      ...stop,
+      at: Result.isSuccess(at) ? at.success : "",
+      error: checked.error,
+      output: checked.output,
+      tried,
+    }
+    const not = yield* whyNotFix(next, options, yield* memory.fixes.count(id))
+    if (not === undefined) return next
+    yield* setAside(next, options, memory, tried, not)
+    return "aside"
+  })
+
+/**
+ * The hand-back of `stop`'s failure to the ticket's worker, its ticket Fixing already: the
+ * hand-back given, what the worker left verified, set up and checked, and handed back again while
+ * the check fails on its fix with attempts left. A worker that committed nothing has the check run
+ * once more, and is handed nothing again. When the base moved on while its worker worked, what it
+ * left isn't checked here: it is carried to the merge's check on the branch rebased onto the base
+ * (the memory's fixes), so that a hand-back costs one check, as orchestra 0.8.5 has it. Verified:
+ * the caller puts it back in the merge queue. Else it is set aside here, a rejected fix undone.
  */
 export const fixCheck = (
   first: CheckStop,
@@ -388,7 +503,7 @@ export const fixCheck = (
     const { id, branch } = first.ticket
     const check = config.settings.checks.fast.command ?? ""
     const limit = config.settings.merge.resolve_timeout
-    const tries: Array<string> = []
+    let tries: ReadonlyArray<string> = first.tried ?? []
     let stop = first
     for (;;) {
       // Nothing landed under a branch on top of the base already.
@@ -409,48 +524,36 @@ export const fixCheck = (
           ? yield* verifyFixed(stop, options)
           : ({ _tag: "Rejected", why } satisfies Verified)
       if (verified._tag === "Rejected") {
-        tries.push(`${verified.why}${yield* undoFix(stop)}`)
-        yield* setAside(stop, options, memory, tries, "")
+        yield* setAside(
+          stop,
+          options,
+          memory,
+          [...tries, `${verified.why}${yield* undoFix(stop)}`],
+          "",
+        )
         return "aside"
+      }
+      if (yield* baseMoved(options, stop.onto)) {
+        yield* logs.write(
+          detail`${id}'s worker committed ${committed(verified)}, but ${options.base} moved on meanwhile: rebasing ${branch} onto it before checking it`,
+        )
+        // Kept as checkFix's setup would have them, for the setup before the merge's check.
+        yield* memory.setUps.from(id, stop.fork)
+        yield* memory.setUps.since(id, stop.at)
+        yield* memory.fixes.carry(id, {
+          fix: { what: "fix", from: stop.at },
+          fixed: verified,
+          tries,
+        })
+        return "verified"
       }
       const checked = yield* checkFix(stop, options, memory)
       if (checked._tag !== "Failed") yield* notePass(stop.ticket, options, memory.passes)
-      if (verified._tag === "Unchanged") {
-        if (checked._tag !== "Failed") {
-          tries.push("its worker committed nothing and the check passes on a second run")
-          yield* logs.write(
-            detail`'${check}' passes on ${branch} on a second run; its worker committed nothing`,
-          )
-          return "verified"
-        }
-        tries.push(
-          line`its worker committed nothing, and ${failedHow(checked.error)} again (output is in ${checked.output})`,
-        )
-        const again = { ...stop, error: checked.error, output: checked.output }
-        yield* setAside(again, options, memory, tries, "its worker found nothing to fix")
-        return "aside"
-      }
-      if (checked._tag !== "Failed") {
-        tries.push(`its worker committed ${verified.commits} and the check passes`)
-        yield* logs.write(detail`'${check}' passes on ${branch} as its worker fixed it`)
-        return "verified"
-      }
-      tries.push(
-        line`its worker committed ${verified.commits}, but ${failedHow(checked.error)} still (output is in ${checked.output})`,
-      )
-      const at = yield* Effect.result(git.revParse(options.repo, branch))
-      stop = {
-        ...stop,
-        at: Result.isSuccess(at) ? at.success : "",
-        error: checked.error,
-        output: checked.output,
-      }
-      const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(id))
-      if (not !== undefined) {
-        yield* setAside(stop, options, memory, tries, not)
-        return "aside"
-      }
-      if (!(yield* handOverFix(stop, options, memory.fixes))) return "aside"
+      const after = yield* afterFix(stop, verified, checked, tries, options, memory)
+      if (after === "verified" || after === "aside") return after
+      if (!(yield* handOverFix(after, options, memory.fixes))) return "aside"
+      stop = after
+      tries = after.tried ?? []
     }
   })
 
@@ -470,6 +573,8 @@ export const fixResolution = (
   Effect.gen(function* () {
     const git = yield* Git
     const at = yield* Effect.result(git.revParse(options.repo, rebase.ticket.branch))
+    // A fix whose rebase onto the moved base stopped on the conflicts resolved here.
+    const tries = (yield* memory.fixes.carried(rebase.ticket.id))?.tries ?? []
     const stop: CheckStop = {
       ticket: rebase.ticket,
       onto: rebase.onto,
@@ -479,6 +584,7 @@ export const fixResolution = (
       error,
       output,
       resolved: rebase,
+      ...(tries.length === 0 ? {} : { tried: tries }),
     }
     const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(rebase.ticket.id))
     if (not === undefined && (yield* handOverFix(stop, options, memory.fixes))) {
@@ -487,6 +593,7 @@ export const fixResolution = (
     const why = failedResolved(rebase, error, output)
     const tail =
       not === undefined || not === "" ? "" : line`; not handed back to its worker: ${not}`
-    yield* rejectResolution(rebase, options, `${why}${tail}`)
+    const before = tries.length === 0 ? "" : `; before that, it was ${handedBack(tries, "")}`
+    yield* rejectResolution(rebase, options, `${why}${tail}${before}`)
     return "aside"
   })

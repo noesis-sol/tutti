@@ -523,7 +523,7 @@ describe("a check handed back", () => {
 describe("the base moving on", () => {
   test("Merging → Resolving → ToMerge → Merging again: the resolution rebased onto c's merge", async () => {
     // a lands at once; b conflicts with it at 1m and takes 5m to resolve; c lands at 3m, while b
-    // resolves, so b's resolution goes back in line and is rebased onto c and checked again.
+    // resolves, so b's resolution goes back in line and is rebased onto c and checked once there.
     const ran = await runs({
       tickets: ["a", "b", "c"],
       settings: () => ({ concurrent: 3 }),
@@ -567,18 +567,17 @@ describe("the base moving on", () => {
       closedLine("a"),
       resolvingLine("b", "shared.txt"),
       closedLine("c"),
-      `  b's worker finished the rebase; checking it with '${check}'`,
+      "  b's worker finished the rebase, but main moved on meanwhile: rebasing tutti/b onto it before checking it",
       "  rebased tutti/b onto main, which moved on while it ran",
       closedLine("b"),
       "READY_EMPTY after 3 tickets",
     ])
     expectEvents(ran, ["dispatch", "dispatch", "dispatch", "closed", "closed", "closed", "end"])
-    // a was checked on top of main; c was rebased and checked; b's resolution was checked, then
-    // checked again once rebased.
+    // a was checked on top of main; c was rebased and checked; b's resolution only once rebased
+    // onto c's merge.
     expect(ran.checkRuns.map((each) => each.cwd)).toEqual([
       join(ran.root, "a"),
       join(ran.root, "c"),
-      join(ran.root, "b"),
       join(ran.root, "b"),
     ])
   })

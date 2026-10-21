@@ -10,16 +10,19 @@
 // progress, the ticket moves Merging → Resolving{attempt} with the RESOLVING line, and the merge
 // queue goes on with the tickets behind it meanwhile.
 //
-// The hand-back is a client_composed message with orchestra's instructions. It is under way from its
-// push until its send is no longer outstanding and the worker has settled, within resolve_timeout
-// from the push. Then tutti looks at what the worker left without taking its word for it: the rebase
-// finished, the worktree clean and on its branch, the branch on top of the base it was rebased onto
-// with only the ticket's own commits, and, set up if need be (setup.ts), the check passing. A
-// resolution verified goes back in the merge queue, ToMerge; one that leaves the branch changing
-// nothing, its worker having skipped every commit the base has already, is closed at once,
-// Done{noChange}, unchecked; one rejected, or not done in time, is Blocked (MERGE_CONFLICT), the
-// branch put back as the ticket closed it and the ticket's notes saying why. One whose check fails
-// goes on to checkback.ts, which hands the failure back too, Fixing{afterResolution}, or blocks it.
+// The hand-back is a client_composed message with orchestra's instructions. It is under way from
+// its push until its send is no longer outstanding and the worker has settled, within
+// resolve_timeout from the push. Then tutti looks at what the worker left without taking its word
+// for it: the rebase finished, the worktree clean and on its branch, the branch on top of the base
+// it was rebased onto with only the ticket's own commits, and, set up if need be (setup.ts), the
+// check passing. The check runs once, where the branch merges, as orchestra 0.8.5 has it: when the
+// base moved on while the worker resolved, the resolution goes back in line unchecked, for the
+// merge to rebase it onto the base and check it there. A resolution verified goes back in the merge
+// queue, ToMerge; one that leaves the branch changing nothing, its worker having skipped every
+// commit the base has already, is closed at once, Done{noChange}, unchecked; one rejected, or not
+// done in time, is Blocked (MERGE_CONFLICT), the branch put back as the ticket closed it and the
+// ticket's notes saying why. One whose check fails goes on to checkback.ts, which hands the failure
+// back too, Fixing{afterResolution}, or blocks it.
 //
 // A conflict that can't be handed back is Blocked at once, its rebase aborted, and the MERGE_CONFLICT
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
@@ -40,6 +43,7 @@ import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "./log.ts"
 import {
   abandonRebase,
+  baseMoved,
   type FinishedTicket,
   gitWhy,
   type MergeEnv,
@@ -233,8 +237,9 @@ export const workerAway = (
   })
 
 /**
- * What the worker is asked to do with a rebase stopped on conflicts, as orchestra asks it; `setup`
- * says when to run the project's setup, if it is to (setup.ts's setupToResolve).
+ * What the worker is asked to do with a rebase stopped on conflicts, as orchestra asks it: the
+ * tests of its change and of the files that conflicted, the whole check left to tutti's, which
+ * follows; `setup` says when to run the project's setup, if it is to (setup.ts's setupToResolve).
  */
 export const resolvePrompt = (stop: RebaseStop, base: string, check: string, setup = ""): string =>
   `tutti: ${base} moved on while you worked; rebasing ${stop.ticket.branch} onto it stopped on ` +
@@ -245,11 +250,12 @@ export const resolvePrompt = (stop: RebaseStop, base: string, check: string, set
   `If ${base} has a commit's change already, wholly or as the part that conflicts, run git rebase ` +
   "--skip for that commit instead of resolving it. " +
   setup +
-  `Once the rebase has finished, run '${check}' in the foreground until it passes, since the ` +
-  "commits that applied cleanly may break it too; fold any fix into the branch's last commit with " +
-  "git commit --amend --no-edit. " +
+  "Once the rebase has finished, run the tests of the code you changed and of the files that " +
+  "conflicted in the foreground until they pass, since the commits that applied cleanly may " +
+  "break them too; fold any fix into the branch's last commit with git commit --amend --no-edit. " +
+  `Leave the whole check, '${check}', to tutti: it runs it on the branch next. ` +
   "Don't do anything else: no new commits beyond the rebase, no merge, no push, no ticket changes. " +
-  "Say DONE when the rebase is complete and the check passes."
+  "Say DONE when the rebase is complete and those tests pass."
 
 /** The MERGE_CONFLICT line of a ticket whose conflicts aren't resolved, saying why. */
 const conflictLine = (stop: RebaseStop, base: string, why: string): Line => {
@@ -591,11 +597,13 @@ export const rejectResolution = (
 /**
  * The hand-back of `stop`'s conflicts to the ticket's worker, Resolving: the hand-back given, what
  * the worker left verified, set up if need be (the memory's setUps, setup.ts) and checked, the
- * commit it passed on kept in the memory's passes. Verified: the
- * caller puts it back in the merge queue; Unchanged, the branch left changing nothing, unchecked:
- * the caller closes it so; its setup or check failing: the caller hands that back, or blocks it
- * (checkback.ts). Else it is Blocked here, its branch put back and its notes saying
- * why.
+ * commit it passed on kept in the memory's passes; when the base moved on meanwhile, it is left
+ * unchecked, for the merge to rebase it onto the base and check it once there, as orchestra 0.8.5
+ * has it, the setup's commits and any fix's tries carried to that check (the memory's fixes).
+ * Verified: the caller puts it back in the merge queue; Unchanged, the branch left changing
+ * nothing, unchecked: the caller closes it so; its setup or check failing: the caller hands that
+ * back, or blocks it (checkback.ts). Else it is Blocked here, its branch put back and its notes
+ * saying why.
  */
 export const resolve = (
   stop: RebaseStop,
@@ -621,6 +629,22 @@ export const resolve = (
           : `its worker found the changes of ${branch} on ${base} already and skipped them in the rebase`,
       )
       if (nothing !== undefined) return { _tag: "Unchanged", unchanged: nothing } satisfies Resolved
+      // Checked once, where it merges: a check on stop.onto would be run again on the branch
+      // rebased.
+      if (yield* baseMoved(options, stop.onto)) {
+        yield* logs.write(
+          detail`${id}'s worker finished the rebase, but ${base} moved on meanwhile: rebasing ${branch} onto it before checking it`,
+        )
+        // Kept as the setup here would have them, for the setup before the merge's check.
+        yield* memory.setUps.from(id, stop.fork)
+        yield* memory.setUps.since(id, stop.head)
+        const before = yield* memory.fixes.carried(id)
+        yield* memory.fixes.carry(id, {
+          fix: { what: "resolution", from: stop.head },
+          tries: before?.tries ?? [],
+        })
+        return { _tag: "Verified" } satisfies Resolved
+      }
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
       const setup = yield* setUp(stop.ticket, options, memory.setUps, stop.fork, stop.onto, {
         what: "resolution",

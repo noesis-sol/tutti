@@ -259,7 +259,7 @@ describe("a resolution accepted", () => {
     const sent = composed(ran)
     expect(sent).toHaveLength(1)
     expect(sent[0]).toContain("rebasing tutti/a onto it stopped on conflicts in a.txt")
-    expect(sent[0]).toContain(`run '${check}' in the foreground until it passes`)
+    expect(sent[0]).toContain(`Leave the whole check, '${check}', to tutti`)
     // The resolution is checked once, in its worktree, before it goes back in line.
     expect(ran.checkRuns).toHaveLength(1)
     expect(ran.checkRuns[0]?.cwd).toBe(worktreeOf("a"))
@@ -314,11 +314,11 @@ describe("a resolution accepted", () => {
       record.kind === "phase" && record.to === "Done" ? [record.ticket] : [],
     )
     expect(done).toEqual(["b", "a"])
-    // a, resolved on top of main as it was, is rebased onto b's merge and checked again.
-    expect(ran.checkRuns.map((each) => each.cwd)).toEqual([
-      worktreeOf("b"),
-      worktreeOf("a"),
-      worktreeOf("a"),
+    // a, resolved on top of main as it was, is rebased onto b's merge and checked once, there.
+    expect(ran.checkRuns.map((each) => each.cwd)).toEqual([worktreeOf("b"), worktreeOf("a")])
+    expectLog(ran, [
+      "  a's worker finished the rebase, but main moved on meanwhile: rebasing tutti/a onto it before checking it",
+      "  rebased tutti/a onto main, which moved on while it ran",
     ])
   })
 
@@ -590,7 +590,7 @@ describe("a session tutti closed", () => {
 })
 
 describe("the prompt", () => {
-  test("names the files and the check, as orchestra's does", () => {
+  test("names the files, the tests to run and the check left to tutti, as orchestra's does", () => {
     const stop: RebaseStop = {
       ticket: { id: "a", title: "A", branch: "tutti/a", worktree: "/w/a" },
       onto: "abc",
@@ -603,6 +603,13 @@ describe("the prompt", () => {
     expect(prompt).toStartWith(
       "tutti: main moved on while you worked; rebasing tutti/a onto it stopped on conflicts in a.ts, b.ts. ",
     )
-    expect(prompt).toEndWith("Say DONE when the rebase is complete and the check passes.")
+    expect(prompt).toContain(
+      "run the tests of the code you changed and of the files that conflicted in the foreground until they pass",
+    )
+    expect(prompt).toContain(
+      `Leave the whole check, '${check}', to tutti: it runs it on the branch next.`,
+    )
+    expect(prompt).not.toContain("until it passes")
+    expect(prompt).toEndWith("Say DONE when the rebase is complete and those tests pass.")
   })
 })
