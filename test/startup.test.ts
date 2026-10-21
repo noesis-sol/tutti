@@ -13,6 +13,7 @@ import {
 } from "../src/agent/Account.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { type AppConfigValue, SetupProblem } from "../src/cli/AppConfig.ts"
+import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import {
   check,
   exitSetup,
@@ -41,6 +42,7 @@ const project = (options: { readonly setUp?: boolean; readonly beads?: boolean }
   if (options.setUp ?? true) {
     mkdirSync(join(repo, ".tutti"))
     writeFileSync(join(repo, ".tutti", "settings.json"), "{}\n")
+    writeFileSync(join(repo, ".tutti", "worker-prompt.md"), builtInWorkerPrompt)
   }
   if (options.beads ?? true) mkdirSync(join(repo, ".beads"))
   return { dir, repo }
@@ -156,7 +158,10 @@ describe("the startup checks", () => {
     const started = passed(await run(repo))
     expect(started.base).toBe("main")
     expect(started.config.repo).toBe(repo)
-    expect(started.prompt.file).toBeNull()
+    expect(started.prompt).toEqual({
+      text: builtInWorkerPrompt,
+      file: join(repo, ".tutti", "worker-prompt.md"),
+    })
     expect(started.mcp.servers).toEqual([])
     expect(started.account.billing).toEqual({ _tag: "Subscription", keyUnused: false })
     expect(started.warnings).toEqual([])

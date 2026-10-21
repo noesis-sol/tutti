@@ -3,9 +3,10 @@
 // built-in template. TICKET_ID is its placeholder for the ticket's ID. With
 // workers.ask_user_question off (§ 15, Q3), the paragraphs that mention AskUserQuestion are dropped,
 // since the workers don't get the tool.
-import { isAbsolute, relative, resolve } from "node:path"
+import { isAbsolute, join, relative, resolve } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
 import { type AppConfigValue, SetupProblem, workerPromptFile } from "../cli/AppConfig.ts"
+import { settingsFile } from "./settings.ts"
 import builtIn from "./templates/worker-prompt.md" with { type: "text" }
 
 /** tutti's built-in worker prompt, as `tutti init` writes it to .tutti/worker-prompt.md. */
@@ -65,8 +66,10 @@ const shown = (repo: string, file: string): string => {
 
 /**
  * The run's worker prompt, with workers.ask_user_question applied. A --prompt file that is missing,
- * empty or unreadable is a setup problem; so is a project file that is empty or unreadable, and a
- * prompt without TICKET_ID. A missing project file gives the built-in template.
+ * empty or unreadable is a setup problem; so is a project file that is empty or unreadable, one
+ * missing where `tutti init` set the project up (.tutti/settings.json is there), as in orchestra,
+ * and a prompt without TICKET_ID. A missing project file in a project init hasn't set up gives the
+ * built-in template.
  */
 export const loadWorkerPrompt = (config: Pick<AppConfigValue, "repo" | "prompt" | "settings">) =>
   Effect.gen(function* () {
@@ -76,11 +79,18 @@ export const loadWorkerPrompt = (config: Pick<AppConfigValue, "repo" | "prompt" 
     const name = shown(config.repo, config.prompt)
     const from = own ? " (from --prompt or TUTTI_PROMPT)" : ""
     const problem = (sentence: string) => new SetupProblem({ problems: [sentence] })
+    const setUp = fs.exists(join(config.repo, settingsFile)).pipe(Effect.orElseSucceed(() => true))
     const read = yield* fs.readFileString(config.prompt).pipe(
       Effect.map(Option.some),
       Effect.catchTag("PlatformError", (error) =>
         error.reason._tag === "NotFound" && !own
-          ? Effect.succeedNone
+          ? Effect.flatMap(setUp, (there) =>
+              there
+                ? Effect.fail(
+                    problem(`Worker prompt not found: ${name}. Recreate it with: tutti init`),
+                  )
+                : Effect.succeedNone,
+            )
           : error.reason._tag === "NotFound"
             ? Effect.fail(problem(`Worker prompt not found: ${name}${from}.`))
             : Effect.fail(problem(`Worker prompt can't be read: ${name}${from}: ${error.message}`)),

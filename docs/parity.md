@@ -5,18 +5,17 @@ The audit against the spec's parity matrix (`.orchestra/specs/tutti-spec.md`, Ap
 and the tests that show it. *Kept* means as orchestra v0.7.7 has it; the other dispositions point to
 the spec's section. Back to the [README](../README.md).
 
-Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 71 are as the spec says:
-39 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 12
+Audited on 2026-10-21 against `main` at 80e5c2b. Of the matrix's 83 rows, 72 are as the spec says:
+40 *kept*, 27 *changed as specified* (new features among them) and 5 *dropped as specified*. 11
 aren't yet:
 
 - **Missing** (5): the START block's `DEFERRED_FREE` lines (tutti-psr), counting and logging compactions (tutti-4sa), the predictor, in the
   footprints' row and the organs' (tutti-76k), and the run's notifications (tutti-i0y). The
   dispatch's footprint line is logged since tutti-d6q.
-- **Differs** (7): a missing worker prompt beside the settings (tutti-04w), the run lock's refusal
-  during init and its emptied files (tutti-d5g), the setup after a fix (tutti-ry9), check
-  hand-backs while the run holds (tutti-8dt), rechecks while it holds or a solo ticket runs
-  (tutti-t4y), the full check's output end (tutti-zfj), and the wind-down line's narrow and empty
-  forms (tutti-upv).
+- **Differs** (6): the run lock's refusal during init and its emptied files (tutti-d5g), the setup
+  after a fix (tutti-ry9), check hand-backs while the run holds (tutti-8dt), rechecks while it holds
+  or a solo ticket runs (tutti-t4y), the full check's output end (tutti-zfj), and the wind-down
+  line's narrow and empty forms (tutti-upv).
 
 Rows marked *untested details* do what the spec says, but some detail of them is shown by no test
 yet; tutti-b3k (the run loop) and tutti-178 (startup, the interface and init) list them. Each
@@ -31,7 +30,7 @@ file and test name given here is there.
 | Area | Feature | Disposition | Modules | Tests |
 |---|---|---|---|---|
 | Start | startup checks, every problem listed, exit 2 | Kept: every problem in one report, exit 2; no terminal checks; the login probe and settings errors added | `src/run/startup.ts`, `src/agent/Account.ts`, `src/main.ts` | `test/startup.test.ts` "several problems together, in one report, in § 5's order", "not logged in to Claude"; `test/smoke.test.ts` "a bare tutti outside a git repository fails its startup checks with exit 2"; `test/untrusted-checkout.test.ts` "an untrusted main checkout is a setup problem" |
-|  | not set up → `run init` first | Differs: tutti-04w (with `.tutti/settings.json` there and no worker prompt, tutti runs on the built-in one; orchestra calls it a setup problem) | `src/run/startup.ts`, `src/project/prompt.ts` | `test/startup.test.ts` "says so first, then the other problems", "alone, it is the whole report", "a worker prompt of its own sets it up enough" |
+|  | not set up → `run init` first | Kept (tutti-04w: with `.tutti/settings.json` there and no worker prompt, a setup problem naming the file and `tutti init`) | `src/run/startup.ts`, `src/project/prompt.ts` | `test/startup.test.ts` "says so first, then the other problems", "alone, it is the whole report", "a worker prompt of its own sets it up enough"; `test/prompt-missing.test.ts` "list the missing worker prompt with the other problems", "a missing project prompt beside the settings is a setup problem" |
 |  | run lock, its JSON, `flock` | Differs: tutti-d5g (a run refused during init doesn't say so; both lock files are emptied on release, which § 9.2 doesn't say) | `src/services/RunLock.ts`, `src/native/libc.ts` | `test/run-lock.test.ts` "takes both files for the scope, naming the run, and releases them when it closes", "a second process is refused with the holder's pid, start time and branch", "orchestra holding its lock refuses the run, which then holds neither lock", "both locks are released when the holder is killed with kill -9", "the files are close-on-exec: a child the holder started keeps neither lock" |
 |  | start question: Current tickets or New feature | Kept; untested details: tutti-178 | `src/run/choose.ts`, `src/ui/StartQuestion.tsx`, `src/ui/plain/forms.ts` | `test/run-start-question.test.ts` "on two TTYs with no deciding flag, in the renderer with the dashboard", "not when a flag decides: --tickets, --ticket, --feature, --plain, a --limit reached"; `test/start-question.test.tsx` "offers the current tickets, with their count, then a new feature" |
 |  | `--tickets`, `--ticket`, `--feature`, `--yes` | Kept: `--ticket` naming a ticket bd can't show, a closed one or a question, and `--feature` with `--limit 0`, are startup problems | `src/cli/flags.ts`, `src/cli/AppConfig.ts`, `src/run/startup.ts`, `src/run/scope.ts` | `test/app-config.test.ts` "§ 8.2's flags are all there", "flags that don't go together"; `test/startup-ticket-scope.test.ts` "a ticket bd has no issue for is a setup problem", "a closed ticket is a setup problem, with the command that reopens it", "a question is a setup problem, with the command that answers it", "--limit 0 is a setup problem: the plan would be filed and none of it started"; `test/scenarios-scheduling.test.ts` "--ticket runs that ticket's subtickets only: SCOPE_DONE, tutti closing its epic" |

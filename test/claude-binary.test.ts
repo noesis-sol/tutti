@@ -322,6 +322,7 @@ describe("the startup checks", () => {
     const repo = join(folder("claude-startup"), "repo")
     mkdirSync(join(repo, ".tutti"), { recursive: true })
     writeFileSync(join(repo, ".tutti", "settings.json"), "{}\n")
+    writeFileSync(join(repo, ".tutti", "worker-prompt.md"), "Work on TICKET_ID.\n")
     mkdirSync(join(repo, ".beads"))
     return repo
   }

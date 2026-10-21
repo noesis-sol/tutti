@@ -41,7 +41,8 @@ session; the worker view and [triage](organs.md#triage) read them.
 Each worker gets the worker prompt, `.tutti/worker-prompt.md` (`tutti init` writes it from the
 built-in template), with every `TICKET_ID` replaced by its ticket. `--prompt <file>` (or
 `TUTTI_PROMPT`) gives another for a run; a relative path is the main checkout's. A prompt that is
-empty, or has no `TICKET_ID`, stops the run.
+empty, or has no `TICKET_ID`, stops the run, and so does a missing `.tutti/worker-prompt.md` beside
+`.tutti/settings.json` without `--prompt`: `tutti init` writes it again.
 
 The prompt goes into the session's system prompt, after Claude Code's own, so its rules survive when
 a long ticket's conversation is compacted. The session's first message holds what belongs to this

@@ -22,6 +22,7 @@ const project = () => {
   mkdirSync(join(repo, ".tutti"), { recursive: true })
   mkdirSync(join(repo, ".beads"))
   writeFileSync(join(repo, ".tutti", "settings.json"), "{}\n")
+  writeFileSync(join(repo, ".tutti", "worker-prompt.md"), "Work on TICKET_ID.\n")
   return repo
 }
 
