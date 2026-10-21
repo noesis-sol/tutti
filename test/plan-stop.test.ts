@@ -11,7 +11,7 @@ import { Command } from "effect/cli"
 import { tuttiWith } from "../src/cli/commands.ts"
 import { stoppedLine, stoppedReadingLine } from "../src/plan/plan.ts"
 import { Beads, BeadsFailed } from "../src/services/Beads.ts"
-import type { Git } from "../src/services/Git.ts"
+import { type Git, Git as GitService } from "../src/services/Git.ts"
 import type { RunLock } from "../src/services/RunLock.ts"
 import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as gitLayer } from "../src/testing/Git.ts"
@@ -44,8 +44,11 @@ const backlog: ReadonlyArray<Seed> = [
 ]
 
 interface Stop {
-  /** Where the stop comes: as bd lists the tickets, or as bd adds the link of this ticket. */
-  readonly at: "list" | string
+  /**
+   * Where the stop comes: as bd lists the tickets, as git finds the lock to warn of a run, or as bd
+   * adds the link of this ticket.
+   */
+  readonly at: "list" | "warning" | string
   /** The tickets whose link bd refuses to add. */
   readonly refused?: ReadonlyArray<string>
 }
@@ -65,9 +68,18 @@ const stopped = (args: ReadonlyArray<string>, stop: Stop) => {
   return Effect.runPromise(
     Effect.gen(function* () {
       const beads = yield* Beads
+      const git = yield* GitService
       const stopping = yield* Deferred.make<void>()
-      // The stop comes while bd is at work: a list never answers, a link takes a moment more.
-      const services = Context.add(yield* Effect.context<Beads | Git | RunLock>(), Beads, {
+      // The stop comes while bd or git is at work: a list or git never answers, a link takes a
+      // moment more.
+      const withGit = Context.add(yield* Effect.context<Beads | Git | RunLock>(), GitService, {
+        ...git,
+        commonDir: (dir) =>
+          stop.at === "warning"
+            ? Effect.andThen(Deferred.succeed(stopping, undefined), Effect.never)
+            : git.commonDir(dir),
+      })
+      const services = Context.add(withGit, Beads, {
         ...beads,
         list: (options) =>
           stop.at === "list"
@@ -156,6 +168,23 @@ describe("tutti plan stopped", () => {
     expect(result.code).toBe(130)
     expect(result.blockers["t-1"]).toEqual([])
     expect(result.blockers["t-5"]).toEqual(["t-4"])
+  })
+
+  test("a stop during the last link says all were added", async () => {
+    const result = await stopped(["--apply"], { at: "t-8" })
+    expect(result.errors).toEqual([
+      "tutti plan: stopped. Added 3 of 3 links: t-1 waits for t-2, t-5 waits for t-4, t-8 waits for t-3.",
+    ])
+    expect(result.code).toBe(130)
+    expect(result.blockers["t-8"]).toEqual(["t-3"])
+  })
+
+  test("a stop as it looks for a run to warn of says nothing changed", async () => {
+    const result = await stopped(["--apply"], { at: "warning" })
+    expect(result.printed).toEqual([])
+    expect(result.errors).toEqual([stoppedReadingLine])
+    expect(result.code).toBe(130)
+    expect(Object.values(result.blockers).flat()).toEqual([])
   })
 
   test("a stop as it reads the tickets says nothing changed", async () => {

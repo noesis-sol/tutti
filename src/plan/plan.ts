@@ -206,7 +206,8 @@ export const stoppedReadingLine = "tutti plan: stopped before proposing any link
 export const stoppedLine = (added: ReadonlyArray<Link>, notAdded: ReadonlyArray<Link>): string => {
   const total = plural(added.length + notAdded.length, "link")
   const named = added.length > 0 ? `: ${added.map(waits).join(", ")}` : ""
-  return `tutti plan: stopped. Added ${added.length} of ${total}${named}. Not added: ${notAdded.map(waits).join(", ")}.`
+  const left = notAdded.length > 0 ? ` Not added: ${notAdded.map(waits).join(", ")}.` : ""
+  return `tutti plan: stopped. Added ${added.length} of ${total}${named}.${left}`
 }
 
 const settingsProblem = (error: ConfigFileInvalid): string =>
@@ -337,7 +338,8 @@ export const plan = (
       )
     }
     const priorities = new Map(open.map((issue) => [issue.id, priorityOf(issue)]))
-    if (apply) yield* warnOfRun(repo)
+    if (apply)
+      yield* warnOfRun(repo).pipe(Effect.onInterrupt(() => Console.error(stoppedReadingLine)))
     yield* Console.log(
       `${apply ? "Adding" : "Proposed"} ${plural(links.length, "blocks link")} between the ${plural(open.length, "open ticket")}:`,
     )
