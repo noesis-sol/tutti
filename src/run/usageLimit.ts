@@ -143,11 +143,15 @@ export interface UsageLimitHold {
   readonly atReset: AtReset
 }
 
-/** A hand-back kept for the reset: what it hands back, its prompt, and what came of its send. */
+/**
+ * A hand-back kept for the reset: what it hands back, its prompt, whether its worker was steered
+ * when it was kept (handed over to it all the same, § 4.3), and what came of its send.
+ */
 interface Kept {
   readonly mode: HandBackMode
   readonly prompt: string
-  readonly sent: Deferred.Deferred<string, AgentGone>
+  readonly steered: boolean
+  readonly sent: Deferred.Deferred<string | undefined, AgentGone>
 }
 
 interface HoldState {
@@ -332,9 +336,17 @@ export const make = (options: {
           lifted: true,
         }),
       )
-      // A hand-back kept for the reset is its worker's carry-on.
+      const entries = (yield* ledger.current).tickets
+      // A hand-back kept for the reset is its worker's carry-on, unless you steered it meanwhile.
       const due = yield* Ref.getAndSet(kept, new Map())
       for (const [ticket, handBack] of due) {
+        if (entries.get(ticket)?.steered === true && !handBack.steered) {
+          yield* logs.write(
+            detail`${ticket}: the usage limit has reset; you steer its worker, so tutti doesn't hand it its ${handedWords(handBack.mode)}`,
+          )
+          yield* Deferred.succeed(handBack.sent, undefined)
+          continue
+        }
         const sent = yield* Effect.exit(host.send(ticket, handBack.prompt, "clientComposed"))
         yield* Deferred.done(handBack.sent, sent)
         if (sent._tag === "Success") {
@@ -343,7 +355,6 @@ export const make = (options: {
           )
         }
       }
-      const entries = (yield* ledger.current).tickets
       for (const ticket of before.limited) {
         if (due.has(ticket)) continue
         if (entries.get(ticket)?.steered === true) {
@@ -504,8 +515,12 @@ export const make = (options: {
     const keep: AtReset["keep"] = (ticket, mode, prompt) =>
       Effect.gen(function* () {
         if ((yield* Ref.get(state)).hold === null) return null
-        const sent = yield* Deferred.make<string, AgentGone>()
-        yield* Ref.update(kept, (all) => new Map([...all, [ticket, { mode, prompt, sent }]]))
+        const steered = (yield* ledger.current).tickets.get(ticket)?.steered === true
+        const sent = yield* Deferred.make<string | undefined, AgentGone>()
+        yield* Ref.update(
+          kept,
+          (all) => new Map([...all, [ticket, { mode, prompt, steered, sent }]]),
+        )
         return Deferred.await(sent)
       }).pipe(one.withPermit)
 

@@ -48,7 +48,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import { type AgentGone, AgentHost, type From } from "../agent/AgentHost.ts"
+import { type AgentGone, AgentHost } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -462,17 +462,21 @@ export type GiveEnv = MergeEnv
 export interface AtReset {
   /**
    * Keeps the hand-back due to the ticket's worker, at the limit, `prompt`, for the reset to send:
-   * its send's uuid once sent, or why its worker didn't take it. Null when the hold is off, the
-   * limit reset already: the caller sends it.
+   * its send's uuid once sent, undefined when you steered the worker meanwhile (it is sent nothing,
+   * steer.ts), or why its worker didn't take it. Null when the hold is off, the limit reset
+   * already: the caller sends it.
    */
   keep(
     id: string,
     mode: HandBackMode,
     prompt: string,
-  ): Effect.Effect<Effect.Effect<string, AgentGone> | null>
+  ): Effect.Effect<Effect.Effect<string | undefined, AgentGone> | null>
   /** Takes back the ticket's hand-back kept for the reset: false once the reset has sent it. */
   takeBack(id: string): Effect.Effect<boolean>
 }
+
+/** Why a hand-back kept for the reset isn't sent: you steered its worker meanwhile. */
+const steeredWhile = "you steered its worker while it waited for the usage limit"
 
 /** What a ticket's worker is handed back, for a line: `conflicts to resolve`. */
 export const handedWords = (mode: HandBackMode): string =>
@@ -628,24 +632,40 @@ const endLate = (
     return why
   })
 
+/** The hand-back sent to the ticket's worker: its send's uuid, or why it wasn't, for a line. */
+type Sent = Result.Result<string, string>
+
+/** Sends the ticket's worker its hand-back, `prompt`, now. */
+const sendNow = (id: string, prompt: string): Effect.Effect<Sent, never, AgentHost> =>
+  Effect.gen(function* () {
+    const sent = yield* Effect.result((yield* AgentHost).send(id, prompt, "clientComposed"))
+    return Result.isSuccess(sent)
+      ? Result.succeed(sent.success)
+      : Result.fail(line`its worker did not take the hand-back (${sent.failure.why})`)
+  })
+
 /**
  * Sends the hand-back to the ticket's worker, at the account's usage limit, once the limit lifts, as
  * orchestra 0.8.0 has it: `atReset` keeps it for the reset to send as the worker's carry-on, the wait
- * not counting toward `limit`, and the hand-back's turn starts its clock. Its send's uuid, or why it
- * failed; undefined when the worker left the limit without it (steered, or its session ended), for
- * the caller to give it as to any worker.
+ * not counting toward `limit`, and the hand-back's turn starts its clock. A worker you steered
+ * meanwhile is sent nothing (steer.ts), and the hand-back is over. Its send's uuid, or why it
+ * wasn't sent; undefined when the worker left the limit without it, not steered (its session
+ * ended), for the caller to give it as to any worker.
  */
 const sendAtReset = (
   handBack: HandBack,
   limit: Duration.Duration,
   atReset: AtReset,
-): Effect.Effect<Result.Result<string, AgentGone> | undefined, never, GiveEnv> =>
+): Effect.Effect<Sent | undefined, never, GiveEnv> =>
   Effect.gen(function* () {
-    const host = yield* AgentHost
+    const ledger = yield* Ledger
     const logs = yield* Log
     const { id } = handBack.ticket
+    const steered = Effect.map(ledger.current, (state) => state.tickets.get(id)?.steered === true)
+    // Handed over to a steered worker, it is sent all the same (§ 4.3).
+    const before = yield* steered
     const kept = yield* atReset.keep(id, handBack.mode, handBack.prompt)
-    if (kept === null) return yield* Effect.result(host.send(id, handBack.prompt, "clientComposed"))
+    if (kept === null) return yield* sendNow(id, handBack.prompt)
     yield* logs.write(
       detail`${id}'s worker is at the usage limit: it is handed its ${handedWords(handBack.mode)} once the limit lifts, the wait not counting toward the ${formatDuration(limit)}`,
     )
@@ -657,12 +677,18 @@ const sendAtReset = (
       ),
     )
     if (sent === undefined) {
-      if (yield* atReset.takeBack(id)) return undefined
+      if (yield* atReset.takeBack(id)) {
+        return !before && (yield* steered) ? Result.fail(steeredWhile) : undefined
+      }
       sent = yield* Effect.result(kept)
     }
+    if (Result.isFailure(sent)) {
+      return Result.fail(line`its worker did not take the hand-back (${sent.failure.why})`)
+    }
+    if (sent.success === undefined) return Result.fail(steeredWhile)
     // Sent at the reset, its worker is UsageLimited until the hand-back's turn starts.
-    if (Result.isSuccess(sent)) yield* whenState(id, (state) => !isLimited(state))
-    return sent
+    yield* whenState(id, (state) => !isLimited(state))
+    return Result.succeed(sent.success)
   })
 
 /**
@@ -684,7 +710,6 @@ export const give = (
       const host = yield* AgentHost
       const { ticket, prompt, what } = handBack
       const { id } = ticket
-      const from: From = "clientComposed"
       const state = yield* Effect.result(host.current(id))
       let taken: Effect.Effect<void>
       if (Result.isSuccess(state) && state.success._tag === "Gone") {
@@ -704,12 +729,10 @@ export const give = (
         const sent =
           state.success._tag === "UsageLimited" && atReset !== undefined
             ? yield* sendAtReset(handBack, limit, atReset)
-            : yield* Effect.result(host.send(id, prompt, from))
+            : yield* sendNow(id, prompt)
         // It left the limit without the hand-back: given as to any worker, from its state now.
         if (sent === undefined) return yield* give(handBack, limit)
-        if (Result.isFailure(sent)) {
-          return line`its worker did not take the hand-back (${sent.failure.why})`
-        }
+        if (Result.isFailure(sent)) return sent.failure
         const answered = Stream.fromQueue(heard).pipe(
           Stream.filter((message) => answers(message, sent.success)),
           Stream.runHead,

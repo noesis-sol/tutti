@@ -1,14 +1,17 @@
 // A hand-back due to a worker at the account's usage limit already, as whole runs under TestClock:
 // a check failing on what it left, taken from git as the limit hit, or a conflict at its merge, is
 // handed back once the limit lifts, sent at the reset as its carry-on, rather than set aside, the
-// wait not counting toward resolve_timeout (handback.ts's give, usageLimit.ts).
+// wait not counting toward resolve_timeout (handback.ts's give, usageLimit.ts). A worker you steer
+// while it waits is sent nothing, and the hand-back is over.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Fiber } from "effect"
+import { Effect, Fiber, Queue } from "effect"
+import { UiCommand } from "../src/run/commands.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import type { ScreenInputs } from "../src/run/screen.ts"
 import { carryOnHandBack, carryOnText } from "../src/run/usageLimit.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
@@ -153,8 +156,10 @@ interface Plan {
   readonly tickets: ReadonlyArray<string>
   readonly scripts: (world: World, places: Places) => Scripts
   readonly checks: { readonly fast: ReadonlyArray<CheckFailed | ReturnType<typeof passed>> }
-  /** Runs beside the run, before it is joined. */
-  readonly during: Effect.Effect<void, unknown, Env>
+  /** Runs beside the run, before it is joined; `screen` has the dashboard's inputs, once shown. */
+  readonly during: (screen: () => ScreenInputs | undefined) => Effect.Effect<void, unknown, Env>
+  /** Whether the run has a dashboard, for `during` to steer workers from. */
+  readonly dashboard?: boolean
 }
 
 /** A whole run of `plan.tickets` on main, all at once, each worktree made in git first. */
@@ -185,10 +190,23 @@ const runs = (plan: Plan): Promise<Ran<Outcome> & Places> => {
           base: "main",
         })
       }
+      let shown: ScreenInputs | undefined
       const fiber = yield* Effect.forkChild(
-        run({ version: "0.1.0-test", base: "main", start: [line`START tutti 0.1.0-test`] }),
+        run({
+          version: "0.1.0-test",
+          base: "main",
+          start: [line`START tutti 0.1.0-test`],
+          ...(plan.dashboard === true
+            ? {
+                dashboard: (inputs: ScreenInputs) =>
+                  Effect.sync(() => {
+                    shown = inputs
+                  }),
+              }
+            : {}),
+        }),
       )
-      yield* plan.during
+      yield* plan.during(() => shown)
       return yield* Fiber.join(fiber)
     }),
   ).then((ran) => ({ ...ran, ...places }))
@@ -242,7 +260,7 @@ const failing = new CheckFailed({
  * Waits for b's hand-back to wait for the reset, then lets two hours, six resolve_timeouts, pass. The
  * run may wait for the reset alone before it, while it checks what b's worker left.
  */
-const pastTheReset = (what: string) =>
+const pastTheReset = (what: string) => () =>
   Effect.gen(function* () {
     yield* untilLogged(
       new RegExp(`^ {2}b's worker is at the usage limit: it is handed its ${what}`),
@@ -302,6 +320,48 @@ describe("a worker at the usage limit already", () => {
     expect(composed(ran)).not.toContain(carryOnHandBack("b", "tutti/b", "fixing", "main"))
     expect(composed(ran)).not.toContain(carryOnText("b"))
     expect(interrupted(ran)).toBe(false)
+  })
+
+  test("steered while it waits for the reset, is handed nothing, and the hand-back is over", async () => {
+    const ran = await runs({
+      tickets: ["a", "b"],
+      checks: { fast: [passed("fast"), failing] },
+      dashboard: true,
+      scripts: (world, places) => ({
+        a: [works(world, places, "a", { "shared.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+        b: [
+          [
+            ...works(world, places, "b", { "shared.txt": "b\n" }, [
+              step(untilOnMain(world, { "shared.txt": "a\n" })),
+            ]),
+            ...limitedTurn(continues(world, places, "b", { "shared.txt": "a and b\n" })),
+          ],
+        ],
+      }),
+      during: (screen) =>
+        Effect.gen(function* () {
+          yield* untilLogged(/^ {2}b's worker is at the usage limit: it is handed its failed check/)
+          const inputs = screen()
+          if (inputs === undefined) throw new Error("the run showed no dashboard")
+          // You stop b's worker from its view: it is steered, and still at the limit.
+          yield* Queue.offer(inputs.commands, UiCommand.Interrupt({ ticket: "b" }))
+          yield* untilLogged(/^ {2}STEERED: /)
+          yield* advance("2 hours")
+        }),
+    })
+    expectClean(ran)
+    expectPhases(ran, { a: "Done", b: "Blocked" })
+    expectLog(ran, [
+      /^ {2}FIXING: /,
+      "  b's worker is at the usage limit: it is handed its failed check to fix once the limit lifts, the wait not counting toward the 20m",
+      /^ {2}STEERED: /,
+      "USAGE_LIMIT lifted",
+      "  b: the usage limit has reset; you steer its worker, so tutti doesn't hand it its failed check to fix",
+      /^ {2}MERGE_CONFLICT: b closed, .*\(1\) you steered its worker while it waited for the usage limit/,
+    ])
+    const [resolve, ...rest] = composed(ran)
+    expect(resolve).toContain("rebasing tutti/b onto it stopped on conflicts in shared.txt")
+    expect(rest).toEqual([])
   })
 
   test("is handed the conflicts its fix, taken from git, meets at its merge, once the limit lifts", async () => {
