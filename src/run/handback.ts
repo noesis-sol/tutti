@@ -14,7 +14,8 @@
 // The hand-back is a client_composed message with orchestra's instructions. It is under way from
 // its push until its send is no longer outstanding and the worker has settled, within
 // resolve_timeout from the push, the time its worker waits at the account's usage limit left out, as
-// orchestra 0.8.0 has it; the reset tells it to carry on with the hand-back (usageLimit.ts). A worker
+// orchestra 0.8.0 has it, and the time the machine is loaded, up to resolve_timeout again, as
+// orchestra 0.9.0 has it; the reset tells it to carry on with the hand-back (usageLimit.ts). A worker
 // at the limit already is handed it once the limit lifts, as orchestra 0.8.0 has it: the usage-limit
 // hold keeps the hand-back and sends it at the reset as the worker's carry-on, the wait not counting
 // toward resolve_timeout either. A worker seen at the limit with what it was asked done in git, its
@@ -59,6 +60,7 @@ import { Store } from "../services/Store.ts"
 import { failedHow, runMergeCheck } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
+import { loadEvery } from "./load.ts"
 import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "./log.ts"
 import {
   abandonRebase,
@@ -548,30 +550,65 @@ const whenState = (
 
 const isLimited = (state: WorkerState) => state._tag === "UsageLimited"
 
+/** What a hand-back's give reads of the run: its atReset and whether the machine is loaded. */
+type GiveOptions = Pick<MergeOptions, "atReset" | "loaded">
+
+/** A hand-back past its time limit: `loaded`, the time the machine's load added to it. */
+interface Late {
+  readonly loaded: Duration.Duration
+}
+
 /**
  * The hand-back's clock: `limit` of the time its worker isn't at the account's usage limit, as
- * orchestra 0.8.0 counts it. Each time the worker is seen at the limit, git is asked whether it has
- * done what it was asked, its turn having ended on the limit as it finished (a turn that has ended
- * can't change git): "taken" when it has. "late" once the time is up. Its wait for the limit is one
- * of `atReset`'s, when given.
+ * orchestra 0.8.0 counts it, and of that, the time the machine is loaded (`options.loaded`, sampled
+ * every loadEvery) left out too, up to `limit` again, as orchestra 0.9.0 has it. Each time the
+ * worker is seen at the limit, git is asked whether it has done what it was asked, its turn having
+ * ended on the limit as it finished (a turn that has ended can't change git): "taken" when it has.
+ * Late once the time is up. Its wait for the limit is one of `options.atReset`'s, when given.
  */
 const clock = (
   handBack: HandBack,
   limit: Duration.Duration,
-  atReset?: AtReset,
-): Effect.Effect<"taken" | "late", never, GiveEnv> =>
+  options: GiveOptions,
+): Effect.Effect<"taken" | Late, never, GiveEnv> =>
   Effect.gen(function* () {
     const logs = yield* Log
     const { id, branch } = handBack.ticket
-    let left = Duration.toMillis(limit)
+    const { atReset } = options
+    const loaded = options.loaded ?? Effect.succeed(false)
+    const most = Duration.toMillis(limit)
+    const every = Duration.toMillis(loadEvery)
+    let left = most
+    // The time the machine was loaded, up to `most`; and since when the time is counted, toward it
+    // (`spare`, the machine loaded at that time's sample) or toward `left`.
+    let extra = 0
+    let since = 0
+    let spare = false
+    const count = (now: number) => {
+      const spent = Math.max(0, now - since)
+      const added = spare ? Math.min(spent, most - extra) : 0
+      extra += added
+      left = Math.max(0, left - (spent - added))
+      since = now
+    }
+    // Until `left` runs out, the machine sampled every loadEvery.
+    const runsOut = Effect.gen(function* () {
+      for (;;) {
+        count(yield* Clock.currentTimeMillis)
+        if (left === 0) return
+        spare = extra < most && (yield* loaded)
+        yield* Effect.sleep(Duration.millis(Math.min(spare ? most - extra : left, every)))
+      }
+    })
     for (;;) {
-      const from = yield* Clock.currentTimeMillis
+      since = yield* Clock.currentTimeMillis
+      spare = false
       const limited = yield* Effect.raceFirst(
-        Effect.as(Effect.sleep(Duration.millis(left)), false),
+        Effect.as(runsOut, false),
         Effect.as(whenState(id, isLimited), true),
       )
-      if (!limited) return "late"
-      left = Math.max(0, left - ((yield* Clock.currentTimeMillis) - from))
+      if (!limited) return { loaded: Duration.seconds(Math.round(extra / 1000)) }
+      count(yield* Clock.currentTimeMillis)
       if (yield* handBack.done) {
         yield* logs.write(
           detail`${id}'s worker is at the usage limit, but ${doneWords(handBack.mode)}: ${branch} is taken as it is, without waiting for the limit to lift`,
@@ -703,21 +740,24 @@ const sendAtReset = (
  * Gives the ticket's worker a hand-back, its prompt, resuming its session if tutti closed it or it
  * is Gone (the RESUMED line starting with its `what`), and waits until its send is no longer
  * outstanding and the worker has settled, within `limit` from the push, the time its worker waits at
- * the account's usage limit not counting. A worker at the limit already is handed it once the limit
- * lifts, by `atReset` when given (sendAtReset). A worker at the limit with what it was asked done in
- * git has given its answer; one past the limit is stopped (endLate). Why it wasn't done; undefined
- * when what it left is to be looked at.
+ * the account's usage limit not counting, nor the time the machine is loaded meanwhile
+ * (`options.loaded`), up to `limit` again (clock). A worker at the limit already is handed it once
+ * the limit lifts, by `options.atReset` when given (sendAtReset). A worker at the limit with what it
+ * was asked done in git has given its answer; one past the limit is stopped (endLate), the line
+ * saying how much more the machine's load gave it. Why it wasn't done; undefined when what it left
+ * is to be looked at.
  */
 export const give = (
   handBack: HandBack,
   limit: Duration.Duration,
-  atReset?: AtReset,
+  options: GiveOptions,
 ): Effect.Effect<string | undefined, never, GiveEnv> =>
   Effect.scoped(
     Effect.gen(function* () {
       const host = yield* AgentHost
       const { ticket, prompt, what } = handBack
       const { id } = ticket
+      const { atReset } = options
       const state = yield* Effect.result(host.current(id))
       let taken: Effect.Effect<void>
       if (Result.isSuccess(state) && state.success._tag === "Gone") {
@@ -739,7 +779,7 @@ export const give = (
             ? yield* sendAtReset(handBack, limit, atReset)
             : yield* sendNow(id, prompt)
         // It left the limit without the hand-back: given as to any worker, from its state now.
-        if (sent === undefined) return yield* give(handBack, limit, atReset)
+        if (sent === undefined) return yield* give(handBack, limit, options)
         if (Result.isFailure(sent)) return sent.failure
         const answered = Stream.fromQueue(heard).pipe(
           Stream.filter((message) => answers(message, sent.success)),
@@ -760,15 +800,19 @@ export const give = (
       }
       const ended = yield* Effect.raceFirst(
         Effect.as(Effect.andThen(taken, untilSettled(id)), "settled" as const),
-        clock(handBack, limit, atReset),
+        clock(handBack, limit, options),
       )
-      if (ended !== "late") return undefined
+      if (ended === "settled" || ended === "taken") return undefined
       const now = yield* Effect.result(host.current(id))
       const how = Result.isSuccess(now) ? still(now.success) : "its worker is gone"
+      const more =
+        Duration.toMillis(ended.loaded) > 0
+          ? ` (and ${formatDuration(ended.loaded)} more for the machine's load)`
+          : ""
       return yield* endLate(
         handBack,
         limit,
-        line`${how} after ${formatDuration(limit)}, with the hand-back not done`,
+        line`${how} after ${formatDuration(limit)}${more}, with the hand-back not done`,
       )
     }),
   )
@@ -932,7 +976,7 @@ export const resolve = (
         done: Effect.map(verifyResolved(stop, options), (rejected) => rejected === undefined),
       },
       limit,
-      options.atReset,
+      options,
     )
     if (why === undefined) why = yield* verifyResolved(stop, options)
     if (why === undefined) {

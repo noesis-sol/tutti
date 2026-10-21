@@ -543,7 +543,7 @@ export const fixCheck = (
           done: fixed,
         },
         limit,
-        options.atReset,
+        options,
       )
       const verified =
         why === undefined

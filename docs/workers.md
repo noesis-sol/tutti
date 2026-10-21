@@ -317,6 +317,12 @@ its attempt had got to, which git keeps. A worker at the limit already when a ch
 left, or its merge meets conflicts, is handed them once the limit lifts, in place of the reset's
 message to carry on, rather than its ticket being set aside; the wait doesn't count either.
 
+Nor does the time the machine is loaded while the worker isn't at the limit, up to 20 minutes more:
+while the run holds at `--machine-workers`, or the dashboard's load line has the memory pressure or
+the CPU red, or the machine swapping (see [The load line](dashboard.md#the-load-line)), a worker's
+tests run several times slower. The line ending a hand-back past its limit says how much more it was
+given: `after 20m (and 5m more for the machine's load)`.
+
 ## Sessions
 
 tutti keeps a worker's session open only while its ticket needs it: while it runs, waits to merge,

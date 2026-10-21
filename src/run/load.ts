@@ -304,6 +304,15 @@ export const levelsOf = (
 }
 
 /**
+ * Whether `levels` have the machine pressed hard enough to slow a worker's tests several times over,
+ * as orchestra 0.9.0 has it: the kernel's memory pressure red, swapping under way, or the CPU red. A
+ * CPU in amber alone doesn't: a run's workers keep it there. A hand-back's time limit leaves out
+ * the time it is (handback.ts's clock).
+ */
+export const pressing = (levels: Levels): boolean =>
+  levels.pressure === "red" || levels.swapping !== "green" || levels.cpu === "red"
+
+/**
  * A reading at `now` from a listing (undefined: every worker unknown and nothing of tutti's own) and
  * the kernel's figures (undefined: no pressure or load), for the workers whose Claude Code is each
  * of `roots`, by ticket, and tutti's process `self`; and the sampler to take the next with.

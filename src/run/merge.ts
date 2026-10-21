@@ -101,6 +101,12 @@ export interface MergeOptions {
    */
   readonly atReset?: AtReset
   /**
+   * Whether the machine is loaded now: the run holds at --machine-workers, or its last load reading
+   * has it pressed (load.ts's pressing). A hand-back's time limit leaves out the time it is, up to
+   * the limit again (handback.ts's give). Without it, the machine is never loaded.
+   */
+  readonly loaded?: Effect.Effect<boolean>
+  /**
    * Takes a slot for a ticket checked once more (recheck.ts) and runs `work` in it, as a running
    * ticket's: false, taking none, while a solo ticket runs or is next, no slot is free, or the
    * ticket holds one still (the scheduler's recheckSlot). Without it, a recheck takes no slot.

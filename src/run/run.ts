@@ -126,7 +126,7 @@ import {
   stopsLine,
 } from "./holds.ts"
 import { type Entry, handBackWaits, Ledger, type State } from "./ledger.ts"
-import { Load, watchLoad } from "./load.ts"
+import { Load, pressing, watchLoad } from "./load.ts"
 import { detail, hold, type Line, Log, line, Tag, tagged } from "./log.ts"
 import {
   holdLine as machineHoldLine,
@@ -518,6 +518,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // Whether the run holds at --machine-workers (below): no ticket is checked ahead of its turn to
     // merge then (mergetrain.ts).
     const machineFull = yield* Ref.make(false)
+    // Whether the machine's last load reading has it pressed (load.ts's pressing), read with the
+    // dashboard alone: with machineFull, the time a hand-back's limit leaves out (handback.ts).
+    const pressed = yield* Ref.make(false)
     const queue = yield* makeQueue(
       {
         repo: config.repo,
@@ -527,6 +530,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         recheckSlot,
         setUps,
         machineFull: Ref.get(machineFull),
+        loaded: Effect.map(
+          Effect.all([Ref.get(machineFull), Ref.get(pressed)]),
+          ([full, hard]) => full || hard,
+        ),
       },
       (where, defect) =>
         panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
@@ -831,13 +838,21 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           source: loadSource,
           roots: host.processes,
           self: process.pid,
-          show: (load) => SubscriptionRef.update(status, (now) => ({ ...now, load })),
+          show: (load) =>
+            Effect.andThen(
+              Ref.set(pressed, pressing(load.levels)),
+              SubscriptionRef.update(status, (now) => ({ ...now, load })),
+            ),
         }).pipe(
           Effect.catchDefect((defect) =>
-            logs.write(
-              tagged(
-                "LOAD_FAILED",
-              )`${firstLine(defect)}; the machine's load is not shown for the rest of the run`,
+            Effect.andThen(
+              // No longer read: the machine's hold alone counts.
+              Ref.set(pressed, false),
+              logs.write(
+                tagged(
+                  "LOAD_FAILED",
+                )`${firstLine(defect)}; the machine's load is not shown for the rest of the run`,
+              ),
             ),
           ),
         ),
