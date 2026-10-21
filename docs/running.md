@@ -267,6 +267,11 @@ while it holds, so the slot is filled within seconds of a worker finishing. A ru
 own workers running never waits. A registration whose run is gone (its process ended, or its PID
 taken by a process started since, after a reboot or a run killed) counts nothing and is removed.
 
+The other runs' workers count in each worker's share of the cores (`TUTTI_CORES`, see
+[the worker prompt](workers.md)): the cores divided among this run's `concurrent` workers and theirs,
+as the run last read them, no more than `--machine-workers` where it is set. A worker takes its
+share as it starts and keeps it.
+
 ### Footprints
 
 Tickets that touch the same code don't run side by side. Each ticket has a **footprint**:

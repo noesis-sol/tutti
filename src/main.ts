@@ -51,6 +51,7 @@ import { layer as fibersLayer } from "./run/fibers.ts"
 import { exitCodes } from "./run/holds.ts"
 import { interview, interviewEnding } from "./run/interview.ts"
 import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
+import { otherWorkers } from "./run/machine.ts"
 import {
   check as checkNothing,
   endIfNothing,
@@ -120,6 +121,8 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Transcripts.layer({ repo }),
     UsageLimits.layer,
     fibersLayer,
+    // The other runs' workers, which the run reads and its workers' share of the cores counts.
+    otherWorkers,
   )
   const second = Layer.mergeAll(
     Checks.layer,

@@ -13,7 +13,7 @@
 // ended without removing it: it is ignored and removed. A folder that can't be read holds no run,
 // and one removed under the runs (a cache cleaner) is made again as the run next writes.
 import { isAbsolute, join } from "node:path"
-import { Context, Duration, Effect, FileSystem, Ref, type Scope, Semaphore } from "effect"
+import { Context, Duration, Effect, FileSystem, Layer, Ref, type Scope, Semaphore } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { exec, TimeLimit } from "../services/exec.ts"
 import { detail, type Line, Tag, tagged } from "./log.ts"
@@ -217,6 +217,31 @@ export interface Machine {
   /** The workers running in the other runs, as last read. */
   readonly others: Effect.Effect<number>
 }
+
+/**
+ * The workers running in the machine's other runs, as the run last read them (Machine.others), for
+ * each worker's share of the cores as it starts (src/agent/env.ts's coreShare, AgentHostLive): the
+ * run sets it each time it reads them, and a worker keeps the share it started with, as orchestra
+ * 0.9.0's do.
+ */
+export interface OtherWorkersValue {
+  readonly others: Effect.Effect<number>
+  set(others: number): Effect.Effect<void>
+}
+
+/** The other runs' workers the run last read; none unless a layer provides them (otherWorkers). */
+export const OtherWorkers = Context.Reference<OtherWorkersValue>("tutti/run/machine/OtherWorkers", {
+  defaultValue: () => ({ others: Effect.succeed(0), set: () => Effect.void }),
+})
+
+/** OtherWorkers kept in memory, for the run to set and its AgentHost to read. */
+export const otherWorkers: Layer.Layer<never> = Layer.effect(
+  OtherWorkers,
+  Effect.map(Ref.make(0), (count) => ({
+    others: Ref.get(count),
+    set: (others: number) => Ref.set(count, others),
+  })),
+)
 
 /** The word of the hold at --machine-workers, on the dashboard's title line while it holds. */
 export const holdWord = "MACHINE"

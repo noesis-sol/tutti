@@ -47,6 +47,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
 import { checkCommands } from "../project/settings.ts"
 import { detail, Log, line } from "../run/log.ts"
+import { OtherWorkers } from "../run/machine.ts"
 import { type AccountProbe, type Billing, permissionModeLine } from "./Account.ts"
 import {
   AgentGone,
@@ -118,7 +119,10 @@ export interface LiveOptions {
   readonly account: Pick<AccountProbe, "billing" | "subscription">
   /** tutti's environment, workers' is made from; process.env by default. */
   readonly env?: Readonly<Record<string, string | undefined>>
-  /** The machine's cores, divided among the run's workers (coreShare); availableParallelism(). */
+  /**
+   * The machine's cores, divided among the run's workers and the other runs' (coreShare,
+   * OtherWorkers) as each session starts; availableParallelism().
+   */
   readonly cores?: number
 }
 
@@ -231,13 +235,19 @@ export const layer = (
       const workers = yield* makeWorkers(checkCommands(config.settings))
       const scope = yield* Effect.scope
       const services = yield* Effect.context<Attention | Transcripts>()
-      const env = workerEnv({
-        subscription: options.account.subscription,
-        billing: config.billing,
-        checkTimeout: config.settings.checks.fast.timeout,
-        cores: coreShare(options.cores ?? availableParallelism(), config.settings.concurrent),
-        ...(options.env === undefined ? {} : { env: options.env }),
-      })
+      const otherWorkers = yield* OtherWorkers
+      const cores = options.cores ?? availableParallelism()
+      // A session's environment, its share of the cores taken as it starts, from the other runs'
+      // workers the run last read: one started as another run begins keeps more than its share.
+      const envNow = Effect.map(otherWorkers.others, (others) =>
+        workerEnv({
+          subscription: options.account.subscription,
+          billing: config.billing,
+          checkTimeout: config.settings.checks.fast.timeout,
+          cores: coreShare(cores, config.settings.concurrent, others, config.machineWorkers),
+          ...(options.env === undefined ? {} : { env: options.env }),
+        }),
+      )
       const requestedMode = config.settings.workers.permission_mode
       // Whether workers keep Skill (§ 4.1), decided once, from the main checkout, as the run begins.
       const skills = yield* projectHasSkills(config.repo)
@@ -386,6 +396,7 @@ export const layer = (
           )
           const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
           const abort = new AbortController()
+          const env = yield* envNow
           const setup = session.interview
           const servers =
             setup !== undefined

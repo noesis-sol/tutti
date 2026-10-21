@@ -130,6 +130,7 @@ import {
   machinePoll,
   holdWord as machineWord,
   make as makeMachine,
+  OtherWorkers,
 } from "./machine.ts"
 import { beadsWhy, closedAfter, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
@@ -572,6 +573,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       concurrent: config.settings.concurrent,
       cannot: (why) => logs.write(detail`${why}`),
     })
+    // The other runs' workers, as each look reads them: a worker's share of the cores counts them.
+    const otherWorkers = yield* OtherWorkers
     // The run's workers the others count: its tickets running, those merging and checked included.
     const ownWorkers = Effect.map(
       ledger.current,
@@ -601,13 +604,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         return full
       })
     // Writes how many of the run's workers run, reads the other runs, saying which started and
-    // ended, and lifts the hold once the machine is under the cap.
+    // ended and keeping how many workers they run (OtherWorkers), and lifts the hold once the
+    // machine is under the cap.
     const lookAround = Effect.gen(function* () {
       yield* machine.running(yield* ownWorkers)
       for (const seen of yield* machine.look) {
         yield* events.emit({ kind: "shared_machine", shared: seen.shared, text: seen.text })
         yield* logs.write(seen.text)
       }
+      yield* otherWorkers.set(yield* machine.others)
       if (!(yield* atCap)) yield* holdMachine(false)
     })
     // Whether the machine has room for the ticket about to start.
