@@ -59,6 +59,7 @@ import {
   report as reportNothing,
   themeStyles,
 } from "./run/nothing.ts"
+import { notifying } from "./run/notices.ts"
 import {
   catchSignals,
   listen,
@@ -129,7 +130,6 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
   const second = Layer.mergeAll(
     Checks.layer,
     Worktrees.layer({ repo, root: config.worktrees, base: started.base }),
-    Attention.layer,
     notifierLayer.pipe(Layer.provide(ttyLayer)),
   )
   const host = agentHostLayer({
@@ -145,7 +145,10 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Layer.provideMerge(OrganCost.layer),
     Layer.provideMerge(organHold),
   )
+  // Attention's records notify too: it is given the EventStream that notifies (notices.ts).
   return Layer.mergeAll(host, organs).pipe(
+    Layer.provideMerge(Attention.layer),
+    Layer.provideMerge(notifying),
     Layer.provideMerge(second),
     Layer.provideMerge(first),
     Layer.provideMerge(BunServices.layer),

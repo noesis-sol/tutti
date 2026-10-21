@@ -22,6 +22,7 @@ import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { layer as fibersLayer, type Left, RunFibers } from "../src/run/fibers.ts"
 import type { Log } from "../src/run/log.ts"
+import { notifying } from "../src/run/notices.ts"
 import type { PhaseTag, TicketPhase } from "../src/run/phase.ts"
 import { Beads, type Issue } from "../src/services/Beads.ts"
 import type { Checks } from "../src/services/Checks.ts"
@@ -201,6 +202,7 @@ export const environment = (
     Layer.provideMerge(
       Layer.mergeAll(attentionLayer(setup.policy ?? allowAll), transcriptsLayer(), usageLayer),
     ),
+    Layer.provideMerge(notifying),
     Layer.provideMerge(
       Layer.mergeAll(
         configLayer(config),

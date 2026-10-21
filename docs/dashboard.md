@@ -317,9 +317,23 @@ ssh.
 
 ## Notifications
 
-When the account's usage limit holds the run, tutti notifies once:
-`The five-hour limit is reached; the run holds until it resets at 14:05`. The other notifications
-of the spec (merged, set aside, needs you, stopped, finished) aren't sent yet in this version.
+A notification tells you each outcome that matters, in a few words, titled with the repository's
+folder name (`jswallet`), as orchestra's do:
+
+| When | It says |
+|---|---|
+| a ticket is merged | `Closed jswallet-12 · Add a --json flag to list` |
+| a ticket is deferred, or left for review (`CHECKS_FAILED`, `MERGE_CONFLICT`, …) | `Set aside jswallet-12 · checks failed` |
+| a ticket waits on a question for you | `jswallet-12 needs your answer · Which name should the flag have?` |
+| a worker asks you something (the first request in 30 seconds) | `jswallet-12 needs you · Allow Bash(rm -rf build)?` |
+| the account's usage limit holds the run (once per hold) | `The five-hour limit is reached; the run holds until it resets at 14:05` |
+| the run stops | `Stopped: PAUSED on jswallet-12`, or `Stopped: INTERRUPTED` when no ticket stopped it |
+| the run finishes | `Finished the run · 12 tickets closed · 2 set aside`, counting the tickets still set aside as it ends |
+| the full check after the run fails | `Full check failed · test/e2e`, or `Full check failed · setup` |
+
+A title or reason longer than 60 characters is cut with `…`; the log has the rest. Holds other than
+the usage limit's, probes, the warnings that set no ticket aside (`LIKELY_CONFLICT`,
+`LONG_RUNNING`, …), triage and the run report don't notify, nor does a run with nothing to run.
 
 - On macOS, with `osascript`, titled with the repository's folder name.
 - On Linux, with `notify-send` when it is installed.

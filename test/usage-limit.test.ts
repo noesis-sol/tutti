@@ -164,6 +164,10 @@ const runs = (plan: Plan) => {
   )
 }
 
+/** The notices other than those of the tickets closed and the run finished (notices.ts). */
+const usageNotices = (notices: ReadonlyArray<string>): ReadonlyArray<string> =>
+  notices.filter((notice) => !/^(Closed|Finished) /.test(notice))
+
 /** The messages tutti sent `ticket`'s worker, by their text. */
 const messagesTo = (sent: ReadonlyArray<Sent>, ticket: string): ReadonlyArray<string> =>
   sent.flatMap((each) =>
@@ -214,7 +218,7 @@ describe("the usage-limit warning", () => {
     expect(seen?.banners).toEqual([
       { _tag: "Usage", utilization: 0.85, resetsAt: hour * 1000, limit: "five-hour" },
     ])
-    expect(ran.notices).toEqual([])
+    expect(usageNotices(ran.notices)).toEqual([])
   })
 })
 
@@ -265,7 +269,7 @@ describe("the usage-limit hold", () => {
       expect(messagesTo(ran.sent, id).filter((text) => text === carryOnText(id))).toHaveLength(1)
       expect(messagesTo(ran.sent, id)).not.toContain(nudgeText(id))
     }
-    expect(ran.notices).toEqual([
+    expect(usageNotices(ran.notices)).toEqual([
       `The five-hour limit is reached; the run holds until it resets at ${resets}`,
     ])
     expectEvents(ran, ["usage_limit", "hold", "usage_limit", "hold", "end"])

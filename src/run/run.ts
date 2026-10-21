@@ -85,7 +85,7 @@ import { Ending, printSummary, type Summary } from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
-import type { Notifier } from "../services/Notifier.ts"
+import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
@@ -117,6 +117,7 @@ import { Ledger, type State } from "./ledger.ts"
 import { detail, hold, type Line, Log, line, Tag } from "./log.ts"
 import { beadsWhy, closedAfter, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
+import { finished } from "./notices.ts"
 import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
 import {
   type Awaited,
@@ -342,6 +343,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const ledger = yield* Ledger
     const logs = yield* Log
     const events = yield* EventStream
+    const notifier = yield* Notifier
     const fibers = yield* RunFibers
     const context = yield* Effect.context<WorkEnv>()
     const { base } = options
@@ -1043,6 +1045,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       closed = Ending.Done({ text, tickets: n, limit: config.limit, took: now - begun })
       yield* events.emit({ kind: "done", text })
       yield* logs.write(text)
+      yield* notifier.notify(finished(view.totals))
     }
 
     // The full check, after a run that ended by itself and merged a ticket (fullcheck.ts).
