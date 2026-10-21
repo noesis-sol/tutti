@@ -634,7 +634,12 @@ describe("the live layer", () => {
   })
 
   test("passes update, create and list arguments as bd takes them", async () => {
-    const fake = fakeBd(`cat '${join(import.meta.dir, "fixtures/bd/update-claim.json")}'`)
+    // bd show answers each ID with an issue by it, as the writes show their IDs first.
+    const fake = fakeBd(`if [ "$1" = show ]; then
+  printf '{"id":"%s","title":"T","status":"open"}' "$2"
+else
+  cat '${join(import.meta.dir, "fixtures/bd/update-claim.json")}'
+fi`)
     await live(
       fake,
       withBeads((beads) =>
@@ -793,19 +798,19 @@ echo 'Issue nope not found' >&2; exit 1`)
     const limits = { read: "30 seconds", write: "200 millis" } as const
     const read = await live(
       fake,
-      withBeads((beads) => beads.show("demo-1")),
+      withBeads((beads) => beads.show("demo-813")),
       limits,
     )
     expect(Exit.isSuccess(read)).toBe(true)
     const write = failure(
       await live(
         fake,
-        withBeads((beads) => beads.close("demo-1")),
+        withBeads((beads) => beads.close("demo-813")),
         limits,
       ),
     )
     expect(write).toBeInstanceOf(BeadsTimedOut)
-    expect(write.command).toBe("bd close demo-1 --json")
+    expect(write.command).toBe("bd close demo-813 --json")
     const slowRead = failure(
       await live(
         fake,

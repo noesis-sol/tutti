@@ -763,6 +763,8 @@ export const fileTestWork = (choice: ChecksChoice | undefined, base: string) =>
           type: ticket.type,
           priority: ticket.priority,
           labels: ticket.labels,
+          // Its parent and blockers are tickets bd gave as it filed them, or bd list just did.
+          checked: true,
           ...(parent === undefined ? {} : { parent }),
           ...(ticket.blockedBy.length === 0
             ? {}

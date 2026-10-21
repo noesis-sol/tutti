@@ -296,6 +296,30 @@ export const decodeIssue = (
     fromBd(Array.isArray(issue) ? issue[0] : issue),
   )
 
+/**
+ * The issue bd gives for `id` in the output of bd show: bd answers an ID it has no issue for with one
+ * whose ID starts with it (a deleted ticket's follow-up, say), and that is bd having no such issue.
+ */
+export const issueFor = (
+  id: string,
+  command: string,
+  stdout: string,
+): Effect.Effect<Issue, BeadsFailed | BeadsUnreadable> =>
+  Effect.flatMap(decodeBdIssueOrList(command, stdout), (decoded) => {
+    const issues = Array.isArray(decoded) ? decoded : [decoded]
+    const issue = issues.find((each) => each.id === id)
+    return issue === undefined
+      ? Effect.fail(
+          new BeadsFailed({
+            command,
+            exitCode: 1,
+            stderr: `bd has no such ticket: ${command} gave ${issues[0]?.id}, another ticket`,
+            noSuchIssue: true,
+          }),
+        )
+      : Effect.succeed(fromBd(issue))
+  })
+
 /** Decodes the output of bd dep list: the linked issues, each with how it links. */
 export const decodeDependencies = (
   command: string,
@@ -367,6 +391,16 @@ export interface NewIssue {
   readonly discoveredFrom?: ReadonlyArray<string>
   readonly labels?: ReadonlyArray<string>
   readonly metadata?: Readonly<Record<string, unknown>>
+  /**
+   * The caller has made sure bd has the parent and the linked issues by those very IDs (bd just gave
+   * them): create doesn't show them first.
+   */
+  readonly checked?: boolean
+}
+
+/** For a write whose caller has made sure bd has its issues by those very IDs. */
+export interface Checked {
+  readonly checked?: boolean
 }
 
 export type Direction = "down" | "up"
@@ -391,6 +425,7 @@ export class Beads extends Context.Service<
       id: string,
       dependsOn: string,
       type?: DependencyType,
+      options?: Checked,
     ): Effect.Effect<void, BeadsError>
     /** bd dep list: what the issue depends on ("down", the default), or what depends on it ("up"). */
     dependencies(
@@ -462,7 +497,10 @@ export class Beads extends Context.Service<
         // A read is bd's answer when its output decodes, whatever bd's exit code.
         const read = <A>(
           args: ReadonlyArray<string>,
-          decode: (command: string, stdout: string) => Effect.Effect<A, BeadsUnreadable>,
+          decode: (
+            command: string,
+            stdout: string,
+          ) => Effect.Effect<A, BeadsUnreadable | BeadsFailed>,
         ) =>
           Effect.flatMap(bd(args, limits.read), ({ shown, output }) =>
             decode(shown, output.stdout).pipe(
@@ -483,26 +521,48 @@ export class Beads extends Context.Service<
         const writeIssue = (args: ReadonlyArray<string>) =>
           Effect.flatMap(write(args), ({ shown, output }) => decodeIssue(shown, output.stdout))
 
+        const show = (id: string) =>
+          read(["show", id, "--json"], (command, stdout) => issueFor(id, command, stdout))
+
+        // bd's writes, like its show, act on an issue whose ID starts with the one they are given:
+        // each ID is shown first, and bd having no issue by one fails the write before it is made.
+        // A show that fails otherwise leaves the write to say whether bd can make it.
+        const confirmed = <A, E, R>(ids: ReadonlyArray<string>, effect: Effect.Effect<A, E, R>) =>
+          Effect.andThen(
+            Effect.forEach(
+              ids,
+              (id) =>
+                Effect.catchIf(
+                  show(id),
+                  (error) => !(error._tag === "BeadsFailed" && error.noSuchIssue),
+                  () => Effect.void,
+                ),
+              { discard: true },
+            ),
+            effect,
+          )
+
         const flag = (name: string, value: string | undefined): ReadonlyArray<string> =>
           value === undefined ? [] : [`--${name}=${value}`]
         const listFlag = (name: string, values: ReadonlyArray<string> | undefined) =>
           values === undefined || values.length === 0 ? [] : [`--${name}=${values.join(",")}`]
 
-        const show = (id: string) => read(["show", id, "--json"], decodeIssue)
-
         const update = (id: string, change: Update) =>
-          writeIssue([
-            "update",
-            id,
-            "--json",
-            ...(change.claim ? ["--claim"] : []),
-            ...flag("status", change.status),
-            ...flag("append-notes", change.appendNotes),
-            ...Object.entries(change.setMetadata ?? {}).map(
-              ([key, value]) => `--set-metadata=${key}=${value}`,
-            ),
-            ...(change.unsetMetadata ?? []).map((key) => `--unset-metadata=${key}`),
-          ])
+          confirmed(
+            [id],
+            writeIssue([
+              "update",
+              id,
+              "--json",
+              ...(change.claim ? ["--claim"] : []),
+              ...flag("status", change.status),
+              ...flag("append-notes", change.appendNotes),
+              ...Object.entries(change.setMetadata ?? {}).map(
+                ([key, value]) => `--set-metadata=${key}=${value}`,
+              ),
+              ...(change.unsetMetadata ?? []).map((key) => `--unset-metadata=${key}`),
+            ]),
+          )
 
         return Beads.of({
           ready: (ready = {}) =>
@@ -535,51 +595,72 @@ export class Beads extends Context.Service<
               decodeIssues,
             ),
           update,
-          close: (id, reason) => writeIssue(["close", id, "--json", ...flag("reason", reason)]),
+          close: (id, reason) =>
+            confirmed([id], writeIssue(["close", id, "--json", ...flag("reason", reason)])),
           defer: (id, deferral = {}) =>
-            writeIssue([
-              "defer",
-              id,
-              "--json",
-              ...flag("reason", deferral.reason),
-              ...flag("until", deferral.until),
-            ]),
-          addLabel: (id, label) => Effect.asVoid(write(["label", "add", id, label, "--json"])),
-          removeLabel: (id, label) =>
-            Effect.asVoid(write(["label", "remove", id, label, "--json"])),
-          addDependency: (id, dependsOn, type = "blocks") =>
-            Effect.asVoid(write(["dep", "add", id, dependsOn, "--json", `--type=${type}`])),
-          dependencies: (id, dependencies = {}) =>
-            read(
-              [
-                "dep",
-                "list",
+            confirmed(
+              [id],
+              writeIssue([
+                "defer",
                 id,
                 "--json",
-                ...flag("direction", dependencies.direction),
-                ...flag("type", dependencies.type),
-              ],
-              decodeDependencies,
+                ...flag("reason", deferral.reason),
+                ...flag("until", deferral.until),
+              ]),
+            ),
+          addLabel: (id, label) =>
+            confirmed([id], Effect.asVoid(write(["label", "add", id, label, "--json"]))),
+          removeLabel: (id, label) =>
+            confirmed([id], Effect.asVoid(write(["label", "remove", id, label, "--json"]))),
+          addDependency: (id, dependsOn, type = "blocks", options = {}) =>
+            confirmed(
+              options.checked ? [] : [id, dependsOn],
+              Effect.asVoid(write(["dep", "add", id, dependsOn, "--json", `--type=${type}`])),
+            ),
+          dependencies: (id, dependencies = {}) =>
+            confirmed(
+              [id],
+              read(
+                [
+                  "dep",
+                  "list",
+                  id,
+                  "--json",
+                  ...flag("direction", dependencies.direction),
+                  ...flag("type", dependencies.type),
+                ],
+                decodeDependencies,
+              ),
             ),
           create: (issue) =>
-            writeIssue([
-              "create",
-              "--json",
-              `--title=${issue.title}`,
-              ...flag("description", issue.description),
-              ...flag("acceptance", issue.acceptance),
-              ...flag("type", issue.type),
-              ...flag("priority", issue.priority?.toString()),
-              ...flag("parent", issue.parent),
-              ...(issue.blockedBy ?? []).map((id) => `--deps=blocked-by:${id}`),
-              ...(issue.blocks ?? []).map((id) => `--deps=blocks:${id}`),
-              ...(issue.discoveredFrom ?? []).map((id) => `--deps=discovered-from:${id}`),
-              ...listFlag("labels", issue.labels),
-              ...flag(
-                "metadata",
-                issue.metadata === undefined ? undefined : JSON.stringify(issue.metadata),
-              ),
-            ]),
+            confirmed(
+              issue.checked
+                ? []
+                : [
+                    ...(issue.parent === undefined ? [] : [issue.parent]),
+                    ...(issue.blockedBy ?? []),
+                    ...(issue.blocks ?? []),
+                    ...(issue.discoveredFrom ?? []),
+                  ],
+              writeIssue([
+                "create",
+                "--json",
+                `--title=${issue.title}`,
+                ...flag("description", issue.description),
+                ...flag("acceptance", issue.acceptance),
+                ...flag("type", issue.type),
+                ...flag("priority", issue.priority?.toString()),
+                ...flag("parent", issue.parent),
+                ...(issue.blockedBy ?? []).map((id) => `--deps=blocked-by:${id}`),
+                ...(issue.blocks ?? []).map((id) => `--deps=blocks:${id}`),
+                ...(issue.discoveredFrom ?? []).map((id) => `--deps=discovered-from:${id}`),
+                ...listFlag("labels", issue.labels),
+                ...flag(
+                  "metadata",
+                  issue.metadata === undefined ? undefined : JSON.stringify(issue.metadata),
+                ),
+              ]),
+            ),
           questions: () => read(["human", "list", "--json"], decodeIssues),
           metadata: (id) => Effect.map(show(id), (issue) => issue.metadata),
           setMetadata: (id, key, value) =>

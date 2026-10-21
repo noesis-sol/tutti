@@ -186,7 +186,7 @@ Each service has a live layer and a test layer. Names are illustrative. Errors a
 | Service | Responsibility | Errors (tags) | Test layer |
 |---|---|---|---|
 | `AppConfig` | Flags, then environment, then `.tutti/settings.json` and the user config, resolved once into one value, the colour scheme included (§8, §7.11) | `SetupProblem` (a list) | A literal value |
-| `Beads` | Every `bd` call (`ready`, `show`, `list`, `update`, `close`, `label`, `dep`, `create`, `human`, metadata), each with a time limit. Output decoded with Schema | `BeadsFailed`, `BeadsTimedOut`, `BeadsUnreadable` | An in-memory backlog |
+| `Beads` | Every `bd` call (`ready`, `show`, `list`, `update`, `close`, `label`, `dep`, `create`, `human`, metadata), each with a time limit. Output decoded with Schema. bd answers an ID it has no issue for with one whose ID starts with it, so an answer by another ID is no such issue, and each write, and each issue a new one links to, is shown first: nothing is written for a deleted ticket | `BeadsFailed`, `BeadsTimedOut`, `BeadsUnreadable` | An in-memory backlog |
 | `Git` | Worktrees, rebase (and `rebase --abort`), merge-base, fast-forward, log, status, diff, `ls-files`, branch | `GitFailed{op,stderr}`, `GitTimedOut`, `RebaseConflict{files}` | In-memory repository, and real git in a temp folder for the git-subject tests |
 | `GitWriter` | One writer at a time in the main repository (a `Semaphore(1)`) | none | The same |
 | `Worktrees` | A ticket's worktree and branch, its `.tutti/run/` files, `info/exclude`, the symlink guard (`RUN_FILES_OUTSIDE`) | `RunFilesOutside`, `BadTicketId` | Temp folders |
@@ -1891,7 +1891,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | orchestra's own sessions get `--chrome` or `--no-chrome` | Done (tutti-kkb.5) |
 | | a check hand-back whose worker commits nothing is checked again | Done (tutti-kkb.7) |
 | | a release's GitHub Release carries its changelog section | Already so: the release workflow's notes are `scripts/release-notes.sh`'s |
-| | a deleted ticket's ID not taken for one it prefixes; nothing filed under a deleted parent | Planned (tutti-kkb.39) |
+| | a deleted ticket's ID not taken for one it prefixes; nothing filed under a deleted parent | Done (tutti-kkb.39): `Beads.show` takes another ID for not found, and each write shows its IDs first (§3.3) |
 | 0.8.6 | the tickets table without the tickets Current shows | Done (tutti-kkb.30) |
 | | a shared file holds two tickets apart only when one of them is to change it | Done (tutti-kkb.16) |
 | | the merge train, `merge_train`, and the latest action of a ticket checked ahead | Done (tutti-kkb.18), as `merge.train`, with the action line of a ticket checked ahead (tutti-6c8) |

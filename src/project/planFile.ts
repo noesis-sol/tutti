@@ -415,6 +415,8 @@ export const filePlan = (plan: FeaturePlan): Effect.Effect<FiledPlan, FilingFail
           type: t.type,
           priority: t.priority,
           parent: epic.id,
+          // bd just gave the epic's ID, and the links' below.
+          checked: true,
           ...(t.files.length === 0 ? {} : { metadata: { [MetadataKey.files]: t.files } }),
           ...(t.solo ? { labels: [soloLabel] } : {}),
         })
@@ -432,7 +434,7 @@ export const filePlan = (plan: FeaturePlan): Effect.Effect<FiledPlan, FilingFail
     )
     for (const [i, l] of links.entries()) {
       yield* beads
-        .addDependency(l.blocked, l.blocker, "blocks")
+        .addDependency(l.blocked, l.blocker, "blocks", { checked: true })
         .pipe(
           Effect.mapError((error) =>
             stop(
