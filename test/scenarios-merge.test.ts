@@ -198,6 +198,38 @@ const untilClaimed = (world: World, id: string) =>
     }),
   )
 
+/** Waits, in real time, until main holds `files`: the ticket that wrote them has merged. */
+const untilOnMain = (world: World, files: Files) =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 2000; i++) {
+      const tree = yield* world.repository.tree("main")
+      if (Object.entries(files).every(([path, text]) => tree.get(path) === text)) return
+      yield* Effect.promise(() => Bun.sleep(2))
+    }
+    throw new Error(`main never held ${Object.keys(files).join(", ")}`)
+  }).pipe(Effect.orDie)
+
+/**
+ * The scripts of a lands first, b after it: a finishes once b is dispatched, so that both are
+ * dispatched before either closes; b finishes once a, writing `aFiles`, has merged, so that main
+ * has moved on when b merges. `rest` is b's turns after its first.
+ */
+const aThenB = (
+  world: World,
+  places: Places,
+  aFiles: Files,
+  bFiles: Files,
+  rest: SessionScript = [],
+): Scripts => ({
+  a: [works(world, places, "a", { files: aFiles, first: [step(untilClaimed(world, "b"))] })],
+  b: [
+    [
+      ...works(world, places, "b", { files: bFiles, first: [step(untilOnMain(world, aFiles))] }),
+      ...rest,
+    ],
+  ],
+})
+
 /** Moves TestClock on by `total`, a minute at a time, letting the run catch up after each. */
 const passes = (total: Duration.Input) =>
   Effect.gen(function* () {
@@ -306,19 +338,17 @@ const fixingLine = (id: string, attempt: number) =>
 
 describe("conflicts handed back", () => {
   test("a conflict resolved and merged: Merging → Resolving → ToMerge → Merging → Done", async () => {
-    // a lands first; b, a minute later, conflicts with it in shared.txt.
+    // a lands first; b, after it, conflicts with it in shared.txt.
     const ran = await runs({
       tickets: ["a", "b"],
-      scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: { "shared.txt": "a\n" } })],
-        b: [
-          [
-            ...works(world, places, "b", { files: { "shared.txt": "b\n" }, takes: "1 minute" }),
-            ...resolves(world, places, "b", { "shared.txt": "a and b\n" }),
-          ],
-        ],
-      }),
-      during: () => passes("2 minutes"),
+      scripts: (world, places) =>
+        aThenB(
+          world,
+          places,
+          { "shared.txt": "a\n" },
+          { "shared.txt": "b\n" },
+          resolves(world, places, "b", { "shared.txt": "a and b\n" }),
+        ),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done" })
@@ -355,16 +385,8 @@ describe("conflicts handed back", () => {
   test("a conflict rejected: the rebase left unfinished, b Blocked MERGE_CONFLICT", async () => {
     const ran = await runs({
       tickets: ["a", "b"],
-      scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: { "shared.txt": "a\n" } })],
-        b: [
-          [
-            ...works(world, places, "b", { files: { "shared.txt": "b\n" }, takes: "1 minute" }),
-            ...leavesTheRebase,
-          ],
-        ],
-      }),
-      during: () => passes("2 minutes"),
+      scripts: (world, places) =>
+        aThenB(world, places, { "shared.txt": "a\n" }, { "shared.txt": "b\n" }, leavesTheRebase),
     })
     // A ticket set aside doesn't stop the run: it ends READY_EMPTY, exit 0.
     expectClean(ran, 0)
@@ -401,18 +423,16 @@ describe("a check handed back", () => {
     const ran = await runs({
       tickets: ["a", "b"],
       checks: { fast: [fails()] },
-      scripts: (world, places) => ({
-        a: [works(world, places, "a")],
-        b: [
-          [
-            ...works(world, places, "b", { takes: "1 minute" }),
-            ...fixes(world, places, "b", { "fix.txt": "fixed\n" }),
-          ],
-        ],
-      }),
+      scripts: (world, places) =>
+        aThenB(
+          world,
+          places,
+          { "a.txt": "a\n" },
+          { "b.txt": "b\n" },
+          fixes(world, places, "b", { "fix.txt": "fixed\n" }),
+        ),
       during: () =>
         Effect.gen(function* () {
-          yield* passes("2 minutes")
           yield* untilLogged(closedLine("b"))
           landed = yield* (yield* Repository).tree("main")
         }),
@@ -458,17 +478,11 @@ describe("a check handed back", () => {
     const ran = await runs({
       tickets: ["a", "b"],
       checks: { fast: [fails(), fails(), fails()] },
-      scripts: (world, places) => ({
-        a: [works(world, places, "a")],
-        b: [
-          [
-            ...works(world, places, "b", { takes: "1 minute" }),
-            ...fixes(world, places, "b", { "fix.txt": "one\n" }),
-            ...fixes(world, places, "b", { "fix.txt": "two\n" }),
-          ],
-        ],
-      }),
-      during: () => passes("2 minutes"),
+      scripts: (world, places) =>
+        aThenB(world, places, { "a.txt": "a\n" }, { "b.txt": "b\n" }, [
+          ...fixes(world, places, "b", { "fix.txt": "one\n" }),
+          ...fixes(world, places, "b", { "fix.txt": "two\n" }),
+        ]),
     })
     // A ticket set aside doesn't stop the run.
     expectClean(ran, 0)
@@ -567,11 +581,8 @@ describe("the setup command", () => {
       settings: (settings) => ({
         checks: { ...settings.checks, setup: { command: setup, files: ["bun.lock"] } },
       }),
-      scripts: (world, places) => ({
-        a: [works(world, places, "a", { files: { "bun.lock": "left-pad 2\n" } })],
-        b: [works(world, places, "b", { takes: "1 minute" })],
-      }),
-      during: () => passes("2 minutes"),
+      scripts: (world, places) =>
+        aThenB(world, places, { "bun.lock": "left-pad 2\n" }, { "b.txt": "b\n" }),
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done" })
