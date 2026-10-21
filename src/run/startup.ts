@@ -2,8 +2,9 @@
 // problem collected so that they are all reported at once, and the run exits 2. A repository
 // `tutti init` hasn't set up says so first, in place of the problems that init fixes. In § 5's
 // order: the git repository and its main checkout, on a branch; a clean tree; bd and the Beads
-// database; the login probe (§ 4.13); organs' provider (§ 6.1); the settings, flags, variables and
-// user config; the MCP names (§ 4.6); the worker prompt (§ 4.11).
+// database, and the ticket --ticket names (open, and work rather than a question); the login probe
+// (§ 4.13); organs' provider (§ 6.1); the settings, flags, variables and user config; the MCP names
+// (§ 4.6); the worker prompt (§ 4.11).
 //
 // orchestra's run state names workers it left behind, which tutti doesn't adopt (§ 11): a warning,
 // not a problem. A run that passes gets what the checks resolved, and its START block from them.
@@ -28,7 +29,7 @@ import { type OrganProvider, organProvider } from "../organs/AnthropicProvider.t
 import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
 import { settingsFile } from "../project/settings.ts"
-import { Beads, type BeadsError } from "../services/Beads.ts"
+import { Beads, type BeadsError, HumanLabel } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
@@ -231,7 +232,7 @@ const checkCleanTree = (repo: string) =>
 const beadsReason = (error: BeadsError): string => {
   switch (error._tag) {
     case "BeadsFailed":
-      return error.stderr.trim().split("\n")[0] ?? `exit code ${error.exitCode}`
+      return error.stderr.trim().split("\n")[0] || `exit code ${error.exitCode}`
     case "BeadsTimedOut":
       return `bd took longer than ${formatDuration(error.timeLimit)}`
     case "BeadsUnreadable":
@@ -239,13 +240,52 @@ const beadsReason = (error: BeadsError): string => {
   }
 }
 
-/** The problems with bd and the Beads database in `repo`; init sets the database up. */
-const checkBeads = <R>(repo: string, beads: Layer.Layer<Beads, never, R>, notSetUp: boolean) =>
+/**
+ * Why a run can't be scoped to ticket `id` (--ticket), or null: the ticket must be one bd shows,
+ * open, and work rather than a question for the maintainer, as orchestra's scopeProblem has it.
+ */
+const scopeProblem = (id: string) =>
+  Effect.gen(function* () {
+    const bd = yield* Beads
+    const shown = yield* Effect.result(bd.show(id))
+    const named = sanitizeLine(id)
+    if (Result.isFailure(shown)) {
+      const error = shown.failure
+      const reason =
+        error._tag === "BeadsFailed" && error.noSuchIssue
+          ? "bd has no ticket by that ID"
+          : beadsReason(error)
+      return `Cannot read ticket ${named} (--ticket): ${sanitizeLine(reason)}`
+    }
+    const ticket = shown.success
+    if (ticket.status === "closed") {
+      return `Ticket ${named} (--ticket) is closed: nothing to run. Reopen it with: bd update ${named} --status open`
+    }
+    if (ticket.labels.includes(HumanLabel)) {
+      return `Ticket ${named} (--ticket) is a question for you (label ${HumanLabel}), not work. Answer it with: bd human respond ${named}`
+    }
+    return null
+  })
+
+/**
+ * The problems with bd and the Beads database in `repo`, init setting the database up, and with
+ * the ticket the run is scoped to, if any.
+ */
+const checkBeads = <R>(
+  repo: string,
+  beads: Layer.Layer<Beads, never, R>,
+  notSetUp: boolean,
+  ticket: string | null,
+) =>
   Effect.gen(function* () {
     const read = yield* Effect.result(
       Effect.flatMap(Beads, (bd) => bd.ready()).pipe(Effect.provide(beads)),
     )
-    if (Result.isSuccess(read)) return []
+    if (Result.isSuccess(read)) {
+      if (ticket === null) return []
+      const problem = yield* scopeProblem(ticket).pipe(Effect.provide(beads))
+      return problem === null ? [] : [problem]
+    }
     const error = read.failure
     if (error._tag === "BeadsFailed" && error.exitCode === 127) {
       return ["Required command not found: bd (Beads). Install it, or let tutti init offer to."]
@@ -342,7 +382,7 @@ export const check = <R>(checking: Checking<R>) =>
       [
         checkBranch(repo),
         checkCleanTree(repo),
-        checkBeads(repo, checking.beads(repo), notSetUp),
+        checkBeads(repo, checking.beads(repo), notSetUp, config.ticket),
         collect(
           Effect.flatMap(Account, (account) => account.probe).pipe(
             Effect.provide(Layer.provide(checking.account, Layer.succeed(AppConfig, config))),

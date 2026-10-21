@@ -125,6 +125,8 @@ tutti --ticket tut-8f2
 children. The `START` line and the dashboard's title show the scope (`· ticket tut-8f2`). Workers are
 told to file follow-ups that belong to the work as children of `<id>`, so the run picks them up;
 anything filed otherwise waits for a later run, and the run report lists it.
+A ticket `bd` can't show, a closed one (reopen it with `bd update <id> --status open`) or a question
+for you (answer it with `bd human respond <id>`) is a setup problem, exit 2.
 
 The run ends as any other, followed by whether the scope is finished:
 
@@ -176,7 +178,8 @@ each ticket with its type, priority, files and the tickets it waits for, and ask
 to ask on and without `--yes`, nothing is filed (exit 2). Nothing is filed before you confirm, and
 `Ctrl+C` stops with nothing filed (exit 130).
 
-`--feature` can't be combined with `--ticket` or `--tickets`.
+`--feature` can't be combined with `--ticket` or `--tickets`, nor run with `--limit 0`, which would
+file the plan and start none of it.
 
 ## Several tickets at once
 

@@ -687,7 +687,7 @@ This matters beyond cost. The Agent SDK's terms ask third-party products not to 
 
 The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/workers.md` and `docs/organs.md` of v0.7.7. Appendix A goes through it feature by feature. What the port must keep exactly:
 
-1. **Startup checks** list every problem at once, with exit code 2: the repository, the main checkout, a clean tree, `bd`, the login probe (§4.13: a login, settings that parse, a trusted main checkout), the settings, the MCP names and the worker prompt. A repository `tutti init` hasn't set up says so first.
+1. **Startup checks** list every problem at once, with exit code 2: the repository, the main checkout, a clean tree, `bd`, the ticket `--ticket` names (one `bd` shows, not closed, not a question), the login probe (§4.13: a login, settings that parse, a trusted main checkout), the settings (`--feature` with `--limit 0` among their problems: it would file a plan and start none of it), the MCP names and the worker prompt. A repository `tutti init` hasn't set up says so first.
 2. **The run lock** (§9.2), taken after the startup checks pass and held until exit.
 3. **The start question** (`Current tickets: N ready` or `New feature`) when stdin and stdout are a TTY and no flag decides.
 4. **Nothing to run**: the box, `✓ All done` or `○ Nothing ready to run` with each reason and its command, `DEFERRED_FREE`. No dashboard, exit 0.

@@ -198,6 +198,13 @@ export const resolve = (sources: Sources): Result.Result<AppConfigValue, Readonl
   if (feature === null && flagGiven("yes") && yes) {
     problems.push("--yes only applies with --feature.")
   }
+  const limit = pick("limit", defaultLimit)
+  if (feature !== null && limit === 0) {
+    // The run would end at once, the plan filed and none of it started.
+    problems.push(
+      "--feature would file a plan and run none of it: --limit (or TUTTI_LIMIT) is 0. Raise --limit.",
+    )
+  }
 
   const prompt = pick("prompt", workerPromptFile)
   const worktrees = pick("worktrees", null)
@@ -251,7 +258,7 @@ export const resolve = (sources: Sources): Result.Result<AppConfigValue, Readonl
     ticket,
     feature,
     yes,
-    limit: pick("limit", defaultLimit),
+    limit,
     notify: pick("notify", user.notify),
     plain: pick("plain", false),
     mouse: !pick("noMouse", !user.mouse),
