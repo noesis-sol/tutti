@@ -52,7 +52,9 @@ const codeOf = (text: string): ReadonlyArray<string> => {
 /** The tutti commands in a piece of code, each as its command and the flags given to it. */
 const tuttiCommands = (code: string): ReadonlyArray<{ command: Command; flags: string[] }> =>
   code
-    .split(/;|&&|\|\||\||\$\(|'|"|:\s|#/)
+    // A quoted argument is one word, which may hold `;` or `|`: `--check-fast "a; b"`.
+    .replace(/"[^"]*"|'[^']*'/g, "ARG")
+    .split(/;|&&|\|\||\||\$\(|:\s|#/)
     .map((part) => part.trim().replace(/^!\s*/, ""))
     .filter((part) => /^tutti(\s|$)/.test(part))
     .map((part) => {

@@ -43,7 +43,7 @@ git worktree list                           # per-ticket worktrees still around
 bd ready; bd list --status=in_progress      # what a run would pick up; what is claimed
 bd human list                               # questions waiting for the user
 lsof -t .git/tutti.lock                     # is a run going here? its PID; nothing if not
-cat .git/tutti.lock                         # which run (or init) holds it, or held it last
+cat .git/tutti.lock                         # which run (or init) holds it; empty once it has ended
 tutti answer                                # workers waiting on a person right now
 tail -n 1 .tutti/run/events.jsonl | jq -c . # the last run's last record: "end" with its exit code once over
 jq . .tutti/run/state.json                  # the sessions the last run saved, for the next to resume
@@ -53,8 +53,8 @@ A run holds `<git-common-dir>/tutti.lock` (`.git/tutti.lock` from the main check
 it runs, with `flock`, and the system lets go of it however tutti exits, `kill -9` included, so only
 a running tutti has it open. The file is JSON: `pid`, `started` (the same as the run's `run` in the
 event stream), `version`, `branch`, and `scope` (`--ticket`) or `feature`; `tutti init` writes it
-too, with `"init": true`. It stays after the run: whether `lsof` lists a PID is what says a run is
-going. A run also holds orchestra's `.git/orchestra.lock`, so neither tool runs while the other does.
+too, with `"init": true`. A run that ends empties it; one killed with `kill -9` or crashed leaves
+its JSON behind, so whether `lsof` lists a PID is what says a run is going. A run also holds orchestra's `.git/orchestra.lock`, so neither tool runs while the other does.
 
 The project's tutti files:
 
