@@ -31,7 +31,7 @@ import {
   type Scope,
 } from "effect"
 import { Account } from "../agent/Account.ts"
-import { definedServers } from "../agent/mcp.ts"
+import { chromeServer, definedServers } from "../agent/mcp.ts"
 import { AppConfig, type AppConfigValue, type SetupProblem } from "../cli/AppConfig.ts"
 import type { Scouting } from "../organs/scout.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
@@ -99,6 +99,7 @@ import {
   prefixProblem,
   prefixQuestion,
   probeSteps,
+  serverNotes,
   setUpBeads,
   trustDeclined,
   trustExplanation,
@@ -719,12 +720,10 @@ export const init = <R>(options: InitOptions<R>) =>
     const install = findBeadsInstall(machine)
     const union = yield* offersUnion(machine, repo)
     const chosenNow = current.workers.mcp_servers
-    const available = [
-      ...new Set([
-        ...(yield* definedServers(repo).pipe(Effect.orElseSucceed(() => []))),
-        ...chosenNow,
-      ]),
-    ]
+    const defined = yield* definedServers(repo).pipe(
+      Effect.orElseSucceed((): ReadonlyArray<string> => []),
+    )
+    const available = [...new Set([...defined, ...chosenNow])]
     const prefixGiven: PrefixPlan | null =
       flags.prefix === undefined
         ? null
@@ -741,7 +740,9 @@ export const init = <R>(options: InitOptions<R>) =>
       concurrent:
         flags.concurrent === undefined ? { initial: current.concurrent, max: maxConcurrent } : null,
       mcp:
-        flags.mcp === undefined && available.length > 0 ? { available, chosen: chosenNow } : null,
+        flags.mcp === undefined && available.length > 0
+          ? { available, chosen: chosenNow, notes: serverNotes(available, defined) }
+          : null,
       changelogUnion: flags.changelogUnion === undefined && union,
     }
     const answers: WorkersAnswers =
@@ -923,7 +924,13 @@ export const init = <R>(options: InitOptions<R>) =>
       steps.push(yield* writeGitignore(repo))
       steps.push(...(yield* applyUnion(machine, repo, unionConsent)))
       steps.push(concurrencyStep(written.settings.concurrent, concurrent !== null))
-      steps.push(...mcpSteps(written.settings.workers.mcp_servers, available))
+      steps.push(
+        ...mcpSteps(
+          written.settings.workers.mcp_servers,
+          available,
+          defined.includes(chromeServer),
+        ),
+      )
       return steps
     })
 

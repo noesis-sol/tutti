@@ -68,11 +68,15 @@ export const lineFields = (io: LineIO): Fields => {
         const read = readTicked(typed, count, field.ticked)
         return "ok" in read ? read.ok : []
       }),
-    servers: ({ available, chosen }) =>
+    servers: ({ available, chosen, notes }) =>
       Effect.gen(function* () {
+        const listed = available.map((name) => {
+          const note = notes[name]
+          return note === undefined ? name : `${name} (${note})`
+        })
         const typed = yield* text(io, {
           title: "MCP servers workers get",
-          description: `Defined here: ${available.join(", ")}. Names, comma-separated; - for none; Enter keeps ${chosen.length === 0 ? "none" : chosen.join(", ")}.`,
+          description: `Defined here: ${listed.join(", ")}. Names, comma-separated; - for none; Enter keeps ${chosen.length === 0 ? "none" : chosen.join(", ")}.`,
           validate: (answer) => {
             const read = readServers(answer, chosen, available)
             return "error" in read ? read.error : null

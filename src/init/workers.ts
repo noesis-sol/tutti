@@ -34,10 +34,14 @@ export interface WorkersQuestions {
   readonly installBeads: { readonly method: string; readonly command: string } | null
   /** How many tickets run at the same time by default: the project's number now. */
   readonly concurrent: { readonly initial: number; readonly max: number } | null
-  /** The MCP servers workers get: those defined for the project here, and those chosen now. */
+  /**
+   * The MCP servers workers get: those defined for the project here, and those chosen now; what
+   * the question says beside some of them (serverNotes).
+   */
   readonly mcp: {
     readonly available: ReadonlyArray<string>
     readonly chosen: ReadonlyArray<string>
+    readonly notes: Readonly<Record<string, string>>
   } | null
   /** Whether to add CHANGELOG.md merge=union to .gitattributes. Offered as yes. */
   readonly changelogUnion: boolean
@@ -76,13 +80,49 @@ export const concurrencyStep = (concurrent: number, asked: boolean): Step => {
   )
 }
 
+/** What the MCP servers question says beside Claude in Chrome when it is set up here. */
+export const chromeBuiltIn = "built into Claude Code, drives Chrome on this machine"
+
+/** What the MCP servers question says beside Claude in Chrome, chosen, when it isn't set up here. */
+export const chromeNotSetUp = "Claude in Chrome isn't set up on this machine"
+
+/** What the MCP servers question says beside another server chosen but not defined here. */
+export const notDefinedHere = "not defined on this machine"
+
+/**
+ * What the MCP servers question says beside each of `available` that needs it, as orchestra's
+ * does: Claude in Chrome, built in where it is `defined` (set up here) and not set up where it
+ * isn't, and a server chosen but not `defined` here.
+ */
+export const serverNotes = (
+  available: ReadonlyArray<string>,
+  defined: ReadonlyArray<string>,
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    available.flatMap((name) =>
+      name === chromeServer
+        ? [[name, defined.includes(name) ? chromeBuiltIn : chromeNotSetUp]]
+        : defined.includes(name)
+          ? []
+          : [[name, notDefinedHere]],
+    ),
+  )
+
+/** A server's name as the MCP servers question lists it: with its note, if it has one. */
+export const serverLabel = (name: string, notes: Readonly<Record<string, string>>): string => {
+  const note = notes[name]
+  return note === undefined ? name : `${name}  · ${note}`
+}
+
 /**
  * The summary's step for the MCP servers workers get, and those not defined here: Claude in Chrome
- * is built into Claude Code, defined in no config file, and never missing.
+ * is built into Claude Code, defined in no config file, and never missing; chosen where it isn't
+ * set up (`chromeSetUp` false), a caution says workers get no Chrome until it is.
  */
 export const mcpSteps = (
   chosen: ReadonlyArray<string>,
   available: ReadonlyArray<string>,
+  chromeSetUp: boolean,
 ): ReadonlyArray<Step> => {
   const undefinedNames = chosen.filter((name) => name !== chromeServer && !available.includes(name))
   return [
@@ -102,6 +142,15 @@ export const mcpSteps = (
             "missing",
             "MCP servers",
             `${joinAnd(undefinedNames)} isn't defined for this project here: a run refuses to start until it is (claude mcp add)`,
+          ),
+        ]),
+    ...(chromeSetUp || !chosen.includes(chromeServer)
+      ? []
+      : [
+          step(
+            "caution",
+            "MCP servers",
+            `${chromeServer} is chosen, but ${chromeNotSetUp}: workers get no Chrome until it is (/chrome in Claude Code)`,
           ),
         ]),
   ]

@@ -31,6 +31,7 @@ import {
   type TextField,
 } from "../init/form.ts"
 import type { InitForm } from "../init/init.ts"
+import { serverLabel } from "../init/workers.ts"
 import { initAbout, initTitle, scoutClock } from "../print/initSummary.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
 import { Field, Hint, Themed } from "./Form.tsx"
@@ -608,7 +609,7 @@ export const screenFields = (screen: Settable<InitScreen>, clock: () => number):
         (id, answer, cancel) => ({ _tag: "Checklist", id, field, answer, cancel }),
         (ticked) => answered(field.title, `${ticked.length} of ${field.options.length} ticked`),
       ),
-    servers: ({ available, chosen }) =>
+    servers: ({ available, chosen, notes }) =>
       ask<ReadonlyArray<number>>(
         (id, answer, cancel) => ({
           _tag: "Checklist",
@@ -616,7 +617,7 @@ export const screenFields = (screen: Settable<InitScreen>, clock: () => number):
           field: {
             title: "MCP servers workers get",
             description: "Those defined for this project here. Each worker gets the ones ticked.",
-            options: available,
+            options: available.map((name) => serverLabel(name, notes)),
             ticked: available.flatMap((name, at) => (chosen.includes(name) ? [at] : [])),
           },
           answer,

@@ -419,7 +419,7 @@ describe("the Workers step", () => {
       {
         installBeads: null,
         concurrent: { initial: 1, max: 16 },
-        mcp: { available: ["postgres", "firecrawl"], chosen: [] },
+        mcp: { available: ["postgres", "firecrawl"], chosen: [], notes: {} },
         changelogUnion: true,
       },
     ])

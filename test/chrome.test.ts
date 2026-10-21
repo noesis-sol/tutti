@@ -142,8 +142,8 @@ describe("choosing Chrome in workers.mcp_servers", () => {
   })
 
   test("tutti init doesn't call it missing: no config file defines it", () => {
-    expect(mcpSteps([chromeServer], []).map((s) => s.kind)).toEqual(["done"])
-    expect(mcpSteps([chromeServer, "redis"], ["exa"]).map((s) => s.kind)).toEqual([
+    expect(mcpSteps([chromeServer], [], true).map((s) => s.kind)).toEqual(["done"])
+    expect(mcpSteps([chromeServer, "redis"], ["exa"], true).map((s) => s.kind)).toEqual([
       "done",
       "missing",
     ])

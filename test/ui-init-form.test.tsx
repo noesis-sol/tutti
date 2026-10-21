@@ -31,7 +31,7 @@ const repo = "/work/shop"
 const workers: WorkersQuestions = {
   installBeads: null,
   concurrent: { initial: 1, max: 16 },
-  mcp: { available: ["github", "linear"], chosen: ["github"] },
+  mcp: { available: ["github", "linear"], chosen: ["github"], notes: {} },
   changelogUnion: true,
 }
 

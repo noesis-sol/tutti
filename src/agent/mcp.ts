@@ -13,7 +13,8 @@
 // Claude in Chrome, claude-in-chrome, is built into Claude Code rather than defined in a config
 // file: choosing it gives sessions --chrome, and leaving it out --no-chrome (chromeArgs), as
 // orchestra does. Claude Code turns Chrome on by itself, past strict MCP config, once it is set up
-// on the machine. With --chrome, system/init lists it with source dynamic.
+// on the machine. With --chrome, system/init lists it with source dynamic. tutti init offers it, as
+// orchestra does, once the user's .claude.json records it set up (chromeSetUp).
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import type { McpServerConfig, SDKSystemMessage } from "@anthropic-ai/claude-agent-sdk"
@@ -235,9 +236,28 @@ export const resolveServers = (repo: string, names: ReadonlyArray<string>) =>
   })
 
 /**
+ * The keys of the user's .claude.json, Claude Code's own records, in any of which it records that
+ * Claude in Chrome is set up on this machine.
+ */
+const chromeKeys: ReadonlyArray<string> = [
+  "claudeInChromeDefaultEnabled",
+  "cachedChromeExtensionInstalled",
+  "hasCompletedClaudeInChromeOnboarding",
+]
+
+/**
+ * Whether the user's .claude.json, `user`, records Claude in Chrome set up on this machine: read
+ * leniently, it isn't ours, so a value other than true is taken as not set.
+ */
+const chromeSetUp = (user: Json | null): boolean =>
+  user !== null && chromeKeys.some((key) => user[key] === true)
+
+/**
  * The names of the servers defined for the repository at `repo` that workers can be given, in
  * Claude Code's order of scopes, each once, for tutti init to offer: no claude.ai connector. A
- * config file that can't be read offers none of its servers.
+ * config file that can't be read offers none of its servers. Claude in Chrome (chromeServer) comes
+ * last, when the user's .claude.json records it set up (chromeSetUp) and no config file defines
+ * the name.
  */
 export const definedServers = (repo: string) =>
   Effect.gen(function* () {
@@ -261,7 +281,7 @@ export const definedServers = (repo: string) =>
           : [name]
       }),
     )
-    return [...new Set(names)]
+    return [...new Set([...names, ...(chromeSetUp(user) ? [chromeServer] : [])])]
   })
 
 /** The problem when a session's system/init lists servers tutti didn't give it (§ 4.6). */
