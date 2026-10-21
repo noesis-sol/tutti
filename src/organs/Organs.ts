@@ -5,7 +5,8 @@
 // every organ's model and effort; AppConfig has them resolved.
 //
 // Each call:
-// - is skipped, with a log line, while the usage-limit hold is on (§ 4.12), as OrganHold says;
+// - is skipped, with a log line, while the usage-limit hold is on (§ 4.12), as OrganHold says, and
+//   puts that hold on when it is refused for the account's usage limit;
 // - draws a fresh evidence ID and tags the input's sections with it (evidence.ts, § 6.2), its
 //   system prompt ending with the evidence rule;
 // - runs generateObject as the organ (OrganCall), within the organ's time limit: the provider
@@ -13,11 +14,11 @@
 // - fails with OrganRefused for a refusal, OrganTimedOut past its limit, and OrganFailed for the
 //   rest, with the SDK result's subtype when there was one.
 import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk"
-import { Context, Duration, Effect, Layer, Schema } from "effect"
+import { Context, DateTime, Duration, Effect, Layer, Schema } from "effect"
 import { type AiError, LanguageModel } from "effect/ai"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type Line, Log, line, Tag } from "../run/log.ts"
-import { OrganCall, type OrganReads, subtypeOf } from "./AgentSdkLanguageModel.ts"
+import { limitOf, OrganCall, type OrganReads, subtypeOf } from "./AgentSdkLanguageModel.ts"
 import { evidenceId, fromTheRun, type InputPart, renderInput, systemPrompt } from "./evidence.ts"
 
 /** The organs, by the names their log lines and costs carry. */
@@ -109,15 +110,38 @@ export const organError = (organ: string, error: AiError.AiError): OrganFailed |
 // ---------------------------------------------------------------------------------------------
 // The usage-limit hold
 
-/** Whether organ calls are held: the usage-limit hold (§ 4.12) implements it. */
+/** Whether organ calls are held, and what puts the hold on: the usage-limit hold (§ 4.12). */
 export interface OrganHoldValue {
   readonly held: Effect.Effect<boolean>
+  /**
+   * A call was refused for the account's usage limit, which resets at `resetsAt`, if known; a hold
+   * without it ignores refusals.
+   */
+  readonly refused?: (refusal: {
+    readonly limit: string | null
+    readonly resetsAt: number | null
+  }) => Effect.Effect<void>
 }
 
 /** The hold organ calls are skipped under; never held unless a layer provides one. */
 export const OrganHold = Context.Reference<OrganHoldValue>("tutti/organs/Organs/OrganHold", {
   defaultValue: () => ({ held: Effect.succeed(false) }),
 })
+
+/**
+ * The limit and reset a call refused for the account's usage limit carries
+ * (AgentSdkLanguageModel's QuotaExhaustedError); undefined for any other error.
+ */
+export const refusalOf = (
+  error: AiError.AiError,
+): { readonly limit: string | null; readonly resetsAt: number | null } | undefined => {
+  const reason = error.reason
+  if (reason._tag !== "QuotaExhaustedError") return undefined
+  return {
+    limit: limitOf(error) ?? null,
+    resetsAt: reason.resetAt === undefined ? null : DateTime.toEpochMillis(reason.resetAt),
+  }
+}
 
 /** The log line of a skipped call: `ORGAN triage: skipped, the usage limit holds the run`. */
 export const skippedLine = (organ: string): Line =>
@@ -165,6 +189,12 @@ export class Organs extends Context.Service<
                   effort: overrides.effort ?? organ.effort,
                   ...(overrides.model === null ? {} : { model: overrides.model }),
                   ...(organ.reads === undefined ? {} : { reads: organ.reads }),
+                }),
+                Effect.tapError((error) => {
+                  const refusal = refusalOf(error)
+                  return refusal === undefined || hold.refused === undefined
+                    ? Effect.void
+                    : hold.refused(refusal)
                 }),
                 Effect.mapError((error) => organError(organ.name, error)),
                 Effect.timeoutOrElse({

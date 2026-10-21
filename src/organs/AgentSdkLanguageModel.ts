@@ -17,6 +17,9 @@
 //   fresh private temp folder removed afterwards, and a worker's environment (§ 4.13). An organ
 //   that reads the repository (the scout, § 6.3) names its read-only tools, the folder it reads,
 //   the hook that confines them to it and its budget, in OrganCall's `reads`.
+// - A turn that ended on the account's usage limit fails with QuotaExhaustedError, with when the
+//   limit resets and its name, from the turn's rate_limit_events: Organs puts the run's usage-limit
+//   hold on with them (OrganHold).
 // - Interrupting the call aborts the SDK's abortController; the turn ends and Claude Code exits.
 // - Each result's cost goes to OrganCost as it arrives, whatever happens to the answer after:
 //   LanguageModel's own decoding errors don't carry it. A call that ends without a result (its
@@ -32,7 +35,7 @@ import {
   type SDKResultMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Clock, Context, Effect, FileSystem, Layer, Stream } from "effect"
+import { Clock, Context, DateTime, Effect, FileSystem, Layer, Stream } from "effect"
 import {
   AiError,
   AnthropicStructuredOutput,
@@ -44,6 +47,7 @@ import type { AccountProbe } from "../agent/Account.ts"
 import { workerEnv } from "../agent/env.ts"
 import { chromeArgs } from "../agent/mcp.ts"
 import { spawnInOwnProcessGroup } from "../agent/options.ts"
+import { rateLimitOf } from "../agent/UsageLimits.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type Cost, OrganCost } from "./OrganCost.ts"
 
@@ -260,9 +264,47 @@ const refusalOf = (messages: ReadonlyArray<SDKMessage>): string | undefined => {
   return undefined
 }
 
+/** What the turn's messages say of the account's usage limit, as WorkerState reads a turn. */
+interface LimitSeen {
+  /** Whether the last `rate_limit_event` was rejected. */
+  readonly rejected: boolean
+  /** Which limit the events named, and when it resets, in epoch milliseconds. */
+  readonly limit: string | null
+  readonly resetsAt: number | null
+  /** Whether an assistant message carried the `rate_limit` error. */
+  readonly rateLimited: boolean
+}
+
+const limitSeen = (messages: ReadonlyArray<SDKMessage>): LimitSeen => {
+  let seen: LimitSeen = { rejected: false, limit: null, resetsAt: null, rateLimited: false }
+  for (const m of messages) {
+    if (m.type === "rate_limit_event") {
+      const info = rateLimitOf(m.rate_limit_info)
+      seen = {
+        ...seen,
+        rejected: info.status === "rejected",
+        limit: info.limit ?? seen.limit,
+        resetsAt: info.resetsAt ?? seen.resetsAt,
+      }
+    } else if (m.type === "assistant" && m.error === "rate_limit") {
+      seen = { ...seen, rateLimited: true }
+    }
+  }
+  return seen
+}
+
+/** The limit a QuotaExhaustedError's metadata names: `five_hour`; undefined when it names none. */
+export const limitOf = (error: AiError.AiError): string | undefined => {
+  const metadata = (error.reason as { readonly metadata?: Record<string, unknown> }).metadata
+  const sdk = metadata?.[metadataKey] as { readonly rate_limit_type?: unknown } | undefined
+  return typeof sdk?.rate_limit_type === "string" ? sdk.rate_limit_type : undefined
+}
+
 /**
  * The turn's result, or the error it maps to. A refusal is checked first: it wins even when the
- * result says success.
+ * result says success. A turn that ended on the account's usage limit (a 429, a rejected
+ * rate_limit_event or an assistant message's `rate_limit` error, as for a worker's turn) is a
+ * QuotaExhaustedError, with the limit's reset and its name.
  */
 export const outcome = (
   method: string,
@@ -286,6 +328,26 @@ export const outcome = (
         }),
       ),
     )
+  }
+  if (result.is_error) {
+    const status = result.subtype === "success" ? result.api_error_status : undefined
+    const limit = limitSeen(messages)
+    if (status === 429 || limit.rejected || limit.rateLimited) {
+      return Effect.fail(
+        fail(
+          method,
+          new AiError.QuotaExhaustedError({
+            ...(limit.resetsAt === null ? {} : { resetAt: DateTime.makeUnsafe(limit.resetsAt) }),
+            metadata: {
+              [metadataKey]: {
+                ...metadata[metadataKey],
+                ...(limit.limit === null ? {} : { rate_limit_type: limit.limit }),
+              },
+            },
+          }),
+        ),
+      )
+    }
   }
   if (result.subtype === "error_max_structured_output_retries") {
     return Effect.fail(

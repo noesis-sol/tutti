@@ -660,7 +660,7 @@ On a subscription login, many workers at once reach the account's usage limits. 
 
 **`allowed_warning`.** The dashboard's title line shows `usage 85% of the five-hour limit · resets 14:05` in `notice` (yellow in the `orchestra` scheme; `windingDown` is for winding down only, §7.11), and the log says it once per limit. Dispatch doesn't change (§15, Q9).
 
-**`rejected`** holds the run with `USAGE_LIMIT`:
+**`rejected`** holds the run with `USAGE_LIMIT`, as does an organ call refused for the limit: its session's turn ends on it as a worker's would, and it fails with the limit's name and reset from that session's `rate_limit_event`, which the hold takes as a rejection (unknown when it came with none). The reset lifts it as below, whether or not workers are still running, as in orchestra 0.9.0 (orchestra-8jw3):
 
 - No new tickets start.
 - A worker whose turn ended on the limit is `UsageLimited`. It isn't nudged, doesn't settle with "nothing done", isn't triaged, and doesn't count toward the environment hold. Without this, workers stopped by the limit would look like failures and end the run with `ENVIRONMENT`.

@@ -1,9 +1,9 @@
 // The UsageLimits service (§ 3.3, § 4.12): the account's rate-limit events, as every worker's
 // session reports them, the workers waiting for the limit, and whether the usage-limit hold is on.
 // AgentHost reports the `rate_limit_info` of each `rate_limit_event` its sessions emit, and each
-// worker that becomes UsageLimited or stops being so (makeWorkers); the run's hold
-// (src/run/usageLimit.ts) reads them and sets the hold, and organ calls are skipped while it is on
-// (OrganHold, through usageLimit.ts's organHold).
+// worker that becomes UsageLimited or stops being so (makeWorkers); an organ call refused for the
+// limit is reported as a rejection (OrganHold, through usageLimit.ts's organHold). The run's hold
+// (src/run/usageLimit.ts) reads them and sets the hold, and organ calls are skipped while it is on.
 //
 // The live layer keeps them in memory, as the test layer (src/testing/UsageLimits.ts) does; a test
 // reports scripted events through it.
@@ -39,6 +39,22 @@ export const rateLimitOf = (info: SDKRateLimitInfo): RateLimit => ({
   overage: info.isUsingOverage === true,
 })
 
+/** An organ call refused for the limit: which limit and when it resets, null when unknown. */
+export interface Refusal {
+  readonly limit: string | null
+  /** Epoch milliseconds. */
+  readonly resetsAt: number | null
+}
+
+/** A refusal as the rejection the hold reads it as. */
+export const refusalOf = (refusal: Refusal): RateLimit => ({
+  status: "rejected",
+  limit: refusal.limit,
+  resetsAt: refusal.resetsAt,
+  utilization: null,
+  overage: false,
+})
+
 /** The workers whose turn ended on the limit (UsageLimited), by ticket: when it resets, if known. */
 export type Waiting = ReadonlyMap<string, number | null>
 
@@ -47,6 +63,8 @@ export class UsageLimits extends Context.Service<
   {
     /** A worker's session emitted a `rate_limit_event` with this info. */
     report(info: SDKRateLimitInfo): Effect.Effect<void>
+    /** An organ's call was refused for the limit: a rejection, among the events. */
+    refused(refusal: Refusal): Effect.Effect<void>
     /** The events reported from now on, for the rest of the scope. */
     readonly subscribe: Effect.Effect<Stream.Stream<RateLimit>, never, Scope.Scope>
     /**
@@ -75,6 +93,7 @@ export const make: Effect.Effect<UsageLimits["Service"]> = Effect.gen(function* 
   const waiting = yield* SubscriptionRef.make<Waiting>(new Map())
   return UsageLimits.of({
     report: (info) => Effect.asVoid(PubSub.publish(events, rateLimitOf(info))),
+    refused: (refusal) => Effect.asVoid(PubSub.publish(events, refusalOf(refusal))),
     subscribe: Effect.map(PubSub.subscribe(events), Stream.fromSubscription),
     limited: (ticket, resetsAt) =>
       SubscriptionRef.update(waiting, (all) => {

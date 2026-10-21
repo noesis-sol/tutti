@@ -5,7 +5,8 @@
 //
 // - `allowed_warning`: the title line shows `usage 85% of the five-hour limit · resets 14:05`, and
 //   the log says USAGE once per limit. Dispatch doesn't change (§ 15, Q9).
-// - `rejected`, or a worker UsageLimited without one (a 429 alone): the hold. No new tickets start
+// - `rejected`, an organ call refused for the limit (which UsageLimits reports as a rejection), or
+//   a worker UsageLimited without one (a 429 alone): the hold. No new tickets start
 //   (the run's `taking`), organ calls are skipped (OrganHold, from UsageLimits), the title line
 //   shows `USAGE_LIMIT · resets 14:05` and the warning line `usage limit (five-hour) · resets 14:05
 //   · 3 workers wait for it`, and a notification fires once. A UsageLimited worker never settles
@@ -146,11 +147,15 @@ const fresh: HoldState = {
 const later = (a: number | null, b: number | null): number | null =>
   a === null ? b : b === null ? a : Math.max(a, b)
 
-/** OrganHold from UsageLimits: organ calls are skipped while the usage-limit hold is on. */
+/**
+ * OrganHold from UsageLimits: organ calls are skipped while the usage-limit hold is on, and one
+ * refused for the limit is a rejection, which puts it on.
+ */
 export const organHold = Layer.effect(
   OrganHold,
   Effect.gen(function* () {
-    return { held: (yield* UsageLimits).held }
+    const usage = yield* UsageLimits
+    return { held: usage.held, refused: usage.refused }
   }),
 )
 
