@@ -255,6 +255,8 @@ describe("no recheck beside a solo ticket", () => {
       closedLine("a"),
     ])
     expect(pathOf(ran, "a")).toEqual(rechecked)
+    // Not while s runs: its worker is done before a is checked once more.
+    expect(workingBeside(ran)).toEqual([])
   }, 30_000)
 })
 
