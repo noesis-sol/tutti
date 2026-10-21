@@ -153,12 +153,12 @@ export type Reading = Data.TaggedEnum<{
   Asked: { readonly question: Issue }
   /** Its worker stopped with nothing done, having linked `blockers`, which haven't merged. */
   WaitsForMerge: { readonly blockers: ReadonlyArray<string>; readonly status: Status }
-  /** Its worker deferred it. */
-  Deferred: Record<never, never>
+  /** Its worker deferred it; `nothingDone` as nothingDone says. */
+  Deferred: { readonly nothingDone: boolean }
   /** Still in progress, with no question and no deferral. */
-  InProgress: Record<never, never>
+  InProgress: { readonly nothingDone: boolean }
   /** Left in another status (open, blocked, …), with nothing to merge or wait for. */
-  Unfinished: { readonly status: Status }
+  Unfinished: { readonly status: Status; readonly nothingDone: boolean }
 }>
 
 export const Reading = Data.taggedEnum<Reading>()
@@ -305,7 +305,6 @@ export const read = (
   closed?: ClosedBranches,
 ): Effect.Effect<Reading, BeadsError | GitError, SettleEnv> =>
   Effect.gen(function* () {
-    const git = yield* Git
     const ledger = yield* Ledger
     const { id, path } = worker.worktree
     const issue = yield* show(id)
@@ -317,21 +316,32 @@ export const read = (
       const ask = closed === undefined ? undefined : asking(closed)
       const branches = yield* offBase(ask, state, issue.dependencies, ["blocks"])
       const blockers = unmergedBlockers(issue, state, branches)
-      if (blockers.length > 0) {
-        const nothingDone =
-          (yield* git.log(path, base)).length === 0 && changes(yield* git.status(path)).length === 0
-        if (nothingDone) return Reading.WaitsForMerge({ blockers, status })
+      if (blockers.length > 0 && (yield* nothingDone(path, base))) {
+        return Reading.WaitsForMerge({ blockers, status })
       }
     }
+    if (status === "closed") return yield* readClosed(worker, issue.title, base)
+    // Set aside, a worktree git can't read counts as one with work in it: it is kept for review.
+    const empty = yield* Effect.orElseSucceed(nothingDone(path, base), () => false)
     switch (status) {
-      case "closed":
-        return yield* readClosed(worker, issue.title, base)
       case "deferred":
-        return Reading.Deferred()
+        return Reading.Deferred({ nothingDone: empty })
       case "in_progress":
-        return Reading.InProgress()
+        return Reading.InProgress({ nothingDone: empty })
     }
-    return Reading.Unfinished({ status })
+    return Reading.Unfinished({ status, nothingDone: empty })
+  })
+
+/**
+ * Whether the worker at `path` left nothing of its own: its branch has no commits beyond `base`
+ * and its worktree no changes, as orchestra's nothingDone has it.
+ */
+export const nothingDone = (path: string, base: string): Effect.Effect<boolean, GitError, Git> =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    return (
+      (yield* git.log(path, base)).length === 0 && changes(yield* git.status(path)).length === 0
+    )
   })
 
 /** Whether a settled worker in `state` is idle: its turn ended, cleanly or failed. */

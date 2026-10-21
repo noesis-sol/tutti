@@ -8,12 +8,20 @@
 //   in the ticket's notes too, and its phase moves to Review with a `warn` record with `aside`. A
 //   note bd can't add doesn't keep it from review. Its record in state.json gets the phase at once,
 //   so a crash after it doesn't have the next run take it up as a worker still at it (carry.ts).
+//
+// A ticket set aside as its worker settled (deferred by its worker, or by tutti for a worker that
+// left it unfinished) with nothing done, no commits beyond the base and a clean worktree, has its
+// worktree and branch removed once triage has its evidence, as orchestra 0.8.1's dropNothingDone:
+// nothing there is left to review. Its lines say so (nothingLeft) in place of `left open`.
 import { Effect, Result } from "effect"
 import { Beads } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
+import { Worktrees } from "../services/Worktrees.ts"
+import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import * as log from "./log.ts"
 import { type Line, Log } from "./log.ts"
+import { gitWhy } from "./merge.ts"
 import { Cause } from "./phase.ts"
 
 /** The ticket set aside: its ID and title, as its records name it. */
@@ -111,4 +119,28 @@ export const putAside = (
     })
     yield* logs.write(text)
     return false
+  })
+
+/** What a set-aside ticket's lines say of a worker that left nothing done. */
+export const nothingLeft = "nothing done, so its worktree and branch are removed"
+
+/**
+ * Removes the worktree and branch of a ticket set aside with nothing done, once triage has its
+ * evidence. A failure is CLEANUP_FAILED, in the log and a `warn` record, as its line said they were
+ * removed.
+ */
+export const dropNothingDone = (worktree: {
+  readonly id: string
+  readonly path: string
+  readonly branch: string
+}): Effect.Effect<void, never, EventStream | Log | Worktrees> =>
+  Effect.gen(function* () {
+    const { id, path, branch } = worktree
+    const removed = yield* Effect.result((yield* Worktrees).remove(id))
+    if (Result.isSuccess(removed)) return
+    const why =
+      removed.failure._tag === "BadTicketId" ? removed.failure.why : gitWhy(removed.failure)
+    const text = log.detail`${log.Tag.cleanupFailed} for ${path} / ${branch}: ${why}`
+    yield* (yield* EventStream).emit({ kind: "warn", ticket: id, text })
+    yield* (yield* Log).write(text)
   })

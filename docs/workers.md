@@ -260,7 +260,12 @@ Beads:
 - **Asked**: it filed a question ticket for you that blocks it. Its session is closed; once you
   answer (`bd human respond <question> --response "…"`), tutti resumes the session and tells it the
   answer is in.
-- **Deferred** by the worker: set aside, and [triaged](organs.md#triage).
+- **Deferred** by the worker: set aside, and [triaged](organs.md#triage). Left in another status
+  (open, blocked, …) with nothing to wait for, tutti defers it for review the same way. A worker that
+  did nothing (no commits beyond the base, a clean worktree) leaves nothing to review, so once triage
+  has its evidence its worktree and branch are removed, as the line says: `<id> deferred by its
+  worker; nothing done, so its worktree and branch are removed` (`<id> still open -> noted and
+  deferred; nothing done, …`). With work of its own, they are kept: `…; worktree <path> left open`.
 - **Back in the queue**: it stopped with nothing done, having linked a blocker that hasn't merged
   (`WAITS_FOR_MERGE`).
 - **Still in progress**: tutti tells it to continue, at most twice:

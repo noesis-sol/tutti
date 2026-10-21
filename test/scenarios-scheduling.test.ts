@@ -883,7 +883,7 @@ describe("the scope", () => {
     expectLog(ran, [
       "[1] e.1 dispatching: e.1",
       "[2] e.3 dispatching: e.3",
-      /^ {2}e\.3 deferred by its worker; worktree .*\/e\.3 left open$/,
+      "  e.3 deferred by its worker; nothing done, so its worktree and branch are removed",
       closedLine("e.1"),
       "READY_EMPTY after 2 tickets; SCOPE_OPEN: e: 2 of its 3 subtickets not done: e.3 (set aside in this run), e.2 (blocked by x outside the scope)",
     ])
@@ -909,7 +909,7 @@ describe("set aside and review", () => {
     expect(pathOf(ran, "a")).toEqual(["Queued", "Working", "Deferred"])
     expect(pathOf(ran, "b")).toEqual(["Queued", "Working", "Review"])
     expectLog(ran, [
-      /^ {2}a deferred by its worker; worktree .*\/a left open$/,
+      "  a deferred by its worker; nothing done, so its worktree and branch are removed",
       /^ {2}CLOSED_WITHOUT_COMMIT: no commit on tutti\/b names b; worktree .*\/b left for review$/,
       closedLine("c"),
       "  b is closed but not merged, labelled 'unmerged': tickets it blocks wait until tutti/b is merged into main, in later runs too",

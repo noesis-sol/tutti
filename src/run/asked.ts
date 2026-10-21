@@ -27,7 +27,7 @@ import { openQuestion, settle } from "./settle.ts"
 import type { StartedWorker } from "./start.ts"
 import {
   conclude,
-  toTriage,
+  leaveAside,
   type WorkEnv,
   type WorkError,
   type Worked,
@@ -136,7 +136,7 @@ export const takeAnswers = (
             }),
           )
           const stop = yield* conclude(ticket, worker, settled, options.queue)
-          if (!limited) yield* toTriage(worker, settled, options.triage)
+          yield* leaveAside(worker, settled, limited, options.triage)
           return { phase: (yield* ledger.current).tickets.get(id)?.phase, stop }
         }).pipe(Effect.provideContext(context)),
         issue.success,

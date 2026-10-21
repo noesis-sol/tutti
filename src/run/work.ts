@@ -25,7 +25,7 @@ import { Beads, type BeadsError, type Status } from "../services/Beads.ts"
 import type { Git, GitError } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
-import { leaveForReview, putAside } from "./aside.ts"
+import { dropNothingDone, leaveForReview, nothingLeft, putAside } from "./aside.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
@@ -271,7 +271,8 @@ export const conclude = (
         yield* waitsForMerge(ticket, worker, reading.blockers, reading.status)
         break
       case "Deferred": {
-        const text = detail`${id} deferred by its worker; worktree ${path} left open`
+        const left = reading.nothingDone ? nothingLeft : line`worktree ${path} left open`
+        const text = detail`${id} deferred by its worker; ${left}`
         yield* ledger.transition(id, Cause.Defer({ why: "by the worker" }), {
           beside: [{ kind: "deferred", ticket: id, title, detail: "by the worker", text }],
         })
@@ -281,14 +282,28 @@ export const conclude = (
       case "InProgress":
       case "Unfinished": {
         const status = reading._tag === "Unfinished" ? reading.status : "in_progress"
-        yield* putAside(ticket, {
-          note: `tutti: its worker settled with the ticket still '${status}'; deferred for review (worktree ${path}).`,
-          reason: `its worker finished without closing it; see worktree ${path}`,
-          detail: `still ${status}, noted for review`,
-          deferred: detail`${id} still ${status} -> noted and deferred; worktree ${path} left open`,
-          failed: `${id} still ${status}, and bd could not defer it`,
-          instead: `worktree ${path} left for review`,
-        })
+        const failed = `${id} still ${status}, and bd could not defer it`
+        const detailed = `still ${status}, noted for review`
+        yield* putAside(
+          ticket,
+          reading.nothingDone
+            ? {
+                note: `tutti: its worker settled with the ticket still '${status}' and nothing done (no commits, no changes); deferred for review, its worktree and branch removed.`,
+                reason: "its worker finished without closing it, and with nothing done",
+                detail: detailed,
+                deferred: detail`${id} still ${status} -> noted and deferred; ${nothingLeft}`,
+                failed,
+                instead: nothingLeft,
+              }
+            : {
+                note: `tutti: its worker settled with the ticket still '${status}'; deferred for review (worktree ${path}).`,
+                reason: `its worker finished without closing it; see worktree ${path}`,
+                detail: detailed,
+                deferred: detail`${id} still ${status} -> noted and deferred; worktree ${path} left open`,
+                failed,
+                instead: `worktree ${path} left for review`,
+              },
+        )
         break
       }
     }
@@ -334,7 +349,7 @@ export const follow = (
       }),
     )
     const stop = yield* conclude(ticket, worker, settled, options.queue)
-    if (!limited) yield* toTriage(worker, settled, options.triage)
+    yield* leaveAside(worker, settled, limited, options.triage)
     return { settled, limited, stop }
   })
 
@@ -362,13 +377,7 @@ export const work = (
       const followed = yield* follow(ticket, worker, options, dispatched)
       const { settled, limited } = followed
       stop = followed.stop
-      settling = yield* settlingOf({
-        worker,
-        settled,
-        started: dispatched,
-        limited,
-        base: options.base,
-      })
+      settling = yield* settlingOf({ settled, started: dispatched, limited })
     }
     return { phase: (yield* ledger.current).tickets.get(ticket.id)?.phase, stop, settling }
   })
@@ -413,6 +422,24 @@ export const toTriage = (
     if (triage === undefined || deferral === undefined) return
     const phase = (yield* (yield* Ledger).current).tickets.get(worker.ticket)?.phase
     if (phase?._tag === "Deferred") yield* triage.deferred(deferral)
+  })
+
+/**
+ * Once conclude has set the ticket aside: hands it to `triage`, unless its worker reached the usage
+ * limit in its attempt (`limited`), then removes its worktree and branch when its worker left
+ * nothing done (aside.ts).
+ */
+export const leaveAside = (
+  worker: StartedWorker,
+  settled: Settled,
+  limited: boolean,
+  triage: Triage | undefined,
+): Effect.Effect<void, never, EventStream | Ledger | Log | Worktrees> =>
+  Effect.gen(function* () {
+    if (!limited) yield* toTriage(worker, settled, triage)
+    // Only the readings conclude sets aside say whether their worker did anything.
+    if (settled._tag !== "Read" || !("nothingDone" in settled.reading)) return
+    if (settled.reading.nothingDone) yield* dropNothingDone(worker.worktree)
   })
 
 /**

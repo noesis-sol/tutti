@@ -44,7 +44,6 @@ import { settled as isSettled, type WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
-import { Git } from "../services/Git.ts"
 import { readRunFile, runFolder, writeRunFile } from "../services/Worktrees.ts"
 import { EventStream } from "./eventstream.ts"
 import { type StopReason, type Stops, stopFor } from "./holds.ts"
@@ -52,8 +51,7 @@ import { Ledger } from "./ledger.ts"
 import { detail, Log, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
 import { Cause, probeWait, setupWait } from "./phase.ts"
-import { changes, type Settled } from "./settle.ts"
-import type { StartedWorker } from "./start.ts"
+import type { Settled } from "./settle.ts"
 
 /**
  * How a ticket's worker settled, as the hold counts it: failed at once (`atOnce`), or no worker
@@ -164,12 +162,10 @@ const settledAt = (state: WorkerState, now: number): number =>
  * window with its ticket still open, no commits beyond the base and a clean worktree.
  */
 export const settlingOf = (input: {
-  readonly worker: StartedWorker
   readonly settled: Settled
   readonly started: number
   readonly limited: boolean
-  readonly base: string
-}): Effect.Effect<Settling, never, AppConfig | Git> =>
+}): Effect.Effect<Settling, never, AppConfig> =>
   Effect.gen(function* () {
     const { settled } = input
     if (input.limited) return "uncounted"
@@ -180,13 +176,8 @@ export const settlingOf = (input: {
     const window = (yield* AppConfig).settings.environment_hold.window
     const at = settledAt(state, yield* Clock.currentTimeMillis)
     if (at - input.started >= Duration.toMillis(window)) return "other"
-    const git = yield* Git
-    const { path } = input.worker.worktree
-    const nothingDone = yield* Effect.all([git.log(path, input.base), git.status(path)]).pipe(
-      Effect.map(([commits, status]) => commits.length === 0 && changes(status).length === 0),
-      Effect.orElseSucceed(() => false),
-    )
-    return nothingDone ? "atOnce" : "other"
+    // Read as it settled: a worktree with nothing done is removed once triage has its evidence.
+    return reading.nothingDone ? "atOnce" : "other"
   })
 
 /** The environment hold, the run's own (run.ts makes it); the triage organ calls blamed(). */

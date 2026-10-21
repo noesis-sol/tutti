@@ -327,7 +327,12 @@ const idle = WorkerState.Idle({ at: 0 })
 describe("what triage is handed", () => {
   test("a ticket its worker deferred, or tutti set aside as unfinished, with its last turn's error", () => {
     const worker = workerOf("t-1")
-    expect(deferralOf(worker, Settled.Read({ reading: Reading.Deferred(), state: idle }))).toEqual({
+    expect(
+      deferralOf(
+        worker,
+        Settled.Read({ reading: Reading.Deferred({ nothingDone: false }), state: idle }),
+      ),
+    ).toEqual({
       ticket: "t-1",
       how: "the worker deferred it",
       worktree: "/worktrees/t-1",
@@ -336,7 +341,10 @@ describe("what triage is handed", () => {
     expect(
       deferralOf(
         worker,
-        Settled.Read({ reading: Reading.Unfinished({ status: "open" }), state: failed }),
+        Settled.Read({
+          reading: Reading.Unfinished({ status: "open", nothingDone: false }),
+          state: failed,
+        }),
       ),
     ).toEqual({
       ticket: "t-1",
@@ -358,7 +366,7 @@ describe("what triage is handed", () => {
       verdicts: Stream.empty,
       interrupt: Effect.void,
     }
-    const settled = Settled.Read({ reading: Reading.Deferred(), state: idle })
+    const settled = Settled.Read({ reading: Reading.Deferred({ nothingDone: false }), state: idle })
     await scenario(
       {},
       Effect.gen(function* () {
