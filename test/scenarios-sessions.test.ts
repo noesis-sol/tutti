@@ -36,6 +36,7 @@ import {
   type Sent,
   type SessionScript,
   sleep,
+  run as step,
   turn,
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -87,6 +88,18 @@ const commands = (world: World, places: Places, id: string) => ({
   ),
   close: bash(`bd close ${id}`, orDie(world.beads.close(id, "done"))),
 })
+
+/** Waits, in real time, until `id`'s worker has claimed it, or closed it: the run dispatched it. */
+const untilClaimed = (world: World, id: string) =>
+  Effect.orDie(
+    Effect.gen(function* () {
+      for (let i = 0; i < 2000; i++) {
+        if ((yield* world.beads.show(id)).status !== "open") return
+        yield* Effect.promise(() => Bun.sleep(2))
+      }
+      throw new Error(`${id} was never claimed`)
+    }),
+  )
 
 /** A turn that commits the ticket's change and closes it, after `first`, as a worker does. */
 const finishes = (
@@ -367,8 +380,9 @@ describe("quit mid-run, and the next run", () => {
       scripts: (world, places) => ({
         // Resumed, a and b take a minute, so c merges first in the next run.
         a: [atWork(world, places, "a"), finishes(world, places, "a", [sleep("1 minute")])],
+        // b asks once c is dispatched, so that all three are dispatched before its request.
         b: [
-          atWork(world, places, "b", [rm]),
+          atWork(world, places, "b", [step(untilClaimed(world, "c")), rm]),
           finishes(world, places, "b", [sleep("1 minute"), rm, ...bash("rm -rf build")]),
         ],
         c: [finishes(world, places, "c", commands(world, places, "c").claim)],
