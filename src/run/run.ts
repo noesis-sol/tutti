@@ -861,6 +861,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // ticket limit left out, as the run doesn't wait for them; then, with a dashboard, those a
     // conflict hand-back waits for.
     const nothingLeft = Effect.gen(function* () {
+      // A merge that ends during this look frees what it held back after the look has read it: the
+      // run is done only when nothing was merging as the look began, and its wake has it look again.
+      const mergedBefore = isSettled(yield* queue.state)
       yield* requeueWaiting
       // The tickets set aside for a failed check whose base has moved on are checked once more
       // first, each in a slot: each is done but for its merge, and others may wait on it. One left
@@ -914,6 +917,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         !overlapped &&
         busy.length === 0 &&
         !toStart &&
+        mergedBefore &&
         isSettled(yield* queue.state) &&
         (yield* triage.pending) === 0
       // With a dashboard, a conflict hand-back waiting for its steered worker keeps the run open as

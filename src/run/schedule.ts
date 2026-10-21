@@ -12,6 +12,13 @@
 // isn't starved. With every slot taken the tickets wait for a slot anyway, and none is held for an
 // overlap or a solo ticket.
 //
+// A ticket frees its slot as it goes to the merge queue, once its worker has settled, but it holds
+// back what it did while it ran until it merges: from ToMerge to Merged, Resolving and Fixing
+// included, it is counted among the running tickets for an overlap with its footprint and for a solo
+// ticket, running or next. Up to `concurrent` tickets merge, or wait to merge, without a slot, so
+// that a slow merge check can't pile finished tickets up without end: beyond that, each takes a slot
+// until a merge ends, and a slot free in the meantime waits.
+//
 // A Queued or HeldBack ticket that bd ready no longer lists, closed, deferred or blocked outside the
 // run, leaves the ledger, so the In queue total counts only what may still start.
 //
@@ -72,7 +79,7 @@ import {
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
-import { Cause, type Hold, TicketPhase } from "./phase.ts"
+import { Cause, type Hold, type PhaseTag, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import type { Solo } from "./runView.ts"
 import { ready, unclosedIn, unmergedLabel } from "./scope.ts"
@@ -240,6 +247,28 @@ const waiting = (state: State, id: string): boolean => {
   return tag === "Queued" || tag === "HeldBack"
 }
 
+/** The phases of a ticket past its work and not merged yet: from ToMerge to Merged. */
+const pastWork: ReadonlySet<PhaseTag> = new Set(["ToMerge", "Merging", "Resolving", "Fixing"])
+
+/** Whether the ticket is past its work and not merged yet: it waits to merge, merges, or is fixed. */
+const merging = (state: State, id: string): boolean => {
+  const tag = state.tickets.get(id)?.phase._tag
+  return tag !== undefined && pastWork.has(tag)
+}
+
+/** The tickets past their work and not merged yet that hold no slot: those not `running`. */
+const mergingIn = (state: State, running: ReadonlySet<string>): ReadonlyArray<string> =>
+  [...state.tickets.values()]
+    .filter((entry) => merging(state, entry.ticket) && !running.has(entry.ticket))
+    .map((entry) => entry.ticket)
+
+/**
+ * The slots taken by `running` tickets and `merging` ones past their work without a slot: up to
+ * `concurrent` of those take none, and each beyond them one.
+ */
+export const slotsTaken = (running: number, merging: number, concurrent: number): number =>
+  running + Math.max(0, merging - concurrent)
+
 /** Whether the ledger lets the run take `id` from bd ready: not taken up yet, or still waiting. */
 const candidate = (state: State, id: string): boolean =>
   !state.tickets.has(id) || waiting(state, id)
@@ -275,11 +304,29 @@ const counts = (
 interface Slots {
   readonly running: ReadonlySet<string>
   readonly started: number
-  /** The running tickets dispatched, or carried with their issue: their footprints and labels. */
+  /**
+   * The running tickets dispatched, or carried with their issue, and those past their work until
+   * they merge: their footprints and labels.
+   */
   readonly issues: ReadonlyMap<string, Issue>
-  /** The solo ticket running, if any. */
+  /** The solo ticket running, or past its work until it merges, if any. */
   readonly solo: string | null
 }
+
+/** `s` without the issues and solo ticket of the tickets neither running nor past their work. */
+const prune = (s: Slots, state: State): Slots => {
+  const kept = (id: string) => s.running.has(id) || merging(state, id)
+  if ([...s.issues.keys()].every(kept) && (s.solo === null || kept(s.solo))) return s
+  return {
+    ...s,
+    issues: new Map([...s.issues].filter(([id]) => kept(id))),
+    solo: s.solo !== null && kept(s.solo) ? s.solo : null,
+  }
+}
+
+/** Whether a slot is free, the running tickets and those past their work as `state` has them. */
+const slotFree = (s: Slots, state: State, concurrent: number): boolean =>
+  slotsTaken(s.running.size, mergingIn(state, s.running).length, concurrent) < concurrent
 
 /** The scheduler over the run's Beads, Ledger (which writes the records), Log and RunFibers. */
 export const make = (
@@ -363,17 +410,20 @@ export const make = (
           solo: issue !== undefined && isSolo(issue) ? ticket : s.solo,
         }))
         yield* showQueue
+        // A ticket gone to the merge queue keeps its issue and solo label until it merges.
         const release = Effect.gen(function* () {
-          const again = counted && requeued(yield* ledger.current, ticket)
+          const state = yield* ledger.current
+          const again = counted && requeued(state, ticket)
           yield* Ref.update(slots, (s) => {
             skipSaid.forget(ticket)
-            return {
-              ...s,
-              running: new Set([...s.running].filter((id) => id !== ticket)),
-              started: again ? s.started - 1 : s.started,
-              issues: new Map([...s.issues].filter(([id]) => id !== ticket)),
-              solo: s.solo === ticket ? null : s.solo,
-            }
+            return prune(
+              {
+                ...s,
+                running: new Set([...s.running].filter((id) => id !== ticket)),
+                started: again ? s.started - 1 : s.started,
+              },
+              state,
+            )
           })
           yield* showQueue
           yield* Queue.offer(freed, undefined)
@@ -443,11 +493,17 @@ export const make = (
         yield* logs.write(footprintLine(issue.id, footprintOf(issue, repo, predicted)))
       })
 
-    const mayStart = Effect.gen(function* () {
-      const s = yield* Ref.get(slots)
+    // The slots as the ledger has the tickets now: those merged since let go of what they held.
+    const current = Effect.gen(function* () {
       const state = yield* ledger.current
+      const s = yield* Ref.updateAndGet(slots, (s) => prune(s, state))
+      return { s, state }
+    })
+
+    const mayStart = Effect.gen(function* () {
+      const { s, state } = yield* current
       return (
-        s.running.size < options.concurrent &&
+        slotFree(s, state, options.concurrent) &&
         s.started < options.limit &&
         state.windDown === null &&
         (yield* taking)
@@ -625,12 +681,18 @@ export const make = (
             return held
           })
 
-        // With a slot free, what overlaps a running ticket's footprint, saying why once. A solo
-        // ticket waits for every running ticket anyway, so it is never skipped for one.
-        const overlapping = (issues: ReadonlyArray<Issue>, s: Slots) =>
+        // With a slot free, what overlaps the footprint of a ticket running or past its work, saying
+        // why once. A solo ticket waits for every one of them anyway, so it is never skipped for one.
+        const overlapping = (issues: ReadonlyArray<Issue>, s: Slots, past: number) =>
           Effect.gen(function* () {
             const skipped = new Map<string, Held>()
-            if (footprints === undefined || repo === undefined || s.running.size === 0) {
+            const asked = issues.filter((issue) => !isSolo(issue))
+            if (
+              footprints === undefined ||
+              repo === undefined ||
+              s.running.size + past === 0 ||
+              asked.length === 0
+            ) {
               return skipped
             }
             const running = new Map<string, Footprint>()
@@ -638,7 +700,6 @@ export const make = (
               const fp = footprintOf(issue, repo, predicted)
               running.set(id, withChanges(fp, yield* changedIn(id), repo))
             }
-            const asked = issues.filter((issue) => !isSolo(issue))
             const mine = new Map(
               asked.map((issue) => [issue.id, footprintOf(issue, repo, predicted)]),
             )
@@ -655,9 +716,9 @@ export const make = (
 
         const dispatched: Array<string> = []
         for (;;) {
-          const state = yield* ledger.current
-          const s = yield* Ref.get(slots)
-          const slot = s.running.size < options.concurrent
+          const { s, state } = yield* current
+          const past = mergingIn(state, s.running).length
+          const slot = slotFree(s, state, options.concurrent)
           // A ticket back in the queue whose last fiber still holds its slot waits for it to end.
           const inLine = queue.filter(
             (issue) => waiting(state, issue.id) && !s.running.has(issue.id),
@@ -669,16 +730,16 @@ export const make = (
             if (held === undefined) notHeld.push(issue)
             else holds.set(issue.id, held.why)
           }
-          const overlaps = slot ? yield* overlapping(notHeld, s) : new Map<string, Held>()
+          const overlaps = slot ? yield* overlapping(notHeld, s, past) : new Map<string, Held>()
           for (const [id, held] of overlaps) holds.set(id, held.why)
           const free = notHeld.filter((issue) => !overlaps.has(issue.id))
           // The pick: the first ticket free, unless a solo ticket runs, or is first in line and
-          // waits for the running tickets to finish.
+          // waits for the running tickets, and those past their work, to finish.
           const first = free[0]
           let start: Issue | undefined
           let next: string | null = null
           if (first !== undefined && s.solo === null) {
-            if (isSolo(first) && s.running.size > 0) next = first.id
+            if (isSolo(first) && s.running.size + past > 0) next = first.id
             else start = first
           }
           soloNext = slot ? next : null
@@ -752,9 +813,9 @@ export const make = (
       recheckSlot: (ticket, work) =>
         oneFill.withPermit(
           Effect.gen(function* () {
-            const s = yield* Ref.get(slots)
+            const { s, state } = yield* current
             const free =
-              s.running.size < options.concurrent &&
+              slotFree(s, state, options.concurrent) &&
               s.solo === null &&
               soloFirst === null &&
               !s.running.has(ticket)

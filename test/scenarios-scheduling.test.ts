@@ -509,16 +509,17 @@ describe("footprints", () => {
     expect(pathOf(ran, "b")).toEqual(heldThenStraight)
     expect(heldFor(ran, "b")).toEqual(["overlap"])
     expect(dispatches(ran)).toEqual(["a 0m", "b 3m"])
+    // a, past its work, still holds b back until it merges.
     expectLog(ran, [
       "[1/40] a dispatching: a",
       "  skipping b: touches src/b.ts, like running a",
       settledLine("a"),
-      "[2/40] b dispatching: b",
       closedLine("a"),
+      "[2/40] b dispatching: b",
       closedLine("b"),
       "READY_EMPTY after 2 tickets",
     ])
-    expectEvents(ran, ["dispatch", "queue", "dispatch", "closed", "closed", "done", "end"])
+    expectEvents(ran, ["dispatch", "queue", "closed", "dispatch", "closed", "done", "end"])
   }, 30_000)
 })
 
@@ -548,14 +549,17 @@ describe("solo", () => {
       "[1/40] a dispatching: a",
       "  solo ticket s is next: no new tickets start until the running ones finish, then it runs alone",
       settledLine("a"),
+      closedLine("a"),
       "[2/40] s dispatching solo: s",
       "  waiting for solo ticket s to finish",
       settledLine("s"),
+      closedLine("s"),
       "[3/40] c dispatching: c",
       closedLine("c"),
       "READY_EMPTY after 3 tickets",
     ])
-    expectEvents(ran, ["dispatch", "dispatch", "closed", "dispatch", "closed", "closed", "end"])
+    // Each waits for the one before it to merge, not only for its worker.
+    expectEvents(ran, ["dispatch", "closed", "dispatch", "closed", "dispatch", "closed", "end"])
     expect(ran.events.find((r) => r.kind === "dispatch" && r.ticket === "s")).toMatchObject({
       solo: { ticket: "s" },
     })
@@ -815,15 +819,17 @@ describe("--limit", () => {
     // c was queued, and never started.
     expectPhases(ran, { a: "Done", b: "Done", c: "Queued" })
     expect(pathOf(ran, "c")).toEqual(["Queued"])
+    // a frees its slot as it goes to merge: b may start before a has merged, or after.
     expectLog(ran, [
       "[1/2] a dispatching: a",
       "[2/2] b dispatching: b",
-      closedLine("a"),
       closedLine("b"),
       "LIMIT_REACHED at 2 tickets",
     ])
+    expect(ran.log.filter((text) => closedLine("a").test(text))).toHaveLength(1)
     expect(ran.log.some((text) => text.includes("c dispatching"))).toBe(false)
-    expectEvents(ran, ["dispatch", "dispatch", "closed", "closed", "done", "end"])
+    expectEvents(ran, ["dispatch", "closed", "closed", "done", "end"])
+    expect(ran.events.filter((r) => r.kind === "dispatch")).toHaveLength(2)
     expect(ran.events.find((r) => r.kind === "done")).toMatchObject({
       text: "LIMIT_REACHED at 2 tickets",
     })

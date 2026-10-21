@@ -201,6 +201,12 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
 - **Free slots don't wait.** `bd ready` is read every 30 seconds, and at once when a slot frees, so a
   ticket that becomes ready meanwhile (an answered question, a follow-up, a closed blocker) takes a
   free slot then. No ticket runs twice.
+- **A finished ticket frees its slot as it goes to merge.** The next ready ticket starts while it waits
+  for its turn, is rebased and checked, or has its worker resolve or fix its branch. Until it merges
+  it still holds back what it did while it ran: the tickets it blocks, its follow-ups, those
+  overlapping its footprint (`skipping <id>: touches src/a.ts, like running <other>`) and a solo
+  ticket. Up to `concurrent` tickets merge or wait to merge without a slot; beyond that a finished
+  ticket keeps its slot until a merge ends.
 - **Parents run last.** A ticket with subtickets not all closed and merged waits for them:
   `<id> waits: its subtickets are not all closed and merged`. tutti closes an epic itself once a run
   merges the last of its subtickets: `closed epic <id>: all 3 subtickets are merged`.

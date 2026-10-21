@@ -751,11 +751,12 @@ describe("the usage-limit hold", () => {
       `USAGE_LIMIT: nothing else runs; waiting for the five-hour limit to reset at ${resets}, in 1h`,
       "USAGE_LIMIT lifted",
       "  a: the usage limit has reset; its worker carries on",
+      // a frees its slot as it goes to merge: b may start before a has merged, or after.
       "[2/40] b dispatching: b",
-      closedLine("a"),
       closedLine("b"),
       "READY_EMPTY after 2 tickets",
     ])
+    expect(ran.log.filter((text) => closedLine("a").test(text))).toHaveLength(1)
     expectEvents(ran, ["usage_limit", "hold", "usage_limit", "hold", "closed", "closed", "end"])
     const records = ran.events.filter((r) => r.kind === "usage_limit" || r.kind === "hold")
     expect(records.map((r) => (r.kind === "usage_limit" ? r.status : r.text))).toEqual([
