@@ -281,6 +281,10 @@ export const denied = (d: {
   readonly reason: string
 }): Line => ticketLine(Tag.denied)`${d.id}'s worker: ${d.what}, by ${denier(d.by)}: ${d.reason}`
 
+/** A worker's context was compacted, `trigger` its PreCompact hook's (§ 4.2), as orchestra says it. */
+export const compacted = (id: string, trigger: string): Line =>
+  detail`${id}'s worker's context was compacted (${trigger})`
+
 /** STEERED: you sent the worker a message or interrupted it (§ 4.3). */
 export const steered = (id: string): Line => ticketLine(Tag.steered)`${id}`
 

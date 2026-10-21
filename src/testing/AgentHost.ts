@@ -292,7 +292,14 @@ export const layer = (
       const play = (ticket: string, session: Running, step: Step): Effect.Effect<void> =>
         Step.$match(step, {
           Emit: ({ message }) => emitScripted(session, message),
-          Hook: ({ input }) => workers.fold(session.entry, WorkerEvent.Hook({ input })),
+          // As the live host's hook callbacks do, a PreCompact is a compaction too.
+          Hook: ({ input }) =>
+            Effect.andThen(
+              workers.fold(session.entry, WorkerEvent.Hook({ input })),
+              input.hook_event_name === "PreCompact"
+                ? workers.compacted(session.entry, input.trigger)
+                : Effect.void,
+            ),
           CanUseTool: ({ toolName, input, options }) =>
             Effect.gen(function* () {
               const callback = yield* attention.request(ticket)
@@ -483,6 +490,7 @@ export const layer = (
         state: workers.state,
         messages: workers.messages,
         workers: workers.workers,
+        compactions: workers.compactions,
         setup: Effect.succeed(options.setup ?? noFindings),
       })
 

@@ -374,8 +374,8 @@ export const layer = (
           const callbacks = yield* Effect.provideContext(
             workerCallbacks(ticket, {
               activity: (input) => workers.fold(entry, WorkerEvent.Hook({ input })),
-              // A compaction is in the transcript too, as compact_boundary, which triage reads.
-              compaction: () => Effect.void,
+              // Counted and logged by the run; triage reads it from the transcript's compact_boundary.
+              compaction: (input) => workers.compacted(entry, input.trigger),
             }),
             services,
           )
@@ -558,6 +558,7 @@ export const layer = (
         state: workers.state,
         messages: workers.messages,
         workers: workers.workers,
+        compactions: workers.compactions,
         setup: Ref.get(findings),
       })
     }),

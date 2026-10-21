@@ -11,7 +11,8 @@
 // call's tool use but not its input: each worker keeps its last calls' inputs, from its assistant
 // messages, so Attention can log the denial as `Bash(rm -rf build)`, record it and tally it. The
 // account's rate-limit events, and which workers are UsageLimited, go to UsageLimits, for the
-// usage-limit hold (§ 4.12).
+// usage-limit hold (§ 4.12). Each compaction a worker's PreCompact hook reports goes on one stream
+// for the run to count and log (§ 4.2).
 //
 // The caller draws each new session's ID and saves it before starting it (§ 4.8). A resumed
 // session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so resume
@@ -114,6 +115,13 @@ export interface SessionMessage {
   readonly message: SDKMessage
 }
 
+/** A compaction of a worker's context, as its PreCompact hook reports it. */
+export interface Compaction {
+  readonly ticket: string
+  /** What triggered it: `auto`, or `manual` for `/compact`. */
+  readonly trigger: string
+}
+
 /** The SDK user message that carries `message`, stamped `uuid`, into session `session`. */
 export const userMessage = (message: Message, uuid: string, session: string): SDKUserMessage => ({
   type: "user",
@@ -204,6 +212,8 @@ export class AgentHost extends Context.Service<
      * now, then on each change.
      */
     readonly workers: Stream.Stream<ReadonlySet<string>>
+    /** Every worker's compactions, from now on, as their PreCompact hooks report them (§ 4.2). */
+    readonly compactions: Stream.Stream<Compaction>
     /** What the sessions' first system/init said of the setup, so far. */
     readonly setup: Effect.Effect<SetupFindings>
   }
@@ -288,6 +298,10 @@ export interface Workers {
     session: string,
     message: SDKUserMessage,
   ) => Effect.Effect<void>
+  /** A compaction of the worker's context, `trigger` its PreCompact hook's: published. */
+  readonly compacted: (entry: WorkerEntry, trigger: string) => Effect.Effect<void>
+  /** Every worker's compactions, from now on. */
+  readonly compactions: Stream.Stream<Compaction>
   /** Waits until the worker's state counts every one of its open attention requests. */
   readonly counted: (entry: WorkerEntry) => Effect.Effect<void>
   /** Forgets the worker: its streams end. */
@@ -316,6 +330,7 @@ export const makeWorkers = (
     const knownTickets = yield* SubscriptionRef.make<ReadonlySet<string>>(new Set())
     // Folds are serialised, so the state set last is the one the last fold gave.
     const one = yield* Semaphore.make(1)
+    const compactions = yield* PubSub.unbounded<Compaction>()
     const log = yield* Effect.serviceOption(Log)
     const usage = yield* Effect.serviceOption(UsageLimits)
 
@@ -439,6 +454,9 @@ export const makeWorkers = (
           }
         }),
       sent: (entry, session, message) => transcripts.record(entry.ticket, session, message),
+      compacted: (entry, trigger) =>
+        Effect.asVoid(PubSub.publish(compactions, { ticket: entry.ticket, trigger })),
+      compactions: Stream.fromPubSub(compactions),
       counted: (entry) =>
         Effect.gen(function* () {
           const open = yield* openCount(entry.ticket)

@@ -96,6 +96,7 @@ import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
 import { carryOver, saveAsked, saveLeft } from "./carry.ts"
 import { resolve, type UiCommand } from "./commands.ts"
+import { noteCompactions } from "./compactions.ts"
 import { sayAtStart as sayDeferredFree } from "./deferredFree.ts"
 import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
@@ -419,6 +420,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         logs.write(...panicLines(where, defect)),
         Deferred.succeed(quitting, { panic: stop }),
       )
+    // Each worker's compactions are counted and logged (compactions.ts), from before any worker
+    // starts or is carried over; a watcher that dies panics the run.
+    yield* FiberSet.run(
+      yield* fibers.make("compactions"),
+      Effect.catchDefect(noteCompactions, (defect) =>
+        panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
+      ),
+    )
 
     // A stop holds the run: said as it comes while tickets still run, unless its line was. A worker
     // past its ticket limit goes on, so its hold is said even with nothing else running.
