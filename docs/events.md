@@ -8,7 +8,8 @@ The machine-readable record of each run, for scripts and agents. Back to the
 The log, `.tutti/tutti.log`, is written for people, and its wording changes. For scripts and agents,
 each run also appends its events to `.tutti/run/events.jsonl` in the main checkout, out of git with
 the rest of `.tutti/run/`: one JSON object per line, each appended in a single write, so a reader
-tailing the file never sees half a line. Like the log, the file keeps every run.
+tailing the file never sees half a line. Like the log, the file keeps every run. An event the log
+has a line for is written with its line, so the two give events in one order.
 
 ```
 {"v":1,"time":"2026-10-21T09:18:12.04+03:00","run":"2026-10-21T06:18:11.587Z","kind":"start","version":"0.1.0","repo":"/Users/me/proj","branch":"main","concurrency":3,"billing":"subscription","permission_mode":"auto"}

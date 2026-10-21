@@ -494,8 +494,7 @@ export const report = (
   Effect.gen(function* () {
     const logs = yield* Log
     const text = line`${n.done}`
-    yield* logs.write(text)
-    yield* (yield* EventStream).emit({ kind: "done", text })
+    yield* logs.writeWith([text], (yield* EventStream).emit({ kind: "done", text }))
     if (n.freeError !== null) yield* logs.write(line`${n.freeError}`)
     yield* show(n, output)
   })

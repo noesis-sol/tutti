@@ -517,8 +517,10 @@ export const timeLimit = (
     yield* goneOn(ticket, limit ?? longRunning, since)
     if (limit === null) {
       const text = longRunningLine(ticket)
-      yield* (yield* EventStream).emit({ kind: "warn", ticket, text })
-      yield* (yield* Log).write(text)
+      yield* (yield* Log).writeWith(
+        [text],
+        (yield* EventStream).emit({ kind: "warn", ticket, text }),
+      )
       return
     }
     const after = formatDuration(limit)

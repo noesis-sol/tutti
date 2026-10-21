@@ -307,8 +307,7 @@ export const start = (
     const made = worktree.reused
       ? log.detail`reusing worktree ${path} (${branch})`
       : log.detail`worktree ${path} on ${branch}`
-    yield* logs.write(made)
-    yield* events.emit({ kind: "info", ticket: id, text: made })
+    yield* logs.writeWith([made], events.emit({ kind: "info", ticket: id, text: made }))
     yield* worktrees
       .checkRunFolder(path)
       .pipe(Effect.mapError((error) => runFolderFailed(id, path, error)))

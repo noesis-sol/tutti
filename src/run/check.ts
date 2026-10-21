@@ -229,8 +229,10 @@ export const checkOnce = (
           )
         }
         for (const warning of flaky) {
-          yield* log.write(warning)
-          yield* events.emit({ kind: "warn", ticket: ticket.id, text: warning })
+          yield* log.writeWith(
+            [warning],
+            events.emit({ kind: "warn", ticket: ticket.id, text: warning }),
+          )
         }
         return { _tag: "Passed", command: result.command } satisfies Checked
       }),

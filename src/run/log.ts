@@ -375,6 +375,12 @@ export class Log extends Context.Service<
   {
     /** Appends the lines, dated now, together: a START block isn't split by another fiber's line. */
     write(...lines: ReadonlyArray<Line>): Effect.Effect<void>
+    /**
+     * Appends the lines as `write` does and runs `record`, the happening's record in events.jsonl,
+     * before another fiber's line: the log and the event stream give happenings in one order.
+     * `record` mustn't write the log itself.
+     */
+    writeWith(lines: ReadonlyArray<Line>, record: Effect.Effect<void>): Effect.Effect<void>
     /** This run's lines as written, dated, for the reviewer. */
     readonly lines: Effect.Effect<ReadonlyArray<string>>
   }
@@ -393,16 +399,18 @@ export class Log extends Context.Service<
         const encoder = new TextEncoder()
         const written = yield* Ref.make<ReadonlyArray<string>>([])
         const one = yield* Semaphore.make(1)
+        const append = (lines: ReadonlyArray<Line>) =>
+          Effect.gen(function* () {
+            const text = yield* dated(lines)
+            yield* file
+              .writeAll(encoder.encode(text.map((l) => `${l}\n`).join("")))
+              .pipe(Effect.ignore)
+            yield* Ref.update(written, (all) => [...all, ...text])
+            yield* toSink(options.sink ?? "none", text)
+          })
         return Log.of({
-          write: (...lines) =>
-            Effect.gen(function* () {
-              const text = yield* dated(lines)
-              yield* file
-                .writeAll(encoder.encode(text.map((l) => `${l}\n`).join("")))
-                .pipe(Effect.ignore)
-              yield* Ref.update(written, (all) => [...all, ...text])
-              yield* toSink(options.sink ?? "none", text)
-            }).pipe(one.withPermit),
+          write: (...lines) => one.withPermit(append(lines)),
+          writeWith: (lines, record) => one.withPermit(Effect.andThen(append(lines), record)),
           lines: Ref.get(written),
         })
       }),

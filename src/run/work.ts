@@ -112,7 +112,6 @@ const removeWorktree = (worker: StartedWorker, force: boolean) =>
 const noChange = (ticket: StartTicket, worker: StartedWorker, why: string, own: boolean) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const logs = yield* Log
     // Commits that change nothing keep git from deleting the branch as merged; its reflog has them.
     const left = yield* removeWorktree(worker, own)
     const text = detail`${ticket.id} closed with no change: ${why}, so there is nothing to merge; ${left}`
@@ -126,8 +125,8 @@ const noChange = (ticket: StartTicket, worker: StartedWorker, why: string, own: 
           text,
         },
       ],
+      lines: [text],
     })
-    yield* logs.write(text)
     // Done, it has nothing left for a later run: its record in state.json goes.
     yield* Effect.ignore((yield* Store).remove(ticket.id))
   })
@@ -156,8 +155,7 @@ const waitsForMerge = (
         const text = ticketLine(
           Tag.reopenFailed,
         )`${id} stays ${status}, so it won't be back in the queue as it waits for ${list}: ${beadsWhy(reopened.failure)}; reopen it with: bd update ${id} --status open`
-        yield* events.emit({ kind: "warn", ticket: id, text })
-        yield* logs.write(text)
+        yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
       }
     }
     yield* Effect.ignore(
@@ -171,8 +169,8 @@ const waitsForMerge = (
     )`${id} waits for ${list} to merge; its worker stopped with nothing done, so it is back in the queue until ${does}; ${left}`
     yield* ledger.transition(id, Cause.WaitsForMerge({ for: list }), {
       beside: [{ kind: "waits", ticket: id, title: ticket.title, detail: list, text }],
+      lines: [text],
     })
-    yield* logs.write(text)
   })
 
 /** Still in progress after the nudges and the grace: Stopped, and the run holds with PAUSED. */
@@ -208,7 +206,6 @@ export const conclude = (
 ): Effect.Effect<RunStop | null, never, SettleEnv> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const logs = yield* Log
     const { id, title } = ticket
     const { path, branch } = worker.worktree
     if (settled._tag === "Paused") return yield* paused(worker, settled.gone)
@@ -230,8 +227,8 @@ export const conclude = (
         )`${id} waits on your answer to ${q.id} (${q.title}); answer with: bd human respond ${q.id}; worktree ${path} left open`
         yield* ledger.transition(id, Cause.FiledQuestion({ question: q.id }), {
           beside: [{ kind: "asked", ticket: id, title, detail: `${q.id}: ${q.title}`, text }],
+          lines: [text],
         })
-        yield* logs.write(text)
         break
       }
       case "NoChange":
@@ -275,8 +272,8 @@ export const conclude = (
         const text = detail`${id} deferred by its worker; ${left}`
         yield* ledger.transition(id, Cause.Defer({ why: "by the worker" }), {
           beside: [{ kind: "deferred", ticket: id, title, detail: "by the worker", text }],
+          lines: [text],
         })
-        yield* logs.write(text)
         break
       }
       case "InProgress":
@@ -472,7 +469,6 @@ export const requeueWaiting = (
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
-    const logs = yield* Log
     const ask = closed === undefined ? undefined : asking(closed)
     const back: Array<string> = []
     for (const entry of (yield* ledger.current).tickets.values()) {
@@ -488,9 +484,9 @@ export const requeueWaiting = (
           .length + 1
       const moved = yield* ledger.transition(entry.ticket, Cause.Requeued(), {
         beside: [{ kind: "queue", queued }],
+        lines: [detail`${entry.ticket}: ${phase.for} merged; back in the queue`],
       })
       if (Result.isFailure(moved)) continue
-      yield* logs.write(detail`${entry.ticket}: ${phase.for} merged; back in the queue`)
       back.push(entry.ticket)
     }
     return back

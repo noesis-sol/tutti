@@ -252,8 +252,7 @@ export const make = (options: {
           const text = ticketLine(
             Tag.reopenFailed,
           )`${id} failed at once like the tickets before it, and bd could not reopen it: ${beadsWhy(reopened.failure)}; reopen it with: bd update ${id} --status open`
-          yield* events.emit({ kind: "warn", ticket: id, text })
-          yield* logs.write(text)
+          yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
           return
         }
         yield* Effect.ignore(
@@ -267,8 +266,8 @@ export const make = (options: {
           beside: [
             { kind: "reopened", ticket: id, detail: "the run held for the environment", text },
           ],
+          lines: [text],
         })
-        yield* logs.write(text)
       })
 
     // Holds the run, once, and reopens the tickets of the row failing at once.
@@ -401,8 +400,8 @@ export const make = (options: {
           ).length + 1
         yield* ledger.transition(entry.ticket, Cause.Requeued(), {
           beside: [{ kind: "queue", queued }],
+          lines: [detail`${entry.ticket}: the probe passed; back in the queue`],
         })
-        yield* logs.write(detail`${entry.ticket}: the probe passed; back in the queue`)
       }
     })
 
@@ -434,8 +433,7 @@ export const make = (options: {
         const text = tagged(
           Tag.probe,
         )`the run holds for the environment; in ${formatDuration(after)} a session without a ticket runs a command in the main checkout, and if it does the run takes tickets again`
-        yield* events.emit({ kind: "hold", text })
-        yield* logs.write(text)
+        yield* logs.writeWith([text], events.emit({ kind: "hold", text }))
         if (!(yield* waitToProbe)) return Probed.Ends()
         const failed = yield* runProbe
         if (failed !== null) return Probed.Failed({ stop: probeFailedStop(now.why, after, failed) })
@@ -451,8 +449,7 @@ export const make = (options: {
         const ok = tagged(
           Tag.probeOk,
         )`a session without a ticket ran a command ${formatDuration(after)} after the hold; taking tickets again`
-        yield* events.emit({ kind: "probed", text: ok })
-        yield* logs.write(ok)
+        yield* logs.writeWith([ok], events.emit({ kind: "probed", text: ok }))
         yield* requeue
         return Probed.Resumed()
       })

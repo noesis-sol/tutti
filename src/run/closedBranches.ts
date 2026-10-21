@@ -128,8 +128,10 @@ export const closedBranches = (
           if (why !== undefined && !warned.has(id)) {
             warned.add(id)
             const text = closedUnmergedLine(id, where.base)
-            yield* (yield* EventStream).emit({ kind: "warn", ticket: id, text })
-            yield* (yield* Log).write(text)
+            yield* (yield* Log).writeWith(
+              [text],
+              (yield* EventStream).emit({ kind: "warn", ticket: id, text }),
+            )
           }
           return why
         }).pipe(Effect.provideContext(context)),

@@ -37,7 +37,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import type { AttentionQuestion } from "../run/events.ts"
+import type { AttentionQuestion, Event } from "../run/events.ts"
 import { EventStream } from "../run/eventstream.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
@@ -520,36 +520,23 @@ export const make = (
         switch (kind._tag) {
           case "Permission": {
             yield* count(request.ticket, "permissions")
-            yield* logs.write(
-              log.permission({
-                id: request.ticket,
-                requestId: request.id,
-                what: describe(request),
-                ...(request.decisionReason === undefined ? {} : { why: request.decisionReason }),
-                defaultToNo: request.defaultToNo,
-                suppressAlwaysAllowRule: !allowsForRun(request),
-              }),
+            yield* logs.writeWith(
+              [
+                log.permission({
+                  id: request.ticket,
+                  requestId: request.id,
+                  what: describe(request),
+                  ...(request.decisionReason === undefined ? {} : { why: request.decisionReason }),
+                  defaultToNo: request.defaultToNo,
+                  suppressAlwaysAllowRule: !allowsForRun(request),
+                }),
+              ],
+              events.emit({ ...base, type: "permission", tool: kind.tool, summary: kind.summary }),
             )
-            yield* events.emit({
-              ...base,
-              type: "permission",
-              tool: kind.tool,
-              summary: kind.summary,
-            })
             return
           }
           case "Question": {
             yield* count(request.ticket, "questions")
-            yield* logs.write(
-              log.question({
-                id: request.ticket,
-                requestId: request.id,
-                questions: kind.questions.map((q) => ({
-                  question: q.question,
-                  options: q.options.map((o) => o.label),
-                })),
-              }),
-            )
             const questions: ReadonlyArray<typeof AttentionQuestion.Type> = kind.questions.map(
               (q) => ({
                 question: q.question,
@@ -561,26 +548,40 @@ export const make = (
                 multi_select: q.multiSelect,
               }),
             )
-            yield* events.emit({ ...base, type: "question", questions })
+            yield* logs.writeWith(
+              [
+                log.question({
+                  id: request.ticket,
+                  requestId: request.id,
+                  questions: kind.questions.map((q) => ({
+                    question: q.question,
+                    options: q.options.map((o) => o.label),
+                  })),
+                }),
+              ],
+              events.emit({ ...base, type: "question", questions }),
+            )
             return
           }
           case "Elicitation": {
             yield* count(request.ticket, "elicitations")
-            yield* logs.write(
-              log.elicitation({
-                id: request.ticket,
-                requestId: request.id,
-                server: kind.server,
-                message: kind.message,
-                ...(kind.url === undefined ? {} : { url: kind.url }),
+            yield* logs.writeWith(
+              [
+                log.elicitation({
+                  id: request.ticket,
+                  requestId: request.id,
+                  server: kind.server,
+                  message: kind.message,
+                  ...(kind.url === undefined ? {} : { url: kind.url }),
+                }),
+              ],
+              events.emit({
+                ...base,
+                type: "elicitation",
+                tool: kind.server,
+                summary: sanitizeLine(kind.message),
               }),
             )
-            yield* events.emit({
-              ...base,
-              type: "elicitation",
-              tool: kind.server,
-              summary: sanitizeLine(kind.message),
-            })
             return
           }
         }
@@ -600,49 +601,54 @@ export const make = (
         const kind = request.kind._tag === "Permission" ? "permission" : "question"
         const what = describe(request)
         const viaLog = via === "answer_command" ? "tutti answer" : "screen"
-        const line = (verdict: log.Verdict, detail?: string) =>
-          logs.write(
-            log.answered({
-              id: request.ticket,
-              kind,
-              what,
-              verdict,
-              ...(detail === undefined || detail === "" ? {} : { detail }),
-              via: viaLog,
-            }),
+        // The answer's line, and `record` with it.
+        const line = (record: Event, verdict: log.Verdict, detail?: string) =>
+          logs.writeWith(
+            [
+              log.answered({
+                id: request.ticket,
+                kind,
+                what,
+                verdict,
+                ...(detail === undefined || detail === "" ? {} : { detail }),
+                via: viaLog,
+              }),
+            ],
+            events.emit(record),
           )
         const viaField = via === undefined ? {} : { via }
         switch (outcome._tag) {
           case "Cancelled":
             yield* count(request.ticket, "cancelled")
-            yield* line("withdrawn")
-            yield* events.emit({ ...base, cancelled: true })
+            yield* line({ ...base, cancelled: true }, "withdrawn")
             return
           case "Allow":
           case "Accept":
             yield* count(request.ticket, outcome._tag === "Allow" ? "allowed" : "answered")
-            yield* line(outcome._tag === "Allow" ? "allowed" : "answered")
-            yield* events.emit({ ...base, answer: "allow", ...viaField })
+            yield* line(
+              { ...base, answer: "allow", ...viaField },
+              outcome._tag === "Allow" ? "allowed" : "answered",
+            )
             return
           case "AllowForRun":
             yield* count(request.ticket, "allowedForRun")
-            yield* line("allowed for this run")
-            yield* events.emit({ ...base, answer: "allow_run", ...viaField })
+            yield* line({ ...base, answer: "allow_run", ...viaField }, "allowed for this run")
             return
           case "Deny":
             yield* count(request.ticket, "denied")
-            yield* line("denied", outcome.reason)
-            yield* events.emit({ ...base, answer: "deny", ...viaField })
+            yield* line({ ...base, answer: "deny", ...viaField }, "denied", outcome.reason)
             return
           case "Decline":
             yield* count(request.ticket, "declined")
-            yield* line("declined")
-            yield* events.emit({ ...base, answer: "deny", ...viaField })
+            yield* line({ ...base, answer: "deny", ...viaField }, "declined")
             return
           case "Choose":
             yield* count(request.ticket, "answered")
-            yield* line("answered", outcome.answers.join(", "))
-            yield* events.emit({ ...base, answer: [...outcome.answers], ...viaField })
+            yield* line(
+              { ...base, answer: [...outcome.answers], ...viaField },
+              "answered",
+              outcome.answers.join(", "),
+            )
             return
         }
       })
@@ -782,8 +788,10 @@ export const make = (
           },
         }))
         const what = input === undefined ? tool : `${tool}(${summarize(input)})`
-        yield* logs.write(log.denied({ id: ticket, what, by, reason }))
-        yield* events.emit({ kind: "denied", ticket, tool, reason_type: by, reason })
+        yield* logs.writeWith(
+          [log.denied({ id: ticket, what, by, reason })],
+          events.emit({ kind: "denied", ticket, tool, reason_type: by, reason }),
+        )
       })
 
     const onElicitation = (

@@ -452,13 +452,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         const now = runningIn(yield* ledger.current, yield* Ref.get(overLimit))
         if (!stop.held && (now > 0 || stop.why === "TICKET_LIMIT")) {
           const text = hold(stop.text, now)
-          yield* events.emit({
-            kind: "hold",
-            ...(stop.ticket === undefined ? {} : { ticket: stop.ticket }),
-            ...(stop.blocked === undefined ? {} : { blocked: stop.blocked }),
-            text,
-          })
-          yield* logs.write(text)
+          yield* logs.writeWith(
+            [text],
+            events.emit({
+              kind: "hold",
+              ...(stop.ticket === undefined ? {} : { ticket: stop.ticket }),
+              ...(stop.blocked === undefined ? {} : { blocked: stop.blocked }),
+              text,
+            }),
+          )
         }
         yield* wakeUp
       })
@@ -627,8 +629,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       yield* machine.running(yield* ownWorkers)
       const seen = yield* machine.look
       for (const each of seen) {
-        yield* events.emit({ kind: "shared_machine", shared: each.shared, text: each.text })
-        yield* logs.write(each.text)
+        yield* logs.writeWith(
+          [each.text],
+          events.emit({ kind: "shared_machine", shared: each.shared, text: each.text }),
+        )
       }
       const last = seen.at(-1)
       if (last !== undefined) {
@@ -648,8 +652,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       if (yield* holdMachine(true)) {
         const own = yield* ownWorkers
         const text = machineHoldLine(own + (yield* machine.others), own, config.machineWorkers)
-        yield* events.emit({ kind: "machine_hold", text })
-        yield* logs.write(text)
+        yield* logs.writeWith([text], events.emit({ kind: "machine_hold", text }))
         yield* Effect.flatten(Ref.get(queueRecord))
       }
       return false
@@ -815,8 +818,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         yield* saveAsked
         yield* saveLeft
         const stop = stopFor("INTERRUPTED", atOnceText(request.how, saved, merging))
-        yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
-        yield* logs.write(stop.text)
+        yield* logs.writeWith(
+          [stop.text],
+          events.emit({ kind: "stop", detail: stop.why, text: stop.text }),
+        )
         yield* events.emit({ kind: "end", code: stop.code })
         if (options.exitNow !== undefined) yield* options.exitNow(stop.code, [stop.text])
       })
@@ -834,12 +839,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
               merging === null
                 ? stillQuittingLine(yield* Ref.get(awaiting), request)
                 : underWayLine(merging, request)
-            yield* events.emit({
-              kind: "warn",
-              ...(merging === null ? {} : { ticket: merging }),
-              text,
-            })
-            yield* logs.write(text)
+            yield* logs.writeWith(
+              [text],
+              events.emit({
+                kind: "warn",
+                ...(merging === null ? {} : { ticket: merging }),
+                text,
+              }),
+            )
             return
           }
           case "exit":
@@ -956,8 +963,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         for (const ticket of lifts) {
           yield* updateStops((all) => liftStops(all, (stop) => isBlockedOn(stop, ticket)))
           const text = blockedLifted(ticket)
-          yield* events.emit({ kind: "hold", ticket, lifted: true, text })
-          yield* logs.write(text)
+          yield* logs.writeWith([text], events.emit({ kind: "hold", ticket, lifted: true, text }))
         }
         for (const trip of trips) yield* stopped(blockedStop(trip.ticket, trip.what))
         yield* wakeUp
@@ -1175,8 +1181,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         yield* say(workers.map((ticket) => ({ ticket, what: "worker" as const })))
         if ("request" in quit) {
           const text = quitLine(quit.request, workers)
-          yield* events.emit({ kind: "warn", text })
-          yield* logs.write(text)
+          yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
         }
         yield* scheduler.interrupt
         yield* queue.hold
@@ -1329,8 +1334,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       const text = line`${doneLine(n, how)}${waits}${yield* scopePart}`
       closing = text
       closed = Ending.Done({ text, tickets: n, limit: config.limit, took: now - begun })
-      yield* events.emit({ kind: "done", text })
-      yield* logs.write(text)
+      yield* logs.writeWith([text], events.emit({ kind: "done", text }))
       yield* notifier.notify(finished([...state.tickets.values()].map((entry) => entry.phase)))
     }
 
@@ -1366,16 +1370,20 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         after = fullCheckReport(checked.done, command ?? "")
       } else {
         const stop = lateStop(checked.quit, "during the full check")
-        yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
-        yield* logs.write(stop.text)
+        yield* logs.writeWith(
+          [stop.text],
+          events.emit({ kind: "stop", detail: stop.why, text: stop.text }),
+        )
         said.push(stop.text)
         exitCode = stop.code
       }
     } else if (quit === null && (yield* Deferred.isDone(quitting))) {
       // Asked to quit as the run ended: it ended all the same, INTERRUPTED.
       const stop = lateStop(yield* Deferred.await(quitting), "as the run ended")
-      yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
-      yield* logs.write(stop.text)
+      yield* logs.writeWith(
+        [stop.text],
+        events.emit({ kind: "stop", detail: stop.why, text: stop.text }),
+      )
       said.push(stop.text)
       exitCode = stop.code
     }

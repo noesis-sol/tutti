@@ -271,8 +271,10 @@ export const make = (options: {
           limit: limitName(limit),
           ...(at === null ? {} : { resets: clock(at) }),
         })
-        yield* events.emit({ kind: "hold", text: tagged(Tag.hold)`${text}` })
-        yield* logs.write(text)
+        yield* logs.writeWith(
+          [text],
+          events.emit({ kind: "hold", text: tagged(Tag.hold)`${text}` }),
+        )
         yield* notifier.notify(
           at === null
             ? `The ${limitName(limit)} limit is reached; the run holds until it resets`
@@ -309,12 +311,14 @@ export const make = (options: {
       }))
       yield* usage.hold(false)
       yield* events.emit({ kind: "usage_limit", status: "lifted", limit: limit ?? "unknown" })
-      yield* events.emit({
-        kind: "hold",
-        text: tagged(Tag.hold)`${usageLimitLifted}`,
-        lifted: true,
-      })
-      yield* logs.write(usageLimitLifted)
+      yield* logs.writeWith(
+        [usageLimitLifted],
+        events.emit({
+          kind: "hold",
+          text: tagged(Tag.hold)`${usageLimitLifted}`,
+          lifted: true,
+        }),
+      )
       const entries = (yield* ledger.current).tickets
       for (const ticket of before.limited) {
         if (entries.get(ticket)?.steered === true) {
@@ -372,19 +376,20 @@ export const make = (options: {
             limit: limitName(event.limit),
             ...(event.resetsAt === null ? {} : { resets: clock(event.resetsAt) }),
           })
-          if (changed) {
-            yield* events.emit({
-              kind: "usage_limit",
-              status: "warning",
-              limit: key,
-              ...resetsAt(event.resetsAt),
-              ...(event.utilization === null ? {} : { utilization: event.utilization }),
-              text,
-            })
-          }
-          if (!before.warned.has(key)) {
+          const record = changed
+            ? events.emit({
+                kind: "usage_limit",
+                status: "warning",
+                limit: key,
+                ...resetsAt(event.resetsAt),
+                ...(event.utilization === null ? {} : { utilization: event.utilization }),
+                text,
+              })
+            : Effect.void
+          if (before.warned.has(key)) yield* record
+          else {
             yield* Ref.update(state, (s) => ({ ...s, warned: new Set([...s.warned, key]) }))
-            yield* logs.write(text)
+            yield* logs.writeWith([text], record)
           }
         }
         if (event.status === "rejected") {

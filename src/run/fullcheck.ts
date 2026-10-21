@@ -250,7 +250,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       readonly suite?: string
       readonly output?: string
       readonly ticket?: string
-    }) => Effect.andThen(events.emit({ kind: "full_check", ...record }), logs.write(record.text))
+    }) => logs.writeWith([record.text], events.emit({ kind: "full_check", ...record }))
 
     const head = yield* Effect.result(git.revParse(config.repo, base))
     const at = Result.isSuccess(head) ? head.success : ""
@@ -337,8 +337,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
           const text = ticketLine(
             Tag.cleanupFailed,
           )`the full check's worktree ${path} is left (${why}); git worktree remove --force ${path} removes it`
-          yield* events.emit({ kind: "warn", text })
-          yield* logs.write(text)
+          yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
         }),
       ),
     )
@@ -390,8 +389,7 @@ const flaky = (command: string, passed: CheckPassed) =>
       )
     }
     for (const text of warnings) {
-      yield* logs.write(text)
-      yield* events.emit({ kind: "warn", text })
+      yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
     }
   })
 
@@ -452,8 +450,10 @@ const failed = (
       const text = ticketLine(
         Tag.fullCheckFailed,
       )`the setup '${error.command}', run before '${command}', ${how} on ${base} at ${short(at)}; the whole output is in ${output}; ${filed}`
-      yield* events.emit({ kind: "full_check", detail: outcome, output, text })
-      yield* logs.write(text, ...endLines(end))
+      yield* logs.writeWith(
+        [text, ...endLines(end)],
+        events.emit({ kind: "full_check", detail: outcome, output, text }),
+      )
       return {
         outcome,
         at,
@@ -470,15 +470,17 @@ const failed = (
     const text = ticketLine(
       Tag.fullCheckFailed,
     )`'${command}' ${how} on ${base} at ${short(at)}, in the suite ${suite}; the whole output is in ${output}; ${filing.filed}`
-    yield* events.emit({
-      kind: "full_check",
-      detail: outcome,
-      suite,
-      output,
-      ...(filing.ticket === undefined ? {} : { ticket: filing.ticket }),
-      text,
-    })
-    yield* logs.write(text, ...endLines(end))
+    yield* logs.writeWith(
+      [text, ...endLines(end)],
+      events.emit({
+        kind: "full_check",
+        detail: outcome,
+        suite,
+        output,
+        ...(filing.ticket === undefined ? {} : { ticket: filing.ticket }),
+        text,
+      }),
+    )
     return { outcome, at, took: ms, suite, output, end, ...filing, text } satisfies FullChecked
   })
 

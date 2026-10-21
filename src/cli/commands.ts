@@ -526,7 +526,11 @@ const runInit = (cwd: string, flags: InitFlags) =>
     // probe finds. init keeps no log, so its organ cost lines go nowhere.
     const quietLog = Layer.succeed(
       Log,
-      Log.of({ write: () => Effect.void, lines: Effect.succeed([]) }),
+      Log.of({
+        write: () => Effect.void,
+        writeWith: (_, record) => record,
+        lines: Effect.succeed([]),
+      }),
     )
     const scout = Effect.gen(function* () {
       const config = yield* configure.pipe(Effect.mapError((problem) => problem.message))

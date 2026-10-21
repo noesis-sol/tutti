@@ -187,8 +187,7 @@ export const dropRechecks = (
     const dropped = (yield* rechecks.dropAll).map((recheck) => recheck.ticket.id)
     for (const id of dropped) {
       const text = detail`${id} is not checked again in this run, as ${why}; it stays set aside`
-      yield* events.emit({ kind: "info", ticket: id, text })
-      yield* logs.write(text)
+      yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
       yield* fit(id)
     }
     return dropped
@@ -281,15 +280,13 @@ export const recheckDue = (
         const why = yield* whyNot(recheck, options)
         if (why !== undefined) {
           const text = detail`${id} is not checked again: ${why}; it stays set aside`
-          yield* events.emit({ kind: "info", ticket: id, text })
-          yield* logs.write(text)
+          yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
           return
         }
         const text = ticketLine(
           Tag.recheck,
         )`${id}'s check failed on ${options.base} at ${recheck.onto.slice(0, 7)}, which has moved on since; rebasing ${branch} and checking it once more`
-        yield* events.emit({ kind: "info", ticket: id, text })
-        yield* logs.write(text)
+        yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
         const moved = yield* queue.offer(recheck.ticket, (place) => Cause.Recheck({ place }), false)
         if (Result.isSuccess(moved)) back.push(id)
       })

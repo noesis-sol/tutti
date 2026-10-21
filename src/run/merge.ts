@@ -212,9 +212,8 @@ const aside = (ticket: FinishedTicket, why: string, short: string, text: Line) =
 /** The ticket can't merge until you act: Merging → Blocked, with `record` beside it. */
 const block = (ticket: FinishedTicket, why: string, record: Event, text: Line) =>
   Effect.gen(function* () {
-    const { ledger, log } = yield* services
-    yield* ledger.transition(ticket.id, Cause.Block({ why }), { beside: [record] })
-    yield* log.write(text)
+    const { ledger } = yield* services
+    yield* ledger.transition(ticket.id, Cause.Block({ why }), { beside: [record], lines: [text] })
   })
 
 /** A merge that stops the merges: DIRTY_TREE and GIT_FAILED hold the run, MERGE_FAILED stops it. */
@@ -735,7 +734,7 @@ export const closeUnchanged = (
   unchanged: Unchanged,
 ): Effect.Effect<void, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, worktrees, beads, ledger, log } = yield* services
+    const { git, worktrees, beads, ledger } = yield* services
     const { id, title, branch, worktree } = ticket
     if (unchanged.own) yield* Effect.ignore(git.resetBranch(worktree, options.base))
     const cleanup = yield* Effect.result(worktrees.remove(id))
@@ -747,8 +746,8 @@ export const closeUnchanged = (
     const text = detail`${id} closed with no change: ${unchanged.why}, so there is nothing to merge; ${left}`
     yield* ledger.transition(id, Cause.NoChange(), {
       beside: [{ kind: "closed", ticket: id, title, detail: "no change to merge", text }],
+      lines: [text],
     })
-    yield* log.write(text)
     // Done, it has nothing left for a later run: its record in state.json goes, its marks with it.
     yield* Effect.ignore((yield* Store).remove(id))
     const shown = yield* Effect.result(beads.show(id))
@@ -761,7 +760,7 @@ export const closeEpics = (id: string) =>
   Effect.gen(function* () {
     const { config, beads, ledger, log, events } = yield* services
     const say = (text: Line, ticket: string) =>
-      Effect.andThen(log.write(text), events.emit({ kind: "info", ticket, text }))
+      log.writeWith([text], events.emit({ kind: "info", ticket, text }))
     const shown = yield* Effect.result(beads.show(id))
     let parent = Result.isSuccess(shown) ? shown.success.parent : undefined
     while (parent !== undefined) {
@@ -813,7 +812,7 @@ export const fastForward = (
   onto: string,
 ): Effect.Effect<MergeStop | undefined, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, worktrees, beads, ledger, log } = yield* services
+    const { git, worktrees, beads, ledger } = yield* services
     const { id, title, branch, worktree } = ticket
     const { repo, base } = options
     yield* ledger.refine(id, Detail.Step({ step: "fast-forward" }))
@@ -897,8 +896,8 @@ export const fastForward = (
           text,
         },
       ],
+      lines: [text],
     })
-    yield* log.write(text)
     // Done, it has nothing left for a later run: its record in state.json goes.
     yield* Effect.ignore((yield* Store).remove(id))
     // A carried-over ticket keeps its label until it merges: closeEpics takes a labelled

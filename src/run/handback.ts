@@ -287,7 +287,6 @@ const conflictLine = (stop: RebaseStop, base: string, why: string): Line => {
 const block = (stop: RebaseStop, base: string, why: string, by: "Block" | "Aside" = "Block") =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const logs = yield* Log
     const { files } = stop
     const text = conflictLine(stop, base, why)
     const cause =
@@ -308,8 +307,8 @@ const block = (stop: RebaseStop, base: string, why: string, by: "Block" | "Aside
           text,
         },
       ],
+      lines: [text],
     })
-    yield* logs.write(text)
   })
 
 /**
@@ -369,8 +368,7 @@ export const handOver = (
       limit: formatDuration(config.settings.merge.resolve_timeout),
       told: (yield* setupToResolve(stop, options, setUps)).told,
     })
-    yield* events.emit({ kind: "info", ticket: id, text })
-    yield* logs.write(text)
+    yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
     return true
   })
 
@@ -486,8 +484,10 @@ const resumeGoneFor = (
     const text = ticketLine(
       Tag.workerGone,
     )`${id}'s worker is gone (${why}), and its session could not be resumed for its hand-back (${failed})`
-    yield* events.emit({ kind: "warn", ticket: id, detail: "its worker gone", text })
-    yield* logs.write(text)
+    yield* logs.writeWith(
+      [text],
+      events.emit({ kind: "warn", ticket: id, detail: "its worker gone", text }),
+    )
     return line`its worker is gone (${why}) and its session could not be resumed: ${failed}`
   })
 

@@ -77,15 +77,13 @@ export const hear = (
     if (!request.on) {
       yield* ledger.windUp
       const text = undrainLine(request.how)
-      yield* events.emit({ kind: "resume", text })
-      yield* logs.write(text)
+      yield* logs.writeWith([text], events.emit({ kind: "resume", text }))
       return false
     }
     yield* ledger.windDown
     const running = (yield* ledger.current).windDown?.tickets ?? []
     const text = drainLine(running, request.how)
-    yield* events.emit({ kind: "drain", text })
-    yield* logs.write(text)
+    yield* logs.writeWith([text], events.emit({ kind: "drain", text }))
     if (rechecks !== undefined) yield* dropRechecks(rechecks, "the run winds down")
     return true
   })

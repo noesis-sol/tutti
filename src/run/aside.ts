@@ -67,17 +67,16 @@ export const leaveForReview = (
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
-    const logs = yield* Log
     const store = yield* Store
     yield* Effect.ignore(beads.update(id, { appendNotes: reviewNote(review.text) }))
     yield* ledger.transition(id, Cause.Aside({ why: review.why }), {
       beside: [{ kind: "warn", ticket: id, aside: true, detail: review.detail, text: review.text }],
+      lines: [review.text],
     })
     const record = yield* store.ticket(id)
     if (record !== undefined && record.suspended === undefined) {
       yield* Effect.ignore(store.updateTicket(id, (ticket) => ({ ...ticket, phase: "Review" })))
     }
-    yield* logs.write(review.text)
   })
 
 /** Sets the ticket aside; whether bd deferred it. */
@@ -88,7 +87,6 @@ export const putAside = (
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
-    const logs = yield* Log
     const deferred = yield* Effect.result(
       Effect.andThen(
         beads.update(ticket.id, { appendNotes: aside.note }),
@@ -107,8 +105,8 @@ export const putAside = (
             text: aside.deferred,
           },
         ],
+        lines: [aside.deferred],
       })
-      yield* logs.write(aside.deferred)
       return true
     }
     const text = log.ticketLine(
@@ -116,8 +114,8 @@ export const putAside = (
     )`${aside.failed}: ${deferred.failure.message}; kept out of this run, ${aside.instead}`
     yield* ledger.transition(ticket.id, cause, {
       beside: [{ kind: "warn", ticket: ticket.id, aside: true, detail: aside.detail, text }],
+      lines: [text],
     })
-    yield* logs.write(text)
     return false
   })
 

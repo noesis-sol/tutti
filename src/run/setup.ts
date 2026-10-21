@@ -453,8 +453,7 @@ export const leaveSetupFailed = (
         const text = ticketLine(
           Tag.reopenFailed,
         )`${id} stays ${ticket.status}, so it won't be back in the queue after its setup failed: ${beadsWhy(reopened.failure)}; reopen it with: bd update ${id} --status open`
-        yield* events.emit({ kind: "warn", ticket: id, text })
-        yield* logs.write(text)
+        yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
       }
     }
     yield* setUps.failed(id, { output, notReopened, merged: mergedCount(yield* ledger.current) })
@@ -468,8 +467,8 @@ export const leaveSetupFailed = (
     )`'${command}' ${how} in ${worktree} for ${id}; the whole output is in ${output}`
     yield* ledger.transition(id, Cause.SetupFailed(), {
       beside: [{ kind: "warn", ticket: id, detail: "setup failed", text }],
+      lines: [text],
     })
-    yield* logs.write(text)
   })
 
 /**
@@ -482,7 +481,6 @@ export const retrySetups = (
 ): Effect.Effect<ReadonlyArray<string>, never, Ledger | Log> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const logs = yield* Log
     const failures = yield* setUps.failures
     const back: Array<string> = []
     for (const entry of (yield* ledger.current).tickets.values()) {
@@ -493,11 +491,9 @@ export const retrySetups = (
       const queued = [...state.tickets.values()].filter((each) => each.phase._tag === "Queued")
       const moved = yield* ledger.transition(entry.ticket, Cause.Requeued(), {
         beside: [{ kind: "queue", queued: queued.length + 1 }],
+        lines: [detail`${entry.ticket}: a ticket merged since its setup failed; back in the queue`],
       })
       if (Result.isFailure(moved)) continue
-      yield* logs.write(
-        detail`${entry.ticket}: a ticket merged since its setup failed; back in the queue`,
-      )
       back.push(entry.ticket)
     }
     return back
@@ -631,8 +627,7 @@ export const takeSettings = (
       const text = ticketLine(
         Tag.settingsUnread,
       )`${id}'s merge changed ${settingsFile} on ${base}, but it could not be read${problem === undefined ? "" : `: ${problem}`}; the setup stays ${setupSaid(was.command)}`
-      yield* (yield* EventStream).emit({ kind: "warn", ticket: id, text })
-      yield* logs.write(text)
+      yield* logs.writeWith([text], (yield* EventStream).emit({ kind: "warn", ticket: id, text }))
       return
     }
     const same =

@@ -136,8 +136,7 @@ export const resume = (
     const text = ticketLine(
       Tag.resumed,
     )`${what}; resuming its session ${session} (worktree ${worktree})`
-    yield* events.emit({ kind: "resumed", ticket, session, why, text })
-    yield* logs.write(text)
+    yield* logs.writeWith([text], events.emit({ kind: "resumed", ticket, session, why, text }))
     return uuid
   })
 

@@ -20,7 +20,7 @@ import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
 import { Ledger } from "./ledger.ts"
-import { Log, line, Tag, ticketLine } from "./log.ts"
+import { line, Tag, ticketLine } from "./log.ts"
 import { Cause } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"
 import { openQuestion, settle } from "./settle.ts"
@@ -66,7 +66,6 @@ export const takeAnswers = (
     const beads = yield* Beads
     const ledger = yield* Ledger
     const store = yield* Store
-    const logs = yield* Log
     const context = yield* Effect.context<WorkEnv>()
     const back: Array<string> = []
     for (const entry of (yield* ledger.current).tickets.values()) {
@@ -79,9 +78,9 @@ export const takeAnswers = (
       const text = ticketLine(Tag.answered)`${question} (${asked}) is answered, so ${id} comes back`
       const moved = yield* ledger.transition(id, Cause.Answered(), {
         beside: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
+        lines: [text],
       })
       if (Result.isFailure(moved)) continue
-      yield* logs.write(text)
       const saved = yield* store.ticket(id)
       const resumed = yield* Effect.result(
         resume(

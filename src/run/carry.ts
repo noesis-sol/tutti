@@ -240,8 +240,7 @@ export const carryOver = (
     const said = (id: string, what: Carried, text: Line) =>
       Effect.gen(function* () {
         carried.set(id, what)
-        yield* logs.write(text)
-        yield* events.emit({ kind: "info", ticket: id, text })
+        yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
       })
     const dropped = (id: string, what: Carried, text: Line) =>
       Effect.andThen(said(id, what, text), Effect.ignore(store.remove(id)))

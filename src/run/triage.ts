@@ -230,21 +230,22 @@ export const make = (options: {
           // A call skipped for the usage limit is logged as such already.
           if (answer.failure._tag === "OrganSkipped") return
           const text = triageFailedLine(id, failure(answer.failure))
-          yield* events.emit({ kind: "warn", ticket: id, text })
-          yield* logs.write(text)
+          yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
           return
         }
         const v = answer.success
         yield* Effect.ignore(beads.update(id, { appendNotes: note(v) }))
         const text = verdictLine(id, v)
-        yield* events.emit({
-          kind: "triage",
-          ticket: id,
-          title: v.summary.trim(),
-          detail: `${v.cause} · ${v.confidence}`,
-          text,
-        })
-        yield* logs.write(text)
+        yield* logs.writeWith(
+          [text],
+          events.emit({
+            kind: "triage",
+            ticket: id,
+            title: v.summary.trim(),
+            detail: `${v.cause} · ${v.confidence}`,
+            text,
+          }),
+        )
         yield* SubscriptionRef.update(verdicts, (all) => new Map(all).set(id, rowText(v)))
         yield* options.hold.blamed({
           ticket: id,

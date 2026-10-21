@@ -2,7 +2,7 @@
 // time) and printed to stdout as the live layer does when the sink says so. `texts` gives them
 // without their time, for a test to compare.
 import { Effect, Layer, Ref, Semaphore } from "effect"
-import { dated, Log, type Sink, toSink } from "../run/log.ts"
+import { dated, type Line, Log, type Sink, toSink } from "../run/log.ts"
 
 /** A captured log, its lines also printed when `sink` is stdout. */
 export const layer = (options: { readonly sink?: Sink } = {}): Layer.Layer<Log> =>
@@ -11,13 +11,15 @@ export const layer = (options: { readonly sink?: Sink } = {}): Layer.Layer<Log> 
     Effect.gen(function* () {
       const written = yield* Ref.make<ReadonlyArray<string>>([])
       const one = yield* Semaphore.make(1)
+      const append = (lines: ReadonlyArray<Line>) =>
+        Effect.gen(function* () {
+          const text = yield* dated(lines)
+          yield* Ref.update(written, (all) => [...all, ...text])
+          yield* toSink(options.sink ?? "none", text)
+        })
       return Log.of({
-        write: (...lines) =>
-          Effect.gen(function* () {
-            const text = yield* dated(lines)
-            yield* Ref.update(written, (all) => [...all, ...text])
-            yield* toSink(options.sink ?? "none", text)
-          }).pipe(one.withPermit),
+        write: (...lines) => one.withPermit(append(lines)),
+        writeWith: (lines, record) => one.withPermit(Effect.andThen(append(lines), record)),
         lines: Ref.get(written),
       })
     }),

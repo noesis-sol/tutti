@@ -258,8 +258,7 @@ export const handOverFix = (
       limit: formatDuration(config.settings.merge.resolve_timeout),
       onTop: stop.onTop === true,
     })
-    yield* events.emit({ kind: "info", ticket: id, text })
-    yield* logs.write(text)
+    yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
     return true
   })
 

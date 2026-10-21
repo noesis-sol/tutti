@@ -8,7 +8,8 @@
 // is a bug: it is logged once as PHASE_BUG, the ticket keeps its phase, and no record is written. A
 // valid one writes a `phase` record to the event stream, then the orchestra-era records the caller
 // gives beside it (`dispatch`, `closed`, …), all while the state is held, so records come out in
-// the order the phases changed.
+// the order the phases changed. The lines the caller gives are logged with the records, in one
+// write (Log's writeWith), so the log has them in the records' order.
 import { Clock, Context, Effect, Layer, Ref, Result, type Stream, SubscriptionRef } from "effect"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
@@ -248,14 +249,19 @@ export class Ledger extends Context.Service<
   {
     /**
      * Moves `ticket` by `cause`, as the state machine says, and writes its `phase` record, then
-     * `beside` (the orchestra-era records its row names). `title` sets its title, as a ticket
-     * entering the run needs; a ticket leaving it (null) leaves the ledger. An invalid change logs
-     * PHASE_BUG once, writes nothing, and leaves the ticket as it was.
+     * `beside` (the orchestra-era records its row names), with `lines` logged in the same write.
+     * `title` sets its title, as a ticket entering the run needs; a ticket leaving it (null) leaves
+     * the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
+     * was.
      */
     transition(
       ticket: string,
       cause: Cause,
-      options?: { readonly title?: string; readonly beside?: ReadonlyArray<Event> },
+      options?: {
+        readonly title?: string
+        readonly beside?: ReadonlyArray<Event>
+        readonly lines?: ReadonlyArray<log.Line>
+      },
     ): Effect.Effect<Result.Result<TicketPhase | null, InvalidTransition>>
     /** Changes a detail of `ticket`'s phase (its activity, place or step), not the phase. */
     refine(
@@ -328,10 +334,12 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
           if (Result.isFailure(next)) {
             return changed(next, yield* bug(state, ticket, next.failure))
           }
-          yield* events.emit(phaseRecord(ticket, from, next.success, cause))
-          yield* Effect.forEach(options.beside ?? [], (event) => events.emit(event), {
-            discard: true,
-          })
+          const records = Effect.forEach(
+            [phaseRecord(ticket, from, next.success, cause), ...(options.beside ?? [])],
+            (event) => events.emit(event),
+            { discard: true },
+          )
+          yield* options.lines === undefined ? records : logs.writeWith(options.lines, records)
           if (next.success === null) {
             const tickets = new Map(state.tickets)
             tickets.delete(ticket)

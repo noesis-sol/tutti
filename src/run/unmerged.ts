@@ -181,8 +181,7 @@ export const unlabel = (id: string) =>
     const text = ticketLine(
       Tag.labelFailed,
     )`bd could not remove ${id}'s '${unmergedLabel}' label: ${beadsWhy(removed.failure)}; later runs hold the tickets it blocks until it is removed (bd label remove ${id} ${unmergedLabel})`
-    yield* log.write(text)
-    yield* events.emit({ kind: "warn", ticket: id, text })
+    yield* log.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
     return false
   })
 
@@ -207,15 +206,13 @@ export const loadUnmerged = (
       const found = yield* mergedSince(issue, options)
       if (found.merged !== undefined) {
         const text = detail`${id}, left unmerged by an earlier run, is on ${base} now (${named(found.merged)}); its '${unmergedLabel}' label is removed`
-        yield* log.write(text)
-        yield* events.emit({ kind: "info", ticket: id, text })
+        yield* log.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
         yield* unlabel(id)
         continue
       }
       const branch = found.branch ?? branchOf(id)
       const text = detail`${id} was left unmerged by an earlier run; tickets it blocks wait until ${branch} is merged into ${base} or its '${unmergedLabel}' label is removed`
-      yield* log.write(text)
-      yield* events.emit({ kind: "info", ticket: id, text })
+      yield* log.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
       left.push(found.branch === undefined ? { issue } : { issue, branch: found.branch })
     }
     return left
@@ -244,11 +241,13 @@ const label = (id: string, options: MergeOptions) =>
       : ticketLine(
           Tag.labelFailed,
         )`bd could not label ${id} '${unmergedLabel}': ${beadsWhy(added.failure)}; later runs may start the tickets it blocks before it merges (bd label add ${id} ${unmergedLabel})`
-    yield* log.write(text)
-    yield* events.emit(
-      Result.isSuccess(added)
-        ? { kind: "info", ticket: id, text }
-        : { kind: "warn", ticket: id, text },
+    yield* log.writeWith(
+      [text],
+      events.emit(
+        Result.isSuccess(added)
+          ? { kind: "info", ticket: id, text }
+          : { kind: "warn", ticket: id, text },
+      ),
     )
     return Result.isSuccess(added)
   })

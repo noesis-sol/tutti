@@ -199,7 +199,7 @@ Each service has a live layer and a test layer. Names are illustrative. Errors a
 | `Checks` | Runs `setup`, `check_fast` and `check_full` within their time limits; keeps the whole output, the lines that say what failed, `FLAKY:` lines and `SUITE:` names | `CheckFailed`, `CheckTimedOut` | Scripted results |
 | `RunLock` | `flock` on `<git-common-dir>/tutti.lock` and on `orchestra.lock` (§9.2) | `AlreadyRunning{holder}` | In-memory |
 | `Store` | `.tutti/run/state.json` (carry-over) and per-ticket metadata. Writes are serialised through one fiber and atomic (temporary file, then rename) | `StoreUnreadable` | In-memory |
-| `Log` | `.tutti/tutti.log`, for people | none | Captured lines |
+| `Log` | `.tutti/tutti.log`, for people. A happening's line and its record in the event stream are written together (`writeWith`), so the two give happenings in one order | none | Captured lines |
 | `EventStream` | `.tutti/run/events.jsonl`, for scripts (§10) | none (it warns once) | Captured records |
 | `Notifier` | Desktop notifications (§7.9) | none | Captured |
 | `Clock` | Effect's `Clock`: every duration in the loop goes through it | | `TestClock` |
@@ -1872,7 +1872,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | Ctrl+C keeps a ticket waiting to merge from rebasing after the stop | Already so: a quit interrupts the merge queue, and an interrupted rebase is aborted (§3.4) |
 | | a file renamed or copied in the work tree read under its new name | Already so: `git status --porcelain -z`, a rename's old path read apart (`src/services/Git.ts`) |
 | | a setup cut short runs again (`setup.started`); a ticket back from a question whose setup fails is requeued | Done (tutti-kkb.4) |
-| | the log and the event stream give events emitted at once in one order | Planned (tutti-kkb.44) |
+| | the log and the event stream give events emitted at once in one order | Done (tutti-kkb.44): a happening's line and its record are written together, under the log's lock (`Log.writeWith`, a ledger transition's `lines`) |
 | | `· machine full` clears once the hold ends | Planned (tutti-kkb.23) |
 | | a hook input with an argument of another type loses only that argument | Not needed: the SDK gives hook input typed (§4.2) |
 | | git reads no longer take `.git/index.lock` | Already so: reads run with `GIT_OPTIONAL_LOCKS=0` (`src/services/Git.ts`) |

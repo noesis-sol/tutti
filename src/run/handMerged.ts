@@ -124,7 +124,6 @@ const takeAsMerged = (
     const git = yield* Git
     const ledger = yield* Ledger
     const store = yield* Store
-    const logs = yield* Log
     const { id } = issue
     yield* rechecks.drop(id)
     yield* (yield* AgentHost).close(id)
@@ -148,8 +147,8 @@ const takeAsMerged = (
           text,
         },
       ],
+      lines: [text],
     })
-    yield* logs.write(text)
     // Done, it has nothing left for a later run: its record in state.json goes.
     yield* Effect.ignore(store.remove(id))
     yield* closeEpics(id)
@@ -205,8 +204,7 @@ export const mergedByHand = (
       const removed = yield* unlabel(issue.id)
       const label = removed ? line`; its '${unmergedLabel}' label is removed` : ""
       const text = detail`${issue.id}, left unmerged by an earlier run, is on ${base} now (${named(merged)}): merged by hand${label}`
-      yield* logs.write(text)
-      yield* events.emit({ kind: "info", ticket: issue.id, text })
+      yield* logs.writeWith([text], events.emit({ kind: "info", ticket: issue.id, text }))
       found.push(issue.id)
     }
     return found

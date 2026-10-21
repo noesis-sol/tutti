@@ -507,8 +507,8 @@ export const make = (
         yield* ledger.transition(issue.id, Cause.Dispatched())
         yield* ledger.transition(issue.id, Cause.Defer({ why: "BAD_TICKET_ID" }), {
           beside: [{ kind: "deferred", ticket: issue.id, title: issue.title, detail: why, text }],
+          lines: [text],
         })
-        yield* logs.write(text)
         const deferred = yield* beads
           .defer(issue.id, { reason: badTicketIdNote(issue.id, why) })
           .pipe(Effect.result)
@@ -535,13 +535,15 @@ export const make = (
           ...queue,
           text,
         }
-        const moved = yield* ledger.transition(issue.id, Cause.Dispatched(), { beside: [record] })
+        const moved = yield* ledger.transition(issue.id, Cause.Dispatched(), {
+          beside: [record],
+          lines: [text],
+        })
         if (Result.isFailure(moved)) {
           // A PHASE_BUG, which the ledger logged: nothing starts, and nothing is counted.
           yield* Ref.update(slots, (s) => ({ ...s, started: s.started - 1 }))
           return false
         }
-        yield* logs.write(text)
         if (footprint !== undefined) yield* logs.write(footprintLine(issue.id, footprint))
         yield* occupy(issue.id, options.start.start(issue), issue, true)
         return true
@@ -723,8 +725,7 @@ export const make = (
             if (warned.has(key)) continue
             warned.add(key)
             const text = likelyConflictLine(edit)
-            yield* events.emit({ kind: "warn", text })
-            yield* logs.write(text)
+            yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
           }
         }
 

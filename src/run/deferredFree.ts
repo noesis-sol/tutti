@@ -210,8 +210,7 @@ export const say = (
     }
     for (const d of free.success) {
       const text = detail`${startLine(d, freeing.base)}`
-      yield* logs.write(text)
-      yield* events.emit({ kind: "info", ticket: d.id, text })
+      yield* logs.writeWith([text], events.emit({ kind: "info", ticket: d.id, text }))
     }
   })
 

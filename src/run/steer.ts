@@ -50,8 +50,7 @@ const steer = (ticket: string, by: "message" | "interrupt") =>
     yield* ledger.steer(ticket, by)
     if (entry.steered) return
     const text = log.steered(ticket)
-    yield* events.emit({ kind: "steered", ticket, text })
-    yield* logs.write(text)
+    yield* logs.writeWith([text], events.emit({ kind: "steered", ticket, text }))
   })
 
 /**
@@ -77,8 +76,10 @@ export const sendMessage = (
     }
     yield* ledger.count(ticket, "messages")
     const said = log.message(ticket, text)
-    yield* events.emit({ kind: "message", ticket, length: lengthOf(text), text: said })
-    yield* logs.write(said)
+    yield* logs.writeWith(
+      [said],
+      events.emit({ kind: "message", ticket, length: lengthOf(text), text: said }),
+    )
     return true
   })
 
@@ -110,8 +111,7 @@ export const release = (ticket: string): Effect.Effect<boolean, never, SteerEnv>
     if ((yield* ledger.current).tickets.get(ticket)?.steered !== true) return false
     yield* ledger.release(ticket)
     const text = log.released(ticket)
-    yield* events.emit({ kind: "released", ticket, text })
-    yield* logs.write(text)
+    yield* logs.writeWith([text], events.emit({ kind: "released", ticket, text }))
     return true
   })
 
@@ -147,8 +147,7 @@ const handOver = (
     }
     // Said before the queue can take it up, so its merge's lines come after.
     const text = said(stop)
-    yield* events.emit({ kind: "info", ticket, text })
-    yield* logs.write(text)
+    yield* logs.writeWith([text], events.emit({ kind: "info", ticket, text }))
     if (waive) yield* queue.handBacks.waive(ticket)
     const moved = yield* queue.offer(stop.ticket, (place) => Cause.HandedOver({ place }), false)
     if (Result.isSuccess(moved)) return true
