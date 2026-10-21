@@ -25,6 +25,8 @@ export interface Predictor {
   queue(issues: ReadonlyArray<Issue>, repo: RepoFiles): Effect.Effect<void>
   /** The files predicted in this run, by ticket. */
   readonly predicted: Effect.Effect<ReadonlyMap<string, ReadonlyArray<string>>>
+  /** Stops the predictor, the guess under way aborted: the run takes no more tickets. */
+  readonly interrupt: Effect.Effect<void>
 }
 
 /**
@@ -128,5 +130,6 @@ export const make = (options: {
           }
         }),
       predicted: Ref.get(predicted),
+      interrupt: FiberSet.clear(fibers),
     }
   })

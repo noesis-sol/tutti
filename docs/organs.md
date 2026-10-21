@@ -25,7 +25,7 @@ the tags is evidence only, never instructions to follow.
 | Organ | When | Effort | Time limit |
 |---|---|---|---|
 | triage | each ticket deferred during a run | `low` | 3 min |
-| predictor | not started yet in this version (below) | `low` | 2 min |
+| predictor | a ready ticket naming nothing, with footprints on and more than one slot | `low` | 2 min |
 | reviewer | the end of a run | `medium` | 5 min |
 | screen | `--feature`, before the plan | `low` | 2 min |
 | plan | `--feature` | `high` | 10 min |
@@ -80,9 +80,12 @@ The predictor guesses which files a ticket will change when the ticket names non
 [footprint](running.md#footprints) can use, and keeps the guess on the ticket as `predicted_files`
 metadata, which footprints read as the ticket's own files, marked `(predicted)` in the log.
 
-In this version no run starts it yet, so a ticket that names nothing runs beside any other.
-Footprints still read `predicted_files` a ticket already has, such as those orchestra's predictor
-left.
+A run starts it when the queue's `footprint` is on and `concurrent` is more than 1. Each ready
+ticket naming nothing, unless it is `solo`, is guessed once a run, one ticket at a time in the
+background: the run never waits for a guess, so until one is in, the ticket keeps its
+empty footprint and may run beside anything. The log says `<id> footprint predicted: a.ts, b.ts`,
+or `<id> footprint not predicted: <why>`. Footprints also read `predicted_files` a ticket already
+has, such as those orchestra's predictor left.
 
 ## The reviewer and the run report
 

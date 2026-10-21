@@ -12,7 +12,9 @@
 // DRAINED with exit 0. Workers failing at once hold the run with ENVIRONMENT (environment.ts): once
 // nothing runs, the probe either lifts that stop, and the run takes tickets again, or ends the run.
 // Given Organs, the run triages each ticket set aside in the background (triage.ts), its verdicts
-// counting toward that hold, and doesn't end while a ticket waits for its verdict.
+// counting toward that hold, and doesn't end while a ticket waits for its verdict. With the queue's
+// footprint on and more than one slot, the predictor (predict.ts) guesses in the background the
+// files of the ready tickets naming nothing, until the loop ends.
 // The holds that come with time (holds.ts): a worker past --ticket-limit stops the run with
 // TICKET_LIMIT and goes on, and the run neither waits for it nor drains it: the end suspends it. A
 // request unanswered for 4 minutes stops the run with BLOCKED, lifted once its ticket has no request
@@ -120,6 +122,7 @@ import { beadsWhy, closedAfter, gitWhy } from "./merge.ts"
 import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { finished } from "./notices.ts"
 import { Cause, type PhaseTag, stopsAtEnd, type TicketPhase } from "./phase.ts"
+import { make as makePredictor } from "./predict.ts"
 import {
   type Awaited,
   atOnceText,
@@ -537,6 +540,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             ),
         })
       : undefined
+    // The predictor (predict.ts), as orchestra starts it: with organs, the queue's footprint on and
+    // more than one slot, it guesses the files of the ready tickets naming nothing, one ticket at a
+    // time in the background, so that a ticket naming nothing doesn't run beside anything.
+    const predictor =
+      Option.isSome(organs) && footprints !== undefined && config.settings.concurrent > 1
+        ? yield* makePredictor({ repo: config.repo }).pipe(
+            Effect.provideService(Organs, organs.value),
+          )
+        : undefined
     const scheduler = yield* makeScheduler({
       concurrent: config.settings.concurrent,
       limit: config.limit,
@@ -545,6 +557,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       start: { start: ticketFiber },
       taking,
       ...(footprints === undefined ? {} : { footprints }),
+      ...(predictor === undefined ? {} : { predictor }),
       show: ({ solo, unclosed }) =>
         SubscriptionRef.update(status, (now) => ({ ...now, solo, unclosed })),
     })
@@ -983,6 +996,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // The loop's end set it already, under `acting`; a quit sets it at once, without waiting for a
     // command acting now: quitting holds the merges and interrupts the workers.
     yield* Ref.set(ending, true)
+    // No ticket is taken any more: the guess under way is aborted.
+    if (predictor !== undefined) yield* predictor.interrupt
     yield* showEndOfRun(null)
     if (quit !== null) yield* quitNow(quit)
     yield* mergeStop(yield* queue.state)

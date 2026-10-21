@@ -70,6 +70,7 @@ describe("a dispatched ticket's footprint", () => {
     const predictor: Predictor = {
       queue: () => Effect.void,
       predicted: Effect.succeed(new Map([["t-1", ["src/b.ts"]]])),
+      interrupt: Effect.void,
     }
     const lines = await logOfFill([{ id: "t-1", title: "Tidy up" }], { footprints, predictor })
     expect(lines).toContain("  t-1 footprint: src/b.ts (predicted)")
