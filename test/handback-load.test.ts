@@ -2,14 +2,16 @@
 // the time the machine is loaded, its kernel's memory pressure, swapping or CPU pressing it
 // (load.ts's pressing), or the run holding at --machine-workers, is left out of resolve_timeout, up
 // to resolve_timeout again; the line ending a hand-back past it says how much more it was given.
-// Whole runs under TestClock, the dashboard shown for the run to read the machine's load.
+// Whole runs under TestClock: the dashboard shown for the run to read the machine's load, or plain
+// output with the run holding at --machine-workers.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
-import { mkdtempSync, realpathSync } from "node:fs"
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber } from "effect"
 import { type Kernel, type Levels, Load, type LoadSource, pressing } from "../src/run/load.ts"
 import { line } from "../src/run/log.ts"
+import { type ProcessCheck, Processes } from "../src/run/machine.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -148,10 +150,17 @@ const untilOnMain = (world: World, files: Files) =>
 
 /**
  * a and b conflicting in shared.txt: b's rebase onto a's merge stops, and is handed back to b's
- * worker, which works on it until tutti stops it.
+ * worker, which works on it until tutti stops it. a does `then` once b is claimed; c, when there is
+ * one, works on a file of its own.
  */
-const conflicting = (world: World, places: Places): Scripts => ({
-  a: [works(world, places, "a", { "shared.txt": "a\n" }, [step(untilClaimed(world, "b"))])],
+const conflicting = (world: World, places: Places, then: Effect.Effect<void>): Scripts => ({
+  a: [
+    works(world, places, "a", { "shared.txt": "a\n" }, [
+      step(untilClaimed(world, "b")),
+      step(then),
+    ]),
+  ],
+  c: [works(world, places, "c", { "c.txt": "c\n" })],
   b: [
     [
       ...works(world, places, "b", { "shared.txt": "b\n" }, [
@@ -175,51 +184,88 @@ const machine = (pressure: () => Kernel["pressure"]): LoadSource => ({
   })),
 })
 
+/** How a run reads the machine: its load from `source`, with the dashboard shown, or `machine`. */
+interface Machine {
+  readonly source?: LoadSource
+  /**
+   * The folder of runs and the most workers across them (--machine-workers), with plain output; and
+   * what a's worker does once b is claimed.
+   */
+  readonly runs?: {
+    readonly dir: string
+    readonly cap: number
+    readonly onceBClaimed: Effect.Effect<void>
+  }
+  /** The tickets: a and b, and c after them. */
+  readonly tickets?: ReadonlyArray<string>
+}
+
 /**
- * A whole run of a and b on main, two at a time, with the dashboard shown and the machine's load
- * read from `source`; `during` runs beside it, before it is joined.
+ * A whole run of a and b on main, two at a time, the machine read as `machine` says; `during` runs
+ * beside it, before it is joined.
  */
-const runs = (
-  source: LoadSource,
+const runsOn = (
+  machine: Machine,
   during: Effect.Effect<void, unknown, Env>,
 ): Promise<Ran<Outcome> & Places> => {
   const places = { repo: folder("repo"), root: folder("worktrees") }
+  const tickets = machine.tickets ?? ["a", "b"]
+  const { source, runs } = machine
   return scenario(
     {
       config: {
         repo: places.repo,
+        ...(runs === undefined ? {} : { runs: runs.dir, machineWorkers: runs.cap }),
         settings: {
           ...defaults,
           concurrent: 2,
           checks: { ...defaults.checks, fast: { ...defaults.checks.fast, command: check } },
         },
       },
-      backlog: backlog().ticket("a").ticket("b").seeds,
+      backlog: tickets.reduce((built, id, i) => built.ticket(id, { priority: i }), backlog()).seeds,
       git: { dir: places.repo },
       worktrees: { root: places.root },
-      scripts: (world: World) => conflicting(world, places),
+      scripts: (world: World) => conflicting(world, places, runs?.onceBClaimed ?? Effect.void),
     },
     Effect.gen(function* () {
       const git = yield* Git
-      for (const id of ["a", "b"]) {
+      for (const id of tickets) {
         yield* git.addWorktree(places.repo, join(places.root, id), {
           branch: `tutti/${id}`,
           base: "main",
         })
       }
+      const start = { version: "0.1.0-test", base: "main", start: [line`START tutti 0.1.0-test`] }
       const fiber = yield* Effect.forkChild(
-        run({
-          version: "0.1.0-test",
-          base: "main",
-          start: [line`START tutti 0.1.0-test`],
-          dashboard: () => Effect.void,
-        }).pipe(Effect.provideService(Load, source)),
+        (source === undefined
+          ? run(start)
+          : run({ ...start, dashboard: () => Effect.void }).pipe(
+              Effect.provideService(Load, source),
+            )
+        ).pipe(Effect.provideService(Processes, everyoneAlive)),
       )
       yield* during
       return yield* Fiber.join(fiber)
     }),
   ).then((ran) => ({ ...ran, ...places }))
 }
+
+/** A whole run of a and b with the dashboard shown and the machine's load read from `source`. */
+const runs = (source: LoadSource, during: Effect.Effect<void, unknown, Env>) =>
+  runsOn({ source }, during)
+
+/** Every process runs, its start unknown: the other run in the folder of runs is going. */
+const everyoneAlive: ProcessCheck = { alive: () => true, start: () => Effect.succeed(null) }
+
+/** The other run's registration in the folder of runs, with `running` workers. */
+const other = (running: number) =>
+  JSON.stringify({
+    pid: 4242,
+    repo: "/work/other",
+    concurrent: 3,
+    started: new Date().toISOString(),
+    running,
+  })
 
 const resolvingLine =
   "  RESOLVING: tutti/b conflicts with main in shared.txt; handed back to its worker to resolve (up to 20m)"
@@ -297,6 +343,43 @@ describe("a hand-back on a loaded machine", () => {
       resolvingLine,
       "  b's worker was stopped and told its hand-back is over",
       /^ {2}MERGE_CONFLICT: b closed, .*\(handed back to its worker, but its worker is working after 20m, with the hand-back not done; the rebase was aborted\)/,
+    ])
+  })
+
+  test("is given the time the run holds at --machine-workers, with plain output", async () => {
+    // A cap of 3, the other run with 1 worker: a and b start. Once b is claimed, the other run has
+    // 2, so that once a merges, c waits for the cap (HOLD: MACHINE) all through b's hand-back.
+    const dir = folder("runs")
+    writeFileSync(join(dir, "run-4242-1.json"), other(1))
+    let stoppedAt20 = true
+    let stoppedAt39 = true
+    const ran = await runsOn(
+      {
+        tickets: ["a", "b", "c"],
+        runs: {
+          dir,
+          cap: 3,
+          onceBClaimed: Effect.sync(() => writeFileSync(join(dir, "run-4242-1.json"), other(2))),
+        },
+      },
+      Effect.gen(function* () {
+        yield* untilLogged(/^ {2}RESOLVING: /)
+        yield* untilLogged(/^HOLD: MACHINE/)
+        yield* advance("20 minutes")
+        stoppedAt20 = yield* logged(stoppedLine)
+        yield* advance("19 minutes")
+        stoppedAt39 = yield* logged(stoppedLine)
+        yield* advance("1 minute")
+      }),
+    )
+    expect(stoppedAt20).toBe(false)
+    expect(stoppedAt39).toBe(false)
+    expectClean(ran)
+    expectPhases(ran, { a: "Done", b: "Blocked", c: "Done" })
+    expectLog(ran, [
+      resolvingLine,
+      "  b's worker was stopped and told its hand-back is over",
+      /^ {2}MERGE_CONFLICT: b closed, .*\(handed back to its worker, but its worker is working after 20m \(and 20m more for the machine's load\), with the hand-back not done; the rebase was aborted\)/,
     ])
   })
 })
