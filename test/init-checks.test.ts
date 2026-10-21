@@ -563,7 +563,9 @@ describe("the verifier", () => {
     expect(verifier).toContain(
       "- `scripts/check-fast.sh`, the check tutti runs on each ticket before it merges it, runs:\n  - `npm test`\n",
     )
-    expect(verifier).toContain("runs `scripts/check-fast.sh`, then:\n  - `npx playwright test`\n")
+    expect(verifier).toContain(
+      "which tutti runs at the end of a run: `scripts/check-fast.sh`, then:\n  - `npx playwright test`\n",
+    )
     expect(verifier).not.toContain("{{")
     expect(read(project, ".tutti/worker-prompt.md")).toEndWith(verifierSection)
     expect(lines(summary)).toContain(
