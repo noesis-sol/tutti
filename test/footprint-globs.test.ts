@@ -223,7 +223,8 @@ describe("a glob that matches no file yet", () => {
       ]) {
         const fp = listed(repo, other)
         expect([other, shared(glob, fp)]).toEqual([other, "web/src/*.ts"])
-        expect([other, shared(fp, glob)]).toEqual([other, fp.globs[0]])
+        expect([other, fp.globs]).toEqual([other, [other]])
+        expect([other, shared(fp, glob)]).toEqual([other, other])
       }
 
       // A worktree adding a file the glob matches, beside it and the other way round.
