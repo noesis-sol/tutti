@@ -144,7 +144,12 @@ export const checkRequires = (list: ReadonlyArray<Requirement>, options: CheckOp
     const report: Array<RequireResult> = []
     for (const [i, r] of list.entries()) {
       const state = checked[i] ?? "missing"
-      if (state !== "missing" || r.install === undefined || options.noInstall === true) {
+      if (
+        state !== "missing" ||
+        r.install === undefined ||
+        r.install === "" ||
+        options.noInstall === true
+      ) {
         report.push({ requirement: r, state, ran: false })
         continue
       }
@@ -168,7 +173,7 @@ export const missingOf = (report: RequireReport): RequireReport =>
 export const whyMissing = (res: RequireResult): string => {
   const r = res.requirement
   if (r.manual !== undefined && r.manual !== "") return r.manual
-  if (!res.ran && r.install !== undefined) {
+  if (!res.ran && r.install !== undefined && r.install !== "") {
     return `'${r.check}' fails; install it with '${r.install}'`
   }
   if (!res.ran) return `'${r.check}' fails`

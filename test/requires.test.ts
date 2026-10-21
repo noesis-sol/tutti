@@ -298,6 +298,15 @@ describe("the check of the list", () => {
     expect(report.map(whyMissing)).toEqual(["'false' fails; install it with 'make x'"])
     expect(existsSync(join(repo, ".tutti", "run", "requires-x.log"))).toBe(false)
     expect(missingDetail([])).toBe("")
+    // An empty install beside a manual step installs nothing.
+    const manual = await run(
+      checkRequires([{ name: "lic", check: "false", install: "", manual: "accept it" }], {
+        repo,
+        installLimit: "1 minute",
+      }),
+    )
+    expect(manual.map((res) => [res.ran, says(res)])).toEqual([[false, "missing: accept it"]])
+    expect(existsSync(join(repo, ".tutti", "run", "requires-lic.log"))).toBe(false)
   })
 
   test("an install past its time limit is stopped, and says so", async () => {
