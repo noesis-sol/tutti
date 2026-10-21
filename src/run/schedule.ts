@@ -257,6 +257,11 @@ export interface Scheduler {
   readonly interrupt: Effect.Effect<void>
   /** Whether the run has started as many tickets as --limit allows. */
   readonly limitReached: Effect.Effect<boolean>
+  /**
+   * Writes a queue record of the tickets the last fill read, as they are now: for the machine's
+   * hold (`machine_full`), which begins and ends without a ticket changing phase.
+   */
+  readonly recordQueue: Effect.Effect<void>
 }
 
 /** How far the run is through its ticket limit after `n` tickets: `n/limit`, or `n` with none. */
@@ -425,6 +430,8 @@ export const make = (
     // The tickets the queue draws from, as the last fill read them, and the queue last shown.
     let unclosed: number | null = null
     let shownLast = ""
+    // The candidates the last fill read, which a queue record counts.
+    let lastIds: ReadonlyArray<string> = []
 
     const soloState = (s: Slots): SoloState | null =>
       s.solo !== null
@@ -610,6 +617,7 @@ export const make = (
         const ids = found
           .filter((issue) => candidate(before, issue.id) || setupFailed(before, issue.id))
           .map((issue) => issue.id)
+        lastIds = ids
         const setAsideNow: Array<string> = []
         // A ticket waiting in the queue that bd ready no longer lists (closed, deferred or blocked
         // outside the run) leaves it; it is queued anew if it is ready again.
@@ -929,5 +937,12 @@ export const make = (
       running: Effect.map(Ref.get(slots), (s) => s.running),
       interrupt: FiberSet.clear(tickets),
       limitReached: Effect.map(Ref.get(slots), (s) => reached(s.started, options.limit)),
+      recordQueue: Effect.gen(function* () {
+        const solo = soloState(yield* Ref.get(slots))
+        yield* events.emit({
+          kind: "queue",
+          ...(yield* recorded(yield* ledger.current, lastIds, solo)),
+        })
+      }),
     }
   })

@@ -4,7 +4,14 @@
 // run with none of its own running never waits, and a registration whose run is gone counts no
 // workers.
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, readdirSync, realpathSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber, Option, Result } from "effect"
@@ -21,6 +28,7 @@ import { texts } from "../src/testing/Log.ts"
 import {
   advance,
   backlog,
+  type Env,
   expectExitCode,
   expectLog,
   expectPhases,
@@ -86,6 +94,9 @@ const other = (running: number) =>
     running,
   })
 
+/** Every process runs, its start unknown: the two runs in this process are both going. */
+const everyoneAlive: ProcessCheck = { alive: () => true, start: () => Effect.succeed(null) }
+
 /** PID 4242 runs, 4343 is gone: neither's start can be read. */
 const processes: ProcessCheck = {
   alive: (pid) => pid !== 4343,
@@ -99,6 +110,88 @@ const dispatches = (ran: Ran<unknown>) =>
       ? [{ ticket: record.ticket, at: Math.floor(Date.parse(record.time) / 1000) }]
       : [],
   )
+
+/** From the machine's hold on: the records' kinds, with the queue's count and `machine_full`. */
+const holding = (ran: Ran<unknown>): ReadonlyArray<string> => {
+  const from = ran.events.findIndex((record) => record.kind === "machine_hold")
+  return ran.events
+    .slice(from)
+    .flatMap((record) =>
+      record.kind === "machine_hold"
+        ? ["machine_hold"]
+        : record.kind === "queue" || record.kind === "dispatch"
+          ? [`${record.kind} ${record.queued}${record.machine_full ? " machine_full" : ""}`]
+          : [],
+    )
+}
+
+/** Whether the run's log has a line `pattern` matches. */
+const said = (pattern: RegExp) =>
+  Effect.map(texts, (lines) => lines.some((text) => pattern.test(text)))
+
+/** The registrations in `runs` whose run has `running` workers, waited for in real time. */
+const registered = async (runs: string, running: number): Promise<string> => {
+  for (let i = 0; i < 1000; i++) {
+    for (const name of readdirSync(runs)) {
+      if (!name.endsWith(".json")) continue
+      const text = readFileSync(join(runs, name), "utf8")
+      if (JSON.parse(text).running === running) return name
+    }
+    await Bun.sleep(10)
+  }
+  throw new Error(`no run in ${runs} has ${running} running`)
+}
+
+/** Waits, in real time, until the registration `name` is gone from `runs`. */
+const gone = async (runs: string, name: string): Promise<void> => {
+  for (let i = 0; i < 1000 && existsSync(join(runs, name)); i++) await Bun.sleep(10)
+  if (existsSync(join(runs, name))) throw new Error(`${name} is still in ${runs}`)
+}
+
+/**
+ * A whole tutti run of its own, with 2 slots and a cap of 2 across the machine, registering in
+ * `runs`: each ticket's worker takes as long as `tickets` says, and `drive` moves its clock.
+ */
+const loop = async <A>(
+  runs: string,
+  tickets: Readonly<Record<string, Duration.Input>>,
+  drive: (repo: string) => Effect.Effect<A, never, Env>,
+) => {
+  const repo = folder("repo")
+  const root = folder("worktrees")
+  const ids = Object.keys(tickets)
+  const seeds = ids.reduce((built, id, i) => built.ticket(id, { priority: i }), backlog()).seeds
+  const ran = await scenario(
+    {
+      config: {
+        repo,
+        worktrees: root,
+        runs,
+        machineWorkers: 2,
+        settings: { ...appConfig().settings, concurrent: 2 },
+      },
+      backlog: seeds,
+      git: { dir: repo, files: { "README.md": "tutti\n" } },
+      worktrees: { root },
+      scripts: (world: World) =>
+        Object.fromEntries(ids.map((id) => [id, [works(world, root, id, tickets[id] ?? 0)]])),
+    },
+    Effect.gen(function* () {
+      const git = yield* Git
+      for (const id of ids) {
+        yield* git.addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
+      }
+      const fiber = yield* Effect.forkChild(
+        run({ version: "0.1.0-test", base: "main", start: [line`START tutti 0.1.0-test`] }).pipe(
+          Effect.provideService(Processes, everyoneAlive),
+        ),
+      )
+      yield* drive(repo)
+      return yield* Fiber.join(fiber)
+    }),
+  )
+  return { ran, repo }
+}
 
 describe("the cap and the folder of runs", () => {
   const resolved = (flags: Partial<Record<RunFlagName, string>>, env: Record<string, string>) => {
@@ -212,11 +305,62 @@ describe("--machine-workers", () => {
     ])
     expectLog(ran, [
       /^SHARED_MACHINE: another orchestra run/,
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       /^HOLD: MACHINE: /,
-      "[2/40] b dispatching: b",
+      "[2] b dispatching: b",
     ])
+    // The queue says the hold as it begins and as it ends, and no record after it.
+    expect(holding(ran)).toEqual(["machine_hold", "queue 1 machine_full", "queue 1", "dispatch 0"])
     // The gone run's registration was removed; the run removed its own as it ended.
     expect(readdirSync(runs)).toEqual(["run-4242-1.json"])
   }, 30_000)
+
+  test("two tutti runs sharing a folder hold each other to the cap", async () => {
+    // A cap of 2 across two runs. The first runs f, for 10 minutes on its own clock; once it has
+    // registered with f running, the second starts s and holds t: 1 of its own and 1 of the
+    // first's. Once the first run has ended, its file gone, t starts within 2 seconds.
+    const runs = folder("runs")
+    const firstEnds = Promise.withResolvers<void>()
+    const firstRun = loop(runs, { f: "10 minutes" }, (repo) =>
+      Effect.gen(function* () {
+        yield* passes("5 seconds")
+        // Waits, in real time, until the second run holds, then finishes f.
+        yield* Effect.promise(() => firstEnds.promise)
+        yield* passes("11 minutes", "30 seconds")
+        return repo
+      }),
+    )
+    const first = await registered(runs, 1)
+    const secondRun = loop(runs, { s: "20 minutes", t: "1 minute" }, () =>
+      Effect.gen(function* () {
+        for (let i = 0; i < 300 && !(yield* said(/^HOLD: MACHINE/)); i++) yield* passes("1 second")
+        firstEnds.resolve()
+        yield* Effect.promise(() => gone(runs, first))
+        yield* passes("15 seconds")
+        yield* passes("21 minutes", "30 seconds")
+      }),
+    )
+    const [ranFirst, ranSecond] = await Promise.all([firstRun, secondRun])
+    expectExitCode(ranFirst.ran, 0)
+    expectExitCode(ranSecond.ran, 0)
+    expectPhases(ranSecond.ran, { s: "Done", t: "Done" })
+    expectLog(ranSecond.ran, [
+      new RegExp(`^SHARED_MACHINE: another tutti run is going in ${ranFirst.repo} with 2 workers`),
+      "[1] s dispatching: s",
+      "HOLD: MACHINE: the machine's tutti and orchestra runs have 2 workers running, 1 of them this run's, at the cap of 2 (--machine-workers); the next ticket starts once one of them finishes",
+      `  the other tutti run in ${ranFirst.repo} has ended`,
+      "[2] t dispatching: t",
+    ])
+    expect(holding(ranSecond.ran)).toEqual([
+      "machine_hold",
+      "queue 1 machine_full",
+      "queue 1",
+      "dispatch 0",
+    ])
+    // The first run saw the second, and neither left its file behind.
+    expectLog(ranFirst.ran, [
+      new RegExp(`^SHARED_MACHINE: another tutti run is going in ${ranSecond.repo} with 2 workers`),
+    ])
+    expect(readdirSync(runs)).toEqual([])
+  }, 60_000)
 })

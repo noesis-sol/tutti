@@ -191,6 +191,12 @@ export const Processes = Context.Reference<ProcessCheck>("tutti/run/machine/Proc
  */
 export const startSlack = 2000
 
+/**
+ * How long a process's start, once read, is kept before a look reads it again: ps for every
+ * registration at every look would be one command per run each time the run looks for work.
+ */
+export const startsKept = 60_000
+
 /** What a look at the other runs found: the lines to say, and how many other runs are going. */
 export interface Seen {
   /** `SHARED_MACHINE: another … run is going in …`, or `the other … run in … has ended`. */
@@ -279,8 +285,9 @@ export const make = (options: {
     const written = yield* Ref.make(false)
     const seen = yield* Ref.make<ReadonlyMap<string, Registration>>(new Map())
     const others = yield* Ref.make(0)
-    // When each PID's process started, once read: a PID gone since is read again.
-    const starts = new Map<number, number | null>()
+    // When each PID's process started, and when that was read (wall-clock time): read again once
+    // startsKept has passed, so that a PID taken by another process between two looks is found out.
+    const starts = new Map<number, { readonly start: number | null; readonly at: number }>()
     // One look at a time, so that a run that started is said once.
     const oneLook = yield* Semaphore.make(1)
 
@@ -320,12 +327,13 @@ export const make = (options: {
           starts.delete(reg.pid)
           return true
         }
-        let start = starts.get(reg.pid)
-        if (start === undefined) {
-          start = yield* check.start(reg.pid).pipe(Effect.provideContext(context))
-          starts.set(reg.pid, start)
+        let known = starts.get(reg.pid)
+        if (known === undefined || Date.now() - known.at > startsKept) {
+          const start = yield* check.start(reg.pid).pipe(Effect.provideContext(context))
+          known = { start, at: Date.now() }
+          starts.set(reg.pid, known)
         }
-        return start !== null && start > reg.started + startSlack
+        return known.start !== null && known.start > reg.started + startSlack
       })
 
     const look = Effect.gen(function* () {

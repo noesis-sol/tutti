@@ -2,7 +2,7 @@
 // folder the machine's tutti and orchestra runs share, says once of each other run that it is going
 // (SHARED_MACHINE), and ignores, and removes, a registration whose run is gone. Two runs in these
 // tests are two registrations in one folder, as two loops in one process would be.
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setSystemTime, test } from "bun:test"
 import {
   existsSync,
   mkdtempSync,
@@ -26,6 +26,7 @@ import {
   runsDir,
   type Seen,
   startSlack,
+  startsKept,
   writeRegistration,
 } from "../src/run/machine.ts"
 
@@ -224,6 +225,47 @@ describe("two runs sharing a folder", () => {
     ])
     expect(others).toBe(1)
     expect(readdirSync(dir).toSorted()).toEqual(["run-13-1.json", "run-14-1.json"])
+  })
+
+  test("finds out a PID taken by another process while the run watches it, within a minute", async () => {
+    const dir = folder()
+    const started = Date.parse("2026-10-21T09:00:00Z")
+    writeFileSync(join(dir, "run-21-1.json"), orchestraFile(21, "2026-10-21T09:00:00Z", 2))
+    // PID 21 is the registered run's until its third read, then a process started since.
+    let reads = 0
+    const processes: ProcessCheck = {
+      alive: () => true,
+      start: () => Effect.succeed(++reads < 3 ? started : started + 3_600_000),
+    }
+    const counted = await runIn(
+      Effect.gen(function* () {
+        const machine = yield* make({ dir, repo: "/work/tutti", concurrent: 1 })
+        const counts: Array<number> = []
+        try {
+          yield* machine.look
+          counts.push(yield* machine.others)
+          setSystemTime(new Date(Date.now() + startsKept + 1000))
+          yield* machine.look
+          counts.push(yield* machine.others)
+          // Read again within the minute: still the cached start.
+          yield* machine.look
+          counts.push(yield* machine.others)
+          setSystemTime(new Date(Date.now() + startsKept + 1000))
+          const ended = texts(yield* machine.look)
+          counts.push(yield* machine.others)
+          return { counts, ended, reads }
+        } finally {
+          setSystemTime()
+        }
+      }),
+      processes,
+    )
+    expect(counted).toEqual({
+      counts: [2, 2, 2, 0],
+      ended: ["  the other orchestra run in /work/other has ended"],
+      reads: 3,
+    })
+    expect(readdirSync(dir)).toEqual([])
   })
 
   test("the live check keeps a running process and drops one that started after its run", async () => {

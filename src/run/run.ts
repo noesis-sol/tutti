@@ -579,6 +579,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         [...state.tickets.values()].filter((entry) => running.has(entry.phase._tag)).length,
     )
     const machineFull = yield* Ref.make(false)
+    // The scheduler's queue record, once it is made: the hold's start and end each write one.
+    const queueRecord = yield* Ref.make<Effect.Effect<void>>(Effect.void)
     const atCap = Effect.gen(function* () {
       const own = yield* ownWorkers
       const cap = config.machineWorkers
@@ -595,6 +597,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             ? [...now.holds, { word: machineWord, resetsAt: null }]
             : now.holds.filter((each) => each.word !== machineWord),
         }))
+        if (!full) yield* Effect.flatten(Ref.get(queueRecord))
         return full
       })
     // Writes how many of the run's workers run, reads the other runs, saying which started and
@@ -618,6 +621,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         const text = machineHoldLine(own + (yield* machine.others), own, config.machineWorkers)
         yield* events.emit({ kind: "machine_hold", text })
         yield* logs.write(text)
+        yield* Effect.flatten(Ref.get(queueRecord))
       }
       return false
     })
@@ -664,6 +668,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         SubscriptionRef.update(status, (now) => ({ ...now, solo, unclosed })),
     })
     yield* Ref.set(slots, scheduler.recheckSlot)
+    yield* Ref.set(queueRecord, scheduler.recordQueue)
 
     // The tickets earlier runs left unmerged, checked before the first dispatch: one merged by hand
     // since loses its label, so the tickets it blocks can start.
