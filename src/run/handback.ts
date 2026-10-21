@@ -473,6 +473,11 @@ export interface AtReset {
   ): Effect.Effect<Effect.Effect<string | undefined, AgentGone> | null>
   /** Takes back the ticket's hand-back kept for the reset: false once the reset has sent it. */
   takeBack(id: string): Effect.Effect<boolean>
+  /**
+   * Runs `wait`, the ticket's hand-back waiting for its worker, at the limit on it, to leave the
+   * limit: with nothing else running, the run waits for the reset, or ends USAGE_LIMIT, meanwhile.
+   */
+  waits<A, E, R>(id: string, wait: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
 }
 
 /** Why a hand-back kept for the reset isn't sent: you steered its worker meanwhile. */
@@ -547,11 +552,13 @@ const isLimited = (state: WorkerState) => state._tag === "UsageLimited"
  * The hand-back's clock: `limit` of the time its worker isn't at the account's usage limit, as
  * orchestra 0.8.0 counts it. Each time the worker is seen at the limit, git is asked whether it has
  * done what it was asked, its turn having ended on the limit as it finished (a turn that has ended
- * can't change git): "taken" when it has. "late" once the time is up.
+ * can't change git): "taken" when it has. "late" once the time is up. Its wait for the limit is one
+ * of `atReset`'s, when given.
  */
 const clock = (
   handBack: HandBack,
   limit: Duration.Duration,
+  atReset?: AtReset,
 ): Effect.Effect<"taken" | "late", never, GiveEnv> =>
   Effect.gen(function* () {
     const logs = yield* Log
@@ -574,7 +581,8 @@ const clock = (
       yield* logs.write(
         detail`${id}'s worker is at the usage limit on its hand-back: it carries on once the limit lifts, the wait not counting toward the ${formatDuration(limit)}`,
       )
-      yield* whenState(id, (state) => !isLimited(state))
+      const lifted = whenState(id, (state) => !isLimited(state))
+      yield* atReset === undefined ? lifted : atReset.waits(id, lifted)
     }
   })
 
@@ -731,7 +739,7 @@ export const give = (
             ? yield* sendAtReset(handBack, limit, atReset)
             : yield* sendNow(id, prompt)
         // It left the limit without the hand-back: given as to any worker, from its state now.
-        if (sent === undefined) return yield* give(handBack, limit)
+        if (sent === undefined) return yield* give(handBack, limit, atReset)
         if (Result.isFailure(sent)) return sent.failure
         const answered = Stream.fromQueue(heard).pipe(
           Stream.filter((message) => answers(message, sent.success)),
@@ -752,7 +760,7 @@ export const give = (
       }
       const ended = yield* Effect.raceFirst(
         Effect.as(Effect.andThen(taken, untilSettled(id)), "settled" as const),
-        clock(handBack, limit),
+        clock(handBack, limit, atReset),
       )
       if (ended !== "late") return undefined
       const now = yield* Effect.result(host.current(id))

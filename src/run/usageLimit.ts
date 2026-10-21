@@ -17,7 +17,11 @@
 //   its ticket while at the limit (handback.ts's give) is sent the hand-back in its place.
 // - With nothing else running, the run waits for the reset, the title line counting down and the
 //   log saying the countdown every countdownEvery. It ends USAGE_LIMIT (exit 8) only when the reset
-//   time is unknown or later than --usage-limit-wait.
+//   time is unknown or later than --usage-limit-wait. A worker at the limit on a hand-back counts as
+//   waiting once its hand-back waits for the limit (handBacks): kept for the reset, or on its turn
+//   that ended on it. A hand-back kept for the reset that the run's end overtakes is never sent: the
+//   end takes it back (unsent), aborts a conflict hand-back's rebase, for the next run to merge its
+//   ticket again, and names it in the closing line (neverHanded).
 //
 // Overage in use is shown beside the usage line, and every change of a limit's status is a
 // usage_limit record.
@@ -89,6 +93,21 @@ export const carryOnHandBack = (
   )
 }
 
+/**
+ * What the run's closing line says of a hand-back kept for the reset and never sent, the run ending
+ * first: a rebase aborted, for the next run to merge the ticket again, or, `stuck`, its worktree
+ * left mid-rebase as the abort failed.
+ */
+export const neverHanded = (id: string, mode: HandBackMode, stuck?: string): string => {
+  const what = `${id}'s worker, at the usage limit, was never handed its ${handedWords(mode)}`
+  if (stuck !== undefined) {
+    return `${what}, and its rebase could not be aborted, so ${stuck} is left mid-rebase`
+  }
+  return mode === "resolving"
+    ? `${what}: its rebase is aborted, for the next run to merge ${id} again`
+    : `${what}: the next run merges ${id} again`
+}
+
 /** `3 workers wait for it`, `1 worker waits for it`; empty for none. */
 const waitFor = (n: number): string =>
   n === 0 ? "" : n === 1 ? "1 worker waits for it" : `${n} workers wait for it`
@@ -139,8 +158,18 @@ export interface UsageLimitHold {
    * --usage-limit-wait; null otherwise.
    */
   look(alone: boolean): Effect.Effect<StopReason | null>
+  /**
+   * The tickets whose hand-backs wait for their workers to leave the limit: kept for the reset, or
+   * on their workers' turns that ended on it.
+   */
+  readonly handBacks: Effect.Effect<ReadonlySet<string>>
   /** Keeps the hand-backs due to workers at the limit, to send at the reset as their carry-on. */
   readonly atReset: AtReset
+  /**
+   * Takes back every hand-back kept for the reset, as the run ends before it: the tickets whose
+   * workers were never sent theirs, and what each was to be handed. The reset sends them nothing.
+   */
+  readonly unsent: Effect.Effect<ReadonlyMap<string, HandBackMode>>
 }
 
 /**
@@ -238,6 +267,8 @@ export const make = (options: {
     const state = yield* Ref.make(fresh)
     // The hand-backs kept for the reset, by ticket.
     const kept = yield* Ref.make<ReadonlyMap<string, Kept>>(new Map())
+    // The tickets whose hand-backs wait for their workers, at the limit on them, to leave it.
+    const onIt = yield* Ref.make<ReadonlySet<string>>(new Set())
     // Changes run one at a time, so the hold is put on and lifted once.
     const one = yield* Semaphore.make(1)
 
@@ -521,6 +552,7 @@ export const make = (options: {
           kept,
           (all) => new Map([...all, [ticket, { mode, prompt, steered, sent }]]),
         )
+        yield* options.wakeUp
         return Deferred.await(sent)
       }).pipe(one.withPermit)
 
@@ -530,10 +562,32 @@ export const make = (options: {
         return [true, new Map([...all].filter(([each]) => each !== ticket))]
       })
 
+    const waits: AtReset["waits"] = (ticket, wait) =>
+      Effect.acquireUseRelease(
+        Effect.andThen(
+          Ref.update(onIt, (all) => new Set([...all, ticket])),
+          options.wakeUp,
+        ),
+        () => wait,
+        () => Ref.update(onIt, (all) => new Set([...all].filter((each) => each !== ticket))),
+      )
+
+    // One at a time with the lift, so that a hand-back is either sent or taken back.
+    const unsent = Effect.map(
+      Ref.getAndSet(kept, new Map()),
+      (all): ReadonlyMap<string, HandBackMode> =>
+        new Map([...all].map(([ticket, handBack]) => [ticket, handBack.mode])),
+    ).pipe(one.withPermit)
+
     return {
       held: Effect.map(Ref.get(state), (s) => s.hold !== null),
       limited: Effect.map(Ref.get(state), (s) => s.limited),
       look,
-      atReset: { keep, takeBack },
+      handBacks: Effect.map(
+        Effect.all([Ref.get(kept), Ref.get(onIt)]),
+        ([all, waiting]): ReadonlySet<string> => new Set([...all.keys(), ...waiting]),
+      ),
+      atReset: { keep, takeBack, waits },
+      unsent,
     } satisfies UsageLimitHold
   })

@@ -166,7 +166,7 @@ import { makeSetUps, retrySetups, setupWaiting, setupWaitsPart } from "./setup.t
 import { handBackNow, interrupt, releaseAndHandOver, sendMessage } from "./steer.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
-import { make as makeUsageHold, holdWord as usageHoldWord } from "./usageLimit.ts"
+import { make as makeUsageHold, neverHanded, holdWord as usageHoldWord } from "./usageLimit.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -1093,22 +1093,25 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       return { done, waiting: [...waiting, ...conflicts] }
     })
     // Whether nothing runs but workers waiting for the usage limit.
-    // A worker at the limit on a hand-back (Resolving, Fixing) waits for it as one on its ticket does.
+    // A worker at the limit on a hand-back (Resolving, Fixing) waits for it as one on its ticket
+    // does, once its hand-back waits for it: kept for the reset, or on its turn that ended on it, not
+    // while it is handed over or what it left is checked.
     const limitedOnly = Effect.gen(function* () {
       const limited = yield* usage.limited
+      const handBacks = yield* usage.handBacks
       const over = yield* Ref.get(overLimit)
       const waits = (entry: Entry) =>
         limited.has(entry.ticket) &&
         (entry.phase._tag === "Working" ||
-          entry.phase._tag === "Resolving" ||
-          entry.phase._tag === "Fixing")
+          ((entry.phase._tag === "Resolving" || entry.phase._tag === "Fixing") &&
+            handBacks.has(entry.ticket)))
       const others = [...(yield* ledger.current).tickets.values()].some(
         (entry) => waitedFor(entry, over) && !waits(entry),
       )
       const merges = yield* queue.state
       return (
         !others &&
-        isSettled({ ...merges, resolving: merges.resolving.filter((id) => !limited.has(id)) })
+        isSettled({ ...merges, resolving: merges.resolving.filter((id) => !handBacks.has(id)) })
       )
     })
     // Waits until nothing is left. With the usage-limit hold on, the run waits for its reset
@@ -1125,6 +1128,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         const limit = yield* usage.look(yield* limitedOnly)
         if (limit !== null) {
           yield* scheduler.interrupt
+          // The hand-backs under way, all of workers at the limit, stop as quitting's do.
+          yield* queue.hold
           yield* stopped(limit)
           return { limited: true, asked: false, seen }
         }
@@ -1251,6 +1256,27 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         : entry.phase._tag === "Working" && asking.has(entry.ticket)
           ? "waiting on you"
           : (ended ?? before.first?.why ?? "run ended")
+    // The hand-backs kept for the usage limit's reset and never sent, the run ending first
+    // (usageLimit.ts): the rebase whose conflicts the worker never saw is aborted, so that the next
+    // run merges its ticket again rather than set it aside mid-rebase, and the closing line says so.
+    const git = yield* Git
+    const neverSent: Array<string> = []
+    const unsent = [...(yield* usage.unsent)].sort(([a], [b]) => a.localeCompare(b))
+    for (const [ticket, mode] of unsent) {
+      const worktree = (yield* store.ticket(ticket))?.worktree
+      if (mode === "fixing" || worktree === undefined) {
+        neverSent.push(neverHanded(ticket, mode))
+        continue
+      }
+      const rebasing = git.rebaseInProgress(worktree)
+      yield* Effect.ignore(
+        Effect.flatMap(rebasing, (on) => (on ? git.abortRebase(worktree) : Effect.void)),
+      )
+      const stuck = yield* Effect.result(rebasing)
+      neverSent.push(
+        neverHanded(ticket, mode, Result.isSuccess(stuck) && !stuck.success ? undefined : worktree),
+      )
+    }
     const suspended: Array<{ readonly ticket: string; readonly because: string }> = []
     const saved: Array<string> = []
     const handedBack: Array<string> = []
@@ -1267,7 +1293,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       else yield* Effect.forEach(records, (record) => events.emit(record), { discard: true })
       suspended.push({ ticket, because })
       if (session !== undefined) saved.push(ticket)
-      if (phase._tag === "Resolving" || phase._tag === "Fixing") handedBack.push(ticket)
+      const handed = phase._tag === "Resolving" || phase._tag === "Fixing"
+      if (handed && !unsent.some(([each]) => each === ticket)) handedBack.push(ticket)
     }
     for (const each of suspended) yield* host.close(each.ticket)
     if (quit !== null) yield* Effect.forEach(yield* openWorkers, host.close, { discard: true })
@@ -1289,6 +1316,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         first: stop,
         others: [now.first, ...now.others].flatMap((other) => (other === null ? [] : [other])),
       }))
+    }
+    if (neverSent.length > 0) {
+      yield* updateStops((now) =>
+        now.first === null
+          ? now
+          : {
+              ...now,
+              first: { ...now.first, text: `${now.first.text}; ${neverSent.join("; ")}` as Line },
+            },
+      )
     }
     const all = yield* Ref.get(stops)
     // A stopped run names the tickets it leaves without the check once more it promised them.

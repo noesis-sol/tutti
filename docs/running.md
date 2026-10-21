@@ -507,6 +507,10 @@ Claude Code reports:
   `USAGE_LIMIT: nothing else runs; waiting for the five-hour limit to reset at 14:05, in 2h10m`. It
   ends `USAGE_LIMIT`, exit 8, only when the reset is unknown or further off than `--usage-limit-wait`
   (6 hours by default), suspending the waiting workers for the next run. `Ctrl+C` quits meanwhile.
+  A hand-back still waiting to be sent then never is: a conflict's rebase is aborted, so that the
+  next run merges the ticket again and hands the conflicts back, and the closing line says so
+  (`b's worker, at the usage limit, was never handed its conflicts to resolve: its rebase is aborted,
+  for the next run to merge b again`).
 
 ## The full check
 
