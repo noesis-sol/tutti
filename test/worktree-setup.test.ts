@@ -286,7 +286,7 @@ describe("the setup before a worker", () => {
     })
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done" })
-    expectLog(ran, ["[1/40] a dispatching: a", startsLine("a"), /^ {2}a closed /])
+    expectLog(ran, ["[1] a dispatching: a", startsLine("a"), /^ {2}a closed /])
     expect(setUpIn(ran)).toEqual(["a"])
     expect(ran.checkRuns[0]).toMatchObject({ check: "setup", command: setup, before: "fast" })
     expect(sentTo(ran, "a")[0]).toContain(note)
@@ -493,13 +493,13 @@ describe("a setup that fails before a worker", () => {
       "Done",
     ])
     expectLog(ran, [
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       startsLine("a"),
       failedLine(ran, "a"),
-      "[1/40] b dispatching: b",
+      "[1] b dispatching: b",
       /^ {2}b closed /,
       "  a: a ticket merged since its setup failed; back in the queue",
-      "[2/40] a dispatching: a",
+      "[2] a dispatching: a",
       startsLine("a", `the last setup in its worktree failed; running '${setup}' there again`),
       /^ {2}a closed /,
       "READY_EMPTY after 2 tickets",

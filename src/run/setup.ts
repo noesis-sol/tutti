@@ -455,12 +455,11 @@ export const leaveSetupFailed = (
 
 /**
  * Puts back in the queue, Waiting → Queued, each ticket whose worktree's setup failed when a ticket
- * has merged since (`probed`: or a probe ended a hold for the environment), which may have brought
- * what the setup needs; the tickets it put back.
+ * has merged since, which may have brought what the setup needs; the tickets it put back. A probe
+ * that ends a hold for the environment puts them back too (environment.ts).
  */
 export const retrySetups = (
   setUps: SetUps,
-  probed = false,
 ): Effect.Effect<ReadonlyArray<string>, never, Ledger | Log> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
@@ -471,15 +470,15 @@ export const retrySetups = (
       const { phase } = entry
       if (phase._tag !== "Waiting" || phase.for !== setupWait) continue
       const state = yield* ledger.current
-      const merged = mergedCount(state) > (failures.get(entry.ticket)?.merged ?? -1)
-      if (!probed && !merged) continue
+      if (mergedCount(state) <= (failures.get(entry.ticket)?.merged ?? -1)) continue
       const queued = [...state.tickets.values()].filter((each) => each.phase._tag === "Queued")
       const moved = yield* ledger.transition(entry.ticket, Cause.Requeued(), {
         beside: [{ kind: "queue", queued: queued.length + 1 }],
       })
       if (Result.isFailure(moved)) continue
-      const why = probed ? "the probe passed" : "a ticket merged since its setup failed"
-      yield* logs.write(detail`${entry.ticket}: ${why}; back in the queue`)
+      yield* logs.write(
+        detail`${entry.ticket}: a ticket merged since its setup failed; back in the queue`,
+      )
       back.push(entry.ticket)
     }
     return back
