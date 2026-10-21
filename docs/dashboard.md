@@ -116,7 +116,13 @@ or the last line the worker wrote).
   worker you have steered (see [Steering](workers.md#steering)).
 - **The action line** of a ticket merging says the step: `rebasing onto <branch>`,
   `running the setup`, `running the check on <branch>`, `merging into <branch>`, or for a ticket
-  checked once more, `checking again: <branch> moved on since its check failed`.
+  checked once more, `checking again: <branch> moved on since its check failed`. A ticket waiting
+  to merge that is checked ahead of its turn (the merge train, `merge.train`) says how that check
+  goes: `rebasing onto tutti/<id>, to be checked ahead of its turn on top of it as it is checked`,
+  `checked ahead of its turn, on top of tutti/<id> as it is checked`,
+  `passed its check ahead of its turn, on top of tutti/<id>: merges with no further check if tutti/<id> merges as checked`,
+  or `failed its check ahead of its turn, on top of tutti/<id>: checked again in its turn`, until its
+  turn comes.
 - **The frame** is coloured while the worker works, red while it waits for you, and heavy on the
   highlighted card.
 

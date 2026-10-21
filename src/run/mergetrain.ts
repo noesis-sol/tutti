@@ -20,7 +20,18 @@
 // line after a hand-back to its worker, a recheck or a conflict you handed over is checked in its
 // turn. Quitting, or the merges stopping, stops the trains and puts back the branches they rebased:
 // the tickets are left waiting to merge, for the next run to merge as any other.
-import { Effect, Exit, Fiber, FiberSet, Result, type Scope, Semaphore } from "effect"
+import {
+  Effect,
+  Exit,
+  Fiber,
+  FiberSet,
+  Option,
+  Result,
+  type Scope,
+  Semaphore,
+  type Stream,
+  SubscriptionRef,
+} from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Git } from "../services/Git.ts"
 import { leaveForReview } from "./aside.ts"
@@ -41,6 +52,16 @@ import {
   uncommitted,
 } from "./merge.ts"
 import { setUp } from "./setup.ts"
+
+/**
+ * How the check of a ticket ahead of its turn goes, for the dashboard (orchestra's
+ * mergeTrain.activity): rebased onto the branch ahead, checked on top of it, passed, or failed.
+ */
+export interface CheckAhead {
+  readonly step: "rebase" | "check" | "passed" | "failed"
+  /** The branch of the ticket ahead of it, which it is rebased onto. */
+  readonly behind: string
+}
 
 /** A ticket checked ahead of its turn: where it was rebased, and how its check went. */
 interface Run {
@@ -86,6 +107,11 @@ export interface MergeTrain extends CheckWatch {
    * them: quitting, or the merges stopping, before their turns.
    */
   readonly leave: Effect.Effect<void>
+  /**
+   * How the checks ahead of their turn go, by ticket, now and on each change: from its rebase onto
+   * the branch ahead to its turn, or until its train is stopped before its check ends.
+   */
+  readonly checksAhead: Stream.Stream<ReadonlyMap<string, CheckAhead>>
 }
 
 /**
@@ -114,6 +140,17 @@ export const make = (
     const runs = new Map<string, Run>()
     // The branch of the ticket whose turn it is, at the commit its check runs or passed on.
     let checking: { readonly branch: string; readonly at: string } | undefined
+    // How the checks ahead of their turn go, by ticket, for the dashboard.
+    const shown = yield* SubscriptionRef.make<ReadonlyMap<string, CheckAhead>>(new Map())
+    const show = (run: Run, step: CheckAhead["step"] | undefined) =>
+      SubscriptionRef.updateSome(shown, (all) => {
+        const id = run.ticket.id
+        if (step === undefined && !all.has(id)) return Option.none()
+        const next = new Map(all)
+        if (step === undefined) next.delete(id)
+        else next.set(id, { step, behind: run.behind })
+        return Option.some(next)
+      })
     // Set once the trains are left: none starts again.
     let stopped = false
     // Starting trains, and leaving them, one at a time.
@@ -182,11 +219,13 @@ export const make = (
     const runTrain = (run: Run) =>
       Effect.gen(function* () {
         const { branch } = run.ticket
+        yield* show(run, "rebase")
         const rebased = yield* Effect.uninterruptible(rebaseAhead(run))
         if (!rebased) {
           run.failed = true
-          return
+          return yield* show(run, undefined)
         }
+        yield* show(run, "check")
         yield* start
         yield* log.write(
           detail`checking ${branch} ahead of its turn to merge, rebased onto ${run.behind} as it is checked`,
@@ -208,6 +247,7 @@ export const make = (
             : yield* checkOnce(run.ticket)
         if (checked._tag !== "Failed") {
           run.passed = run.head
+          yield* show(run, "passed")
           if (checked._tag === "Passed") {
             yield* log.write(
               detail`'${checked.command}' passes on ${branch} ahead of its turn, on top of ${run.behind}`,
@@ -218,16 +258,21 @@ export const make = (
         const where =
           checked.error._tag === "CheckNotRun" ? "" : line` (output is in ${checked.output})`
         run.failed = true
+        yield* show(run, "failed")
         run.why = line`${failedHow(checked.error)} on ${branch} on top of it${where}`
         yield* log.write(
           detail`${failedHow(checked.error)} on ${branch} ahead of its turn, on top of ${run.behind}${where}; it is checked again in its turn`,
         )
         yield* cancelBehind(run.ticket.id)
       }).pipe(
+        // Stopped before its check ended: it shows no more.
         Effect.onInterrupt(() =>
-          Effect.sync(() => {
-            run.failed = true
-          }),
+          Effect.andThen(
+            Effect.sync(() => {
+              run.failed = true
+            }),
+            show(run, undefined),
+          ),
         ),
       )
 
@@ -346,6 +391,8 @@ export const make = (
               )`${id}: git could not put ${branch} back as its worker left it, at ${run.orig.slice(0, 7)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${gitWhy(back.failure)}; check ${worktree} before it merges`,
             )
           }
+          // Each stopped, or ended before it was: none shows.
+          yield* SubscriptionRef.set(shown, new Map())
         }),
       )
       .pipe(Effect.provideContext(context))
@@ -375,6 +422,7 @@ export const make = (
           } else yield* cancel(run)
           const fiber = run.fiber as Fiber.Fiber<void>
           const waited = yield* Effect.exit(restore(Fiber.await(fiber)))
+          yield* show(run, undefined)
           const at = yield* Effect.result(git.revParse(repo, branch))
           if (Exit.isFailure(waited)) {
             // Quitting, before its turn's merge began: put back for the next run.
@@ -439,5 +487,6 @@ export const make = (
       }),
       board,
       leave,
+      checksAhead: SubscriptionRef.changes(shown),
     } satisfies MergeTrain
   })

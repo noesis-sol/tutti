@@ -24,6 +24,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
+import type { CheckAhead } from "./mergetrain.ts"
 import { type Activity, countsUnder, type PhaseTag, TicketPhase } from "./phase.ts"
 
 /** A hold on the run, for its banner: `BLOCKED`, `USAGE_LIMIT` with its reset, … */
@@ -82,6 +83,8 @@ export interface Status {
   readonly unclosed: number | null
   /** The triage organ's verdicts on tickets set aside, by ticket: `environment · high · …`. */
   readonly verdicts: ReadonlyMap<string, string>
+  /** How the checks of tickets waiting to merge go ahead of their turn, by ticket (mergetrain.ts). */
+  readonly checksAhead: ReadonlyMap<string, CheckAhead>
   /** The environment probe's session, while it runs (§ 4.9): shown as a card labelled `probe`. */
   readonly probe: ProbeView | null
   /** What the dashboard's warning line says for the whole run: the colour scheme's notices. */
@@ -103,6 +106,7 @@ export const emptyStatus: Status = {
   shared: 0,
   unclosed: null,
   verdicts: new Map(),
+  checksAhead: new Map(),
   probe: null,
   warnings: [],
 }
@@ -532,8 +536,27 @@ const probeCard = (probe: ProbeView, state: WorkerState | undefined): Card => {
   }
 }
 
-const actionOf = (entry: Entry, branch: string): string | null => {
+/** What a card says of its ticket's check ahead of its turn to merge, as orchestra's dashboard. */
+export const checkAheadText = (ahead: CheckAhead): string => {
+  const behind = sanitizeLine(ahead.behind)
+  switch (ahead.step) {
+    case "rebase":
+      return `rebasing onto ${behind}, to be checked ahead of its turn on top of it as it is checked`
+    case "check":
+      return `checked ahead of its turn, on top of ${behind} as it is checked`
+    case "passed":
+      return `passed its check ahead of its turn, on top of ${behind}: merges with no further check if ${behind} merges as checked`
+    case "failed":
+      return `failed its check ahead of its turn, on top of ${behind}: checked again in its turn`
+  }
+}
+
+// A ticket checked ahead of its turn says so until its turn has taken its train, its check ahead
+// ended (mergetrain.ts board).
+const actionOf = (entry: Entry, branch: string, ahead: CheckAhead | undefined): string | null => {
   if (entry.rechecking) return `checking again: ${branch} moved on since its check failed`
+  const train = entry.phase._tag === "ToMerge" || entry.phase._tag === "Merging"
+  if (train && ahead !== undefined) return checkAheadText(ahead)
   if (entry.phase._tag !== "Merging") return null
   switch (entry.phase.step) {
     case "rebase":
@@ -693,7 +716,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         status: waits ? handBackStatus : cardStatus(phase, state, open),
         motion: waits ? "•" : motionOf(entry.phase, state, open),
         since: entry.since,
-        action: actionOf(entry, branch),
+        action: actionOf(entry, branch, status.checksAhead.get(entry.ticket)),
         latest: latestOf(actions.get(entry.ticket)),
         steered: entry.steered,
         requests: open,

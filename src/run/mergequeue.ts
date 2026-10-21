@@ -60,7 +60,7 @@ import {
   type MergeStop,
   prepare,
 } from "./merge.ts"
-import { make as makeTrain } from "./mergetrain.ts"
+import { type CheckAhead, make as makeTrain } from "./mergetrain.ts"
 import { Cause, Detail, type InvalidTransition, type TicketPhase } from "./phase.ts"
 import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
 import { fit } from "./sessions.ts"
@@ -106,6 +106,8 @@ export interface MergeQueue {
   readonly rechecks: Rechecks
   /** The run's conflict hand-backs: each ticket's count, and those waiting on a steered worker. */
   readonly handBacks: HandBacks
+  /** How the checks ahead of their turn go, by ticket, now and on each change (mergetrain.ts). */
+  readonly checksAhead: Stream.Stream<ReadonlyMap<string, CheckAhead>>
   /**
    * Puts back in line, ToMerge by RECHECK, the tickets whose base has moved on since their check
    * failed, as the queue does after each merge; the tickets it put back.
@@ -402,6 +404,7 @@ export const make = (
       ),
       rechecks,
       handBacks,
+      checksAhead: train.checksAhead,
       recheck,
       mergedByHand,
       hold: Effect.andThen(

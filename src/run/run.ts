@@ -768,6 +768,12 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         SubscriptionRef.update(status, (now) => ({ ...now, verdicts })),
       ),
     )
+    // How the checks ahead of their turn to merge go shows on their tickets' cards (mergetrain.ts).
+    yield* watch(
+      Stream.runForEach(queue.checksAhead, (checksAhead) =>
+        SubscriptionRef.update(status, (now) => ({ ...now, checksAhead })),
+      ),
+    )
     // The environment probe's session shows as a card while it runs.
     yield* watch(
       Stream.runForEach(environment.probing, (probe) =>
