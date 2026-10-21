@@ -271,6 +271,7 @@ const q = query({
 - `CLAUDE_CODE_STARTUP_FAILURE_RESULTS=1`: a startup failure Claude Code itself detects comes as a result with a `startup_failure_reason` (`cwd_unavailable`, `org_config_refused`, …), not just stderr. A removed worktree gives none: the spawn fails before Claude Code runs (§4.8, Resume limits)
 - `CLAUDE_CODE_FORK_SUBAGENT=0`: no `fork` subagent type. A fork inherits the worker's context and always runs in the background, so workers don't get it. This variable doesn't keep the verifier in the foreground (below)
 - `CLAUDE_AGENT_SDK_CLIENT_APP=tutti/<version>`
+- `BASH_DEFAULT_TIMEOUT_MS`: the merge check's time limit (`checks.fast.timeout`), and `BASH_MAX_TIMEOUT_MS`: that or 10 minutes, whichever is longer, for workers only. Claude Code's Bash moves a command to the background after 2 minutes unless given a longer timeout, so a check run with no timeout of its own has its time in the foreground, and the worker prompt says to pass none (§4.11)
 
 It then removes or keeps `ANTHROPIC_API_KEY` as §4.13 says.
 
@@ -635,7 +636,7 @@ tutti's built-in worker prompt is orchestra's, rewritten where the tmux world sh
 
 - no tabs; the orchestrator is tutti; paths are `.tutti/`; branches are `tutti/<id>`
 - **Questions**: a decision that blocks the ticket and can wait for the maintainer is a `human` question ticket, as before. A quick choice the maintainer is likely there to make is `AskUserQuestion`. The prompt says which is which, and drops `AskUserQuestion` if Q3 removes it.
-- **Checks in the foreground**: the rule stays, with a new reason. A worker waiting on a background command holds its slot while doing nothing, and its ticket can't merge until the command ends.
+- **Checks in the foreground**: the rule stays, with a new reason. A worker waiting on a background command holds its slot while doing nothing, and its ticket can't merge until the command ends. Bash's default timeout is the merge check's time limit (§4.1), so the rule says to pass Bash no timeout: a shorter one moves the check to the background when it runs out.
 - **Working unattended** stays, and adds that the maintainer may sometimes send a message: follow it, then carry on with the ticket.
 - **Never push, commit with the ticket ID, close only when the checks pass**, and the rest of orchestra's rules stay as they are.
 - **Removals**: orchestra's rule against removing a target built from a variable or a glob stays, with tutti's reason: the safety check refuses such a removal unless a person approves it, and in auto mode refuses it outright (§4.5). The worker overwrites instead, writes to a new name, or removes a file by its literal absolute path.

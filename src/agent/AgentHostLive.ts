@@ -233,6 +233,7 @@ export const layer = (
       const env = workerEnv({
         subscription: options.account.subscription,
         billing: config.billing,
+        checkTimeout: config.settings.checks.fast.timeout,
         ...(options.env === undefined ? {} : { env: options.env }),
       })
       const requestedMode = config.settings.workers.permission_mode

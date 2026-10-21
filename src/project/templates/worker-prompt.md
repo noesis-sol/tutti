@@ -10,7 +10,8 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   check, `scripts/check-fast.sh` then the slower suites. tutti runs it once at the end of a run.
 - Run the checks in the foreground, never in the background: while you wait on a background
   command you hold your place in the run doing nothing, and your ticket can't merge until the
-  command ends.
+  command ends. tutti sets Bash's default timeout to as long as the merge check may take, so pass
+  Bash no timeout of your own: a shorter one moves the check to the background when it runs out.
 - Where the project has test suites, a ticket that changes behaviour adds or updates tests for it,
   in those suites and their frameworks. Never add a new test framework: setting one up is a ticket
   of its own.

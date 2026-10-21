@@ -57,7 +57,9 @@ Each rule of the template prevents a way a run goes wrong:
 - **Commit with the ticket's ID, and close only when `scripts/check-fast.sh` passes.** A ticket merges
   only if a commit names it and its worktree is clean.
 - **Checks in the foreground.** A worker waiting on a background command holds its slot doing
-  nothing, and its ticket can't merge until the command ends.
+  nothing, and its ticket can't merge until the command ends. tutti sets Bash's default timeout
+  (`BASH_DEFAULT_TIMEOUT_MS`) to `checks.fast.timeout`, and its maximum to that or 10 minutes,
+  whichever is longer, so a worker passes Bash no timeout of its own and a check keeps its time.
 - **Tests with behaviour changes,** in the project's own frameworks; a new framework is a ticket of
   its own.
 - **Stop only your own processes, by PID.** Workers run the same tests side by side.
