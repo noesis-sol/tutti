@@ -144,7 +144,7 @@ describe("a plain run", () => {
     expectPhases(ran, { "t-1": "Done" })
     expectLog(ran, [
       "START tutti 0.1.0-test",
-      "[1/40] t-1 dispatching: One ticket",
+      "[1] t-1 dispatching: One ticket",
       /^ {2}t-1 closed \(.*\); merged into main/,
       /^tutti 0\.1\.0-test on main · \d/,
       "  Completed 1 · Set aside 0 · Needs you 0",
@@ -187,8 +187,8 @@ describe("a plain run", () => {
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done", "t-2": "Done" })
     expectLog(ran, [
-      "[1/40] t-1 dispatching: t-1",
-      "[2/40] t-2 dispatching: t-2",
+      "[1] t-1 dispatching: t-1",
+      "[2] t-2 dispatching: t-2",
       "  Completed 2 · Set aside 0 · Needs you 0",
       "READY_EMPTY after 2 tickets",
     ])

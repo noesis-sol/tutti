@@ -212,14 +212,14 @@ describe("a ticket past its work", () => {
     ])
     expectLog(ran, [
       closedLine("x"),
-      "[3/40] a dispatching: a",
+      "[3] a dispatching: a",
       "  skipping o: touches src/a.ts, like running a",
-      "[4/40] c dispatching: c",
-      "[5/40] d dispatching: d",
+      "[4] c dispatching: c",
+      "[5] d dispatching: d",
       closedLine("b"),
-      "[6/40] e dispatching: e",
+      "[6] e dispatching: e",
       closedLine("a"),
-      "[7/40] o dispatching: o",
+      "[7] o dispatching: o",
       closedLine("d"),
       "READY_EMPTY after 7 tickets",
     ])
@@ -247,7 +247,7 @@ describe("a ticket past its work", () => {
     expectLog(ran, [
       "  solo ticket s is next: no new tickets start until the running ones finish, then it runs alone",
       closedLine("b"),
-      "[3/40] s dispatching solo: s",
+      "[3] s dispatching solo: s",
       closedLine("s"),
       "READY_EMPTY after 3 tickets",
     ])
@@ -293,9 +293,9 @@ describe("a ticket past its work", () => {
     expectLog(ran, [
       "  c, carried over from the last run, is closed, so it waits to merge",
       "  skipping o: touches src/a.ts, like running c",
-      "[1/40] n dispatching: n",
+      "[1] n dispatching: n",
       closedLine("c"),
-      "[2/40] o dispatching: o",
+      "[2] o dispatching: o",
       "READY_EMPTY after 2 tickets",
     ])
   }, 30_000)

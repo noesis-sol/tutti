@@ -95,7 +95,7 @@ describe("quitting during the usage-limit wait", () => {
     expectPhases(ran, { "t-1": "Stopped", "t-2": "Queued" })
     expect(ran.log.some((text) => text.includes("t-2 dispatching"))).toBe(false)
     expectLog(ran, [
-      "[1/40] t-1 dispatching: t-1",
+      "[1] t-1 dispatching: t-1",
       /^USAGE_LIMIT: nothing else runs; waiting for the five-hour limit to reset at /,
       "QUIT from the dashboard: no new tickets; interrupting the workers of t-1 and saving their sessions for the next run",
       "INTERRUPTED: quit from the dashboard; t-1's session is saved for the next run",

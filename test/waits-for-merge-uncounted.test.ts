@@ -88,11 +88,11 @@ describe("the environment hold and WAITS_FOR_MERGE", () => {
     expectExitCode(ran, 7)
     expectPhases(ran, { "t-1": "Waiting", "t-2": "Waiting", "t-3": "Waiting" })
     expectLog(ran, [
-      "[1/40] t-1 dispatching: t-1",
-      "[2/40] t-2 dispatching: t-2",
+      "[1] t-1 dispatching: t-1",
+      "[2] t-2 dispatching: t-2",
       /^ {2}WAITS_FOR_MERGE: t-2 waits for t-1 to merge; /,
       // A ticket waiting for a merge counts toward --limit once, as it starts again.
-      "[2/40] t-3 dispatching: t-3",
+      "[2] t-3 dispatching: t-3",
       "  t-1 reopened: its worker failed at once, like the tickets before it",
       "  t-3 reopened: its worker failed at once, like the tickets before it",
       "ENVIRONMENT: the last 2 tickets (t-1, t-3) each settled within 2m of starting without being claimed or changed; check the machine, then restart",

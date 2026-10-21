@@ -92,8 +92,8 @@ describe("the environment hold after PROBE_OK", () => {
     // The second row is reopened and waits, open in bd, for the next run; t-3 never started.
     expectPhases(ran, { "t-1": "Waiting", "t-2": "Waiting", "t-3": "Queued" })
     expectLog(ran, [
-      "[1/40] t-1 dispatching: t-1",
-      "[2/40] t-2 dispatching: t-2",
+      "[1] t-1 dispatching: t-1",
+      "[2] t-2 dispatching: t-2",
       "  t-1 reopened: its worker failed at once, like the tickets before it",
       "  t-2 reopened: its worker failed at once, like the tickets before it",
       /^PROBE: the run holds for the environment; in 10m /,
@@ -101,8 +101,8 @@ describe("the environment hold after PROBE_OK", () => {
       "PROBE_OK: a session without a ticket ran a command 10m after the hold; taking tickets again",
       "  t-1: the probe passed; back in the queue",
       "  t-2: the probe passed; back in the queue",
-      /^\[\d+\/40\] t-1 dispatching: t-1$/,
-      /^\[\d+\/40\] t-2 dispatching: t-2$/,
+      /^\[\d+\] t-1 dispatching: t-1$/,
+      /^\[\d+\] t-2 dispatching: t-2$/,
       "  t-1 reopened: its worker failed at once, like the tickets before it",
       "  t-2 reopened: its worker failed at once, like the tickets before it",
       holdLine,

@@ -364,8 +364,8 @@ describe("conflicts handed back", () => {
     ])
     expect(mergeOrder(ran)).toEqual(["a", "b"])
     expectLog(ran, [
-      "[1/40] a dispatching: a",
-      "[2/40] b dispatching: b",
+      "[1] a dispatching: a",
+      "[2] b dispatching: b",
       closedLine("a"),
       resolvingLine("b", "shared.txt"),
       `  b's worker finished the rebase; checking it with '${check}'`,
@@ -667,8 +667,8 @@ describe("the environment hold", () => {
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", c: "Done" })
     expectLog(ran, [
-      "[1/40] a dispatching: a",
-      "[2/40] b dispatching: b",
+      "[1] a dispatching: a",
+      "[2] b dispatching: b",
       "  a reopened: its worker failed at once, like the tickets before it",
       "  b reopened: its worker failed at once, like the tickets before it",
       /^PROBE: the run holds for the environment; in 10m a session without a ticket runs a command/,
@@ -746,13 +746,13 @@ describe("the usage-limit hold", () => {
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done" })
     expectLog(ran, [
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       `USAGE_LIMIT: the five-hour limit is reached; no new tickets until it resets at ${resets}`,
       `USAGE_LIMIT: nothing else runs; waiting for the five-hour limit to reset at ${resets}, in 1h`,
       "USAGE_LIMIT lifted",
       "  a: the usage limit has reset; its worker carries on",
       // a frees its slot as it goes to merge: b may start before a has merged, or after.
-      "[2/40] b dispatching: b",
+      "[2] b dispatching: b",
       closedLine("b"),
       "READY_EMPTY after 2 tickets",
     ])
@@ -778,7 +778,7 @@ describe("the usage-limit hold", () => {
     expectClean(ran, 8)
     expectPhases(ran, { a: "Stopped", b: "Queued" })
     expectLog(ran, [
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       "USAGE_LIMIT: the account's usage limit is reached; no new tickets until it resets",
       "USAGE_LIMIT: the account's usage limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets",
     ])
@@ -820,14 +820,14 @@ describe("the time holds", () => {
       /^HOLD: TICKET_LIMIT: a still working after 1h .*; no new tickets while the 1 running finish$/
     // c starts as b settles, and b's merge goes on meanwhile: either may be logged first.
     expectLog(ran, [
-      "[1/40] a dispatching: a",
-      "[2/40] b dispatching: b",
-      "[3/40] c dispatching: c",
+      "[1] a dispatching: a",
+      "[2] b dispatching: b",
+      "[3] c dispatching: c",
       hold,
       closedLine("c"),
       stop,
     ])
-    expectLog(ran, ["[2/40] b dispatching: b", closedLine("b"), hold])
+    expectLog(ran, ["[2] b dispatching: b", closedLine("b"), hold])
     expect(ran.log.some((text) => text.includes("d dispatching"))).toBe(false)
     expectEvents(ran, ["hold", "closed", "suspended", "stop", "end"])
     expect(ran.events.find((r) => r.kind === "stop")).toMatchObject({ detail: "TICKET_LIMIT" })
@@ -875,7 +875,7 @@ describe("the time holds", () => {
     expectLog(ran, [
       "HOLD: BLOCKED >4min: a needs you: Bash(rm -rf build); no new tickets while the 2 running finish",
       "HOLD lifted: a's requests were answered",
-      "[3/40] c dispatching: c",
+      "[3] c dispatching: c",
       closedLine("b"),
       "READY_EMPTY after 3 tickets",
     ])

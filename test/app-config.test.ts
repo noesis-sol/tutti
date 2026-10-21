@@ -330,7 +330,7 @@ describe("precedence", () => {
       ticket: null,
       feature: null,
       yes: false,
-      limit: 40,
+      limit: null,
       plain: false,
       prompt: join(repo, ".tutti", "worker-prompt.md"),
       worktrees: "/work/project-tutti",

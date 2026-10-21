@@ -97,7 +97,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
 | `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |
 | `--yes` | with `--feature`, file the plan without asking |
-| `--limit N` | the most tickets this run starts (default 40) |
+| `--limit N` | the most tickets this run starts (default: no limit) |
 | `--ticket-limit 2h` | hold the run when a worker is still going this long after dispatch; `0` for none |
 | `--worker-effort <level>` | the effort workers start at: `low`, `medium`, `high`, `xhigh` or `max` |
 | `--worker-model <model>` | the model workers run |
@@ -230,8 +230,10 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
   a file every other ticket touches, starts only when nothing else runs, and nothing starts beside it.
   When it is next while others run, nothing new starts behind it:
   `solo ticket <id> is next: no new tickets start until the running ones finish, then it runs alone`.
-- **`--limit`** counts the tickets this run starts, 40 by default; workers carried over from the last
-  run count toward nothing. Once reached, the run finishes what it has and ends `LIMIT_REACHED`.
+- **`--limit`** counts the tickets this run starts, with no limit unless it is given; workers carried
+  over from the last run count toward nothing. Once reached, the run finishes what it has and ends
+  `LIMIT_REACHED`. Without one, the dispatch lines say `[n]` rather than `[n/limit]`, and the run ends
+  `READY_EMPTY` or `DRAINED`.
 - **IDs must be plain names.** A ticket whose ID holds a path character, or can't name a git branch, is
   set aside without a worker: `BAD_TICKET_ID: … rename it (bd rename <id> <new-id>), then bd undefer
   <new-id>`.

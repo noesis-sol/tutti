@@ -137,8 +137,8 @@ describe("the environment hold", () => {
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done", "t-2": "Done", "t-3": "Done" })
     expectLog(ran, [
-      "[1/40] t-1 dispatching: t-1",
-      "[2/40] t-2 dispatching: t-2",
+      "[1] t-1 dispatching: t-1",
+      "[2] t-2 dispatching: t-2",
       "  t-1 reopened: its worker failed at once, like the tickets before it",
       "  t-2 reopened: its worker failed at once, like the tickets before it",
       /^PROBE: the run holds for the environment; in 10m a session without a ticket runs a command/,

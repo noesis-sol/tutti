@@ -119,7 +119,7 @@ How a run goes:
 | `--ticket <id>` | run only this ticket and its subtickets |
 | `--feature "<request>"` | plan a request as an epic and its tickets, and run them |
 | `--ticket-limit 2h` | hold the run if a worker is still going this long after its ticket started |
-| `--limit N` | the most tickets this run starts (40) |
+| `--limit N` | the most tickets this run starts (no limit by default) |
 | `--plain` | log lines instead of the dashboard |
 
 `tutti -h` lists every flag; [Running](docs/running.md#options) has them all. Run `tutti plan` after

@@ -711,7 +711,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
    - a blocker closed where the run didn't see it close is not merged while git finds `tutti/<id>` off the base (commits the base lacks, changes it doesn't hold), or can't tell: `<id> closed but not merged (tutti/<id> is not on <base>)`, one `CLOSED_UNMERGED` warning; git asked once per blocker and base commit, again when its branch moves or goes
    - footprints, below
    - solo; no ticket twice; a ready poll every 30 s, with free slots filled at once
-   - `--limit` counts the tickets this run starts (resumed and carried-over workers count toward nothing); `BAD_TICKET_ID`
+   - `--limit` counts the tickets this run starts (resumed and carried-over workers count toward nothing), with no limit unless it is given: a run without one ends `READY_EMPTY` or `DRAINED`, never `LIMIT_REACHED`, and its dispatch lines say `[n]` rather than `[n/limit]`; `BAD_TICKET_ID`
 
    Footprints are built from names, files metadata, folders and globs, and functions, resolved against `git ls-files`, with the check's own files left out and predicted files added. A running ticket's footprint also grows with the files its worktree has changed (`git diff --name-only <base>...HEAD` plus `git status`, read every 30 s with the ready poll). Unlike orchestra's hook-reported edits, this survives resumes and runs, and sees edits made with Bash.
 6. **Per ticket**:
@@ -1418,7 +1418,7 @@ Carried over too, and not part of any scheme:
 The flags are orchestra's, minus those for terminals and agent kinds:
 
 - `-c/--concurrent N` (1–16), `--tickets`, `--ticket <id>`, `--feature "<request>"`, `--yes`
-- `--ticket-limit 2h`, `--limit 40` (the tickets this run starts), `--worker-effort <level>`, `--worker-model <model>`
+- `--ticket-limit 2h`, `--limit N` (the most tickets this run starts; none by default, as orchestra 0.8.5's), `--worker-effort <level>`, `--worker-model <model>`
 - `--organ-model`, `--organ-effort`, `--triage=false`, `--review=false`, `--notify=false`
 - `--check-timeout`, `--check-full-timeout`, `--resolve-conflicts=false`
 - `--plain`, `--no-mouse`, `--prompt <file>`, `--worktrees <dir>`

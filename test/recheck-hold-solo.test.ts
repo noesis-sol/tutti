@@ -250,7 +250,7 @@ describe("no recheck beside a solo ticket", () => {
     expectLog(ran, [
       checksFailed,
       closedLine("b"),
-      /^\[\d+\/\d+\] s dispatching solo: s$/,
+      /^\[\d+\] s dispatching solo: s$/,
       recheckLine,
       closedLine("a"),
     ])

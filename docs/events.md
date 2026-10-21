@@ -61,7 +61,7 @@ the time.
 |---|---|---|
 | `phase` | a ticket moved from one phase to another | `ticket`; `from`, absent as it enters the run; `to`, absent as it leaves it (gone from `bd ready`); `cause`; and the new phase's details: `place` (`ToMerge`, 1 is next), `step` (`Merging`), `attempt` (`Resolving`, `Fixing`), `why` (`HeldBack`, `Deferred`, `Review`, `Blocked`, `Stopped`) |
 | `queue` | the number of ready tickets waiting for a slot, or held back, changed: the dashboard's **In queue** | `queued`; `held` and `held_by` while some are held back; `solo` |
-| `dispatch` | a ticket was picked up | `ticket`, `title`; `n` and `limit`, as in `[n/limit]`; `queued`, `held`, `held_by`, `solo` as for `queue`; `text` |
+| `dispatch` | a ticket was picked up | `ticket`, `title`; `n` and `limit`, as in `[n/limit]` (no `limit` for a run without one); `queued`, `held`, `held_by`, `solo` as for `queue`; `text` |
 | `closed` | a ticket merged, or closed with no change of its own to merge | `ticket`, `title`; `detail`, `ffd6ce4 merged into main` or `no change to merge`; `text` |
 | `deferred` | a ticket was set aside, deferred | `ticket`, `title`; `detail`, why (`by the worker`, `still in_progress, noted for review`, …); `text` |
 | `asked` | a ticket waits on a question ticket for you | `ticket`, `title`; `detail`, the question's ID and title; `text` |

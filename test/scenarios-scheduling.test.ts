@@ -365,12 +365,12 @@ describe("several tickets at once", () => {
     expect(dispatches(ran)).toEqual(["a 0m", "b 0m", "c 1m", "d 3m"])
     expectLog(ran, [
       "START tutti 0.1.0-test",
-      "[1/40] a dispatching: a",
-      "[2/40] b dispatching: b",
+      "[1] a dispatching: a",
+      "[2] b dispatching: b",
       closedLine("b"),
-      "[3/40] c dispatching: c",
+      "[3] c dispatching: c",
       closedLine("c"),
-      "[4/40] d dispatching: d",
+      "[4] d dispatching: d",
       closedLine("d"),
       closedLine("a"),
       "  Completed 4 · Set aside 0 · Needs you 0",
@@ -416,8 +416,8 @@ describe("several tickets at once", () => {
     expect(Date.parse(b?.time ?? "")).toBeGreaterThanOrEqual(90_000)
     expect(pathOf(ran, "b")).toEqual(straight)
     expectLog(ran, [
-      "[1/40] a dispatching: a",
-      "[2/40] b dispatching: b",
+      "[1] a dispatching: a",
+      "[2] b dispatching: b",
       closedLine("b"),
       closedLine("a"),
       "READY_EMPTY after 2 tickets",
@@ -452,11 +452,11 @@ describe("footprints", () => {
       "  skipping b: touches src/a.ts, like running a",
     ])
     expectLog(ran, [
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       "  skipping b: touches src/a.ts, like running a",
-      "[2/40] c dispatching: c",
+      "[2] c dispatching: c",
       settledLine("a"),
-      "[3/40] b dispatching: b",
+      "[3] b dispatching: b",
       closedLine("b"),
       closedLine("c"),
       "READY_EMPTY after 3 tickets",
@@ -511,11 +511,11 @@ describe("footprints", () => {
     expect(dispatches(ran)).toEqual(["a 0m", "b 3m"])
     // a, past its work, still holds b back until it merges.
     expectLog(ran, [
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       "  skipping b: touches src/b.ts, like running a",
       settledLine("a"),
       closedLine("a"),
-      "[2/40] b dispatching: b",
+      "[2] b dispatching: b",
       closedLine("b"),
       "READY_EMPTY after 2 tickets",
     ])
@@ -546,15 +546,15 @@ describe("solo", () => {
     expect(heldFor(ran, "s")).toEqual(["solo"])
     expect(heldFor(ran, "c")).toEqual(["solo"])
     expectLog(ran, [
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       "  solo ticket s is next: no new tickets start until the running ones finish, then it runs alone",
       settledLine("a"),
       closedLine("a"),
-      "[2/40] s dispatching solo: s",
+      "[2] s dispatching solo: s",
       "  waiting for solo ticket s to finish",
       settledLine("s"),
       closedLine("s"),
-      "[3/40] c dispatching: c",
+      "[3] c dispatching: c",
       closedLine("c"),
       "READY_EMPTY after 3 tickets",
     ])
@@ -587,11 +587,11 @@ describe("parents and epics", () => {
     expect(dispatches(ran)).toEqual(["p.1 0m", "p.2 0m", "p 2m"])
     expectLog(ran, [
       "  p waits: its subtickets are not all closed and merged",
-      "[1/40] p.1 dispatching: p.1",
-      "[2/40] p.2 dispatching: p.2",
+      "[1] p.1 dispatching: p.1",
+      "[2] p.2 dispatching: p.2",
       closedLine("p.1"),
       closedLine("p.2"),
-      "[3/40] p dispatching: p",
+      "[3] p dispatching: p",
       closedLine("p"),
       "READY_EMPTY after 3 tickets",
     ])
@@ -612,8 +612,8 @@ describe("parents and epics", () => {
     expectClean(ran, 0)
     expectPhases(ran, { "e.2": "Done", "e.1.1": "Done" })
     expectLog(ran, [
-      "[1/40] e.2 dispatching: e.2",
-      "[2/40] e.1.1 dispatching: e.1.1",
+      "[1] e.2 dispatching: e.2",
+      "[2] e.1.1 dispatching: e.1.1",
       closedLine("e.2"),
       closedLine("e.1.1"),
       "  closed epic e.1: its 1 subticket is merged",
@@ -656,15 +656,15 @@ describe("blockers and follow-ups", () => {
       expect(heldFor(ran, id)).toEqual(["merge"])
     }
     expectLog(ran, [
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       "  f waits: filed by a's worker; waiting for it to merge",
       "  b waits: waiting for a to merge",
       settledLine("a"),
       "  b waits: a closed but not merged (waiting to merge)",
       "  f waits: filed by a's worker; a closed but not merged (waiting to merge)",
       closedLine("a"),
-      "[2/40] b dispatching: b",
-      "[3/40] f dispatching: f",
+      "[2] b dispatching: b",
+      "[3] f dispatching: f",
       "READY_EMPTY after 3 tickets",
     ])
     expectEvents(ran, ["dispatch", "closed", "dispatch", "dispatch", "closed", "closed", "end"])
@@ -696,12 +696,12 @@ describe("blockers and follow-ups", () => {
     expect(pathOf(ran, "test-2")).toEqual(heldThenStraight)
     expect(dispatches(ran)).toEqual(["a 0m", "test-2 2m"])
     expectLog(ran, [
-      "[1/40] a dispatching: a",
+      "[1] a dispatching: a",
       "  test-2 waits: filed by a's worker; waiting for it to merge",
       settledLine("a"),
       "  test-2 waits: filed by a's worker; a closed but not merged (waiting to merge)",
       closedLine("a"),
-      "[2/40] test-2 dispatching: Follow-up",
+      "[2] test-2 dispatching: Follow-up",
       closedLine("test-2"),
       "READY_EMPTY after 2 tickets",
     ])
@@ -851,8 +851,8 @@ describe("the scope", () => {
     expectPhases(ran, { "e.1": "Done", "e.2": "Done" })
     expect(ran.log.some((text) => text.includes("other"))).toBe(false)
     expectLog(ran, [
-      "[1/40] e.1 dispatching: e.1",
-      "[2/40] e.2 dispatching: e.2",
+      "[1] e.1 dispatching: e.1",
+      "[2] e.2 dispatching: e.2",
       closedLine("e.1"),
       closedLine("e.2"),
       "  closed epic e: all 2 subtickets are merged",
@@ -881,8 +881,8 @@ describe("the scope", () => {
     expectPhases(ran, { "e.1": "Done", "e.3": "Deferred" })
     expect(pathOf(ran, "e.3")).toEqual(["Queued", "Working", "Deferred"])
     expectLog(ran, [
-      "[1/40] e.1 dispatching: e.1",
-      "[2/40] e.3 dispatching: e.3",
+      "[1] e.1 dispatching: e.1",
+      "[2] e.3 dispatching: e.3",
       /^ {2}e\.3 deferred by its worker; worktree .*\/e\.3 left open$/,
       closedLine("e.1"),
       "READY_EMPTY after 2 tickets; SCOPE_OPEN: e: 2 of its 3 subtickets not done: e.3 (set aside in this run), e.2 (blocked by x outside the scope)",
@@ -1034,8 +1034,8 @@ describe("stopping drains", () => {
       "PAUSED: a still in_progress, its worker is gone (exit 1); its session was resumed once in this run already, and the next run resumes it again",
     )
     expectLog(ran, [
-      "[1/40] a dispatching: a",
-      "[2/40] b dispatching: b",
+      "[1] a dispatching: a",
+      "[2] b dispatching: b",
       new RegExp(
         `^HOLD: ${paused} \\(worktree .*/a\\); stopping so it can be answered; no new tickets while the 1 running finish$`,
       ),
@@ -1076,8 +1076,8 @@ describe("stopping drains", () => {
     expectClean(ran, 0)
     expectPhases(ran, { a: "Done", b: "Done", c: "Queued" })
     expectLog(ran, [
-      "[1/40] a dispatching: a",
-      "[2/40] b dispatching: b",
+      "[1] a dispatching: a",
+      "[2] b dispatching: b",
       "DRAIN: stopping after the 2 running tickets finish (a, b): no new tickets will start, asked by SIGUSR1",
       closedLine("a"),
       closedLine("b"),

@@ -141,8 +141,8 @@ export const footprintsOf = (options: {
 export interface Options {
   /** How many tickets run at once. */
   readonly concurrent: number
-  /** The most tickets this run starts (--limit). */
-  readonly limit: number
+  /** The most tickets this run starts (--limit), or null for no limit. */
+  readonly limit: number | null
   /** The ticket the run is scoped to (--ticket), or null for the whole of bd ready. */
   readonly scope: string | null
   /** The queue's `exclude_types`. */
@@ -223,11 +223,18 @@ export interface Scheduler {
   readonly limitReached: Effect.Effect<boolean>
 }
 
+/** How far the run is through its ticket limit after `n` tickets: `n/limit`, or `n` with none. */
+export const progress = (n: number, limit: number | null): string =>
+  limit === null ? String(n) : `${n}/${limit}`
+
+/** Whether `n` tickets started reach the run's ticket limit; never with none. */
+const reached = (n: number, limit: number | null): boolean => limit !== null && n >= limit
+
 /** `[n/limit] <id> dispatching: <title>`, the dispatch's log line; `dispatching solo` for one. */
-export const dispatchLine = (n: number, limit: number, issue: Issue): Line =>
+export const dispatchLine = (n: number, limit: number | null, issue: Issue): Line =>
   isSolo(issue)
-    ? line`[${n}/${limit}] ${issue.id} dispatching solo: ${issue.title}`
-    : line`[${n}/${limit}] ${issue.id} dispatching: ${issue.title}`
+    ? line`[${progress(n, limit)}] ${issue.id} dispatching solo: ${issue.title}`
+    : line`[${progress(n, limit)}] ${issue.id} dispatching: ${issue.title}`
 
 /** `<id> footprint: …`, under the dispatch's line with footprints on (§ 5 item 5). */
 export const footprintLine = (id: string, fp: Footprint): Line =>
@@ -463,7 +470,7 @@ export const make = (
           ticket: issue.id,
           title: issue.title,
           n: s.started,
-          limit: options.limit,
+          ...(options.limit === null ? {} : { limit: options.limit }),
           ...queue,
           text,
         }
@@ -504,7 +511,7 @@ export const make = (
       const { s, state } = yield* current
       return (
         slotFree(s, state, options.concurrent) &&
-        s.started < options.limit &&
+        !reached(s.started, options.limit) &&
         state.windDown === null &&
         (yield* taking)
       )
@@ -840,6 +847,6 @@ export const make = (
       started: Effect.map(Ref.get(slots), (s) => s.started),
       running: Effect.map(Ref.get(slots), (s) => s.running),
       interrupt: FiberSet.clear(tickets),
-      limitReached: Effect.map(Ref.get(slots), (s) => s.started >= options.limit),
+      limitReached: Effect.map(Ref.get(slots), (s) => reached(s.started, options.limit)),
     }
   })

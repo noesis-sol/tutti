@@ -204,8 +204,8 @@ describe("the usage-limit warning", () => {
     const warning = `USAGE: 85% of the five-hour limit · resets ${resetsIn(hour)}`
     expect(ran.log.filter((text) => text.startsWith("USAGE"))).toEqual([warning])
     expect(ran.log.filter((text) => text.includes("dispatching"))).toEqual([
-      "[1/40] t-1 dispatching: t-1",
-      "[2/40] t-2 dispatching: t-2",
+      "[1] t-1 dispatching: t-1",
+      "[2] t-2 dispatching: t-2",
     ])
     const records = ran.events.filter((record) => record.kind === "usage_limit")
     expect(records).toHaveLength(1)
@@ -244,14 +244,14 @@ describe("the usage-limit hold", () => {
     expectPhases(ran, { "t-1": "Done", "t-2": "Done", "t-3": "Done" })
     const resets = resetsIn(hour)
     expectLog(ran, [
-      "[1/40] t-1 dispatching: t-1",
-      "[2/40] t-2 dispatching: t-2",
+      "[1] t-1 dispatching: t-1",
+      "[2] t-2 dispatching: t-2",
       `USAGE_LIMIT: the five-hour limit is reached; no new tickets until it resets at ${resets}`,
       `USAGE_LIMIT: nothing else runs; waiting for the five-hour limit to reset at ${resets}, in 1h`,
       "USAGE_LIMIT lifted",
       /^ {2}t-[12]: the usage limit has reset; its worker carries on$/,
       /^ {2}t-[12]: the usage limit has reset; its worker carries on$/,
-      "[3/40] t-3 dispatching: t-3",
+      "[3] t-3 dispatching: t-3",
     ])
     // The hold's banner counts down, the warning line names it, the queue is held.
     expect(held?.banners).toContainEqual({

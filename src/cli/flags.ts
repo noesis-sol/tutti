@@ -157,7 +157,7 @@ export const runFlags = {
   }),
   limit: runFlag("limit", count(0), {
     metavar: "N",
-    description: "the most tickets this run starts (default: 40)",
+    description: "the most tickets this run starts (default: no limit)",
   }),
   workerEffort: runFlag("worker-effort", oneOf(efforts), {
     metavar: "level",

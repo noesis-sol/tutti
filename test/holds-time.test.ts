@@ -269,9 +269,9 @@ describe("the time holds in a run", () => {
     const stop =
       /^TICKET_LIMIT: t-1 still working after 1h \(worktree .*t-1\); its worker goes on, and is suspended when the run ends$/
     expectLog(ran, [
-      "[1/40] t-1 dispatching: t-1",
-      "[2/40] t-2 dispatching: t-2",
-      "[3/40] t-3 dispatching: t-3",
+      "[1] t-1 dispatching: t-1",
+      "[2] t-2 dispatching: t-2",
+      "[3] t-3 dispatching: t-3",
       /^HOLD: TICKET_LIMIT: t-1 still working after 1h .*; no new tickets while the 1 running finish$/,
       /^ {2}t-3 closed .*; merged into main/,
       stop,
@@ -363,7 +363,7 @@ describe("the time holds in a run", () => {
       "HOLD: BLOCKED >4min: t-1 needs you: Bash(rm -rf build); no new tickets while the 2 running finish",
       /^ {2}t-2 closed .*; merged into main/,
       "HOLD lifted: t-1's requests were answered",
-      "[3/40] t-3 dispatching: t-3",
+      "[3] t-3 dispatching: t-3",
     ])
     expect(held?.banners).toContainEqual({ _tag: "Hold", word: "BLOCKED", resetsAt: null })
     expect(held?.totals.queueHeld).toBe(true)

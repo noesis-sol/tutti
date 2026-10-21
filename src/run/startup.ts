@@ -476,7 +476,7 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
       ? {}
       : { scope: `${config.feature === null ? "ticket" : "feature"} ${config.ticket}` }),
     settings: [
-      ["limit", String(config.limit)],
+      ["limit", config.limit === null ? "none" : String(config.limit)],
       ["concurrent", String(concurrency)],
       ["ticket limit", ticketLimit === null ? "none" : formatDuration(ticketLimit)],
       ["check timeout", formatDuration(config.settings.checks.fast.timeout)],

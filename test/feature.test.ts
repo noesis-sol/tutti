@@ -629,6 +629,6 @@ describe("the run after --feature", () => {
       ]),
     )
     const dispatched = ran.log.filter((text) => text.includes("dispatching"))
-    expect(dispatched.map((text) => text.replace(/^\[\d+\/\d+\] /, "").split(" ")[0])).toEqual(ids)
+    expect(dispatched.map((text) => text.replace(/^\[\d+\] /, "").split(" ")[0])).toEqual(ids)
   })
 })

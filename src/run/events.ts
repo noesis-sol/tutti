@@ -108,13 +108,13 @@ export const Info = Schema.Struct({
   text: Schema.String,
 })
 
-/** A ticket was picked up: `n` and `limit` as in `[n/limit]`. */
+/** A ticket was picked up: `n` and `limit` as in `[n/limit]`; no `limit` for a run without one. */
 export const Dispatch = Schema.Struct({
   ...head("dispatch"),
   ticket: Schema.String,
   title: Schema.String,
   n: Count,
-  limit: Count,
+  limit: optional(Count),
   ...queueFields,
   text: Schema.String,
 })

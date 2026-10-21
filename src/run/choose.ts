@@ -29,7 +29,7 @@ export const decided = (config: Deciding): boolean =>
   config.ticket !== null ||
   config.feature !== null ||
   config.plain ||
-  config.limit <= 0
+  (config.limit !== null && config.limit <= 0)
 
 /**
  * How the run asks the start question on the terminal `tty`, its output in `mode`: not at all

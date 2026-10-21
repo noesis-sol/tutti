@@ -38,9 +38,6 @@ export class SetupProblem extends Schema.TaggedError<SetupProblem>()("SetupProbl
   }
 }
 
-/** How many tickets a run starts, unless --limit says otherwise. */
-export const defaultLimit = 40
-
 /** How long a run with nothing else to do waits for the usage limit to reset (§ 4.12). */
 export const defaultUsageLimitWait: Duration.Duration = Duration.hours(6)
 
@@ -78,8 +75,8 @@ export interface AppConfigValue {
   readonly feature: string | null
   /** File a --feature plan without asking (--yes). */
   readonly yes: boolean
-  /** The most tickets this run starts (--limit). */
-  readonly limit: number
+  /** The most tickets this run starts (--limit), or null for no limit. */
+  readonly limit: number | null
   readonly notify: boolean
   /** The dashboard as plain log lines (--plain); a terminal that can't show it also gets them. */
   readonly plain: boolean
@@ -198,7 +195,7 @@ export const resolve = (sources: Sources): Result.Result<AppConfigValue, Readonl
   if (feature === null && flagGiven("yes") && yes) {
     problems.push("--yes only applies with --feature.")
   }
-  const limit = pick("limit", defaultLimit)
+  const limit = pick("limit", null)
   if (feature !== null && limit === 0) {
     // The run would end at once, the plan filed and none of it started.
     problems.push(
