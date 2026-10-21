@@ -14,7 +14,13 @@ import { join } from "node:path"
 import { Effect, type Schema, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { type CheckError, Checks, checkLogName, type RunOptions } from "../services/Checks.ts"
+import {
+  type CheckError,
+  Checks,
+  checkLogName,
+  OutputBounds,
+  type RunOptions,
+} from "../services/Checks.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { EventStream } from "./eventstream.ts"
@@ -55,13 +61,13 @@ export const failedHow = (error: CheckError): string => {
   }
 }
 
-/** What the check said of its failure: the lines that say what failed, else its last lines. */
+/** What the check said of its failure: the lines saying what failed, else its last maxSaid lines. */
 export const saidOf = (error: CheckError): ReadonlyArray<string> =>
   error._tag === "CheckNotRun"
     ? []
     : error.failingLines.length > 0
       ? error.failingLines
-      : error.lastLines
+      : error.lastLines.slice(-OutputBounds.maxSaid)
 
 /**
  * Where a command run in the ticket's worktree writes its whole output, for the scope: `name` in its

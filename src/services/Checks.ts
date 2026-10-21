@@ -23,7 +23,7 @@ export const setupLogName = "setup.log"
 
 /** How much of a check's output is held in memory: orchestra's bounds. */
 export const OutputBounds = {
-  /** How many of its last lines are kept. */
+  /** How many of its last lines are kept: the most anything says of its end (the full check's). */
   keptLines: 40,
   /** How much of one line is kept; the rest of a longer one is in the file alone. */
   maxLineBytes: 16 * 1024,
@@ -112,7 +112,10 @@ export const boundLines = (lines: ReadonlyArray<string>, n: number): Array<strin
 export interface Said {
   /** The lines that say what failed, each once, trimmed, as CheckOutput picks them; at most maxSaid. */
   readonly failingLines: ReadonlyArray<string>
-  /** Its last lines, at most maxSaid, blank lines at the end left out; none when it printed nothing. */
+  /**
+   * Its last lines, at most keptLines, blank lines at the end left out; none when it printed
+   * nothing. What tells of a ticket's check takes the last maxSaid of them.
+   */
   readonly lastLines: ReadonlyArray<string>
   /** The suites its SUITE: lines named, each once, in the order they started. */
   readonly suites: ReadonlyArray<string>
@@ -193,11 +196,11 @@ export class CheckOutput {
             `(… and ${this.saidCount - OutputBounds.maxSaid + 1} more lines like these)`,
           ]
         : this.said
-    const last = this.tail.slice(-OutputBounds.maxSaid)
+    const last = this.tail.slice(-OutputBounds.keptLines)
     return {
       failingLines: boundLines(said, OutputBounds.maxSaid),
       lastLines: last.some((line) => line.trim() !== "")
-        ? boundLines(last, OutputBounds.maxSaid)
+        ? boundLines(last, OutputBounds.keptLines)
         : [],
       suites: [...this.suites],
       suite: this.suite,

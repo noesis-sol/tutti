@@ -7,7 +7,7 @@
 import { Effect, Result } from "effect"
 import { type Section, section } from "../organs/evidence.ts"
 import { type Beads, type BeadsError, HumanLabel, type Issue } from "../services/Beads.ts"
-import type { CheckError } from "../services/Checks.ts"
+import { type CheckError, OutputBounds } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { failedHow } from "./check.ts"
 import type { Entry } from "./ledger.ts"
@@ -58,7 +58,8 @@ export const failedCheckSaid = (f: FailedCheck): string => {
     `${f.id}: ${failedHow(f.error)} on ${f.branch} rebased onto ${f.base} at ${at}${notRun}${where}.`,
   ]
   if (f.error._tag !== "CheckNotRun") {
-    const { failingLines, lastLines } = f.error
+    const { failingLines } = f.error
+    const lastLines = f.error.lastLines.slice(-OutputBounds.maxSaid)
     const said = failingLines.length > 0 ? failingLines : lastLines
     lines.push(
       failingLines.length > 0

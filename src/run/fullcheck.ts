@@ -7,7 +7,8 @@
 // command (checks.setup.command, such as bun install) runs there first, within check_full's time
 // limit; a setup that fails is said as such and files no ticket: it is not a suite's failure.
 //
-// A failure keeps the whole output in the main checkout's .tutti/run/check-full.log (§ 9.1) and
+// A failure keeps the whole output in the main checkout's .tutti/run/check-full.log (§ 9.1), and
+// its last 40 lines go to the log, the reviewer and the run report, after the reviewer's text; it
 // files a P2 bug labelled check-full for the suite it failed in (the last SUITE: line), titled
 // `Full check fails: <suite>`, unless one is open for that suite already, which is noted instead:
 // each failing suite has one ticket. A quit while it runs stops it (its process group is killed) and
@@ -28,6 +29,7 @@ import {
 } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
+import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import { saidOf } from "./check.ts"
 import type { fullCheckOutcomes } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
@@ -43,6 +45,9 @@ export const fullCheckLogName = "check-full.log"
 
 /** How the full check's worktree's folder name starts, under the worktrees' folder. */
 export const fullCheckFolderPrefix = "check-full-"
+
+/** How many of the last lines of a failed full check's output the log, the reviewer and the report have. */
+export const fullCheckEnd = 40
 
 /** Begins the title of a ticket filed for a full check's suite. */
 export const fullCheckPrefix = "Full check fails: "
@@ -66,7 +71,7 @@ export interface FullChecked {
   readonly setup?: string
   /** Where its whole output is, when it failed. */
   readonly output?: string
-  /** The end of its output, when it failed. */
+  /** The end of its output, its last fullCheckEnd lines, when it failed. */
   readonly end: ReadonlyArray<string>
   /** The ticket filed for the suite, or the one open for it already. */
   readonly ticket?: string
@@ -74,6 +79,58 @@ export interface FullChecked {
   readonly filed?: string
   /** The line that said how it went. */
   readonly text: Line
+}
+
+/** Whether the full check failed, in a suite or in the setup before it. */
+const didFail = (checked: FullChecked): boolean =>
+  checked.outcome === "failed" || checked.outcome === "timed out"
+
+/**
+ * What the reviewer is told of the full check: the line that said how it went, and, when it failed,
+ * the end of its output.
+ */
+export const fullCheckEvidence = (checked: FullChecked): string =>
+  didFail(checked) && checked.end.length > 0
+    ? `${checked.text}\nThe end of its output:\n${checked.end.join("\n")}`
+    : checked.text
+
+/** The longest run of backticks in `text`. */
+const backticks = (text: string): number =>
+  Math.max(0, ...Array.from(text.matchAll(/`+/g), (run) => run[0].length))
+
+/** `text`, sanitised to one line, as a Markdown code span that no backtick in it can close. */
+const codeSpan = (text: string): string => {
+  const one = sanitizeLine(text)
+  const fence = "`".repeat(backticks(one) + 1)
+  const pad = one.startsWith("`") || one.endsWith("`") ? " " : ""
+  return `${fence}${pad}${one}${pad}${fence}`
+}
+
+/** `lines`, each sanitised, as a Markdown code block that no line in it can close. */
+const codeBlock = (lines: ReadonlyArray<string>): string => {
+  const body = lines.map((each) => sanitizeLine(each))
+  const fence = "`".repeat(Math.max(3, ...body.map((each) => backticks(each) + 1)))
+  return `${fence}\n${body.join("\n")}\n${fence}`
+}
+
+/**
+ * What the run report says of a full check that failed, `command`, after the reviewer's text, so it
+ * is there whatever the reviewer wrote: how it failed, where its whole output is, and the end of
+ * the output in a code block; "" for one that didn't fail. Markdown, the run's words escaped.
+ */
+export const fullCheckReport = (checked: FullChecked, command: string): string => {
+  if (!didFail(checked)) return ""
+  const text = (untrusted: string) => escapeMarkdown(sanitizeLine(untrusted))
+  const how =
+    checked.setup === undefined
+      ? `${codeSpan(command)} ${checked.outcome} in the suite ${text(checked.suite ?? command)}`
+      : `${codeSpan(command)} did not run: the setup before it, ${codeSpan(checked.setup)}, ${checked.outcome}`
+  const filed = checked.filed === undefined ? "" : `; ${text(checked.filed)}`
+  const output =
+    checked.output === undefined ? "" : ` The whole output is in ${codeSpan(checked.output)}.`
+  const end =
+    checked.end.length === 0 ? " It printed nothing." : ` Its end:\n\n${codeBlock(checked.end)}`
+  return `\n## Full check\n\n${how}${filed}.${output}${end}\n`
 }
 
 /**
@@ -333,10 +390,10 @@ const flaky = (command: string, passed: CheckPassed) =>
 
 /**
  * Keeps the whole output of the full check that failed, at `from` in its worktree, in the main
- * checkout's .tutti/run/check-full.log, and says where it is; the log, with the output's end in
- * it, when it can't be kept there.
+ * checkout's .tutti/run/check-full.log, and says where it is; the log, which has the output's end,
+ * when it can't be kept there.
  */
-const keepOutput = (from: string, end: ReadonlyArray<string>) =>
+const keepOutput = (from: string) =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const worktrees = yield* Worktrees
@@ -356,11 +413,14 @@ const keepOutput = (from: string, end: ReadonlyArray<string>) =>
     if (Result.isSuccess(kept)) return to
     const logs = yield* Log
     yield* logs.write(
-      detail`the full check's whole output can't be kept in ${to}: ${kept.failure.message}; its end:`,
-      ...end.map((each) => detail`  ${each}`),
+      detail`the full check's whole output can't be kept in ${to}: ${kept.failure.message}`,
     )
     return join(config.repo, logFile)
   })
+
+/** The log's lines under a failed full check's: the end of its output, indented; none without one. */
+const endLines = (end: ReadonlyArray<string>): ReadonlyArray<Line> =>
+  end.length === 0 ? [] : [detail`the end of its output:`, ...end.map((each) => detail`  ${each}`)]
 
 /** Says the full check failed with `error`, its whole output at `from`, and files its ticket. */
 const failed = (
@@ -377,16 +437,16 @@ const failed = (
     const { base } = options
     const command = config.settings.checks.full.command ?? ""
     const outcome: FullCheckOutcome = error._tag === "CheckTimedOut" ? "timed out" : "failed"
-    const end = error._tag === "CheckNotRun" ? [] : error.lastLines
+    const end = error._tag === "CheckNotRun" ? [] : error.lastLines.slice(-fullCheckEnd)
     const how = howFailed(error)
-    const output = yield* keepOutput(from, end)
+    const output = yield* keepOutput(from)
     if (error.check === "setup") {
       const filed = "no ticket filed: it is not a suite's failure"
       const text = ticketLine(
         Tag.fullCheckFailed,
       )`the setup '${error.command}', run before '${command}', ${how} on ${base} at ${short(at)}; the whole output is in ${output}; ${filed}`
       yield* events.emit({ kind: "full_check", detail: outcome, output, text })
-      yield* logs.write(text)
+      yield* logs.write(text, ...endLines(end))
       return {
         outcome,
         at,
@@ -411,7 +471,7 @@ const failed = (
       ...(filing.ticket === undefined ? {} : { ticket: filing.ticket }),
       text,
     })
-    yield* logs.write(text)
+    yield* logs.write(text, ...endLines(end))
     return { outcome, at, took: ms, suite, output, end, ...filing, text } satisfies FullChecked
   })
 

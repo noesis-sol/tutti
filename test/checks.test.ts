@@ -317,7 +317,7 @@ describe("CheckOutput", () => {
   test("keeps the last lines, but not blank lines at the end, and drops carriage returns", () => {
     const lines = Array.from({ length: 50 }, (_, i) => `line ${i}`)
     const { lastLines } = said(`${lines.join("\r\n")}\r\n\n\n`)
-    expect(lastLines).toHaveLength(OutputBounds.maxSaid)
+    expect(lastLines).toHaveLength(OutputBounds.keptLines)
     expect(lastLines.at(-1)).toBe("line 49\r")
     expect(said("\n\n  \n").lastLines).toEqual([])
     expect(said("SUITE: unit\r\n").suite).toBe("unit")
@@ -376,7 +376,7 @@ describe("CheckOutput", () => {
       fc.property(fc.array(fc.string({ unit: "binary" }), { maxLength: 200 }), (lines) => {
         const s = said(lines.join("\n"))
         expect(s.failingLines.length).toBeLessThanOrEqual(OutputBounds.maxSaid)
-        expect(s.lastLines.length).toBeLessThanOrEqual(OutputBounds.maxSaid)
+        expect(s.lastLines.length).toBeLessThanOrEqual(OutputBounds.keptLines)
         expect(s.flaky.length).toBeLessThanOrEqual(OutputBounds.maxFlaky)
         for (const l of [...s.failingLines, ...s.lastLines]) {
           expect(Array.from(l).length).toBeLessThanOrEqual(OutputBounds.saidWidth)

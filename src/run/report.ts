@@ -58,6 +58,11 @@ export interface ReportRun {
    * feature request, the follow-ups filed outside a scoped run.
    */
   readonly sections?: ReadonlyArray<Section>
+  /**
+   * What the report says after the reviewer's text, whatever it wrote, in Markdown: a failed full
+   * check and the end of its output (fullCheckReport).
+   */
+  readonly after?: string
 }
 
 /** Where the report is printed after the dashboard. */
@@ -419,9 +424,10 @@ export const costTotal = (cost: OrganTotal): string => {
 }
 
 /**
- * The report as written and printed: its title, the reviewer's words, and the organs' cost total,
- * when a call said what it cost. The base and the scope are sanitised to one line and escaped for
- * Markdown; the reviewer's words, Markdown themselves, are sanitised.
+ * The report as written and printed: its title, the reviewer's words, what the run says after them
+ * (a failed full check), and the organs' cost total, when a call said what it cost. The base and
+ * the scope are sanitised to one line and escaped for Markdown; the reviewer's words and the run's
+ * after them, Markdown themselves, are sanitised.
  */
 export const compose = (p: {
   readonly started: number
@@ -429,6 +435,7 @@ export const compose = (p: {
   readonly base: string
   readonly scope: string | null
   readonly body: string
+  readonly after?: string
   readonly cost: OrganTotal
 }): string => {
   const text = (untrusted: string) => escapeMarkdown(sanitizeLine(untrusted))
@@ -437,7 +444,7 @@ export const compose = (p: {
     `# tutti run · ${date(p.started)} ${clockTime(p.started)}–${clockTime(p.ended)} · ` +
     `${text(p.base)}${scope}`
   const cost = p.cost.calls === 0 ? "" : `\nOrgans: ${costTotal(p.cost)}.\n`
-  return `${title}\n\n${sanitize(p.body).trim()}\n${cost}`
+  return `${title}\n\n${sanitize(p.body).trim()}\n${sanitize(p.after ?? "")}${cost}`
 }
 
 /** What an organ error says, on one line. */
@@ -495,6 +502,7 @@ export const runReport = (
       base: run.base,
       scope: config.ticket,
       body: written.value,
+      ...(run.after === undefined ? {} : { after: run.after }),
       cost: yield* (yield* OrganCost).total,
     })
     yield* printReport(out.printer, report, out.theme, out.width)

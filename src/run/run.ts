@@ -98,7 +98,7 @@ import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
-import { fullCheck, fullCheckDue } from "./fullcheck.ts"
+import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
 import {
   addStop,
   blockedAt,
@@ -1128,6 +1128,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // check, the follow-ups filed outside the scope, the feature request.
     const sections = [...failedChecksSection(state.tickets, yield* queue.rechecks.failures)]
     const command = config.settings.checks.full.command
+    // What the report says after the reviewer's text: a failed full check, the end of its output.
+    let after = ""
     let exitCode = exitCodeOf(all)
     // The stop of a quit, or a panic, after the loop: `when` it came.
     const lateStop = (late: Quitting, when: string): StopReason =>
@@ -1141,7 +1143,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       )
       if ("done" in checked) {
         said.push(checked.done.text)
-        sections.push(section("The full check", checked.done.text))
+        sections.push(section("The full check", fullCheckEvidence(checked.done)))
+        after = fullCheckReport(checked.done, command ?? "")
       } else {
         const stop = lateStop(checked.quit, "during the full check")
         yield* events.emit({ kind: "stop", detail: stop.why, text: stop.text })
@@ -1175,6 +1178,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       exitCode,
       quit: quitted,
       sections,
+      ...(after === "" ? {} : { after }),
     }
     const reportContext = yield* Effect.context<RunEnv | Ledger>()
     const cost = yield* Effect.serviceOption(OrganCost)
