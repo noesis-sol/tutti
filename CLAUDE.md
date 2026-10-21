@@ -69,11 +69,16 @@ scripts/check.sh            # the project's check: tsc, biome, the tests, shellc
 scripts/test.sh             # the tests only (bun test; arguments go to bun test)
 scripts/test.sh test/<part>.test.ts   # one test file, while iterating (React's development build)
 TUTTI_SLOW=1 scripts/check.sh  # also the slow suites (real git); scripts/check-full.sh does this
+scripts/check-own.sh           # check.sh's steps on what the branch changed, and the tests it touches
 TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent SDK
 ```
 
 - `scripts/check-fast.sh` (orchestra's merge check) runs `scripts/check.sh`; `scripts/check-full.sh`
   runs it with `TUTTI_SLOW=1`.
+- `scripts/check-own.sh` is `check_own` in `.orchestra/settings.json`, the check orchestra's workers
+  run on their own change: tsc, biome and shellcheck on the files changed since main, and the tests
+  that changed, import a changed module or name a changed file (`scripts/check-own.ts`); a change to
+  the project's setup runs `scripts/check.sh` whole. `TUTTI_SLOW=1` adds the slow tests.
 - Run tests through `scripts/test.sh`, not a bare `bun test`: `bunfig.toml` defines `NODE_ENV` as
   `"production"` for React's production build (spec § 3.1), and `scripts/test.sh` defines `"test"`
   over it, which `@opentui/react/test-utils` needs.
