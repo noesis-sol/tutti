@@ -23,11 +23,11 @@
 // BunRuntime's do. SIGUSR1 winds the run down (drain.ts), SIGUSR2 as well: M0 found SIGUSR1 works
 // in Bun (docs/spikes/06-bun-ffi.md, § 3), so SIGUSR2 is kept as an alias. SIGTSTP is ignored with a
 // log line (D18).
-import { Duration, Effect, Ref, Runtime, type Scope, Stream } from "effect"
+import { Duration, Effect, Queue, Ref, Runtime, type Scope, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { settled } from "../agent/WorkerState.ts"
-import { detail, type Line, line } from "./log.ts"
+import { detail, type Line, Log, line } from "./log.ts"
 
 /** The signals that quit. */
 export type QuitSignal = "SIGINT" | "SIGTERM" | "SIGHUP"
@@ -157,6 +157,18 @@ export const panicLines = (where: string, defect: unknown): ReadonlyArray<Line> 
 
 /** SIGTSTP's line: tutti can't be suspended (D18). */
 export const suspendIgnoredLine: Line = detail`SIGTSTP ignored: tutti can't be suspended; SIGUSR1 stops it after the current tickets, Ctrl+C quits`
+
+/** Logs suspendIgnoredLine for each SIGTSTP `suspends` hears of, until the caller's scope closes. */
+export const logSuspends = (
+  suspends: Queue.Dequeue<void>,
+): Effect.Effect<void, never, Log | Scope.Scope> =>
+  Effect.flatMap(Log, (logs) =>
+    Effect.asVoid(
+      Effect.forkScoped(
+        Effect.forever(Effect.andThen(Queue.take(suspends), logs.write(suspendIgnoredLine))),
+      ),
+    ),
+  )
 
 /** Whether a worker in `state` has no turn to wait for: its result is in, or it can't come. */
 const answered = (state: WorkerState): boolean => settled(state) || state._tag === "UsageLimited"

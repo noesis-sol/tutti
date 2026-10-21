@@ -39,7 +39,8 @@ import { carriedTickets } from "./run/carry.ts"
 import {
   asking,
   askLines,
-  cancelledMessage,
+  askThenBegin,
+  cancelled,
   interviewUnavailable,
   ticketCount,
 } from "./run/choose.ts"
@@ -53,21 +54,14 @@ import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
 import {
   check as checkNothing,
   endIfNothing,
+  endWith,
   heldAtStart,
   type Options as NothingOptions,
   type Output,
-  report as reportNothing,
   themeStyles,
 } from "./run/nothing.ts"
 import { notifying } from "./run/notices.ts"
-import {
-  catchSignals,
-  listen,
-  type QuitRequest,
-  quitBy,
-  runMain,
-  suspendIgnoredLine,
-} from "./run/quit.ts"
+import { catchSignals, listen, logSuspends, type QuitRequest, quitBy, runMain } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
@@ -263,10 +257,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     const code = yield* Effect.gen(function* () {
       const events = yield* EventStream
       const tty = yield* Tty
-      const logs = yield* Log
-      yield* Effect.forkScoped(
-        Effect.forever(Effect.andThen(Queue.take(suspends), logs.write(suspendIgnoredLine))),
-      )
+      yield* logSuspends(suspends)
 
       const depth = tty.colourDepth === "truecolor" ? "truecolor" : "256"
       const themeOf = (appearance: Appearance, styled = true) =>
@@ -351,7 +342,6 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             permission_mode: started.account.permissionMode.inEffect,
           })
         })
-      const cancelled = Effect.as(Console.error(cancelledMessage), exitCodes.interrupted)
       /** A new feature chosen at the start question asked as lines: the interview needs the renderer. */
       const noInterview = Effect.gen(function* () {
         yield* Console.error(interviewUnavailable)
@@ -407,15 +397,14 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       ]
 
       if (mode._tag === "Plain") {
-        const asked =
+        const work = yield* askThenBegin(
           asks === "lines" && mainTheme !== undefined
-            ? yield* Effect.result(
-                askLines(process.stdin, (text) => process.stdout.write(text), mainTheme, count),
-              )
-            : Result.succeed(Work.Tickets())
-        if (Result.isFailure(asked)) return yield* cancelled
-        yield* begin(asked.success)
-        if (asked.success._tag === "Feature") return yield* noInterview
+            ? askLines(process.stdin, (text) => process.stdout.write(text), mainTheme, count)
+            : Effect.succeed(Work.Tickets()),
+          begin,
+        )
+        if (work === null) return yield* cancelled
+        if (work._tag === "Feature") return yield* noInterview
         // The plan confirmation, a line at a time.
         const stopped = yield* planFeature<never>({
           out: stdout,
@@ -490,10 +479,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           const clipboard = yield* liveClipboard(shell.renderer)
           const desktop = { clipboard, urlOpener: yield* liveUrlOpener(clipboard) }
           if (asks !== "no") {
-            const asked = yield* Effect.result(askStart(shell, themeOf, count))
-            if (Result.isFailure(asked)) return { _tag: "Cancelled" } as const
-            const work = asked.success
-            yield* begin(work)
+            const work = yield* askThenBegin(askStart(shell, themeOf, count), begin)
+            if (work === null) return { _tag: "Cancelled" } as const
             if (work._tag === "Feature") {
               // The interview, in this renderer; once its epic is filed and you say y, the run.
               const outcome = yield* interview(work.description, {
@@ -551,9 +538,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           return said.exitCode
         }
         case "Nothing":
-          yield* reportNothing(ended.nothing, output)
-          yield* events.emit({ kind: "end", code: exitCodes.ok })
-          return exitCodes.ok
+          return yield* endWith(ended.nothing, output)
         case "Ran":
           return yield* finish(ended.outcome, reportOut(themeOf(ended.appearance)), true)
       }

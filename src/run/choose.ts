@@ -5,7 +5,7 @@
 // already reached, as orchestra's. It asks in the command's one renderer, before the dashboard,
 // or as lines (plain/forms.ts) when the terminal can't show one: TERM=dumb, or fewer than 256
 // colours. A cancelled question ends the run before it started, exit 130.
-import { Effect, Result } from "effect"
+import { Console, Effect, Result } from "effect"
 import type { AppConfigValue } from "../cli/AppConfig.ts"
 import { Beads } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
@@ -13,6 +13,7 @@ import type { OutputMode, TtyValue } from "../services/Tty.ts"
 import { startQuestion, streamInput } from "../ui/plain/forms.ts"
 import { type FormCancelled, TicketCount, type Work } from "../ui/questions.ts"
 import type { Theme } from "../ui/theme.ts"
+import { exitCodes } from "./holds.ts"
 import * as nothing from "./nothing.ts"
 import * as scope from "./scope.ts"
 
@@ -76,8 +77,27 @@ export const askLines = (
     Effect.flatMap(streamInput(stdin), (input) => startQuestion({ input, write, theme }, count)),
   )
 
+/**
+ * Asks the start question with `ask`, then begins the run on the work chosen with `begin`: the
+ * work, or null when the question was cancelled, which begins nothing, so the run has no start
+ * record.
+ */
+export const askThenBegin = <E, R, R2>(
+  ask: Effect.Effect<Work, E, R>,
+  begin: (work: Work) => Effect.Effect<void, never, R2>,
+): Effect.Effect<Work | null, never, R | R2> =>
+  Effect.flatMap(Effect.result(ask), (asked) =>
+    Result.isFailure(asked) ? Effect.succeed(null) : Effect.as(begin(asked.success), asked.success),
+  )
+
 /** What a run whose start question was cancelled says on stderr, before it exits 130. */
 export const cancelledMessage = "tutti: stopped before the run started; nothing was changed."
+
+/** Ends a run whose start question was cancelled: cancelledMessage on stderr, and exit 130. */
+export const cancelled: Effect.Effect<number> = Effect.as(
+  Console.error(cancelledMessage),
+  exitCodes.interrupted,
+)
 
 /**
  * What a run says on stderr when its start question, asked as lines, chose a new feature: the

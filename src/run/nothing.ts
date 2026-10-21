@@ -499,16 +499,29 @@ export const nothingToRun = (
   })
 
 /**
- * Ends the run before its loop when it has nothing to run, as main does: reported (see
- * `nothingToRun`), then the end record with exit code 0, which it gives back; null when the run has
- * something to run and goes on to its loop.
+ * Ends the run before its loop with the message `n`, as main does: reported (see `report`), then
+ * the end record with exit code 0, which it gives back.
+ */
+export const endWith = (
+  n: NothingToRun,
+  output: Output,
+): Effect.Effect<number, never, Log | EventStream> =>
+  Effect.gen(function* () {
+    yield* report(n, output)
+    yield* (yield* EventStream).emit({ kind: "end", code: exitCodes.ok })
+    return exitCodes.ok
+  })
+
+/**
+ * Ends the run before its loop when it has nothing to run (see `endWith`), giving back its exit
+ * code; null when the run has something to run, or bd can't say, and goes on to its loop.
  */
 export const endIfNothing = (
   options: Options,
   output: Output,
 ): Effect.Effect<number | null, never, Beads | Git | Log | EventStream> =>
   Effect.gen(function* () {
-    if (!(yield* nothingToRun(options, output))) return null
-    yield* (yield* EventStream).emit({ kind: "end", code: exitCodes.ok })
-    return exitCodes.ok
+    const n = yield* Effect.result(check(options))
+    if (Result.isFailure(n) || n.success === null) return null
+    return yield* endWith(n.success, output)
   })
