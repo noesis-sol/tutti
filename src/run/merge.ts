@@ -7,8 +7,9 @@
 //   conflicts MERGE_CONFLICT), set up when the rebase changed a dependency file (setup.ts), and
 //   checked again (CHECKS_FAILED, a failing setup too). A branch on top of the base already, as
 //   when nothing merged while its ticket ran, is checked too (set up first if a dependency file
-//   changed since its last setup), so that no ticket reaches the base unchecked, as orchestra 0.8.5
-//   has it; one whose commits change nothing needs none. A rebase interrupted is aborted, putting
+//   changed since its last setup; a worktree with uncommitted changes set aside, DIRTY_WORKTREE, as
+//   they would be checked but not merged), so that no ticket reaches the base unchecked, as
+//   orchestra 0.8.5 has it; one whose commits change nothing needs none. A rebase interrupted is aborted, putting
 //   the branch back; a setup or check interrupted is killed.
 // - fastForward, the step from the fast-forward to the end of its notes, which the merge queue runs
 //   protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE, GIT_FAILED), the base
@@ -330,6 +331,21 @@ export const baseMoved = (
   })
 
 /**
+ * Sets the ticket aside, DIRTY_WORKTREE, when its worktree has uncommitted changes to tracked files,
+ * `text` saying so of them: neither a rebase nor a check can go on with them there, as only the
+ * branch's commits reach the base. True when it did; a status git can't read counts as clean.
+ */
+const setAsideDirty = (ticket: FinishedTicket, text: (files: ReadonlyArray<string>) => Line) =>
+  Effect.gen(function* () {
+    const { git } = yield* services
+    const status = yield* Effect.result(git.status(ticket.worktree))
+    const dirty = Result.isSuccess(status) ? uncommitted(status.success) : []
+    if (dirty.length === 0) return false
+    yield* aside(ticket, Tag.dirtyWorktree, "uncommitted changes in its worktree", text(dirty))
+    return true
+  })
+
+/**
  * Rebases the ticket, its branch off the base at `fork`, onto the base, which moved on to `onto`,
  * sets it up if need be and checks it: true when it is on top of the base, checked; false when any
  * of them set it aside; Unchanged when the rebase left it changing nothing, as when git dropped its
@@ -352,19 +368,14 @@ const rebaseAndCheck = (
     const { git, ledger, log } = yield* services
     const { id, branch, worktree } = ticket
     const { repo, base } = options
-    const status = yield* Effect.result(git.status(worktree))
-    const dirty = Result.isSuccess(status) ? uncommitted(status.success) : []
-    if (dirty.length > 0) {
-      yield* aside(
-        ticket,
-        Tag.dirtyWorktree,
-        "uncommitted changes in its worktree",
+    const dirty = yield* setAsideDirty(
+      ticket,
+      (files) =>
         ticketLine(
           Tag.dirtyWorktree,
-        )`${id} closed, but ${worktree} has uncommitted changes to ${dirty}, so ${branch} can't be rebased onto ${base}, which moved on while it ran; worktree left for review (commit or undo them, rebase onto ${base}, check, merge)`,
-      )
-      return false
-    }
+        )`${id} closed, but ${worktree} has uncommitted changes to ${files}, so ${branch} can't be rebased onto ${base}, which moved on while it ran; worktree left for review (commit or undo them, rebase onto ${base}, check, merge)`,
+    )
+    if (dirty) return false
     yield* ledger.refine(id, Detail.Step({ step: "rebase" }))
     // Where the branch was and what it had, for a hand-back to verify its worker's resolution by.
     const before = yield* Effect.result(
@@ -639,8 +650,15 @@ export const prepare = (
         if (checked) return { _tag: "Ready", onto } satisfies Prepared
         const unchecked = yield* uncheckedMark(id)
         const command = config.settings.checks.fast.command
+        // The check runs in its worktree, but only its commits merge: changes left uncommitted
+        // there would be checked with them and never reach the base.
+        const dirty = (files: ReadonlyArray<string>) =>
+          ticketLine(
+            Tag.dirtyWorktree,
+          )`${id} closed, but ${worktree} has uncommitted changes to ${files}, so ${branch}, on top of ${base}, can't be checked as it would merge; worktree left for review (commit or undo them, check, merge)`
         let result: boolean | CheckStop
         if (unchecked !== undefined) {
+          if (yield* setAsideDirty(ticket, dirty)) return { _tag: "Over" } satisfies Prepared
           yield* log.write(
             detail`${branch} is on top of ${base}, but its check didn't finish after tutti rebased it; checking it now`,
           )
@@ -663,6 +681,7 @@ export const prepare = (
           if (head !== "" && (yield* memory.passes.at(id)) === head) {
             return { _tag: "Ready", onto } satisfies Prepared
           }
+          if (yield* setAsideDirty(ticket, dirty)) return { _tag: "Over" } satisfies Prepared
           yield* log.write(
             detail`${branch} is on top of ${base} already: checking it with '${command}' before it merges`,
           )

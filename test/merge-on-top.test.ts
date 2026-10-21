@@ -5,18 +5,25 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Fiber } from "effect"
+import { Effect, Exit, Fiber } from "effect"
+import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
+import type { FinishedTicket } from "../src/run/merge.ts"
+import { make as makeQueue } from "../src/run/mergequeue.ts"
+import { Cause } from "../src/run/phase.ts"
 import { failedCheckSaid } from "../src/run/reportEvidence.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
+import { Worktrees } from "../src/services/Worktrees.ts"
 import { bash, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Script as ChecksScript } from "../src/testing/Checks.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import {
   backlog,
+  type Env,
   expectEvents,
   expectExitCode,
   expectLog,
@@ -305,6 +312,87 @@ describe("a branch on top of the base already", () => {
     expect(ran.checkRuns).toEqual([])
     expect(ran.log.some((text) => text.includes("on top of main"))).toBe(false)
     expectLog(ran, [/^ {2}a closed with no change: the commits on tutti\/a, taken together/])
+  })
+})
+
+/**
+ * Merges a, finished on top of main with a.txt committed, through a merge queue of its own, with
+ * `script` run on it first: as when its worktree changes after its worker ended, while it waits in
+ * the merge queue. The fast check is `check`.
+ */
+const mergesOnTop = (script: (ticket: FinishedTicket) => Effect.Effect<void, unknown, Env>) =>
+  scenario(
+    {
+      config: {
+        repo: "/repo",
+        settings: {
+          ...defaults,
+          checks: { ...defaults.checks, fast: { ...defaults.checks.fast, command: check } },
+        },
+      },
+      backlog: backlog().ticket("a").seeds,
+    },
+    Effect.gen(function* () {
+      const repository = yield* Repository
+      const worktree = yield* (yield* Worktrees).prepare("a")
+      yield* (yield* Git).addWorktree(repository.dir, worktree.path, {
+        branch: worktree.branch,
+        base: "main",
+      })
+      yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
+      yield* (yield* Beads).close("a", "done")
+      const ledger = yield* Ledger
+      yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
+      yield* ledger.transition("a", Cause.Dispatched())
+      const ticket = {
+        id: "a",
+        title: "Ticket a",
+        branch: worktree.branch,
+        worktree: worktree.path,
+      } satisfies FinishedTicket
+      yield* script(ticket)
+      const queue = yield* makeQueue({ repo: repository.dir, base: "main" })
+      yield* queue.offer(ticket)
+      yield* queue.settled
+      return {
+        phase: (yield* ledger.current).tickets.get("a")?.phase,
+        main: yield* repository.tree("main"),
+      }
+    }).pipe(Effect.provide(Ledger.layer)),
+  )
+
+describe("a branch on top of the base with uncommitted changes in its worktree", () => {
+  test("is set aside unchecked, DIRTY_WORKTREE: they would be checked but never merge", async () => {
+    let worktree = ""
+    const ran = await mergesOnTop((ticket) =>
+      Effect.gen(function* () {
+        worktree = ticket.worktree
+        yield* (yield* Repository).write(ticket.worktree, { "a.txt": "changed\n" })
+      }),
+    )
+    if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
+    const { phase, main } = ran.exit.value
+    expect(phase).toEqual(expect.objectContaining({ _tag: "Review", why: "DIRTY_WORKTREE" }))
+    expectLog(ran, [
+      `  DIRTY_WORKTREE: a closed, but ${worktree} has uncommitted changes to a.txt, so tutti/a, on top of main, can't be checked as it would merge; worktree left for review (commit or undo them, check, merge)`,
+    ])
+    expect(ran.log.some((text) => text.includes("checking it with"))).toBe(false)
+    expect(ran.checkRuns).toEqual([])
+    expect(main.has("a.txt")).toBe(false)
+  })
+
+  test("an untracked file is no uncommitted change: it is checked and merges", async () => {
+    const ran = await mergesOnTop((ticket) =>
+      Effect.gen(function* () {
+        yield* (yield* Repository).write(ticket.worktree, { "notes.txt": "scratch\n" })
+      }),
+    )
+    if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
+    const { phase, main } = ran.exit.value
+    expect(phase?._tag).toBe("Done")
+    expectLog(ran, [onTopLine])
+    expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast"])
+    expect(main.get("a.txt")).toBe("a\n")
   })
 })
 
