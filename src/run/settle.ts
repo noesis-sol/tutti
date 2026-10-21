@@ -428,7 +428,7 @@ export const settle = (
       }
       if (yield* grace(id, state.at)) continue
       // The grace ran out: what the ticket says now decides.
-      const last = yield* read(worker, base)
+      const last = yield* read(worker, base, closed)
       if (last._tag !== "InProgress") {
         yield* logs.write(detail`${id} settled: ${how(state)}`)
         return Settled.Read({ reading: last, state })
