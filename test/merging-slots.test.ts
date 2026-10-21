@@ -3,7 +3,7 @@
 // footprint waits for it, and a solo ticket for it to merge. Up to `concurrent` tickets merge, or
 // wait to merge, without a slot; beyond that, each takes one until a merge ends.
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, realpathSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
@@ -11,11 +11,12 @@ import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll, slotsTaken } from "../src/run/schedule.ts"
 import { Git } from "../src/services/Git.ts"
+import type { State } from "../src/services/Store.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Script as ChecksScript, passed } from "../src/testing/Checks.ts"
 import { Captured } from "../src/testing/EventStream.ts"
-import type { Files } from "../src/testing/Git.ts"
+import { type Files, Repository } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import {
   advance,
@@ -101,6 +102,10 @@ const runs = (plan: {
     root: string,
   ) => Readonly<Record<string, ReadonlyArray<SessionScript>>>
   readonly lasts: Duration.Input
+  /** What the last run saved, each worktree under `root`. */
+  readonly saved?: (root: string) => State["tickets"]
+  /** Readies the repository before the run starts, the worktrees made. */
+  readonly before?: (repo: string, root: string) => Effect.Effect<void, never, Repository>
 }): Promise<Ran<Outcome>> => {
   const repo = folder("repo")
   const root = folder("worktrees")
@@ -121,6 +126,7 @@ const runs = (plan: {
       git: { dir: repo, files },
       worktrees: { root },
       checks: plan.checks,
+      ...(plan.saved === undefined ? {} : { state: { version: 1, tickets: plan.saved(root) } }),
       scripts: (world: World) => plan.scripts(world, root),
     },
     Effect.gen(function* () {
@@ -128,6 +134,7 @@ const runs = (plan: {
       for (const id of tickets) {
         yield* git.addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
       }
+      if (plan.before !== undefined) yield* plan.before(repo, root)
       const fiber = yield* Effect.forkChild(
         run({ version: "0.1.0-test", base: "main", start: [line`START tutti 0.1.0-test`] }),
       )
@@ -243,6 +250,53 @@ describe("a ticket past its work", () => {
       "[3/40] s dispatching solo: s",
       closedLine("s"),
       "READY_EMPTY after 3 tickets",
+    ])
+  }, 30_000)
+
+  test("carried over closed, holds back a ticket overlapping it until it merges", async () => {
+    // The last run left c closed and not merged, touching src/a.ts; main has moved on since, so its
+    // check, 10m, runs on the rebased branch. o, touching src/a.ts too, waits for c to merge; n
+    // takes the free slot at once.
+    const ran = await runs({
+      backlog: backlog()
+        .ticket("c", { status: "closed", ...touching("src/a.ts") })
+        .ticket("o", { priority: 1, ...touching("src/a.ts") })
+        .ticket("n", { priority: 2 }),
+      checks: { fast: [slowCheck("10 minutes")] },
+      saved: (root) => ({
+        c: {
+          session: "session-c",
+          worktree: join(root, "c"),
+          branch: "tutti/c",
+          suspended: "quit",
+          phase: "Stopped",
+          resumes: 0,
+          metadata: {},
+        },
+      }),
+      before: (repo, root) =>
+        Effect.gen(function* () {
+          const repository = yield* Repository
+          yield* Effect.sync(() => mkdirSync(join(root, "c"), { recursive: true }))
+          yield* repository.commit(join(root, "c"), "Change (c)", { "src/a.ts": "a2\n" })
+          yield* repository.commit(repo, "Elsewhere", { "README.md": "tutti 2\n" })
+        }),
+      scripts: (world, root) => ({
+        o: [works(world, root, "o")],
+        n: [works(world, root, "n")],
+      }),
+      lasts: "11 minutes",
+    })
+    expectExitCode(ran, 0)
+    expectPhases(ran, { c: "Done", o: "Done", n: "Done" })
+    expect(dispatches(ran)).toEqual(["n 0m", "o 10m"])
+    expectLog(ran, [
+      "  c, carried over from the last run, is closed, so it waits to merge",
+      "  skipping o: touches src/a.ts, like running c",
+      "[1/40] n dispatching: n",
+      closedLine("c"),
+      "[2/40] o dispatching: o",
+      "READY_EMPTY after 2 tickets",
     ])
   }, 30_000)
 })

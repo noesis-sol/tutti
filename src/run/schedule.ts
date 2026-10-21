@@ -683,20 +683,34 @@ export const make = (
 
         // With a slot free, what overlaps the footprint of a ticket running or past its work, saying
         // why once. A solo ticket waits for every one of them anyway, so it is never skipped for one.
-        const overlapping = (issues: ReadonlyArray<Issue>, s: Slots, past: number) =>
+        // One past its work that took no slot with its issue (carried over closed, checked once more,
+        // handed over again) has its issue read from bd once, kept until it merges.
+        const overlapping = (issues: ReadonlyArray<Issue>, s: Slots, past: ReadonlyArray<string>) =>
           Effect.gen(function* () {
             const skipped = new Map<string, Held>()
             const asked = issues.filter((issue) => !isSolo(issue))
             if (
               footprints === undefined ||
               repo === undefined ||
-              s.running.size + past === 0 ||
+              s.running.size + past.length === 0 ||
               asked.length === 0
             ) {
               return skipped
             }
+            const read = new Map<string, Issue>()
+            for (const id of past) {
+              if (s.issues.has(id)) continue
+              const issue = yield* linksOf(id)
+              if (issue !== null) read.set(id, issue)
+            }
+            if (read.size > 0) {
+              yield* Ref.update(slots, (now) => ({
+                ...now,
+                issues: new Map([...now.issues, ...read]),
+              }))
+            }
             const running = new Map<string, Footprint>()
-            for (const [id, issue] of s.issues) {
+            for (const [id, issue] of [...s.issues, ...read]) {
               const fp = footprintOf(issue, repo, predicted)
               running.set(id, withChanges(fp, yield* changedIn(id), repo))
             }
@@ -717,7 +731,7 @@ export const make = (
         const dispatched: Array<string> = []
         for (;;) {
           const { s, state } = yield* current
-          const past = mergingIn(state, s.running).length
+          const past = mergingIn(state, s.running)
           const slot = slotFree(s, state, options.concurrent)
           // A ticket back in the queue whose last fiber still holds its slot waits for it to end.
           const inLine = queue.filter(
@@ -739,7 +753,7 @@ export const make = (
           let start: Issue | undefined
           let next: string | null = null
           if (first !== undefined && s.solo === null) {
-            if (isSolo(first) && s.running.size + past > 0) next = first.id
+            if (isSolo(first) && s.running.size + past.length > 0) next = first.id
             else start = first
           }
           soloNext = slot ? next : null
