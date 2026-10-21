@@ -43,7 +43,9 @@ import {
   type FinishedTicket,
   gitWhy,
   type MergeEnv,
+  type MergeMemory,
   type MergeOptions,
+  notePass,
   offBranch,
   type Unchanged,
   unchanged,
@@ -52,7 +54,7 @@ import {
 import { Cause } from "./phase.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
 import { answers, namesTicket, untilSettled } from "./settle.ts"
-import { type SetUps, setUp } from "./setup.ts"
+import { setUp } from "./setup.ts"
 
 /** How many times a ticket's rebase conflicts are handed back to its worker in a run. */
 export const maxHandBacks = 2
@@ -582,7 +584,8 @@ export const rejectResolution = (
 
 /**
  * The hand-back of `stop`'s conflicts to the ticket's worker, Resolving: the hand-back given, what
- * the worker left verified, set up if need be (`setUps`, setup.ts) and checked. Verified: the
+ * the worker left verified, set up if need be (the memory's setUps, setup.ts) and checked, the
+ * commit it passed on kept in the memory's passes. Verified: the
  * caller puts it back in the merge queue; Unchanged, the branch left changing nothing, unchecked:
  * the caller closes it so; its setup or check failing: the caller hands that back, or blocks it
  * (checkback.ts). Else it is Blocked here, its branch put back and its notes saying
@@ -591,7 +594,7 @@ export const rejectResolution = (
 export const resolve = (
   stop: RebaseStop,
   options: MergeOptions,
-  setUps: SetUps,
+  memory: MergeMemory,
 ): Effect.Effect<Resolved, never, MergeEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -612,12 +615,15 @@ export const resolve = (
       )
       if (nothing !== undefined) return { _tag: "Unchanged", unchanged: nothing } satisfies Resolved
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
-      const setup = yield* setUp(stop.ticket, options, setUps, stop.fork, stop.onto, {
+      const setup = yield* setUp(stop.ticket, options, memory.setUps, stop.fork, stop.onto, {
         what: "resolution",
         from: stop.head,
       })
       const checked = setup._tag === "Failed" ? setup : yield* runMergeCheck(stop.ticket)
-      if (checked._tag !== "Failed") return { _tag: "Verified" } satisfies Resolved
+      if (checked._tag !== "Failed") {
+        yield* notePass(stop.ticket, options, memory.passes)
+        return { _tag: "Verified" } satisfies Resolved
+      }
       return {
         _tag: "CheckFailed",
         error: checked.error,

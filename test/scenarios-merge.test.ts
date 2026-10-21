@@ -30,7 +30,7 @@ import {
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { waitForTest } from "../src/testing/Attention.ts"
-import type { Script as ChecksScript } from "../src/testing/Checks.ts"
+import { type Script as ChecksScript, passed } from "../src/testing/Checks.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
 import {
@@ -333,6 +333,9 @@ const closedLine = (id: string) =>
 const resolvingLine = (id: string, files: string) =>
   `  RESOLVING: tutti/${id} conflicts with main in ${files}; handed back to its worker to resolve (up to 20m)`
 
+const onTopLine = (id: string) =>
+  `  tutti/${id} is on top of main already: checking it with '${check}' before it merges`
+
 const fixingLine = (id: string, attempt: number) =>
   `  FIXING: '${check}' fails on tutti/${id} rebased onto main; handed back to its worker to fix (${attempt} of 2, up to 20m)`
 
@@ -366,6 +369,7 @@ describe("conflicts handed back", () => {
     expectLog(ran, [
       "[1] a dispatching: a",
       "[2] b dispatching: b",
+      onTopLine("a"),
       closedLine("a"),
       resolvingLine("b", "shared.txt"),
       `  b's worker finished the rebase; checking it with '${check}'`,
@@ -378,8 +382,11 @@ describe("conflicts handed back", () => {
     expect(composed(ran, "b")).toEqual([
       expect.stringContaining("rebasing tutti/b onto it stopped on conflicts in shared.txt"),
     ])
-    // The resolution was checked once, in b's worktree.
-    expect(ran.checkRuns.map((each) => each.cwd)).toEqual([join(ran.root, "b")])
+    // a was checked on top of main; the resolution once, in b's worktree, and not again on top.
+    expect(ran.checkRuns.map((each) => each.cwd)).toEqual([
+      join(ran.root, "a"),
+      join(ran.root, "b"),
+    ])
   })
 
   test("a conflict rejected: the rebase left unfinished, b Blocked MERGE_CONFLICT", async () => {
@@ -410,19 +417,20 @@ describe("conflicts handed back", () => {
       ticket: "b",
       why: "MERGE_CONFLICT",
     })
-    // Nothing was checked, and the branch is back where b's worker left it.
-    expect(ran.checkRuns).toEqual([])
+    // Only a was checked, on top of main; b's branch is back where its worker left it.
+    expect(ran.checkRuns.map((each) => each.cwd)).toEqual([join(ran.root, "a")])
     expect(ran.issues.find((issue) => issue.id === "b")?.labels).toContain("unmerged")
   })
 })
 
 describe("a check handed back", () => {
   test("a check fixed: Merging → Fixing → ToMerge → Merging → Done, the fix merged", async () => {
-    // a lands first; b, rebased onto it, fails the check once, and its worker fixes it.
+    // a lands first, checked on top of main; b, rebased onto it, fails the check once, and its
+    // worker fixes it.
     let landed: ReadonlyMap<string, string> = new Map()
     const ran = await runs({
       tickets: ["a", "b"],
-      checks: { fast: [fails()] },
+      checks: { fast: [passed("fast"), fails()] },
       scripts: (world, places) =>
         aThenB(
           world,
@@ -466,8 +474,9 @@ describe("a check handed back", () => {
     expect(others).toEqual([])
     expect(handBack).toContain(`tutti/b was rebased onto it; now '${check}' fails on it.`)
     expect(handBack).toContain("these lines say what failed:\nerror: a.test.ts: expected 1")
-    // The check ran on b's rebased branch, then on its fix; a fast-forwarded unchecked.
+    // The check ran on a on top of main, on b's rebased branch, then on its fix, not again.
     expect(ran.checkRuns.map((each) => each.cwd)).toEqual([
+      join(ran.root, "a"),
       join(ran.root, "b"),
       join(ran.root, "b"),
     ])
@@ -477,7 +486,7 @@ describe("a check handed back", () => {
   test("a fix that fails twice: Fixing → Fixing → Review, CHECKS_FAILED, the worktree kept", async () => {
     const ran = await runs({
       tickets: ["a", "b"],
-      checks: { fast: [fails(), fails(), fails()] },
+      checks: { fast: [passed("fast"), fails(), fails(), fails()] },
       scripts: (world, places) =>
         aThenB(world, places, { "a.txt": "a\n" }, { "b.txt": "b\n" }, [
           ...fixes(world, places, "b", { "fix.txt": "one\n" }),
@@ -504,7 +513,7 @@ describe("a check handed back", () => {
     expectEvents(ran, ["dispatch", "dispatch", "closed", "warn", "end"])
     expect(ran.events.find((r) => r.kind === "warn")).toMatchObject({ ticket: "b", aside: true })
     expect(composed(ran, "b")).toHaveLength(2)
-    expect(ran.checkRuns).toHaveLength(3)
+    expect(ran.checkRuns).toHaveLength(4)
     const notes = ran.issues.find((issue) => issue.id === "b")?.notes ?? ""
     expect(notes).toContain("it was handed back to its worker to fix twice")
     expect(notes).toContain("not handed back again: it was handed back to its worker twice already")
@@ -564,8 +573,10 @@ describe("the base moving on", () => {
       "READY_EMPTY after 3 tickets",
     ])
     expectEvents(ran, ["dispatch", "dispatch", "dispatch", "closed", "closed", "closed", "end"])
-    // c was rebased and checked; b's resolution was checked, then checked again once rebased.
+    // a was checked on top of main; c was rebased and checked; b's resolution was checked, then
+    // checked again once rebased.
     expect(ran.checkRuns.map((each) => each.cwd)).toEqual([
+      join(ran.root, "a"),
       join(ran.root, "c"),
       join(ran.root, "b"),
       join(ran.root, "b"),
@@ -595,8 +606,10 @@ describe("the setup command", () => {
     ])
     expectEvents(ran, ["dispatch", "dispatch", "closed", "closed", "end"])
     expect(pathOf(ran, "b")).toEqual(["Queued", "Working", "ToMerge", "Merging", "Done"])
-    // The setup ran in b's worktree, before the check there.
+    // a, on top of main, was checked without a setup; the setup ran in b's worktree, before the
+    // check there.
     expect(ran.checkRuns.map((each) => [each.check, each.cwd])).toEqual([
+      ["fast", join(ran.root, "a")],
       ["setup", join(ran.root, "b")],
       ["fast", join(ran.root, "b")],
     ])
@@ -640,7 +653,7 @@ describe("the full check", () => {
       suite: "e2e",
       ticket: id,
     })
-    expect(ran.checkRuns.map((each) => each.check)).toEqual(["full"])
+    expect(ran.checkRuns.map((each) => each.check)).toEqual(["fast", "full"])
   })
 })
 

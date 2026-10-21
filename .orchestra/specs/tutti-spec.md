@@ -116,7 +116,7 @@ These are unchanged from orchestra unless marked otherwise.
 | **Attention request** | *New.* Something a worker is waiting on you for right now: a permission request (`canUseTool`) or a question it asked with `AskUserQuestion`. It is not a Beads ticket. It is answered on the dashboard, in the worker's view, or with `tutti answer` (§4.5). |
 | **Steered worker** | *New.* A worker you have messaged or interrupted. tutti sends it nothing automatically until you release it (§4.3). |
 | **Phase** | *New as a named concept.* Where a ticket is in the run: `Queued`, `Working`, `ToMerge`, `Merging`, `Resolving`, `Fixing`, `Done` and the rest. Phases change only through the transitions of the ticket state machine (§5.1). |
-| **Hand-back** | Sending a rebase conflict, or a check that fails on the rebased branch, back to the ticket's worker to fix. |
+| **Hand-back** | Sending a rebase conflict, or a check that fails on the branch before it merges, back to the ticket's worker to fix. |
 | **Carry-over** | The workers a run leaves, saved in `.tutti/run/state.json` and taken up by the next run. *Changed:* they are taken up by resuming their sessions, never by adopting a live process. |
 | **Environment hold** | Workers keep failing at once, whatever ticket they have. The run holds, probes the machine, and goes on or ends. |
 | **Usage-limit hold** | *New.* The Claude account's usage limit is reached. No new tickets until it resets (§4.12). |
@@ -721,6 +721,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
    - `OFF_BRANCH`, `DIRTY_WORKTREE`, rebase (`REBASE_FAILED`, `MERGE_CONFLICT` with hand-back)
    - the setup when `setup_files` changed
    - `check_fast` within its limit (output kept, `FLAKY:` warnings, `CHECKS_FAILED` with hand-back)
+   - a branch on top of the base already, as when nothing merged while its ticket ran, is checked too, set up first if a dependency file changed since its last setup, as orchestra 0.8.5 has it: no ticket reaches the base unchecked (`tutti/<id> is on top of <base> already: checking it with '<check>' before it merges`). A failure there is handed back or sets the ticket aside as on a rebased branch; a branch whose commits change nothing needs no check, and one the check passed on in this run, as its worker fixed it or resolved its rebase, isn't checked again
    - fast-forward (`MERGE_FAILED`, exit 6); cleanup; epics closed when their last subticket merges, up the tree
 8. **Recheck**: a ticket set aside for a failed check is checked once more after the base moves on, unless it failed in its own code. It takes a slot as a running ticket does, until its merge is over, and none is checked again while the run winds down or holds (a stop, or the usage limit), or while a solo ticket runs or is next, as orchestra's recheckTickets has it.
 9. **Waits for merge**: a worker that stops with nothing done, having linked a blocker that hasn't merged, puts its ticket back in the queue.
@@ -858,7 +859,7 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `Merging` | `Done{merged}` | rebased if the base moved, set up if a dependency file changed, checked, and fast-forwarded | `closed` |
 | `Merging` | `Done{noChange}` | its branch has no change of its own left to merge: git's rebase dropped every commit, the base having their changes already, or its commits together change nothing. Its worktree and branch are removed as after a merge | `closed` (`no change to merge`) |
 | `Merging` | `Resolving` | the rebase stopped on conflicts, and its worker can take them: idle, not steered (§4.3) unless you handed it the conflict, attempts left, a check command set, hand-backs on | the log's `RESOLVING` |
-| `Merging` | `Fixing` | the check failed on the rebased branch, and its worker can take it | the log's `FIXING` |
+| `Merging` | `Fixing` | the check failed on the branch, rebased or on top of the base already, and its worker can take it | the log's `FIXING` |
 | `Merging` | `Review` | the check failed and can't be handed back (it timed out, the run holds or winds down, the attempts are used up, hand-backs are off); or `DIRTY_WORKTREE`, `REBASE_FAILED`, `OFF_BRANCH` | `warn` with `aside` |
 | `Merging` | `Blocked` | conflicts that can't be handed back; or the main checkout dirty or off its branch, git failing, or the branch not fast-forwarding | `warn` or `hold` with `blocked` |
 | `Resolving` | `ToMerge` | tutti verified the resolution: the rebase finished; the worktree clean and on its branch; only the ticket's own commits on top of the base; the check passing | `phase` |

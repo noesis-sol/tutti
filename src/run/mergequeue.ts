@@ -38,6 +38,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import { makePasses } from "./check.ts"
 import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from "./checkback.ts"
 import { RunFibers } from "./fibers.ts"
 import { type HandBacks, handOver, makeHandBacks, type RebaseStop, resolve } from "./handback.ts"
@@ -140,7 +141,8 @@ export const make = (
     const setUps = yield* makeSetUps
     const handBacks = yield* makeHandBacks
     const fixes = yield* makeFixes
-    const memory = { rechecks, setUps, handBacks, fixes }
+    const passes = yield* makePasses
+    const memory = { rechecks, setUps, passes, handBacks, fixes }
     // Changes to the line and the places it gives, one at a time.
     const lock = yield* Semaphore.make(1)
     const state = SubscriptionRef.get(ref)
@@ -264,7 +266,7 @@ export const make = (
       Effect.gen(function* () {
         const handed = yield* handOver(stop, options, handBacks)
         const work = Effect.gen(function* () {
-          const resolved = yield* resolve(stop, options, memory.setUps)
+          const resolved = yield* resolve(stop, options, memory)
           if (resolved._tag === "Unchanged") {
             yield* Effect.uninterruptible(closeUnchanged(stop.ticket, options, resolved.unchanged))
             return false

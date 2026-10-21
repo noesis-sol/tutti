@@ -13,6 +13,7 @@ import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, gone, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
+import { passed } from "../src/testing/Checks.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { texts } from "../src/testing/Log.ts"
 import {
@@ -128,7 +129,8 @@ const runs = (
       backlog: seeds,
       git: { dir: repo, files: { "README.md": "tutti\n" } },
       worktrees: { root },
-      checks: { fast: [fails()] },
+      // x, on top of main, passes; a, rebased onto it, fails.
+      checks: { fast: [passed("fast"), fails()] },
       scripts: (world: World) => scripts(world, root),
     },
     Effect.gen(function* () {

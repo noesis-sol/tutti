@@ -152,7 +152,10 @@ export const resolving = (r: {
     Tag.resolving,
   )`${branch(r.id)} conflicts with ${r.base} in ${r.files}; handed back to its worker to resolve (up to ${r.limit})`
 
-/** FIXING: the check failed on a ticket's rebased branch, handed back to its worker. */
+/**
+ * FIXING: the check failed on a ticket's branch, rebased or on top of the base already, handed back
+ * to its worker.
+ */
 export const fixing = (f: {
   readonly id: string
   readonly base: string
@@ -162,10 +165,16 @@ export const fixing = (f: {
   readonly attempt: number
   readonly attempts: number
   readonly limit: string
+  /** The branch was on top of the base already, not rebased. */
+  readonly onTop?: boolean
 }): Line =>
   ticketLine(
     Tag.fixing,
-  )`${f.failure} on ${branch(f.id)} rebased onto ${f.base}; handed back to its worker to fix (${f.attempt} of ${f.attempts}, up to ${f.limit})`
+  )`${f.failure} on ${branchOn(branch(f.id), f.base, f.onTop === true)}; handed back to its worker to fix (${f.attempt} of ${f.attempts}, up to ${f.limit})`
+
+/** The branch as its check ran on it: `tutti/a rebased onto main`, or `tutti/a on top of main`. */
+export const branchOn = (name: string, base: string, onTop: boolean): string =>
+  onTop ? `${name} on top of ${base}` : `${name} rebased onto ${base}`
 
 /** A permission request as `<what>`: the request's title, else its tool and input. */
 const request = (id: string, what: string): Line => line`${id}'s worker asks: ${what}`

@@ -3,7 +3,9 @@
 // orchestra's checkback.go has it. A check that fails on a finished ticket's branch rebased onto
 // the base, after a clean rebase or once its worker has resolved the rebase's conflicts, often
 // fails where its change meets what landed meanwhile: a test another ticket added for the code as
-// it was. So the failure is handed back to the ticket's worker, which has the change in mind, when
+// it was. A check that fails on a branch on top of the base already, as its worker left it, is
+// handed back as well, its prompt saying only that the check fails before the branch merges. So the
+// failure is handed back to the ticket's worker, which has the change in mind, when
 // it can take it: hand-backs on (merge.check_hand_backs), attempts left of them, a failure to show
 // it (the check finished), git able to say what the check failed on, the run neither holding nor winding down, and
 // its worker Idle or Failed and not steered, or its session closed by tutti, which is resumed, or
@@ -39,7 +41,7 @@ import { failedHow, runMergeCheck, saidOf } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { failedResolved, give, type RebaseStop, rejectResolution, workerAway } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, fixing, Log, line } from "./log.ts"
+import { branchOn, detail, fixing, Log, line } from "./log.ts"
 import {
   checksFailed,
   type FinishedTicket,
@@ -47,6 +49,7 @@ import {
   type MergeEnv,
   type MergeMemory,
   type MergeOptions,
+  notePass,
   offBranch,
   uncommitted,
 } from "./merge.ts"
@@ -54,14 +57,17 @@ import { Cause } from "./phase.ts"
 import { namesTicket } from "./settle.ts"
 import { setUp } from "./setup.ts"
 
-/** A check that failed on a finished ticket's branch rebased onto the base, as the merge found it. */
+/**
+ * A check that failed on a finished ticket's branch rebased onto the base, or on top of it already
+ * (`onTop`), as the merge found it.
+ */
 export interface CheckStop {
   readonly ticket: FinishedTicket
-  /** The base's commit the branch was rebased onto. */
+  /** The base's commit the branch was rebased onto, or is on top of. */
   readonly onto: string
-  /** Where the branch left the base before the rebase, for the setup (setup.ts). */
+  /** Where the branch left the base before the rebase, for the setup (setup.ts); `onto` on top. */
   readonly fork: string
-  /** The branch's commit before the rebase; "" when git couldn't say. */
+  /** The branch's commit before the rebase, its own on top; "" when git couldn't say. */
   readonly head: string
   /** The branch's commit the check failed on; "" when git couldn't say. */
   readonly at: string
@@ -71,6 +77,8 @@ export interface CheckStop {
   readonly output: string
   /** The rebase its worker resolved, when the check failed on the resolution. */
   readonly resolved?: RebaseStop
+  /** The branch was on top of the base already, as its worker left it, not rebased. */
+  readonly onTop?: boolean
 }
 
 /** How many times each ticket's failed check has been handed back to its worker in a run. */
@@ -137,7 +145,8 @@ export const maxLanded = 30
 /**
  * What the worker is asked to do with the failure on its rebased branch, as orchestra asks it: what
  * failed, what the output says, and what the rebase brought in from the base (`landed`, newest
- * first; undefined when git couldn't list it).
+ * first; undefined when git couldn't list it). On a branch on top of the base already, nothing
+ * landed, and the prompt says only that the check fails before it merges.
  */
 export const fixPrompt = (
   stop: CheckStop,
@@ -158,16 +167,25 @@ export const fixPrompt = (
       : listed.length > maxLanded
         ? [...listed.slice(0, maxLanded), `… and ${listed.length - maxLanded} more`].join("\n")
         : listed.join("\n")
+  const steps =
+    `Run '${check}' in the foreground until it passes, then commit the fix on ` +
+    `${branch} with ${id} in the commit message. ` +
+    "Don't do anything else: no rebase, no amending or rewriting of commits, no merge, no push, " +
+    "no ticket changes, and no uncommitted changes left. Say DONE when the fix is committed."
+  if (stop.onTop === true) {
+    return (
+      `tutti: Before ${branch} merges into ${base}, ${failedHow(stop.error)} on it. ` +
+      `Its whole output is in ${stop.output}; ${said}\n\n` +
+      `Fix ${branch} so that the check passes. ${steps}`
+    )
+  }
   return (
     `tutti: ${base} moved on while you worked, and ${branch} was rebased onto it; now ` +
     `${failedHow(stop.error)} on it. Its whole output is in ${stop.output}; ${said}\n\n` +
     `What landed on ${base} since your branch was cut (git log --oneline ` +
     `${stop.head.slice(0, 7)}..${stop.onto.slice(0, 7)}):\n${shown}\n\n` +
     `Fix ${branch} so that the check passes, keeping the intent of both your change and what ` +
-    `landed on ${base}. Run '${check}' in the foreground until it passes, then commit the fix on ` +
-    `${branch} with ${id} in the commit message. ` +
-    "Don't do anything else: no rebase, no amending or rewriting of commits, no merge, no push, " +
-    "no ticket changes, and no uncommitted changes left. Say DONE when the fix is committed."
+    `landed on ${base}. ${steps}`
   )
 }
 
@@ -197,6 +215,7 @@ export const handOverFix = (
       attempt,
       attempts: config.settings.merge.check_hand_backs,
       limit: formatDuration(config.settings.merge.resolve_timeout),
+      onTop: stop.onTop === true,
     })
     yield* events.emit({ kind: "info", ticket: id, text })
     yield* logs.write(text)
@@ -299,7 +318,7 @@ const handedBack = (tries: ReadonlyArray<string>, not: string): string => {
 /**
  * Sets the ticket aside after its failure was handed back `tries.length` times, the last failure as
  * `stop` says and `not` saying why it went back no more: Fixing → Review with CHECKS_FAILED after a
- * clean rebase, Fixing{afterResolution} → Blocked with MERGE_CONFLICT after a resolution, its notes
+ * clean rebase, or on a branch on top of the base already, Fixing{afterResolution} → Blocked with MERGE_CONFLICT after a resolution, its notes
  * saying what came of each attempt.
  */
 const setAside = (
@@ -314,13 +333,14 @@ const setAside = (
     const { id, branch } = stop.ticket
     const { base } = options
     const tried = handedBack(tries, not)
+    const onTop = stop.onTop === true
     if (stop.resolved !== undefined) {
       const why = `${failedResolved(stop.resolved, stop.error, stop.output)}, and was ${tried}`
       return yield* rejectResolution(stop.resolved, options, why, "Aside")
     }
     yield* Effect.ignore(
       beads.update(id, {
-        appendNotes: line`tutti: ${failedHow(stop.error)} on ${branch} rebased onto ${base} (output is in ${stop.output}); it was ${tried}; so ${id} was set aside for review.`,
+        appendNotes: line`tutti: ${failedHow(stop.error)} on ${branchOn(branch, base, onTop)} (output is in ${stop.output}); it was ${tried}; so ${id} was set aside for review.`,
       }),
     )
     yield* checksFailed(
@@ -331,6 +351,7 @@ const setAside = (
       stop.error,
       stop.output,
       `, after it was handed back to its worker to fix ${times(tries.length)} (see its notes)`,
+      onTop,
     )
   })
 
@@ -370,12 +391,16 @@ export const fixCheck = (
     const tries: Array<string> = []
     let stop = first
     for (;;) {
-      const landed = yield* Effect.result(git.log(options.repo, stop.head, stop.onto))
+      // Nothing landed under a branch on top of the base already.
+      const landed =
+        stop.onTop === true
+          ? undefined
+          : yield* Effect.result(git.log(options.repo, stop.head, stop.onto))
       const prompt = fixPrompt(
         stop,
         options.base,
         check,
-        Result.isSuccess(landed) ? landed.success : undefined,
+        landed !== undefined && Result.isSuccess(landed) ? landed.success : undefined,
       )
       const what = line`${id}'s failed check is handed back to its worker`
       const why = yield* give(stop.ticket, prompt, what, limit)
@@ -405,6 +430,7 @@ export const fixCheck = (
         return "aside"
       }
       if (checked._tag !== "Failed") {
+        yield* notePass(stop.ticket, options, memory.passes)
         tries.push(`its worker committed ${verified.commits} and the check passes`)
         yield* logs.write(detail`'${check}' passes on ${branch} as its worker fixed it`)
         return "verified"

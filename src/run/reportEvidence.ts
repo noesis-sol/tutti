@@ -11,6 +11,7 @@ import { type CheckError, OutputBounds } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { failedHow } from "./check.ts"
 import type { Entry } from "./ledger.ts"
+import { branchOn } from "./log.ts"
 import type { FinishedTicket, MergeOptions } from "./merge.ts"
 import { foldersOf, type Rechecks } from "./recheck.ts"
 import { descendants } from "./scope.ts"
@@ -26,8 +27,10 @@ export interface FailedCheck {
   readonly id: string
   readonly branch: string
   readonly base: string
-  /** The base's commit the branch was rebased onto. */
+  /** The base's commit the branch was rebased onto, or is on top of. */
   readonly onto: string
+  /** The branch was on top of the base already, not rebased. */
+  readonly onTop?: boolean
   readonly error: CheckError
   /** Where its whole output is. */
   readonly output: string
@@ -55,7 +58,7 @@ export const failedCheckSaid = (f: FailedCheck): string => {
   const notRun = f.error.check === "setup" ? ", so the check did not run" : ""
   const where = f.error._tag === "CheckNotRun" ? "" : `; its output is in ${f.output}`
   const lines = [
-    `${f.id}: ${failedHow(f.error)} on ${f.branch} rebased onto ${f.base} at ${at}${notRun}${where}.`,
+    `${f.id}: ${failedHow(f.error)} on ${branchOn(f.branch, f.base, f.onTop === true)} at ${at}${notRun}${where}.`,
   ]
   if (f.error._tag !== "CheckNotRun") {
     const { failingLines } = f.error
@@ -78,7 +81,7 @@ export const failedCheckSaid = (f: FailedCheck): string => {
 
 /**
  * Keeps for the report what the ticket's check said as it set the ticket aside, its branch rebased
- * onto the base at `onto`, with the folders its own commits change.
+ * onto the base at `onto`, or `onTop` of it already, with the folders its own commits change.
  */
 export const noteFailedCheck = (
   ticket: FinishedTicket,
@@ -87,6 +90,7 @@ export const noteFailedCheck = (
   onto: string,
   error: CheckError,
   output: string,
+  onTop = false,
 ): Effect.Effect<void, never, Git> =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -96,6 +100,7 @@ export const noteFailedCheck = (
       branch: ticket.branch,
       base: options.base,
       onto,
+      onTop,
       error,
       output,
       folders: Result.isSuccess(changed) ? foldersOf(changed.success) : null,

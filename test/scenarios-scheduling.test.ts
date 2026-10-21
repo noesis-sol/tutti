@@ -29,7 +29,7 @@ import {
   turn,
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
-import type { Script as ChecksScript } from "../src/testing/Checks.ts"
+import { type Script as ChecksScript, passed } from "../src/testing/Checks.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import type { Files } from "../src/testing/Git.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -936,7 +936,7 @@ describe("recheck", () => {
         .ticket("a", { priority: 1 })
         .ticket("b", { priority: 2 }),
       settings: (settings) => ({ concurrent: 3, ...noHandBacks(settings) }),
-      checks: { fast: [fails()] },
+      checks: { fast: [passed("fast"), fails()] },
       scripts: (world, places) => ({
         x: [works(world, places, "x")],
         a: [works(world, places, "a", { takes: "1 minute" })],
@@ -969,8 +969,9 @@ describe("recheck", () => {
       ticket: "a",
       why: "CHECKS_FAILED",
     })
-    // a was checked twice, b once; x fast-forwarded unchecked.
+    // a was checked twice, b once, and x once, on top of main.
     expect(ran.checkRuns.map((each) => each.cwd)).toEqual([
+      join(ran.root, "x"),
       join(ran.root, "a"),
       join(ran.root, "b"),
       join(ran.root, "a"),
@@ -987,7 +988,7 @@ describe("unmerged at the end", () => {
         .ticket("b", { priority: 1 })
         .ticket("c", { priority: 2, blockedBy: ["b"] }),
       settings: noHandBacks,
-      checks: { fast: [fails()] },
+      checks: { fast: [passed("fast"), fails()] },
       scripts: (world, places) => ({
         x: [works(world, places, "x", { takes: "1 minute" })],
         b: [works(world, places, "b", { takes: "2 minutes" })],

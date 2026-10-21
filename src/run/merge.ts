@@ -5,8 +5,11 @@
 //   anything is done; when the base moved on while the ticket ran, a worktree with uncommitted
 //   changes (DIRTY_WORKTREE) is set aside, and the branch is rebased (a refusal is REBASE_FAILED,
 //   conflicts MERGE_CONFLICT), set up when the rebase changed a dependency file (setup.ts), and
-//   checked again (CHECKS_FAILED, a failing setup too). A rebase interrupted is aborted, putting the
-//   branch back; a setup or check interrupted is killed.
+//   checked again (CHECKS_FAILED, a failing setup too). A branch on top of the base already, as
+//   when nothing merged while its ticket ran, is checked too (set up first if a dependency file
+//   changed since its last setup), so that no ticket reaches the base unchecked, as orchestra 0.8.5
+//   has it; one whose commits change nothing needs none. A rebase interrupted is aborted, putting
+//   the branch back; a setup or check interrupted is killed.
 // - fastForward, the step from the fast-forward to the end of its notes, which the merge queue runs
 //   protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE, GIT_FAILED), the base
 //   fast-forwarded (MERGE_FAILED), the worktree and branch removed, the epics the ticket was the last
@@ -20,8 +23,9 @@
 // A rebase that stops on conflicts is handed back to the ticket's worker when it can take it
 // (handback.ts): prepare is then over with the rebase left in progress, for the merge queue to hand
 // it over; one that can't be handed back is Blocked. So is a check, or the setup before it, that
-// fails on the rebased branch (checkback.ts): one that can't be handed back is set aside for review,
-// kept to be checked once more once the base moves on (recheck.ts).
+// fails on the branch, rebased or on top of the base already (checkback.ts): one that can't be
+// handed back is set aside for review, kept to be checked once more once the base moves on
+// (recheck.ts).
 import { Effect, Result } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -32,13 +36,20 @@ import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
-import { failedHow, markUnchecked, runMergeCheck, saidOf, uncheckedMark } from "./check.ts"
+import {
+  failedHow,
+  markUnchecked,
+  type Passes,
+  runMergeCheck,
+  saidOf,
+  uncheckedMark,
+} from "./check.ts"
 import { type CheckStop, type Fixes, whyNotFix } from "./checkback.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { type HandBacks, notHandedBack, type RebaseStop, whyNotHandBack } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
+import { branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { Cause, Detail } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
@@ -258,14 +269,27 @@ export const abandonRebase = (worktree: string) =>
     if (yield* git.rebaseInProgress(worktree)) yield* git.abortRebase(worktree)
   }).pipe(Effect.ignore)
 
-/** What a merge keeps of each ticket for the run: rechecks due, setups done, hand-backs. */
+/** What a merge keeps of each ticket for the run: rechecks due, setups done, passes, hand-backs. */
 export interface MergeMemory {
   readonly rechecks: Rechecks
   readonly setUps: SetUps
+  /** The commits the merge check passed on (check.ts). */
+  readonly passes: Passes
   readonly handBacks: HandBacks
   /** The check hand-backs. */
   readonly fixes: Fixes
 }
+
+/** Keeps the commit the ticket's branch is at as one its merge check passed on, if git can say. */
+export const notePass = (
+  ticket: FinishedTicket,
+  options: MergeOptions,
+  passes: Passes,
+): Effect.Effect<void, never, Git> =>
+  Effect.gen(function* () {
+    const at = yield* Effect.result((yield* Git).revParse(options.repo, ticket.branch))
+    if (Result.isSuccess(at)) yield* passes.set(ticket.id, at.success)
+  })
 
 /**
  * Rebases the ticket, its branch off the base at `fork`, onto the base, which moved on to `onto`,
@@ -359,8 +383,10 @@ const rebaseAndCheck = (
 
 /**
  * Sets up the ticket, its branch rebased from `fork` (its commit `head` then; "" when git couldn't
- * say) onto the base at `onto`, if need be, and checks it: true when the check passed; false when
- * either set it aside; the check stopped, when its failure is to be handed back to its worker.
+ * say) onto the base at `onto`, or `onTop` of it already (`fork` is then `onto`, and `head` the
+ * branch's own commit), if need be, and checks it: true when the check passed, the commit it passed
+ * on kept in the memory's passes; false when either set it aside; the check stopped, when its
+ * failure is to be handed back to its worker.
  */
 const setUpAndCheck = (
   ticket: FinishedTicket,
@@ -369,6 +395,7 @@ const setUpAndCheck = (
   fork: string,
   onto: string,
   head: string,
+  onTop = false,
 ) =>
   Effect.gen(function* () {
     const { git, ledger, log } = yield* services
@@ -384,11 +411,12 @@ const setUpAndCheck = (
           at: Result.isSuccess(at) ? at.success : "",
           error,
           output,
+          onTop,
         }
         const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(id))
         if (not === undefined) return stop
         const tried = not === "" ? "" : line`; not handed back to its worker: ${not}`
-        yield* checksFailed(ticket, options, memory.rechecks, onto, error, output, tried)
+        yield* checksFailed(ticket, options, memory.rechecks, onto, error, output, tried, onTop)
         return false
       })
     const setup = yield* setUp(ticket, options, memory.setUps, fork, onto)
@@ -400,9 +428,15 @@ const setUpAndCheck = (
         yield* log.write(
           detail`no check command in .tutti/settings.json: merging ${branch} without checking the rebased code`,
         )
+        yield* notePass(ticket, options, memory.passes)
         return true
       case "Passed":
-        yield* log.write(detail`'${checked.command}' passes on the rebased ${branch}`)
+        yield* log.write(
+          onTop
+            ? detail`'${checked.command}' passes on ${branchOn(branch, options.base, true)}`
+            : detail`'${checked.command}' passes on the rebased ${branch}`,
+        )
+        yield* notePass(ticket, options, memory.passes)
         return true
       case "Failed":
         return yield* failed(checked.error, checked.output)
@@ -417,9 +451,9 @@ export const checksFailedDetail = (error: CheckError): string => {
 
 /**
  * Sets the ticket aside as its check, or the setup before it, failed on its branch rebased onto the
- * base at `onto`, kept to be checked once more once the base moves on, unless this was that once
- * (recheck.ts), and what the check said kept for the report (reportEvidence.ts). `tried` says what
- * came of handing it back to its worker, if anything.
+ * base at `onto`, or `onTop` of it already, kept to be checked once more once the base moves on,
+ * unless this was that once (recheck.ts), and what the check said kept for the report
+ * (reportEvidence.ts). `tried` says what came of handing it back to its worker, if anything.
  */
 export const checksFailed = (
   ticket: FinishedTicket,
@@ -429,6 +463,7 @@ export const checksFailed = (
   error: CheckError,
   output: string,
   tried = "",
+  onTop = false,
 ): Effect.Effect<void, never, MergeEnv> =>
   Effect.gen(function* () {
     const { log } = yield* services
@@ -441,22 +476,24 @@ export const checksFailed = (
       `${checksFailedDetail(error)}${again}`,
       ticketLine(
         Tag.checksFailed,
-      )`${ticket.id} closed, but ${failedHow(error)}${again} on ${ticket.branch} rebased onto ${options.base}${tried}; worktree ${ticket.worktree} left for review${where}${later}`,
+      )`${ticket.id} closed, but ${failedHow(error)}${again} on ${branchOn(ticket.branch, options.base, onTop)}${tried}; worktree ${ticket.worktree} left for review${where}${later}`,
     )
     const said = saidOf(error)
     if (said.length > 0) yield* log.write(...said.map((each) => detail`  ${each}`))
-    yield* noteFailedCheck(ticket, options, rechecks, onto, error, output)
+    yield* noteFailedCheck(ticket, options, rechecks, onto, error, output, onTop)
   })
 
 /**
  * The part of the merge that may be interrupted: the ticket's worktree checked to be on its branch,
  * and, each time the base has moved on, rebased onto it, set up if need be and checked; a branch on
- * top of the base still marked as rebased and unchecked (check.ts), as a quit leaves one, is set up
- * if need be and checked too. Ready once its branch is on top of the base, checked; over when it
- * was set aside (kept in the memory's rechecks when its check failed), blocked or stopped the
- * merges; HandBack when its rebase stopped on conflicts its worker can take; FixBack when its check
- * failed in a way its worker can take; Unchanged when its branch changes nothing beyond the base,
- * as when git's rebase dropped every commit.
+ * top of the base already is set up if need be and checked too, as orchestra 0.8.5 has it, unless
+ * the check passed on it as it is in this run (the memory's passes), and so is one still marked as
+ * rebased and unchecked (check.ts), as a quit leaves one, its log line saying so. A branch whose
+ * commits change nothing needs no check. Ready once its branch is on top of the base, checked; over
+ * when it was set aside (kept in the memory's rechecks when its check failed), blocked or stopped
+ * the merges; HandBack when its rebase stopped on conflicts its worker can take; FixBack when its
+ * check failed in a way its worker can take; Unchanged when its branch changes nothing beyond the
+ * base, as when git's rebase dropped every commit.
  */
 export const prepare = (
   ticket: FinishedTicket,
@@ -464,7 +501,7 @@ export const prepare = (
   memory: MergeMemory,
 ): Effect.Effect<Prepared, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, log } = yield* services
+    const { config, git, log } = yield* services
     const { id, branch, worktree } = ticket
     const { repo, base } = options
     // A conflict you handed over is handed back to its steered worker in this merge only (§ 4.3).
@@ -481,8 +518,9 @@ export const prepare = (
       )
       return { _tag: "Over" } satisfies Prepared
     }
-    // A mark found and checked in this merge isn't checked again, even when the Store kept it.
-    let checkedMark = false
+    // Checked in this merge, on top of the base: a mark found isn't checked again, even when the
+    // Store kept it.
+    let checked = false
     for (let pass = 0; ; pass++) {
       const where = yield* Effect.result(
         Effect.all({ onto: git.revParse(repo, base), fork: git.mergeBase(repo, base, branch) }),
@@ -505,23 +543,40 @@ export const prepare = (
       )
       if (nothing !== undefined) return nothing
       if (fork === onto) {
-        const unchecked = checkedMark ? undefined : yield* uncheckedMark(id)
-        if (unchecked === undefined) return { _tag: "Ready", onto } satisfies Prepared
-        checkedMark = true
-        yield* log.write(
-          detail`${branch} is on top of ${base}, but its check didn't finish after tutti rebased it; checking it now`,
-        )
-        const checked = yield* setUpAndCheck(
-          ticket,
-          options,
-          memory,
-          unchecked.fork === "" ? onto : unchecked.fork,
-          onto,
-          unchecked.head,
-        )
-        if (checked === false) return { _tag: "Over" } satisfies Prepared
-        if (checked === true) continue
-        return { _tag: "FixBack", stop: checked } satisfies Prepared
+        if (checked) return { _tag: "Ready", onto } satisfies Prepared
+        const unchecked = yield* uncheckedMark(id)
+        const command = config.settings.checks.fast.command
+        let result: boolean | CheckStop
+        if (unchecked !== undefined) {
+          yield* log.write(
+            detail`${branch} is on top of ${base}, but its check didn't finish after tutti rebased it; checking it now`,
+          )
+          result = yield* setUpAndCheck(
+            ticket,
+            options,
+            memory,
+            unchecked.fork === "" ? onto : unchecked.fork,
+            onto,
+            unchecked.head,
+          )
+        } else {
+          // Every merge is checked, a branch on top of the base already too, unless the check
+          // passed on it as it is in this run: as its worker fixed it, or resolved its rebase.
+          if (command === null) return { _tag: "Ready", onto } satisfies Prepared
+          const at = yield* Effect.result(git.revParse(repo, branch))
+          const head = Result.isSuccess(at) ? at.success : ""
+          if (head !== "" && (yield* memory.passes.at(id)) === head) {
+            return { _tag: "Ready", onto } satisfies Prepared
+          }
+          yield* log.write(
+            detail`${branch} is on top of ${base} already: checking it with '${command}' before it merges`,
+          )
+          result = yield* setUpAndCheck(ticket, options, memory, onto, onto, head, true)
+        }
+        if (result === false) return { _tag: "Over" } satisfies Prepared
+        if (result !== true) return { _tag: "FixBack", stop: result } satisfies Prepared
+        checked = true
+        continue
       }
       if (pass === maxPasses) {
         const text = ticketLine(
@@ -544,7 +599,10 @@ export const prepare = (
       }
       const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto, waived)
       if (rebased === false) return { _tag: "Over" } satisfies Prepared
-      if (rebased === true) continue
+      if (rebased === true) {
+        checked = true
+        continue
+      }
       if ("_tag" in rebased) return rebased
       if ("files" in rebased) return { _tag: "HandBack", stop: rebased } satisfies Prepared
       return { _tag: "FixBack", stop: rebased } satisfies Prepared

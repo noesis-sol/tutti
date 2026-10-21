@@ -26,7 +26,7 @@ import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Seed } from "../src/testing/Beads.ts"
-import type { Script as ChecksScript } from "../src/testing/Checks.ts"
+import { type Script as ChecksScript, passed } from "../src/testing/Checks.ts"
 import { layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { advance, backlog, type Ran, type Scripts, scenario, type World } from "./harness.ts"
@@ -357,7 +357,8 @@ describe("the reviewer of a whole run", () => {
       },
       backlog: backlog().ticket("a").ticket("b").seeds,
       tickets: ["a", "b"],
-      checks: { fast: [failed(["src/b/b.test.ts:3: expected 1"])] },
+      // a, on top of main, passes; b, rebased onto it, fails.
+      checks: { fast: [passed("fast"), failed(["src/b/b.test.ts:3: expected 1"])] },
       scripts: (world, root) => ({
         a: [works(world, root, "a", { files: { "a.txt": "a\n" } })],
         b: [

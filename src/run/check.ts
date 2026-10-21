@@ -10,8 +10,13 @@
 // fast-forward without checking it. So before tutti rebases a branch, the ticket is marked in
 // state.json as rebased and unchecked (`rebased_unchecked`), and a merge check passing on it
 // clears the mark: a branch on top of the base that is still marked is checked before it merges.
+//
+// A branch on top of the base already, as when nothing merged while its ticket ran, is checked
+// before it merges too, as orchestra 0.8.5 has it: no ticket reaches the base unchecked. A run
+// keeps the commit of each ticket's branch its check last passed on (Passes), so a branch checked
+// as its worker fixed it, or resolved its rebase, isn't checked again while it stays on top.
 import { join } from "node:path"
-import { Effect, type Schema, type Scope } from "effect"
+import { Effect, Ref, type Schema, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
@@ -156,6 +161,24 @@ export const clearUnchecked = (id: string): Effect.Effect<void, never, Store> =>
     if ((yield* uncheckedMark(id)) === undefined) return
     yield* Effect.ignore(store.unsetMetadata(id, uncheckedKey))
   })
+
+/** The commits of the tickets' branches the merge check last passed on in a run. */
+export interface Passes {
+  /** The ticket's branch's commit the check last passed on in this run, if it passed. */
+  at(id: string): Effect.Effect<string | undefined>
+  /** The check passed on the ticket's branch at `commit`. */
+  set(id: string, commit: string): Effect.Effect<void>
+}
+
+/** A run's passes: none yet. */
+export const makePasses: Effect.Effect<Passes> = Effect.map(
+  Ref.make<ReadonlyMap<string, string>>(new Map()),
+  (ref) =>
+    ({
+      at: (id) => Effect.map(Ref.get(ref), (passes) => passes.get(id)),
+      set: (id, commit) => Ref.update(ref, (passes) => new Map(passes).set(id, commit)),
+    }) satisfies Passes,
+)
 
 /**
  * Runs the merge check in the ticket's worktree, its output in check.log, and says how it went. A
