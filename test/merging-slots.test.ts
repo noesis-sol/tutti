@@ -168,7 +168,7 @@ describe("slots taken", () => {
 
 describe("a ticket past its work", () => {
   test("holds back a ticket overlapping it until it merges, and past the cap a merge frees the slot", async () => {
-    // Two slots. x merges at once, unchecked; every merge after it is checked. b settles at 1m and
+    // Two slots. x merges at once, its check on top of main passing at once. b settles at 1m and
     // its check takes 10m; a, touching src/a.ts, settles at 2m and waits for b, then its check takes
     // 5m: it merges at 16m. o, touching src/a.ts too, waits for a to merge, though slots are free:
     // c takes b's slot at 1m, and d a's at 2m. c settles at 4m, the third ticket past its work: d
@@ -183,7 +183,7 @@ describe("a ticket past its work", () => {
         .ticket("c", { priority: 4, ...touching("src/c.ts") })
         .ticket("d", { priority: 5 })
         .ticket("e", { priority: 6 }),
-      checks: { fast: [slowCheck("10 minutes"), slowCheck("5 minutes")] },
+      checks: { fast: [passed("fast"), slowCheck("10 minutes"), slowCheck("5 minutes")] },
       scripts: (world, root) => ({
         x: [works(world, root, "x")],
         b: [works(world, root, "b", { takes: "1 minute" })],
@@ -226,14 +226,14 @@ describe("a ticket past its work", () => {
   }, 30_000)
 
   test("keeps a solo ticket next waiting until it merges", async () => {
-    // x merges at once, unchecked; b settles at 1m and its check takes 10m. s, solo, is next from
-    // the start, and waits for b's merge, not only for its worker.
+    // x merges at once, its check passing at once; b settles at 1m and its check takes 10m. s,
+    // solo, is next from the start, and waits for b's merge, not only for its worker.
     const ran = await runs({
       backlog: backlog()
         .ticket("x", { priority: 0 })
         .ticket("b", { priority: 1 })
         .ticket("s", { priority: 2, labels: ["solo"] }),
-      checks: { fast: [slowCheck("10 minutes")] },
+      checks: { fast: [passed("fast"), slowCheck("10 minutes")] },
       scripts: (world, root) => ({
         x: [works(world, root, "x")],
         b: [works(world, root, "b", { takes: "1 minute" })],

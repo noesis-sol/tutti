@@ -414,6 +414,7 @@ export const fixCheck = (
         return "aside"
       }
       const checked = yield* checkFix(stop, options, memory)
+      if (checked._tag !== "Failed") yield* notePass(stop.ticket, options, memory.passes)
       if (verified._tag === "Unchanged") {
         if (checked._tag !== "Failed") {
           tries.push("its worker committed nothing and the check passes on a second run")
@@ -430,7 +431,6 @@ export const fixCheck = (
         return "aside"
       }
       if (checked._tag !== "Failed") {
-        yield* notePass(stop.ticket, options, memory.passes)
         tries.push(`its worker committed ${verified.commits} and the check passes`)
         yield* logs.write(detail`'${check}' passes on ${branch} as its worker fixed it`)
         return "verified"
