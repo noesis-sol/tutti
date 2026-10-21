@@ -766,7 +766,9 @@ describe("the usage-limit hold", () => {
     ])
     expect(composed(ran, "a")).toEqual([carryOnText("a")])
     expect(pathOf(ran, "a")).toEqual(["Queued", "Working", "ToMerge", "Merging", "Done"])
-  })
+    // Slow under load, not racing: the 2 hours wake the attention folder's 2-second poll
+    // (attentionFiles.ts pollEvery) 3600 times, each a few scheduler turns.
+  }, 30_000)
 
   test("a recorded rejection with no reset known ends the run USAGE_LIMIT, exit 8", async () => {
     const ran = await runs({
