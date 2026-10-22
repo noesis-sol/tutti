@@ -281,6 +281,33 @@ export const exitCodes = {
   interrupted: 130,
 } as const
 
+/**
+ * What each exit code means, for the reviewer (§ 5 item 10): one entry a code, so a new code
+ * can't go without one. Each names the stop words that end a run with it.
+ */
+export const exitMeanings: Record<keyof typeof exitCodes, string> = {
+  ok:
+    "nothing was left to start or merge, or the limit was reached; " +
+    "a run of one ticket says in its final line whether all of it is merged",
+  setup:
+    "a setup problem: the startup checks failed, or a requirement went missing as the run went " +
+    "(REQUIREMENTS_MISSING)",
+  stuck: "a worker stopped the run (PAUSED, BLOCKED, TICKET_LIMIT) and needs attention",
+  tool:
+    "a Beads, git or Agent SDK command failed (BEADS_FAILED, GIT_FAILED, AGENT_FAILED), " +
+    "a ticket's worktree couldn't be set up (WORKTREE_FAILED), the run's state couldn't be written " +
+    "(STATE_UNWRITABLE), or a fiber panicked (PANIC)",
+  dirty: "the main checkout had uncommitted changes or left its branch (DIRTY_TREE)",
+  merge: "a finished ticket's branch did not fast-forward (MERGE_FAILED)",
+  environment:
+    "workers kept failing at once, whichever ticket they had: the environment, not the tickets " +
+    "(ENVIRONMENT)",
+  usageLimit:
+    "the account's usage limit held the run, and it reset too late or at an unknown time " +
+    "(USAGE_LIMIT)",
+  interrupted: "the run was quit (INTERRUPTED)",
+}
+
 /** Each stop reason's word, as its line starts, and the exit code the run ends with for it. */
 export const stopCodes = {
   REQUIREMENTS_MISSING: exitCodes.setup,

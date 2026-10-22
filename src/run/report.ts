@@ -30,6 +30,7 @@ import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git, type GitError } from "../services/Git.ts"
 import { escapeMarkdown, sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
+import { exitCodes, exitMeanings } from "./holds.ts"
 import { type Entry, Ledger } from "./ledger.ts"
 import { clock, clockFrom, reportName, span } from "./localTime.ts"
 import * as log from "./log.ts"
@@ -101,30 +102,12 @@ export const reportWritten = (path: string): Line => tagged("REPORT")`written to
 /** The report not written, and why. */
 export const reportNotSaved = (why: string): Line => line`report not saved: ${why}`
 
-/** What the run's exit code means, for the reviewer (§ 5 item 10). */
+/** What the run's exit code means, for the reviewer (§ 5 item 10), from `exitMeanings`. */
 export const exitMeaning = (code: number): string => {
-  switch (code) {
-    case 0:
-      return (
-        "nothing was left to start or merge, or the limit was reached; " +
-        "a run of one ticket says in its final line whether all of it is merged"
-      )
-    case 3:
-      return "a worker stopped the run (PAUSED, BLOCKED, TICKET_LIMIT) and needs attention"
-    case 4:
-      return "a Beads, git or Agent SDK command failed"
-    case 5:
-      return "the main checkout had uncommitted changes or left its branch"
-    case 6:
-      return "a finished ticket's branch did not fast-forward"
-    case 7:
-      return "workers kept failing at once, whichever ticket they had: the environment, not the tickets"
-    case 8:
-      return "the account's usage limit held the run, and it reset too late or at an unknown time"
-    case 130:
-      return "the run was quit"
-  }
-  return "unknown"
+  const name = (Object.keys(exitCodes) as Array<keyof typeof exitCodes>).find(
+    (each) => exitCodes[each] === code,
+  )
+  return name === undefined ? "unknown" : exitMeanings[name]
 }
 
 /** `n` and `noun`, `noun` made plural unless n is 1: `1 denial`, `3 denials`. */
