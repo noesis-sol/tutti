@@ -1306,6 +1306,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* Ref.set(ending, true)
     // No ticket is taken any more: the guess under way is aborted.
     if (predictor !== undefined) yield* predictor.interrupt
+    // A worker past its ticket limit, or waiting on you, is still at it: every ticket's fiber is
+    // stopped now, before anything else of the end, so that an answer through `tutti answer`, which
+    // the loop's end doesn't wait for, can't run a worker on into the end's steps. Quitting stops
+    // them in its own order (quitNow).
+    const over = (yield* SubscriptionRef.get(holds)).overLimit
+    const asking =
+      quit === null
+        ? new Set((yield* attention.current).map((request) => request.ticket))
+        : new Set<string>()
+    if (quit === null) yield* scheduler.interrupt
     yield* showEndOfRun(null)
     if (quit !== null) yield* quitNow(quit)
     yield* mergeStop(yield* queue.state)
@@ -1313,16 +1323,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // line and the report (handMerged.ts).
     if (quit === null) yield* queue.mergedByHand
 
-    // The end: the tickets a run can't end in Stopped, and every stopped ticket's session suspended;
-    // a worker past its ticket limit, or waiting on you, is still at it, its fiber stopped first.
+    // The end: the tickets a run can't end in Stopped, and every stopped ticket's session suspended.
     // Quitting's steps 5 and 6 are any end's: the sessions are closed, every open one when
     // quitting, then state.json says why each was suspended.
-    const over = (yield* SubscriptionRef.get(holds)).overLimit
-    const asking =
-      quit === null
-        ? new Set((yield* attention.current).map((request) => request.ticket))
-        : new Set<string>()
-    if (over.size > 0 || asking.size > 0) yield* scheduler.interrupt
     const before = yield* currentStops
     const ended = quit === null ? null : "panic" in quit ? quit.panic.why : "quit"
     const whyOf = (entry: { readonly ticket: string; readonly phase: TicketPhase }) =>
