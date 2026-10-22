@@ -994,6 +994,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
               if (yield* queue.held.hold(command.ticket, command.text, command.uuid)) return
               return yield* sendMessage(command.ticket, command.text, command.uuid)
             case "Interrupt":
+              // It cancels the messages held for the worker too, as the view says (held.ts).
+              yield* queue.held.cancel(command.ticket)
               return yield* interrupt(command.ticket)
             case "Release":
               if (yield* releaseAndHandOver(command.ticket, queue, { repo: config.repo, base })) {

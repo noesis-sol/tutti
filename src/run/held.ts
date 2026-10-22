@@ -11,6 +11,8 @@
 //   keeps its card: blocked with its hand-back waiting for its steered worker, or handed back
 //   (Resolving, Fixing) to a worker you released meanwhile. A ticket merged, closed, set aside or
 //   blocked has a worker that has finished: its held messages aren't sent, and the log says so.
+// - An interrupt (Ctrl+X) cancels them, as it cancels the messages queued behind a turn: the log
+//   says so, and none of them is sent.
 // - A merge that goes back in line (a quit before the fast-forward) is not over: they stay held, and
 //   the run's end, stopping the ticket ToMerge, drops them with its session suspended.
 //
@@ -41,6 +43,10 @@ export const heldLine = (id: string, text: string, phase: TicketPhase) =>
 export const notSentLine = (id: string, count: number) =>
   detail`${count === 1 ? "your message" : `your ${count} messages`} held for ${id}'s worker ${count === 1 ? "was" : "were"} not sent: its merge is over, and its worker has finished`
 
+/** The line the messages held for a worker you interrupted say. */
+export const cancelledLine = (id: string, count: number) =>
+  detail`${count === 1 ? "your message" : `your ${count} messages`} held for ${id}'s worker ${count === 1 ? "is" : "are"} cancelled by your interrupt: ${count === 1 ? "it is" : "they are"} not sent`
+
 /** The messages held for merging tickets' workers. */
 export interface Held {
   /**
@@ -53,6 +59,8 @@ export interface Held {
    * line saying so if it doesn't. A ticket still waiting to merge or merging keeps them held.
    */
   over(ticket: string): Effect.Effect<void, never, SteerEnv>
+  /** Cancels the ticket's held messages, as you interrupted its worker: none of them is sent. */
+  cancel(ticket: string): Effect.Effect<void, never, Log | EventStream>
   /** The messages held now, by ticket. */
   readonly messages: Effect.Effect<ReadonlyMap<string, ReadonlyArray<HeldMessage>>>
 }
@@ -98,5 +106,18 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
         )
       }),
     )
-  return { hold, over, messages: Ref.get(ref) }
+  const cancel: Held["cancel"] = (ticket) =>
+    permit.withPermit(
+      Effect.gen(function* () {
+        const held = (yield* Ref.get(ref)).get(ticket) ?? []
+        if (held.length === 0) return
+        yield* Ref.update(ref, (all) => new Map([...all].filter(([id]) => id !== ticket)))
+        const said = cancelledLine(ticket, held.length)
+        yield* (yield* Log).writeWith(
+          [said],
+          (yield* EventStream).emit({ kind: "info", ticket, text: said }),
+        )
+      }),
+    )
+  return { hold, over, cancel, messages: Ref.get(ref) }
 })

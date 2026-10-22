@@ -300,7 +300,7 @@ export const Composer = ({
 export const interruptWords = (ticket: string) => ({
   ask: `Interrupt ${sanitizeLine(ticket)}'s turn?`,
   about:
-    "Messages still queued are cancelled. tutti then sends the worker nothing until you release it (Ctrl+R).",
+    "Messages still queued or held are cancelled. tutti then sends the worker nothing until you release it (Ctrl+R).",
 })
 
 /** Ctrl+X's question, over the worker view: `y` interrupts, `n` or `Esc` leaves the turn be. */
