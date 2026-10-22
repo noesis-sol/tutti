@@ -24,7 +24,8 @@ import {
   useInput,
   useLayer,
 } from "../src/ui/keys.ts"
-import { modalMaxWidth, wrap } from "../src/ui/Modal.tsx"
+import { wrapText } from "../src/ui/line.tsx"
+import { modalMaxWidth } from "../src/ui/Modal.tsx"
 import { quitQuestion } from "../src/ui/QuitBox.tsx"
 import { open, rendererConfig, rendererConfigFor } from "../src/ui/renderer.ts"
 import { stopWords } from "../src/ui/StopQuestion.tsx"
@@ -448,14 +449,14 @@ describe("the stop question", () => {
   })
 
   test("its words wrap to the box", () => {
-    expect(wrap("a bb ccc dddd", 6)).toEqual(["a bb", "ccc", "dddd"])
-    expect(wrap("", 6)).toEqual([""])
+    expect(wrapText("a bb ccc dddd", 6)).toEqual(["a bb", "ccc", "dddd"])
+    expect(wrapText("", 6)).toEqual([""])
     fc.assert(
       fc.property(
         fc.array(fc.stringMatching(/^[a-z]{1,8}$/)),
         fc.integer({ min: 8, max: 40 }),
         (words, width) => {
-          const lines = wrap(words.join(" "), width)
+          const lines = wrapText(words.join(" "), width)
           expect(
             lines
               .join(" ")

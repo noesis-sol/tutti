@@ -9,6 +9,7 @@
 // as `&#x1b;` becomes a control character only once it is decoded.
 import type { Effect } from "effect"
 import { lexer, type Token, type Tokens } from "marked"
+import { wrap as lineWrap, type Piece } from "../ui/line.tsx"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { Role, Theme } from "../ui/theme.ts"
 import type { Printer } from "./organLine.ts"
@@ -267,80 +268,39 @@ const draw = (spans: ReadonlyArray<Span>): string => {
   return out
 }
 
-/** A character and its style. */
-interface Cell {
-  readonly char: string
-  readonly open: string
-}
-
 /**
- * `spans` word-wrapped to `width` columns: words break at spaces, a word wider than a line is cut,
- * and every line opens its own styles, so a style carries over a line it wraps onto.
+ * `spans` word-wrapped to `width` columns by the dashboard's wrap: words break at spaces and tabs,
+ * runs of them one space, a word wider than a line is cut between graphemes, and every line opens
+ * its own styles, so a style carries over a line it wraps onto.
  */
 export const wrap = (spans: ReadonlyArray<Span>, width: number): Array<string> => {
-  const room = Math.max(width, 1)
-  const out: Array<string> = []
-  let paragraph: Array<Array<Cell>> = []
-  let word: Array<Cell> = []
-  const endWord = () => {
-    if (word.length > 0) paragraph.push(word)
-    word = []
-  }
-  const endParagraph = () => {
-    endWord()
-    out.push(...fill(paragraph, room))
-    paragraph = []
-  }
+  const pieces: Array<Piece<string>> = []
+  // The style of the word before the space to come, or null at a paragraph's start.
+  let before: string | null = null
+  let space = false
   for (const span of spans) {
     if (span === lineBreak) {
-      endParagraph()
+      pieces.push({ text: "\n", look: "" })
+      before = null
+      space = false
       continue
     }
-    for (const char of span.text) {
-      if (char === " ") endWord()
-      else word.push({ char, open: span.open })
-    }
-  }
-  endParagraph()
-  return out
-}
-
-const widthOfCells = (cells: ReadonlyArray<Cell>): number =>
-  Bun.stringWidth(cells.map((cell) => cell.char).join(""))
-
-/** Lines of at most `room` columns holding `words`, a space between each two on a line. */
-const fill = (words: ReadonlyArray<ReadonlyArray<Cell>>, room: number): Array<string> => {
-  const lines: Array<Array<Cell>> = []
-  let line: Array<Cell> = []
-  let used = 0
-  // A space between two words of one style takes that style, so their run isn't broken.
-  const space = (before: Cell | undefined, after: Cell | undefined): Cell => ({
-    char: " ",
-    open: before !== undefined && before.open === after?.open ? before.open : "",
-  })
-  for (const word of words) {
-    const w = widthOfCells(word)
-    if (used > 0 && used + 1 + w <= room) {
-      line.push(space(line.at(-1), word[0]), ...word)
-      used += 1 + w
-      continue
-    }
-    if (used > 0) lines.push(line)
-    line = []
-    used = 0
-    for (const cell of word) {
-      const c = Bun.stringWidth(cell.char)
-      if (used > 0 && used + c > room) {
-        lines.push(line)
-        line = []
-        used = 0
+    for (const part of span.text.split(/([ \t]+)/)) {
+      if (part === "") continue
+      if (/^[ \t]/.test(part)) {
+        space = before !== null
+        continue
       }
-      line.push(cell)
-      used += c
+      // A space between two words of one style takes that style, so their run isn't broken.
+      if (space) pieces.push({ text: " ", look: before === span.open ? span.open : "" })
+      pieces.push({ text: part, look: span.open })
+      before = span.open
+      space = false
     }
   }
-  if (line.length > 0 || lines.length === 0) lines.push(line)
-  return lines.map((cells) => draw(cells.map((cell) => ({ text: cell.char, open: cell.open }))))
+  return lineWrap(pieces, Math.max(width, 1)).map((line) =>
+    draw(line.map((piece) => ({ text: piece.text, open: piece.look ?? "" }))),
+  )
 }
 
 /**

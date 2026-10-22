@@ -17,6 +17,7 @@ import {
   seg,
   styled,
   widthOf,
+  wrap,
 } from "./line.tsx"
 import { useTheme } from "./useRunView.ts"
 
@@ -51,21 +52,6 @@ export const Backdrop = () => {
 /** The widest a box gets, its frame included. */
 export const modalMaxWidth = 64
 
-/** `text`'s words in lines at most `width` wide; a word wider than that is cut. Empty: one line. */
-export const wrap = (text: string, width: number): ReadonlyArray<string> => {
-  const lines: Array<string> = []
-  let line = ""
-  for (const word of text.split(" ").filter((each) => each !== "")) {
-    const longer = line === "" ? word : `${line} ${word}`
-    if (Bun.stringWidth(longer) <= width || line === "") line = longer
-    else {
-      lines.push(line)
-      line = word
-    }
-  }
-  return [...lines, line]
-}
-
 export const Modal = ({
   frame,
   paragraphs,
@@ -80,9 +66,7 @@ export const Modal = ({
   const { width, height } = useTerminalDimensions()
   const outer = Math.max(Math.min(width - 4, modalMaxWidth), 8)
   const inner = outer - 4
-  const lines = paragraphs.flatMap((paragraph) =>
-    wrap(paragraph.text, inner).map((text) => [seg(text, paragraph.look)]),
-  )
+  const lines = paragraphs.flatMap((paragraph) => wrap([paragraph], inner))
   const tall = lines.length + 4
   const bar = seg("│", frame)
   const row = (segments: Segments): Segments => [

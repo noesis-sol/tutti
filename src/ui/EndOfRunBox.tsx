@@ -3,8 +3,7 @@
 // `needsYou`, and says what answering and `q` do; for a conflict hand-back waiting on a steered
 // worker (§ 4.3), what handing it over does too. Its words are wrapped to the pane's width.
 import { conflictWaits, type Waiting } from "../run/runView.ts"
-import { boxed, Lines, roleLook, type Segments, seg } from "./line.tsx"
-import { wrap } from "./Modal.tsx"
+import { boxed, Lines, roleLook, type Segments, seg, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /**
@@ -34,10 +33,10 @@ export const endOfRunLines = (
   const inner = Math.max(width - 4, 1)
   return boxed(
     [
-      ...wrap(endOfRunText(waiting), inner).map((text) => [seg(text)]),
-      ...wrap(endOfRunAbout, inner).map((text) => [seg(text, theme.styles.dim)]),
+      ...wrap([seg(endOfRunText(waiting))], inner),
+      ...wrap([seg(endOfRunAbout, theme.styles.dim)], inner),
       ...(waiting.some((worker) => worker.asks.includes(conflictWaits))
-        ? wrap(endOfRunConflict, inner).map((text) => [seg(text, theme.styles.dim)])
+        ? wrap([seg(endOfRunConflict, theme.styles.dim)], inner)
         : []),
     ],
     width,

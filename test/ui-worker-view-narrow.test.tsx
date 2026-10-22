@@ -15,7 +15,7 @@ import { Screen } from "../src/run/screen.ts"
 import { layer as memoryLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
 import { hintLines } from "../src/ui/Hint.tsx"
-import { type Segments, seg, widthOf, wrapped } from "../src/ui/line.tsx"
+import { type Segments, seg, widthOf, wrap } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { transcriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
@@ -180,7 +180,7 @@ const words = (segments: Segments): ReadonlyArray<string> =>
     .split(/\s+/)
     .filter((word) => word !== "")
 
-describe("wrapped", () => {
+describe("wrap, as the header and the hint take it", () => {
   test("keeps every word, in order, and no line is wider than the width", () => {
     fc.assert(
       fc.property(
@@ -191,7 +191,7 @@ describe("wrapped", () => {
         fc.integer({ min: 0, max: 20 }),
         (texts, width, start) => {
           const segments = texts.map((text) => seg(text))
-          const lines = wrapped(segments, width, { indent: " ", start: Math.min(start, width) })
+          const lines = wrap(segments, width, { indent: 1, start: Math.min(start, width) })
           expect(words(lines.flat()).join("")).toBe(words(segments).join(""))
           lines.forEach((line, i) => {
             expect(widthOf(line) + (i === 0 ? Math.min(start, width) : 0)).toBeLessThanOrEqual(
@@ -204,7 +204,7 @@ describe("wrapped", () => {
   })
 
   test("breaks between words, the spaces at a break gone and the next line indented", () => {
-    const lines = wrapped([seg("one two three four")], 10, { indent: "  " })
+    const lines = wrap([seg("one two three four")], 10, { indent: 2 })
     expect(lines.map((line) => line.map((each) => each.text).join(""))).toEqual([
       "one two",
       "  three",
@@ -213,11 +213,11 @@ describe("wrapped", () => {
   })
 
   test("a word wider than a line is broken at its edge", () => {
-    const lines = wrapped([seg("ab abcdefghij")], 6)
+    const lines = wrap([seg("ab abcdefghij")], 6)
     expect(lines.map((line) => line.map((each) => each.text).join(""))).toEqual([
-      "ab",
-      "abcdef",
-      "ghij",
+      "ab abc",
+      "defghi",
+      "j",
     ])
   })
 })

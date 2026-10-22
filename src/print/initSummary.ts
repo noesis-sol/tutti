@@ -10,7 +10,7 @@ import { homedir } from "node:os"
 import type { InitSummary } from "../init/init.ts"
 import { cancelledLine, signOff } from "../init/init.ts"
 import { marks, type Step, type StepKind } from "../init/steps.ts"
-import { wrap } from "../ui/Modal.tsx"
+import { wrapText } from "../ui/line.tsx"
 import type { Line } from "../ui/questions.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Style, Theme } from "../ui/theme.ts"
@@ -85,7 +85,7 @@ const nextBox = (theme: Theme, items: ReadonlyArray<string>, width: number): Arr
     const [said = "", ...commands] = item.split("\n")
     const number = `${at + 1}.`
     const indent = " ".repeat(number.length + 1)
-    wrap(sanitizeLine(said), inner - indent.length).forEach((line, n) => {
+    wrapText(sanitizeLine(said), inner - indent.length).forEach((line, n) => {
       rows.push(
         n === 0
           ? { plain: `${number} ${line}`, text: `${faint.paint(number)} ${line}` }
@@ -117,7 +117,7 @@ export const initSteps = (
   const { styles } = theme
   const lines: Array<string> = []
   for (const each of steps) {
-    const detail = wrap(sanitizeLine(each.detail), Math.max(width - detailIndent, leastWidth))
+    const detail = wrapText(sanitizeLine(each.detail), Math.max(width - detailIndent, leastWidth))
     const detailStyle = each.kind === "caution" ? styles.deferred : theme.form.faint
     const label = sanitizeLine(each.label)
     const [first, ...rest] = each.detail === "" ? [] : detail

@@ -23,10 +23,7 @@ export const roleLook = (theme: Theme, role: Role, bold = false): Look => ({
 })
 
 /** Text in a look; null for the terminal's own. */
-export interface Segment {
-  readonly text: string
-  readonly look: Look | null
-}
+export type Segment = Piece<Look | null>
 
 export type Segments = ReadonlyArray<Segment>
 
@@ -46,16 +43,52 @@ export const styled = (look: Look) => ({
   attributes: look.attributes,
 })
 
-/** How many columns `segments` take. */
-export const widthOf = (segments: Segments): number =>
-  segments.reduce((sum, each) => sum + Bun.stringWidth(each.text), 0)
+/** Text in a look of any kind: a segment's, or the ANSI sequences that open a printed span's style. */
+export interface Piece<L> {
+  readonly text: string
+  readonly look: L
+}
 
-/** `segments` cut to `width` columns, the last one kept ending in `…` when they are wider. */
-export const cut = (segments: Segments, width: number): Segments => {
-  if (widthOf(segments) <= width) return segments
-  const kept: Array<Segment> = []
-  let room = Math.max(width - 1, 0)
-  for (const each of segments) {
+/**
+ * The spaces a tab is drawn as. Bun.stringWidth counts a tab as no columns and OpenTUI draws it as
+ * two, so a tab is spaces before anything is measured, four as a code block's are in the report.
+ */
+export const tabWidth = 4
+
+const tab = " ".repeat(tabWidth)
+
+/** How many columns `text` takes, a tab `tabWidth`. */
+const textWidth = (text: string): number =>
+  Bun.stringWidth(text) + (text.includes("\t") ? text.split("\t").length - 1 : 0) * tabWidth
+
+/** `segments` with their tabs spaces; `segments` themselves when they have none. */
+const expanded = <S extends Piece<unknown>>(segments: ReadonlyArray<S>): ReadonlyArray<S> =>
+  segments.some((each) => each.text.includes("\t"))
+    ? segments.map((each) =>
+        each.text.includes("\t") ? { ...each, text: each.text.replaceAll("\t", tab) } : each,
+      )
+    : segments
+
+/** How many columns `segments` take. */
+export const widthOf = (segments: ReadonlyArray<Piece<unknown>>): number =>
+  segments.reduce((sum, each) => sum + textWidth(each.text), 0)
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" })
+
+/**
+ * `segments` cut to `width` columns, the last one kept ending in `…` when they are wider: between
+ * graphemes, so that a flag or an emoji joined by ZWJ is never split. Their tabs are spaces.
+ */
+export const cut = <L,>(
+  segments: ReadonlyArray<Piece<L>>,
+  width: number,
+): ReadonlyArray<Piece<L>> => {
+  const flat = expanded(segments)
+  if (widthOf(flat) <= width) return flat
+  if (width <= 0) return []
+  const kept: Array<Piece<L>> = []
+  let room = width - 1
+  for (const each of flat) {
     const w = Bun.stringWidth(each.text)
     if (w <= room) {
       kept.push(each)
@@ -63,134 +96,74 @@ export const cut = (segments: Segments, width: number): Segments => {
       continue
     }
     let text = ""
-    for (const char of each.text) {
-      if (Bun.stringWidth(text + char) > room) break
-      text += char
+    for (const { segment } of graphemes.segment(each.text)) {
+      const g = Bun.stringWidth(segment)
+      if (g > room) break
+      text += segment
+      room -= g
     }
-    kept.push(seg(`${text}…`, each.look))
+    kept.push({ text: `${text}…`, look: each.look })
     break
   }
-  return width > 0 ? kept : []
-}
-
-/**
- * `segments` wrapped onto lines `width` wide, broken between words: the spaces at a break go, each
- * line after the first starts with `indent`, and a word wider than a line is broken where it
- * reaches the edge. `start` columns of the first line are taken already, by what is drawn before it.
- */
-export const wrapped = (
-  segments: Segments,
-  width: number,
-  options: { readonly indent?: string; readonly start?: number } = {},
-): ReadonlyArray<Segments> => {
-  const indent = Bun.stringWidth(options.indent ?? "") < width ? (options.indent ?? "") : ""
-  const lines: Array<Array<Segment>> = [[]]
-  let col = options.start ?? 0
-  let fresh = false
-  let spaces: Array<Segment> = []
-  const room = () => width - col
-  const put = (each: Segment) => {
-    lines[lines.length - 1]?.push(each)
-    col += Bun.stringWidth(each.text)
-    fresh = false
-  }
-  const breakLine = () => {
-    lines.push(indent === "" ? [] : [seg(indent)])
-    col = Bun.stringWidth(indent)
-    fresh = true
-    spaces = []
-  }
-  for (const each of segments) {
-    for (const word of each.text.match(/\s+|\S+/g) ?? []) {
-      if (/^\s/.test(word)) {
-        spaces.push(seg(word, each.look))
-        continue
-      }
-      const before = widthOf(spaces)
-      const w = Bun.stringWidth(word)
-      if (before + w <= room()) {
-        for (const space of spaces) put(space)
-        spaces = []
-        put(seg(word, each.look))
-        continue
-      }
-      if (!fresh && col > 0) breakLine()
-      spaces = []
-      let rest = word
-      while (Bun.stringWidth(rest) > room()) {
-        let piece = ""
-        for (const char of rest) {
-          if (Bun.stringWidth(piece + char) > room()) break
-          piece += char
-        }
-        if (piece === "") {
-          // Not even one character fits on a line this narrow: it goes on a line of its own.
-          piece = [...rest][0] ?? ""
-          if (!fresh && col > 0) breakLine()
-        }
-        put(seg(piece, each.look))
-        rest = rest.slice(piece.length)
-        if (rest !== "") breakLine()
-      }
-      if (rest !== "") put(seg(rest, each.look))
-    }
-  }
-  return lines
+  return kept
 }
 
 /** A grapheme of a segment's text, in its look, and the columns it takes. */
-interface Cell {
+interface Cell<L> {
   readonly text: string
-  readonly look: Look | null
+  readonly look: L
   readonly width: number
 }
 
-const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" })
-
-/** The graphemes of `segments`, one at a time, so that a long text is read only as far as needed. */
-function* cellsOf(segments: Segments): Generator<Cell> {
+/**
+ * The graphemes of `segments`, one at a time, so that a long text is read only as far as needed;
+ * a tab is `tabWidth` spaces.
+ */
+function* cellsOf<L>(segments: ReadonlyArray<Piece<L>>): Generator<Cell<L>> {
   for (const each of segments) {
     for (const { segment } of graphemes.segment(each.text)) {
-      yield { text: segment, look: each.look, width: Bun.stringWidth(segment) }
+      if (segment === "\t") {
+        for (let i = 0; i < tabWidth; i++) yield { text: " ", look: each.look, width: 1 }
+      } else yield { text: segment, look: each.look, width: Bun.stringWidth(segment) }
     }
   }
 }
 
 /** Cells as segments, a segment a run of one look. */
-const segmentsOf = (cells: ReadonlyArray<Cell>): Segments => {
-  const out: Array<Segment> = []
+const segmentsOf = <L,>(cells: ReadonlyArray<Cell<L>>): ReadonlyArray<Piece<L>> => {
+  const out: Array<Piece<L>> = []
   for (const cell of cells) {
     const last = out.at(-1)
     if (last !== undefined && last.look === cell.look) {
-      out[out.length - 1] = seg(last.text + cell.text, last.look)
-    } else out.push(seg(cell.text, cell.look))
+      out[out.length - 1] = { text: last.text + cell.text, look: last.look }
+    } else out.push({ text: cell.text, look: cell.look })
   }
   return out
 }
 
-const isSpace = (cell: Cell): boolean => cell.text === " "
+const isSpace = (cell: Cell<unknown>): boolean => cell.text === " "
 
 /** `cells` without the spaces at their end. */
-const trimmed = (cells: ReadonlyArray<Cell>): ReadonlyArray<Cell> => {
+const trimmed = <L,>(cells: ReadonlyArray<Cell<L>>): ReadonlyArray<Cell<L>> => {
   let end = cells.length
-  while (end > 0 && isSpace(cells[end - 1] as Cell)) end--
+  while (end > 0 && isSpace(cells[end - 1] as Cell<L>)) end--
   return cells.slice(0, end)
 }
 
-/** What a text is wrapped by: a line's end, a space, a word (`long` when it's cut in pieces). */
-type Token =
+/** What a text is wrapped by: a line's end, a space, a word (`more` when it goes on a piece before). */
+type Token<L> =
   | { readonly _tag: "End" }
-  | { readonly _tag: "Space"; readonly cell: Cell }
-  | { readonly _tag: "Word"; readonly cells: ReadonlyArray<Cell>; readonly long: boolean }
+  | { readonly _tag: "Space"; readonly cell: Cell<L> }
+  | { readonly _tag: "Word"; readonly cells: ReadonlyArray<Cell<L>>; readonly more: boolean }
 
 /** The tokens of `segments`, a word at most `longest` graphemes before it is passed on in pieces. */
-function* tokensOf(segments: Segments, longest: number): Generator<Token> {
-  let word: Array<Cell> = []
-  let long = false
-  const flush = function* (): Generator<Token> {
-    if (word.length > 0) yield { _tag: "Word", cells: word, long }
+function* tokensOf<L>(segments: ReadonlyArray<Piece<L>>, longest: number): Generator<Token<L>> {
+  let word: Array<Cell<L>> = []
+  let more = false
+  const flush = function* (): Generator<Token<L>> {
+    if (word.length > 0) yield { _tag: "Word", cells: word, more }
     word = []
-    long = false
+    more = false
   }
   for (const cell of cellsOf(segments)) {
     if (cell.text === "\n" || cell.text === "\r\n") {
@@ -202,9 +175,9 @@ function* tokensOf(segments: Segments, longest: number): Generator<Token> {
     } else {
       word.push(cell)
       if (word.length > longest) {
-        yield { _tag: "Word", cells: word, long: true }
+        yield { _tag: "Word", cells: word, more }
         word = []
-        long = true
+        more = true
       }
     }
   }
@@ -213,29 +186,38 @@ function* tokensOf(segments: Segments, longest: number): Generator<Token> {
 
 /**
  * `segments` wrapped to `width` columns: before a word that doesn't fit the line, within a word
- * longer than a line, and at each `\n`. The lines after the first start `indent` columns in, without
- * the spaces a wrap left at their start. At most `limit` lines: the last is cut with `…` when there
- * is more. A long text is read only as far as the lines it fills.
+ * longer than a line where it reaches the edge, and at each `\n`, always between graphemes.
+ * A tab is `tabWidth` spaces. `start` columns of the first line are taken already, by what is drawn
+ * before it. The lines after the first start `indent` columns in, without the spaces a wrap left at
+ * their start. At most `limit` lines: the last is cut with `…` when there is more. A long text is
+ * read only as far as the lines it fills.
  */
-export const wrap = (
-  segments: Segments,
+export const wrap = <L,>(
+  segments: ReadonlyArray<Piece<L>>,
   width: number,
-  options: { readonly indent?: number; readonly limit?: number } = {},
-): ReadonlyArray<Segments> => {
+  options: { readonly indent?: number; readonly start?: number; readonly limit?: number } = {},
+): ReadonlyArray<ReadonlyArray<Piece<L | null>>> => {
   const indent = Math.min(Math.max(options.indent ?? 0, 0), Math.max(width - 1, 0))
+  const start = Math.max(options.start ?? 0, 0)
   const limit = Math.max(options.limit ?? Number.POSITIVE_INFINITY, 1)
-  const lines: Array<Segments> = []
-  const room = () => (lines.length === 0 ? width : width - indent)
-  const lineOf = (text: Segments): Segments =>
-    lines.length === 0 || indent === 0 ? text : [seg(" ".repeat(indent)), ...text]
-  let line: Array<Cell> = []
+  type Out = ReadonlyArray<Piece<L | null>>
+  const lines: Array<Out> = []
+  const room = () => (lines.length === 0 ? width - start : width - indent)
+  // The indent gives way to a grapheme wider than the rest of a line, so the line keeps to `width`.
+  const lineOf = (text: Out): Out => {
+    const pad = lines.length === 0 ? 0 : Math.min(indent, Math.max(width - widthOf(text), 0))
+    return pad === 0 ? text : [{ text: " ".repeat(pad), look: null }, ...text]
+  }
+  let line: Array<Cell<L>> = []
   let used = 0
   // Whether the line was begun by a wrap, which drops the spaces at its start.
   let afterWrap = false
+  /** Whether a word that doesn't fit the line goes on the next: the line holds more than spaces. */
+  const taken = () => (lines.length === 0 && start > 0) || !line.every(isSpace)
   /** Ends the line, and begins the next; false when it was the last, cut with `rest` after it. */
-  const next = (rest: Segments, wrapping: boolean): boolean => {
+  const next = (rest: Out, wrapping: boolean): boolean => {
     if (lines.length === limit - 1) {
-      lines.push(lineOf(cut([...segmentsOf(line), ...rest], room())))
+      lines.push(lineOf(cut([...segmentsOf<L | null>(line), ...rest], room())))
       return false
     }
     lines.push(lineOf(segmentsOf(trimmed(line))))
@@ -244,7 +226,7 @@ export const wrap = (
     afterWrap = wrapping
     return true
   }
-  const add = (cell: Cell) => {
+  const add = (cell: Cell<L>) => {
     line.push(cell)
     used += cell.width
   }
@@ -252,7 +234,7 @@ export const wrap = (
     switch (token._tag) {
       case "End":
         // The last line, with lines after it, ends ` …`, or is cut with `…` when that doesn't fit.
-        if (!next([seg(used + 2 <= room() ? " …" : "  ")], false)) return lines
+        if (!next([{ text: used + 2 <= room() ? " …" : "  ", look: null }], false)) return lines
         break
       case "Space":
         // A space that doesn't fit the line goes, as the wrap would take it.
@@ -260,18 +242,14 @@ export const wrap = (
         break
       case "Word": {
         const w = token.cells.reduce((sum, cell) => sum + cell.width, 0)
-        if (used + w <= room()) {
-          for (const cell of token.cells) add(cell)
-        } else if (!token.long && w <= width - indent && !line.every(isSpace)) {
+        if (!token.more && used + w > room() && w <= width - indent && taken()) {
           if (!next(segmentsOf(token.cells), true)) return lines
-          for (const cell of token.cells) add(cell)
-        } else {
-          for (const cell of token.cells) {
-            if (used + cell.width > room() && line.length > 0) {
-              if (!next(segmentsOf([cell]), true)) return lines
-            }
-            add(cell)
+        }
+        for (const [i, cell] of token.cells.entries()) {
+          if (used + cell.width > room() && (line.length > 0 || taken())) {
+            if (!next(segmentsOf(token.cells.slice(i)), true)) return lines
           }
+          add(cell)
         }
       }
     }
@@ -280,10 +258,15 @@ export const wrap = (
   return lines
 }
 
+/** `text` wrapped to `width` columns, as `wrap` wraps it, each line its text. Empty: one line. */
+export const wrapText = (text: string, width: number): ReadonlyArray<string> =>
+  wrap([{ text, look: null }], width).map((line) => line.map((each) => each.text).join(""))
+
 /** `segments` padded with spaces to `width` columns. */
 export const padded = (segments: Segments, width: number): Segments => {
-  const short = width - widthOf(segments)
-  return short > 0 ? [...segments, seg(" ".repeat(short))] : segments
+  const flat = expanded(segments)
+  const short = width - widthOf(flat)
+  return short > 0 ? [...flat, seg(" ".repeat(short))] : flat
 }
 
 /** What selected text is drawn in: the props a <text> takes for it. */

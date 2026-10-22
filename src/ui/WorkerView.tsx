@@ -86,7 +86,6 @@ import {
   styled,
   widthOf,
   wrap,
-  wrapped,
 } from "./line.tsx"
 import { requestInputLines } from "./requestInput.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
@@ -1028,8 +1027,8 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const dashboardLink = " ← Dashboard"
   // The header wraps rather than cut the title (tutti-rfs): its lines after the first are under the
   // head, not in the transcript's scrollbox, so their height doesn't touch #1514.
-  const headLines = wrapped([seg("   "), ...head], inner, {
-    indent: "    ",
+  const headLines = wrap([seg("   "), ...head], inner, {
+    indent: 4,
     start: Bun.stringWidth(dashboardLink),
   })
   const panelWidth = Math.max(inner - 2, 8)

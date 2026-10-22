@@ -1,7 +1,7 @@
 // The hint at the dashboard's foot (§ 7.2, § 7.11): the keys there are now, as RunView names them,
 // each `emphasis` bold, its words faint, ` · ` faint between them.
 import type { Key } from "../run/runView.ts"
-import { cut, Line, type Segments, seg, widthOf, wrapped } from "./line.tsx"
+import { cut, Line, type Segments, seg, widthOf, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /** A key as the hint draws it: its keys bold, what it does faint. */
@@ -52,7 +52,7 @@ export const hintLines = (
   }
   lines.push(line)
   return lines.flatMap((each) =>
-    widthOf(each) <= width ? [each] : wrapped(each, width, { indent: "    " }),
+    widthOf(each) <= width ? [each] : wrap(each, width, { indent: 4 }),
   )
 }
 
