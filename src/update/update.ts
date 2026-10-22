@@ -705,7 +705,10 @@ const writeCache = (dir: string, cached: Cached) => {
     writeFileSync(temporary, JSON.stringify(cached))
     renameSync(temporary, join(dir, cacheName))
   } catch {
-    rmSync(temporary, { force: true })
+    // Where the folder is a file, removing the file in it fails too (ENOTDIR).
+    try {
+      rmSync(temporary, { force: true })
+    } catch {}
   }
 }
 

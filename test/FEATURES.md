@@ -114,13 +114,12 @@ below are the coverage report's uncovered lines at 368899e.
 
 - **Reached by**: `tutti update [--check] [--force]`; the notice a run ends with when a newer
   release is out.
-- **Tests**: `update.test.ts` (with fake releases and keys), `sign-checksums.test.ts`,
+- **Tests**: `update.test.ts` (with fake releases and keys, `update-releases.ts`),
+  `update-failures.test.ts` (a download over its size limit, a latest release it can't read, an
+  archive with no `tutti`, a cache it can't write, `startCheck`), `sign-checksums.test.ts`,
   `release-notes.test.ts`, `release-run.test.ts`, `release-workflow.test.ts`.
-- **Untested** (`src/update/update.ts`): a download over its size limit (`readLimited`, 201–202;
-  268, 278), the latest release's JSON unreadable or its tag not a version (248–251), an archive
-  with no `tutti` in it (391–394), the cache that can't be written (`writeCache`, 687), and the
-  background check a run starts (`startCheck`, 725–736); the command's action
-  (`src/cli/commands.ts` 355–364) (tutti-8iz.9).
+- **Untested**: the command's action (`src/cli/commands.ts`'s `updateCommand`), which asks
+  GitHub itself (`githubReleases`), so a test of it needs the network.
 
 ## A run's start: startup checks, the lock, the start question
 
