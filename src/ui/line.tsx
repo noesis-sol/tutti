@@ -186,7 +186,8 @@ function* tokensOf<L>(segments: ReadonlyArray<Piece<L>>, longest: number): Gener
 
 /**
  * `segments` wrapped to `width` columns: before a word that doesn't fit the line, within a word
- * longer than a line where it reaches the edge, and at each `\n`, always between graphemes.
+ * longer than a line, and at each `\n`, always between graphemes. Such a word is broken where it
+ * reaches the line's edge, or, `long: "line"`, starts on a line of its own as prose's words do.
  * A tab is `tabWidth` spaces. `start` columns of the first line are taken already, by what is drawn
  * before it. The lines after the first start `indent` columns in, without the spaces a wrap left at
  * their start. At most `limit` lines: the last is cut with `…` when there is more. A long text is
@@ -195,7 +196,12 @@ function* tokensOf<L>(segments: ReadonlyArray<Piece<L>>, longest: number): Gener
 export const wrap = <L,>(
   segments: ReadonlyArray<Piece<L>>,
   width: number,
-  options: { readonly indent?: number; readonly start?: number; readonly limit?: number } = {},
+  options: {
+    readonly indent?: number
+    readonly start?: number
+    readonly limit?: number
+    readonly long?: "edge" | "line"
+  } = {},
 ): ReadonlyArray<ReadonlyArray<Piece<L | null>>> => {
   const indent = Math.min(Math.max(options.indent ?? 0, 0), Math.max(width - 1, 0))
   const start = Math.max(options.start ?? 0, 0)
@@ -242,7 +248,8 @@ export const wrap = <L,>(
         break
       case "Word": {
         const w = token.cells.reduce((sum, cell) => sum + cell.width, 0)
-        if (!token.more && used + w > room() && w <= width - indent && taken()) {
+        const own = options.long === "line" || w <= width - indent
+        if (!token.more && own && used + w > room() && taken()) {
           if (!next(segmentsOf(token.cells), true)) return lines
         }
         for (const [i, cell] of token.cells.entries()) {
@@ -258,9 +265,11 @@ export const wrap = <L,>(
   return lines
 }
 
-/** `text` wrapped to `width` columns, as `wrap` wraps it, each line its text. Empty: one line. */
+/** `text` wrapped to `width` columns, as `wrap` wraps prose, each line its text. Empty: one line. */
 export const wrapText = (text: string, width: number): ReadonlyArray<string> =>
-  wrap([{ text, look: null }], width).map((line) => line.map((each) => each.text).join(""))
+  wrap([{ text, look: null }], width, { long: "line" }).map((line) =>
+    line.map((each) => each.text).join(""),
+  )
 
 /** `segments` padded with spaces to `width` columns. */
 export const padded = (segments: Segments, width: number): Segments => {

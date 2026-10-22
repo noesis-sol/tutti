@@ -298,7 +298,7 @@ export const wrap = (spans: ReadonlyArray<Span>, width: number): Array<string> =
       space = false
     }
   }
-  return lineWrap(pieces, Math.max(width, 1)).map((line) =>
+  return lineWrap(pieces, Math.max(width, 1), { long: "line" }).map((line) =>
     draw(line.map((piece) => ({ text: piece.text, open: piece.look ?? "" }))),
   )
 }

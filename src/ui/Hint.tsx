@@ -52,7 +52,7 @@ export const hintLines = (
   }
   lines.push(line)
   return lines.flatMap((each) =>
-    widthOf(each) <= width ? [each] : wrap(each, width, { indent: 4 }),
+    widthOf(each) <= width ? [each] : wrap(each, width, { indent: 4, long: "line" }),
   )
 }
 

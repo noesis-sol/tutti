@@ -33,10 +33,10 @@ export const endOfRunLines = (
   const inner = Math.max(width - 4, 1)
   return boxed(
     [
-      ...wrap([seg(endOfRunText(waiting))], inner),
-      ...wrap([seg(endOfRunAbout, theme.styles.dim)], inner),
+      ...wrap([seg(endOfRunText(waiting))], inner, { long: "line" }),
+      ...wrap([seg(endOfRunAbout, theme.styles.dim)], inner, { long: "line" }),
       ...(waiting.some((worker) => worker.asks.includes(conflictWaits))
-        ? wrap([seg(endOfRunConflict, theme.styles.dim)], inner)
+        ? wrap([seg(endOfRunConflict, theme.styles.dim)], inner, { long: "line" })
         : []),
     ],
     width,

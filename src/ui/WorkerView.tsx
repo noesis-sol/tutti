@@ -1029,6 +1029,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   // head, not in the transcript's scrollbox, so their height doesn't touch #1514.
   const headLines = wrap([seg("   "), ...head], inner, {
     indent: 4,
+    long: "line",
     start: Bun.stringWidth(dashboardLink),
   })
   const panelWidth = Math.max(inner - 2, 8)

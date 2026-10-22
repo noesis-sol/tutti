@@ -66,7 +66,7 @@ export const Modal = ({
   const { width, height } = useTerminalDimensions()
   const outer = Math.max(Math.min(width - 4, modalMaxWidth), 8)
   const inner = outer - 4
-  const lines = paragraphs.flatMap((paragraph) => wrap([paragraph], inner))
+  const lines = paragraphs.flatMap((paragraph) => wrap([paragraph], inner, { long: "line" }))
   const tall = lines.length + 4
   const bar = seg("│", frame)
   const row = (segments: Segments): Segments => [

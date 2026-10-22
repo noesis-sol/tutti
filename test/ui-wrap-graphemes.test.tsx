@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { renderMarkdown } from "../src/print/markdown.ts"
+import { fit } from "../src/print/summary.ts"
 import {
   boxed,
   cut,
@@ -50,11 +51,12 @@ describe("wrap", () => {
         fc.integer({ min: 2, max: 30 }),
         fc.integer({ min: 0, max: 6 }),
         fc.integer({ min: 0, max: 10 }),
-        (texts, width, indent, start) => {
+        fc.constantFrom("edge" as const, "line" as const),
+        (texts, width, indent, start, long) => {
           const lines = wrap(
             texts.map((each) => seg(each)),
             width,
-            { indent, start: Math.min(start, width) },
+            { indent, start: Math.min(start, width), long },
           )
           lines.forEach((line, i) => {
             expect(whole(line)).toBe(true)
@@ -92,6 +94,17 @@ describe("wrap", () => {
   })
 })
 
+describe("a word longer than a line", () => {
+  test("is broken at the line's edge, or starts a line of its own", () => {
+    expect(wrap([seg("ab abcdefghij")], 6).map(textOf)).toEqual(["ab abc", "defghi", "j"])
+    expect(wrap([seg("ab abcdefghij")], 6, { long: "line" }).map(textOf)).toEqual([
+      "ab",
+      "abcdef",
+      "ghij",
+    ])
+  })
+})
+
 describe("cut", () => {
   test("never splits a grapheme, fits the width, and draws a tab as spaces", () => {
     fc.assert(
@@ -110,6 +123,12 @@ describe("cut", () => {
   test("cuts before a flag rather than through it", () => {
     expect(textOf(cut([seg("ab🇺🇸cd")], 4))).toBe("ab…")
     expect(textOf(cut([seg("ab🇺🇸cd")], 5))).toBe("ab🇺🇸…")
+  })
+
+  test("the dashboard's fit cuts before a flag too", () => {
+    expect(fit("a🇺🇸🇺🇸🇺🇸cd", 3)).toBe("a…")
+    expect(fit("a🇺🇸🇺🇸🇺🇸cd", 5)).toBe("a🇺🇸…")
+    expect(fit("a🇺🇸", 3)).toBe("a🇺🇸")
   })
 
   test("a tab counts as tabWidth columns", () => {

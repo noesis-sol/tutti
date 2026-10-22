@@ -191,7 +191,11 @@ describe("wrap, as the header and the hint take it", () => {
         fc.integer({ min: 0, max: 20 }),
         (texts, width, start) => {
           const segments = texts.map((text) => seg(text))
-          const lines = wrap(segments, width, { indent: 1, start: Math.min(start, width) })
+          const lines = wrap(segments, width, {
+            indent: 1,
+            start: Math.min(start, width),
+            long: "line",
+          })
           expect(words(lines.flat()).join("")).toBe(words(segments).join(""))
           lines.forEach((line, i) => {
             expect(widthOf(line) + (i === 0 ? Math.min(start, width) : 0)).toBeLessThanOrEqual(
@@ -213,11 +217,11 @@ describe("wrap, as the header and the hint take it", () => {
   })
 
   test("a word wider than a line is broken at its edge", () => {
-    const lines = wrap([seg("ab abcdefghij")], 6)
+    const lines = wrap([seg("ab abcdefghij")], 6, { long: "line" })
     expect(lines.map((line) => line.map((each) => each.text).join(""))).toEqual([
-      "ab abc",
-      "defghi",
-      "j",
+      "ab",
+      "abcdef",
+      "ghij",
     ])
   })
 })
