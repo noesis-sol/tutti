@@ -202,12 +202,13 @@ describe("workerOptions", () => {
           throw new Error("not a preset system prompt")
         }
         expect(system.append).toBe(
-          prompt.text.replaceAll("TICKET_ID", ticket) +
+          prompt.text.split("TICKET_ID").join(ticket) +
             requiresNote([], prompt.text, false) +
             checkNote(null) +
             usageLimitNote,
         )
       }),
+      { examples: [["$$"], ["$&"], ["$`"], ["$'"], ["$1"]] },
     )
   })
 })
