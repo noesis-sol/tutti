@@ -59,6 +59,8 @@ import {
   type MergeOptions,
   onBranch,
   type Prepared,
+  type Restored,
+  restoreBranch,
   stopOver,
   uncommitted,
 } from "./merge.ts"
@@ -184,6 +186,28 @@ const clearAhead = (id: string): Effect.Effect<void, never, Store> =>
     yield* Effect.ignore(store.unsetMetadata(id, aheadKey))
   })
 
+/**
+ * Why a branch the train rebased was not put back as restoreBranch says, for the lines that say so;
+ * undefined once it is back.
+ */
+const notBack = (worktree: string, restored: Restored): Line | undefined => {
+  switch (restored._tag) {
+    case "AlreadyThere":
+    case "Reset":
+      return undefined
+    case "Dirty":
+      return line`${worktree} has uncommitted changes, or git can't say whether it has`
+    case "OffBranch":
+      return line`${worktree} has ${restored.on}`
+    case "Unknown":
+      return line`git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
+    case "AbortFailed":
+      return line`git could not abort the rebase in ${worktree}: ${gitWhy(restored.error)}`
+    case "ResetFailed":
+      return line`git reset failed: ${gitWhy(restored.error)}`
+  }
+}
+
 /** Why a ticket's dependencies are set up again before its next check, after its train's setup. */
 const setUpOnTop = (behind: string) =>
   line`its dependencies were set up on top of ${behind}, ahead of its turn`
@@ -246,12 +270,12 @@ export const putBackLeft = (
         )
         continue
       }
-      const back = yield* Effect.result(git.resetBranch(worktree, mark.orig))
-      if (Result.isFailure(back)) {
+      const why = notBack(worktree, yield* restoreBranch({ branch, worktree }, mark.orig, 1))
+      if (why !== undefined) {
         yield* log.write(
           ticketLine(
             Tag.rebaseFailed,
-          )`${id}: git could not put ${branch} back as its worker left it, at ${mark.orig.slice(0, 7)}, after a run that was killed left it rebased onto ${mark.behind} to be checked ahead of its turn: ${gitWhy(back.failure)}; check ${worktree} before it merges`,
+          )`${id}: ${branch} could not be put back as its worker left it, at ${mark.orig.slice(0, 7)}, after a run that was killed left it rebased onto ${mark.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
         )
         continue
       }
@@ -392,13 +416,13 @@ export const make = (
           return
         }
         // Changing nothing on top of the branch ahead, or git can't tell: put back for its turn.
-        const back = yield* Effect.result(git.resetBranch(worktree, run.orig))
-        if (Result.isSuccess(back)) {
+        const why = notBack(worktree, yield* restoreBranch(run.ticket, run.orig, 1))
+        if (why === undefined) {
           notRebased()
           yield* clearAhead(id)
         } else {
           notRebased(head.success)
-          yield* Effect.logDebug(`${id}: ${gitWhy(back.failure)}`)
+          yield* Effect.logDebug(`${id}: ${why}`)
         }
       })
 
@@ -530,18 +554,21 @@ export const make = (
     )
 
     // Puts the ticket's branch, at `head`, back as its worker left it when its train rebased it and
-    // it hasn't moved since: whether it did, or git's error when it could not. Dependencies set up
-    // on top of the branch ahead are set up again before its next check. Its mark is cleared once
-    // its branch is back, or was not the train's to put back.
+    // it hasn't moved since: what restoreBranch said, or undefined when it was not the train's to
+    // put back. Dependencies set up on top of the branch ahead are set up again before its next
+    // check. Its mark is cleared once its branch is back, or was not the train's to put back.
     const putBack = (run: Run, head: string) =>
-      Effect.andThen(
-        setUpOf(run.step)
-          ? memory.setUps.offBase(run.ticket.id, setUpOnTop(run.behind))
-          : Effect.void,
-        headOf(run.step) === "" || head !== headOf(run.step)
-          ? Effect.succeed(false)
-          : Effect.as(git.resetBranch(run.ticket.worktree, run.orig), true),
-      ).pipe(Effect.tap(() => clearAhead(run.ticket.id)))
+      Effect.gen(function* () {
+        if (setUpOf(run.step)) yield* memory.setUps.offBase(run.ticket.id, setUpOnTop(run.behind))
+        const restored =
+          headOf(run.step) === "" || head !== headOf(run.step)
+            ? undefined
+            : yield* restoreBranch(run.ticket, run.orig, 1)
+        if (restored === undefined || notBack(run.ticket.worktree, restored) === undefined) {
+          yield* clearAhead(run.ticket.id)
+        }
+        return restored
+      })
 
     const watch: CheckWatch = {
       starts: (ticket, at) =>
@@ -579,11 +606,14 @@ export const make = (
             if (run.fiber !== undefined) yield* Fiber.await(run.fiber)
             const { id, branch, worktree } = run.ticket
             const at = yield* Effect.result(git.revParse(repo, branch))
-            const back = Result.isSuccess(at)
-              ? yield* Effect.result(putBack(run, at.success))
-              : Result.fail(at.failure)
-            if (Result.isSuccess(back)) {
-              if (back.success) {
+            const back = Result.isSuccess(at) ? yield* putBack(run, at.success) : undefined
+            const why = Result.isFailure(at)
+              ? line`git could not tell where ${branch} is: ${gitWhy(at.failure)}`
+              : back === undefined
+                ? undefined
+                : notBack(worktree, back)
+            if (why === undefined) {
+              if (back !== undefined) {
                 yield* log.write(
                   detail`${branch} was rebased onto ${run.behind} to be checked ahead of its turn, but the run stopped before its turn: put back as its worker left it`,
                 )
@@ -593,7 +623,7 @@ export const make = (
             yield* log.write(
               ticketLine(
                 Tag.rebaseFailed,
-              )`${id}: git could not put ${branch} back as its worker left it, at ${run.orig.slice(0, 7)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${gitWhy(back.failure)}; check ${worktree} before it merges`,
+              )`${id}: ${branch} could not be put back as its worker left it, at ${run.orig.slice(0, 7)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
             )
           }
           // Each stopped, or ended before it was: none shows.
@@ -652,7 +682,7 @@ export const make = (
             yield* cancel(run)
             yield* Fiber.await(fiber)
             const left = yield* Effect.result(git.revParse(repo, branch))
-            if (Result.isSuccess(left)) yield* Effect.ignore(putBack(run, left.success))
+            if (Result.isSuccess(left)) yield* putBack(run, left.success)
             return yield* Effect.interrupt
           }
           const at = yield* Effect.result(git.revParse(repo, branch))
@@ -677,19 +707,20 @@ export const make = (
             )
             return undefined
           }
-          const back = yield* Effect.result(putBack(run, at.success))
+          const back = yield* putBack(run, at.success)
           yield* watch.ends(false)
-          if (Result.isFailure(back)) {
+          const why = back === undefined ? undefined : notBack(worktree, back)
+          if (why !== undefined) {
             yield* leaveForReview(id, {
               why: Tag.rebaseFailed,
               detail: "rebase failed",
               text: ticketLine(
                 Tag.rebaseFailed,
-              )`${id} closed, but git could not put ${branch} back as its worker left it, at ${run.orig.slice(0, 7)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${gitWhy(back.failure)}; worktree ${worktree} left for review`,
+              )`${id} closed, but ${branch} could not be put back as its worker left it, at ${run.orig.slice(0, 7)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${why}; worktree ${worktree} left for review`,
             })
             return { _tag: "Over" } satisfies Prepared
           }
-          if (!back.success) return undefined
+          if (back === undefined) return undefined
           const which = now
             ? line`which merged as it was checked, but ${blame(step)}`
             : "which did not merge as it was checked"

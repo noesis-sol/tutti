@@ -21,7 +21,7 @@ import { EventStream } from "./eventstream.ts"
 import type { HandBacks } from "./handback.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag } from "./log.ts"
-import { closeEpics, gitWhy, type MergeEnv, type MergeOptions } from "./merge.ts"
+import { closeEpics, gitWhy, type MergeEnv, type MergeOptions, restoreBranch } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
 import { unmergedLabel } from "./scope.ts"
@@ -81,7 +81,7 @@ export const removeMerged = (
       }
       const ahead = yield* Effect.result(git.log(options.repo, options.base, branch))
       if (Result.isFailure(ahead) || ahead.success.length > 0) {
-        yield* Effect.ignore(git.resetBranch(worktree, options.base))
+        yield* restoreBranch({ branch, worktree }, options.base, 1)
       }
     }
     const cleanup = yield* Effect.result(worktrees.remove(id))

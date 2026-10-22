@@ -60,6 +60,7 @@ import {
   type MergeOptions,
   notePass,
   onBranch,
+  restoreBranch,
   uncommitted,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
@@ -337,34 +338,25 @@ export const verifyFixed = (
  */
 export const undoFix = (stop: CheckStop): Effect.Effect<string, never, MergeEnv> =>
   Effect.gen(function* () {
-    const git = yield* Git
     const { branch, worktree } = stop.ticket
     const to = stop.at
-    const rebasing = yield* Effect.result(git.rebaseInProgress(worktree))
-    if (Result.isFailure(rebasing) || rebasing.success) {
-      const abort = yield* Effect.result(git.abortRebase(worktree))
-      if (Result.isFailure(abort)) {
+    const restored = yield* restoreBranch(stop.ticket, to)
+    switch (restored._tag) {
+      case "AbortFailed":
         return line`; its rebase could not be aborted, so ${worktree} is left mid-rebase`
-      }
+      case "AlreadyThere":
+        return ""
+      case "Dirty":
+        return line`; ${worktree} is left as its worker left it`
+      case "OffBranch":
+        return line`; ${branch} is left at ${short(restored.at)}, as ${worktree} has ${restored.on}`
+      case "Unknown":
+        return line`; ${branch} is left at ${short(restored.at)}, as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
+      case "ResetFailed":
+        return line`; ${branch} could not be reset to ${short(to)}, where the check failed, and is left at ${short(restored.at)}`
+      case "Reset":
+        return line`; ${branch} was reset to ${short(to)}, where the check failed (its worker's attempt is ${short(restored.from)})`
     }
-    const status = yield* Effect.result(git.status(worktree))
-    if (Result.isFailure(status) || uncommitted(status.success).length > 0) {
-      return line`; ${worktree} is left as its worker left it`
-    }
-    const at = yield* Effect.result(git.revParse(worktree, branch))
-    const now = Result.isSuccess(at) ? at.success : ""
-    const on = yield* onBranch(stop.ticket)
-    if (on._tag === "OffBranch")
-      return line`; ${branch} is left at ${short(now)}, as ${worktree} has ${on.on}`
-    if (on._tag === "Unknown") {
-      return line`; ${branch} is left at ${short(now)}, as git could not tell what ${worktree} has checked out: ${gitWhy(on.error)}`
-    }
-    if (now === to) return ""
-    const reset = yield* Effect.result(git.resetBranch(worktree, to))
-    if (Result.isFailure(reset)) {
-      return line`; ${branch} could not be reset to ${short(to)}, where the check failed, and is left at ${short(now)}`
-    }
-    return line`; ${branch} was reset to ${short(to)}, where the check failed (its worker's attempt is ${short(now)})`
   })
 
 /** What came of the hand-backs, `tries` in turn, for a line or a note; `not`, why no more. */

@@ -63,6 +63,7 @@ import {
   type MergeOptions,
   notePass,
   onBranch,
+  restoreBranch,
   type Unchanged,
   unchanged,
   uncommitted,
@@ -860,41 +861,29 @@ export const verifyResolved = (
  */
 export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, MergeEnv> =>
   Effect.gen(function* () {
-    const git = yield* Git
     const { branch, worktree } = stop.ticket
     const to = stop.head
     const short = (hash: string) => hash.slice(0, 10)
-    let aborted = false
-    const rebasing = yield* Effect.result(git.rebaseInProgress(worktree))
-    if (Result.isFailure(rebasing) || rebasing.success) {
-      const abort = yield* Effect.result(git.abortRebase(worktree))
-      if (Result.isFailure(abort)) {
+    const was = line`it was at ${short(to)} before the rebase`
+    const restored = yield* restoreBranch(stop.ticket, to)
+    switch (restored._tag) {
+      case "AbortFailed":
         return line`the rebase could not be aborted, so ${worktree} is left mid-rebase`
-      }
-      aborted = true
+      case "AlreadyThere":
+        return restored.aborted
+          ? line`the rebase was aborted`
+          : line`${branch} is as the ticket closed it`
+      case "Dirty":
+        return line`${branch} is left as its worker left it (${was})`
+      case "OffBranch":
+        return line`${branch} is left at ${short(restored.at)} (${was}), as ${worktree} has ${restored.on}`
+      case "Unknown":
+        return line`${branch} is left at ${short(restored.at)} (${was}), as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
+      case "ResetFailed":
+        return line`${branch} could not be reset to ${short(to)}, where it was before the rebase; it is left at ${short(restored.at)}`
+      case "Reset":
+        return line`${branch} was reset to ${short(to)}, where it was before the rebase (its worker's attempt is ${short(restored.from)})`
     }
-    const status = yield* Effect.result(git.status(worktree))
-    const dirty = Result.isFailure(status) || uncommitted(status.success).length > 0
-    const at = yield* Effect.result(git.revParse(worktree, branch))
-    const now = Result.isSuccess(at) ? at.success : ""
-    if (now === to) {
-      return aborted ? line`the rebase was aborted` : line`${branch} is as the ticket closed it`
-    }
-    if (dirty) {
-      return line`${branch} is left as its worker left it (it was at ${short(to)} before the rebase)`
-    }
-    const on = yield* onBranch(stop.ticket)
-    if (on._tag === "OffBranch") {
-      return line`${branch} is left at ${short(now)} (it was at ${short(to)} before the rebase), as ${worktree} has ${on.on}`
-    }
-    if (on._tag === "Unknown") {
-      return line`${branch} is left at ${short(now)} (it was at ${short(to)} before the rebase), as git could not tell what ${worktree} has checked out: ${gitWhy(on.error)}`
-    }
-    const reset = yield* Effect.result(git.resetBranch(worktree, to))
-    if (Result.isFailure(reset)) {
-      return line`${branch} could not be reset to ${short(to)}, where it was before the rebase; it is left at ${short(now)}`
-    }
-    return line`${branch} was reset to ${short(to)}, where it was before the rebase (its worker's attempt is ${short(now)})`
   })
 
 /**

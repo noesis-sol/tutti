@@ -298,7 +298,7 @@ export const Checkout = Data.taggedEnum<Checkout>()
  * failure is Unknown, never its branch.
  */
 export const onBranch = (
-  ticket: FinishedTicket,
+  ticket: Pick<FinishedTicket, "branch" | "worktree">,
   tries = gitTries,
 ): Effect.Effect<Checkout, never, Git> =>
   Effect.gen(function* () {
@@ -371,6 +371,66 @@ export const abandonRebase = (worktree: string) =>
     const { git } = yield* services
     if (yield* git.rebaseInProgress(worktree)) yield* git.abortRebase(worktree)
   }).pipe(Effect.ignore)
+
+/**
+ * What came of putting a branch back (restoreBranch). `at` is where the branch is left, "" when
+ * git couldn't say.
+ */
+export type Restored = Data.TaggedEnum<{
+  /** At `to` already, once a rebase in progress was aborted (`aborted`), or none was. */
+  AlreadyThere: { readonly aborted: boolean }
+  /** Reset to `to` from `from`, its worker's attempt. */
+  Reset: { readonly from: string }
+  /** Left: its worktree has uncommitted changes, or git can't say whether it has. */
+  Dirty: { readonly at: string }
+  /** Left: its worktree has something else checked out, as `on` says (Checkout's OffBranch). */
+  OffBranch: { readonly at: string; readonly on: string }
+  /** Left: git can't tell what its worktree has checked out. */
+  Unknown: { readonly at: string; readonly error: GitError }
+  /** Left mid-rebase: git could not abort the rebase in progress. */
+  AbortFailed: { readonly error: GitError }
+  /** Left: git reset failed. */
+  ResetFailed: { readonly at: string; readonly error: GitError }
+}>
+
+export const Restored = Data.taggedEnum<Restored>()
+
+/**
+ * Puts the ticket's branch back at `to`: a rebase in progress in its worktree aborted, then the
+ * branch, when it is elsewhere, reset to `to` if its worktree is clean and has it checked out. A
+ * branch at `to` already is left as it is, whatever its worktree holds. `to` is a full hash, or a
+ * ref, which is never taken for where the branch is. Its worktree's checkout is asked up to `tries`
+ * times (onBranch). Each caller says what came of it in its own words.
+ */
+export const restoreBranch = (
+  ticket: Pick<FinishedTicket, "branch" | "worktree">,
+  to: string,
+  tries = gitTries,
+): Effect.Effect<Restored, never, Git> =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const { branch, worktree } = ticket
+    let aborted = false
+    const rebasing = yield* Effect.result(git.rebaseInProgress(worktree))
+    if (Result.isFailure(rebasing) || rebasing.success) {
+      const abort = yield* Effect.result(git.abortRebase(worktree))
+      if (Result.isFailure(abort)) return Restored.AbortFailed({ error: abort.failure })
+      aborted = true
+    }
+    const status = yield* Effect.result(git.status(worktree))
+    const head = yield* Effect.result(git.revParse(worktree, branch))
+    const at = Result.isSuccess(head) ? head.success : ""
+    if (at === to) return Restored.AlreadyThere({ aborted })
+    if (Result.isFailure(status) || uncommitted(status.success).length > 0) {
+      return Restored.Dirty({ at })
+    }
+    const on = yield* onBranch(ticket, tries)
+    if (on._tag === "OffBranch") return Restored.OffBranch({ at, on: on.on })
+    if (on._tag === "Unknown") return Restored.Unknown({ at, error: on.error })
+    const reset = yield* Effect.result(git.resetBranch(worktree, to))
+    if (Result.isFailure(reset)) return Restored.ResetFailed({ at, error: reset.failure })
+    return Restored.Reset({ from: at })
+  })
 
 /**
  * What the merge train (mergetrain.ts) is told of the merge check of the ticket whose turn it is:
@@ -959,9 +1019,9 @@ export const closeUnchanged = (
   unchanged: Unchanged,
 ): Effect.Effect<void, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, worktrees, beads, ledger } = yield* services
+    const { worktrees, beads, ledger } = yield* services
     const { id, title, branch, worktree } = ticket
-    if (unchanged.own) yield* Effect.ignore(git.resetBranch(worktree, options.base))
+    if (unchanged.own) yield* restoreBranch(ticket, options.base, 1)
     const cleanup = yield* Effect.result(worktrees.remove(id))
     const left = Result.isSuccess(cleanup)
       ? line`worktree and branch removed`

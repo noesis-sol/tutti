@@ -274,11 +274,11 @@ const show = (id: string) =>
  * the base and a clean worktree, or commits that together change nothing); no commit naming it;
  * uncommitted changes; or finished, ready to merge.
  */
-const readClosed = (worker: StartedWorker, title: string, base: string) =>
+const readClosed = (worker: StartedWorker, base: string) =>
   Effect.gen(function* () {
     const git = yield* Git
     const { id, branch, path } = worker.worktree
-    const on = yield* onBranch({ id, title, branch, worktree: path })
+    const on = yield* onBranch({ branch, worktree: path })
     if (on._tag === "OffBranch") return Reading.OffBranch({ on: on.on })
     if (on._tag === "Unknown") return yield* Effect.fail(on.error)
     const commits = yield* git.log(path, base)
@@ -330,7 +330,7 @@ export const read = (
         if (known) return Reading.WaitsForMerge({ blockers, status })
       }
     }
-    if (status === "closed") return yield* readClosed(worker, issue.title, base)
+    if (status === "closed") return yield* readClosed(worker, base)
     const empty = known ?? (yield* leftNothing(id, path, base))
     switch (status) {
       case "deferred":
