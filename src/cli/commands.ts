@@ -555,10 +555,12 @@ export const readInitFlags = (
     force: given.force,
     ...(given.update === true ? { update: true } : {}),
   }
-  if (
-    given.update === true &&
-    (given.force || Object.keys(flags).some((key) => key !== "force" && key !== "update"))
-  ) {
+  // A flag given counts whether or not its value read, so every problem is said at once.
+  const others = Object.entries(given).some(
+    ([key, text]) =>
+      key !== "force" && key !== "update" && Option.isOption(text) && Option.isSome(text),
+  )
+  if (given.update === true && (given.force || others)) {
     problems.push("--update takes no other flag: run tutti init without it to change the rest")
   }
   return problems.length > 0 ? Result.fail(problems) : Result.succeed(flags)
