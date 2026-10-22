@@ -371,7 +371,7 @@ export const message = (id: string, text: string): Marked =>
   marked(Tag.message, id)`you → ${id} (${[...text].length} characters)`
 
 /** FILED: you filed what you wrote in a finished worker's view as a new ticket (§ 7.5). */
-export const filed = (id: string, from: string): Line =>
+export const filedTicket = (id: string, from: string): Line =>
   ticketLine(Tag.filed)`${id}, written for ${from}'s worker after it had finished`
 
 /** USAGE: an account's usage nears a limit (`allowed_warning`), said once per limit (§ 4.12). */

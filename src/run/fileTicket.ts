@@ -72,7 +72,7 @@ export const fileTicket = (
         discoveredFrom: [request.from],
       })
       .pipe(
-        Effect.tap((issue) => logs.write(log.filed(issue.id, request.from))),
+        Effect.tap((issue) => logs.write(log.filedTicket(issue.id, request.from))),
         Effect.map((issue) => FileOutcome.Filed({ id: issue.id, title: issue.title })),
         Effect.catch((error) => Effect.succeed(FileOutcome.NotFiled({ why: beadsWhy(error) }))),
       )
