@@ -1089,7 +1089,13 @@ describe("NO_COLOR", () => {
           line.flatMap((cell, x) => {
             const fg = recordOf(cell.fg)
             const bg = recordOf(cell.bg)
-            const same = cell.attributes === was[y]?.[x]?.attributes
+            const before = was[y]?.[x]
+            // A focused button, drawn on formAccent, is bold and reversed without it (§ 7.11).
+            const focus =
+              before !== undefined &&
+              recordOf(before.bg) === recorded(orchestraColours.formAccent[variantOf(appearance)])
+            const same =
+              cell.attributes === (focus ? reversed(before.attributes) : before?.attributes)
             // Selected text is the one exception: orchestra's selection colours (§ 7.11).
             const selected =
               fg === recorded(orchestraColours.selectionText[1]) &&
@@ -1102,6 +1108,39 @@ describe("NO_COLOR", () => {
           }),
         )
         expect(differences).toEqual([])
+      },
+      renderTime,
+    )
+  }
+})
+
+/** A focus's attributes under NO_COLOR: bold and reversed besides its own. */
+const reversed = (attributes: number): number =>
+  attributes | TextAttributes.BOLD | TextAttributes.INVERSE
+
+/** `appearance`'s index in a role's colours. */
+const variantOf = (appearance: Appearance): 0 | 1 => (appearance === "light" ? 0 : 1)
+
+describe("NO_COLOR's focus", () => {
+  test("paints the focused button bold and reversed, and only under NO_COLOR", () => {
+    const options = { appearance: "dark", depth: "truecolor" } as const
+    const plain = makeTheme(orchestra, { ...options, noColor: true }).form
+    expect(plain.focusedButton.paint("[ Deny ]")).toBe("\x1b[1m\x1b[7m[ Deny ]\x1b[0m")
+    expect(plain.button.paint("[ Allow ]")).toBe("[ Allow ]")
+    const coloured = makeTheme(orchestra, { ...options, noColor: false }).form.focusedButton
+    expect(coloured.attributes).toBe(0)
+  })
+
+  for (const name of ["the dashboard", "a defaultToNo card"]) {
+    test.each(variants)(
+      `the focused button is bold and reversed, the others plain: ${name}, %s`,
+      async (appearance) => {
+        const plain = await draw(sceneOf(name), themeIn(orchestra, true), appearance)
+        const attributesOf = (text: string) => [
+          ...new Set(find(plain, { text }).map((cell) => cell.attributes)),
+        ]
+        expect(attributesOf("[ Deny ]")).toEqual([reversed(0)])
+        expect(attributesOf("[ Allow ]")).toEqual([0])
       },
       renderTime,
     )

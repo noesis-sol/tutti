@@ -511,13 +511,22 @@ export interface StyleSpec {
   readonly bg: Role | null
   readonly bold: boolean
   readonly faint: boolean
+  /**
+   * A focus: where its background is the terminal's default (under NO_COLOR), it is drawn bold
+   * and reversed, so that it shows without colour (§ 7.11).
+   */
+  readonly focus: boolean
 }
 
-const spec = (fg: Role | null, attributes: { bold?: true; faint?: true; bg?: Role } = {}) => ({
+const spec = (
+  fg: Role | null,
+  attributes: { bold?: true; faint?: true; bg?: Role; focus?: true } = {},
+) => ({
   fg,
   bg: attributes.bg ?? null,
   bold: attributes.bold === true,
   faint: attributes.faint === true,
+  focus: attributes.focus === true,
 })
 
 /** orchestra's styles, each with the role its colour now comes from. */
@@ -576,7 +585,7 @@ export const formStyleSpecs: { readonly [S in FormStyleName]: StyleSpec } = {
   helpSeparator: spec("formHelpSeparator"),
   placeholder: spec("formPlaceholder"),
   bar: spec("formFrame"),
-  focusedButton: spec("formAccentText", { bg: "formAccent" }),
+  focusedButton: spec("formAccentText", { bg: "formAccent", focus: true }),
   button: spec("formText", { bg: "formButton" }),
 }
 
@@ -640,7 +649,7 @@ export const ansiOf = (colour: Colour, layer: Layer, depth: ColourDepth): string
 
 /**
  * The theme: the styles of `scheme` in its `appearance` variant. Under NO_COLOR every role is the
- * terminal's default colour; bold and faint remain. Unless `styled` (the default), it writes no
+ * terminal's default colour; bold and faint remain, and a focus is drawn bold and reversed. Unless `styled` (the default), it writes no
  * ANSI at all, for output that isn't a terminal; OpenTUI's colours and attributes stay.
  */
 export const makeTheme = (
@@ -665,12 +674,19 @@ export const makeTheme = (
     // text's own colour, as tutti's other faint text; any other colour is drawn as is, not faint.
     const faint = spec.faint && (spec.fg === null || colourOf(spec.fg)._tag === "Default")
     const fg = faint ? null : spec.fg
-    const attributes = (spec.bold ? TextAttributes.BOLD : 0) | (faint ? TextAttributes.DIM : 0)
+    // A focus without its background's colour is bold and reversed: colour is never the only cue.
+    const reverse = spec.focus && (spec.bg === null || colourOf(spec.bg)._tag === "Default")
+    const bold = spec.bold || reverse
+    const attributes =
+      (bold ? TextAttributes.BOLD : 0) |
+      (faint ? TextAttributes.DIM : 0) |
+      (reverse ? TextAttributes.INVERSE : 0)
     const open = !styled
       ? ""
       : [
-          spec.bold ? "\x1b[1m" : "",
+          bold ? "\x1b[1m" : "",
           faint ? "\x1b[2m" : "",
+          reverse ? "\x1b[7m" : "",
           fg === null ? "" : ansi(fg, "fg"),
           spec.bg === null ? "" : ansi(spec.bg, "bg"),
         ].join("")

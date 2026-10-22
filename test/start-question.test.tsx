@@ -373,21 +373,27 @@ describe("the plan's lines", () => {
 describe("the form styles", () => {
   test("take the form roles, as huh's Charm theme does", () => {
     expect(formStyleSpecs).toEqual({
-      option: { fg: "formText", bg: null, bold: false, faint: false },
-      fieldTitle: { fg: "formTitle", bg: null, bold: true, faint: false },
-      selector: { fg: "formAccent", bg: null, bold: false, faint: false },
-      selected: { fg: "formSelected", bg: null, bold: false, faint: false },
-      selectedMark: { fg: "formSelectedMark", bg: null, bold: false, faint: false },
-      error: { fg: "formError", bg: null, bold: false, faint: false },
-      description: { fg: "formMuted", bg: null, bold: false, faint: false },
-      faint: { fg: "formFaint", bg: null, bold: false, faint: true },
-      helpKey: { fg: "formHelpKey", bg: null, bold: false, faint: false },
-      helpDesc: { fg: "formHelpDesc", bg: null, bold: false, faint: false },
-      helpSeparator: { fg: "formHelpSeparator", bg: null, bold: false, faint: false },
-      placeholder: { fg: "formPlaceholder", bg: null, bold: false, faint: false },
-      bar: { fg: "formFrame", bg: null, bold: false, faint: false },
-      focusedButton: { fg: "formAccentText", bg: "formAccent", bold: false, faint: false },
-      button: { fg: "formText", bg: "formButton", bold: false, faint: false },
+      option: { fg: "formText", bg: null, bold: false, faint: false, focus: false },
+      fieldTitle: { fg: "formTitle", bg: null, bold: true, faint: false, focus: false },
+      selector: { fg: "formAccent", bg: null, bold: false, faint: false, focus: false },
+      selected: { fg: "formSelected", bg: null, bold: false, faint: false, focus: false },
+      selectedMark: { fg: "formSelectedMark", bg: null, bold: false, faint: false, focus: false },
+      error: { fg: "formError", bg: null, bold: false, faint: false, focus: false },
+      description: { fg: "formMuted", bg: null, bold: false, faint: false, focus: false },
+      faint: { fg: "formFaint", bg: null, bold: false, faint: true, focus: false },
+      helpKey: { fg: "formHelpKey", bg: null, bold: false, faint: false, focus: false },
+      helpDesc: { fg: "formHelpDesc", bg: null, bold: false, faint: false, focus: false },
+      helpSeparator: { fg: "formHelpSeparator", bg: null, bold: false, faint: false, focus: false },
+      placeholder: { fg: "formPlaceholder", bg: null, bold: false, faint: false, focus: false },
+      bar: { fg: "formFrame", bg: null, bold: false, faint: false, focus: false },
+      focusedButton: {
+        fg: "formAccentText",
+        bg: "formAccent",
+        bold: false,
+        faint: false,
+        focus: true,
+      },
+      button: { fg: "formText", bg: "formButton", bold: false, faint: false, focus: false },
     })
     expect(Object.keys(dark.form)).toEqual([...formStyleNames])
     expect(dark.form.fieldTitle.paint("Go?")).toBe("\x1b[1m\x1b[38;2;117;113;249mGo?\x1b[0m")

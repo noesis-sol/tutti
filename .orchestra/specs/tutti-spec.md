@@ -1429,7 +1429,7 @@ A role's light or dark variant is picked from the terminal's background, as Lip 
 
 #### Colour depth and `NO_COLOR`
 
-On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI uses the nearest, as Lip Gloss degrades (§7.7). With `NO_COLOR` set, every role becomes the terminal's default colour, whatever the scheme; bold, faint, glyphs and words remain. Selected text is the one exception: under `NO_COLOR`, and for a scheme that leaves `selection` or `selectionText` to `default`, it takes `orchestra`'s `selection` and `selectionText` colours (`#FAFAFA` on `#7D56F4`), so that a selection stays visible. Colour is never the only signal: every state also has its glyph and its word, as in orchestra (`■ blocked`, `◼ to merge`).
+On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI uses the nearest, as Lip Gloss degrades (§7.7). With `NO_COLOR` set, every role becomes the terminal's default colour, whatever the scheme; bold, faint, glyphs and words remain. Selected text is the one exception: under `NO_COLOR`, and for a scheme that leaves `selection` or `selectionText` to `default`, it takes `orchestra`'s `selection` and `selectionText` colours (`#FAFAFA` on `#7D56F4`), so that a selection stays visible. A focused button, which colour alone marks otherwise (`formAccentText` on `formAccent`), is drawn bold and reversed where its background is the terminal's default, under `NO_COLOR` or a scheme that leaves `formAccent` to `default`, so that you can see which button Enter presses. Colour is never the only signal: every state also has its glyph and its word, as in orchestra (`■ blocked`, `◼ to merge`).
 
 #### One module
 
