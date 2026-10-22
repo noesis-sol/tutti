@@ -224,17 +224,16 @@ below are the coverage report's uncovered lines at 368899e.
   `start-question.test.tsx`, `render.test.tsx`, `run-view.test.ts`, `run-commands.test.ts`,
   `commands-after-end.test.ts`, `ui-mode-2027.test.ts`, `sanitize.test.ts`,
   `escape-markdown-links.test.ts`, `harness-terminal.test.ts`.
-- **Untested**: the New feature interview view's keys (`src/ui/InterviewView.tsx`, 55 % of its
-  functions: 269–390): PgUp/PgDn and loading older items, Up/Down between entries and requests,
-  Tab and the arrows within a request's card, Enter, the number keys picking an option, g and G,
-  and a click expanding an entry (tutti-8iz.17).
+- **Untested**: nothing found.
 
 ## The feature interview
 
 - **Reached by**: `tutti --feature "<request>"`, or New feature at the start question.
 - **Tests**: `interview.test.ts`, `feature.test.ts`, `feature-renderer.test.ts`,
-  `ui-interview.test.tsx`.
-- **Untested**: the view's keys, under the dashboard above (tutti-8iz.17).
+  `ui-interview.test.tsx`, `ui-interview-narrow.test.tsx`, `ui-interview-keys.test.tsx` (the
+  view's keys and mouse: PgUp/PgDn and loading older items, ↑↓, Tab and the arrows in a request's
+  card, Enter, the number keys, g and G, a click on an entry).
+- **Untested**: nothing found.
 
 ## Plain output, the log, the report, notifications
 
