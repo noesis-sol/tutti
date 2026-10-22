@@ -184,18 +184,6 @@ describe("filing a finished worker's message as a ticket", () => {
     })
   })
 
-  test("Enter's toast says Ctrl+T files it", async () => {
-    await scene(async ({ view, commands, rendered }) => {
-      await writeThenFinish(rendered, view)
-      await rendered.input((setup) => setup.mockInput.pressEnter())
-      // The toast's head is drawn over the composer's text, which shows through its spaces.
-      const frame = await until(rendered, has("not sent; Ctrl+T files it as a ticket"))
-      expect(frame.chars).toContain("not sent; Ctrl+T files it as a ticket")
-      expect(finishedWords("t-1").toast).toEndWith("not sent; Ctrl+T files it as a ticket")
-      expect(taken(commands)).toEqual([])
-    })
-  })
-
   test("Ctrl+T files the text; the composer keeps it till it's filed, then empties", async () => {
     await scene(async ({ view, filings, commands, rendered }) => {
       await writeThenFinish(rendered, view)

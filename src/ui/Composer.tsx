@@ -44,7 +44,7 @@ export const finishedWords = (ticket: string) => ({
   line: ": tutti can't send it messages",
   placeholder: "the worker has finished",
   status: "finished",
-  toast: `${sanitizeLine(ticket)}'s worker has finished: not sent; Ctrl+T files it as a ticket`,
+  toast: `${sanitizeLine(ticket)}'s worker has finished: your message wasn't sent`,
 })
 
 /** What filing the composer's text as a ticket says: its button, and its toasts (tutti-g0wd). */
