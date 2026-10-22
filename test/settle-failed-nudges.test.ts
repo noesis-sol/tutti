@@ -8,6 +8,7 @@ import { join } from "node:path"
 import { Duration, Effect, Exit, Fiber, type Scope } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { makeHandBacks } from "../src/run/handback.ts"
+import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
 import { Cause } from "../src/run/phase.ts"
@@ -38,6 +39,7 @@ const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* 
     settled: Effect.succeed(emptyQueue),
     rechecks: yield* makeRechecks,
     handBacks: yield* makeHandBacks,
+    held: yield* makeHeld,
     checksAhead: undefined as never,
     recheck: Effect.succeed([]),
     mergedByHand: Effect.succeed([]),

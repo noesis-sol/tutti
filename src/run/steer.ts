@@ -40,7 +40,7 @@ export const lengthOf = (text: string): number => [...text].length
  * Marks the ticket's worker steered by `by`: the STEERED line and its `steered` record when it
  * wasn't steered already. A ticket the run no longer has is left alone.
  */
-const steer = (ticket: string, by: "message" | "interrupt") =>
+export const steer = (ticket: string, by: "message" | "interrupt") =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const logs = yield* Log

@@ -990,6 +990,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
               yield* Ref.set(endAsked, true)
               return yield* wakeUp
             case "SendMessage":
+              // Held while its ticket waits to merge or merges, so its branch stays as checked.
+              if (yield* queue.held.hold(command.ticket, command.text, command.uuid)) return
               return yield* sendMessage(command.ticket, command.text, command.uuid)
             case "Interrupt":
               return yield* interrupt(command.ticket)

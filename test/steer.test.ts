@@ -14,6 +14,7 @@ import { Attention } from "../src/agent/Attention.ts"
 import { resolve, UiCommand } from "../src/run/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { makeHandBacks, type RebaseStop } from "../src/run/handback.ts"
+import { makeHeld } from "../src/run/held.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
@@ -96,6 +97,7 @@ const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* 
     settled: Effect.succeed(emptyQueue),
     rechecks: yield* makeRechecks,
     handBacks: yield* makeHandBacks,
+    held: yield* makeHeld,
     checksAhead: undefined as never,
     recheck: Effect.succeed([]),
     mergedByHand: Effect.succeed([]),

@@ -9,7 +9,10 @@
 // or the worker settles. Ctrl+X asks, then sends Interrupt, which cancels the messages still
 // queued, so their marks go; Ctrl+R, or the Release button on the steered line, sends Release.
 // Once the worker has finished, its card gone, the composer says so and sends nothing: Enter keeps
-// what you typed, and a toast says it wasn't sent (tutti-ceo).
+// what you typed, and a toast says it wasn't sent (tutti-ceo). While its ticket waits to merge or
+// merges, the run holds your messages until the merge is over (held.ts): the held line says so over
+// the composer, and each message is shown `held` till it is sent, or `not sent` once the worker has
+// finished with it still held.
 //
 // The prompt (`>`) is drawn `formAccent`, the cursor `formSelected`, the placeholder
 // `formPlaceholder`, the text `formText`.
@@ -50,11 +53,33 @@ export const finishedLine = (theme: Theme, ticket: string, width: number): Segme
   )
 }
 
+/** What the held line says while `ticket` waits to merge (`merging` false) or merges. */
+export const heldWords = (ticket: string, merging: boolean) => ({
+  phase: `${sanitizeLine(ticket)} ${merging ? "is merging" : "waits to merge"}`,
+  line: ": tutti holds your messages until its merge is over",
+})
+
+/** The held line, `width` wide, over the composer of a ticket waiting to merge or merging. */
+export const heldLine = (
+  theme: Theme,
+  ticket: string,
+  merging: boolean,
+  width: number,
+): Segments => {
+  const words = heldWords(ticket, merging)
+  return cut(
+    [seg("  "), seg(words.phase, theme.styles.key), seg(words.line, theme.styles.dim)],
+    width,
+  )
+}
+
 /** A message you sent from the composer, by the uuid it was sent with. */
 export interface Send {
   readonly uuid: string
   readonly ticket: string
   readonly text: string
+  /** Sent while its ticket waited to merge or merged: the run holds it till the merge is over. */
+  readonly held?: boolean
 }
 
 // A value of an SDK message whose shape this tutti may not know, read without trusting it.
@@ -88,8 +113,13 @@ export const takenIn = (items: ReadonlyArray<Item>): ReadonlySet<string> => {
 
 /** Your messages to a worker, and which of them are still queued. */
 export interface Sends {
-  /** The ticket's messages sent while a turn was under way that the CLI hasn't taken, oldest first. */
+  /**
+   * The ticket's messages sent while a turn was under way that the CLI hasn't taken, and those
+   * held while its ticket merges, oldest first.
+   */
   readonly queued: ReadonlyArray<Send>
+  /** The mark a message in `queued` has: `queued`, `held`, or `not sent`. */
+  readonly mark: (send: Send) => string
   /** Records a message sent with `uuid`: queued when a turn is under way. */
   readonly sent: (send: Send) => void
   /** Forgets the queued messages to `ticket`'s worker: an interrupt cancelled them. */
@@ -99,34 +129,41 @@ export interface Sends {
 /**
  * The messages you sent to the ticket's worker that are still queued, from its transcript's latest
  * `items`, while a turn is `underWay`. Those the transcript says were taken are let go, and all of
- * them once the worker settles.
+ * them once the worker settles. Those sent while its ticket is `holding` them, waiting to merge or
+ * merging, are kept while it is, and once the worker has `finished` with them still held.
  */
 export const useSends = (
   ticket: string | undefined,
   items: ReadonlyArray<Item>,
   underWay: boolean,
+  holding = false,
+  finished = false,
 ): Sends => {
   const [sends, setSends] = useState<ReadonlyArray<Send>>([])
   const taken = useMemo(() => takenIn(items), [items])
-  const waiting = (send: Send) => send.ticket !== ticket || (underWay && !taken.has(send.uuid))
+  const waiting = (send: Send) =>
+    send.ticket !== ticket ||
+    (!taken.has(send.uuid) && (underWay || holding || (send.held === true && finished)))
   const queued = sends.filter((send) => send.ticket === ticket && waiting(send))
-  // biome-ignore lint/correctness/useExhaustiveDependencies: waiting reads ticket, taken and underWay
+  // biome-ignore lint/correctness/useExhaustiveDependencies: waiting reads ticket, taken, underWay, holding and finished
   useEffect(() => {
     if (!sends.every(waiting)) setSends((now) => now.filter(waiting))
-  }, [sends, ticket, taken, underWay])
+  }, [sends, ticket, taken, underWay, holding, finished])
   return {
     queued,
+    mark: (send) => (holding ? "held" : send.held === true && finished ? "not sent" : "queued"),
     sent: (send) => {
-      if (underWay) setSends((now) => [...now, send])
+      if (holding) setSends((now) => [...now, { ...send, held: true }])
+      else if (underWay) setSends((now) => [...now, send])
     },
     cancelled: (worker) => setSends((now) => now.filter((send) => send.ticket !== worker)),
   }
 }
 
-/** A queued message's line, `width` wide: `› Please add tests too …  queued`. */
-export const queuedLine = (send: Send, theme: Theme, width: number): Segments => {
+/** A queued message's line, `width` wide: `› Please add tests too …  queued` (or `held`, …). */
+export const queuedLine = (send: Send, theme: Theme, width: number, word = "queued"): Segments => {
   const lines = send.text.split("\n").filter((line) => line.trim() !== "")
-  const mark: Segments = [seg("queued", theme.styles.dim)]
+  const mark: Segments = [seg(word, theme.styles.dim)]
   const room = Math.max(width - widthOf(mark) - 2, 0)
   const head: Segments = [
     seg("  "),
@@ -137,16 +174,20 @@ export const queuedLine = (send: Send, theme: Theme, width: number): Segments =>
   return [...padded(cut(head, room), room), seg("  "), ...mark]
 }
 
-/** The queued messages' lines, at most `queuedShown`, and a count of the rest. */
+/** The queued messages' lines, at most `queuedShown`, and a count of the rest, each `mark`ed. */
 export const queuedLines = (
   queued: ReadonlyArray<Send>,
   theme: Theme,
   width: number,
+  mark: (send: Send) => string = () => "queued",
 ): ReadonlyArray<Segments> => {
   const more = queued.length - queuedShown
+  const rest = queued[queuedShown]
   return [
-    ...queued.slice(0, queuedShown).map((send) => queuedLine(send, theme, width)),
-    ...(more > 0 ? [cut([seg(`  +${more} more queued`, theme.styles.dim)], width)] : []),
+    ...queued.slice(0, queuedShown).map((send) => queuedLine(send, theme, width, mark(send))),
+    ...(rest !== undefined
+      ? [cut([seg(`  +${more} more ${mark(rest)}`, theme.styles.dim)], width)]
+      : []),
   ]
 }
 

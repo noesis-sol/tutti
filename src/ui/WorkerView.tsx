@@ -5,8 +5,9 @@
 // rules (attentionKeys.ts), each with its description, its reason and its whole input, and a
 // conflict hand-back waiting for a steered worker (§ 4.3) as a notice with Hand it the conflict
 // now. Answer in view, for what a card can't hold, opens the answer form over the view
-// (AnswerForm.tsx). Under them and the rule, the composer (Composer.tsx): the steered line with its
-// Release button, your messages still queued, the field.
+// (AnswerForm.tsx). Under them and the rule, the composer (Composer.tsx): the held line while the
+// ticket waits to merge or merges, the steered line with its Release button, your messages still
+// queued or held, the field.
 //
 // The items (transcriptItems.ts): assistant text as Markdown (<markdown>, in the theme's heading,
 // code and link roles); each tool call `Tool  summary`, wrapped, its result at the end of it (`✓`,
@@ -48,6 +49,7 @@ import { createContext, memo, useContext, useEffect, useMemo, useRef } from "rea
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
+import { holdsMessages } from "../run/held.ts"
 import type { Card, Key } from "../run/runView.ts"
 import { AttentionLines, type ButtonSegment } from "./AttentionCard.tsx"
 import { buttonsOf, picksOptions, requestText } from "./attentionKeys.ts"
@@ -56,6 +58,7 @@ import {
   Composer,
   finishedLine,
   finishedWords,
+  heldLine,
   InterruptQuestion,
   QueuedLines,
   queuedLines,
@@ -843,7 +846,14 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const ticket = card?.ticket
   const spin = useSpinner(card?.motion === "spinner")
 
-  const transcript = useTranscriptWindow(ticket, found?.state != null && !hasSettled(found.state))
+  // While its ticket waits to merge or merges, the run holds your messages (held.ts).
+  const holding = found !== undefined && holdsMessages(found.phase)
+  const transcript = useTranscriptWindow(
+    ticket,
+    found?.state != null && !hasSettled(found.state),
+    holding,
+    found === undefined,
+  )
   const { sends } = transcript
   const panel = usePanel(card)
   const handBack = ticket !== undefined && handBacks.includes(ticket)
@@ -945,13 +955,16 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
         ) : null}
         <RequestPanel panel={panel} selection={selection} width={panelWidth} height={height} />
         <Line segments={rule} />
+        {holding ? (
+          <Line segments={heldLine(theme, viewed, found?.phase._tag === "Merging", inner)} />
+        ) : null}
         {finished ? (
           <Line segments={finishedLine(theme, viewed, inner)} />
         ) : card?.steered === true ? (
           <SteeredLine theme={theme} width={inner} release={release} />
         ) : null}
         {sends.queued.length > 0 ? (
-          <QueuedLines lines={queuedLines(sends.queued, theme, inner)} />
+          <QueuedLines lines={queuedLines(sends.queued, theme, inner, sends.mark)} />
         ) : null}
         <Composer
           theme={theme}

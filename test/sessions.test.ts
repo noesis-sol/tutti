@@ -6,6 +6,7 @@ import { Effect, Exit, Fiber, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { makeHandBacks } from "../src/run/handback.ts"
+import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
@@ -133,6 +134,7 @@ const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* 
     settled: Effect.succeed(emptyQueue),
     rechecks: yield* makeRechecks,
     handBacks: yield* makeHandBacks,
+    held: yield* makeHeld,
     checksAhead: undefined as never,
     recheck: Effect.succeed([]),
     mergedByHand: Effect.succeed([]),

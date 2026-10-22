@@ -25,9 +25,10 @@
 // (checkback.ts), as does one that fails on a resolution, Resolving → Fixing: a fix verified and
 // checked puts the ticket back in line, ToMerge.
 //
-// Once a ticket's merge, or a hand-back to its worker, is over, its session is closed if its phase
-// no longer needs it (sessions.ts): merged, blocked (unless its hand-back waits for its steered
-// worker), or set aside and not to be checked again.
+// Once a ticket's merge is over, the messages you sent its worker meanwhile, held, are sent or
+// dropped (held.ts). Once its merge, or a hand-back to its worker, is over, its session is closed
+// if its phase no longer needs it (sessions.ts): merged, blocked (unless its hand-back waits for its
+// steered worker), or set aside and not to be checked again.
 //
 // While a ticket's check runs in its turn, the next in line, waiting for its first turn, is checked
 // ahead of it on top of its branch (mergetrain.ts): its turn then merges it with no second check when
@@ -49,6 +50,7 @@ import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from 
 import { RunFibers } from "./fibers.ts"
 import { type HandBacks, handOver, makeHandBacks, type RebaseStop, resolve } from "./handback.ts"
 import { mergedByHand as handMerged } from "./handMerged.ts"
+import { type Held, makeHeld } from "./held.ts"
 import { Ledger } from "./ledger.ts"
 import {
   abandonRebase,
@@ -106,6 +108,8 @@ export interface MergeQueue {
   readonly rechecks: Rechecks
   /** The run's conflict hand-backs: each ticket's count, and those waiting on a steered worker. */
   readonly handBacks: HandBacks
+  /** Your messages to the workers of tickets waiting to merge or merging, held (held.ts). */
+  readonly held: Held
   /** How the checks ahead of their turn go, by ticket, now and on each change (mergetrain.ts). */
   readonly checksAhead: Stream.Stream<ReadonlyMap<string, CheckAhead>>
   /**
@@ -162,6 +166,7 @@ export const make = (
     const held = yield* Ref.make(false)
     const setUps = options.setUps ?? (yield* makeSetUps)
     const handBacks = yield* makeHandBacks
+    const heldMessages = yield* makeHeld
     const fixes = yield* makeFixes
     const passes = yield* makePasses
     // Changes to the line and the places it gives, one at a time: the waiting list changes only
@@ -296,6 +301,9 @@ export const make = (
       ticket: FinishedTicket,
     ) =>
       Effect.gen(function* () {
+        // Its merge is over: the messages held for its worker go to it now, or are dropped, before
+        // the queue can settle.
+        yield* heldMessages.over(id)
         yield* SubscriptionRef.update(ref, (state) => ({
           ...state,
           merging: null,
@@ -400,6 +408,7 @@ export const make = (
           // A merge moves the base on, which may be what a ticket's failed check waits for: the
           // tickets it puts back are in line before this merge is over, so `settled` waits for them.
           if (stop === undefined && prepared._tag === "Ready") yield* Effect.exit(restore(recheck))
+          yield* heldMessages.over(ticket.id)
           yield* merged(stop)
           yield* fit(ticket.id, rechecks, handBacks)
         }),
@@ -426,6 +435,7 @@ export const make = (
       ),
       rechecks,
       handBacks,
+      held: heldMessages,
       checksAhead: train.checksAhead,
       recheck,
       mergedByHand,

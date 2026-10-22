@@ -42,10 +42,16 @@ const noTranscript = external<TranscriptState>(emptyTranscript)
 
 /**
  * The transcript of `ticket`, open while the view shows it, and the window of it mounted: your
- * messages sent while a turn is under way are queued until the transcript says they were taken.
- * Scrolling past the top loads older items, keeping your place; the bottom follows the session.
+ * messages sent while a turn is under way are queued until the transcript says they were taken,
+ * and those sent while its ticket is `holding` them, merging, are held (useSends). Scrolling past
+ * the top loads older items, keeping your place; the bottom follows the session.
  */
-export const useTranscriptWindow = (ticket: string | undefined, underWay: boolean) => {
+export const useTranscriptWindow = (
+  ticket: string | undefined,
+  underWay: boolean,
+  holding = false,
+  finished = false,
+) => {
   const feed = useTranscripts()
   const renderer = useRenderer()
   const [transcript, setTranscript] = useState<OpenTranscript | null>(null)
@@ -62,7 +68,7 @@ export const useTranscriptWindow = (ticket: string | undefined, underWay: boolea
   const state = useSyncExternalStore(store.subscribe, store.get)
   const window = state.window
   // The composer shows your queued messages till they are taken, the transcript after.
-  const sends = useSends(ticket, window.latest, underWay)
+  const sends = useSends(ticket, window.latest, underWay, holding, finished)
   const queuedKey = sends.queued.map((send) => send.uuid).join(" ")
   const queued = useMemo(() => new Set(queuedKey === "" ? [] : queuedKey.split(" ")), [queuedKey])
   const entries = useMemo(
