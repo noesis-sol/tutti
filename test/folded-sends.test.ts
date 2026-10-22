@@ -60,7 +60,7 @@ setDefaultTimeout(30_000)
 
 // The reducer's events, as test/worker-state.test.ts has them.
 const sdk = (message: object): WorkerEvent =>
-  WorkerEvent.Message({ message: message as unknown as SDKMessage })
+  WorkerEvent.Message({ session: "s", message: message as unknown as SDKMessage })
 const initEvent = sdk({ type: "system", subtype: "init", permissionMode: "auto", session_id: "s" })
 const running = sdk({ type: "system", subtype: "session_state_changed", state: "running" })
 const idle = sdk({ type: "system", subtype: "session_state_changed", state: "idle" })
@@ -73,7 +73,7 @@ const resultEvent = (uuids: ReadonlyArray<string>) =>
     num_turns: 1,
     user_message_uuids: uuids,
   })
-const sent = (uuid: string) => WorkerEvent.Sent({ uuid })
+const sent = (uuid: string) => WorkerEvent.Sent({ session: "s", uuid })
 const lifecycle = (uuid: string, state: "queued" | "started" | "completed") =>
   sdk({ type: "command_lifecycle", command_uuid: uuid, state })
 

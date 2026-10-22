@@ -624,7 +624,7 @@ live.describe("Agent SDK contract: background tasks", () => {
       // the moment between the emptied set and running, until the report's idle settles it.
       let worker = initial()
       const folded = all.map((message) => {
-        worker = step(worker, WorkerEvent.Message({ message }), Date.now())
+        worker = step(worker, WorkerEvent.Message({ session: "s", message }), Date.now())
         return worker.state._tag
       })
       expect(new Set(folded.slice(idle, report + 1))).toEqual(new Set(["Working"]))
@@ -722,7 +722,7 @@ live.describe("Agent SDK contract: background tasks", () => {
       // idle after the report settles the worker.
       let worker = initial()
       const folded = all.map((message) => {
-        worker = step(worker, WorkerEvent.Message({ message }), Date.now())
+        worker = step(worker, WorkerEvent.Message({ session: "s", message }), Date.now())
         return worker.state._tag
       })
       expect([folded[answer], folded[report]]).toEqual(["Working", "Working"])

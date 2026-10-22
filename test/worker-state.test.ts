@@ -16,7 +16,7 @@ import {
 // SDK messages as docs/spikes/01-sdk-session.md recorded them, with only the fields the reducer
 // reads (and the ones beside them that make each recognisable).
 const sdk = (message: object): WorkerEvent =>
-  WorkerEvent.Message({ message: message as unknown as SDKMessage })
+  WorkerEvent.Message({ session: "s", message: message as unknown as SDKMessage })
 const init = sdk({ type: "system", subtype: "init", permissionMode: "auto", session_id: "s" })
 const sessionState = (state: "running" | "requires_action" | "idle") =>
   sdk({ type: "system", subtype: "session_state_changed", state })
@@ -70,7 +70,7 @@ const taskEnded = (id: string) => [
   sdk({ type: "system", subtype: "task_updated", task_id: id, patch: { status: "completed" } }),
   sdk({ type: "system", subtype: "task_notification", task_id: id, status: "completed" }),
 ]
-const reportLate = (since: number) => WorkerEvent.ReportLate({ since })
+const reportLate = (since: number) => WorkerEvent.ReportLate({ session: "s", since })
 const rateLimit = (status: "allowed" | "allowed_warning" | "rejected", resetsAt?: number) =>
   sdk({
     type: "rate_limit_event",
@@ -80,13 +80,14 @@ const assistant = (fields: object = {}) =>
   sdk({ type: "assistant", message: { content: [] }, parent_tool_use_id: null, ...fields })
 const streamEvent = sdk({ type: "stream_event", event: { type: "message_start" } })
 // A send of tutti's: pushed, its command_lifecycle (not in the SDK's union), and its cancellation.
-const sent = (uuid: string) => WorkerEvent.Sent({ uuid })
+const sent = (uuid: string) => WorkerEvent.Sent({ session: "s", uuid })
 const lifecycle = (uuid: string, state: "queued" | "started" | "completed" | "cancelled") =>
   sdk({ type: "command_lifecycle", command_uuid: uuid, state })
-const cancelled = (...uuids: ReadonlyArray<string>) => WorkerEvent.Cancelled({ uuids })
+const cancelled = (...uuids: ReadonlyArray<string>) =>
+  WorkerEvent.Cancelled({ session: "s", uuids })
 
 const hook = (input: object): WorkerEvent =>
-  WorkerEvent.Hook({ input: input as unknown as HookInput })
+  WorkerEvent.Hook({ session: "s", input: input as unknown as HookInput })
 const preTool = (tool_name: string, tool_input: object = {}) =>
   hook({ hook_event_name: "PreToolUse", tool_name, tool_input, tool_use_id: "toolu_1" })
 const postTool = (tool_name: string) =>
@@ -96,7 +97,7 @@ const subagentStart = (agent_id: string) =>
 const subagentStop = (agent_id: string) =>
   hook({ hook_event_name: "SubagentStop", agent_id, agent_type: "verifier" })
 const preCompact = hook({ hook_event_name: "PreCompact", trigger: "auto" })
-const requests = (pending: number) => WorkerEvent.Requests({ pending })
+const requests = (pending: number) => WorkerEvent.Requests({ session: "s", pending })
 
 const check = "scripts/check-fast.sh"
 
@@ -276,9 +277,9 @@ describe("a finished task's report", () => {
   })
 
   test("a session that goes while a report is awaited is Gone", () => {
-    expect(stateAfter(...watching, ...ends, WorkerEvent.Ended({ why: "exited" }))).toEqual(
-      WorkerState.Gone({ why: "exited" }),
-    )
+    expect(
+      stateAfter(...watching, ...ends, WorkerEvent.Ended({ session: "s", why: "exited" })),
+    ).toEqual(WorkerState.Gone({ why: "exited" }))
   })
 })
 
@@ -408,7 +409,11 @@ describe("error results", () => {
 
   test("a failed turn with a send of tutti's outstanding is Working until it is answered", () => {
     const uuid = "00000000-0000-4000-8000-000000000001"
-    const events = [init, WorkerEvent.Sent({ uuid }), errorResult({ user_message_uuids: [] })]
+    const events = [
+      init,
+      WorkerEvent.Sent({ session: "s", uuid }),
+      errorResult({ user_message_uuids: [] }),
+    ]
     expect(stateAfter(...events, idle)._tag).toBe("Working")
     const answered = [init, result({ user_message_uuids: [uuid] }), idle]
     expect(stateAfter(...events, idle, running, ...answered)._tag).toBe("Idle")
@@ -566,17 +571,23 @@ describe("doing", () => {
 
 describe("Closed and Gone", () => {
   test("tutti's close is Closed; nothing after it changes that", () => {
-    expect(stateAfter(init, WorkerEvent.Closed())).toEqual(WorkerState.Closed())
-    expect(stateAfter(init, WorkerEvent.Closed(), init, requests(1))).toEqual(WorkerState.Closed())
+    expect(stateAfter(init, WorkerEvent.Closed({ session: "s" }))).toEqual(WorkerState.Closed())
+    expect(stateAfter(init, WorkerEvent.Closed({ session: "s" }), init, requests(1))).toEqual(
+      WorkerState.Closed(),
+    )
   })
 
   test("a stream that ends without tutti closing it is Gone", () => {
-    expect(stateAfter(init, WorkerEvent.Ended({ why: "exited with 1" }))).toEqual(
+    expect(stateAfter(init, WorkerEvent.Ended({ session: "s", why: "exited with 1" }))).toEqual(
       WorkerState.Gone({ why: "exited with 1" }),
     )
-    expect(stateAfter(init, WorkerEvent.Ended({ why: "x" }), WorkerEvent.Closed())._tag).toBe(
-      "Gone",
-    )
+    expect(
+      stateAfter(
+        init,
+        WorkerEvent.Ended({ session: "s", why: "x" }),
+        WorkerEvent.Closed({ session: "s" }),
+      )._tag,
+    ).toBe("Gone")
   })
 })
 

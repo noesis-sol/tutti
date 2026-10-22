@@ -566,7 +566,7 @@ Conflict resolution and check fixes go to the ticket's worker as orchestra sends
 
 **Session IDs.** tutti draws each new session's UUID, saves it for its ticket in `.tutti/run/state.json`, and starts the session with `sessionId`. A crash can't lose it. A resumed session (`resume`, without `forkSession`) keeps its ID.
 
-**Lifetime.** A session's subprocess is kept only while the ticket needs it. A closed session keeps its ID and is resumed when needed.
+**Lifetime.** A session's subprocess is kept only while the ticket needs it. A closed session keeps its ID and is resumed when needed. A session closing, closed by tutti or gone, is closing until its Claude Code has exited: a start or resume of the ticket waits for that, so two Claude Codes never share a session file and worktree, and closing a session still starting cancels its start.
 
 | The ticket | Its session |
 |---|---|

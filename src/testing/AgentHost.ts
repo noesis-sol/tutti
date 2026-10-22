@@ -229,7 +229,7 @@ export const layer = (
           if (running.get(ticket) !== session) return
           running.delete(ticket)
           ;(yield* Ref.get(session.controller)).abort()
-          yield* workers.fold(session.entry, WorkerEvent.Ended({ why }))
+          yield* workers.fold(session.entry, WorkerEvent.Ended({ session: session.sessionId, why }))
         }).pipe(one.withPermit)
 
       const emitIn = (session: Running, message: object) =>
@@ -300,7 +300,7 @@ export const layer = (
           // As the live host's hook callbacks do, a PreCompact is a compaction too.
           Hook: ({ input }) =>
             Effect.andThen(
-              workers.fold(session.entry, WorkerEvent.Hook({ input })),
+              workers.fold(session.entry, WorkerEvent.Hook({ session: session.sessionId, input })),
               input.hook_event_name === "PreCompact"
                 ? workers.compacted(session.entry, input.trigger)
                 : Effect.void,
@@ -367,7 +367,7 @@ export const layer = (
           const uuid = message.uuid ?? uuidOf(yield* Ref.updateAndGet(drawn, (k) => k + 1))
           const sdk = userMessage(message, uuid, session.sessionId)
           yield* record(Sent.Message({ ticket, message: sdk }))
-          yield* workers.fold(session.entry, WorkerEvent.Sent({ uuid }))
+          yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
           yield* workers.sent(session.entry, session.sessionId, sdk)
           yield* lifecycle(session, uuid, "queued")
           yield* Ref.update(session.queued, (uuids) => [...uuids, uuid])
@@ -389,10 +389,13 @@ export const layer = (
               reason: "the script has no more sessions",
             })
           }
-          const entry = yield* workers.open(ticket)
+          const entry = yield* workers.open(ticket, session.sessionId)
           const first = steps[0]
           if (first?._tag === "FailStart") {
-            yield* workers.fold(entry, WorkerEvent.Ended({ why: first.reason }))
+            yield* workers.fold(
+              entry,
+              WorkerEvent.Ended({ session: session.sessionId, why: first.reason }),
+            )
             return yield* new AgentStartFailed({
               ticket,
               reason: first.reason,
@@ -439,7 +442,7 @@ export const layer = (
           ;(yield* Ref.get(open.controller)).abort()
           if (open.fiber !== undefined) yield* Fiber.interrupt(open.fiber)
           yield* record(Sent.Closed({ ticket }))
-          yield* workers.fold(open.entry, WorkerEvent.Closed())
+          yield* workers.fold(open.entry, WorkerEvent.Closed({ session: open.sessionId }))
         })
 
       const host = AgentHost.of({
@@ -477,7 +480,10 @@ export const layer = (
               playing.cancelled.add(uuid)
               yield* lifecycle(playing, uuid, "cancelled")
             }
-            yield* workers.fold(playing.entry, WorkerEvent.Cancelled({ uuids: receipt.cancelled }))
+            yield* workers.fold(
+              playing.entry,
+              WorkerEvent.Cancelled({ session: playing.sessionId, uuids: receipt.cancelled }),
+            )
             const controller = yield* Ref.getAndSet(playing.controller, new AbortController())
             controller.abort()
             yield* record(Sent.Interrupted({ ticket, receipt }))

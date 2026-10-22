@@ -57,28 +57,29 @@ export const settled = (state: WorkerState): boolean =>
 
 /**
  * What reaches the reducer: an SDK message, a send of tutti's or its cancellation, a hook callback,
- * attention, or the session's end.
+ * attention, or the session's end. Each names the session it is of, by its ID: the host folds only
+ * those of the worker's session now (makeWorkers), and the reducer itself reads none.
  */
 export type WorkerEvent = Data.TaggedEnum<{
   /** A message from the session's stream. */
-  Message: { readonly message: SDKMessage }
+  Message: { readonly session: string; readonly message: SDKMessage }
   /** tutti is pushing the message `uuid` into the session's inbox: it is outstanding from now. */
-  Sent: { readonly uuid: string }
+  Sent: { readonly session: string; readonly uuid: string }
   /** An interrupt's receipt or `cancel_async_message` cancelled these sends. */
-  Cancelled: { readonly uuids: ReadonlyArray<string> }
+  Cancelled: { readonly session: string; readonly uuids: ReadonlyArray<string> }
   /** An in-process hook callback's input (PreToolUse, PostToolUse, SubagentStart, …). */
-  Hook: { readonly input: HookInput }
+  Hook: { readonly session: string; readonly input: HookInput }
   /**
    * No turn came within `reportWait` to report the task that ended at `since`: tutti stops waiting
    * for that report.
    */
-  ReportLate: { readonly since: number }
+  ReportLate: { readonly session: string; readonly since: number }
   /** How many of the worker's `canUseTool` calls and elicitations are open now. */
-  Requests: { readonly pending: number }
+  Requests: { readonly session: string; readonly pending: number }
   /** tutti closed the session on purpose. */
-  Closed: Empty
+  Closed: { readonly session: string }
   /** The session's stream ended or failed without tutti closing it. */
-  Ended: { readonly why: string }
+  Ended: { readonly session: string; readonly why: string }
 }>
 
 export const WorkerEvent = Data.taggedEnum<WorkerEvent>()

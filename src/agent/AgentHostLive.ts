@@ -17,6 +17,12 @@
 // lifecycle.md § 2) and waits for the subprocess to exit, killing its process group if it hasn't
 // within closeLimit. A stream that ends or fails without tutti closing it, or a result with a
 // startup_failure_reason, makes the worker Gone.
+//
+// Each ticket's session is one Lifecycle: Starting from the start (its query, the SDK's handle on
+// it, made once Claude Code is spawned) until its first system/init is checked, Open from then on,
+// and Closing from tutti closing it or its going until its Claude Code has exited. A start or
+// resume waits for a Closing session's end, so two Claude Codes never share a session; the start
+// itself runs in the session's scope, so closing a Starting session cancels it.
 import { randomUUID } from "node:crypto"
 import { availableParallelism } from "node:os"
 import { join } from "node:path"
@@ -33,12 +39,15 @@ import {
 import {
   Cause,
   Context,
+  Data,
+  Deferred,
   Duration,
   Effect,
   Exit,
   Fiber,
   FileSystem,
   Layer,
+  Option,
   Queue,
   Ref,
   Scope,
@@ -128,8 +137,8 @@ export interface LiveOptions {
   readonly cores?: number
 }
 
-// An open session.
-interface Open {
+// A session whose query tutti has made: its handle, from Claude Code's spawn until it has exited.
+interface Live {
   readonly ticket: string
   readonly sessionId: string
   /** The MCP servers it was given: the workers', none for the probe, tutti's for the interview. */
@@ -138,18 +147,53 @@ interface Open {
   readonly inbox: Queue.Queue<SDKUserMessage, Cause.Done>
   readonly query: Query
   readonly abort: AbortController
+  /** Its lifecycle's scope: closing it closes the session. */
   readonly scope: Scope.Closeable
   /** Claude Code, once the SDK has spawned it: query() does at once. */
   readonly spawned: { child: SpawnedProcess | undefined }
-  /** Whether tutti is closing the session, or has let it go: its stream's end is no news. */
-  closing: boolean
-  /** Whether its first system/init has been checked. */
-  checked: boolean
   /** The CLI's capabilities, from its initialize answer and each system/init. */
   readonly capabilities: Set<string>
   /** The startup_failure_reason of a result it sent. */
-  startupFailure: string | undefined
+  readonly startupFailure: Deferred.Deferred<string>
 }
+
+/**
+ * A ticket's session (§ 4.8), from its start or resume until its Claude Code has exited, in a scope
+ * of its own. Starting until its first system/init has been checked, `session` its query once it is
+ * made; Open from then on; Closing once tutti closes it (`closed`) or it goes, until `done`, when its
+ * Claude Code has exited and the ticket has no session. A start or resume waits for a Closing
+ * session's end; closing a Starting session cancels its start.
+ */
+type Lifecycle = Data.TaggedEnum<{
+  Starting: {
+    readonly sessionId: string
+    readonly scope: Scope.Closeable
+    readonly session: Live | undefined
+  }
+  Open: { readonly session: Live }
+  Closing: {
+    readonly sessionId: string
+    readonly closed: boolean
+    readonly done: Deferred.Deferred<void>
+  }
+}>
+
+const Lifecycle = Data.taggedEnum<Lifecycle>()
+
+/** The scope of a session not yet Closing. */
+const scopeOf = (lifecycle: Lifecycle): Scope.Closeable | undefined =>
+  lifecycle._tag === "Starting"
+    ? lifecycle.scope
+    : lifecycle._tag === "Open"
+      ? lifecycle.session.scope
+      : undefined
+
+/** The query of a session Starting with one, or Open. */
+const liveOf = (lifecycle: Lifecycle | undefined): Live | undefined =>
+  lifecycle === undefined || lifecycle._tag === "Closing" ? undefined : lifecycle.session
+
+/** Why a start fails when tutti closed or ended the session before it had started. */
+export const closedWhy = "it was closed while it started"
 
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
@@ -206,11 +250,12 @@ const launchFailed = "Claude Code couldn't be launched"
 /** Whether `message`, from the SDK, is a spawn that failed. */
 const isLaunchFailure = (message: string): boolean => message.includes("failed to launch")
 
-/** The reason a session didn't start, from what failed its initialize. */
-const startFailure = (open: Open, message: string): string => {
-  if (open.startupFailure !== undefined) {
-    return `Claude Code refused to start: ${open.startupFailure}`
-  }
+/**
+ * The reason a session didn't start, from its startup_failure_reason, if it sent one, and what
+ * failed its initialize.
+ */
+const startFailure = (refused: string | undefined, message: string): string => {
+  if (refused !== undefined) return `Claude Code refused to start: ${refused}`
   return isLaunchFailure(message) ? launchFailed : message
 }
 
@@ -262,28 +307,59 @@ export const layer = (
         config.settings.requires.map((r) => r.name),
       )
       const findings = yield* Ref.make<SetupFindings>(noFindings)
-      const open = new Map<string, Open>()
-      // Tickets whose session is being made, so a second start is refused at once.
-      const reserved = new Set<string>()
+      const sessions = new Map<string, Lifecycle>()
 
-      const closeScope = (session: Open) =>
-        Scope.close(session.scope, Exit.void).pipe(Effect.forkIn(scope), Effect.asVoid)
+      /**
+       * Moves the ticket's session, if `of` is still its scope, to Closing: closed on purpose when
+       * `why` is undefined, else gone for `why`, as its worker's state says from now on. The effect
+       * that then closes it, its scope and with it Claude Code, and ends it: undefined when the
+       * ticket's session is another or is Closing already.
+       */
+      const closing = (ticket: string, of: Scope.Closeable, why: string | undefined) =>
+        Effect.gen(function* () {
+          const done = yield* Deferred.make<void>()
+          const moved = yield* Effect.sync(() => {
+            const current = sessions.get(ticket)
+            if (current === undefined || scopeOf(current) !== of) return undefined
+            const sessionId =
+              current._tag === "Open" ? current.session.sessionId : current.sessionId
+            const next = Lifecycle.Closing({ sessionId, closed: why === undefined, done })
+            sessions.set(ticket, next)
+            return next
+          })
+          if (moved === undefined) return undefined
+          const entry = yield* Effect.option(workers.get(ticket))
+          if (Option.isSome(entry)) {
+            const session = moved.sessionId
+            yield* workers.fold(
+              entry.value,
+              why === undefined
+                ? WorkerEvent.Closed({ session })
+                : WorkerEvent.Ended({ session, why }),
+            )
+          }
+          // The ticket has no session before a start waiting for this one's end goes on.
+          const ended = Effect.andThen(
+            Effect.sync(() => {
+              if (sessions.get(ticket) === moved) sessions.delete(ticket)
+            }),
+            Deferred.succeed(done, undefined),
+          )
+          return Effect.uninterruptible(Effect.ensuring(Scope.close(of, Exit.void), ended))
+        })
 
       /**
        * The session's end, without tutti closing it on purpose: the worker is Gone and the
-       * session's scope closes, in a fiber of its own, since the caller may be its reader.
+       * session closes, in a fiber of its own, since the caller may be its reader.
        */
-      const gone = (session: Open, why: string) =>
+      const gone = (session: Live, why: string) =>
         Effect.gen(function* () {
-          if (open.get(session.ticket) === session) open.delete(session.ticket)
-          if (session.closing) return
-          session.closing = true
-          yield* workers.fold(session.entry, WorkerEvent.Ended({ why }))
-          yield* closeScope(session)
+          const close = yield* closing(session.ticket, session.scope, why)
+          if (close !== undefined) yield* Effect.forkIn(close, scope)
         })
 
       /** Ends the worker over a setup problem, before it does anything. */
-      const setupProblem = (session: Open, problem: string) =>
+      const setupProblem = (session: Live, problem: string) =>
         Effect.gen(function* () {
           yield* Ref.update(findings, (found) => ({
             ...found,
@@ -294,8 +370,8 @@ export const layer = (
           yield* gone(session, problem)
         })
 
-      /** Checks the session's first system/init (§ 4.1). */
-      const checkFirst = (session: Open, init: SDKSystemMessage) =>
+      /** Checks the session's first system/init (§ 4.1): the setup problem it shows, if any. */
+      const checkFirst = (session: Live, init: SDKSystemMessage) =>
         Effect.gen(function* () {
           if (init.permissionMode !== requestedMode) {
             const first = yield* Ref.modify(findings, (found) =>
@@ -320,34 +396,48 @@ export const layer = (
             const problems = mcp.cause.reasons.flatMap((reason) =>
               reason._tag === "Fail" ? reason.error.problems : [],
             )
-            return yield* setupProblem(session, problems.join("; "))
+            return problems.join("; ")
           }
           if (billedKey(options.account.billing, init.apiKeySource)) {
-            return yield* setupProblem(session, apiKeyProblem(init.apiKeySource))
+            return apiKeyProblem(init.apiKeySource)
           }
+          return undefined
         })
 
-      const onMessage = (session: Open, message: SDKMessage) =>
+      /** Whether `session` is still its ticket's, Starting. */
+      const starting = (session: Live) => {
+        const current = sessions.get(session.ticket)
+        return current?._tag === "Starting" && current.session === session
+      }
+
+      /** Its first system/init checked, a Starting session is Open, or ends over a setup problem. */
+      const born = (session: Live, init: SDKSystemMessage) =>
+        Effect.gen(function* () {
+          const problem = yield* checkFirst(session, init)
+          if (problem !== undefined) return yield* setupProblem(session, problem)
+          yield* Effect.sync(() => {
+            if (starting(session)) sessions.set(session.ticket, Lifecycle.Open({ session }))
+          })
+        })
+
+      const onMessage = (session: Live, message: SDKMessage) =>
         Effect.gen(function* () {
           yield* workers.emit(session.entry, session.sessionId, message)
           if (message.type === "system" && message.subtype === "init") {
             for (const capability of capabilitiesOf(message)) session.capabilities.add(capability)
-            if (!session.checked) {
-              session.checked = true
-              yield* checkFirst(session, message)
-            }
+            if (starting(session)) yield* born(session, message)
           } else if (
             message.type === "result" &&
             message.subtype !== "success" &&
             message.startup_failure_reason !== undefined
           ) {
-            session.startupFailure = message.startup_failure_reason
+            yield* Deferred.succeed(session.startupFailure, message.startup_failure_reason)
             yield* gone(session, message.startup_failure_reason)
           }
         })
 
       /** Reads the session's stream to its end; an end tutti didn't ask for makes the worker Gone. */
-      const read = (session: Open) =>
+      const read = (session: Live) =>
         Stream.fromAsyncIterable(session.query, (cause) => cause).pipe(
           Stream.runForEach((message) => onMessage(session, message)),
           Effect.exit,
@@ -357,9 +447,8 @@ export const layer = (
         )
 
       /** Closes the session: the prompt ends, the query closes, and Claude Code exits. */
-      const shut = (session: Open) =>
+      const shut = (session: Live) =>
         Effect.gen(function* () {
-          session.closing = true
           yield* Queue.end(session.inbox)
           session.query.close()
           const child = session.spawned.child
@@ -369,24 +458,55 @@ export const layer = (
           )
         })
 
-      /** Starts (or resumes) the ticket's session; it is open once Claude Code has answered. */
-      const begin = (ticket: string, session: Session, how: SessionStart) =>
-        Effect.gen(function* () {
-          const free = yield* Effect.sync(() => {
-            if (open.has(ticket) || reserved.has(ticket)) return false
-            reserved.add(ticket)
-            return true
-          })
-          if (!free) {
-            return yield* new AgentStartFailed({ ticket, reason: "a session is already open" })
+      /**
+       * The ticket's session `sessionId`, Starting in a scope of its own, once the ticket has no
+       * other: a Closing one's end is waited for, and one Starting or Open fails it.
+       */
+      const reserve = (
+        ticket: string,
+        sessionId: string,
+      ): Effect.Effect<Scope.Closeable, AgentStartFailed> =>
+        Effect.suspend(() => {
+          const current = sessions.get(ticket)
+          if (current?._tag === "Closing") {
+            return Effect.andThen(Deferred.await(current.done), reserve(ticket, sessionId))
           }
-          return yield* Effect.ensuring(
-            make(ticket, session, how),
-            Effect.sync(() => reserved.delete(ticket)),
-          )
+          if (current !== undefined) {
+            return Effect.fail(
+              new AgentStartFailed({ ticket, reason: "a session is already open" }),
+            )
+          }
+          const of = Scope.forkUnsafe(scope)
+          sessions.set(ticket, Lifecycle.Starting({ sessionId, scope: of, session: undefined }))
+          return Effect.succeed(of)
         })
 
-      const make = (ticket: string, session: Session, how: SessionStart) =>
+      /**
+       * Closes the ticket's session, if `of` is still its scope, on purpose (`why` undefined) or
+       * gone for `why`, and waits for its end.
+       */
+      const closeIn = (ticket: string, of: Scope.Closeable, why: string | undefined) =>
+        Effect.flatMap(closing(ticket, of, why), (close) => close ?? Effect.void)
+
+      /**
+       * Starts (or resumes) the ticket's session; it is open once Claude Code has answered. The
+       * start runs in the session's scope, so closing the session while it starts cancels it.
+       */
+      const begin = (ticket: string, session: Session, how: SessionStart) =>
+        Effect.gen(function* () {
+          const of = yield* reserve(ticket, session.sessionId)
+          const started = yield* Effect.forkIn(make(ticket, session, how, of), of)
+          const exit = yield* Fiber.await(started).pipe(
+            Effect.onInterrupt(() => closeIn(ticket, of, undefined)),
+          )
+          if (Exit.isSuccess(exit)) return exit.value
+          const cancelled = Cause.hasInterruptsOnly(exit.cause)
+          yield* closeIn(ticket, of, cancelled ? closedWhy : causeMessage(exit.cause))
+          if (cancelled) return yield* new AgentStartFailed({ ticket, reason: closedWhy })
+          return yield* Effect.failCause(exit.cause)
+        })
+
+      const make = (ticket: string, session: Session, how: SessionStart, of: Scope.Closeable) =>
         Effect.gen(function* () {
           const there = yield* fs.exists(session.cwd).pipe(Effect.orElseSucceed(() => false))
           if (!there) {
@@ -395,10 +515,12 @@ export const layer = (
               reason: `its folder isn't there: ${session.cwd}`,
             })
           }
-          const entry = yield* workers.open(ticket)
+          const sessionId = session.sessionId
+          const entry = yield* workers.open(ticket, sessionId)
           const callbacks = yield* Effect.provideContext(
             workerCallbacks(ticket, {
-              activity: (input) => workers.fold(entry, WorkerEvent.Hook({ input })),
+              activity: (input) =>
+                workers.fold(entry, WorkerEvent.Hook({ session: sessionId, input })),
               // Counted and logged by the run; triage reads it from the transcript's compact_boundary.
               compaction: (input) => workers.compacted(entry, input.trigger),
             }),
@@ -440,40 +562,52 @@ export const layer = (
                   abortController: abort,
                 })
           const spawn = sdkOptions.spawnClaudeCodeProcess
-          const spawned: Open["spawned"] = { child: undefined }
-          const opened: Open = {
-            ticket,
-            sessionId: session.sessionId,
-            servers,
-            entry,
-            inbox,
-            query: query({
-              prompt: Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
-              options: {
-                ...sdkOptions,
-                ...(spawn === undefined
-                  ? {}
-                  : {
-                      spawnClaudeCodeProcess: (spawnOptions) => {
-                        const child = spawn(spawnOptions)
-                        spawned.child = child
-                        return child
-                      },
-                    }),
-              },
+          const spawned: Live["spawned"] = { child: undefined }
+          const startupFailure = yield* Deferred.make<string>()
+          // Claude Code, spawned, is closed with the session's scope, though the start is cancelled.
+          const opened = yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              const opened: Live = {
+                ticket,
+                sessionId,
+                servers,
+                entry,
+                inbox,
+                query: query({
+                  prompt: Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
+                  options: {
+                    ...sdkOptions,
+                    ...(spawn === undefined
+                      ? {}
+                      : {
+                          spawnClaudeCodeProcess: (spawnOptions) => {
+                            const child = spawn(spawnOptions)
+                            spawned.child = child
+                            return child
+                          },
+                        }),
+                  },
+                }),
+                abort,
+                scope: of,
+                spawned,
+                capabilities: new Set(),
+                startupFailure,
+              }
+              yield* Scope.addFinalizer(of, shut(opened))
+              yield* Effect.sync(() => {
+                const current = sessions.get(ticket)
+                if (current?._tag === "Starting" && current.scope === of) {
+                  sessions.set(
+                    ticket,
+                    Lifecycle.Starting({ sessionId, scope: of, session: opened }),
+                  )
+                }
+              })
+              return opened
             }),
-            abort,
-            scope: yield* Scope.fork(scope),
-            spawned,
-            closing: false,
-            checked: false,
-            capabilities: new Set(),
-            startupFailure: undefined,
-          }
-          // Closing the session's scope closes the session.
-          yield* Scope.addFinalizer(opened.scope, shut(opened))
-          open.set(ticket, opened)
-          const reader = yield* read(opened).pipe(Effect.forkIn(opened.scope))
+          )
+          const reader = yield* read(opened).pipe(Effect.forkIn(of))
 
           const initialized = yield* Effect.tryPromise({
             try: () => opened.query.initializationResult(),
@@ -493,47 +627,56 @@ export const layer = (
           }
           // A startup failure's result comes just before the stream ends: the reader sees it.
           yield* Fiber.await(reader).pipe(Effect.timeout(closeLimit), Effect.ignore)
-          const reason = startFailure(opened, causeMessage(initialized.cause))
+          // Closed on purpose while it started: the initialize failed for that.
+          const now = sessions.get(ticket)
+          if (now?._tag === "Closing" && now.closed) {
+            return yield* new AgentStartFailed({ ticket, reason: closedWhy })
+          }
+          const refused = (yield* Deferred.isDone(startupFailure))
+            ? yield* Deferred.await(startupFailure)
+            : undefined
+          const reason = startFailure(refused, causeMessage(initialized.cause))
           yield* gone(opened, reason)
           return yield* new AgentStartFailed({
             ticket,
             reason,
-            ...(opened.startupFailure === undefined
-              ? {}
-              : { startupFailureReason: opened.startupFailure }),
+            ...(refused === undefined ? {} : { startupFailureReason: refused }),
           })
         })
 
       const sessionOf = (ticket: string) =>
         Effect.suspend(() => {
-          const found = open.get(ticket)
-          return found === undefined || found.closing
+          const found = liveOf(sessions.get(ticket))
+          return found === undefined
             ? Effect.fail(new AgentGone({ ticket, why: "it has no open session" }))
             : Effect.succeed(found)
         })
 
       /** Pushes a message into the session's inbox; its uuid. */
-      const push = (session: Open, message: Message) =>
+      const push = (session: Live, message: Message) =>
         Effect.gen(function* () {
           const uuid = message.uuid ?? randomUUID()
           // Outstanding before the CLI can see it, so its turn's result can't come first.
-          yield* workers.fold(session.entry, WorkerEvent.Sent({ uuid }))
+          yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
           const sdk = userMessage(message, uuid, session.sessionId)
           yield* workers.sent(session.entry, session.sessionId, sdk)
           yield* Queue.offer(session.inbox, sdk)
           return uuid as string
         })
 
-      const close = (ticket: string) =>
-        Effect.gen(function* () {
-          const session = open.get(ticket)
-          if (session === undefined) return
-          open.delete(ticket)
-          if (!session.closing) {
-            session.closing = true
-            yield* workers.fold(session.entry, WorkerEvent.Closed())
-          }
-          yield* Scope.close(session.scope, Exit.void)
+      /** Closes the ticket's session on purpose, cancelling its start, or waits for its end. */
+      const close = (ticket: string): Effect.Effect<void> =>
+        Effect.suspend(() => {
+          const current = sessions.get(ticket)
+          if (current === undefined) return Effect.void
+          if (current._tag === "Closing") return Deferred.await(current.done)
+          const of = current._tag === "Starting" ? current.scope : current.session.scope
+          return Effect.flatMap(closing(ticket, of, undefined), (closed) => {
+            if (closed !== undefined) return closed
+            // It went meanwhile.
+            const now = sessions.get(ticket)
+            return now?._tag === "Closing" ? Deferred.await(now.done) : Effect.void
+          })
         })
 
       return AgentHost.of({
@@ -556,7 +699,7 @@ export const layer = (
             const response = yield* Effect.tryPromise({
               try: () => controls.interrupt({ cancelQueued }),
               catch: (cause) =>
-                open.get(ticket) === session && !session.closing
+                liveOf(sessions.get(ticket)) === session
                   ? new AgentProtocol({ ticket, detail: `interrupt failed: ${messageOf(cause)}` })
                   : new AgentGone({ ticket, why: "its session ended during the interrupt" }),
             })
@@ -579,7 +722,10 @@ export const layer = (
               stillQueued: stillQueued.filter((uuid) => !withdrawn.includes(uuid)),
               cancelled: [...(response?.cancelled ?? []), ...withdrawn],
             }
-            yield* workers.fold(session.entry, WorkerEvent.Cancelled({ uuids: receipt.cancelled }))
+            yield* workers.fold(
+              session.entry,
+              WorkerEvent.Cancelled({ session: session.sessionId, uuids: receipt.cancelled }),
+            )
             return receipt
           }),
         close,
@@ -593,8 +739,8 @@ export const layer = (
         setup: Ref.get(findings),
         processes: Effect.sync(() => {
           const pids = new Map<string, number>()
-          for (const [ticket, session] of open) {
-            const child = session.spawned.child
+          for (const [ticket, lifecycle] of sessions) {
+            const child = liveOf(lifecycle)?.spawned.child
             const pid = (child as { pid?: unknown } | undefined)?.pid
             if (child !== undefined && !exited(child) && typeof pid === "number")
               pids.set(ticket, pid)

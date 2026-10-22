@@ -34,6 +34,7 @@ import {
   Equal,
   Option,
   PubSub,
+  Ref,
   Schema,
   type Scope,
   Semaphore,
@@ -171,12 +172,14 @@ export class AgentHost extends Context.Service<
   {
     /**
      * Starts a new session for the ticket's worker with the ID `session.sessionId`. Its state
-     * starts again at Starting. Fails when the worker already has an open session.
+     * starts again at Starting. Fails when the worker already has an open session; one closing is
+     * waited for, until its Claude Code has exited.
      */
     start(ticket: string, session: Session): Effect.Effect<void, AgentStartFailed>
     /**
      * Resumes the session `session.sessionId` (without forking it) and sends it `message`, as
-     * `send` does: the message's uuid. Fails when the worker already has an open session.
+     * `send` does: the message's uuid. Fails when the worker already has an open session; one
+     * closing is waited for, until its Claude Code has exited.
      */
     resume(
       ticket: string,
@@ -196,7 +199,8 @@ export class AgentHost extends Context.Service<
     interrupt(ticket: string): Effect.Effect<Receipt, AgentGone | AgentProtocol>
     /**
      * Closes the worker's session on purpose, keeping its ID for a resume: its state is Closed.
-     * Nothing happens when it has no open session.
+     * A session still starting is cancelled, its start failing; one closing or gone is waited for,
+     * until its Claude Code has exited. Nothing happens when it has no session.
      */
     close(ticket: string): Effect.Effect<void>
     /** Closes the worker's session if it is open and forgets the worker: its streams end. */
@@ -232,6 +236,8 @@ export class AgentHost extends Context.Service<
 /** A worker the host knows: from its first start until it is ended. */
 export interface WorkerEntry {
   readonly ticket: string
+  /** The ID of its session now, the last started or resumed: events of any other aren't folded. */
+  readonly session: Ref.Ref<string>
   /** The reducer's worker: its state and what it is derived from. */
   readonly worker: SubscriptionRef.SubscriptionRef<Worker>
   /** Its state alone, set only when it changes. */
@@ -283,14 +289,16 @@ const isDenial = (message: SDKMessage): message is SDKPermissionDeniedMessage =>
 /** The workers a host knows, and how their state moves: what the live and test layers share. */
 export interface Workers {
   /**
-   * The ticket's worker, made if the host doesn't know it, its state back at Starting for a new
-   * session. Its open attention requests are counted into its state from then on.
+   * The ticket's worker, made if the host doesn't know it, its state back at Starting for its new
+   * session `session`, whose events alone it folds from now on. Its open attention requests are
+   * counted into its state from then on.
    */
-  readonly open: (ticket: string) => Effect.Effect<WorkerEntry>
+  readonly open: (ticket: string, session: string) => Effect.Effect<WorkerEntry>
   readonly get: (ticket: string) => Effect.Effect<WorkerEntry, AgentGone>
   /**
-   * Folds `event` into the worker's state, at the clock's time; UsageLimits, when there is one, is
-   * told when it becomes UsageLimited or stops being so.
+   * Folds `event` into the worker's state, at the clock's time, unless it is of an earlier session
+   * than the worker's now; UsageLimits, when there is one, is told when it becomes UsageLimited or
+   * stops being so.
    */
   readonly fold: (entry: WorkerEntry, event: WorkerEvent) => Effect.Effect<void>
   /**
@@ -354,6 +362,7 @@ export const makeWorkers = (
 
     const fold = (entry: WorkerEntry, event: WorkerEvent): Effect.Effect<void> =>
       Effect.gen(function* () {
+        if (event.session !== (yield* Ref.get(entry.session))) return
         const now = yield* Clock.currentTimeMillis
         const before = yield* SubscriptionRef.get(entry.worker)
         const next = yield* SubscriptionRef.updateAndGet(entry.worker, (w) => step(w, event, now))
@@ -369,13 +378,14 @@ export const makeWorkers = (
           }
         }
         if (next.report !== null && next.report !== before.report) {
-          yield* awaitReport(entry, next.report)
+          yield* awaitReport(entry, event.session, next.report)
         }
       }).pipe(one.withPermit)
 
-    // A finished task's report to come, since `since` (§ 4.2): a turn starting ends the wait; if
-    // none starts within reportWait, the worker stops waiting for it and the log says so.
-    const awaitReport = (entry: WorkerEntry, since: number): Effect.Effect<void> =>
+    // A finished task's report to come in the session `session`, since `since` (§ 4.2): a turn
+    // starting ends the wait; if none starts within reportWait, the worker stops waiting for it and
+    // the log says so.
+    const awaitReport = (entry: WorkerEntry, session: string, since: number): Effect.Effect<void> =>
       Effect.gen(function* () {
         const reported = SubscriptionRef.changes(entry.worker).pipe(
           Stream.takeUntil((w) => w.report !== since),
@@ -387,16 +397,23 @@ export const makeWorkers = (
         )
         if (!waited) return
         yield* late(entry.ticket)
-        yield* fold(entry, WorkerEvent.ReportLate({ since }))
+        yield* fold(entry, WorkerEvent.ReportLate({ session, since }))
       }).pipe(Effect.raceFirst(Deferred.await(entry.ended)), Effect.forkIn(scope), Effect.asVoid)
 
     const openCount = (ticket: string) =>
       Effect.map(attention.current, (all) => all.filter((r) => r.ticket === ticket).length)
 
-    const make = (ticket: string) =>
+    // The worker's open requests, counted in its session now.
+    const requests = (entry: WorkerEntry, pending: number) =>
+      Effect.flatMap(Ref.get(entry.session), (session) =>
+        fold(entry, WorkerEvent.Requests({ session, pending })),
+      )
+
+    const make = (ticket: string, session: string) =>
       Effect.gen(function* () {
         const entry: WorkerEntry = {
           ticket,
+          session: yield* Ref.make(session),
           worker: yield* SubscriptionRef.make(initial(checks)),
           state: yield* SubscriptionRef.make<WorkerState>(WorkerState.Starting()),
           messages: yield* PubSub.unbounded<SessionMessage>(),
@@ -408,10 +425,7 @@ export const makeWorkers = (
         const listening = yield* Deferred.make<void>()
         yield* attention.openFor(ticket).pipe(
           Stream.runForEach((open) =>
-            Effect.andThen(
-              fold(entry, WorkerEvent.Requests({ pending: open.length })),
-              Deferred.succeed(listening, undefined),
-            ),
+            Effect.andThen(requests(entry, open.length), Deferred.succeed(listening, undefined)),
           ),
           Effect.raceFirst(Deferred.await(entry.ended)),
           Effect.forkIn(scope),
@@ -420,18 +434,19 @@ export const makeWorkers = (
         return entry
       })
 
-    const open = (ticket: string) =>
+    const open = (ticket: string, session: string) =>
       Effect.gen(function* () {
         const found = known.get(ticket)
         if (found === undefined) {
-          const entry = yield* make(ticket)
+          const entry = yield* make(ticket, session)
           known.set(ticket, entry)
           yield* SubscriptionRef.set(knownTickets, new Set(known.keys()))
           return entry
         }
         const pending = yield* openCount(ticket)
+        yield* Ref.set(found.session, session)
         yield* SubscriptionRef.set(found.worker, { ...initial(checks), pending })
-        yield* fold(found, WorkerEvent.Requests({ pending }))
+        yield* fold(found, WorkerEvent.Requests({ session, pending }))
         return found
       })
 
@@ -454,7 +469,7 @@ export const makeWorkers = (
         Effect.gen(function* () {
           yield* transcripts.record(entry.ticket, session, message)
           yield* PubSub.publish(entry.messages, { session, message })
-          yield* fold(entry, WorkerEvent.Message({ message }))
+          yield* fold(entry, WorkerEvent.Message({ session, message }))
           keepCalls(entry.calls, message)
           if (isDenial(message)) {
             yield* attention.denial(entry.ticket, message, entry.calls.get(message.tool_use_id))

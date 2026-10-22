@@ -15,7 +15,8 @@ const fixture = (name: string): ReadonlyArray<SDKMessage> =>
 /** The worker after `messages`, each folded in a second after the last. */
 const fold = (messages: ReadonlyArray<SDKMessage>, from: Worker = initial()): Worker =>
   messages.reduce(
-    (worker, message, i) => step(worker, WorkerEvent.Message({ message }), 1_000 * (i + 1)),
+    (worker, message, i) =>
+      step(worker, WorkerEvent.Message({ session: "s", message }), 1_000 * (i + 1)),
     from,
   )
 

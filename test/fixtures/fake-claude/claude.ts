@@ -77,6 +77,13 @@ interface Scenario {
    * "refuse" fails the request, and "notQueued" answers `cancelled: false` and leaves it queued.
    */
   readonly cancelAsync?: "refuse" | "notQueued"
+  /** How long, in ms, the initialize's answer waits: a start still under way. */
+  readonly initializeLag?: number
+  /**
+   * How long, in ms, the process lingers after its stdin ends, ignoring SIGTERM, as Claude Code
+   * winds down; it logs `{ exited: <pid> }` as it exits.
+   */
+  readonly lingerOnClose?: number
 }
 
 interface UserMessage {
@@ -370,6 +377,8 @@ const control = async (id: string, request: Record<string, unknown>) => {
     write({ type: "control_response", response: { subtype: "error", request_id: id, error } })
   switch (request.subtype) {
     case "initialize": {
+      const lag = scenario.initializeLag ?? 0
+      if (lag > 0) await new Promise((resolve) => setTimeout(resolve, lag))
       hookIds = Object.fromEntries(
         Object.entries(
           (request.hooks ?? {}) as Record<string, Array<{ hookCallbackIds: string[] }>>,
@@ -453,7 +462,14 @@ let ended = false
 
 lines.on("close", () => {
   log({ closed: true })
-  if (scenario.eofAfterTurn === true && running) {
+  const linger = scenario.lingerOnClose ?? 0
+  if (linger > 0) {
+    process.on("SIGTERM", () => log({ sigterm: process.pid }))
+    setTimeout(() => {
+      log({ exited: process.pid })
+      void exit(0)
+    }, linger)
+  } else if (scenario.eofAfterTurn === true && running) {
     ended = true
     // With stdin gone, nothing else keeps a hanging turn's process alive.
     setInterval(() => {}, 60_000)

@@ -5,7 +5,7 @@ import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { initial, step, type Worker, WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 
 const sdk = (message: object): WorkerEvent =>
-  WorkerEvent.Message({ message: message as unknown as SDKMessage })
+  WorkerEvent.Message({ session: "s", message: message as unknown as SDKMessage })
 const init = sdk({ type: "system", subtype: "init", permissionMode: "auto", session_id: "s" })
 const running = sdk({ type: "system", subtype: "session_state_changed", state: "running" })
 const idle = sdk({ type: "system", subtype: "session_state_changed", state: "idle" })
@@ -17,7 +17,7 @@ const result = sdk({
   num_turns: 1,
 })
 const hook = (input: object): WorkerEvent =>
-  WorkerEvent.Hook({ input: input as unknown as HookInput })
+  WorkerEvent.Hook({ session: "s", input: input as unknown as HookInput })
 const preTool = (tool_name: string, tool_input: object = {}) =>
   hook({ hook_event_name: "PreToolUse", tool_name, tool_input, tool_use_id: "toolu_1" })
 const postTool = (tool_name: string) =>
