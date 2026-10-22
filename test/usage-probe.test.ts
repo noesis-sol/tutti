@@ -307,7 +307,11 @@ describe("a run whose probe is refused", () => {
         : [],
     )
 
-  test("tells its worker nothing until a probe at the new reset is allowed", async () => {
+  /**
+   * A run whose one worker is refused with a reset at 1h, and whose first probe is answered
+   * `answer`: `during` drives the clock from the hold's countdown on.
+   */
+  const refusedRun = (answer: ProbeAnswer, during: Effect.Effect<void, unknown, Env>) => {
     const repo = folder("repo")
     const root = folder("worktrees")
     const finishes = (world: World) =>
@@ -320,14 +324,14 @@ describe("a run whose probe is refused", () => {
         ),
         close: Effect.asVoid(Effect.orDie(world.beads.close("t-1", "done"))),
       })
-    const ran = await scenario(
+    return scenario(
       {
         config: { repo, settings: { ...appConfig().settings, concurrent: 1 } },
         backlog: backlog().ticket("t-1").seeds,
         git: { dir: repo },
         worktrees: { root },
         scripts: (world: World) => ({ "t-1": [[...hitsUsageLimit(hour), ...finishes(world)]] }),
-        usageProbe: [ProbeAnswer.Refused({ limit: "five_hour", resetsAt: 2 * hourMs })],
+        usageProbe: [answer],
       },
       Effect.gen(function* () {
         const git = yield* Git
@@ -337,15 +341,30 @@ describe("a run whose probe is refused", () => {
           run({ version: "0.1.0-test", base: "main", start: [], dashboard }),
         )
         yield* untilLogged(/^USAGE_LIMIT: nothing else runs/)
+        yield* during
+        return yield* Fiber.join(fiber)
+      }),
+    )
+  }
+
+  /** Lets `minutes` go by, and finds the hold not lifted yet. */
+  const notLiftedAfter = (minutes: number) =>
+    Effect.gen(function* () {
+      yield* advance(`${minutes} minutes`)
+      yield* settle
+      expect((yield* texts).filter((text) => lifted.test(text))).toHaveLength(0)
+    })
+
+  test("tells its worker nothing until a probe at the new reset is allowed", async () => {
+    const ran = await refusedRun(
+      ProbeAnswer.Refused({ limit: "five_hour", resetsAt: 2 * hourMs }),
+      Effect.gen(function* () {
         yield* advance("61 minutes")
         yield* untilLogged(refusedProbe)
-        yield* advance("59 minutes")
-        yield* settle
-        expect((yield* texts).filter((text) => lifted.test(text))).toHaveLength(0)
+        yield* notLiftedAfter(59)
         yield* advance("1 minute")
         yield* untilLogged(lifted)
         expect(yield* (yield* Probed).limits).toEqual(["five_hour", "five_hour"])
-        return yield* Fiber.join(fiber)
       }),
     )
     expectExitCode(ran, 0)
@@ -353,6 +372,30 @@ describe("a run whose probe is refused", () => {
     expectLog(ran, [
       `USAGE_LIMIT: the five-hour limit is reached; no new tickets until it resets at ${resetLabel(hourMs, 0)}`,
       `USAGE_LIMIT: a probe is refused for the five-hour limit still; it resets at ${resetLabel(2 * hourMs, hourMs + 60_000)}, in 59m`,
+      "USAGE_LIMIT lifted",
+      "  t-1: the usage limit has reset; its worker carries on",
+    ])
+    expect(messagesTo(ran.sent, "t-1").filter((text) => text === carryOnText("t-1"))).toHaveLength(
+      1,
+    )
+  })
+
+  test("refused with no reset, with nothing else running, waits for the next try", async () => {
+    const ran = await refusedRun(
+      ProbeAnswer.Refused({ limit: null, resetsAt: null }),
+      Effect.gen(function* () {
+        yield* advance("61 minutes")
+        yield* untilLogged(refusedProbe)
+        yield* notLiftedAfter(14)
+        yield* advance("1 minute")
+        yield* untilLogged(lifted)
+      }),
+    )
+    expectExitCode(ran, 0)
+    expectPhases(ran, { "t-1": "Done" })
+    const tried = hourMs + 16 * 60_000
+    expectLog(ran, [
+      `USAGE_LIMIT: a probe is refused for the five-hour limit still; tutti tries again at ${resetLabel(tried, hourMs + 60_000)}, in 15m`,
       "USAGE_LIMIT lifted",
       "  t-1: the usage limit has reset; its worker carries on",
     ])

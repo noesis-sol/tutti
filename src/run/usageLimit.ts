@@ -400,7 +400,14 @@ export const make = (options: {
         }
         const now = yield* Clock.currentTimeMillis
         const limit = held.limit ?? answer.limit
-        const next = Hold.Held({ ...held, limit, reset: resetOf(answer.resetsAt, now) })
+        // A refusal that gives no reset keeps the one the hold had, passed now, for the countdown.
+        const had = Reset.$match(held.reset, {
+          Known: ({ at }) => at,
+          Unknown: ({ passed }) => passed,
+          Allowed: () => null,
+        })
+        const reset = resetOf(answer.resetsAt ?? had, now)
+        const next = Hold.Held({ ...held, limit, reset })
         yield* update((each) => ({ ...each, hold: next }))
         const at = liftTime(next)
         const until =
