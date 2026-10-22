@@ -5,8 +5,9 @@
 // and what the organs cost before it. In place of orchestra's hook tallies, it is given each
 // ticket's tallies of attention requests and their answers (Attention's), the calls Claude Code
 // denied without asking, by type, your messages and its compactions, and whether a person
-// steered it, with the requests and denials as the log has them, from which its Needs you section
-// recommends rules for the calls that kept being asked about or denied.
+// steered it, with the requests and denials as the log has them (the last of them, past a cap),
+// from which its Needs you section recommends rules for the calls that kept being asked about or
+// denied.
 //
 // The report is titled with the run's date, times, base and scope (escaped for Markdown, § 7.10),
 // ends with the run's organ cost total, the report's own call included (§ 6.1), and is written to
@@ -228,39 +229,74 @@ export const attentionLines = (logLines: ReadonlyArray<string>): ReadonlyArray<s
 export const logCap = { lines: 1500, characters: 150_000 }
 
 /**
- * The run's log as the reviewer reads it: whole when it fits `cap`, else its first `kept` lines
- * (those up to the end of the START block), a line saying how many lines were cut, and the last
- * lines that fit. The attention lines have their own section, uncut by this.
+ * How many of the run's last attention lines the reviewer is given, and no more than so many
+ * characters of them: a run with many requests or denials keeps room in its context, and each
+ * ticket's tallies, in their own section, still count them all.
  */
-export const cappedLog = (
-  logLines: ReadonlyArray<string>,
+export const attentionCap = { lines: 500, characters: 50_000 }
+
+/** How many lines and characters a capped section keeps of its end. */
+type Cap = { readonly lines: number; readonly characters: number }
+
+/**
+ * `lines` whole when they fit `cap`, else their first `kept` lines, the line `said(cut, last)`
+ * makes of how many were cut and of the lines that follow, and the last lines that fit.
+ */
+const cappedTail = (
+  lines: ReadonlyArray<string>,
   kept: number,
-  cap: { readonly lines: number; readonly characters: number } = logCap,
+  cap: Cap,
+  said: (cut: number, last: string) => string,
 ): string => {
-  const headEnd = Math.min(Math.max(kept, 0), logLines.length)
-  let tailStart = logLines.length
+  const headEnd = Math.min(Math.max(kept, 0), lines.length)
+  let tailStart = lines.length
   let characters = 0
-  while (tailStart > headEnd && logLines.length - tailStart < cap.lines) {
-    characters += (logLines[tailStart - 1] ?? "").length + 1
+  while (tailStart > headEnd && lines.length - tailStart < cap.lines) {
+    characters += (lines[tailStart - 1] ?? "").length + 1
     if (characters > cap.characters) break
     tailStart -= 1
   }
   const cut = tailStart - headEnd
-  if (cut === 0) return logLines.join("\n")
-  const left = logLines.length - tailStart
+  if (cut === 0) return lines.join("\n")
+  const left = lines.length - tailStart
   const last =
     left === 0
       ? "its last line is too long to give"
       : left === 1
         ? "the last line follows"
         : `the last ${left} follow`
-  const where = headEnd === 0 ? "" : ", after the START block"
-  return [
-    ...logLines.slice(0, headEnd),
-    `[${counted(cut, "line")} of the log cut here${where}; ${last}]`,
-    ...logLines.slice(tailStart),
-  ].join("\n")
+  return [...lines.slice(0, headEnd), said(cut, last), ...lines.slice(tailStart)].join("\n")
 }
+
+/**
+ * The run's log as the reviewer reads it: whole when it fits `cap`, else its first `kept` lines
+ * (those up to the end of the START block), a line saying how many lines were cut, and the last
+ * lines that fit. The attention lines have their own section (`cappedAttention`), uncut by this.
+ */
+export const cappedLog = (
+  logLines: ReadonlyArray<string>,
+  kept: number,
+  cap: Cap = logCap,
+): string =>
+  cappedTail(logLines, kept, cap, (cut, last) => {
+    const where =
+      Math.min(Math.max(kept, 0), logLines.length) === 0 ? "" : ", after the START block"
+    return `[${counted(cut, "line")} of the log cut here${where}; ${last}]`
+  })
+
+/**
+ * The run's attention lines (`attentionLines`) as the reviewer reads them: whole when they fit
+ * `cap`, else a line saying how many of the earliest were cut, and the last lines that fit.
+ */
+export const cappedAttention = (lines: ReadonlyArray<string>, cap: Cap = attentionCap): string =>
+  cappedTail(
+    lines,
+    0,
+    cap,
+    (cut, last) =>
+      `[${counted(cut, "earlier attention line")} cut here, still counted in each ticket's ` +
+      `tallies; ${last}]`,
+  )
 
 /** Whether `entry` is in the reviewer's `section` (phase.ts counting). */
 const inSection =
@@ -401,7 +437,7 @@ export const gather = (
       ),
       section(
         "The attention requests, answers and denials of this run, as the log has them",
-        attentionLines(logLines).join("\n"),
+        cappedAttention(attentionLines(logLines)),
       ),
       section("What the run's organs (triage, the predictor and the like) cost", costSaid),
       ...(run.sections ?? []),
