@@ -126,13 +126,12 @@ below are the coverage report's uncovered lines at 368899e.
 - **Tests**: `startup.test.ts`, `startup-ticket-scope.test.ts`, `run-lock.test.ts`,
   `untrusted-checkout.test.ts`, `start.test.ts`, `run-start-question.test.ts`,
   `run-start-ending.test.ts`, `start-question.test.tsx`, `start-deferred-free.test.ts`,
-  `shared-machine.test.ts`, `shared-runs-title.test.ts`, `smoke.test.ts` (e2e: outside a repository).
-- **Untested**:
-  - `src/main.ts`'s `runFrom` through `bun src/main.ts` inside a repository: a startup refusal
-    (no `.tutti/`, a dirty main checkout, a detached HEAD) and its exit 2, and a second run
-    refused while another holds the lock (tutti-8iz.10).
-  - the startup checks when git itself fails: git not found, the branch or the status unreadable
-    (`src/run/startup.ts` 175, 198, 221) (tutti-8iz.10).
+  `shared-machine.test.ts`, `shared-runs-title.test.ts`, `smoke.test.ts` (e2e: outside a repository),
+  `run-binary.test.ts` (e2e slow: `bun src/main.ts` inside a repository with a fake bd and Claude
+  Code, refused with exit 2 for no `.tutti/`, a dirty main checkout, a detached HEAD, and while
+  another run holds the lock), `startup-git-failures.test.ts` (git not found, its worktrees, branch
+  or status unreadable or too slow).
+- **Untested**: nothing found.
 
 ## The run loop: scheduling, footprints, holds
 
@@ -251,9 +250,10 @@ below are the coverage report's uncovered lines at 368899e.
 - **Reached by**: Ctrl+C, SIGTERM, SIGHUP, SIGUSR1/2, SIGTSTP; a `kill -9` of tutti.
 - **Tests**: `quit.test.ts`, `suspend-ignored.test.ts`, `usage-limit-quit.test.ts`,
   `exec.test.ts`, `exec-lost-exit.test.ts`, `exec-reaper.test.ts`, `output-cap.test.ts`,
-  `keep-awake.test.ts`, `load.test.ts`, `libc.test.ts`.
-- **Untested**: `runMain` in `src/run/quit.ts` (255–268), which routes the signals to the run in
-  `src/main.ts`: no test sends a signal to `bun src/main.ts` during a run (tutti-8iz.10).
+  `keep-awake.test.ts`, `load.test.ts`, `libc.test.ts`, `run-binary.test.ts` (e2e slow: SIGINT
+  during the startup checks, exit 130).
+- **Untested**: `runMain` in `src/run/quit.ts` routing the signals to a run in `src/main.ts`:
+  no test sends a signal to `bun src/main.ts` during a run, only before it starts (tutti-8iz.20).
 
 ## Distribution: builds, the install script, npm, releases
 
