@@ -62,6 +62,8 @@ import { buttonsOf, picksOptions, requestText, useAnswering } from "./attentionK
 import { headOf, statusLook } from "./Card.tsx"
 import {
   Composer,
+  finishedLine,
+  finishedWords,
   InterruptQuestion,
   QueuedLines,
   queuedLines,
@@ -793,11 +795,18 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     else if (input.box.get() === null) field.current?.focus()
   }
   const typing = composing && box === null
+  // Once the worker has finished, its card gone, nothing is sent: what you typed stays, and a toast
+  // says why (tutti-ceo).
+  const finished = found === undefined
   const send = (text: string) => {
-    if (found === undefined) return
+    if (found === undefined) {
+      input.toasts.show(finishedWords(viewed).toast)
+      return false
+    }
     const uuid = crypto.randomUUID()
     sends.sent({ uuid, ticket: found.ticket, text })
     command(UiCommand.SendMessage({ ticket: found.ticket, text, uuid }))
+    return true
   }
   // Ctrl+X asks first; `y` interrupts the turn the question names, and its queued messages go.
   const interrupt = () => {
@@ -1093,7 +1102,9 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
         })}
         {more > 0 ? <Line segments={[seg(`  +${more} more requests`, theme.styles.dim)]} /> : null}
         <Line segments={rule} />
-        {card?.steered === true ? (
+        {finished ? (
+          <Line segments={finishedLine(theme, viewed, inner)} />
+        ) : card?.steered === true ? (
           <SteeredLine theme={theme} width={inner} release={release} />
         ) : null}
         {sends.queued.length > 0 ? (
@@ -1105,6 +1116,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           focused={typing}
           focus={() => setComposing(true)}
           send={send}
+          {...(finished ? { placeholder: () => finishedWords(viewed).placeholder } : {})}
         />
         <Lines lines={hint} />
         {help ? (

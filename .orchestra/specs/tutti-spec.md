@@ -1149,6 +1149,7 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
 - **The composer** sends your message into the worker's inbox (§4.1). The worker becomes steered.
   - While a turn is under way, the message is shown as `queued` until the CLI reports it `started` in `command_lifecycle`, or a `result` lists it. An interrupt that cancels it removes the mark (Ctrl+X, below). It may be folded into the running turn or start a later one, perhaps with another message (§4.1).
   - Your messages are logged without their text (`MESSAGE: you → <id> (212 characters)`) and tallied for the reviewer.
+  - Once the worker has finished (its ticket merged, closed or set aside, its card gone), the view keeps showing it, and the composer can't send: `<id>'s worker has finished: tutti can't send it messages` replaces the steered line, the placeholder says `the worker has finished`, and `Enter` keeps what you typed and toasts `<id>'s worker has finished: your message wasn't sent`.
 - **Ctrl+X** interrupts the turn (after a confirmation) and cancels messages still queued, as quitting does (§4.8). The SDK's interrupt also ends the worker's background tasks: tutti declares no per-task stop control (`perTaskStopAffordance`).
 - **Bounded rendering.**
   - At most the last 200 items are mounted, with `stickyScroll` to the bottom while you're at the bottom.

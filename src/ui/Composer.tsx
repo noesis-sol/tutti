@@ -8,6 +8,8 @@
 // it (`started`, `completed` or `cancelled` in its `command_lifecycle`, or a `result` listing it),
 // or the worker settles. Ctrl+X asks, then sends Interrupt, which cancels the messages still
 // queued, so their marks go; Ctrl+R, or the Release button on the steered line, sends Release.
+// Once the worker has finished, its card gone, the composer says so and sends nothing: Enter keeps
+// what you typed, and a toast says it wasn't sent (tutti-ceo).
 //
 // The prompt (`>`) is drawn `formAccent`, the cursor `formSelected`, the placeholder
 // `formPlaceholder`, the text `formText`.
@@ -30,6 +32,23 @@ export const queuedShown = 3
 /** The composer's placeholder, unfocused and focused. */
 export const composerPlaceholder = (focused: boolean): string =>
   focused ? "your message to the worker" : "i to write to the worker"
+
+/** What the composer says once `ticket`'s worker has finished, and what Enter toasts then. */
+export const finishedWords = (ticket: string) => ({
+  finished: `${sanitizeLine(ticket)}'s worker has finished`,
+  line: ": tutti can't send it messages",
+  placeholder: "the worker has finished",
+  toast: `${sanitizeLine(ticket)}'s worker has finished: your message wasn't sent`,
+})
+
+/** The finished line, `width` wide, over the composer of a worker that has finished. */
+export const finishedLine = (theme: Theme, ticket: string, width: number): Segments => {
+  const words = finishedWords(ticket)
+  return cut(
+    [seg("  "), seg(words.finished, theme.styles.key), seg(words.line, theme.styles.dim)],
+    width,
+  )
+}
 
 /** A message you sent from the composer, by the uuid it was sent with. */
 export interface Send {
@@ -180,8 +199,11 @@ export const Composer = ({
   readonly focused: boolean
   /** Focuses it, as a click does. */
   readonly focus: () => void
-  /** Sends a message: what you typed, without the blank lines and spaces around it. */
-  readonly send: (text: string) => void
+  /**
+   * Sends a message: what you typed, without the blank lines and spaces around it. The field is
+   * emptied only when it returns true; false keeps what you typed, as nothing was sent.
+   */
+  readonly send: (text: string) => boolean
   /** Its placeholder, unfocused and focused: the worker view's when left out. */
   readonly placeholder?: (focused: boolean) => string
 }) => {
@@ -197,10 +219,9 @@ export const Composer = ({
     const box = field.current
     if (box === null) return
     const text = box.plainText.trim()
-    if (text === "") return
+    if (text === "" || !send(text)) return
     box.setText("")
     fit()
-    send(text)
   }
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's; `i` is its key

@@ -225,6 +225,7 @@ export const InterviewView = () => {
     const uuid = crypto.randomUUID()
     sends.sent({ uuid, ticket: interviewWorker, text })
     command(UiCommand.SendMessage({ ticket: interviewWorker, text, uuid }))
+    return true
   }
 
   // Leaving asks first while nothing has been filed.
