@@ -387,6 +387,17 @@ export const liftStops = (stops: Stops, lifted: (stop: StopReason) => boolean): 
   return { first: kept[0] ?? null, others: kept.slice(1) }
 }
 
+/**
+ * `stops` with `stop` swapped for `by` where it stands, or lifted with null: those raised beside it
+ * stay, as the environment probe's pass or failure keeps the stops raised while it waited.
+ */
+export const swapStop = (stops: Stops, stop: StopReason, by: StopReason | null): Stops => {
+  const kept = [stops.first, ...stops.others].flatMap((each) =>
+    each === null ? [] : each !== stop ? [each] : by === null ? [] : [by],
+  )
+  return { first: kept[0] ?? null, others: kept.slice(1) }
+}
+
 /** The line the run ends with: the first stop's, then `; also` and each of the others. */
 export const stopsLine = (stops: Stops): Line =>
   [stops.first, ...stops.others]

@@ -124,6 +124,7 @@ import {
   stopFor,
   stopOfLine,
   stopsLine,
+  swapStop,
 } from "./holds.ts"
 import { type Entry, handBackWaits, Ledger, type State } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
@@ -1243,13 +1244,17 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           yield* endAfter(null)
           break
         }
-        const probed = yield* environment.probe(yield* Ref.get(stops))
-        if (probed._tag === "Resumed") {
-          yield* updateStops(() => noStops)
+        // The probe runs only with its hold's stop alone, the first; it lifts or replaces only
+        // that one, those raised while it waited (BLOCKED, TICKET_LIMIT, PAUSED) kept.
+        const before = yield* Ref.get(stops)
+        const probed = yield* environment.probe(before)
+        const held = before.first
+        if (probed._tag === "Resumed" && held !== null) {
+          yield* updateStops((all) => swapStop(all, held, null))
           continue
         }
-        if (probed._tag === "Failed") {
-          yield* updateStops((all) => ({ ...all, first: probed.stop }))
+        if (probed._tag === "Failed" && held !== null) {
+          yield* updateStops((all) => swapStop(all, held, probed.stop))
         }
         if (yield* endAfter(seen)) break
         if (asked) yield* Ref.set(endAsked, true)
