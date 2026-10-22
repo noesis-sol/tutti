@@ -55,15 +55,12 @@ below are the coverage report's uncovered lines at 368899e.
   `init-stop.test.ts` (unit, and e2e slow: SIGINT while it writes), `import.test.ts`,
   `checks-runners.test.ts`, `checks-typescript.test.ts`, `template-versions.test.ts`,
   `scout.test.ts`, `line-forms.test.ts`, `ui-init-form.test.tsx`, `ui-init-stop.test.tsx`,
-  `form-hint.test.tsx`, `run-lock-init-refusal.test.ts`.
+  `form-hint.test.tsx`, `run-lock-init-refusal.test.ts`, `init-form-questions.test.ts`.
 - **Untested**:
   - the command's own wiring, `runInit` in `src/cli/commands.ts` (lines 533–706): no test runs
     `tutti init` through `bun src/main.ts` but the slow SIGINT one. Its refusals (outside a
     repository, in a linked worktree, flag problems: exit 2), `--update`'s lines, and the summary it
     prints without a terminal are untested end to end (tutti-8iz.3).
-  - the form's questions for installing bd, replacing differing runners and trusting the checkout
-    (`src/init/form.ts` 118–124, 235–244, 298–301), and the requires steps when README.md or the
-    settings can't be read (`src/init/requires.ts` 30, 78–84) (tutti-8iz.5).
   - `liveMachine` (`src/init/steps.ts` 164–201), the machine init runs commands on: reached only
     through `runInit` (tutti-8iz.3).
 
