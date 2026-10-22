@@ -74,7 +74,13 @@ while [ $# -gt 0 ]; do
   --release) release=true && shift ;;
   --archive) archive=true && shift ;;
   -*) usage ;;
-  host) targets="$targets $(host_target)" && shift ;;
+  # Not an AND-list: set -e doesn't stop on a failure before its last command, and host would
+  # loop with no shift.
+  host)
+    target=$(host_target) || exit 1
+    targets="$targets $target"
+    shift
+    ;;
   *)
     case " $TARGETS " in
     *" $1 "*) targets="$targets $1" ;;
