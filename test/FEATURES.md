@@ -247,9 +247,9 @@ below are the coverage report's uncovered lines at 368899e.
 - **Tests**: `quit.test.ts`, `suspend-ignored.test.ts`, `usage-limit-quit.test.ts`,
   `exec.test.ts`, `exec-lost-exit.test.ts`, `exec-reaper.test.ts`, `output-cap.test.ts`,
   `keep-awake.test.ts`, `load.test.ts`, `libc.test.ts`, `run-binary.test.ts` (e2e slow: SIGINT
-  during the startup checks, exit 130).
-- **Untested**: `runMain` in `src/run/quit.ts` routing the signals to a run in `src/main.ts`:
-  no test sends a signal to `bun src/main.ts` during a run, only before it starts (tutti-8iz.20).
+  during the startup checks, exit 130), `run-binary-quit.test.ts` (e2e slow: SIGINT, SIGTERM or
+  SIGHUP to `bun src/main.ts` during a run on a ticket, routed by `runMain` to the run: the worker
+  interrupted, its session closed and saved, INTERRUPTED, exit 130).
 
 ## Distribution: builds, the install script, npm, releases
 
