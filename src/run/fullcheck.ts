@@ -30,7 +30,7 @@ import {
 import { Git } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
-import { saidOf } from "./check.ts"
+import { recorded, saidOf } from "./check.ts"
 import type { fullCheckOutcomes } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { dateClock } from "./localTime.ts"
@@ -279,7 +279,9 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       if (setup.command !== null) {
         const ran = yield* Effect.scoped(
           Effect.flatMap(outputIn(path, setupLogName), (to) =>
-            Effect.result(
+            recorded(
+              "setup",
+              undefined,
               checks.setup({ cwd: path, ...to, before: "full", command: setup.command }),
             ),
           ),
@@ -290,7 +292,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       }
       const ran = yield* Effect.scoped(
         Effect.flatMap(outputIn(path, fullCheckLogName), (to) =>
-          Effect.result(checks.full({ cwd: path, ...to })),
+          recorded("full", undefined, checks.full({ cwd: path, ...to })),
         ),
       )
       const ms = yield* elapsed

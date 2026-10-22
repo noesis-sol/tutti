@@ -16,6 +16,7 @@ import { EventStream } from "./eventstream.ts"
 import { exitCodes } from "./holds.ts"
 import { dated, detail, type Line, Log, line } from "./log.ts"
 import * as scope from "./scope.ts"
+import { endRecord } from "./spending.ts"
 
 /** What holds back a ready ticket the run would otherwise start (§ 2 Held back). */
 export type HoldKind =
@@ -525,7 +526,7 @@ export const endWith = (
 ): Effect.Effect<number, never, Log | EventStream> =>
   Effect.gen(function* () {
     yield* report(n, output)
-    yield* (yield* EventStream).emit({ kind: "end", code: exitCodes.ok })
+    yield* (yield* EventStream).emit(yield* endRecord(exitCodes.ok))
     return exitCodes.ok
   })
 

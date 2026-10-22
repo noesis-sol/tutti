@@ -57,6 +57,8 @@ const module = "AgentSdkLanguageModel"
 export interface OrganCallConfig {
   /** The organ's name, for its cost line: `triage`. */
   readonly organ: string
+  /** The ticket the call is about, for its `organ` record; none when it is about no ticket. */
+  readonly ticket?: string
   /** The model; Claude Code's default when absent. */
   readonly model?: string
   readonly effort?: EffortLevel
@@ -215,8 +217,9 @@ export const subtypeOf = (error: AiError.AiError): string | undefined => {
 }
 
 /** The result's cost, for OrganCost. */
-export const costOf = (organ: string, result: SDKResultMessage): Cost => ({
+export const costOf = (organ: string, result: SDKResultMessage, ticket?: string): Cost => ({
   organ,
+  ...(ticket === undefined ? {} : { ticket }),
   costUsd: result.total_cost_usd ?? 0,
   turns: result.num_turns ?? 0,
   durationMs: result.duration_ms ?? 0,
@@ -515,7 +518,11 @@ export const layer = (
               Effect.gen(function* () {
                 if (ended) return
                 const endedAt = yield* Clock.currentTimeMillis
-                yield* costs.recordUnknown({ organ: call.organ, durationMs: endedAt - startedAt })
+                yield* costs.recordUnknown({
+                  organ: call.organ,
+                  ...(call.ticket === undefined ? {} : { ticket: call.ticket }),
+                  durationMs: endedAt - startedAt,
+                })
               }),
             )
             const cwd =
@@ -567,7 +574,7 @@ export const layer = (
               Stream.tap((m) => {
                 if (m.type !== "result") return Effect.void
                 ended = true
-                return costs.record(costOf(call.organ, m))
+                return costs.record(costOf(call.organ, m, call.ticket))
               }),
             )
           }),

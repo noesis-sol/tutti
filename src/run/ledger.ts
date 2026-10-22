@@ -10,8 +10,25 @@
 // gives beside it (`dispatch`, `closed`, …), all while the state is held, so records come out in
 // the order the phases changed. The lines the caller gives are logged with the records, in one
 // write (Log's writeWith), so the log has them in the records' order.
-import { Clock, Context, Effect, Layer, Ref, Result, type Stream, SubscriptionRef } from "effect"
-import type { Event } from "./events.ts"
+import {
+  Clock,
+  Context,
+  Effect,
+  Layer,
+  Option,
+  Ref,
+  Result,
+  type Stream,
+  SubscriptionRef,
+} from "effect"
+import type {
+  Event,
+  endingPhases,
+  Phases,
+  phaseSeconds,
+  TokensByModel,
+  ticketOutcomes,
+} from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import * as log from "./log.ts"
 import { Log, Tag } from "./log.ts"
@@ -26,6 +43,7 @@ import {
   type TicketPhase,
   transition as transitionPhase,
 } from "./phase.ts"
+import { nothingSpent, Spending, type Spent } from "./spending.ts"
 
 /**
  * What the ledger counts for each ticket, for triage and the reviewer. Its attention requests,
@@ -76,6 +94,140 @@ export interface Entry {
   /** When you last sent its worker a message; its idle grace for PAUSED counts from then. */
   readonly lastMessage: number | null
   readonly tallies: Tallies
+  /** Its time and hand-backs, for the records that end its part in the run (§ 10). */
+  readonly account?: Account
+}
+
+/** A ticket's time and hand-backs in the run. Times are epoch milliseconds. */
+export interface Account {
+  /** When the run first took it up. */
+  readonly took: number
+  /** How long it spent in each of orchestra's phases it entered (§ 10), in milliseconds. */
+  readonly spentIn: { readonly [P in PhaseSeconds]?: number }
+  /** Its hand-backs in the run: for conflicts, and for a failing check. */
+  readonly handBacks: { readonly resolve: number; readonly fix: number }
+  /** Carried over from an earlier run. */
+  readonly carried: boolean
+}
+
+/** The account of a ticket the run takes up at `now`. */
+export const newAccount = (now: number): Account => ({
+  took: now,
+  spentIn: {},
+  handBacks: { resolve: 0, fix: 0 },
+  carried: false,
+})
+
+type PhaseSeconds = (typeof phaseSeconds)[number]
+
+/** The phase of orchestra's that each phase's time counts in (§ 10), for those it counts. */
+const countsIn: { readonly [P in PhaseTag]?: PhaseSeconds } = {
+  Working: "working",
+  ToMerge: "waiting",
+  Merging: "merging",
+  Resolving: "resolving",
+  Fixing: "fixing",
+}
+
+type EndingPhase = (typeof endingPhases)[number]
+
+/** How a ticket's part in the run ended, by the phase it ended in. */
+const outcomeOf = (phase: TicketPhase): (typeof ticketOutcomes)[number] | undefined => {
+  switch (phase._tag) {
+    case "Done":
+      return phase.outcome._tag === "Merged" ? "merged" : "no_change"
+    case "Deferred":
+    case "Review":
+      return "set_aside"
+    case "Asked":
+    case "Blocked":
+      return "needs_you"
+    case "Stopped":
+      return "stopped"
+  }
+  return undefined
+}
+
+/** The phases that end a ticket's part in the run, for now or for good. */
+const endsPart: ReadonlySet<PhaseTag> = new Set<EndingPhase>([
+  "Done",
+  "Asked",
+  "Deferred",
+  "Review",
+  "Blocked",
+  "Stopped",
+])
+
+/** The causes that bring a ticket carried over from an earlier run into this one. */
+const carriedIn: ReadonlySet<Cause["_tag"]> = new Set(["Resumed", "StillAsked", "Unmerged"])
+
+/** Milliseconds as seconds, to a tenth. */
+const tenths = (ms: number): number => Math.round(ms / 100) / 10
+
+/**
+ * What the record that ends `entry`'s part in the run says of what it spent, `spent` its workers'
+ * turns: orchestra's `phases`, `hand_backs`, `carried` and `tokens`, and tutti's `cost_usd`.
+ */
+export const spentFields = (
+  entry: Entry,
+  spent: Spent,
+): {
+  phases?: Phases
+  hand_backs: { resolve: number; fix: number }
+  carried?: true
+  tokens?: TokensByModel
+  cost_usd?: number
+} => {
+  const account = entry.account ?? newAccount(entry.since)
+  const phases: Record<string, number> = {}
+  for (const [phase, ms] of Object.entries(account.spentIn)) phases[phase] = tenths(ms)
+  return {
+    ...(Object.keys(phases).length === 0 ? {} : { phases }),
+    hand_backs: { ...account.handBacks },
+    ...(account.carried ? { carried: true as const } : {}),
+    ...(Object.keys(spent.tokens).length === 0 ? {} : { tokens: spent.tokens }),
+    ...(spent.results === 0 ? {} : { cost_usd: spent.costUsd }),
+  }
+}
+
+/**
+ * The `ticket_end` record of `entry`, whose part in the run ended in `phase` at `now`, and the
+ * records written beside it given what it spent, those that end its part in the run (`closed`,
+ * `deferred`, a `warn` with `aside`).
+ */
+export const ending = (
+  entry: Entry,
+  phase: TicketPhase,
+  now: number,
+  spent: Spent,
+  beside: ReadonlyArray<Event>,
+): ReadonlyArray<Event> => {
+  const outcome = outcomeOf(phase)
+  if (outcome === undefined) return beside
+  const fields = spentFields(entry, spent)
+  const why =
+    phase._tag === "Asked" ? phase.question : "why" in phase ? (phase.why as string) : undefined
+  const ends = (event: Event) =>
+    event.kind === "closed" ||
+    event.kind === "deferred" ||
+    (event.kind === "warn" && event.aside === true)
+  return [
+    ...beside.map((event) =>
+      ends(event) && "ticket" in event && event.ticket === entry.ticket
+        ? ({ ...event, ...fields } as Event)
+        : event,
+    ),
+    {
+      kind: "ticket_end",
+      ticket: entry.ticket,
+      outcome,
+      phase: phase._tag as EndingPhase,
+      ...(why === undefined ? {} : { why }),
+      seconds: tenths(now - (entry.account?.took ?? now)),
+      turns: spent.turns,
+      ...fields,
+    } satisfies Event,
+  ]
 }
 
 /** The wind-down (orchestra's drain): when it began, and the tickets running then. */
@@ -194,11 +346,49 @@ const moved = (
     cause._tag === "Recheck" ||
     (entry.rechecking && (phase._tag === "ToMerge" || phase._tag === "Merging"))
   const tickets = new Map(state.tickets)
-  tickets.set(entry.ticket, { ...entry, phase, since: now, row, worker, rechecking, handBack })
+  tickets.set(entry.ticket, {
+    ...accounted(entry, phase, cause, now),
+    phase,
+    since: now,
+    row,
+    worker,
+    rechecking,
+    handBack,
+  })
   return {
     ...state,
     tickets,
     rows: row !== null && row !== entry.row ? state.rows + 1 : state.rows,
+  }
+}
+
+/**
+ * `entry`'s time in its phase counted, up to `now`, as it moves to `phase` by `cause`: its
+ * phases' times, its hand-backs, and for a ticket entering the run, whether it was carried over.
+ */
+export const accounted = (entry: Entry, phase: TicketPhase, cause: Cause, now: number): Entry => {
+  // A ticket entering the run has no account yet: its phase is the one it enters.
+  const fresh = entry.account === undefined
+  const account = entry.account ?? newAccount(now)
+  const spentIn = { ...account.spentIn }
+  const left = countsIn[entry.phase._tag]
+  if (left !== undefined && !fresh) {
+    spentIn[left] = (spentIn[left] ?? 0) + Math.max(0, now - entry.since)
+  }
+  const entered = countsIn[phase._tag]
+  if (entered !== undefined) spentIn[entered] = spentIn[entered] ?? 0
+  const handedBack = phase._tag !== entry.phase._tag
+  return {
+    ...entry,
+    account: {
+      took: account.took,
+      spentIn,
+      handBacks: {
+        resolve: account.handBacks.resolve + (handedBack && phase._tag === "Resolving" ? 1 : 0),
+        fix: account.handBacks.fix + (handedBack && phase._tag === "Fixing" ? 1 : 0),
+      },
+      carried: account.carried || (fresh && carriedIn.has(cause._tag)),
+    },
   }
 }
 
@@ -304,6 +494,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
   function* () {
     const logs = yield* Log
     const events = yield* EventStream
+    const spending = yield* Effect.serviceOption(Spending)
     const ref = yield* SubscriptionRef.make(emptyState)
     // The tickets whose Gone session was resumed in this run.
     const goneResumed = yield* Ref.make<ReadonlySet<string>>(new Set())
@@ -329,8 +520,26 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
           if (Result.isFailure(next)) {
             return changed(next, yield* bug(state, ticket, next.failure))
           }
+          const now = yield* Clock.currentTimeMillis
+          // A ticket whose part in the run ends gets its ticket_end, and what it spent on the
+          // records that end it.
+          const ends =
+            entry !== undefined &&
+            next.success !== null &&
+            next.success._tag !== entry.phase._tag &&
+            endsPart.has(next.success._tag)
+          const beside =
+            ends && entry !== undefined && next.success !== null
+              ? ending(
+                  accounted(entry, next.success, cause, now),
+                  next.success,
+                  now,
+                  Option.isSome(spending) ? yield* spending.value.ofTicket(ticket) : nothingSpent,
+                  options.beside ?? [],
+                )
+              : (options.beside ?? [])
           const records = Effect.forEach(
-            [phaseRecord(ticket, from, next.success, cause), ...(options.beside ?? [])],
+            [phaseRecord(ticket, from, next.success, cause), ...beside],
             (event) => events.emit(event),
             { discard: true },
           )
@@ -340,7 +549,6 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
             tickets.delete(ticket)
             return changed(next, { ...state, tickets })
           }
-          const now = yield* Clock.currentTimeMillis
           const base = entry ?? newEntry(ticket, options.title ?? "", next.success)
           const titled = options.title === undefined ? base : { ...base, title: options.title }
           return changed(next, moved(state, titled, next.success, cause, now))

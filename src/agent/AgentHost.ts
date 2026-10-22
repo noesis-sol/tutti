@@ -42,6 +42,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import { detail, Log } from "../run/log.ts"
+import { Spending } from "../run/spending.ts"
 import type { PermissionModeInEffect } from "./Account.ts"
 import { Attention } from "./Attention.ts"
 import { Transcripts } from "./Transcripts.ts"
@@ -308,8 +309,9 @@ export interface Workers {
   readonly fold: (entry: WorkerEntry, event: WorkerEvent) => Effect.Effect<void>
   /**
    * A message of the session `session`: recorded in Transcripts, published and folded in; a
-   * `permission_denied` is recorded through Attention too, and a `rate_limit_event`'s info is
-   * reported to UsageLimits, when there is one (§ 4.12).
+   * `permission_denied` is recorded through Attention too, a `rate_limit_event`'s info is
+   * reported to UsageLimits, when there is one (§ 4.12), and a result goes to Spending, when there
+   * is one, for its `turn` record (§ 10).
    */
   readonly emit: (entry: WorkerEntry, session: string, message: SDKMessage) => Effect.Effect<void>
   /**
@@ -357,6 +359,7 @@ export const makeWorkers = (
     const compactions = yield* PubSub.unbounded<Compaction>()
     const log = yield* Effect.serviceOption(Log)
     const usage = yield* Effect.serviceOption(UsageLimits)
+    const spending = yield* Effect.serviceOption(Spending)
 
     const late = (ticket: string) => {
       const text = `a background task ended and no turn came to report it within ${reportWait}; not waiting for it`
@@ -482,6 +485,9 @@ export const makeWorkers = (
           }
           if (message.type === "rate_limit_event" && Option.isSome(usage)) {
             yield* usage.value.report(message.rate_limit_info)
+          }
+          if (message.type === "result" && Option.isSome(spending)) {
+            yield* spending.value.message(entry.ticket, session, message)
           }
         }),
       sent: (entry, session, message) => transcripts.record(entry.ticket, session, message),

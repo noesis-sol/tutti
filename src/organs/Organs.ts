@@ -153,8 +153,15 @@ export const skippedLine = (organ: string): Line =>
 export class Organs extends Context.Service<
   Organs,
   {
-    /** The organ's answer to `input`, its sections tagged as evidence. */
-    ask<A>(organ: Organ<A>, input: ReadonlyArray<InputPart>): Effect.Effect<A, OrganError>
+    /**
+     * The organ's answer to `input`, its sections tagged as evidence; `about.ticket` is the ticket
+     * the call is about, for its `organ` record.
+     */
+    ask<A>(
+      organ: Organ<A>,
+      input: ReadonlyArray<InputPart>,
+      about?: { readonly ticket?: string },
+    ): Effect.Effect<A, OrganError>
   }
 >()("tutti/organs/Organs") {
   /** Organs over the LanguageModel in context, with AppConfig's overrides and OrganHold's hold. */
@@ -168,7 +175,11 @@ export class Organs extends Context.Service<
         const hold = yield* OrganHold
         const overrides = config.settings.organs
         return Organs.of({
-          ask: <A>(organ: Organ<A>, input: ReadonlyArray<InputPart>) =>
+          ask: <A>(
+            organ: Organ<A>,
+            input: ReadonlyArray<InputPart>,
+            about: { readonly ticket?: string } = {},
+          ) =>
             Effect.gen(function* () {
               if (yield* hold.held) {
                 yield* log.write(skippedLine(organ.name))
@@ -186,6 +197,7 @@ export class Organs extends Context.Service<
                 Effect.provideService(LanguageModel.LanguageModel, model),
                 Effect.provideService(OrganCall, {
                   organ: organ.name,
+                  ...(about.ticket === undefined ? {} : { ticket: about.ticket }),
                   effort: overrides.effort ?? organ.effort,
                   ...(overrides.model === null ? {} : { model: overrides.model }),
                   ...(organ.reads === undefined ? {} : { reads: organ.reads }),

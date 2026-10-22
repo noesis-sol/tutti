@@ -411,7 +411,7 @@ export const make = (
         const checked =
           setup._tag === "Failed"
             ? ({ _tag: "Failed", error: setup.error, output: setup.output } as const)
-            : yield* checkOnce(run.ticket)
+            : yield* checkOnce(run.ticket, { suite: "merge", train: true })
         if (checked._tag !== "Failed") {
           run.passed = run.head
           yield* show(run, "passed")

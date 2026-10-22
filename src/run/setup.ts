@@ -52,7 +52,7 @@ import {
   type Worktrees,
   writeRunFile,
 } from "../services/Worktrees.ts"
-import { outputTo } from "./check.ts"
+import { outputTo, recorded } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { globMatch } from "./footprint.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
@@ -285,7 +285,7 @@ export const setUp = (
   onto: string,
   fix?: Fix,
   ahead = false,
-): Effect.Effect<SetUp, never, Checks | Git | Worktrees | Ledger | Log> =>
+): Effect.Effect<SetUp, never, Checks | Git | Worktrees | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
     if (command === null) return { _tag: "Unneeded" } satisfies SetUp
@@ -324,7 +324,9 @@ export const setUp = (
     const ran = yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, setupLogName, "the setup's")
-        return yield* Effect.result(
+        return yield* recorded(
+          "setup",
+          ticket.id,
           checks.setup({ cwd: ticket.worktree, ...to, before: "fast", command }),
         )
       }),
@@ -398,7 +400,7 @@ export const setUpWorktree = (
   worktree: TicketWorktree,
   setUps: SetUps,
   repo: string,
-): Effect.Effect<WorktreeSetUp, never, Checks | Git | Worktrees | Log> =>
+): Effect.Effect<WorktreeSetUp, never, Checks | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
     if (command === null) return { _tag: "Unneeded" } satisfies WorktreeSetUp
@@ -435,7 +437,11 @@ export const setUpWorktree = (
     const ran = yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo({ id, worktree: path }, setupLogName, "the setup's")
-        return yield* Effect.result(checks.setup({ cwd: path, ...to, before: "fast", command }))
+        return yield* recorded(
+          "setup",
+          id,
+          checks.setup({ cwd: path, ...to, before: "fast", command }),
+        )
       }),
     )
     if (Result.isFailure(ran)) {

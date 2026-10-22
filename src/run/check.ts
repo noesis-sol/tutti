@@ -16,11 +16,12 @@
 // keeps the commit of each ticket's branch its check last passed on (Passes), so a branch checked
 // as its worker fixed it, or resolved its rebase, isn't checked again while it stays on top.
 import { join } from "node:path"
-import { Effect, Ref, type Schema, type Scope } from "effect"
+import { Clock, Effect, Ref, Result, type Schema, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
   type CheckError,
+  type CheckResult,
   Checks,
   checkLogName,
   OutputBounds,
@@ -28,6 +29,7 @@ import {
 } from "../services/Checks.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
+import type { checkSuites } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { Log, line, Tag, ticketLine } from "./log.ts"
 
@@ -39,6 +41,53 @@ export type Checked =
   | { readonly _tag: "Unchecked" }
   /** It failed, timed out or couldn't run; `output` is where its whole output is. */
   | { readonly _tag: "Failed"; readonly error: CheckError; readonly output: string }
+
+/** Which check a `check` record is of (§ 10). */
+export type CheckSuite = (typeof checkSuites)[number]
+
+/**
+ * Runs `check`, a check or a setup, and writes its `check` record (§ 10) once it ends, `ticket`'s
+ * (none for the full check's): what ran, for how long and how it went. A check with no command ran
+ * nothing and has none. How it went, as Effect.result gives it.
+ */
+export const recorded = <R>(
+  suite: CheckSuite,
+  ticket: string | undefined,
+  check: Effect.Effect<CheckResult, CheckError, R>,
+  options: { readonly train?: boolean } = {},
+): Effect.Effect<Result.Result<CheckResult, CheckError>, never, R | EventStream> =>
+  Effect.gen(function* () {
+    const events = yield* EventStream
+    const start = yield* Clock.currentTimeMillis
+    const ran = yield* Effect.result(check)
+    const seconds = Math.round(((yield* Clock.currentTimeMillis) - start) / 100) / 10
+    const base = {
+      kind: "check" as const,
+      suite,
+      ...(ticket === undefined ? {} : { ticket }),
+      seconds,
+      ...(options.train === true ? { train: true as const } : {}),
+    }
+    if (Result.isSuccess(ran)) {
+      if (ran.success._tag === "CheckPassed") {
+        yield* events.emit({ ...base, command: ran.success.command, result: "passed" })
+      }
+      return ran
+    }
+    const error = ran.failure
+    yield* events.emit({
+      ...base,
+      command: error.command,
+      result:
+        error._tag === "CheckFailed"
+          ? "failed"
+          : error._tag === "CheckTimedOut"
+            ? "timed_out"
+            : "not_run",
+      ...(error._tag === "CheckNotRun" ? {} : { output: error.outputFile }),
+    })
+    return ran
+  })
 
 /** The ticket a check is for. */
 export interface CheckedTicket {
@@ -181,23 +230,25 @@ export const makePasses: Effect.Effect<Passes> = Effect.map(
 )
 
 /**
- * Runs the merge check in the ticket's worktree, its output in check.log, and says how it went. A
- * check that passes, or that there is none of, clears the ticket's rebased-and-unchecked mark.
+ * Runs the merge check in the ticket's worktree, its output in check.log, and says how it went,
+ * its `check` record of `suite` (merge by default) written. A check that passes, or that there is none of, clears the ticket's rebased-and-unchecked mark.
  */
 export const runMergeCheck = (
   ticket: CheckedTicket,
+  suite: CheckSuite = "merge",
 ): Effect.Effect<Checked, never, Checks | Worktrees | Store | Log | EventStream> =>
-  Effect.tap(checkOnce(ticket), (checked) =>
+  Effect.tap(checkOnce(ticket, { suite }), (checked) =>
     checked._tag === "Failed" ? Effect.void : clearUnchecked(ticket.id),
   )
 
 /**
  * Runs the merge check in the ticket's worktree, its output in check.log, and says how it went,
- * leaving its rebased-and-unchecked mark as it is: as for a check ahead of its turn to merge
+ * its `check` record written as `how` says, leaving its rebased-and-unchecked mark as it is: as for a check ahead of its turn to merge
  * (mergetrain.ts), on a branch that may yet be put back.
  */
 export const checkOnce = (
   ticket: CheckedTicket,
+  how: { readonly suite: CheckSuite; readonly train?: boolean } = { suite: "merge" },
 ): Effect.Effect<Checked, never, Checks | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const checks = yield* Checks
@@ -207,7 +258,12 @@ export const checkOnce = (
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, checkLogName, "the check's")
-        const ran = yield* Effect.result(checks.fast({ cwd: ticket.worktree, ...to }))
+        const ran = yield* recorded(
+          how.suite,
+          ticket.id,
+          checks.fast({ cwd: ticket.worktree, ...to }),
+          how.train === true ? { train: true } : {},
+        )
         if (ran._tag === "Failure") {
           return { _tag: "Failed", error: ran.failure, output } satisfies Checked
         }

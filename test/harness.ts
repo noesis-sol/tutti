@@ -25,6 +25,7 @@ import { layer as fibersLayer, type Left, RunFibers } from "../src/run/fibers.ts
 import type { Log } from "../src/run/log.ts"
 import { notifying } from "../src/run/notices.ts"
 import type { PhaseTag, TicketPhase } from "../src/run/phase.ts"
+import type { Spending } from "../src/run/spending.ts"
 import { Beads, type Issue } from "../src/services/Beads.ts"
 import type { Checks } from "../src/services/Checks.ts"
 import { ProcessGroups } from "../src/services/exec.ts"
@@ -55,6 +56,7 @@ import { type Seed as GitSeed, layer as gitLayer, Repository } from "../src/test
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { Captured as Notices, layer as notifierLayer } from "../src/testing/Notifier.ts"
 import { type Held, layer as lockLayer } from "../src/testing/RunLock.ts"
+import { layer as spendingLayer } from "../src/testing/Spending.ts"
 import { layer as storeLayer } from "../src/testing/Store.ts"
 import { type Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { layer as ttyLayer } from "../src/testing/Tty.ts"
@@ -91,6 +93,7 @@ export type Env =
   | Notices
   | UsageLimits
   | Reported
+  | Spending
   | RunFibers
   | TestClock.TestClock
   | BunServices.BunServices
@@ -207,7 +210,12 @@ export const environment = (
       : hostLayer(scripts, hostOptions)
   return host.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(attentionLayer(setup.policy ?? allowAll), transcriptsLayer(), usageLayer),
+      Layer.mergeAll(
+        attentionLayer(setup.policy ?? allowAll),
+        transcriptsLayer(),
+        usageLayer,
+        spendingLayer(),
+      ),
     ),
     Layer.provideMerge(notifying),
     Layer.provideMerge(

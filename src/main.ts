@@ -67,6 +67,7 @@ import {
 import { notifying } from "./run/notices.ts"
 import { catchSignals, listen, logSuspends, type QuitRequest, quitBy, runMain } from "./run/quit.ts"
 import { finish, run } from "./run/run.ts"
+import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
@@ -131,6 +132,8 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
   )
   const second = Layer.mergeAll(
     Checks.layer,
+    // What the workers' turns spent (§ 10), for the host's turn records and the ledger's sums.
+    Spending.layer,
     Worktrees.layer({ repo, root: config.worktrees, base: started.base }),
     notifierLayer.pipe(Layer.provide(ttyLayer)),
   )
@@ -375,7 +378,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       /** A new feature chosen at the start question asked as lines: the interview needs the renderer. */
       const noInterview = Effect.gen(function* () {
         yield* Console.error(interviewUnavailable)
-        yield* events.emit({ kind: "end", code: exitCodes.ok })
+        yield* Effect.flatMap(endRecord(exitCodes.ok), events.emit)
         return exitCodes.ok
       })
 
@@ -400,7 +403,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             },
           )
           if (featured._tag === "Stopped") {
-            yield* events.emit({ kind: "end", code: featured.exitCode })
+            yield* Effect.flatMap(endRecord(featured.exitCode), events.emit)
             return featured.exitCode
           }
           scope = featured.epic
@@ -564,7 +567,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
           const said = ended.ending
           if (said.out.length > 0) yield* Console.log(said.out.join("\n"))
           if (said.error.length > 0) yield* Console.error(said.error.join("\n"))
-          yield* events.emit({ kind: "end", code: said.exitCode })
+          yield* Effect.flatMap(endRecord(said.exitCode), events.emit)
           return said.exitCode
         }
         case "Nothing":

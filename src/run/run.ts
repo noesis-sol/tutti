@@ -172,6 +172,7 @@ import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "
 import * as scope from "./scope.ts"
 import { type Dashboard, Screen, show } from "./screen.ts"
 import { makeSetUps, retrySetups, setupWaiting, setupWaitsPart } from "./setup.ts"
+import { endRecord } from "./spending.ts"
 import { handBackNow, interrupt, releaseAndHandOver, sendMessage } from "./steer.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
@@ -912,7 +913,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           [stop.text],
           events.emit({ kind: "stop", detail: stop.why, text: stop.text }),
         )
-        yield* events.emit({ kind: "end", code: stop.code })
+        yield* Effect.flatMap(endRecord(stop.code), events.emit)
         if (options.exitNow !== undefined) yield* options.exitNow(stop.code, [stop.text])
       })
     let asked = 0
@@ -1548,7 +1549,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       report,
     }
     if (options.endLater) return outcome
-    yield* events.emit({ kind: "end", code: exitCode })
+    yield* Effect.flatMap(endRecord(exitCode), events.emit)
     return outcome
   }).pipe(Effect.provide(Ledger.layer))
 
@@ -1582,7 +1583,7 @@ export const finish = (
     }
     yield* outcome
       .report(out)
-      .pipe(Effect.onInterrupt(() => events.emit({ kind: "end", code: exitCodes.interrupted })))
-    yield* events.emit({ kind: "end", code: outcome.exitCode })
+      .pipe(Effect.onInterrupt(() => Effect.flatMap(endRecord(exitCodes.interrupted), events.emit)))
+    yield* Effect.flatMap(endRecord(outcome.exitCode), events.emit)
     return outcome.exitCode
   })

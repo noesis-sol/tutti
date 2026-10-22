@@ -282,4 +282,4 @@ export const triageInput = (e: Evidence): ReadonlyArray<InputPart> => [
 
 /** Triage's verdict on the deferred ticket the evidence is about. */
 export const judge = (e: Evidence): Effect.Effect<Verdict, OrganError, Organs> =>
-  Effect.flatMap(Organs, (organs) => organs.ask(triage, triageInput(e)))
+  Effect.flatMap(Organs, (organs) => organs.ask(triage, triageInput(e), { ticket: e.ticket }))

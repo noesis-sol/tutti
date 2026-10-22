@@ -661,7 +661,9 @@ const setUpAndCheck = (
       return yield* failed(setup.error, setup.output)
     }
     yield* ledger.refine(id, Detail.Step({ step: "check" }))
-    const checked = yield* runMergeCheck(ticket)
+    // A ticket checked once more after a failed check (recheck.ts) has its check recorded so.
+    const rechecking = (yield* ledger.current).tickets.get(id)?.rechecking === true
+    const checked = yield* runMergeCheck(ticket, rechecking ? "recheck" : "merge")
     yield* ends(checked._tag !== "Failed")
     switch (checked._tag) {
       case "Unchecked":

@@ -422,7 +422,7 @@ const checkFix = (stop: CheckStop, options: MergeOptions, memory: MergeMemory) =
       from: stop.at,
     })
     if (setup._tag === "Failed") return setup
-    return yield* runMergeCheck(stop.ticket)
+    return yield* runMergeCheck(stop.ticket, "fix")
   })
 
 /** How a check hand-back ended: the fix verified and checked, or the ticket set aside. */

@@ -19,6 +19,59 @@ const Timestamp = Schema.String.check(
 
 const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const optional = Schema.optionalKey
+// A non-negative amount: -0 left out, as JSON writes it 0.
+const Amount = Schema.Finite.check(
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.makeFilter((n: number) => !Object.is(n, -0) || "-0 is 0"),
+)
+const Usd = Amount
+const Seconds = Amount
+
+/**
+ * What a model's calls used, in tokens, as orchestra's `tokens` gives them: `input` neither written
+ * to the prompt cache nor read from it, `cache_write` written to it, `cache_read` read from it, and
+ * `output`, thinking included.
+ */
+export const Tokens = Schema.Struct({
+  input: Count,
+  output: Count,
+  cache_write: Count,
+  cache_read: Count,
+})
+export type Tokens = typeof Tokens.Type
+
+/** Tokens by model, as in `{"claude-opus-5-5":{"input":1834,…}}`. */
+export const TokensByModel = Schema.Record(Schema.String, Tokens)
+export type TokensByModel = typeof TokensByModel.Type
+
+/** The phases orchestra counts a ticket's time in, in seconds to a tenth (§ 10). */
+export const phaseSeconds = ["working", "waiting", "merging", "resolving", "fixing"] as const
+
+/** How long a ticket spent in each phase it entered. */
+export const Phases = Schema.Struct({
+  working: optional(Seconds),
+  waiting: optional(Seconds),
+  merging: optional(Seconds),
+  resolving: optional(Seconds),
+  fixing: optional(Seconds),
+})
+export type Phases = typeof Phases.Type
+
+/** A ticket's hand-backs in the run: for conflicts and for a failing check, 0 included. */
+export const HandBacks = Schema.Struct({ resolve: Count, fix: Count })
+
+// What the record that ends a ticket's part in the run says of it, as orchestra's closed, deferred
+// and aside records do (`phases`, `hand_backs`, `carried`, `tokens`), and its workers' cost, which
+// only the SDK gives (`cost_usd`). A record about a ticket the run didn't take up has none.
+const spentFields = {
+  phases: optional(Phases),
+  hand_backs: optional(HandBacks),
+  /** Carried over from an earlier run: its phases count from when this run took it up. */
+  carried: optional(Schema.Literal(true)),
+  tokens: optional(TokensByModel),
+  /** What its workers' turns cost, as the SDK estimates it; absent when no turn reported one. */
+  cost_usd: optional(Usd),
+}
 
 // What every record begins with: the version, when it was written, when the run started (the same
 // in each of a run's records, and in its lock's `started`) and what it is.
@@ -61,6 +114,17 @@ const ticketRecord = <const Kind extends string>(kind: Kind) =>
     ticket: Schema.String,
     title: Schema.String,
     detail: optional(Schema.String),
+    text: Schema.String,
+  })
+
+// A record that ends a ticket's part in the run, with what it spent: closed, deferred.
+const endingRecord = <const Kind extends string>(kind: Kind) =>
+  Schema.Struct({
+    ...head(kind),
+    ticket: Schema.String,
+    title: Schema.String,
+    detail: optional(Schema.String),
+    ...spentFields,
     text: Schema.String,
   })
 
@@ -108,9 +172,9 @@ export const Dispatch = Schema.Struct({
 export const Queue = Schema.Struct({ ...head("queue"), ...queueFields })
 
 /** Closed and merged (`detail`: `ffd6ce4 merged into main`), or `no change to merge`. */
-export const Closed = ticketRecord("closed")
+export const Closed = endingRecord("closed")
 /** Set aside; `detail` says why. */
-export const Deferred = ticketRecord("deferred")
+export const Deferred = endingRecord("deferred")
 /** Waits on a question for you; `detail` is the question's ID and title. */
 export const Asked = ticketRecord("asked")
 /** Its question was answered. */
@@ -137,6 +201,8 @@ export const Warn = Schema.Struct({
   detail: optional(Schema.String),
   /** Its work is done but it can't merge until you act, as in `merge conflict in a.go`. */
   blocked: optional(Schema.String),
+  /** With `aside`: what the ticket spent. */
+  ...spentFields,
   text: Schema.String,
 })
 
@@ -199,8 +265,104 @@ export const FullCheck = Schema.Struct({
   text: Schema.String,
 })
 
-/** The run's last record: the exit code. */
-export const End = Schema.Struct({ ...head("end"), code: Count })
+/** The run's organ calls, added up: those of unknown cost count in `calls` alone. */
+export const OrganTotals = Schema.Struct({ calls: Count, turns: Count, cost_usd: Usd })
+
+/**
+ * The run's last record: the exit code, and as orchestra's, the run's `tokens` by model and its
+ * `organs`' totals, each left out when there is none; tutti adds `cost_usd`, its workers' turns'.
+ */
+export const End = Schema.Struct({
+  ...head("end"),
+  code: Count,
+  tokens: optional(TokensByModel),
+  cost_usd: optional(Usd),
+  organs: optional(OrganTotals),
+})
+
+/** Which check a `check` record is of, as orchestra's `suite`. */
+export const checkSuites = ["merge", "recheck", "fix", "full", "setup"] as const
+
+/** How a check ended, as orchestra's `result`; `not_run` is tutti's: it couldn't start. */
+export const checkResults = ["passed", "failed", "timed_out", "not_run"] as const
+
+/** A check or a setup tutti ran ended; the log has no line for it. */
+export const Check = Schema.Struct({
+  ...head("check"),
+  suite: Schema.Literals(checkSuites),
+  /** Whose check or setup it was; absent for the full check's. */
+  ticket: optional(Schema.String),
+  command: Schema.String,
+  /** From its start to its end, to a tenth. */
+  seconds: Seconds,
+  result: Schema.Literals(checkResults),
+  /** Where its whole output is, when it didn't pass. */
+  output: optional(Schema.String),
+  /** It ran ahead of its ticket's turn, as the second ticket of the merge train. */
+  train: optional(Schema.Literal(true)),
+})
+
+/** A worker's turn ended: its SDK result, with this turn's share of the session's running totals. */
+export const Turn = Schema.Struct({
+  ...head("turn"),
+  ticket: Schema.String,
+  session: Schema.String,
+  /** The result's subtype: `success`, `error_during_execution`, `error_max_turns`, … */
+  subtype: Schema.String,
+  is_error: optional(Schema.Literal(true)),
+  /** This turn's share of the session's total_cost_usd. */
+  cost_usd: Usd,
+  /** The model round-trips within the turn: the result's num_turns. */
+  turns: Count,
+  /** The turn's time, and the part of it spent waiting on the API. */
+  duration_ms: Count,
+  api_ms: Count,
+  /** This turn's share of the session's tokens, by model, subagents' and compactions' included. */
+  tokens: optional(TokensByModel),
+})
+
+/** How an organ call ended: answered with a price, answered without one, or with no result. */
+export const organOutcomes = ["answered", "unpriced", "no_result"] as const
+
+/** An organ call ended (§ 6.1); the log has its `ORGAN` line. */
+export const Organ = Schema.Struct({
+  ...head("organ"),
+  /** `triage`, `predictor`, `reviewer`, `scout`, … */
+  organ: Schema.String,
+  /** The ticket it was about, when it was about one. */
+  ticket: optional(Schema.String),
+  outcome: Schema.Literals(organOutcomes),
+  /** Absent when it is unknown: no result, or a provider that reports no price. */
+  cost_usd: optional(Usd),
+  turns: optional(Count),
+  duration_ms: Count,
+  session: optional(Schema.String),
+})
+
+/** How a ticket's part in the run ended. */
+export const ticketOutcomes = ["merged", "no_change", "set_aside", "needs_you", "stopped"] as const
+
+/** The phases that end a ticket's part in the run, for now or for good. */
+export const endingPhases = ["Done", "Asked", "Deferred", "Review", "Blocked", "Stopped"] as const
+
+/**
+ * A ticket's part in the run ended, or ended again after it came back: the totals since the run
+ * first took it up, so a ticket's last `ticket_end` in a run gives its whole.
+ */
+export const TicketEnd = Schema.Struct({
+  ...head("ticket_end"),
+  ticket: Schema.String,
+  outcome: Schema.Literals(ticketOutcomes),
+  /** The phase it ended in: `Done`, `Deferred`, `Review`, `Asked`, `Blocked` or `Stopped`. */
+  phase: Schema.Literals(endingPhases),
+  /** Why, where its phase says: `CHECKS_FAILED`, the question's ID, `PAUSED`, … */
+  why: optional(Schema.String),
+  /** From when the run first took it up to now. */
+  seconds: Seconds,
+  /** The model round-trips of its workers' turns, their results' num_turns summed. */
+  turns: Count,
+  ...spentFields,
+})
 
 /** The phases of § 5.1, by their tags. */
 export const phaseNames = [
@@ -374,6 +536,10 @@ export const kinds = {
   stop: Stop,
   done: Done,
   full_check: FullCheck,
+  check: Check,
+  turn: Turn,
+  organ: Organ,
+  ticket_end: TicketEnd,
   end: End,
   phase: Phase,
   attention: Attention,

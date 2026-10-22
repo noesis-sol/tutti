@@ -343,7 +343,13 @@ describe("BAD_TICKET_ID", () => {
     const bad = recordsOf(all, "x-../y").map((record) =>
       record.kind === "phase" ? `phase:${record.to}` : record.kind,
     )
-    expect(bad).toEqual(["phase:Queued", "phase:Working", "phase:Deferred", "deferred"])
+    expect(bad).toEqual([
+      "phase:Queued",
+      "phase:Working",
+      "phase:Deferred",
+      "deferred",
+      "ticket_end",
+    ])
     expect(count).toBe(1)
   })
 })

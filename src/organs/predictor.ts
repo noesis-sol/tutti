@@ -83,6 +83,8 @@ export const predictFiles = (
   tracked: ReadonlyArray<string>,
 ): Effect.Effect<ReadonlyArray<string>, OrganError, Organs> =>
   Effect.gen(function* () {
-    const { files } = yield* (yield* Organs).ask(predictor, predictorInput(issue, tracked))
+    const { files } = yield* (yield* Organs).ask(predictor, predictorInput(issue, tracked), {
+      ticket: issue.id,
+    })
     return keptFiles(files, tracked)
   })

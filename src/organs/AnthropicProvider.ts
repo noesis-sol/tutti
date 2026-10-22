@@ -125,6 +125,7 @@ export const languageModel: Effect.Effect<
           Effect.flatMap(Clock.currentTimeMillis, (endedAt) =>
             costs.recordUnknown({
               organ: call.organ,
+              ...(call.ticket === undefined ? {} : { ticket: call.ticket }),
               durationMs: endedAt - startedAt,
               ...(Exit.isSuccess(exit) ? { unpriced: true as const } : {}),
             }),
@@ -157,6 +158,7 @@ export const languageModel: Effect.Effect<
               Effect.flatMap(Clock.currentTimeMillis, (endedAt) =>
                 costs.recordUnknown({
                   organ: call.organ,
+                  ...(call.ticket === undefined ? {} : { ticket: call.ticket }),
                   durationMs: endedAt - startedAt,
                   ...(Exit.isSuccess(exit) ? { unpriced: true as const } : {}),
                 }),
