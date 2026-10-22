@@ -467,7 +467,7 @@ describe("the Current section", () => {
       │ ◼ tut-9a1  to merge (1st)  1m07s  Title of tut-9a1                           │
       ┃ • tut-b7c  ■ allow?        1m07s  Title of tut-b7c                           │
       ╰──────────────────────────────────────────────────────────────────────────────╯
-        Tab select · Enter open · d deny · a allow · s stop after current · ? keys
+        Tab select · Enter open · s stop after current · ? keys
       "
     `)
     // The card of the oldest request is highlighted, with none chosen (§ 4.5). Any worker in the

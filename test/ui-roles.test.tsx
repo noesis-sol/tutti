@@ -1163,7 +1163,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · Enter open · d deny · a allow · s stop after current · ? keys
+        Tab select · Enter open · s stop after current · ? keys
       "
     `)
     },
@@ -1245,7 +1245,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · Enter open · d deny · a allow · s stop after…
+        Tab select · Enter open · s stop after current · ? keys
       "
     `)
     },
@@ -1324,7 +1324,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · Enter open · d deny · a allow · s stop after current · ? keys
+        Tab select · Enter open · s stop after current · ? keys
       "
     `)
     },
@@ -1365,7 +1365,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · Enter open · d deny · a allow · q end the run · ? keys
+        Tab select · Enter open · q end the run · ? keys
       "
     `)
     },

@@ -22,15 +22,18 @@
 // request is highlighted, and its request is the target. Inside a highlighted attention card, `Tab`,
 // `Shift+Tab`, `→` and `←` move between its buttons before moving on, `Enter` presses the focused
 // one and `1`–`4` pick a question's option; `d`, `Shift+D`, `a` and `r` answer the highlighted
-// card's request. On a compact line, `Enter` opens the Answer box.
+// card's request. They answer only a request drawn with its buttons, which only the full cards
+// draw: on a compact line, below the minimum size and behind the end-of-run box, `Enter` and the
+// answer keys open the Answer box instead, the 500 ms guard starts only once the buttons are drawn,
+// and the hint offers neither `d` nor `a`.
 //
 // With everything else done and workers waiting on you (D19), the end-of-run box (EndOfRunBox.tsx)
-// replaces the cards, and `q` ends the run (EndRun). The answer keys still answer the target
-// request, and `Tab` then `Enter` open a worker's view to answer there.
+// replaces the cards, and `q` ends the run (EndRun). `Tab` then `Enter` open a worker's view to
+// answer there.
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
-import type { Card } from "../run/runView.ts"
+import type { Card, Key } from "../run/runView.ts"
 import { answerBindings } from "./AttentionCard.tsx"
 import { useAnswering } from "./attentionKeys.ts"
 import { Cards, type CardsLayout, grows, keptLines, layoutOf, sectionLines } from "./Card.tsx"
@@ -108,6 +111,13 @@ export const showsGap = (
   foot: number,
 ): boolean => titleLines + 1 + totals + table + Math.max(slots, 1) + sectionChrome + foot <= height
 
+/**
+ * The hint's keys, as RunView names them, with `d` and `a` left out when the dashboard draws no
+ * request's buttons (`buttons` false): there they open the Answer box, not answer (§ 4.5).
+ */
+export const drawnHint = (keys: ReadonlyArray<Key>, buttons: boolean): ReadonlyArray<Key> =>
+  buttons ? keys : keys.filter((key) => key.keys !== "d" && key.keys !== "a")
+
 /** The ticket of the card `step` cards on from `from`'s, round; the first or last from none. */
 export const moveHighlight = (
   cards: ReadonlyArray<Card>,
@@ -144,7 +154,6 @@ export const Dashboard = () => {
   }
   const spin = useSpinner(cards.length === 0 || cards.some((card) => card.motion === "spinner"))
   const open = useCallback((ticket: string) => command(UiCommand.OpenWorker({ ticket })), [command])
-  const answering = useAnswering(cards)
 
   const small = width < minWidth || height < minHeight
   const totals = totalsLines(view.totals, theme, width, small)
@@ -160,6 +169,9 @@ export const Dashboard = () => {
   // compact line.
   const layout: CardsLayout =
     small || ending !== null ? { _tag: "Compact" } : layoutOf(cards, width, room)
+  // Only the full cards draw a request's buttons: the answer keys and the guard are theirs alone.
+  const buttons = layout._tag === "Cards"
+  const answering = useAnswering(buttons ? cards : [])
   // Beside Current, the table leaves out the tickets it shows; the end-of-run box shows none.
   const rows = ending === null ? rowsBesideCurrent(view.rows, cards) : view.rows
   const endingNow = useRef(false)
@@ -197,9 +209,12 @@ export const Dashboard = () => {
     const card = inCard()
     if (card !== undefined) answering.pick(card, n)
   }
-  const targetCard = () => {
+  // An answer key answers the highlighted card's request with its buttons drawn; else it opens the
+  // Answer box on the highlighted attention card, where you read the request first.
+  const answerKey = (run: () => void) => () => {
+    if (inCard() !== undefined) return run()
     const card = highlightedCard()
-    return card !== undefined && grows(card) ? card : undefined
+    if (card !== undefined && grows(card)) box.set(Box.Answer({ ticket: card.ticket }))
   }
   useLayer("view", [
     { key: "?", run: () => showHelp(!helpOpen.current) },
@@ -215,11 +230,13 @@ export const Dashboard = () => {
     ...key(["down"], () => step(1, false)),
     ...key(["up"], () => step(-1, false)),
     ...key(["return", "enter"], enter),
-    ...answerBindings(answering, targetCard).flatMap((binding) => key([binding.key], binding.run)),
+    ...answerBindings(answering, inCard).flatMap((binding) =>
+      key([binding.key], answerKey(binding.run)),
+    ),
     ...[1, 2, 3, 4].flatMap((n) => key([String(n)], pick(n))),
   ])
 
-  const hint = hintSegments(view.hint, theme, width)
+  const hint = hintSegments(drawnHint(view.hint, buttons), theme, width)
   if (small) {
     return (
       <box flexDirection="column" width={width} height={height}>

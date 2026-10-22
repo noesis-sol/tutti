@@ -494,6 +494,7 @@ tutti keeps those rules (tool name and rule content) for the run. A later reques
 
 - An answer to a request that is no longer open is dropped, with a toast.
 - Input to a card is ignored for 500 ms after its request appears or changes. Allow is never the focused default.
+- On the dashboard, `d`, `Shift+D`, `a` and `r` answer only a request drawn with its buttons, on a full attention card. Where its buttons aren't drawn (below the minimum size, §7.7, on a compact line, behind the end-of-run box) they open the Answer box on the highlighted request instead, and the hint offers neither `d` nor `a`; the 500 ms starts once the buttons are drawn. orchestra's `a` opens an answer talk, so it has no such case (tutti-d0d).
 
 **The answer** resolves the `Deferred`:
 
@@ -1036,7 +1037,7 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
 
 - **Cards are click targets.** A click, or `Tab` to highlight a card and `Enter`, opens that worker's view. Cards show no worker number, and no number key opens a worker: orchestra's `1`–`9` switch tabs, a departure on purpose (maintainer, 2026-10-22), as a click or `Tab` reaches every card, the 10th to the 16th too.
 - **The order is stable, and the highlight stays on its ticket.** Each worker holds a place for the whole of its session; a new worker takes the first place free, and the cards never shift as others finish. The highlight, and every command a click or key sends, names the card's ticket, never a place, so as cards come and go the highlight stays on its card, and goes with it when it ends, rather than pass to the card that takes its place. orchestra renumbered, which let a key or click meant for one worker reach another as a worker finished.
-- **Attention cards.** An attention card grows to show its request and buttons (§4.5). The cards keep their stable order, so an attention card stands out by its red border and size, not by moving. A card in the compact one-line layout shows `■ allow?` and opens its request with `Enter`.
+- **Attention cards.** An attention card grows to show its request and buttons (§4.5). The cards keep their stable order, so an attention card stands out by its red border and size, not by moving. A card in the compact one-line layout shows `■ allow?` and opens its request in the Answer box with `Enter`, or with an answer key, which answers only a request drawn with its buttons (§4.5).
   - The illustration shows a request held by the safety check, as it comes in default mode (`defaultToNo`, §4.5): Deny comes first and has the focus, and there is no `a` hint.
 - **Needs you** counts open attention requests, plus orchestra's questions and tickets blocked from merging.
 - **Banners on the title line**: usage (§4.12), and holds (`BLOCKED`, `USAGE_LIMIT · resets 14:05`).
