@@ -2,6 +2,7 @@
 // and tutti update --check and tutti update name the package manager's upgrade, not tutti update's
 // nor scripts/install.sh.
 import { describe, expect, test } from "bun:test"
+import { BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
 import { buildKind, markNpmBundle } from "../src/cli/version.ts"
 import {
@@ -56,7 +57,7 @@ const run = async (
       releases,
       keys: [],
       say: { out: (line) => out.push(line), error: (line) => error.push(line) },
-    }),
+    }).pipe(Effect.provide(BunServices.layer)),
   )
   return { code, out, error, asked }
 }
