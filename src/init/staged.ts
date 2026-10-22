@@ -195,9 +195,13 @@ export class SetupNotWritten extends Schema.TaggedError<SetupNotWritten>()("Setu
 const beside = (path: string, kind: string) =>
   join(dirname(path), `.${basename(path)}.tutti-${process.pid}-${crypto.randomUUID()}.${kind}`)
 
-/** A file being put in: its temporary file, and, once it replaced one, the old one's copy. */
+/**
+ * A file being put in: the file it is written to (where a link there points), its temporary file,
+ * and, once it replaced one, the old one's copy.
+ */
 interface Putting {
   readonly write: StagedWrite
+  readonly target: string
   readonly temporary: string
   backup: string | null
   renamed: boolean
@@ -205,7 +209,7 @@ interface Putting {
 
 /**
  * Writes `writes` into the project at `repo` as one, `last` (the settings) after the rest: each to
- * a temporary file beside it, synced, with its mode (the one there where the write gives none), and
+ * a temporary file beside it (beside the file a link there points at), synced, with its mode (the one there where the write gives none), and
  * once all are written, each renamed over its own. Fails with SetupNotWritten where one can't be,
  * having taken back what it had written: the temporary files and the folders it made removed, and
  * the files it had replaced put back.
@@ -227,14 +231,14 @@ export const commitStaged = (
       Effect.gen(function* () {
         const left: Array<string> = []
         for (const each of [...putting].reverse()) {
-          const target = each.write.path
+          const target = each.target
           const back = each.renamed
             ? each.backup === null
               ? real.remove(target)
               : real.rename(each.backup, target)
             : real.remove(each.temporary)
           const undone = yield* Effect.result(back)
-          if (undone._tag === "Failure" && each.renamed) left.push(relative(repo, target))
+          if (undone._tag === "Failure" && each.renamed) left.push(relative(repo, each.write.path))
           if (each.backup !== null && !each.renamed) yield* Effect.ignore(real.remove(each.backup))
         }
         // The folders init made, newest first, where nothing it couldn't take back is in them.
@@ -253,7 +257,16 @@ export const commitStaged = (
     for (const write of ordered) {
       const done = yield* Effect.result(
         Effect.gen(function* () {
-          const folder = dirname(write.path)
+          // A link is written through, to the file it points at, as writing the file would.
+          const target = yield* real.realPath(write.path).pipe(
+            Effect.catch(() =>
+              real.readLink(write.path).pipe(
+                Effect.map((link) => resolve(dirname(write.path), link)),
+                Effect.orElseSucceed(() => write.path),
+              ),
+            ),
+          )
+          const folder = dirname(target)
           let top: string | null = null
           for (let at = folder; at !== dirname(at) && !(yield* real.exists(at)); at = dirname(at)) {
             top = at
@@ -264,12 +277,12 @@ export const commitStaged = (
           }
           const mode =
             write.mode ??
-            (yield* real.stat(write.path).pipe(
+            (yield* real.stat(target).pipe(
               Effect.map((info) => info.mode & 0o7777),
               Effect.orElseSucceed(() => null),
             ))
-          const temporary = beside(write.path, "new")
-          putting.push({ write, temporary, backup: null, renamed: false })
+          const temporary = beside(target, "new")
+          putting.push({ write, target, temporary, backup: null, renamed: false })
           yield* Effect.scoped(
             Effect.gen(function* () {
               const handle = yield* real.open(temporary, {
@@ -289,14 +302,14 @@ export const commitStaged = (
     for (const each of putting) {
       const done = yield* Effect.result(
         Effect.gen(function* () {
-          if (yield* real.exists(each.write.path)) {
-            const backup = beside(each.write.path, "old")
+          if (yield* real.exists(each.target)) {
+            const backup = beside(each.target, "old")
             yield* real
-              .link(each.write.path, backup)
-              .pipe(Effect.catch(() => real.copyFile(each.write.path, backup)))
+              .link(each.target, backup)
+              .pipe(Effect.catch(() => real.copyFile(each.target, backup)))
             each.backup = backup
           }
-          yield* real.rename(each.temporary, each.write.path)
+          yield* real.rename(each.temporary, each.target)
           each.renamed = true
         }),
       )

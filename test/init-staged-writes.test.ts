@@ -5,12 +5,14 @@
 import { describe, expect, test } from "bun:test"
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -344,6 +346,50 @@ describe("staging", () => {
       ".tutti/": "",
       ".tutti/worker-prompt.md": "644 Work on TICKET_ID.\n",
     })
+  })
+})
+
+describe("a file that is a link", () => {
+  test("is written through, the link kept; a failure leaves the file it points at", async () => {
+    const encode = (text: string) => new TextEncoder().encode(text)
+    const linked = () => {
+      const project = newProject()
+      mkdirSync(join(project.repo, "docs"))
+      writeFileSync(join(project.repo, "docs", "README.md"), "old\n")
+      symlinkSync(join("docs", "README.md"), join(project.repo, "README.md"))
+      return project
+    }
+    const commit = (project: Project, fails: (write: Write) => boolean) =>
+      live(
+        Effect.gen(function* () {
+          const real = yield* FileSystem.FileSystem
+          const settings = join(project.repo, ".tutti", "settings.json")
+          return yield* commitStaged(
+            faulty(real, project.repo, [], fails),
+            project.repo,
+            [
+              { path: join(project.repo, "README.md"), data: encode("new\n"), mode: null },
+              { path: settings, data: encode("{}\n"), mode: null },
+            ],
+            settings,
+          )
+        }),
+      )
+
+    const written = linked()
+    expect(Exit.isSuccess(await commit(written, () => false))).toBe(true)
+    expect(lstatSync(join(written.repo, "README.md")).isSymbolicLink()).toBe(true)
+    expect(readFileSync(join(written.repo, "docs", "README.md"), "utf8")).toBe("new\n")
+
+    const failed = linked()
+    const before = tree(failed.repo)
+    const exit = await commit(
+      failed,
+      (write) => write.op === "rename" && write.path.includes("settings"),
+    )
+    expect(failureOf(exit)).toBeInstanceOf(SetupNotWritten)
+    expect(lstatSync(join(failed.repo, "README.md")).isSymbolicLink()).toBe(true)
+    expect(tree(failed.repo)).toEqual(before)
   })
 })
 
