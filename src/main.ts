@@ -34,7 +34,7 @@ import { releaseBuild, tuttiVersion } from "./cli/version.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
-import { makePrinter, type Out, stdout } from "./print/organLine.ts"
+import { guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
 import { carriedTickets } from "./run/carry.ts"
 import {
   asking,
@@ -164,7 +164,7 @@ const exitNow =
     Effect.promise(async () => {
       if (destroy !== undefined) {
         await destroy()
-        process.stdout.write(`${said.join("\n")}\n`)
+        stdout.write(`${said.join("\n")}\n`)
       }
       process.exit(code)
     })
@@ -182,7 +182,7 @@ const sayNewer = (newer: string, dashboard: boolean, theme: Effect.Effect<Theme>
     const { text, command } = newerNotice(newer, version)
     if (dashboard) {
       const { styles } = yield* theme
-      process.stdout.write(`${styles.deferred.paint(text)}${styles.key.paint(command)}\n`)
+      stdout.write(`${styles.deferred.paint(text)}${styles.key.paint(command)}\n`)
     } else if (process.stderr.isTTY) {
       process.stderr.write(`${text}${command}\n`)
     }
@@ -607,10 +607,15 @@ export const tutti = tuttiWith(
   (flags) => runFrom(process.cwd(), flags),
 )
 
-/** Runs tutti's command line, and exits when it is done. */
+/**
+ * Runs tutti's command line, and exits when it is done. A closed stdout or stderr doesn't end it
+ * (`guardOutput`).
+ */
 export const main = (): void =>
   runMain(
-    Effect.flatMap(tuttiVersion, (shown) => Command.run(tutti, { version: shown })).pipe(
+    guardOutput.pipe(
+      Effect.andThen(tuttiVersion),
+      Effect.flatMap((shown) => Command.run(tutti, { version: shown })),
       // The command has said why on stderr.
       Effect.catchTag("CommandFailed", () =>
         Effect.sync(() => {

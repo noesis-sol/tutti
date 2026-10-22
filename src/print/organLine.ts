@@ -17,10 +17,32 @@ export interface Out {
   readonly tty: boolean
 }
 
-/** The process's stdout. */
+/** The streams whose reader has gone, such as `tutti --plain | head` once head has its lines. */
+const closed = new WeakSet<NodeJS.WriteStream>()
+/** The streams `guardOutput` listens to. */
+const guarded = new WeakSet<NodeJS.WriteStream>()
+
+/**
+ * Keeps a closed stdout or stderr from ending tutti: in Bun a write to a closed pipe is an 'error'
+ * event, not a throw, and without a listener it ends the process with exit 1, cutting the run's
+ * report, its end and its finalizers short. One listener on each, installed as tutti starts, marks
+ * the stream closed instead, and `stdout` writes nothing to it after that: the run goes on to its
+ * own end and exit code, as orchestra's printer drops EPIPE. Installing it again adds none.
+ */
+export const guardOutput: Effect.Effect<void> = Effect.sync(() => {
+  for (const stream of [process.stdout, process.stderr]) {
+    if (guarded.has(stream)) continue
+    guarded.add(stream)
+    stream.on("error", () => {
+      closed.add(stream)
+    })
+  }
+})
+
+/** The process's stdout; nothing is written once it has closed (`guardOutput`). */
 export const stdout: Out = {
   write: (text) => {
-    process.stdout.write(text)
+    if (!closed.has(process.stdout)) process.stdout.write(text)
   },
   columns: () => process.stdout.columns ?? 0,
   tty: process.stdout.isTTY === true,
