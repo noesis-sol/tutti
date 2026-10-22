@@ -134,6 +134,8 @@ export interface InitFlags {
   readonly setup?: string
   /** Write the verifier subagent, and have the worker prompt run it. */
   readonly verifier?: boolean
+  /** Leave the mouse to the terminal: the form takes keys only (§ 7.3). */
+  readonly noMouse?: boolean
   /** Replace an existing .tutti/worker-prompt.md with the template. */
   readonly force: boolean
   /**

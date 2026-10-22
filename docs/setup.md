@@ -228,6 +228,7 @@ lines; `Ctrl+D` cancels.
 | `--install-beads[=false]` | install Beads where it is missing, or not |
 | `--verifier[=false]` | write the verifier, or not |
 | `--prefix <name>` | the ticket prefix: lowercase letters, digits and hyphens, starting with a letter |
+| `--no-mouse` | leave the mouse to the terminal, for its own selection; the form takes keys only. Else the form takes clicks on its buttons and options, unless `"mouse": false` is in the [user config](#the-user-config) |
 | `--force` | replace `.tutti/worker-prompt.md` with the built-in template |
 | `--update` | take the changes to tutti's templates into the worker prompt and the verifier, and nothing else; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |
 
@@ -513,7 +514,7 @@ wrong kind, stops a run.
 
 | Key | Default | |
 |---|---|---|
-| `mouse` | `true` | `false` leaves the mouse to the terminal; `--no-mouse` for a run |
+| `mouse` | `true` | `false` leaves the mouse to the terminal; `--no-mouse` for a run or `tutti init` |
 | `notify` | `true` | desktop notifications; `--notify` for a run |
 | `billing` | `"subscription"` | `"api"` keeps `ANTHROPIC_API_KEY` beside a subscription login; `--billing` for a run |
 | `appearance` | `"auto"` | `"light"` or `"dark"` fixes the colour scheme's variant; `TUTTI_APPEARANCE` |

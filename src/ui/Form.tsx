@@ -4,6 +4,7 @@
 //
 // ask() shows a form in the renderer until it is answered or cancelled, then unmounts it, leaving
 // the renderer to the screen after it: the dashboard, or the interview.
+import type { MouseEvent } from "@opentui/core"
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import { type ReactNode, useMemo, useSyncExternalStore } from "react"
@@ -39,6 +40,18 @@ export const Field = ({
       {children}
     </box>
   )
+
+/**
+ * A click target's props: a click with the left button runs `run`, as the target's key does (D9,
+ * § 7.3). A renderer that leaves the mouse to the terminal (--no-mouse) sends it none.
+ */
+export const clickable = (run: () => void) => ({
+  onMouseDown: (event: MouseEvent) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    run()
+  },
+})
 
 /**
  * The keys there are, under a form, as bubbles' help draws them for huh: each key in helpKey, its

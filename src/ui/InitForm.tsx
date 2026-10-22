@@ -8,6 +8,9 @@
 //   text        a line to type in: Enter submits, an error under it until it does
 //   checklist   the options, ticked `✓` or not `•`: ↑ and ↓ move, Space (or x) ticks, Enter confirms
 //
+// A click does what a key does (D9, § 7.3): on Yes or No it answers, on a select's option it chooses
+// and confirms it, on a checklist's option it ticks or unticks it, on a line to type in it focuses
+// it, on the scout's Esc line it skips the scout. The stepper takes none: no key moves between steps.
 // Esc or Ctrl+C cancels the form, and init then changes nothing. While the scout looks for the
 // project's suites a spinner turns, with the time it has taken; Esc there skips it, and the choice
 // of checks starts on manual. Between questions, while init works, a spinner says so; once init
@@ -35,7 +38,7 @@ import { serverLabel } from "../init/workers.ts"
 import { initAbout, initTitle, scoutClock } from "../print/initSummary.ts"
 import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
-import { Field, Hint, Themed } from "./Form.tsx"
+import { clickable, Field, Hint, Themed } from "./Form.tsx"
 import { styled } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
@@ -176,11 +179,23 @@ const ConfirmView = ({
   return (
     <Field theme={theme} focused>
       <Heading theme={theme} title={asking.field.question} description={asking.field.description} />
-      <text>
-        <span {...styled(yes ? form.focusedButton : form.button)}>{"  Yes  "}</span>
-        <span> </span>
-        <span {...styled(yes ? form.button : form.focusedButton)}>{"  No  "}</span>
-      </text>
+      <box flexDirection="row" height={1}>
+        <text
+          wrapMode="none"
+          {...clickable(() => asking.answer(true))}
+          {...styled(yes ? form.focusedButton : form.button)}
+        >
+          {"  Yes  "}
+        </text>
+        <text wrapMode="none"> </text>
+        <text
+          wrapMode="none"
+          {...clickable(() => asking.answer(false))}
+          {...styled(yes ? form.button : form.focusedButton)}
+        >
+          {"  No  "}
+        </text>
+      </box>
     </Field>
   )
 }
@@ -206,8 +221,14 @@ const SelectView = ({
     <Field theme={theme} focused>
       <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
       {options.map((option, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
-        <text key={index}>
+        <text
+          // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
+          key={index}
+          {...clickable(() => {
+            setAt(() => index)
+            asking.answer(index)
+          })}
+        >
           {index === at ? (
             <>
               <span {...styled(form.selector)}>{"> "}</span>
@@ -244,7 +265,7 @@ const TextView = ({
   return (
     <Field theme={theme} focused>
       <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-      <box flexDirection="row">
+      <box flexDirection="row" {...clickable(() => input.current?.focus())}>
         <text {...styled(form.selector)}>{"> "}</text>
         <input
           ref={input}
@@ -276,28 +297,33 @@ const ChecklistView = ({
     ticked: new Set(asking.field.ticked),
   }))
   const { at, ticked } = state
+  // Ticks or unticks option `index`, the selector moving to it.
+  const toggle = (index: number) =>
+    setState((now) => {
+      const next = new Set(now.ticked)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return { at: index, ticked: next }
+    })
   useKeyboard((key) => {
     if (cancelKeys(key)) asking.cancel()
     else if (key.name === "up" || key.name === "k") {
       setState((now) => ({ ...now, at: Math.max(0, now.at - 1) }))
     } else if (key.name === "down" || key.name === "j") {
       setState((now) => ({ ...now, at: Math.min(options.length - 1, now.at + 1) }))
-    } else if (key.name === "space" || key.name === "x") {
-      setState((now) => {
-        const next = new Set(now.ticked)
-        if (next.has(now.at)) next.delete(now.at)
-        else next.add(now.at)
-        return { ...now, ticked: next }
-      })
-    } else if (isEnter(key.name)) asking.answer([...stateNow().ticked].sort((a, b) => a - b))
+    } else if (key.name === "space" || key.name === "x") toggle(stateNow().at)
+    else if (isEnter(key.name)) asking.answer([...stateNow().ticked].sort((a, b) => a - b))
   })
   const { form } = theme
   return (
     <Field theme={theme} focused>
       <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
       {options.map((option, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
-        <text key={index}>
+        <text
+          // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
+          key={index}
+          {...clickable(() => toggle(index))}
+        >
           <span {...styled(form.selector)}>{index === at ? "> " : "  "}</span>
           {ticked.has(index) ? (
             <>
@@ -341,7 +367,7 @@ const ScoutView = ({
         >{` ${scoutClock(now - asking.since)} (up to 5 minutes)`}</span>
       </text>
       <text {...styled(form.description)}>Its tests, lints, type checks and builds.</text>
-      <text>
+      <text {...clickable(asking.skip)}>
         <span {...styled(styles.key)}>Esc</span>
         <span {...styled(form.description)}>: skip and type a check yourself</span>
       </text>

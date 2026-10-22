@@ -310,7 +310,8 @@ dropped, with a toast (`<id>'s request is no longer open`).
 ## The mouse and copying
 
 Cards, buttons, `← Dashboard`, **Release** and the composer take single clicks; every click has a
-key. The wheel scrolls the transcript under the pointer.
+key. So do the forms' buttons, options and lines to type in: the start question's, the plan
+confirmation's `[y/N]`, the answer form's, and `tutti init`'s. The wheel scrolls the transcript under the pointer.
 
 Dragging selects text, which is copied when you let go, with a toast (`copied`, or
 `couldn't copy`): with `pbcopy` on macOS, `wl-copy` or `xclip` on Linux where one is installed, and

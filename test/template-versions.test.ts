@@ -390,6 +390,7 @@ describe("tutti init --update", () => {
       installBeads: none,
       verifier: none,
       prefix: none,
+      noMouse: none,
       force: false,
     }
     const alone = readInitFlags({ ...texts, update: true })

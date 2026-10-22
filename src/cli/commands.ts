@@ -442,6 +442,11 @@ export const initFlags = {
     "the Beads ticket prefix, IDs reading <prefix>-<hash>: lowercase letters, digits and hyphens, starting with a letter; a new Beads takes it, and an existing one's tickets are all renamed to it with bd rename-prefix (kept when not given)",
     { metavar: "name" },
   ),
+  noMouse: initFlag(
+    "no-mouse",
+    "leave the mouse to the terminal, for its own selection: the form then takes keys only (default: the user config, else the form takes it)",
+    { onOff: true },
+  ),
   force: Flag.Boolean("force").pipe(
     Flag.withDescription("replace an existing .tutti/worker-prompt.md with the built-in template"),
     Flag.withDefault(false),
@@ -493,6 +498,7 @@ export const readInitFlags = (
     ...pick("checkFastTimeout", read("check-fast-timeout", given.checkFastTimeout, positiveTime)),
     ...pick("checkFullTimeout", read("check-full-timeout", given.checkFullTimeout, positiveTime)),
     ...pick("setup", read("setup", given.setup, asIs)),
+    ...pick("noMouse", read("no-mouse", given.noMouse, onOff)),
     force: given.force,
     ...(given.update === true ? { update: true } : {}),
   }
@@ -504,6 +510,13 @@ export const readInitFlags = (
   }
   return problems.length > 0 ? Result.fail(problems) : Result.succeed(flags)
 }
+
+/**
+ * Whether init's form takes the mouse (§ 7.3): not with --no-mouse, else as the user config's
+ * `mouse` says, where init could read it; else it does.
+ */
+export const initMouse = (flags: InitFlags, mouse: Option.Option<boolean>): boolean =>
+  flags.noMouse === undefined ? Option.getOrElse(mouse, () => true) : !flags.noMouse
 
 /** init stopped, having said why: it exits with status 2 and the project as it was. */
 const initStopped = (lines: ReadonlyArray<string>) =>
@@ -619,6 +632,10 @@ const runInit = (cwd: string, flags: InitFlags) =>
       onNone: () => "auto" as const,
       onSome: (value) => value.appearance,
     })
+    const mouse = initMouse(
+      flags,
+      Option.map(config, (value) => value.mouse),
+    )
     const themeOf = (appearance: Appearance) =>
       makeTheme(
         Option.match(config, {
@@ -642,7 +659,7 @@ const runInit = (cwd: string, flags: InitFlags) =>
         let form: InitForm | null = null
         if (kind === "renderer") {
           // The form's own renderer, destroyed when this scope closes, before the summary.
-          const shell = yield* Effect.option(openRenderer({ chosen, mouse: false }))
+          const shell = yield* Effect.option(openRenderer({ chosen, mouse }))
           if (Option.isSome(shell)) {
             const opened = shell.value
             form = yield* openInitForm(opened, themeOf, repo)

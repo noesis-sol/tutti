@@ -739,6 +739,7 @@ describe("init's flags and the line form's answers", () => {
     installBeads: Option.none<string>(),
     prefix: Option.none<string>(),
     verifier: Option.none<string>(),
+    noMouse: Option.none<string>(),
     force: false,
   }
 

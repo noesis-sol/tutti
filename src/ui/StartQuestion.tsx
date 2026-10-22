@@ -3,12 +3,14 @@
 // textarea for its description. As orchestra's huh form: ↑ and ↓ (or k and j) move the selector,
 // Enter chooses; in the description Enter submits and Alt+Enter or Ctrl+J starts a new line
 // (Ctrl+J for terminals whose legacy encoding can't tell Alt+Enter from Enter, § 7.7), and
-// Shift+Tab goes back to the select. Esc or Ctrl+C cancels: nothing has started yet.
+// Shift+Tab goes back to the select. Esc or Ctrl+C cancels: nothing has started yet. A click on an
+// option chooses it, as Enter on it does (D9, § 7.3); one on the description focuses it, as the
+// renderer focuses what is clicked.
 import type { KeyBinding, TextareaRenderable } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
-import { type Answers, ask, Field, Hint } from "./Form.tsx"
+import { type Answers, ask, clickable, Field, Hint } from "./Form.tsx"
 import { plainFg, styled } from "./line.tsx"
 import {
   describeDescription,
@@ -63,14 +65,17 @@ export const StartQuestion = ({
     if (key.name === "up" || key.name === "k") setHighlighted((at) => Math.max(0, at - 1))
     else if (key.name === "down" || key.name === "j") {
       setHighlighted((at) => Math.min(options.length - 1, at + 1))
-    } else if (key.name === "return" || key.name === "kpenter") {
-      if (highlighted === 0) answer(Work.Tickets())
-      else {
-        setError(null)
-        setStep("describe")
-      }
-    }
+    } else if (key.name === "return" || key.name === "kpenter") choose(highlighted)
   })
+
+  // Option `at` chosen: the current tickets answer; a new feature asks for its description.
+  const choose = (at: number) => {
+    if (at === 0) answer(Work.Tickets())
+    else if (step === "choose") {
+      setError(null)
+      setStep("describe")
+    }
+  }
 
   const submit = () => {
     const text = description.current?.plainText.trim() ?? ""
@@ -84,7 +89,14 @@ export const StartQuestion = ({
         <text {...styled(form.fieldTitle)}>{startTitle}</text>
         <text {...styled(form.description)}>{startDescription}</text>
         {options.map((option, at) => (
-          <text key={option} fg={plainFg}>
+          <text
+            key={option}
+            fg={plainFg}
+            {...clickable(() => {
+              setHighlighted(at)
+              choose(at)
+            })}
+          >
             {at === highlighted ? (
               <>
                 <span {...styled(form.selector)}>{"> "}</span>
