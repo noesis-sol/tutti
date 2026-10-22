@@ -650,7 +650,9 @@ describe("the worker view", () => {
       expect(frame.chars).toContain("switch workers, by way of the dashboard")
       await press(rendered, "i", "escape")
       expect(taken(commands)).toEqual([])
-      expect((await rendered.capture()).chars).not.toContain("switch workers, by way of the dashboard")
+      expect((await rendered.capture()).chars).not.toContain(
+        "switch workers, by way of the dashboard",
+      )
       await press(rendered, "escape")
       expect(taken(commands)).toEqual([UiCommand.CloseWorker()])
     })
