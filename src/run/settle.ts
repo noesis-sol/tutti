@@ -17,7 +17,7 @@
 // it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
 // worker carries on after the reset, rather than the ticket being set aside as deferred.
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Clock, Data, Duration, Effect, Option, Queue, Result, Schedule, Stream } from "effect"
+import { Clock, Data, Duration, Effect, Option, Result, Schedule, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type Status } from "../services/Beads.ts"
@@ -237,20 +237,17 @@ const nudge = (ticket: string, n: number) =>
     Effect.gen(function* () {
       const host = yield* AgentHost
       const logs = yield* Log
-      // The session's messages are taken from before the send, so its turn's result can't be missed.
-      const heard = yield* Queue.unbounded<SDKMessage>()
-      yield* host.messages(ticket).pipe(
-        Stream.runForEach(({ message }) => Queue.offer(heard, message)),
-        Effect.ignore,
-        Effect.forkScoped({ startImmediately: true }),
-      )
+      // Subscribed to the session's messages before the send, so its turn's result can't be
+      // missed, however soon it comes.
+      const heard = yield* Effect.result(host.subscribe(ticket))
+      if (Result.isFailure(heard)) return false
       const sent = yield* Effect.result(host.send(ticket, nudgeText(ticket), "clientComposed"))
       if (Result.isFailure(sent)) return false
       yield* logs.write(
         detail`${ticket}'s worker ended its turn with the ticket still in progress; told it to continue (${n} of ${nudges})`,
       )
-      const answered = Stream.fromQueue(heard).pipe(
-        Stream.filter((message) => answers(message, sent.success)),
+      const answered = heard.success.pipe(
+        Stream.filter(({ message }) => answers(message, sent.success)),
         Stream.runHead,
       )
       yield* Effect.raceFirst(Effect.asVoid(answered), ended(ticket))

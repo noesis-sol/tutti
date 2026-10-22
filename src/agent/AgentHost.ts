@@ -223,6 +223,13 @@ export class AgentHost extends Context.Service<
     /** Its sessions' messages, from now on, until it is ended. */
     messages(ticket: string): Stream.Stream<SessionMessage, AgentGone>
     /**
+     * Subscribes to its sessions' messages now, in the caller's fiber: the stream gives every
+     * message from then on, until the scope closes or the worker is ended. For a caller that sends
+     * the worker something and waits on its answer, which may come before a stream forked to run
+     * `messages` has subscribed.
+     */
+    subscribe(ticket: string): Effect.Effect<Stream.Stream<SessionMessage>, AgentGone, Scope.Scope>
+    /**
      * The tickets of the workers the host knows, from each one's first start until it is ended:
      * now, then on each change.
      */
@@ -338,6 +345,9 @@ export interface Workers {
   readonly begun: (ticket: string) => Stream.Stream<boolean, AgentGone>
   readonly state: (ticket: string) => Stream.Stream<WorkerState, AgentGone>
   readonly messages: (ticket: string) => Stream.Stream<SessionMessage, AgentGone>
+  readonly subscribe: (
+    ticket: string,
+  ) => Effect.Effect<Stream.Stream<SessionMessage>, AgentGone, Scope.Scope>
   /** The tickets of the workers it knows: now, then on each change. */
   readonly workers: Stream.Stream<ReadonlySet<string>>
 }
@@ -554,6 +564,12 @@ export const makeWorkers = (
         Stream.unwrap(
           Effect.map(get(ticket), (entry) => until(entry, Stream.fromPubSub(entry.messages))),
         ),
+      subscribe: (ticket) =>
+        Effect.gen(function* () {
+          const entry = yield* get(ticket)
+          const subscription = yield* PubSub.subscribe(entry.messages)
+          return until(entry, Stream.fromSubscription(subscription))
+        }),
       workers: SubscriptionRef.changes(knownTickets),
     }
   })

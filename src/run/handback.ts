@@ -38,18 +38,8 @@
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import {
-  Clock,
-  Duration,
-  Effect,
-  Option,
-  Queue,
-  Ref,
-  Result,
-  Stream,
-  SubscriptionRef,
-} from "effect"
-import { type AgentGone, AgentHost } from "../agent/AgentHost.ts"
+import { Clock, Duration, Effect, Option, Ref, Result, Stream, SubscriptionRef } from "effect"
+import { type AgentGone, AgentHost, type SessionMessage } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -767,14 +757,11 @@ export const give = (
         // As below: the resume put its state back at Starting.
         taken = Effect.void
       } else if (Result.isSuccess(state) && state.success._tag !== "Closed") {
-        // The session's messages are taken from before the send, so its turn's result can't be
-        // missed.
-        const heard = yield* Queue.unbounded<SDKMessage>()
-        yield* host.messages(id).pipe(
-          Stream.runForEach(({ message }) => Queue.offer(heard, message)),
-          Effect.ignore,
-          Effect.forkScoped({ startImmediately: true }),
-        )
+        // Subscribed to the session's messages before the send, so its turn's result can't be
+        // missed, however soon it comes. A worker ended meanwhile fails the send.
+        const heard = yield* host
+          .subscribe(id)
+          .pipe(Effect.orElseSucceed((): Stream.Stream<SessionMessage> => Stream.never))
         const sent =
           state.success._tag === "UsageLimited" && atReset !== undefined
             ? yield* sendAtReset(handBack, limit, atReset)
@@ -782,8 +769,8 @@ export const give = (
         // It left the limit without the hand-back: given as to any worker, from its state now.
         if (sent === undefined) return yield* give(handBack, limit, options)
         if (Result.isFailure(sent)) return sent.failure
-        const answered = Stream.fromQueue(heard).pipe(
-          Stream.filter((message) => answers(message, sent.success)),
+        const answered = heard.pipe(
+          Stream.filter(({ message }) => answers(message, sent.success)),
           Stream.runHead,
         )
         const ended = host.state(id).pipe(

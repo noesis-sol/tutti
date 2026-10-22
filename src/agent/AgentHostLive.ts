@@ -793,6 +793,7 @@ export const layer = (
         begun: workers.begun,
         state: workers.state,
         messages: workers.messages,
+        subscribe: workers.subscribe,
         workers: workers.workers,
         compactions: workers.compactions,
         setup: Ref.get(findings),
