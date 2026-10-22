@@ -466,34 +466,42 @@ export const afterFix = (
   memory: MergeMemory,
   at: string,
 ): Effect.Effect<"verified" | "aside" | CheckStop, never, MergeEnv> =>
+  checked._tag === "Failed"
+    ? fixFailed(stop, left, checked.error, checked.output, tries, options, memory, at)
+    : Effect.as(fixPassed(stop.ticket, left), "verified" as const)
+
+/**
+ * What came of a check, or the setup before it, that failed (`error`, its output in `output`) on
+ * what its worker left after `stop`'s failure was handed back, as afterFix says: "aside", the
+ * ticket set aside, or the failure on the fix, to be handed back again.
+ */
+export const fixFailed = (
+  stop: CheckStop,
+  left: Left,
+  error: CheckError,
+  output: string,
+  tries: ReadonlyArray<string>,
+  options: MergeOptions,
+  memory: MergeMemory,
+  at: string,
+): Effect.Effect<"aside" | CheckStop, never, MergeEnv> =>
   Effect.gen(function* () {
     const { id } = stop.ticket
-    if (checked._tag !== "Failed") {
-      yield* fixPassed(stop.ticket, left)
-      return "verified"
-    }
-    const how = failedHow(checked.error)
-    const where = checked.output
+    const how = failedHow(error)
     if (left._tag === "Unchanged") {
       const tried = [
         ...tries,
-        line`its worker committed nothing, and ${how} again (output is in ${where})`,
+        line`its worker committed nothing, and ${how} again (output is in ${output})`,
       ]
-      const again = { ...stop, error: checked.error, output: checked.output }
+      const again = { ...stop, error, output }
       yield* setAside(again, options, memory, tried, "its worker found nothing to fix")
       return "aside"
     }
     const tried = [
       ...tries,
-      line`its worker committed ${left.commits}, but ${how} still (output is in ${where})`,
+      line`its worker committed ${left.commits}, but ${how} still (output is in ${output})`,
     ]
-    const next: CheckStop = {
-      ...stop,
-      at,
-      error: checked.error,
-      output: checked.output,
-      tried,
-    }
+    const next: CheckStop = { ...stop, at, error, output, tried }
     const not = yield* whyNotFix(next, options, yield* memory.fixes.count(id))
     if (not === undefined) return next
     yield* setAside(next, options, memory, tried, not)

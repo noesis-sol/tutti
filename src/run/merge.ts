@@ -54,11 +54,11 @@ import {
   uncheckedMark,
 } from "./check.ts"
 import {
-  afterFix,
   type Carried,
   type CheckStop,
   committed,
   type Fixes,
+  fixFailed,
   fixPassed,
   setAside,
   whyNotFix,
@@ -478,15 +478,29 @@ const setAsideDirty = (ticket: FinishedTicket, text: (files: ReadonlyArray<strin
   })
 
 /**
+ * What came of a rebase, setup and check in a merge's pass: the ticket set aside or blocked, the
+ * merge over (Aside); checked, its check passed on commit `at` (Checked); changing nothing beyond
+ * the base (Unchanged); the rebase stopped on conflicts to hand back to its worker (Conflict); the
+ * check, or the setup before it, failed in a way its worker can take (CheckFailed).
+ */
+type CheckOutcome =
+  | { readonly _tag: "Aside" }
+  | { readonly _tag: "Checked"; readonly at: string }
+  | Unchanged
+  | { readonly _tag: "Conflict"; readonly stop: RebaseStop }
+  | { readonly _tag: "CheckFailed"; readonly stop: CheckStop }
+
+const setAsideOutcome = { _tag: "Aside" } as const satisfies CheckOutcome
+
+/**
  * Rebases the ticket, its branch off the base at `fork`, onto the base, which moved on to `onto`,
- * sets it up if need be and checks it: the commit its check passed on when it is on top of the base,
- * checked; false when any
- * of them set it aside; Unchanged when the rebase left it changing nothing, as when git dropped its
- * commits, the base having their changes already; the rebase stopped, when its conflicts are to be
- * handed back to its worker; the check stopped, when its failure is. An interrupted rebase is
- * aborted here too, whichever Git it ran on. `waived`: you handed its conflict over, so its worker,
- * steered, takes the hand-back (§ 4.3). `carried`: what a hand-back left for this check
- * (checkback.ts).
+ * sets it up if need be and checks it: Checked, on the commit its check passed on, when it is on
+ * top of the base, checked; Aside when any of them set it aside; Unchanged when the rebase left it
+ * changing nothing, as when git dropped its commits, the base having their changes already;
+ * Conflict when its conflicts are to be handed back to its worker; CheckFailed when its failure
+ * is. An interrupted rebase is aborted here too, whichever Git it ran on. `waived`: you handed its
+ * conflict over, so its worker, steered, takes the hand-back (§ 4.3). `carried`: what a hand-back
+ * left for this check (checkback.ts).
  */
 const rebaseAndCheck = (
   ticket: FinishedTicket,
@@ -496,7 +510,7 @@ const rebaseAndCheck = (
   onto: string,
   waived: boolean,
   carried: Carried | undefined,
-) =>
+): Effect.Effect<CheckOutcome, never, MergeEnv> =>
   Effect.gen(function* () {
     const { git, ledger, log } = yield* services
     const { id, branch, worktree } = ticket
@@ -508,7 +522,7 @@ const rebaseAndCheck = (
           Tag.dirtyWorktree,
         )`${id} closed, but ${worktree} has uncommitted changes to ${files}, so ${branch} can't be rebased onto ${base}, which moved on while it ran; worktree left for review (commit or undo them, rebase onto ${base}, check, merge)`,
     )
-    if (dirty) return false
+    if (dirty) return setAsideOutcome
     yield* ledger.refine(id, Detail.Step({ step: "rebase" }))
     // Where the branch was and what it had, for a hand-back to verify its worker's resolution by.
     const before = yield* Effect.result(
@@ -547,9 +561,9 @@ const rebaseAndCheck = (
           if (tries.length > 0) yield* memory.fixes.carry(id, { tries })
         }
         const not = yield* whyNotHandBack(stop, yield* memory.handBacks.count(id), waived)
-        if (not === undefined) return stop
+        if (not === undefined) return { _tag: "Conflict", stop } satisfies CheckOutcome
         yield* notHandedBack(stop, options, not, memory.handBacks)
-        return false
+        return setAsideOutcome
       }
       yield* aside(
         ticket,
@@ -559,7 +573,7 @@ const rebaseAndCheck = (
           Tag.rebaseFailed,
         )`${id} closed, but git could not rebase ${branch} onto ${base}, which moved on while it ran: ${gitWhy(error)}; worktree ${worktree} left for review`,
       )
-      return false
+      return setAsideOutcome
     }
     const dropped = yield* unchanged(
       ticket,
@@ -583,10 +597,10 @@ const rebaseAndCheck = (
 /**
  * Sets up the ticket, its branch rebased from `fork` (its commit `head` then; "" when git couldn't
  * say) onto the base at `onto`, or `onTop` of it already (`fork` is then `onto`, and `head` the
- * branch's own commit), if need be, and checks it: the commit the check passed on when it passed,
- * the branch's as the setup started, kept in the memory's passes too; false when either set it
- * aside, or git couldn't say where the branch is; the check stopped, when its
- * failure is to be handed back to its worker. `carried`: what a hand-back left for this check, its
+ * branch's own commit), if need be, and checks it: Checked, on the commit the check passed on when
+ * it passed, the branch's as the setup started, kept in the memory's passes too; Aside when either
+ * set it aside, or git couldn't say where the branch is; CheckFailed when its failure is to be
+ * handed back to its worker. `carried`: what a hand-back left for this check, its
  * worker's fix or resolution made while the base moved on: the check says whether the fix fixed it,
  * as checkback.ts's fixCheck would have, and the setup counts its worker's own changes.
  */
@@ -599,7 +613,11 @@ const setUpAndCheck = (
   head: string,
   onTop = false,
   carried?: Carried,
-) =>
+): Effect.Effect<
+  Extract<CheckOutcome, { _tag: "Aside" | "Checked" | "CheckFailed" }>,
+  never,
+  MergeEnv
+> =>
   Effect.gen(function* () {
     const { git, ledger, log } = yield* services
     const { id, branch } = ticket
@@ -615,9 +633,11 @@ const setUpAndCheck = (
           Tag.gitFailed,
         )`${id} closed, but git could not tell where ${branch} is (${gitTries} tries): ${gitWhy(read.failure)}, so it can't be checked as it would merge; worktree ${ticket.worktree} left for review`,
       )
-      return false
+      return setAsideOutcome
     }
     const at = read.success
+    const handBack = (stop: CheckStop) => ({ _tag: "CheckFailed", stop }) satisfies CheckOutcome
+    const passed = { _tag: "Checked", at } satisfies CheckOutcome
     const failed = (error: CheckError, output: string) =>
       Effect.gen(function* () {
         const stop: CheckStop = {
@@ -632,26 +652,27 @@ const setUpAndCheck = (
           ...(tries.length === 0 ? {} : { tried: tries }),
         }
         if (carried?.fixed !== undefined) {
-          const after = yield* afterFix(
+          const after = yield* fixFailed(
             stop,
             carried.fixed,
-            { _tag: "Failed", error, output },
+            error,
+            output,
             tries,
             options,
             memory,
             at,
           )
-          return after === "aside" || after === "verified" ? false : after
+          return after === "aside" ? setAsideOutcome : handBack(after)
         }
         const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(id))
-        if (not === undefined) return stop
+        if (not === undefined) return handBack(stop)
         if (tries.length > 0) {
           yield* setAside(stop, options, memory, tries, not)
-          return false
+          return setAsideOutcome
         }
         const tried = not === "" ? "" : line`; not handed back to its worker: ${not}`
         yield* checksFailed(ticket, options, memory.rechecks, onto, error, output, tried, onTop)
-        return false
+        return setAsideOutcome
       })
     // The tickets behind it may be checked ahead of their turn meanwhile, on top of its branch.
     const train = memory.train
@@ -673,7 +694,7 @@ const setUpAndCheck = (
           detail`no check command in .tutti/settings.json: merging ${branch} without checking the rebased code`,
         )
         yield* notePass(ticket, memory.passes, at)
-        return at
+        return passed
       case "Passed":
         if (carried?.fixed !== undefined) yield* fixPassed(ticket, carried.fixed)
         else {
@@ -684,7 +705,7 @@ const setUpAndCheck = (
           )
         }
         yield* notePass(ticket, memory.passes, at)
-        return at
+        return passed
       case "Failed":
         return yield* failed(checked.error, checked.output)
     }
@@ -850,6 +871,7 @@ export const prepare = (
           : `${branch} has no commits beyond ${base} and its worktree is clean`,
       )
       if (nothing !== undefined) return nothing
+      let result: CheckOutcome
       if (fork === onto) {
         if (checked !== undefined) {
           const now = yield* Effect.result(steering(git.revParse(repo, branch)))
@@ -872,7 +894,6 @@ export const prepare = (
           ticketLine(
             Tag.dirtyWorktree,
           )`${id} closed, but ${worktree} has uncommitted changes to ${files}, so ${branch}, on top of ${base}, can't be checked as it would merge; worktree left for review (commit or undo them, check, merge)`
-        let result: string | false | CheckStop
         if (unchecked !== undefined) {
           if (yield* setAsideDirty(ticket, dirty)) return { _tag: "Over" } satisfies Prepared
           yield* log.write(
@@ -903,21 +924,23 @@ export const prepare = (
           )
           result = yield* setUpAndCheck(ticket, options, memory, onto, onto, head, true, taken())
         }
-        if (result === false) return { _tag: "Over" } satisfies Prepared
-        if (typeof result !== "string") return { _tag: "FixBack", stop: result } satisfies Prepared
-        checked = result
-        continue
+      } else {
+        if (pass >= maxPasses) return yield* keptChanging(ticket, `${base} kept changing`)
+        result = yield* rebaseAndCheck(ticket, options, memory, fork, onto, waived, taken())
       }
-      if (pass >= maxPasses) return yield* keptChanging(ticket, `${base} kept changing`)
-      const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto, waived, taken())
-      if (rebased === false) return { _tag: "Over" } satisfies Prepared
-      if (typeof rebased === "string") {
-        checked = rebased
-        continue
+      switch (result._tag) {
+        case "Aside":
+          return { _tag: "Over" } satisfies Prepared
+        case "Checked":
+          checked = result.at
+          continue
+        case "Unchanged":
+          return result
+        case "Conflict":
+          return { _tag: "HandBack", stop: result.stop } satisfies Prepared
+        case "CheckFailed":
+          return { _tag: "FixBack", stop: result.stop } satisfies Prepared
       }
-      if ("_tag" in rebased) return rebased
-      if ("files" in rebased) return { _tag: "HandBack", stop: rebased } satisfies Prepared
-      return { _tag: "FixBack", stop: rebased } satisfies Prepared
     }
   })
 
