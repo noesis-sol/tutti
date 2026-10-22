@@ -133,7 +133,7 @@ import {
   swapStop,
   withMachineHold,
 } from "./holds.ts"
-import { type Entry, handBackWaits, Ledger, type State } from "./ledger.ts"
+import { type Entry, Ledger, type State } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
 import { detail, hold, type Line, Log, line, tagged } from "./log.ts"
 import {
@@ -167,6 +167,7 @@ import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { runRequires } from "./requires.ts"
+import { decide, endOfRunBox, type Look } from "./runEnd.ts"
 import { emptyStatus, project, type Row, type Status, same, type Totals } from "./runView.ts"
 import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
 import * as scope from "./scope.ts"
@@ -1070,10 +1071,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       const winding = (yield* ledger.current).windDown !== null
       return (yield* taking) && !winding && !(yield* scheduler.limitReached)
     })
-    // Fills the free slots, then says whether nothing else runs, waits to merge or could start, and
-    // which workers wait on you (an open request) besides, oldest request first: those past their
-    // ticket limit left out, as the run doesn't wait for them; then, with a dashboard, those a
-    // conflict hand-back waits for.
+    // Fills the free slots, after the look's other effects, then reads what they left for the end's
+    // decision (runEnd.ts).
     const nothingLeft = Effect.gen(function* () {
       // A merge that ends during this look frees what it held back after the look has read it: the
       // run is done only when nothing was merging as the look began, and its wake has it look again.
@@ -1118,47 +1117,18 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }
       // For the other runs to count before this one next looks around.
       yield* machine.running(yield* ownWorkers)
-      const now = yield* ledger.current
-      const over = (yield* SubscriptionRef.get(holds)).overLimit
-      const requests = yield* attention.current
-      const asking = new Set(requests.map((request) => request.ticket))
-      const aside = new Set<string>()
-      const busy = [...(yield* scheduler.running)].filter((ticket) => {
-        const entry = now.tickets.get(ticket)
-        if (entry === undefined || entry.phase._tag !== "Working") return true
-        if (asking.has(ticket) && !over.has(ticket)) aside.add(ticket)
-        return !over.has(ticket) && !asking.has(ticket)
-      })
-      const waiting = [...new Set(requests.map((request) => request.ticket))].filter((ticket) =>
-        aside.has(ticket),
-      )
-      // With a worker waiting on you in its slot, a ticket queued for a slot is still to start.
-      const queued = [...now.tickets.values()].some((entry) => entry.phase._tag === "Queued")
-      const toStart = waiting.length > 0 && queued && (yield* canTake)
-      // A ticket held back for a running one's footprint, when that one ended after the fill read
-      // it, is to start too: the next look fills again.
-      const overlapped =
-        (yield* scheduler.running).size === 0 &&
-        [...now.tickets.values()].some(
-          (entry) => entry.phase._tag === "HeldBack" && entry.phase.why === "overlap",
-        ) &&
-        (yield* canTake)
-      const done =
-        !overlapped &&
-        busy.length === 0 &&
-        !toStart &&
-        mergedBefore &&
-        isSettled(yield* queue.state) &&
-        (yield* triage.pending) === 0
-      // With a dashboard, a conflict hand-back waiting for its steered worker keeps the run open as
-      // a request does, until you hand it over from the worker's view or release it (§ 4.3).
-      const conflicts =
-        screen === null
-          ? []
-          : [...now.tickets.values()]
-              .filter((entry) => handBackWaits(entry) && !waiting.includes(entry.ticket))
-              .map((entry) => entry.ticket)
-      return { done, waiting: [...waiting, ...conflicts] }
+      const look: Look = {
+        mergedBefore,
+        tickets: (yield* ledger.current).tickets,
+        overLimit: (yield* SubscriptionRef.get(holds)).overLimit,
+        asking: (yield* attention.current).map((request) => request.ticket),
+        running: yield* scheduler.running,
+        canTake: yield* canTake,
+        settled: isSettled(yield* queue.state),
+        triagePending: yield* triage.pending,
+        dashboard: screen !== null,
+      }
+      return look
     })
     // Whether nothing runs but workers waiting for the usage limit.
     // A worker at the limit on a hand-back (Resolving, Fixing) waits for it as one on its ticket
@@ -1192,7 +1162,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const settle = Effect.gen(function* () {
       for (;;) {
         const seen = yield* Ref.get(acted)
-        const { done, waiting } = yield* nothingLeft
+        const look = yield* nothingLeft
         const limit = yield* usage.look(yield* limitedOnly)
         if (limit !== null) {
           yield* scheduler.interrupt
@@ -1202,15 +1172,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           return { limited: true, asked: false, seen }
         }
         const held = (yield* currentStops).first !== null
-        const boxed = done && waiting.length > 0 && screen !== null
-        yield* showEndOfRun(boxed ? waiting : null)
+        yield* showEndOfRun(endOfRunBox(look))
         const endNow = yield* Ref.getAndSet(endAsked, false)
-        if (done) {
-          if (waiting.length === 0 && (held || !(yield* usage.held)))
-            return { limited: false, asked: false, seen }
-          if (waiting.length > 0 && (screen === null ? held : endNow))
-            return { limited: false, asked: endNow, seen }
-        }
+        const end = decide({ ...look, held, usageHeld: yield* usage.held, endAsked: endNow })
+        if (end._tag === "Done") return { limited: false, asked: end.asked, seen }
         yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
       }
     })

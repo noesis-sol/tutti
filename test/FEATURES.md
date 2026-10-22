@@ -160,7 +160,8 @@ below are the coverage report's uncovered lines at 368899e.
   `holds-time.test.ts`, `run-footprints.test.ts`, `run-footprints-worktree.test.ts`,
   `dispatch-footprint-line.test.ts`, `carry-footprint-line.test.ts`, `scope-open-followup.test.ts`,
   `run-predictor.test.ts`, `state-records.test.ts`, `store.test.ts`, `run-finish.test.ts`,
-  `end-of-run.test.ts`, `epic-close.test.ts`, `epic-close-failures.test.ts`, `asked.test.ts`.
+  `end-of-run.test.ts`, `epic-close.test.ts`, `epic-close-failures.test.ts`, `asked.test.ts`,
+  `run-end.test.ts`.
 - **Untested**: bd failing part-way through a run: the deferred tickets whose blockers merged
   can't be listed (`src/run/deferredFree.ts` 183–245), a scope's subtickets can't be read
   (`src/run/scope.ts` 234–278), and the environment hold's reopen refused by bd
