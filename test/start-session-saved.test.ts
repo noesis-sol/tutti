@@ -53,6 +53,8 @@ const starting = (
           worktree: join(root, "t-1"),
           branch: "tutti/t-1",
         })
+        // Suspended by a run whose carry-over this one kept, as when bd couldn't show it.
+        yield* store.suspend("t-1", "quit", "Stopped")
         yield* ledger.transition("t-1", Cause.Ready(), { title: t1.title })
         yield* ledger.transition("t-1", Cause.Dispatched())
         const started = yield* Effect.forkChild(start(t1, "main"))
@@ -78,8 +80,10 @@ describe("a start before its session begins", () => {
     const { start, record } = begun(ran)
     expect(Exit.hasInterrupts(start)).toBe(true)
     expect(ran.sent.map((sent) => sent._tag)).toEqual(["Started", "Message", "Closed", "Ended"])
-    // Neither this start's session nor the earlier attempt's.
+    // Neither this start's session nor the earlier attempt's, nor the earlier suspension.
     expect(record?.session).toBeUndefined()
+    expect(record?.suspended).toBeUndefined()
+    expect(record?.phase).toBeUndefined()
   })
 
   test("its system/init not come within a minute: the start failed, the ticket set aside", async () => {

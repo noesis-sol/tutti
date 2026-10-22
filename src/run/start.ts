@@ -342,9 +342,10 @@ export const start = (
       earlier: worktree.earlier,
       setup: (yield* setups.now).command,
     })
-    // An earlier attempt's session isn't this start's: until this one begins, none is to resume.
-    if ((yield* store.ticket(id))?.session !== undefined) {
-      yield* store.updateTicket(id, ({ session: _, ...rest }) => rest)
+    // An earlier attempt's session isn't this start's: until this one begins, none is to resume,
+    // nor is the ticket suspended (a record carry-over kept).
+    if ((yield* store.ticket(id)) !== undefined) {
+      yield* store.updateTicket(id, ({ session: _, suspended: __, phase: ___, ...rest }) => rest)
     }
     const session = crypto.randomUUID()
     // Saved once Claude Code has made the session, as its first system/init says (§ 4.8): a start
