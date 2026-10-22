@@ -14,6 +14,7 @@ import {
   useSyncExternalStore,
 } from "react"
 import { type Commands, offer, type UiCommand } from "../run/commands.ts"
+import type { TicketFiling } from "../run/fileTicket.ts"
 import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
@@ -89,6 +90,8 @@ export interface ShellValue {
   readonly transcripts?: TranscriptFeed
   /** The tickets whose steered worker has a conflict hand-back waiting (§ 4.3); none when left out. */
   readonly handBacks?: External<ReadonlyArray<string>>
+  /** How the tickets filed from finished workers' views went (§ 7.5); none when left out. */
+  readonly filings?: External<ReadonlyArray<TicketFiling>>
 }
 
 export const ShellContext = createContext<ShellValue | null>(null)
@@ -120,6 +123,16 @@ const noHandBacks: External<ReadonlyArray<string>> = {
 /** The tickets whose steered worker has a hand-back waiting, re-rendering on each change. */
 export const useHandBacks = (): ReadonlyArray<string> =>
   useExternal(useShell().handBacks ?? noHandBacks)
+
+const noneFiled: ReadonlyArray<TicketFiling> = []
+const noFilings: External<ReadonlyArray<TicketFiling>> = {
+  get: () => noneFiled,
+  subscribe: () => () => {},
+}
+
+/** How the tickets filed from finished workers' views went, re-rendering on each change. */
+export const useFilings = (): ReadonlyArray<TicketFiling> =>
+  useExternal(useShell().filings ?? noFilings)
 
 /** The shell's clock, in epoch milliseconds: Date.now when it has none. */
 export const useClock = (): (() => number) => useShell().now ?? Date.now

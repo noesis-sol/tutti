@@ -9,7 +9,9 @@
 // or the worker settles. Ctrl+X asks, then sends Interrupt, which cancels the messages still
 // queued, so their marks go; Ctrl+R, or the Release button on the steered line, sends Release.
 // Once the worker has finished, its card gone, the composer says so and sends nothing: Enter keeps
-// what you typed, and a toast says it wasn't sent (tutti-ceo). While its ticket waits to merge or
+// what you typed, and a toast says it wasn't sent (tutti-ceo). Ctrl+T, or the File as ticket button
+// on the finished line, files what you typed as a new ticket instead, and empties the composer once
+// bd has it (tutti-g0wd, run/fileTicket.ts). While its ticket waits to merge or
 // merges, the run holds your messages until the merge is over (held.ts): the held line says so over
 // the composer, and each message is shown `held` till it is sent, or `not sent` once the worker has
 // finished with it still held.
@@ -42,17 +44,48 @@ export const finishedWords = (ticket: string) => ({
   line: ": tutti can't send it messages",
   placeholder: "the worker has finished",
   status: "finished",
-  toast: `${sanitizeLine(ticket)}'s worker has finished: your message wasn't sent`,
+  toast: `${sanitizeLine(ticket)}'s worker has finished: not sent; Ctrl+T files it as a ticket`,
 })
 
-/** The finished line, `width` wide, over the composer of a worker that has finished. */
+/** What filing the composer's text as a ticket says: its button, and its toasts (tutti-g0wd). */
+export const fileWords = {
+  button: "[ File as ticket ]",
+  nothing: "nothing to file: write the ticket in the composer first",
+  filing: "filing it as a ticket…",
+  already: "still filing the last one as a ticket",
+  filed: (id: string, title: string) => `filed ${sanitizeLine(id)}: ${sanitizeLine(title)}`,
+  notFiled: (why: string) => `couldn't file it as a ticket: ${sanitizeLine(why)}`,
+}
+
+/**
+ * The finished line, `width` wide, over the composer of a worker that has finished: what it means,
+ * and the File as ticket button, which files what you typed as a new ticket (tutti-g0wd).
+ */
 export const finishedLine = (theme: Theme, ticket: string, width: number): Segments => {
   const words = finishedWords(ticket)
-  return cut(
-    [seg("  "), seg(words.finished, theme.styles.key), seg(words.line, theme.styles.dim)],
-    width,
-  )
+  // Its key, Ctrl+T, is the hint's: beside the button, it would cut the words in 80 columns.
+  const button: ButtonSegment = { text: fileWords.button, look: theme.form.button, button: 0 }
+  const room = Math.max(width - widthOf([button]) - 2, 0)
+  const said: Segments = [
+    seg("  "),
+    seg(words.finished, theme.styles.key),
+    seg(words.line, theme.styles.dim),
+  ]
+  return [...padded(cut(said, room), room), seg("  "), button]
 }
+
+/** The finished line, its File as ticket button pressed by a click. */
+export const FinishedLine = ({
+  theme,
+  ticket,
+  width,
+  file,
+}: {
+  readonly theme: Theme
+  readonly ticket: string
+  readonly width: number
+  readonly file: () => void
+}) => <AttentionLines lines={[finishedLine(theme, ticket, width)]} press={file} />
 
 /** What the held line says while `ticket` waits to merge (`merging` false) or merges. */
 export const heldWords = (ticket: string, merging: boolean) => ({

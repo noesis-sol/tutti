@@ -13,6 +13,7 @@ import { act } from "react"
 import { Attention } from "../src/agent/Attention.ts"
 import { Transcripts } from "../src/agent/Transcripts.ts"
 import { makeCommands, UiCommand } from "../src/run/commands.ts"
+import type { TicketFiling } from "../src/run/fileTicket.ts"
 import { makeHandBacks, type RebaseStop } from "../src/run/handback.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
@@ -143,6 +144,7 @@ describe("dashboard()", () => {
             commands: yield* makeCommands,
             transcripts: yield* Transcripts,
             handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
+            filings: yield* SubscriptionRef.make<ReadonlyArray<TicketFiling>>([]),
           } satisfies ScreenInputs
         }).pipe(Effect.provide(transcriptsLayer())),
       )

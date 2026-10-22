@@ -78,6 +78,7 @@ const shellValue = (
       themeOf,
       transcripts: yield* transcriptFeed(inputs.transcripts),
       handBacks: yield* bridge(inputs.handBacks),
+      filings: yield* bridge(inputs.filings),
       ...(desktop.clipboard === undefined ? {} : { clipboard: desktop.clipboard }),
       ...(desktop.urlOpener === undefined ? {} : { urlOpener: desktop.urlOpener }),
     } satisfies ShellValue

@@ -108,6 +108,7 @@ import { type DrainRequest, drainedLine, hear } from "./drain.ts"
 import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
+import { fileTicket } from "./fileTicket.ts"
 import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
 import {
   blockedAt,
@@ -968,7 +969,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // one that no longer names anything (the worker finished, the request was answered) is dropped.
     // The end-of-run box's `q` (EndRun) ends the run. Quit without `now` is the quit box's to ask.
     // Steering's commands (SendMessage, Interrupt, Release, HandBackNow) go to steer.ts. Once the
-    // run ends, only moving between the views and quitting act: the others are dropped.
+    // run ends, only moving between the views, quitting and filing a finished worker's message as a
+    // ticket (FileTicket, fileTicket.ts) act: the others are dropped.
     if (screen !== null) {
       // A command that acts on the run, once resolved.
       const act = (command: UiCommand) =>
@@ -977,6 +979,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             case "OpenWorker":
             case "CloseWorker":
             case "Quit":
+            case "FileTicket":
               return
             case "Answer":
               return yield* attention
@@ -1028,6 +1031,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             case "Quit":
               if (command.now) yield* hearQuit(fromDashboard)
               return
+            case "FileTicket":
+              // bd's, not the run's: in a fiber of its own, after the end too (fileTicket.ts).
+              return yield* Effect.asVoid(watch(fileTicket(command, screen.filings)))
           }
           yield* acting.withPermits(1)(
             Effect.gen(function* () {

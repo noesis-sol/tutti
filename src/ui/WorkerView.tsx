@@ -27,10 +27,11 @@
 // or presses the focused button; `1`–`4` pick a question's option; `d`, `Shift+D`, `a` and `r`
 // answer the selected request, or the oldest; PgUp/PgDn and `g`/`G` scroll; `i` or a click focuses
 // the composer; `Ctrl+X` asks, then interrupts the worker's turn; `Ctrl+R` releases a steered
-// worker; `Esc` leaves the composer, then goes back to the dashboard, as a click on `← Dashboard`
+// worker; once the worker has finished, `Ctrl+T` files the composer's text as a ticket; `Esc` leaves
+// the composer, then goes back to the dashboard, as a click on `← Dashboard`
 // does. No key switches workers: `Tab` is the items', so another worker is opened from the
 // dashboard (§ 7.3). While you write in the composer, it takes the printable keys, Enter and
-// the arrows; PgUp/PgDn, Ctrl+X, Ctrl+R and Esc still work.
+// the arrows; PgUp/PgDn, Ctrl+X, Ctrl+R, Ctrl+T and Esc still work.
 //
 // The transcript, the panel, the selection, the composer and the keys are shared with the
 // Interview view (transcriptView.ts), as are the head, the pane, the panel and the hint below.
@@ -56,7 +57,8 @@ import { buttonsOf, picksOptions, requestText } from "./attentionKeys.ts"
 import { headOf, statusLook } from "./Card.tsx"
 import {
   Composer,
-  finishedLine,
+  FinishedLine,
+  fileWords,
   finishedWords,
   heldLine,
   InterruptQuestion,
@@ -98,7 +100,15 @@ import {
   useTranscriptKeys,
   useTranscriptWindow,
 } from "./transcriptView.ts"
-import { useCommand, useHandBacks, useNow, useRunView, useSpinner, useTheme } from "./useRunView.ts"
+import {
+  useCommand,
+  useFilings,
+  useHandBacks,
+  useNow,
+  useRunView,
+  useSpinner,
+  useTheme,
+} from "./useRunView.ts"
 
 export { entryId, panelRequests, requestKey, selectable } from "./transcriptView.ts"
 
@@ -646,11 +656,12 @@ export const handBackLines = (
 
 /**
  * The worker view's hint: the keys there are; the composer's while you write in it. Once the worker
- * has `finished`, nothing is sent to it, so the hint has no Enter send, Ctrl+X or Ctrl+R (tutti-2n7y).
+ * has `finished`, nothing is sent to it, so the hint has no Enter send, Ctrl+X or Ctrl+R (tutti-2n7y),
+ * and has Ctrl+T, which files what you typed as a ticket (tutti-g0wd).
  */
 const hintKeys = (requests: boolean, composing: boolean, steered: boolean, finished: boolean) => {
   const steering = finished
-    ? []
+    ? [{ keys: "Ctrl+T", does: "file as ticket" }]
     : [
         { keys: "Ctrl+X", does: "interrupt" },
         ...(steered ? [{ keys: "Ctrl+R", does: "release" }] : []),
@@ -687,6 +698,7 @@ export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
   ["Esc, Tab, Enter", "switch workers, by way of the dashboard"],
   ["Ctrl+X", "interrupt the worker's turn (asks first)"],
   ["Ctrl+R, Release", "release a steered worker"],
+  ["Ctrl+T, File as ticket", "once the worker has finished, file what you wrote as a ticket"],
   ["d, Shift+D", "deny the request; deny with a reason"],
   ["a", "allow the request, unless it opens on Deny"],
   ["r", "allow for this run"],
@@ -873,6 +885,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const looks = useSyntaxStyles(theme)
   const command = useCommand()
   const handBacks = useHandBacks()
+  const filings = useFilings()
   const { width, height } = useTerminalDimensions()
   const found = view.cards.find((each) => each.ticket === viewed)
   // The card last seen, so that the view still shows a worker that has just finished.
@@ -911,6 +924,33 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     command(UiCommand.SendMessage({ ticket: found.ticket, text, uuid }))
     return true
   }
+  // Once it has finished, Ctrl+T or File as ticket files what you typed as a new ticket; the composer
+  // keeps it until bd has it, and while it isn't filed (tutti-g0wd).
+  const filing = useRef<{ readonly uuid: string; readonly text: string } | null>(null)
+  const fileAsTicket = () => {
+    if (found !== undefined) return
+    const text = composer.field.current?.plainText.trim() ?? ""
+    if (text === "") return input.toasts.show(fileWords.nothing)
+    if (filing.current !== null) return input.toasts.show(fileWords.already)
+    const uuid = crypto.randomUUID()
+    filing.current = { uuid, text }
+    command(UiCommand.FileTicket({ from: viewed, text, uuid }))
+    input.toasts.show(fileWords.filing)
+  }
+  useEffect(() => {
+    const asked = filing.current
+    const done = asked === null ? undefined : filings.find((each) => each.uuid === asked.uuid)
+    if (asked === null || done === undefined) return
+    filing.current = null
+    if (done.outcome._tag === "NotFiled") {
+      input.toasts.show(fileWords.notFiled(done.outcome.why), { failure: true })
+      return
+    }
+    // What you typed since is yours: only the text filed is emptied.
+    const box = composer.field.current
+    if (box !== null && box.plainText.trim() === asked.text) box.setText("")
+    input.toasts.show(fileWords.filed(done.outcome.id, done.outcome.title))
+  }, [filings, composer.field, input])
   // Ctrl+X asks first; `y` interrupts the turn the question names, and its queued messages go.
   const interrupt = () => {
     if (found === undefined) return
@@ -960,6 +1000,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     own: [
       { key: "ctrl+x", run: interrupt },
       { key: "ctrl+r", run: release },
+      { key: "ctrl+t", run: fileAsTicket },
     ],
   })
 
@@ -1009,7 +1050,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           <Line segments={heldLine(theme, viewed, found?.phase._tag === "Merging", inner)} />
         ) : null}
         {finished ? (
-          <Line segments={finishedLine(theme, viewed, inner)} />
+          <FinishedLine theme={theme} ticket={viewed} width={inner} file={fileAsTicket} />
         ) : card?.steered === true ? (
           <SteeredLine theme={theme} width={inner} release={release} />
         ) : null}

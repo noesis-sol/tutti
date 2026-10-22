@@ -26,6 +26,11 @@ export type UiCommand = Data.TaggedEnum<{
   Release: { readonly ticket: string }
   /** Hand the ticket's steered worker the conflict waiting for it now (§ 4.3). */
   HandBackNow: { readonly ticket: string }
+  /**
+   * File what you wrote in the view of `from`, whose worker has finished, as a new ticket, under the
+   * uuid the view drew: the screen's filings say how it went by it (fileTicket.ts, § 7.5).
+   */
+  FileTicket: { readonly from: string; readonly text: string; readonly uuid: string }
   /** Stop after the current tickets: wind down. */
   Drain: Record<never, never>
   /** Take tickets again. */
@@ -110,6 +115,9 @@ export const resolve = (command: UiCommand, current: Current): Result.Result<Res
     case "HandBackNow":
       // Its worker may wait outside a phase that holds one: the run checks the hand-back waits.
       return Result.succeed({ command, ticket: command.ticket })
+    case "FileTicket":
+      // Its worker has finished: it names nothing the run has to still have.
+      return Result.succeed({ command, ticket: command.from })
     case "CloseWorker":
     case "Drain":
     case "Undrain":
