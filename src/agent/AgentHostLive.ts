@@ -732,6 +732,7 @@ export const layer = (
         end: (ticket) => Effect.andThen(close(ticket), workers.forget(ticket)),
         takeRequires: (names) => Ref.set(requires, names),
         current: workers.current,
+        begun: workers.begun,
         state: workers.state,
         messages: workers.messages,
         workers: workers.workers,

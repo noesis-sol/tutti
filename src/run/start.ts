@@ -1,11 +1,13 @@
 // Starting a ticket (§ 5 item 6, § 4.1 Messages, § 4.8 Session IDs): the start of the per-ticket
 // fiber, once the ticket is dispatched and Working. Its worktree on tutti/<id>, reused when an
-// earlier attempt left one or its branch; its .tutti/run/ checked; a new session ID drawn and saved
-// for it in state.json before the session starts, so a crash can't lose it; the session started
-// through AgentHost, whose live layer gives it the worker options (§ 4.1); and its first message,
-// sent client_composed, holding what is specific to this start: the ticket's ID, a pointer to the
-// rules (in the system prompt), the spec it comes from, the time it has, the --ticket scope line,
-// and what an earlier attempt left on the branch. There is no prompt file and no paste.
+// earlier attempt left one or its branch; its .tutti/run/ checked; a new session ID drawn; the
+// session started through AgentHost, whose live layer gives it the worker options (§ 4.1); its
+// first message; and the session ID saved in state.json once the session's first system/init
+// comes, so that a quit or a failure before then leaves no session to resume that Claude Code never
+// made. The first message is sent client_composed, holding what is specific to this start: the
+// ticket's ID, a pointer to the rules (in the system prompt), the spec it comes from, the time it
+// has, the --ticket scope line, and what an earlier attempt left on the branch. There is no prompt
+// file and no paste.
 //
 // Before the session, the project's setup runs in the worktree when it is new, or when the last
 // setup there failed or didn't finish (setup.ts's setUpWorktree), and the first message says how its
@@ -17,7 +19,7 @@
 // Working → Deferred. git failing to make the worktree, and a state.json that can't be written, are
 // errors for the run to stop on.
 import { join } from "node:path"
-import { Data, type Duration, Effect } from "effect"
+import { Data, Duration, Effect, Exit, Option, Stream } from "effect"
 import { AgentHost, type AgentStartFailed } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -55,7 +57,7 @@ export interface StartTicket extends AsideTicket {
 export interface StartedWorker {
   readonly ticket: string
   readonly worktree: TicketWorktree
-  /** The session's ID, saved in state.json before it started. */
+  /** The session's ID, saved in state.json once the session began. */
   readonly session: string
   /** The first message's uuid. */
   readonly message: string
@@ -259,6 +261,15 @@ const notStarted = (error: AgentStartFailed): string =>
     ? error.reason
     : `${error.reason} (${error.startupFailureReason})`
 
+/** The session didn't begin, for `reason`: the start failed. */
+class NotBegun extends Data.TaggedError("NotBegun")<{ readonly reason: string }> {}
+
+/**
+ * How long a new session has to begin its first turn, its system/init, once it is sent its first
+ * message: the CLI sends one as it takes the message, before it calls the model.
+ */
+export const initLimit: Duration.Duration = Duration.minutes(1)
+
 /** The start set the ticket aside, as `aside` says. */
 class SetAsideBy extends Data.TaggedError("SetAsideBy")<{ readonly aside: Aside }> {}
 
@@ -273,8 +284,9 @@ const runFolderFailed = (id: string, worktree: string, error: RunFilesError): Se
 
 /**
  * Starts the dispatched ticket's worker on `base`: its worktree, set up for it (the run's
- * `setUps`), its session (its ID saved first) and its first message. A ticket that can't be
- * started is set aside (Working → Deferred); one whose setup fails is back in the queue.
+ * `setUps`), its session and its first message, the session's ID saved once it begins. A ticket
+ * that can't be started is set aside (Working → Deferred); one whose setup fails is back in the
+ * queue.
  */
 export const start = (
   ticket: StartTicket,
@@ -320,10 +332,6 @@ export const start = (
       return Start.SetupFailed({ output: setup.output })
     }
 
-    // Saved before the session starts, so a crash can't lose it (§ 4.8).
-    const session = crypto.randomUUID()
-    yield* store.saveSession(id, { session, worktree: path, branch })
-
     const message = firstMessage({
       id,
       branch,
@@ -334,21 +342,71 @@ export const start = (
       earlier: worktree.earlier,
       setup: (yield* setups.now).command,
     })
-    const sent = yield* Effect.andThen(
-      host.start(id, { sessionId: session, cwd: path }),
-      host.send(id, message, "clientComposed"),
-    ).pipe(
-      Effect.catchTags({
-        AgentStartFailed: (error) => Effect.fail(notStarted(error)),
-        AgentGone: (error) => Effect.fail(`its session ended at once: ${error.why}`),
-      }),
-      Effect.catch((reason: string) =>
-        Effect.gen(function* () {
-          // Nothing of it to resume: the next start draws a new session, in the same worktree.
-          yield* host.end(id)
-          yield* store.updateTicket(id, ({ session: _, ...rest }) => rest)
-          return yield* new SetAsideBy({ aside: startFailed(id, path, reason) })
+    // An earlier attempt's session isn't this start's: until this one begins, none is to resume.
+    if ((yield* store.ticket(id))?.session !== undefined) {
+      yield* store.updateTicket(id, ({ session: _, ...rest }) => rest)
+    }
+    const session = crypto.randomUUID()
+    // Saved once Claude Code has made the session, as its first system/init says (§ 4.8): a start
+    // that fails or is interrupted before then (a quit) ends it, leaving nothing to resume, and the
+    // next start draws a new session, in the same worktree.
+    const save = store.saveSession(id, { session, worktree: path, branch })
+    const begunNow = host.begun(id).pipe(
+      Stream.runHead,
+      Effect.map(Option.getOrElse(() => false)),
+      Effect.orElseSucceed(() => false),
+    )
+    const starting = Effect.gen(function* () {
+      yield* host.start(id, { sessionId: session, cwd: path })
+      const sent = yield* host.send(id, message, "clientComposed")
+      const ended = host.state(id).pipe(
+        Stream.filter((state) => state._tag === "Gone" || state._tag === "Closed"),
+        Stream.runHead,
+      )
+      yield* Effect.raceFirst(
+        Effect.asVoid(host.begun(id).pipe(Stream.filter(Boolean), Stream.runHead)),
+        Effect.asVoid(ended),
+      ).pipe(
+        Effect.timeoutOrElse({
+          duration: initLimit,
+          orElse: () =>
+            Effect.fail(
+              new NotBegun({
+                reason: `its session didn't begin its first turn within ${formatDuration(initLimit)}`,
+              }),
+            ),
         }),
+      )
+      // A session that began, then ended, has begun all the same: followed, and resumed.
+      if (!(yield* begunNow)) {
+        const state = yield* Effect.option(host.current(id))
+        return yield* new NotBegun({
+          reason:
+            Option.isSome(state) && state.value._tag === "Gone"
+              ? `its session ended at once: ${state.value.why}`
+              : "its session ended at once",
+        })
+      }
+      yield* save
+      return sent
+    })
+    const sent = yield* starting.pipe(
+      // Interrupted once Claude Code has made the session, the start leaves it for the run's end to
+      // suspend, saved; otherwise one cleanup for failure and interruption: the session is ended.
+      Effect.onExit((exit) =>
+        Exit.isSuccess(exit)
+          ? Effect.void
+          : Effect.flatMap(begunNow, (made) =>
+              made && Exit.hasInterrupts(exit) ? Effect.ignore(save) : host.end(id),
+            ),
+      ),
+      Effect.catchTags({
+        AgentStartFailed: (error) => Effect.fail(new NotBegun({ reason: notStarted(error) })),
+        AgentGone: (error) =>
+          Effect.fail(new NotBegun({ reason: `its session ended at once: ${error.why}` })),
+      }),
+      Effect.catchTag("NotBegun", ({ reason }) =>
+        Effect.fail(new SetAsideBy({ aside: startFailed(id, path, reason) })),
       ),
     )
     return Start.Started({ worker: { ticket: id, worktree, session, message: sent } })

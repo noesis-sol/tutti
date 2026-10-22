@@ -77,7 +77,7 @@ const RunStamp = Schema.Struct({
 export type RunStamp = Schema.Schema.Type<typeof RunStamp>
 
 const TicketRecordFields = Schema.Struct({
-  /** The session's UUID, saved before the session starts. */
+  /** The session's UUID, saved once the session has begun: its first system/init came. */
   session: Schema.optionalKey(Schema.String),
   /** The ticket's worktree, an absolute path. */
   worktree: Schema.optionalKey(Schema.String),

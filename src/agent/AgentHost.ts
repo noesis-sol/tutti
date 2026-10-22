@@ -14,9 +14,9 @@
 // usage-limit hold (§ 4.12). Each compaction a worker's PreCompact hook reports goes on one stream
 // for the run to count and log (§ 4.2).
 //
-// The caller draws each new session's ID and saves it before starting it (§ 4.8). A resumed
-// session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so resume
-// takes the message that carries it on.
+// The caller draws each new session's ID, and saves it once the session has begun (§ 4.8). A
+// resumed session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so
+// resume takes the message that carries it on.
 //
 // The live layer is src/agent/AgentHostLive.ts (over the Agent SDK); the test layer is
 // src/testing/AgentHost.ts, which replays scripted sessions and records what it was sent.
@@ -212,6 +212,11 @@ export class AgentHost extends Context.Service<
     takeRequires(names: ReadonlyArray<string>): Effect.Effect<void>
     /** The worker's state now. */
     current(ticket: string): Effect.Effect<WorkerState, AgentGone>
+    /**
+     * Whether the worker's current session has begun, its first system/init come (§ 4.8): now, then
+     * on each change, until it is ended. A session that has ended after it began still has.
+     */
+    begun(ticket: string): Stream.Stream<boolean, AgentGone>
     /** The worker's state: now, then on each change, across its sessions, until it is ended. */
     state(ticket: string): Stream.Stream<WorkerState, AgentGone>
     /** Its sessions' messages, from now on, until it is ended. */
@@ -325,6 +330,7 @@ export interface Workers {
   /** Forgets the worker: its streams end. */
   readonly forget: (ticket: string) => Effect.Effect<void>
   readonly current: (ticket: string) => Effect.Effect<WorkerState, AgentGone>
+  readonly begun: (ticket: string) => Stream.Stream<boolean, AgentGone>
   readonly state: (ticket: string) => Stream.Stream<WorkerState, AgentGone>
   readonly messages: (ticket: string) => Stream.Stream<SessionMessage, AgentGone>
   /** The tickets of the workers it knows: now, then on each change. */
@@ -500,6 +506,18 @@ export const makeWorkers = (
           yield* Deferred.succeed(found.ended, undefined)
         }),
       current: (ticket) => Effect.flatMap(get(ticket), (entry) => SubscriptionRef.get(entry.state)),
+      begun: (ticket) =>
+        Stream.unwrap(
+          Effect.map(get(ticket), (entry) =>
+            until(
+              entry,
+              SubscriptionRef.changes(entry.worker).pipe(
+                Stream.map((worker) => worker.started),
+                Stream.changes,
+              ),
+            ),
+          ),
+        ),
       state: (ticket) =>
         Stream.unwrap(
           Effect.map(get(ticket), (entry) => until(entry, SubscriptionRef.changes(entry.state))),

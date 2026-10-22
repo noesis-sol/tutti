@@ -290,7 +290,7 @@ describe("start", () => {
     expect(existsSync(join(path, ".tutti", "run"))).toBe(true)
   })
 
-  test("the session ID is in state.json before the session starts", async () => {
+  test("the session ID is saved in state.json once the session has begun, not before", async () => {
     const ran = await starting(t1, {
       backlog: backlog().ticket("t-1").seeds,
       scripts: { "t-1": [turn([])] },
@@ -298,7 +298,8 @@ describe("start", () => {
     const started = result(ran)
     if (started.start._tag !== "Started") throw new Error("not started")
     expect(started.atStart).toHaveLength(1)
-    expect(started.atStart[0]?.session).toBe(started.start.worker.session)
+    expect(started.atStart[0]?.session).toBeUndefined()
+    expect(started.record?.session).toBe(started.start.worker.session)
     expect(started.start.worker.session).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     )

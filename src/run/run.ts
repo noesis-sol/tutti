@@ -1383,7 +1383,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     }
     for (const each of suspended) yield* host.close(each.ticket)
     if (quit !== null) yield* Effect.forEach(yield* openWorkers, host.close, { discard: true })
+    // One whose worker never began has no session to resume: bd ready gives it to the next run.
     for (const each of suspended) {
+      if (!saved.includes(each.ticket)) continue
       yield* Effect.ignore(store.suspend(each.ticket, each.because, "Stopped"))
     }
     yield* saveAsked

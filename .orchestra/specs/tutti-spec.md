@@ -249,7 +249,7 @@ const q = query({
     model: settings.workers.model,     // undefined → Claude Code's default
     effort: settings.workers.effort,   // low | medium | high | xhigh | max
     systemPrompt: { type: "preset", preset: "claude_code", append: standingRules, snapshot: true },
-    sessionId: newSessionId,           // a UUID tutti draws and saves before the session starts
+    sessionId: newSessionId,           // a UUID tutti draws, saved once the session begins (§4.8)
     // resume: savedSessionId,         // instead of sessionId when resuming (§4.8)
     mcpServers: chosenServers,         // definitions resolved by name (§4.6)
     strictMcpConfig: true,             // no other MCP server loads
@@ -566,7 +566,7 @@ Conflict resolution and check fixes go to the ticket's worker as orchestra sends
 
 ### 4.8 Sessions: lifetime, quitting and carry-over
 
-**Session IDs.** tutti draws each new session's UUID, saves it for its ticket in `.tutti/run/state.json`, and starts the session with `sessionId`. A crash can't lose it. A resumed session (`resume`, without `forkSession`) keeps its ID.
+**Session IDs.** tutti draws each new session's UUID, starts the session with `sessionId`, sends it its first message, and saves the ID for its ticket in `.tutti/run/state.json` once the session's first `system/init` comes: Claude Code has made the session then, and it has a transcript to resume. A start that fails or is interrupted before then (a quit in a run's first seconds) ends the session and saves nothing, so the next run starts its ticket afresh, in the same worktree, rather than resume a session that was never made; the worker hadn't claimed the ticket, so `bd ready` gives it again. A session whose `system/init` doesn't come within a minute of its first message is a failed start (`START_FAILED`). Once saved, a crash can't lose the ID. A resumed session (`resume`, without `forkSession`) keeps its ID.
 
 **Lifetime.** A session's subprocess is kept only while the ticket needs it. A closed session keeps its ID and is resumed when needed. A session closing, closed by tutti or gone, is closing until its Claude Code has exited: a start or resume of the ticket waits for that, so two Claude Codes never share a session file and worktree, and closing a session still starting cancels its start.
 
@@ -1764,7 +1764,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | Memory: about 1 GiB per live session | `-c 16` needs a large machine | Sessions closed when not needed (§4.8); `init` and the startup line state the estimate; concurrency default 1, as orchestra's |
 | Usage limits on a subscription with many workers | Runs stall for hours | The usage-limit hold waits and resumes by itself (§4.12); the warning shows early |
 | Auto mode's classifier unavailable, or refusing everything | Workers can't work | Auto mode's fallback is reported at startup (§4.1); a classifier refusing everything trips the environment hold, as orchestra's docs describe |
-| A single process: a crash or closed terminal ends work in flight | Lost turns; without a reaper, a busy worker would go on editing and committing with no tutti | Session IDs saved before each session starts; resume next run; SIGHUP quits cleanly (§4.8); each worker's and command's reaper ends its process group however tutti ends, `kill -9` included (§3.2) |
+| A single process: a crash or closed terminal ends work in flight | Lost turns; without a reaper, a busy worker would go on editing and committing with no tutti | Session IDs saved as each session begins; resume next run; SIGHUP quits cleanly (§4.8); each worker's and command's reaper ends its process group however tutti ends, `kill -9` included (§3.2) |
 | Subscription use through the SDK | The SDK's terms ask third-party products not to offer claude.ai login | tutti is a tool you run under your own login on your own machine; it never offers login to others. If it is distributed to others, document API-key use (`--billing api`) as the supported path |
 | Claude Code rewords the line saying an untrusted main checkout's allow rules are ignored | The probe misses it, and workers run without the project's allow rules | A contract test pins the line for the embedded Claude Code (§4.13, §13); a reworded line fails it on the bump |
 | An SDK update moves or drops `getSettings()` or `current_permission_mode`, neither in the SDK's types | The probe misses skipped settings files, and workers run without your deny rules | A contract test pins both for the embedded Claude Code (§4.13, §13); a bump that moves one fails it |

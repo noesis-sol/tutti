@@ -499,6 +499,7 @@ export const layer = (
           }).pipe(one.withPermit),
         takeRequires: (names) => Effect.sync(() => void requires.push(names)),
         current: workers.current,
+        begun: workers.begun,
         state: workers.state,
         messages: workers.messages,
         workers: workers.workers,

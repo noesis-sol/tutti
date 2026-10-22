@@ -328,7 +328,8 @@ given: `after 20m (and 5m more for the machine's load)`.
 tutti keeps a worker's session open only while its ticket needs it: while it runs, waits to merge,
 merges or is handed back. A merged ticket's session is closed; so is an asked ticket's, until its
 answer is in, and a deferred one's. A closed session keeps its ID, saved in `.tutti/run/state.json`
-before the session starts, and is resumed when needed.
+as the session begins, and is resumed when needed. A run quit while a worker is still starting saves
+nothing of it: the next run starts that ticket afresh.
 
 When a run ends with workers still at it (you quit, a worker stopped the run, or one still waits on
 you), their sessions are **suspended**: interrupted, closed, and saved in `state.json` with why. The
