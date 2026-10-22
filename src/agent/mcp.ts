@@ -63,6 +63,27 @@ export const inProcess = (
   note: null,
 })
 
+/**
+ * The workers' servers, `chosen`, with tutti's own in-process server, `name`, made by
+ * createSdkMcpServer: a worker's requires tools (§ 4.11). It takes the place of a chosen server of
+ * the same name.
+ */
+export const withOwn = (
+  chosen: ChosenServers,
+  name: string,
+  definition: McpServerConfig,
+): ChosenServers => ({
+  ...chosen,
+  servers: [
+    ...chosen.servers.filter((server) => server.name !== name),
+    { name, scope: "sdk", definition },
+  ],
+})
+
+/** Whether `chosen` has tutti's own in-process server `name` (withOwn). */
+export const hasOwn = (chosen: Pick<ChosenServers, "servers">, name: string): boolean =>
+  chosen.servers.some((server) => server.name === name && server.scope === "sdk")
+
 /** Claude in Chrome's name, in workers.mcp_servers and system/init. */
 export const chromeServer = "claude-in-chrome"
 

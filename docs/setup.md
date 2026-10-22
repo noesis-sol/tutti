@@ -370,7 +370,9 @@ start Docker Desktop`), exit 2 for one missing; `--no-install` only checks.
 
 Workers are told of the list, with the entries it has: a ticket that needs something the list lacks
 adds an entry for it and installs it with that entry's own install, never by hand outside the list,
-so the next machine has it too; a manual step is asked of you as a question.
+so the next machine has it too; a manual step is asked of you as a question. Each worker has
+tutti's `requires_check` tool, which checks and installs the list in its worktree, and
+`requires_readme`, which writes that README's section on what to install.
 
 **The README's section.** People read the README to set a machine up; written apart from the list, it
 drifts. So the README's section on what to install is generated from the list, between

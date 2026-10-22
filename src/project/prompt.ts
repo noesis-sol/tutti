@@ -119,21 +119,31 @@ export const requiresRule = "never by hand outside the list"
  * `prompt`, that says so already (requiresRule), as tutti's template does since its version 6, is
  * told only what the list has. Where the main checkout has a README.md (`readme`), a worker that
  * changes the list is asked to write the README's section on what to install from it again, in the
- * same commit.
+ * same commit. A worker given tutti's requires tools (`tools`, src/agent/requiresTools.ts) is told
+ * to check and install with requires_check, and to write the README's section with
+ * requires_readme; one without them, to run tutti requires --readme.
  */
 export const requiresNote = (
   names: ReadonlyArray<string>,
   prompt: string,
   readme: boolean,
+  tools = false,
 ): string => {
   const where = `"requires" in ${settingsFile}`
   const has = names.length === 0 ? "which has no entries yet" : `which has ${names.join(", ")} now`
-  const readmeNote = readme
-    ? " A ticket that changes the list runs tutti requires --readme, which writes README.md's " +
-      "section on what to install from it, and commits that with the list."
+  const toolsNote = tools
+    ? " tutti's requires_check tool checks the list in your worktree, and installs what is " +
+      "missing with each entry's own install command."
     : ""
+  const readmeNote = !readme
+    ? ""
+    : tools
+      ? " A ticket that changes the list calls tutti's requires_readme tool, which writes " +
+        "README.md's section on what to install from it, and commits that with the list."
+      : " A ticket that changes the list runs tutti requires --readme, which writes README.md's " +
+        "section on what to install from it, and commits that with the list."
   if (prompt.includes(requiresRule)) {
-    return `\n\nThe project's requires list is ${where}, ${has}.${readmeNote}\n`
+    return `\n\nThe project's requires list is ${where}, ${has}.${toolsNote}${readmeNote}\n`
   }
   return (
     `\n\nWhat this project needs of the machine (a tool, a service, a permission) is its requires ` +
@@ -141,7 +151,7 @@ export const requiresNote = (
     "name, a check, and an install command that runs without sudo, or a manual step for a person), " +
     "commits it with the ticket, and installs it with that entry's own install command, " +
     `${requiresRule}: what isn't on the list isn't on the next machine. A manual step is asked of ` +
-    `the maintainer as a question.${readmeNote}\n`
+    `the maintainer as a question.${toolsNote}${readmeNote}\n`
   )
 }
 

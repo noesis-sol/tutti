@@ -25,6 +25,7 @@ import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
+import { requiresServerFor } from "./agent/requiresTools.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
 import { UsageProbe } from "./agent/UsageProbe.ts"
@@ -138,11 +139,17 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Worktrees.layer({ repo, root: config.worktrees, base: started.base }),
     notifierLayer.pipe(Layer.provide(ttyLayer)),
   )
-  const host = agentHostLayer({
-    prompt: started.prompt,
-    servers: started.mcp,
-    account: started.account,
-  })
+  // Each worker gets tutti's own MCP server with its requires tools (§ 4.11).
+  const host = Layer.unwrap(
+    Effect.map(requiresServerFor, (ownServer) =>
+      agentHostLayer({
+        prompt: started.prompt,
+        servers: started.mcp,
+        account: started.account,
+        ownServer,
+      }),
+    ),
+  )
   // The organs, over the Agent SDK or, with TUTTI_ORGAN_PROVIDER=anthropic, the Messages API, their
   // costs logged, skipped while the usage limit holds, as the report asks too. The startup checks
   // reported a choice that can't be used.

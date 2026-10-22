@@ -46,7 +46,8 @@ import type { InterviewSetup } from "./AgentHost.ts"
 import { Attention } from "./Attention.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
 import { qualifiedToolNames, serverName } from "./interviewTools.ts"
-import { type ChosenServers, chromeArgs, mcpServers } from "./mcp.ts"
+import { type ChosenServers, chromeArgs, hasOwn, mcpServers } from "./mcp.ts"
+import { qualifiedRequiresTool, requiresServerName } from "./requiresTools.ts"
 import { Transcripts } from "./Transcripts.ts"
 import { deniedTools } from "./unusedTools.ts"
 
@@ -183,9 +184,31 @@ const sharedOptions = (input: SharedInput) => {
   } satisfies Options
 }
 
-/** A worker session's SDK options (§ 4.1). */
+/**
+ * A worker's PreToolUse hook that allows tutti's requires_readme without asking: it writes only
+ * the README's section generated from the list, in the worker's own worktree. requires_check runs
+ * the list's commands, so the permission mode decides it, as it would a Bash command.
+ */
+export const allowRequiresReadme: HookCallbackMatcher = {
+  matcher: qualifiedRequiresTool("requires_readme"),
+  hooks: [
+    async () => ({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        permissionDecisionReason: "tutti's own requires tool",
+      },
+    }),
+  ],
+}
+
+/**
+ * A worker session's SDK options (§ 4.1). A worker whose servers have tutti's own (withOwn) is told
+ * of its requires tools, and is allowed requires_readme without asking (allowRequiresReadme).
+ */
 export const workerOptions = (input: WorkerOptionsInput): Options => {
   const { callbacks } = input
+  const own = hasOwn(input.servers, requiresServerName)
   return {
     ...sharedOptions({
       config: input.config,
@@ -208,6 +231,7 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
                 input.requires ?? input.config.settings.requires.map((r) => r.name),
                 input.prompt.text,
                 input.readme === true,
+                own,
               ) +
               checkNote(
                 input.config.settings.checks.own.command ??
@@ -223,7 +247,12 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
     mcpServers: mcpServers(input.servers),
     canUseTool: callbacks.canUseTool,
     onElicitation: callbacks.onElicitation,
-    hooks: callbacks.hooks,
+    hooks: own
+      ? {
+          ...callbacks.hooks,
+          PreToolUse: [...(callbacks.hooks.PreToolUse ?? []), allowRequiresReadme],
+        }
+      : callbacks.hooks,
     forwardSubagentText: true,
     includePartialMessages: true,
   }

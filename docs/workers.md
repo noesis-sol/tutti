@@ -67,8 +67,11 @@ whether it passed. A check script whose last line says `PASS` or `FAIL` and the 
 Before it, a note names the project's [requires list](setup.md#the-requires-list) with the entries
 it has now (`"requires" in .tutti/settings.json, which has jq, docker now`), and, for a prompt
 without the template's rule on it, the rule itself; where the main checkout has a `README.md`, it
-asks a worker that changes the list to run `tutti requires --readme` and commit the README's section
-with the list.
+asks a worker that changes the list to write the README's section again and commit it with the
+list. Each worker has two tools of tutti's own for this, on an MCP server named `tutti`:
+`requires_check` checks the list in its worktree and installs what is missing with each entry's own
+install, as `tutti requires` does there, and `requires_readme` writes the README's section from the
+worktree's list, as `tutti requires --readme` does. A worker needn't have tutti on its PATH.
 
 The check note's last sentence gives the worker its share of the machine's cores: other workers' checks
 run beside its own, so tutti sets `TUTTI_CORES` in its environment, and `ORCHESTRA_CORES` for check

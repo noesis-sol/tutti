@@ -31,6 +31,7 @@ import { randomUUID } from "node:crypto"
 import { availableParallelism } from "node:os"
 import { join } from "node:path"
 import {
+  type McpSdkServerConfigWithInstance,
   type Options,
   type Query,
   query,
@@ -83,8 +84,9 @@ import type { Attention } from "./Attention.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { coreShare, workerEnv } from "./env.ts"
 import { serverName } from "./interviewTools.ts"
-import { type ChosenServers, checkInit, inProcess, noServers } from "./mcp.ts"
+import { type ChosenServers, checkInit, inProcess, noServers, withOwn } from "./mcp.ts"
 import { interviewOptions, type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
+import { requiresServerName } from "./requiresTools.ts"
 import type { Transcripts } from "./Transcripts.ts"
 import { projectHasSkills } from "./unusedTools.ts"
 import { WorkerEvent } from "./WorkerState.ts"
@@ -143,6 +145,11 @@ export interface LiveOptions {
   readonly prompt: WorkerPrompt
   /** The MCP servers workers get. */
   readonly servers: ChosenServers
+  /**
+   * tutti's own in-process MCP server for a worker in the worktree given, with its requires tools
+   * (requiresServerFor, § 4.11), each session's its own, beside `servers`; none when left out.
+   */
+  readonly ownServer?: (worktree: string) => Effect.Effect<McpSdkServerConfigWithInstance>
   /** What the account probe found: how workers are billed, and whether there's a subscription login. */
   readonly account: Pick<AccountProbe, "billing" | "subscription">
   /** tutti's environment, workers' is made from; process.env by default. */
@@ -562,7 +569,13 @@ export const layer = (
               ? inProcess(serverName, setup.server, options.servers.chrome === true)
               : session.probe === true
                 ? noServers
-                : options.servers
+                : options.ownServer === undefined
+                  ? options.servers
+                  : withOwn(
+                      options.servers,
+                      requiresServerName,
+                      yield* options.ownServer(session.cwd),
+                    )
           const sdkOptions: Options =
             setup !== undefined
               ? interviewOptions({
