@@ -6,7 +6,8 @@
 // uninterruptible (§ 3.4). A kill -9 of tutti runs neither, so the group also has a reaper
 // (src/services/reaper.ts) that ends it then, with the same grace; the reaper goes with the group.
 // Bun's node:child_process can lose a command's exit and its output (tutti-cje): exec stops waiting
-// for them a grace after the group has gone, and fails with CommandNotRun.
+// for them a grace after the group has gone, and fails with CommandNotRun. A process that left the
+// group can hold its output open: exec reads it for a grace after the leader has exited, then stops.
 import type { ChildProcess as Reaper } from "node:child_process"
 import { writeSync } from "node:fs"
 import { constants } from "node:os"
@@ -18,6 +19,7 @@ import {
   Exit,
   Fiber,
   FileSystem,
+  Option,
   Schedule,
   Schema,
   Scope,
@@ -45,6 +47,20 @@ export const LostExitGrace = Context.Reference<Duration.Duration>(
   "tutti/services/exec/LostExitGrace",
   { defaultValue: () => Duration.seconds(5) },
 )
+
+/**
+ * How long exec waits for a command's output to close once its leader has exited and its process
+ * group has been killed. A process that left the group (setsid, a detached spawn) can hold the pipes
+ * open for as long as it runs; past this grace, exec stops reading and returns what it read.
+ */
+export const LeftoverOutputGrace = Context.Reference<Duration.Duration>(
+  "tutti/services/exec/LeftoverOutputGrace",
+  { defaultValue: () => Duration.seconds(2) },
+)
+
+/** What exec adds to a command's stderr when a process it left running held its output open. */
+export const leftoverOutputNote = (grace: Duration.Duration): string =>
+  `tutti: stopped reading the command's output ${Duration.format(grace)} after it exited: a process it left running, outside its process group, holds the output open\n`
 
 /** How often exec looks for a command's process group while it waits for the command's exit. */
 const groupPoll = Duration.millis(200)
@@ -211,6 +227,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
   const grace = command.killGrace ?? defaultKillGrace
   const max = command.maxOutputBytes ?? defaultMaxOutputBytes
   const lostGrace = yield* LostExitGrace
+  const leftoverGrace = yield* LeftoverOutputGrace
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
@@ -291,16 +308,17 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
 
       const stdout = new Tail(max)
       const stderr = new Tail(max)
+      const take = (tail: Tail, chunk: Uint8Array, from: "stdout" | "stderr") => {
+        tail.push(chunk)
+        command.onOutput?.(chunk, from)
+        if (command.outputFd !== undefined) return writeAllTo(command.outputFd, chunk)
+        return file === undefined ? Effect.void : file.writeAll(chunk)
+      }
       const reading = yield* Stream.merge(
         Stream.map(handle.stdout, (chunk) => [stdout, chunk, "stdout"] as const),
         Stream.map(handle.stderr, (chunk) => [stderr, chunk, "stderr"] as const),
       ).pipe(
-        Stream.runForEach(([tail, chunk, from]) => {
-          tail.push(chunk)
-          command.onOutput?.(chunk, from)
-          if (command.outputFd !== undefined) return writeAllTo(command.outputFd, chunk)
-          return file === undefined ? Effect.void : file.writeAll(chunk)
-        }),
+        Stream.runForEach(([tail, chunk, from]) => take(tail, chunk, from)),
         Effect.mapError(notRun),
         Effect.forkScoped,
       )
@@ -321,8 +339,20 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         })
       }
       // The leader has gone. What is left of its group would hold the pipes open, so it goes too.
+      // A process outside the group can still hold them: exec reads on for a grace, then stops.
       yield* kill
-      yield* Fiber.join(reading)
+      const read = yield* Effect.timeoutOption(
+        Effect.interruptible(Fiber.join(reading)),
+        leftoverGrace,
+      )
+      if (Option.isNone(read)) {
+        yield* Fiber.interrupt(reading)
+        yield* take(
+          stderr,
+          new TextEncoder().encode(leftoverOutputNote(leftoverGrace)),
+          "stderr",
+        ).pipe(Effect.mapError(notRun))
+      }
 
       const exitCode = Exit.isSuccess(exit) ? exit.value : signalExitCode(exit.cause)
       if (timedOut) {
