@@ -15,7 +15,7 @@
 //   slot, where va_arg reads it. Without them a created file gets whatever was on the stack as its
 //   mode. Elsewhere variadic integers travel in the same registers as fixed ones.
 import { dlopen, FFIType, type Pointer, read } from "bun:ffi"
-import { constants as fsConstants, fstatSync, lstatSync, type Stats } from "node:fs"
+import { constants as fsConstants, fstatSync, ftruncateSync, lstatSync, type Stats } from "node:fs"
 import { constants as osConstants } from "node:os"
 import { join } from "node:path"
 import { Effect, Schema } from "effect"
@@ -52,7 +52,7 @@ const LOCK_SH = 1
 const LOCK_EX = 2
 const LOCK_NB = 4
 const LOCK_UN = 8
-const { EEXIST, ELOOP, ENOTDIR, ENXIO, EOPNOTSUPP, EWOULDBLOCK } = osConstants.errno
+const { EEXIST, ELOOP, ENOENT, ENOTDIR, ENXIO, EOPNOTSUPP, EWOULDBLOCK } = osConstants.errno
 
 // darwin's libc is libSystem (in the dyld shared cache, so the file needn't exist on disk);
 // glibc's is libc.so.6, a name musl's loader also maps to itself.
@@ -86,6 +86,7 @@ const symbols = {
     args: [FFIType.i32, FFIType.ptr, FFIType.i32, ...padding(padOpenat), FFIType.i64],
     returns: FFIType.i32,
   },
+  unlinkat: { args: [FFIType.i32, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
   [errnoSymbol]: { args: [], returns: FFIType.ptr },
 } as const
 
@@ -112,6 +113,7 @@ const s = libc.lib.symbols as unknown as {
   fcntl: (...args: Array<unknown>) => number
   open: (...args: Array<unknown>) => number
   openat: (...args: Array<unknown>) => number
+  unlinkat: (dirfd: number, name: Buffer, flags: number) => number
   __error?: () => Pointer
   __errno_location?: () => Pointer
 }
@@ -171,6 +173,12 @@ export class PathRefused extends Schema.TaggedError<PathRefused>()("PathRefused"
 
 const failure = (call: string, path: string, code: number) =>
   new LibcError({ call, path, errno: code, code: errnoNames.get(code) ?? String(code) })
+
+/** A node:fs call on a raw descriptor failed, as a LibcError. */
+const nodeFailure = (call: string, path: string, error: unknown) => {
+  const code = (error as NodeJS.ErrnoException).code ?? "EIO"
+  return failure(call, path, (osConstants.errno as Record<string, number>)[code] ?? 0)
+}
 
 /** Runs a call returning -1 on failure, reading errno before anything else can touch it. */
 const attempt = (call: string, path: string, f: () => number): number | LibcError => {
@@ -287,8 +295,7 @@ const opened = (
     stat = fstatSync(fd)
   } catch (error) {
     s.close(fd)
-    const code = (error as NodeJS.ErrnoException).code ?? "EIO"
-    return failure("fstat", relativePath, (osConstants.errno as Record<string, number>)[code] ?? 0)
+    return nodeFailure("fstat", relativePath, error)
   }
   const wanted = (flags & O.DIRECTORY) !== 0 ? stat.isDirectory() : stat.isFile()
   if (!wanted) {
@@ -305,12 +312,74 @@ const opened = (
   return fd
 }
 
+type Refusal = LibcError | SymlinkRefused | PathRefused | NotAFileRefused
+
+// refused names a failed openat for what stands at its name where that explains it.
+const refused = (
+  error: LibcError,
+  directory: string,
+  relativePath: string,
+  component: string,
+  last: boolean,
+): LibcError | SymlinkRefused | NotAFileRefused => {
+  // A link mid-path fails O_DIRECTORY (ENOTDIR), a last one O_NOFOLLOW (ELOOP), or O_EXCL
+  // (EEXIST). Each of those is also a plain failure, so the link is confirmed by lstat; the
+  // refusal never depended on it.
+  const linkish = error.errno === ENOTDIR || error.errno === ELOOP || error.errno === EEXIST
+  if (linkish && isSymlink(join(directory, component))) {
+    return new SymlinkRefused({ directory, path: relativePath, component })
+  }
+  // A named pipe opened for writing with no reader fails ENXIO under O_NONBLOCK, and a
+  // socket ENXIO or EOPNOTSUPP: named for what they are.
+  const kind =
+    last && (error.errno === ENXIO || error.errno === EOPNOTSUPP)
+      ? kindAt(join(directory, component))
+      : undefined
+  return kind === undefined ? error : new NotAFileRefused({ directory, path: relativePath, kind })
+}
+
+// emptied empties the file the last openat opened, where the caller asked for O_TRUNC, which that
+// openat left out. A file with one link is truncated. One with more may be another file of the
+// same user hard-linked to the name, the main checkout's .git/config say: it is left as it is,
+// its name below `dir` unlinked, and a file of its own created there afresh (O_EXCL). Something
+// put at the name between the two fails the creation.
+const emptied = (
+  fd: number,
+  dir: number,
+  name: string,
+  directory: string,
+  relativePath: string,
+  flags: number,
+  mode: number,
+): number | Refusal => {
+  let call = "fstat"
+  try {
+    if (fstatSync(fd).nlink <= 1) {
+      call = "ftruncate"
+      ftruncateSync(fd, 0)
+      return fd
+    }
+  } catch (error) {
+    s.close(fd)
+    return nodeFailure(call, relativePath, error)
+  }
+  s.close(fd)
+  const unlinked = attempt("unlinkat", relativePath, () => s.unlinkat(dir, cstr(name), 0))
+  if (unlinked instanceof LibcError && unlinked.errno !== ENOENT) return unlinked
+  const fresh = (flags & ~O.TRUNC) | O.CREAT | O.EXCL | O.NOFOLLOW | O.NONBLOCK | O.CLOEXEC
+  const created = rawOpenat(dir, name, relativePath, fresh, mode)
+  if (created instanceof LibcError) {
+    return refused(created, directory, relativePath, relativePath, true)
+  }
+  return opened(created, directory, relativePath, flags)
+}
+
 const walk = (
   directory: string,
   relativePath: string,
   flags: number,
   mode: number,
-): number | LibcError | SymlinkRefused | PathRefused | NotAFileRefused => {
+): number | Refusal => {
   const parts = relativePath.split("/")
   if (relativePath.startsWith("/") || parts.some((p) => p === "" || p === "." || p === "..")) {
     return new PathRefused({ directory, path: relativePath })
@@ -318,33 +387,23 @@ const walk = (
   // The directory itself may be reached through a link: only what lies below it is guarded.
   const root = rawOpen(directory, O.RDONLY | O.DIRECTORY | O.CLOEXEC, 0)
   if (root instanceof LibcError) return root
+  // O_TRUNC is left to emptied, once the last component is known to be a regular file.
+  const truncating = (flags & O.TRUNC) !== 0
+  const lastFlags = (flags & ~O.TRUNC) | O.NOFOLLOW | O.NONBLOCK | O.CLOEXEC
   let dir = root
   try {
     for (const [i, part] of parts.entries()) {
       const last = i === parts.length - 1
       const component = parts.slice(0, i + 1).join("/")
       const next = last
-        ? rawOpenat(dir, part, component, flags | O.NOFOLLOW | O.NONBLOCK | O.CLOEXEC, mode)
+        ? rawOpenat(dir, part, component, lastFlags, mode)
         : rawOpenat(dir, part, component, O.RDONLY | O.DIRECTORY | O.NOFOLLOW | O.CLOEXEC, 0)
-      if (next instanceof LibcError) {
-        // A link mid-path fails O_DIRECTORY (ENOTDIR), a last one O_NOFOLLOW (ELOOP), or O_EXCL
-        // (EEXIST). Each of those is also a plain failure, so the link is confirmed by lstat; the
-        // refusal never depended on it.
-        const linkish = next.errno === ENOTDIR || next.errno === ELOOP || next.errno === EEXIST
-        if (linkish && isSymlink(join(directory, component))) {
-          return new SymlinkRefused({ directory, path: relativePath, component })
-        }
-        // A named pipe opened for writing with no reader fails ENXIO under O_NONBLOCK, and a
-        // socket ENXIO or EOPNOTSUPP: named for what they are.
-        const kind =
-          last && (next.errno === ENXIO || next.errno === EOPNOTSUPP)
-            ? kindAt(join(directory, component))
-            : undefined
-        return kind === undefined
-          ? next
-          : new NotAFileRefused({ directory, path: relativePath, kind })
+      if (next instanceof LibcError) return refused(next, directory, relativePath, component, last)
+      if (last) {
+        const fd = opened(next, directory, relativePath, flags)
+        if (typeof fd !== "number" || !truncating) return fd
+        return emptied(fd, dir, part, directory, relativePath, flags, mode)
       }
-      if (last) return opened(next, directory, relativePath, flags)
       s.close(dir)
       dir = next
     }
@@ -363,13 +422,15 @@ const walk = (
  * anything else, a named pipe or a device, is refused with NotAFileRefused. The last component is
  * opened with O_NONBLOCK, so a named pipe never holds the open, which bun:ffi makes on the
  * JavaScript thread, until its other end opens; O_NONBLOCK is then cleared unless `flags` has it.
+ * O_TRUNC never truncates a file with more than one link, which may be another file hard-linked
+ * to the name: the name is unlinked and the file created afresh, leaving the other as it was.
  */
 export const openUnder = (
   directory: string,
   relativePath: string,
   flags: number,
   mode = 0o644,
-): Effect.Effect<number, LibcError | SymlinkRefused | PathRefused | NotAFileRefused> =>
+): Effect.Effect<number, Refusal> =>
   Effect.suspend(() => {
     const result = walk(directory, relativePath, flags, mode)
     return typeof result === "number" ? Effect.succeed(result) : Effect.fail(result)
