@@ -16,6 +16,7 @@ import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { type Asking, emptyScreen, InitView } from "../src/ui/InitForm.tsx"
+import { InputGuards } from "../src/ui/keys.ts"
 import { PlanConfirmation } from "../src/ui/PlanConfirmation.tsx"
 import { type Plan, TicketCount, Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
@@ -313,6 +314,68 @@ describe("the answer form takes clicks", () => {
         answer: { _tag: "Choose", answers: ["Postgres", "biome, lint"] },
       }),
     ])
+  })
+})
+
+describe("init's form taking the mouse", () => {
+  /** Sends `start`, then `rest` a read later, as a terminal can split a mouse report (#1661). */
+  const split = (rendered: Rendered, start: string, rest: string) =>
+    rendered.input(async (setup) => {
+      setup.renderer.stdin.emit("data", Buffer.from(start))
+      await Bun.sleep(40)
+      setup.renderer.stdin.emit("data", Buffer.from(rest))
+      await Bun.sleep(60)
+    })
+
+  test("a mouse report split after its Esc doesn't cancel a confirm", async () => {
+    const { all, say } = said()
+    let cancelled = 0
+    const asking: Asking = {
+      _tag: "Confirm",
+      id: 1,
+      field: { question: "Import orchestra's settings and worker prompt?", initial: true },
+      answer: say,
+      cancel: () => {
+        cancelled++
+      },
+    }
+    const node = (
+      <>
+        <InputGuards />
+        {initForm(asking)}
+      </>
+    )
+    await withRender(node, size, async (rendered) => {
+      await split(rendered, "\x1b", "[<35;10;5M")
+      expect(cancelled).toBe(0)
+      await rendered.input((setup) => setup.mockInput.pressKey("y"))
+    })
+    expect(all).toEqual([true])
+  })
+
+  test("a mouse report split after its ESC [ types nothing into a line", async () => {
+    const { all, say } = said()
+    const asking: Asking = {
+      _tag: "Text",
+      id: 1,
+      field: { title: "Tickets to run at the same time" },
+      answer: say,
+      cancel: never,
+    }
+    const node = (
+      <>
+        <InputGuards />
+        {initForm(asking)}
+      </>
+    )
+    await withRender(node, size, async (rendered) => {
+      await split(rendered, "\x1b[", "<64;87;26M")
+      await rendered.input(async (setup) => {
+        await setup.mockInput.typeText("2")
+        setup.mockInput.pressEnter()
+      })
+    })
+    expect(all).toEqual(["2"])
   })
 })
 

@@ -12,16 +12,7 @@ import { UiCommand } from "../run/commands.ts"
 import { AnswerForm, AnswerFormKeys } from "./AnswerForm.tsx"
 import { AnswerBox, ReasonBox, ReasonKeys } from "./AttentionCard.tsx"
 import { useCopyOnSelect } from "./clipboard.ts"
-import {
-  Box,
-  filterMouse,
-  guardPaste,
-  holdEscape,
-  InputContext,
-  type InputState,
-  useInput,
-  useLayer,
-} from "./keys.ts"
+import { Box, guardInput, InputContext, type InputState, useInput, useLayer } from "./keys.ts"
 import { SelectionLook, selectionLookOf } from "./line.tsx"
 import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
@@ -99,13 +90,9 @@ export const Input = ({
     toasts: makeToasts(undefined, toastTimer),
   }))
   useEffect(() => {
-    const unfilter = filterMouse(keymap)
-    const unhold = holdEscape(keymap, renderer)
-    const unguard = guardPaste(renderer.stdin, pasteLimit)
+    const unguard = guardInput(keymap, renderer, pasteLimit)
     return () => {
       unguard()
-      unhold()
-      unfilter()
       input.toasts.dispose()
     }
   }, [keymap, renderer, input, pasteLimit])

@@ -21,10 +21,11 @@ import {
   TextareaRenderable,
 } from "@opentui/core"
 import type { Keymap, ReactiveMatcher } from "@opentui/keymap"
+import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { useBindings } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
 import { Data } from "effect"
-import { createContext, useContext, useRef } from "react"
+import { createContext, useContext, useEffect, useRef } from "react"
 import type { ToastStore } from "./Toasts.tsx"
 import type { Settable } from "./useRunView.ts"
 
@@ -364,4 +365,33 @@ export const guardPaste = (stdin: PasteInput, limit: number = pasteLimit): (() =
     clearTimeout(timer)
     stdin.off("data", onData)
   }
+}
+
+/**
+ * The guards in front of `keymap`'s keys: split mouse reports filtered out, a lone Esc held, an
+ * unterminated paste ended after `limit` ms. The returned function stops them.
+ */
+export const guardInput = (
+  keymap: Keymap<Renderable, KeyEvent>,
+  renderer: CliRenderer,
+  limit: number = pasteLimit,
+): (() => void) => {
+  const unfilter = filterMouse(keymap)
+  const unhold = holdEscape(keymap, renderer)
+  const unguard = guardPaste(renderer.stdin, limit)
+  return () => {
+    unguard()
+    unhold()
+    unfilter()
+  }
+}
+
+/**
+ * guardInput over the renderer for a screen without the run's input layers, as init's form: on a
+ * keymap of their own, which the guards stop raw input on before any key handler hears it.
+ */
+export const InputGuards = () => {
+  const renderer = useRenderer()
+  useEffect(() => guardInput(createOpenTuiKeymap(renderer), renderer), [renderer])
+  return null
 }

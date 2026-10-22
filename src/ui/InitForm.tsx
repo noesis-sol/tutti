@@ -10,7 +10,9 @@
 //
 // A click does what a key does (D9, § 7.3): on Yes or No it answers, on a select's option it chooses
 // and confirms it, on a checklist's option it ticks or unticks it, on a line to type in it focuses
-// it, on the scout's Esc line it skips the scout. The stepper takes none: no key moves between steps.
+// it, on the scout's Esc line it skips the scout. The stepper takes none: no key moves between
+// steps. Taking the mouse, the form has the run's guards in front of its keys (InputGuards): a mouse
+// report split between two reads neither cancels it nor types into it.
 // Esc or Ctrl+C cancels the form, and init then changes nothing. While the scout looks for the
 // project's suites a spinner turns, with the time it has taken; Esc there skips it, and the choice
 // of checks starts on manual. Between questions, while init works, a spinner says so; once init
@@ -39,6 +41,7 @@ import { initAbout, initTitle, scoutClock } from "../print/initSummary.ts"
 import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
 import { clickable, Field, Hint, Themed } from "./Form.tsx"
+import { InputGuards } from "./keys.ts"
 import { styled } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
@@ -723,7 +726,12 @@ export const openInitForm = (
       const root = createRoot(shell.renderer)
       root.render(
         <Themed appearance={shell.appearance} themeOf={themeOf}>
-          {(theme) => <LiveInitView theme={theme} repo={repo} screen={screen} clock={clock} />}
+          {(theme) => (
+            <>
+              <InputGuards />
+              <LiveInitView theme={theme} repo={repo} screen={screen} clock={clock} />
+            </>
+          )}
         </Themed>,
       )
       const form: InitForm = {
