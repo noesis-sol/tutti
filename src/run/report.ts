@@ -73,6 +73,11 @@ export interface ReportOut {
   readonly theme: Theme
   /** The terminal's width. */
   readonly width: number
+  /**
+   * The run's log prints on the same output, in plain mode (§ 7.6): what the log says of the
+   * report is said there alone, not again on the printer.
+   */
+  readonly logged?: boolean
 }
 
 /** Every service the report uses. */
@@ -429,7 +434,8 @@ const organFailure = (error: OrganError): string => {
 
 /**
  * The run report, at the end of the run: gathered, written by the reviewer, saved to
- * .tutti/reports/<start time>.md and printed, each step said on the printer. Nothing at all when
+ * .tutti/reports/<start time>.md and printed, each step said on the printer, or by the log alone
+ * where it prints there too (ReportOut.logged). Nothing at all when
  * --review=false or the run was quit: `out` is made only when the report has something to print.
  */
 export const runReport = (
@@ -442,9 +448,11 @@ export const runReport = (
     const out = yield* made
     const logs = yield* Log
     const hold = yield* OrganHold
+    /** Says `line` on the printer, unless the log has just printed its own line there. */
+    const unlogged = (line: Effect.Effect<void>) => (out.logged === true ? Effect.void : line)
     if (yield* hold.held) {
       yield* logs.write(skippedLine("reviewer"))
-      yield* out.printer.say("Run report skipped: the usage limit held the run to its end")
+      yield* unlogged(out.printer.say("Run report skipped: the usage limit held the run to its end"))
       return
     }
     const step = yield* out.printer.organ("Writing the run report with Claude…")
@@ -456,11 +464,14 @@ export const runReport = (
       if (reason === undefined) return yield* step.done("Run report skipped")
       const error = reason.error
       if (error._tag === "OrganSkipped") {
-        return yield* step.done("Run report skipped: the usage limit holds the run")
+        // The organ has written the reviewer's skipped line.
+        return yield* out.logged === true
+          ? step.drop
+          : step.done("Run report skipped: the usage limit holds the run")
       }
       const message = reviewFailed`${organFailure(error)}`
       yield* logs.write(message)
-      return yield* step.warn(message)
+      return yield* (out.logged === true ? step.drop : step.warn(message))
     }
     yield* step.done("Run report written")
     const report = compose({
@@ -485,8 +496,8 @@ export const runReport = (
       const reason = saved.cause.reasons.find((r) => r._tag === "Fail")
       const why = reason === undefined ? "interrupted" : (reason.error.message.split("\n")[0] ?? "")
       yield* logs.write(reportNotSaved(why))
-      return yield* out.printer.warn(`Report not saved: ${why}`)
+      return yield* unlogged(out.printer.warn(`Report not saved: ${why}`))
     }
     yield* logs.write(reportWritten(name))
-    yield* out.printer.say(`Report saved to ${name}`)
+    yield* unlogged(out.printer.say(`Report saved to ${name}`))
   })

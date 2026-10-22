@@ -1560,7 +1560,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
  * What follows a run that left it to its caller (RunOptions.endLater), on the main screen once the
  * dashboard's renderer is gone (§ 5 item 14 "Then", § 7.1): when `styled`, the summary, the
  * closing and scope lines and the lines after them, in `out`'s theme, as a plain run's log has
- * already said them; then the report, and the end record. Ctrl+C interrupting it ends the run
+ * already said them; then the report, its outcome said by the log alone when not `styled`, and
+ * the end record. Ctrl+C interrupting it ends the run
  * INTERRUPTED. Gives the run's exit code. `out` is made only when something prints on it: a plain
  * run's report theme asks the terminal for its background (OSC 11).
  */
@@ -1571,7 +1572,8 @@ export const finish = (
 ): Effect.Effect<number, never, EventStream> =>
   Effect.gen(function* () {
     const events = yield* EventStream
-    let out = made
+    // A plain run's log prints on stdout as the report does: what it says isn't said again.
+    let out = styled ? made : Effect.map(made, (printed) => ({ ...printed, logged: true }))
     if (styled) {
       const printed = yield* made
       yield* printSummary(

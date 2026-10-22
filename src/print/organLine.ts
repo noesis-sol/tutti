@@ -65,6 +65,8 @@ export interface OrganLine {
   readonly done: (text: string) => Effect.Effect<void>
   /** Ends the step with a warning in its place. */
   readonly warn: (text: string) => Effect.Effect<void>
+  /** Ends the step with no final line, its outcome said elsewhere: in plain mode, by the log. */
+  readonly drop: Effect.Effect<void>
 }
 
 export interface Printer {
@@ -161,6 +163,7 @@ export const makePrinter = (out: Out, theme: Theme): Printer => {
             yield* print(`${sayLine(text)}${time}`)
           }),
         warn: (text) => Effect.andThen(end, print(warnLine(text))),
+        drop: end,
       }
     })
 

@@ -204,6 +204,9 @@ describe("when a run leaves its end to finish", () => {
     expect(printed).not.toContain("♪")
     expect(printed).not.toContain(" tutti ")
     expect(printed).toStartWith("◆ Run report written")
+    // The log's REPORT line, printed on stdout too, says where the report is saved.
+    expect(printed).not.toContain("Report saved")
+    expect(ran.log.some((l) => l.startsWith("REPORT: written to .tutti/reports/"))).toBe(true)
     expect(ran.log).toContain("READY_EMPTY after 1 tickets")
     expect(ran.events.at(-1)).toEqual(expect.objectContaining({ kind: "end", code: 0 }))
   })
