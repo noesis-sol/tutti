@@ -1,7 +1,8 @@
 // scripts/build.sh (§ 12 Builds, Cross-compiling). The fast tests run a copy of the script in a temp
 // folder with a fake bun first on PATH, which logs each call, installs empty platform packages as
 // `bun install --os --cpu` would, and writes a file for each `bun build`. The slow ones use real git,
-// and one compiles this machine's binary for real and runs it.
+// and compile this machine's binary for real, once, and run it: its --version, and the startup
+// checks that extract its embedded Claude Code.
 import { describe, expect, test } from "bun:test"
 import {
   chmodSync,
@@ -12,11 +13,14 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import pkg from "../package.json" with { type: "json" }
+import { knownFor, staleAfterMs } from "../src/agent/claudeExtract.ts"
 import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 
@@ -277,25 +281,42 @@ describe("scripts/build.sh", () => {
     })
   })
 
-  // The real thing: this machine's binary, compiled with its Claude Code embedded, runs.
+  // The real thing: this machine's binary, compiled with its Claude Code embedded, built once for
+  // the tests below that run it.
+  let hostBuild:
+    | { out: string; target: string; binary: string; stderr: string; exitCode: number }
+    | undefined
+  const copies = (dir: string) => readdirSync(dir).filter((name) => name.endsWith(".bun-build"))
+  let copiesBefore: Array<string> = []
+  const built = () => {
+    if (hostBuild !== undefined) return hostBuild
+    const out = realpathSync(mkdtempSync(join(tmpdir(), "tutti-build-host-")))
+    copiesBefore = copies(checkout)
+    const build = Bun.spawnSync(["sh", script, "--out", out, "host"], {
+      cwd: checkout,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [target = ""] = readdirSync(out)
+    hostBuild = {
+      out,
+      target,
+      binary: join(out, target, "tutti"),
+      stderr: build.stderr.toString(),
+      exitCode: build.exitCode,
+    }
+    return hostBuild
+  }
+
   slow.test(
     "builds this machine's binary, which runs tutti --version",
     () => {
-      const out = realpathSync(mkdtempSync(join(tmpdir(), "tutti-build-host-")))
-      const copies = (dir: string) => readdirSync(dir).filter((name) => name.endsWith(".bun-build"))
-      const before = copies(checkout)
-      const build = Bun.spawnSync(["sh", script, "--out", out, "host"], {
-        cwd: checkout,
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-      expect(build.stderr.toString()).not.toContain("error:")
-      expect(build.exitCode).toBe(0)
+      const { out, target, binary, stderr, exitCode } = built()
+      expect(stderr).not.toContain("error:")
+      expect(exitCode).toBe(0)
       // The compile's copy of Bun (oven-sh/bun#14020) is neither in the checkout nor beside the binary.
-      expect(copies(checkout)).toEqual(before)
-      const [target] = readdirSync(out)
-      expect(copies(join(out, target ?? ""))).toEqual([])
-      const binary = join(out, target ?? "", "tutti")
+      expect(copies(checkout)).toEqual(copiesBefore)
+      expect(copies(join(out, target))).toEqual([])
       expect(existsSync(binary)).toBe(true)
       const version = Bun.spawnSync([binary, "--version"], { cwd: out, stdout: "pipe" })
       expect(version.exitCode).toBe(0)
@@ -305,4 +326,121 @@ describe("scripts/build.sh", () => {
     },
     300_000,
   )
+
+  // The build's embedded Claude Code (src/agent/claudeBinary.ts's extract and tidy), reached by a
+  // run's startup checks, which resolve it before the login probe runs it: in a git repository
+  // without bd and with no login, the run stops on its setup problems once the probe has answered.
+  // CLAUDE_CODE_TMPDIR puts the extraction folder in a temp folder, and HOME and CLAUDE_CONFIG_DIR
+  // keep the machine's login out of it.
+  describe("a compiled build's embedded Claude Code", () => {
+    const uid = process.getuid?.() ?? 0
+    const tmp = realpathSync(mkdtempSync(join(tmpdir(), "tutti-build-claude-")))
+    const base = join(tmp, `claude-${uid}`)
+    const home = join(tmp, "home")
+    const repo = join(tmp, "repo")
+    mkdirSync(home)
+    mkdirSync(repo)
+
+    /** Starts the build in `repo`: its exit code and stderr. */
+    const start = () => {
+      const proc = Bun.spawnSync([built().binary], {
+        cwd: repo,
+        env: {
+          ...testEnv,
+          HOME: home,
+          CLAUDE_CONFIG_DIR: join(home, ".claude"),
+          CLAUDE_CODE_TMPDIR: tmp,
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+          ANTHROPIC_API_KEY: undefined,
+        },
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      return { exitCode: proc.exitCode, output: proc.stdout.toString() + proc.stderr.toString() }
+    }
+
+    /** The extracted copy: where the manifest's checksum for the build's target puts it. */
+    const copy = () => {
+      const known = knownFor(built().target)
+      if (known === null) throw new Error(`no ${built().target} in the SDK's manifest`)
+      const folder = join(base, `claude-agent-sdk-${known.checksum.slice(0, 16)}`)
+      const files = existsSync(folder) ? readdirSync(folder) : []
+      return { known, folder, files }
+    }
+
+    // The first start, which extracts the copy: once, for every test here.
+    let first: { exitCode: number; output: string } | undefined
+    const extracted = () => {
+      if (first !== undefined) return first
+      const git = Bun.spawnSync(["git", "init", "-q", repo])
+      if (git.exitCode !== 0) throw new Error(git.stderr.toString())
+      first = start()
+      return first
+    }
+
+    slow.test(
+      "the first start extracts it under CLAUDE_CODE_TMPDIR, and runs it",
+      () => {
+        const { exitCode, output } = extracted()
+        // The login probe ran the extracted copy, which found no login.
+        expect(output).toContain("Not logged in to Claude")
+        expect(exitCode).toBe(2)
+        const { known, folder, files } = copy()
+        expect(files).toHaveLength(1)
+        const file = statSync(join(folder, files[0] ?? ""))
+        expect(file.size).toBe(known.size)
+        expect(file.mode & 0o111).not.toBe(0)
+        expect(statSync(base).mode & 0o777).toBe(0o700)
+      },
+      300_000,
+    )
+
+    slow.test(
+      "a second start reuses the copy, without extracting it again",
+      () => {
+        extracted()
+        const { folder, files } = copy()
+        const path = join(folder, files[0] ?? "")
+        const before = statSync(path)
+        const again = start()
+        expect(again.output).toContain("Not logged in to Claude")
+        const after = statSync(path)
+        expect({ ino: after.ino, mtimeMs: after.mtimeMs, ctimeMs: after.ctimeMs }).toEqual({
+          ino: before.ino,
+          mtimeMs: before.mtimeMs,
+          ctimeMs: before.ctimeMs,
+        })
+        expect(readdirSync(folder)).toEqual(files)
+        expect(readdirSync(base).filter((name) => name.startsWith("claude-agent-sdk-"))).toEqual([
+          `claude-agent-sdk-${copy().known.checksum.slice(0, 16)}`,
+        ])
+      },
+      300_000,
+    )
+
+    slow.test(
+      "a start removes another version's stale copy, and keeps a fresh one and its own",
+      () => {
+        extracted()
+        const plant = (hash: string, ageMs: number) => {
+          const folder = join(base, `claude-agent-sdk-${hash}`)
+          mkdirSync(folder)
+          writeFileSync(join(folder, "claude-old."), "another version\n")
+          const at = new Date(Date.now() - ageMs)
+          utimesSync(folder, at, at)
+          return folder
+        }
+        const stale = plant("0123456789abcdef", staleAfterMs + 60 * 60 * 1000)
+        const fresh = plant("fedcba9876543210", 60 * 1000)
+        const again = start()
+        expect(again.output).toContain("Not logged in to Claude")
+        expect(existsSync(stale)).toBe(false)
+        expect(existsSync(fresh)).toBe(true)
+        const { folder, files } = copy()
+        expect(existsSync(join(folder, files[0] ?? ""))).toBe(true)
+      },
+      300_000,
+    )
+  })
 })

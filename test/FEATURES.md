@@ -259,14 +259,17 @@ below are the coverage report's uncovered lines at 368899e.
 
 - **Reached by**: `scripts/build.sh`, `scripts/install.sh`, the npm package (`bin/tutti`,
   `src/npm.ts`), the release workflow.
-- **Tests**: `build-script.test.ts` (slow), `install-script.test.ts`,
-  `install-script-cpu.test.ts`, `npm-package.test.ts` (slow), `npm-musl.test.ts` (slow),
-  `npm-license.test.ts`, `react-build.test.ts` (slow), `claude-binary.test.ts`,
-  `claude-extract.test.ts`, `release-*.test.ts`, `sign-checksums.test.ts`.
-- **Untested**: a compiled build starts: `build-script.test.ts` (slow) builds the host binary and
-  runs its `--version`, and `npm-package.test.ts` runs `tutti --version` through the launcher. No
-  test makes a compiled build use its embedded Claude Code: `src/agent/claudeBinary.ts`'s
-  `extract` and `tidy` of the embedded copy (203–223) run only there (tutti-8iz.19).
+- **Tests**: `build-script.test.ts` (slow: it builds the host binary once, runs its `--version`,
+  and starts it in a git repository with no login and CLAUDE_CODE_TMPDIR set, whose startup checks
+  extract the embedded Claude Code there, reuse the copy on a second start, and remove another
+  version's stale copy), `install-script.test.ts`, `install-script-cpu.test.ts`,
+  `npm-package.test.ts` (slow), `npm-musl.test.ts` (slow), `npm-license.test.ts`,
+  `react-build.test.ts` (slow), `claude-binary.test.ts`, `claude-extract.test.ts`,
+  `release-*.test.ts`, `sign-checksums.test.ts`.
+- **Untested**: which path a compiled build's second start reuses its copy by: `extract`'s own
+  lookup by the manifest's checksum (`src/agent/claudeBinary.ts`) or `extractFromBunfs`, which
+  also reuses a copy already there, only slower; from outside the two look the same.
+  `claude-extract.test.ts` covers the lookup in-process.
 
 ## The project's own scripts and docs
 
