@@ -26,7 +26,7 @@ import { runFolder } from "../services/Worktrees.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
-import { type MergeEnv, onBranch } from "./merge.ts"
+import { gitWhy, type MergeEnv, onBranch } from "./merge.ts"
 import { readAgainAfter, readTries } from "./schedule.ts"
 import { resumeGone } from "./sessions.ts"
 import type { StartedWorker } from "./start.ts"
@@ -321,18 +321,20 @@ export const read = (
     const question = openQuestion(issue)
     if (question !== undefined && issue.status !== "closed") return Reading.Asked({ question })
     const { status } = issue
+    // Whether its worker left nothing, once git has been asked.
+    let known: boolean | undefined
     if (status === "open" || status === "in_progress") {
       const state = yield* ledger.current
       const ask = closed === undefined ? undefined : asking(closed)
       const branches = yield* offBase(ask, state, issue.dependencies, ["blocks"])
       const blockers = unmergedBlockers(issue, state, branches)
-      if (blockers.length > 0 && (yield* nothingDone(path, base))) {
-        return Reading.WaitsForMerge({ blockers, status })
+      if (blockers.length > 0) {
+        known = yield* leftNothing(id, path, base)
+        if (known) return Reading.WaitsForMerge({ blockers, status })
       }
     }
     if (status === "closed") return yield* readClosed(worker, issue.title, base)
-    // Set aside, a worktree git can't read counts as one with work in it: it is kept for review.
-    const empty = yield* Effect.orElseSucceed(nothingDone(path, base), () => false)
+    const empty = known ?? (yield* leftNothing(id, path, base))
     switch (status) {
       case "deferred":
         return Reading.Deferred({ nothingDone: empty })
@@ -353,6 +355,26 @@ export const nothingDone = (path: string, base: string): Effect.Effect<boolean, 
       (yield* git.log(path, base)).length === 0 && changes(yield* git.status(path)).length === 0
     )
   })
+
+/**
+ * nothingDone for ticket `id`'s worktree, a worktree git can't read counting as one with work in it,
+ * with git's error logged: the ticket is set aside and its worktree kept for review, rather than its
+ * fiber failing and the run holding with GIT_FAILED.
+ */
+const leftNothing = (
+  id: string,
+  path: string,
+  base: string,
+): Effect.Effect<boolean, never, Git | Log> =>
+  Effect.catch(nothingDone(path, base), (error) =>
+    Effect.gen(function* () {
+      const logs = yield* Log
+      yield* logs.write(
+        detail`${id}: git can't tell whether its worker left anything in ${path}: ${gitWhy(error)}; read as work left in it`,
+      )
+      return false
+    }),
+  )
 
 /** Whether a settled worker in `state` is idle: its turn ended, cleanly or failed. */
 const idle = (state: WorkerState): state is Extract<WorkerState, { _tag: "Idle" | "Failed" }> =>
