@@ -18,6 +18,7 @@ import {
   stamp,
 } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
+import { compose } from "../src/run/report.ts"
 import { run } from "../src/run/run.ts"
 import { type RunView, stateStatus } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
@@ -90,6 +91,25 @@ describe("the report's span", () => {
       )
       expect(clockFrom(new Date(2026, 9, 18, 1, 40).getTime(), late)).toBe("2026-10-18 01:40")
       expect(clockFrom(new Date(2026, 9, 17, 23, 55).getTime(), late)).toBe("23:55")
+    }))
+
+  test("the report's title gives the end's date when the run crossed midnight", () =>
+    inBerlin(() => {
+      const report = (started: number, ended: number) =>
+        compose({
+          started,
+          ended,
+          base: "main",
+          scope: null,
+          body: "Done.",
+          cost: { calls: 0, costUsd: 0, turns: 0, unknown: 0 },
+        }).split("\n")[0]
+      expect(
+        report(new Date(2026, 9, 17, 23, 10).getTime(), new Date(2026, 9, 18, 1, 40).getTime()),
+      ).toBe("# tutti run · 2026-10-17 23:10–2026-10-18 01:40 · main")
+      expect(
+        report(new Date(2026, 9, 17, 9, 5).getTime(), new Date(2026, 9, 17, 10, 30).getTime()),
+      ).toBe("# tutti run · 2026-10-17 09:05–10:30 · main")
     }))
 
   test("the report's name, date and clock are local", () =>
@@ -201,7 +221,7 @@ const untilLogged = (pattern: RegExp) =>
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-time-${name}-`)))
 
 describe("a hold across midnight", () => {
-  test("its log lines, notification and notice say the reset's day", async () => {
+  test("its log lines, notification, notice and card say the reset's day", async () => {
     // The run starts at 23:30 local time; the five-hour limit resets an hour later, tomorrow.
     const start = new Date(2026, 9, 22, 23, 30).getTime()
     const reset = start + hour
@@ -261,6 +281,9 @@ describe("a hold across midnight", () => {
     )
     expect(held?.warnings).toContain(
       `usage limit (five-hour) · resets ${resets} · 1 worker waits for it`,
+    )
+    expect(held?.cards.find((card) => card.ticket === "t-1")?.status).toBe(
+      `usage limit · resets ${resets}`,
     )
   })
 })
