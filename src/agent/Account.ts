@@ -20,6 +20,7 @@ import { Cause, Context, Duration, Effect, Layer, Schema } from "effect"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
 import type { permissionModes } from "../project/settings.ts"
+import { queryThrew } from "./claudeBinary.ts"
 import { apiKeySet, apiKeyVariable, probeEnv } from "./env.ts"
 import { probeOptions } from "./options.ts"
 
@@ -359,70 +360,80 @@ const killGroup = (child: ChildProcess) =>
   })
 
 /**
- * The live probe: one Agent SDK session, closed once it has answered, its stderr read until its
- * process has exited, since the stderr and the answers arrive on different pipes.
+ * The probe over `open`, the SDK's query(): one session, closed once it has answered, its stderr
+ * read until its process has exited, since the stderr and the answers arrive on different pipes.
+ * A query() that throws as it is called, as the SDK's does when it finds no Claude Code, fails it.
  */
-export const startProbe: StartProbe = (options) =>
-  Effect.gen(function* () {
-    const stderr: Array<string> = []
-    const answers = yield* Effect.acquireUseRelease(
-      Effect.sync(() => {
-        const abortController = new AbortController()
-        const spawned: Spawned = { child: undefined, closed: undefined }
-        const session = query({
-          prompt: nothing(abortController.signal),
-          options: probeOptions({
-            config: options.config,
-            env: options.env,
-            stderr: (data) => stderr.push(data),
-            spawned: (child) => {
-              spawned.child = child
-              // "close" comes once the process has exited and its stdio has closed.
-              spawned.closed = new Promise((resolve) => child.once("close", () => resolve()))
-            },
-            abortController,
-          }),
-        })
-        return { session, abortController, spawned }
-      }),
-      ({ session }) =>
-        Effect.tryPromise({
-          try: async () => {
-            const init = await session.initializationResult()
-            // Not in the SDK's types: the session's settings, with the files it skipped.
-            const getSettings = (session as { getSettings?: () => Promise<unknown> }).getSettings
-            const settings = getSettings === undefined ? undefined : await getSettings.call(session)
-            return { init, settings }
+export const startProbeWith =
+  (open: typeof query): StartProbe =>
+  (options) =>
+    Effect.gen(function* () {
+      const stderr: Array<string> = []
+      const answers = yield* Effect.acquireUseRelease(
+        Effect.try({
+          try: () => {
+            const abortController = new AbortController()
+            const spawned: Spawned = { child: undefined, closed: undefined }
+            const session = open({
+              prompt: nothing(abortController.signal),
+              options: probeOptions({
+                config: options.config,
+                env: options.env,
+                stderr: (data) => stderr.push(data),
+                spawned: (child) => {
+                  spawned.child = child
+                  // "close" comes once the process has exited and its stdio has closed.
+                  spawned.closed = new Promise((resolve) => child.once("close", () => resolve()))
+                },
+                abortController,
+              }),
+            })
+            return { session, abortController, spawned }
           },
-          catch: (cause) =>
-            new AccountProbeFailed({
-              reason: cause instanceof Error ? cause.message : String(cause),
-            }),
-        }).pipe(
-          Effect.timeoutOrElse({
-            duration: probeTimeout,
-            orElse: () =>
-              Effect.fail(
-                new AccountProbeFailed({
-                  reason: `no answer within ${Duration.format(probeTimeout)}`,
-                }),
-              ),
-          }),
-        ),
-      ({ session, abortController, spawned }) =>
-        Effect.gen(function* () {
-          session.close()
-          const { child, closed } = spawned
-          if (child !== undefined && closed !== undefined) {
-            yield* Effect.promise(() => closed).pipe(
-              Effect.timeoutOrElse({ duration: probeCloseLimit, orElse: () => killGroup(child) }),
-            )
-          }
-          abortController.abort()
+          catch: (cause) => new AccountProbeFailed({ reason: queryThrew(cause) }),
         }),
-    )
-    return readInitialization(answers.init, answers.settings, stderr.join(""))
-  })
+        ({ session }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const init = await session.initializationResult()
+              // Not in the SDK's types: the session's settings, with the files it skipped.
+              const getSettings = (session as { getSettings?: () => Promise<unknown> }).getSettings
+              const settings =
+                getSettings === undefined ? undefined : await getSettings.call(session)
+              return { init, settings }
+            },
+            catch: (cause) =>
+              new AccountProbeFailed({
+                reason: cause instanceof Error ? cause.message : String(cause),
+              }),
+          }).pipe(
+            Effect.timeoutOrElse({
+              duration: probeTimeout,
+              orElse: () =>
+                Effect.fail(
+                  new AccountProbeFailed({
+                    reason: `no answer within ${Duration.format(probeTimeout)}`,
+                  }),
+                ),
+            }),
+          ),
+        ({ session, abortController, spawned }) =>
+          Effect.gen(function* () {
+            session.close()
+            const { child, closed } = spawned
+            if (child !== undefined && closed !== undefined) {
+              yield* Effect.promise(() => closed).pipe(
+                Effect.timeoutOrElse({ duration: probeCloseLimit, orElse: () => killGroup(child) }),
+              )
+            }
+            abortController.abort()
+          }),
+      )
+      return readInitialization(answers.init, answers.settings, stderr.join(""))
+    })
+
+/** The live probe, over the Agent SDK. */
+export const startProbe: StartProbe = startProbeWith(query)
 
 export class Account extends Context.Service<
   Account,

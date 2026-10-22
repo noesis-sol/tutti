@@ -12,7 +12,7 @@
 // orchestra's run state names workers it left behind, which tutti doesn't adopt (§ 11): a warning,
 // not a problem. A run that passes gets what the checks resolved, and its START block from them.
 import { isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path"
-import { type Cause, Effect, Exit, FileSystem, Layer, Option, Result, Schema } from "effect"
+import { Cause, Effect, Exit, FileSystem, Layer, Option, Result, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { Account, type AccountProbe, billingLine, permissionModeLine } from "../agent/Account.ts"
 import { type Claude, resolveClaude } from "../agent/claudeBinary.ts"
@@ -126,25 +126,48 @@ export const report = (failed: {
   return lines.join("\n")
 }
 
-/** The problems of the failures in `cause`, each once: a SetupProblem's each, else its message. */
-export const failures = <E extends { readonly message: string }>(cause: Cause.Cause<E>) => [
+/** What a defect in the startup check `check` says: its message, or its error's. */
+const internalError = (check: string, defect: unknown): string => {
+  const message = defect instanceof Error ? defect.message : String(defect)
+  return `Internal error in ${check}: ${sanitizeLine(message) || "no message"}. Please report it.`
+}
+
+/**
+ * The problems of the failures in `cause`, each once: a SetupProblem's each, else its message; a
+ * defect in `check` as an internal error. None for a cause that is only interruptions.
+ */
+export const failures = <E extends { readonly message: string }>(
+  cause: Cause.Cause<E>,
+  check: string,
+) => [
   ...new Set(
     cause.reasons.flatMap((reason) =>
-      reason._tag !== "Fail"
-        ? []
-        : reason.error instanceof SetupProblem
-          ? reason.error.problems
-          : [reason.error.message],
+      reason._tag === "Die"
+        ? [internalError(check, reason.defect)]
+        : reason._tag !== "Fail"
+          ? []
+          : reason.error instanceof SetupProblem
+            ? reason.error.problems
+            : [reason.error.message],
     ),
   ),
 ]
 
-/** The problems an effect failed with, or none; its value, if it succeeded. */
-const collect = <A, E extends { readonly message: string }, R>(effect: Effect.Effect<A, E, R>) =>
+/** The problems `check`, an effect, failed with, or none; its value, if it succeeded. */
+const collect = <A, E extends { readonly message: string }, R>(
+  check: string,
+  effect: Effect.Effect<A, E, R>,
+) =>
   Effect.map(Effect.exit(effect), (exit) =>
     Exit.isSuccess(exit)
       ? { value: Option.some(exit.value), problems: [] as ReadonlyArray<string> }
-      : { value: Option.none<A>(), problems: failures(exit.cause) },
+      : {
+          value: Option.none<A>(),
+          // A check that didn't pass always says something, though it was only interrupted.
+          problems: Cause.hasInterruptsOnly(exit.cause)
+            ? [internalError(check, "it was interrupted")]
+            : failures(exit.cause, check),
+        },
   )
 
 /** Whether `path` is `dir` or inside it. */
@@ -371,7 +394,7 @@ export const check = <R>(checking: Checking<R>) =>
       return yield* new StartupFailed({ notSetUp: false, problems: [found.failure], warnings: [] })
     }
     const { repo, linked } = found.success
-    const configured = yield* collect(checking.config(repo))
+    const configured = yield* collect("the configuration", checking.config(repo))
     const given = Option.getOrElse(configured.value, () => fallbackConfig(repo))
     // Sessions, the probe's first, run the Claude Code this resolves: in a compiled build, the
     // embedded one, extracted.
@@ -389,14 +412,15 @@ export const check = <R>(checking: Checking<R>) =>
         checkCleanTree(repo),
         checkBeads(repo, checking.beads(repo), notSetUp, config.ticket),
         collect(
+          "the login probe",
           Effect.flatMap(Account, (account) => account.probe).pipe(
             Effect.provide(Layer.provide(checking.account, Layer.succeed(AppConfig, config))),
           ),
         ),
-        collect(resolveServers(repo, config.settings.workers.mcp_servers)),
+        collect("the MCP servers", resolveServers(repo, config.settings.workers.mcp_servers)),
         notSetUp
           ? Effect.succeed({ value: Option.none<WorkerPrompt>(), problems: [] })
-          : collect(loadWorkerPrompt(config)),
+          : collect("the worker prompt", loadWorkerPrompt(config)),
         orchestraWorkers(repo),
       ],
       { concurrency: "unbounded" },

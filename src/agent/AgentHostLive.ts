@@ -79,6 +79,7 @@ import {
   type WorkerEntry,
 } from "./AgentHost.ts"
 import type { Attention } from "./Attention.ts"
+import { queryThrew } from "./claudeBinary.ts"
 import { coreShare, workerEnv } from "./env.ts"
 import { serverName } from "./interviewTools.ts"
 import { type ChosenServers, checkInit, inProcess, noServers } from "./mcp.ts"
@@ -152,6 +153,8 @@ export interface LiveOptions {
   readonly cores?: number
   /** How long an interrupt's control requests have to be answered; interruptLimit. */
   readonly interruptLimit?: Duration.Duration
+  /** The Agent SDK's query(), which a test stands in for. */
+  readonly query?: typeof query
 }
 
 // A session whose query tutti has made: its handle, from Claude Code's spawn until it has exited.
@@ -260,6 +263,12 @@ const causeMessage = (cause: Cause.Cause<unknown>): string => {
   return Cause.pretty(cause)
 }
 
+/** Why a worker is gone when its start failed: an AgentStartFailed's reason, or the cause's. */
+const startWhy = (cause: Cause.Cause<unknown>): string => {
+  const failed = cause.reasons.find((reason) => reason._tag === "Fail")?.error
+  return failed instanceof AgentStartFailed ? failed.reason : causeMessage(cause)
+}
+
 /** Why a worker is gone, and its start failed, when Claude Code couldn't be spawned (§ 4.8). */
 const launchFailed = "Claude Code couldn't be launched"
 
@@ -301,6 +310,7 @@ export const layer = (
       const services = yield* Effect.context<Attention | Transcripts>()
       const otherWorkers = yield* OtherWorkers
       const cores = options.cores ?? availableParallelism()
+      const openQuery = options.query ?? query
       // A session's environment, its share of the cores taken as it starts, from the other runs'
       // workers the run last read: one started as another run begins keeps more than its share.
       const envNow = Effect.map(otherWorkers.others, (others) =>
@@ -519,7 +529,7 @@ export const layer = (
           )
           if (Exit.isSuccess(exit)) return exit.value
           const cancelled = Cause.hasInterruptsOnly(exit.cause)
-          yield* closeIn(ticket, of, cancelled ? closedWhy : causeMessage(exit.cause))
+          yield* closeIn(ticket, of, cancelled ? closedWhy : startWhy(exit.cause))
           if (cancelled) return yield* new AgentStartFailed({ ticket, reason: closedWhy })
           return yield* Effect.failCause(exit.cause)
         })
@@ -585,27 +595,33 @@ export const layer = (
           // Claude Code, spawned, is closed with the session's scope, though the start is cancelled.
           const opened = yield* Effect.uninterruptible(
             Effect.gen(function* () {
+              // The SDK's query() throws as it is called when it finds no Claude Code to run.
+              const handle = yield* Effect.try({
+                try: () =>
+                  openQuery({
+                    prompt: Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
+                    options: {
+                      ...sdkOptions,
+                      ...(spawn === undefined
+                        ? {}
+                        : {
+                            spawnClaudeCodeProcess: (spawnOptions) => {
+                              const child = spawn(spawnOptions)
+                              spawned.child = child
+                              return child
+                            },
+                          }),
+                    },
+                  }),
+                catch: (cause) => new AgentStartFailed({ ticket, reason: queryThrew(cause) }),
+              })
               const opened: Live = {
                 ticket,
                 sessionId,
                 servers,
                 entry,
                 inbox,
-                query: query({
-                  prompt: Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
-                  options: {
-                    ...sdkOptions,
-                    ...(spawn === undefined
-                      ? {}
-                      : {
-                          spawnClaudeCodeProcess: (spawnOptions) => {
-                            const child = spawn(spawnOptions)
-                            spawned.child = child
-                            return child
-                          },
-                        }),
-                  },
-                }),
+                query: handle,
                 abort,
                 scope: of,
                 spawned,

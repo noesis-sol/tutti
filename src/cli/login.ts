@@ -158,7 +158,7 @@ export const login = <R, RA, RC>(
       ),
     )
     if (Exit.isFailure(probed)) {
-      const problems = failures(probed.cause)
+      const problems = failures(probed.cause, "the login probe")
       if (problems.length === 0) return yield* Effect.failCause(probed.cause)
       return yield* new LoginFailed({ problems })
     }

@@ -141,6 +141,25 @@ export interface Sources<R> {
 /** Whether a path names a file in Bun's $bunfs (`/$bunfs/…`, or `B:\~BUN\…` on Windows). */
 const inBunfs = (path: string): boolean => path.includes("$bunfs") || path.includes("~BUN")
 
+// Run from source, or from an install without its optional dependencies (`--omit=optional`, or a
+// musl/glibc mismatch), the SDK finds no platform package, and query() throws as it is called.
+/** The SDK's error when it finds no Claude Code of its own: the platform it looked for. */
+const noPlatformBinary = /^Native CLI binary for (\S+) not found/
+
+/**
+ * Why the SDK's query() threw as it was called, `cause` what it threw: for a missing platform
+ * package, what to do.
+ */
+export const queryThrew = (cause: unknown): string => {
+  const message = sanitizeLine(cause instanceof Error ? cause.message : String(cause))
+  const platform = noPlatformBinary.exec(message)?.[1]
+  return platform === undefined
+    ? message
+    : `there is no Claude Code for ${platform} among tutti's dependencies. Reinstall tutti ` +
+        "with its optional dependencies (not --omit=optional, and for this machine's libc), or " +
+        "run another Claude Code with --claude <path>."
+}
+
 /** The Claude Code sessions run: `given` (--claude), else the embedded one, else the SDK's. */
 export const resolveWith = <R>(
   given: string | null,
