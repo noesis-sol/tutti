@@ -2,15 +2,18 @@
 // skill up to date with tutti's templates (./templates.ts). In each, only the sections the templates
 // changed since the project's copy was written are rewritten from them, the rest of the file, the
 // project's own sections included, kept as it is; .tutti/settings.json then records the templates'
-// versions now. It prints the diff of each file it rewrote and leaves the commit to you. It holds
-// the run lock, as init does, so that no run starts in a tree it writes into.
+// versions now. Its files are written as one, as init's setup is (./staged.ts): staged, then put in
+// together, the settings last, so that a failed write leaves them as they were. It prints the diff
+// of each file it rewrote and leaves the commit to you. It holds the run lock, as init does, so
+// that no run starts in a tree it writes into.
 import { join } from "node:path"
 import { Clock, Effect, FileSystem } from "effect"
 import { settingsFile } from "../project/settings.ts"
-import { writeFileAtomic } from "../services/atomicFile.ts"
+import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { skillPath, skillText, verifierFor, verifierPath } from "./checks.ts"
 import { readSettingsJson, refused, workerPromptPath } from "./init.ts"
+import { commitStaged, staging } from "./staged.ts"
 import { joinAnd, type Step, step, stepLine } from "./steps.ts"
 import {
   currentPrompt,
@@ -45,14 +48,8 @@ const currentText = (repo: string, outdated: OutdatedTemplate) => {
   return Effect.succeed(currentPrompt(outdated.text))
 }
 
-/**
- * Brings the worker prompt, the verifier and the create-check-suite skill of the project at `repo`,
- * those it has, up to date with tutti's templates: in each, the sections the templates changed since
- * the project's copy was written are rewritten from them (`updated`), and the settings record the
- * templates' versions now. It writes nothing where nothing is out of date but the versions the
- * settings record. Refused in a project init hasn't set up, and with settings it can't read.
- */
-export const updateTemplates = (repo: string) =>
+/** `updateTemplates`'s writes, made through the FileSystem and AtomicWriter it is given. */
+const planUpdate = (repo: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     if (!(yield* fs.exists(join(repo, workerPromptPath)))) {
@@ -125,6 +122,27 @@ export const updateTemplates = (repo: string) =>
       )
     }
     return { steps, updates } satisfies TemplatesUpdated
+  })
+
+/**
+ * Brings the worker prompt, the verifier and the create-check-suite skill of the project at `repo`,
+ * those it has, up to date with tutti's templates: in each, the sections the templates changed since
+ * the project's copy was written are rewritten from them (`updated`), and the settings record the
+ * templates' versions now. It writes nothing where nothing is out of date but the versions the
+ * settings record. Refused in a project init hasn't set up, and with settings it can't read. Its
+ * files are written as one, the settings last; where one can't be, it fails with SetupNotWritten,
+ * having left them as they were.
+ */
+export const updateTemplates = (repo: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const staged = staging(fs)
+    const result = yield* planUpdate(repo).pipe(
+      Effect.provideService(FileSystem.FileSystem, staged.fs),
+      Effect.provideService(AtomicWriter, staged.write),
+    )
+    yield* commitStaged(fs, repo, staged.writes(), join(repo, settingsFile))
+    return result
   })
 
 /** What is left after `updated`: to read the diff, where it rewrote a file, and to commit. */
