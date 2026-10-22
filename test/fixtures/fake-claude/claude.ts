@@ -71,12 +71,15 @@ interface Scenario {
    * `cancel_async_message` sent at once lands before the next turn takes the queue. 0 by default.
    */
   readonly interruptLag?: number
+  /** "unanswered": the interrupt control request is never answered, nor the turn interrupted. */
+  readonly interrupt?: "unanswered"
   /**
    * How `cancel_async_message` is answered: by default it drops the message if it is still queued
    * (`cancelled: true`, then its command_lifecycle `cancelled`), else `cancelled: false`;
-   * "refuse" fails the request, and "notQueued" answers `cancelled: false` and leaves it queued.
+   * "refuse" fails the request, "notQueued" answers `cancelled: false` and leaves it queued, and
+   * "unanswered" never answers it.
    */
-  readonly cancelAsync?: "refuse" | "notQueued"
+  readonly cancelAsync?: "refuse" | "notQueued" | "unanswered"
   /** How long, in ms, the initialize's answer waits: a start still under way. */
   readonly initializeLag?: number
   /**
@@ -409,6 +412,7 @@ const control = async (id: string, request: Record<string, unknown>) => {
       return
     }
     case "interrupt": {
+      if (scenario.interrupt === "unanswered") return
       const uuids = queued.flatMap((m) => (m.uuid === undefined ? [] : [m.uuid]))
       if (request.cancel_queued === true) {
         const cancelled = queued
@@ -425,6 +429,7 @@ const control = async (id: string, request: Record<string, unknown>) => {
     }
     case "cancel_async_message": {
       if (scenario.cancelAsync === "refuse") return refuse("cancel_async_message refused")
+      if (scenario.cancelAsync === "unanswered") return
       const at = queued.findIndex((m) => m.uuid === request.message_uuid)
       if (at === -1 || scenario.cancelAsync === "notQueued") {
         await answer({ cancelled: false })

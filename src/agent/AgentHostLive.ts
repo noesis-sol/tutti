@@ -18,6 +18,10 @@
 // within closeLimit. A stream that ends or fails without tutti closing it, or a result with a
 // startup_failure_reason, makes the worker Gone.
 //
+// An interrupt's control requests, the interrupt and the cancel_async_message requests after it,
+// have interruptLimit to be answered together; past it the query is aborted and the session closed,
+// its worker Gone, so no caller hangs on a Claude Code that doesn't answer them (§ 4.8).
+//
 // Each ticket's session is one Lifecycle: Starting from the start (its query, the SDK's handle on
 // it, made once Claude Code is spawned) until its first system/init is checked, Open from then on,
 // and Closing from tutti closing it or its going until its Claude Code has exited. A start or
@@ -92,6 +96,17 @@ export const startLimit: Duration.Duration = Duration.minutes(1)
  */
 export const closeLimit: Duration.Duration = Duration.seconds(10)
 
+/**
+ * How long an interrupt's control requests, the interrupt and each `cancel_async_message`, have to
+ * be answered together: the SDK gives them no timer, so a Claude Code alive but not answering would
+ * hold the caller forever. Past it the session is aborted and its worker gone.
+ */
+export const interruptLimit: Duration.Duration = Duration.seconds(10)
+
+/** Why a worker is gone when its Claude Code didn't answer an interrupt within `limit`. */
+export const unansweredWhy = (limit: Duration.Duration): string =>
+  `it didn't answer an interrupt within ${Duration.format(limit)}`
+
 /** The capability system/init advertises when an interrupt can cancel the queued messages. */
 export const cancelQueuedCapability = "interrupt_cancel_queued_v1"
 
@@ -135,6 +150,8 @@ export interface LiveOptions {
    * OtherWorkers) as each session starts; availableParallelism().
    */
   readonly cores?: number
+  /** How long an interrupt's control requests have to be answered; interruptLimit. */
+  readonly interruptLimit?: Duration.Duration
 }
 
 // A session whose query tutti has made: its handle, from Claude Code's spawn until it has exited.
@@ -308,6 +325,7 @@ export const layer = (
       )
       const findings = yield* Ref.make<SetupFindings>(noFindings)
       const sessions = new Map<string, Lifecycle>()
+      const interruptWithin = options.interruptLimit ?? interruptLimit
 
       /**
        * Moves the ticket's session, if `of` is still its scope, to Closing: closed on purpose when
@@ -679,6 +697,58 @@ export const layer = (
           })
         })
 
+      /** Interrupts the session's turn and cancels the messages queued behind it: its receipt. */
+      const interruptIn = (session: Live) =>
+        Effect.gen(function* () {
+          const ticket = session.ticket
+          const cancelQueued = session.capabilities.has(cancelQueuedCapability)
+          const controls = queuedControls(session.query)
+          const response = yield* Effect.tryPromise({
+            try: () => controls.interrupt({ cancelQueued }),
+            catch: (cause) =>
+              liveOf(sessions.get(ticket)) === session
+                ? new AgentProtocol({ ticket, detail: `interrupt failed: ${messageOf(cause)}` })
+                : new AgentGone({ ticket, why: "its session ended during the interrupt" }),
+          })
+          const stillQueued = response?.still_queued ?? []
+          // Without cancelQueued, each message still queued is cancelled at once, before the
+          // interrupted turn's result starts the next turn; one that runs all the same, refused
+          // or already taken (cancelled: false), is accepted.
+          const withdrawn = cancelQueued
+            ? []
+            : yield* Effect.forEach(
+                stillQueued,
+                (uuid) =>
+                  Effect.tryPromise(() => controls.cancelAsyncMessage(uuid)).pipe(
+                    Effect.orElseSucceed(() => false),
+                    Effect.map((cancelled) => (cancelled === true ? [uuid] : [])),
+                  ),
+                { concurrency: "unbounded" },
+              ).pipe(Effect.map((each) => each.flat()))
+          const receipt: Receipt = {
+            stillQueued: stillQueued.filter((uuid) => !withdrawn.includes(uuid)),
+            cancelled: [...(response?.cancelled ?? []), ...withdrawn],
+          }
+          yield* workers.fold(
+            session.entry,
+            WorkerEvent.Cancelled({ session: session.sessionId, uuids: receipt.cancelled }),
+          )
+          return receipt
+        })
+
+      /**
+       * The end of an interrupt whose control requests weren't answered within its time limit: the
+       * session is aborted and closed, its worker gone.
+       */
+      const unanswered = (session: Live) =>
+        Effect.gen(function* () {
+          const why = unansweredWhy(interruptWithin)
+          yield* log.write(detail`${session.ticket}: ${why}`)
+          yield* gone(session, why)
+          session.abort.abort()
+          return yield* new AgentGone({ ticket: session.ticket, why })
+        })
+
       return AgentHost.of({
         start: (ticket, session) =>
           Effect.asVoid(begin(ticket, session, { _tag: "New", sessionId: session.sessionId })),
@@ -692,42 +762,14 @@ export const layer = (
             push(session, { text, from, ...(uuid === undefined ? {} : { uuid }) }),
           ),
         interrupt: (ticket) =>
-          Effect.gen(function* () {
-            const session = yield* sessionOf(ticket)
-            const cancelQueued = session.capabilities.has(cancelQueuedCapability)
-            const controls = queuedControls(session.query)
-            const response = yield* Effect.tryPromise({
-              try: () => controls.interrupt({ cancelQueued }),
-              catch: (cause) =>
-                liveOf(sessions.get(ticket)) === session
-                  ? new AgentProtocol({ ticket, detail: `interrupt failed: ${messageOf(cause)}` })
-                  : new AgentGone({ ticket, why: "its session ended during the interrupt" }),
-            })
-            const stillQueued = response?.still_queued ?? []
-            // Without cancelQueued, each message still queued is cancelled at once, before the
-            // interrupted turn's result starts the next turn; one that runs all the same, refused
-            // or already taken (cancelled: false), is accepted.
-            const withdrawn = cancelQueued
-              ? []
-              : yield* Effect.forEach(
-                  stillQueued,
-                  (uuid) =>
-                    Effect.tryPromise(() => controls.cancelAsyncMessage(uuid)).pipe(
-                      Effect.orElseSucceed(() => false),
-                      Effect.map((cancelled) => (cancelled === true ? [uuid] : [])),
-                    ),
-                  { concurrency: "unbounded" },
-                ).pipe(Effect.map((each) => each.flat()))
-            const receipt: Receipt = {
-              stillQueued: stillQueued.filter((uuid) => !withdrawn.includes(uuid)),
-              cancelled: [...(response?.cancelled ?? []), ...withdrawn],
-            }
-            yield* workers.fold(
-              session.entry,
-              WorkerEvent.Cancelled({ session: session.sessionId, uuids: receipt.cancelled }),
-            )
-            return receipt
-          }),
+          Effect.flatMap(sessionOf(ticket), (session) =>
+            interruptIn(session).pipe(
+              Effect.timeoutOrElse({
+                duration: interruptWithin,
+                orElse: () => unanswered(session),
+              }),
+            ),
+          ),
         close,
         end: (ticket) => Effect.andThen(close(ticket), workers.forget(ticket)),
         takeRequires: (names) => Ref.set(requires, names),
