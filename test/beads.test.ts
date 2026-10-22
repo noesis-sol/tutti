@@ -15,6 +15,7 @@ import {
   decodeDependencies,
   decodeIssue,
   decodeIssues,
+  decodeQuestions,
   type Issue,
   metadataList,
   saysNoSuchIssue,
@@ -147,7 +148,7 @@ describe("decoding bd --json", () => {
   })
 
   test("bd human list", () => {
-    const questions = decoded(decodeIssues("bd human list", fixture("human-list.json")))
+    const questions = decoded(decodeQuestions("bd human list", fixture("human-list.json")))
     expect(questions.map((issue) => [issue.id, issue.labels])).toEqual([["demo-n0n", ["human"]]])
   })
 

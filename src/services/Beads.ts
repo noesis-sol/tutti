@@ -278,14 +278,22 @@ const decodeBdIssueOrList = decodeWith(
   Schema.Union([BdIssue, Schema.NonEmptyArray(BdIssue)]),
   "an issue",
 )
+const decodeBdQuestions = decodeWith(Schema.NullOr(Schema.Array(BdIssue)), "a list of issues")
 const decodeBdLinked = decodeWith(Schema.Array(BdLinkedIssue), "a list of linked issues")
 
-/** Decodes the output of a bd command that lists issues: ready, list, human list. */
+/** Decodes the output of a bd command that lists issues: ready, list. */
 export const decodeIssues = (
   command: string,
   stdout: string,
 ): Effect.Effect<ReadonlyArray<Issue>, BeadsUnreadable> =>
   Effect.map(decodeBdIssues(command, stdout), (issues) => issues.map(fromBd))
+
+/** Decodes the output of bd human list, which is null, not [], when there are no questions. */
+export const decodeQuestions = (
+  command: string,
+  stdout: string,
+): Effect.Effect<ReadonlyArray<Issue>, BeadsUnreadable> =>
+  Effect.map(decodeBdQuestions(command, stdout), (issues) => (issues ?? []).map(fromBd))
 
 /** Decodes the output of a bd command that gives one issue: show, update, close, defer, create. */
 export const decodeIssue = (
@@ -661,7 +669,7 @@ export class Beads extends Context.Service<
                 ),
               ]),
             ),
-          questions: () => read(["human", "list", "--json"], decodeIssues),
+          questions: () => read(["human", "list", "--json"], decodeQuestions),
           metadata: (id) => Effect.map(show(id), (issue) => issue.metadata),
           setMetadata: (id, key, value) =>
             Effect.asVoid(update(id, { setMetadata: { [key]: value } })),
