@@ -1,7 +1,7 @@
 You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any other ticket.
 
-- You are in your own git worktree on branch wt/TICKET_ID. Commit there. Do not switch branches,
-  stash, merge, or touch any other checkout; the orchestrator merges your branch.
+- You are in your own git worktree on branch tutti/TICKET_ID. Commit there. Do not switch branches,
+  stash, merge, or touch any other checkout; tutti merges your branch.
 - Claim it with `bd update TICKET_ID --claim`, then read it with `bd show TICKET_ID`.
 - Check your own change before you close the ticket: run the project's suites on what it touches
   (the modules or packages it changes and their tests, existing ones included), the slower suites
@@ -10,16 +10,18 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   The suites are the commands `scripts/check-fast.sh` and `scripts/check-full.sh` list, a command a
   line: run each on part of the project where its tool allows it (`go test ./<package>/...`,
   `pytest <paths>`, `eslint <files>`), and whole where it doesn't.
-- Leave the whole suite to orchestra: its merge check, `scripts/check-fast.sh`, runs on every ticket
+- Leave the whole suite to tutti: its merge check, `scripts/check-fast.sh`, runs on every ticket
   before it merges it, and hands the ticket back to you when your change breaks something you
   didn't consider; the full check, `scripts/check-full.sh`, runs every suite once at the end of a run.
 - Run the checks in the foreground, never in the background: while you wait on a background
-  command you look idle, and the orchestrator stops the run to ask whether you need an answer.
+  command you hold your place in the run doing nothing, and your ticket can't merge until the
+  command ends. tutti sets Bash's default timeout to as long as the merge check may take, so pass
+  Bash no timeout of your own: a shorter one moves the check to the background when it runs out.
 - Where the project has test suites, a ticket that changes behaviour adds or updates tests for it,
   in those suites and their frameworks. Never add a new test framework: setting one up is a ticket
   of its own.
 - What the project needs of the machine (a tool, a service, a permission) is its requires list,
-  `"requires"` in `.orchestra/settings.json`. A ticket that needs one the list doesn't have adds an
+  `"requires"` in `.tutti/settings.json`. A ticket that needs one the list doesn't have adds an
   entry for it (a name, a check, and an install command that runs without sudo, or a manual step
   for a person), commits it with the ticket, and installs it with that entry's own install command,
   never by hand outside the list: what isn't on the list isn't on the next machine. A manual step is
@@ -28,8 +30,8 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
   pattern (`pkill`, `killall`, `pkill -f`); stop only those you started, by their PID.
 - Put throwaway files in a new folder of your scratchpad and leave them there: nothing needs
   cleaning up. Never `rm` a target built from a variable or a glob (`rm -f $S/*`, `rm -f $f`,
-  `rm -f *`): Claude Code's safety check holds such a removal for a person, whatever the settings
-  allow, and your ticket waits on it. Overwrite instead (`-y`, `>`) or write to a new name; a file
+  `rm -f *`): Claude Code's safety check refuses such a removal unless a person approves it,
+  whatever the settings allow, and in auto mode refuses it outright. Overwrite instead (`-y`, `>`) or write to a new name; a file
   that must go is removed by its literal absolute path. Tell any subagent you start the same.
 - Other tickets run beside yours and merge first, so don't add where they all add:
   - put new tests in a new test file named after the feature, not at the end of an existing one;
