@@ -24,6 +24,10 @@
 # Once the builds are done the host's packages are installed again, and the others removed, so the
 # checkout's own runs and tests keep working.
 #
+# --bytecode precompiles the JavaScript, which starts tutti --version in about 85 ms rather than
+# 218 ms (§ 12 Builds). It needs --format=esm: Bun builds CommonJS without it, where OpenTUI's
+# top-level await fails the build.
+#
 # bun build --compile leaves a copy of Bun (.<hash>-00000000.bun-build) in its working folder
 # (tutti-nrg.21; Bun's bug oven-sh/bun#14020, still open with Bun 1.4.3 on macOS), so it runs in a
 # temp folder, removed afterwards.
@@ -147,7 +151,7 @@ for target in $targets; do
   outfile=$out/$target/tutti
   set -- --define 'process.env.NODE_ENV:"production"'
   if [ "$commit" != none ]; then set -- "$@" --define "TUTTI_BUILD_COMMIT:\"$commit\""; fi
-  (cd "$work" && bun build --compile --target="bun-$target" "$@" \
+  (cd "$work" && bun build --compile --bytecode --format=esm --target="bun-$target" "$@" \
     --no-compile-autoload-dotenv --no-compile-autoload-bunfig \
     "$root/src/entries/$target.ts" --outfile "$outfile")
 

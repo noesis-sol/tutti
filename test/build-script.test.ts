@@ -142,6 +142,8 @@ describe("scripts/build.sh", () => {
     expect(result.stderr).toBe("")
     expect(result.exitCode).toBe(0)
     const flags = [
+      "--bytecode",
+      "--format=esm",
       "--define",
       'process.env.NODE_ENV:"production"',
       "--no-compile-autoload-dotenv",
