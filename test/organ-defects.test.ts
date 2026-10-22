@@ -256,7 +256,7 @@ describe("a defect in one ticket's prediction", () => {
           const issue = yield* Effect.orDie(beads.show(id))
           yield* Ref.update(issues, (all) => [...all, issue])
         }
-        yield* predictor.queue(yield* Ref.get(issues), repoFiles(tracked))
+        yield* predictor.queue(yield* Ref.get(issues), repoFiles(tracked), () => Effect.succeed([]))
         yield* flush
         return [yield* texts, yield* predictor.predicted] as const
       }),

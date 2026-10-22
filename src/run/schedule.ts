@@ -705,12 +705,6 @@ export const make = (
         const sources: Sources = new Map()
         const footprints = options.footprints
         const repo = footprints === undefined ? undefined : yield* footprints.repo
-        // The ready tickets naming nothing go to the predictor; its guesses so far join footprints.
-        const predictor = options.predictor
-        if (predictor !== undefined && repo !== undefined) yield* predictor.queue(queue, repo)
-        const predicted: ReadonlyMap<string, ReadonlyArray<string>> = predictor === undefined
-          ? new Map()
-          : yield* predictor.predicted
         const changes = new Map<string, ReadonlyArray<string>>()
         const changedIn = (id: string) =>
           Effect.gen(function* () {
@@ -732,6 +726,15 @@ export const make = (
             branches.set(id, files)
             return files
           })
+        // The ready tickets naming nothing, nor with commits on their branches, go to the predictor;
+        // its guesses so far join footprints.
+        const predictor = options.predictor
+        if (predictor !== undefined && repo !== undefined) {
+          yield* predictor.queue(queue, repo, branchIn)
+        }
+        const predicted: ReadonlyMap<string, ReadonlyArray<string>> = predictor === undefined
+          ? new Map()
+          : yield* predictor.predicted
 
         // Two running tickets' worktrees changing one file: the second to merge may conflict.
         const runningNow = (yield* Ref.get(slots)).running

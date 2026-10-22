@@ -27,10 +27,17 @@ import { causeWhy, detail, type Line, Log, line, Tag } from "./log.ts"
 
 export interface Predictor {
   /**
-   * Queues each ticket whose footprint names nothing, unless it is solo or was queued before in
-   * this run. Returns at once: the predictor works through its queue in the background.
+   * Queues each ticket whose footprint names nothing, unless it is solo or was weighed before in
+   * this run. `branch` gives the files a ticket's branch changes on top of the base (as
+   * `Footprints.branch`), read for a ticket naming nothing: one with some is footprinted from them,
+   * so it is never queued.
+   * Returns at once: the predictor works through its queue in the background.
    */
-  queue(issues: ReadonlyArray<Issue>, repo: RepoFiles): Effect.Effect<void>
+  queue(
+    issues: ReadonlyArray<Issue>,
+    repo: RepoFiles,
+    branch: (ticket: string) => Effect.Effect<ReadonlyArray<string>>,
+  ): Effect.Effect<void>
   /** The files predicted in this run, by ticket. */
   readonly predicted: Effect.Effect<ReadonlyMap<string, ReadonlyArray<string>>>
   /** Stops the predictor, the guess under way aborted: the run takes no more tickets. */
@@ -141,13 +148,16 @@ export const make = (options: {
     yield* FiberSet.run(fibers, Effect.forever(Effect.flatMap(Queue.take(queued), predict)))
 
     return {
-      queue: (issues, repo) =>
+      queue: (issues, repo, branch) =>
         Effect.gen(function* () {
           const all = yield* Ref.get(predicted)
           for (const issue of issues) {
             if (seen.has(issue.id) || isSolo(issue)) continue
             if (!isEmpty(footprintOf(issue, repo, all))) continue
+            // Its branch is read last, for a ticket whose text names nothing only, and once a run:
+            // its commits stay there until it merges.
             seen.add(issue.id)
+            if (!isEmpty(footprintOf(issue, repo, all, yield* branch(issue.id)))) continue
             yield* Queue.offer(queued, issue)
           }
         }),

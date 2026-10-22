@@ -353,7 +353,9 @@ describe("a predicted footprint", () => {
       Effect.gen(function* () {
         const { schedule, predictor, started } = yield* scheduler({ concurrent: 2 })
         // The ticket is predicted first, as when an earlier fill had no slot for it.
-        yield* predictor.queue([(yield* issue("t-2")) as Issue], repository)
+        yield* predictor.queue([(yield* issue("t-2")) as Issue], repository, () =>
+          Effect.succeed([]),
+        )
         yield* flush
         yield* schedule.fill
         return [yield* started, yield* phase("t-2"), yield* texts] as const
