@@ -201,11 +201,9 @@ below are the coverage report's uncovered lines at 368899e.
 ## The full check
 
 - **Reached by**: the end of a run (`checks.full.command`), its ticket filed when it fails.
-- **Tests**: `fullcheck.test.ts`, `fullcheck-end.test.ts`, `scenarios-merge.test.ts`.
-- **Untested** (`src/run/fullcheck.ts`): no worktree for it (not run, 261–268), its worktree that
-  can't be removed afterwards (331–339), its whole output that can't be kept (419–423), and bd
-  failing as it files the ticket: the open ones can't be listed, the note can't be added, the
-  ticket can't be created (511–544) (tutti-8iz.15).
+- **Tests**: `fullcheck.test.ts`, `fullcheck-end.test.ts`, `fullcheck-failures.test.ts`,
+  `scenarios-merge.test.ts`.
+- **Untested**: nothing found.
 
 ## Organs: triage, predictor, scout, reviewer, plan, screen
 
