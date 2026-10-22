@@ -47,7 +47,7 @@ import {
 } from "node:fs"
 import { availableParallelism, tmpdir } from "node:os"
 import { delimiter, join, resolve } from "node:path"
-import { paneVariable } from "../src/agent/env.ts"
+import { paneVariable, sessionVariable } from "../src/agent/env.ts"
 
 export interface TestCase {
   /** The test file, relative to the folder bun test ran in. */
@@ -245,7 +245,8 @@ const machinePrefixes: ReadonlyArray<string> = [
   "KITTY_",
   "GHOSTTY_",
   "WEZTERM_",
-  // Claude Code's in a session, and orchestra's for its workers
+  // Claude Code's in a session, beside the session's own (sessionVariable), and orchestra's for its
+  // workers
   "CLAUDE_CODE_",
   "ORCHESTRA_",
   // Beads'
@@ -268,10 +269,6 @@ const machineNames: ReadonlySet<string> = new Set([
   "SSH_CONNECTION",
   "SSH_CLIENT",
   "SSH_TTY",
-  "CLAUDECODE",
-  "CLAUDE_PID",
-  "CLAUDE_EFFORT",
-  "AI_AGENT",
   "BASH_DEFAULT_TIMEOUT_MS",
   "BASH_MAX_TIMEOUT_MS",
 ])
@@ -282,6 +279,7 @@ const machineNames: ReadonlySet<string> = new Set([
  */
 export const machineVariable = (name: string): boolean =>
   paneVariable(name) ||
+  sessionVariable(name) ||
   machineNames.has(name) ||
   machinePrefixes.some((prefix) => name.startsWith(prefix)) ||
   (name.startsWith("TUTTI_") && !keptTuttiVariable(name))

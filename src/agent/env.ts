@@ -2,7 +2,8 @@
 // replaces the subprocess's environment rather than merging with it, so workerEnv starts from the
 // whole of tutti's own, adds tutti's variables, and then keeps or removes ANTHROPIC_API_KEY: the
 // key outranks a subscription login and would bill the API without a word. It leaves out the
-// variables naming the terminal pane tutti runs in, which its sessions don't own.
+// variables naming the terminal pane tutti runs in, and those of a Claude Code session tutti was
+// started from, which its sessions don't own.
 import { Duration } from "effect"
 import pkg from "../../package.json" with { type: "json" }
 import type { billings } from "../cli/flags.ts"
@@ -18,6 +19,37 @@ export const apiKeyVariable = "ANTHROPIC_API_KEY"
  */
 export const paneVariable = (name: string): boolean =>
   name.startsWith("HERDR_") || name.startsWith("CMUX_") || name === "TMUX" || name === "TMUX_PANE"
+
+// What a Claude Code session puts in its Bash shells' environment, and so in that of a tutti started
+// from one (Claude Code 2.1.301): its session's ID, PID and effort, the child-session and attended
+// flags, its entrypoint, its trace context, its messaging socket and that socket's token, its
+// executable and invoked skills, and the Agent SDK's version where an SDK hosts it.
+const sessionNames: ReadonlySet<string> = new Set([
+  "CLAUDECODE",
+  "CLAUDE_CODE_ENTRYPOINT",
+  "CLAUDE_CODE_SESSION_ID",
+  "CLAUDE_CODE_CHILD_SESSION",
+  "CLAUDE_CODE_SESSION_ATTENDED",
+  "CLAUDE_CODE_MESSAGING_SOCKET",
+  "CLAUDE_CODE_MESSAGING_TOKEN",
+  "CLAUDE_CODE_EXECPATH",
+  "CLAUDE_CODE_INVOKED_SKILLS",
+  "CLAUDE_PID",
+  "CLAUDE_EFFORT",
+  "CLAUDE_AGENT_SDK_VERSION",
+  "AI_AGENT",
+  "TRACEPARENT",
+  "TRACESTATE",
+])
+
+/**
+ * Whether `name` is a variable of a Claude Code session tutti was started from (the run skill, an
+ * orchestra worker trying tutti, `!tutti`), not the user's configuration: CLAUDE_CONFIG_DIR and
+ * CLAUDE_CODE_TMPDIR, say, are kept. Claude Code reads them as its own: a session given them runs
+ * as entrypoint cli, an attended child session, and takes the parent's messaging socket and token
+ * for its own; the SDK sets the entrypoint to sdk-ts, and its version, only where they're unset.
+ */
+export const sessionVariable = (name: string): boolean => sessionNames.has(name)
 
 /**
  * What tutti adds to every worker's environment:
@@ -119,13 +151,13 @@ export interface WorkerEnvOptions {
 /**
  * A worker's (or an organ's) environment: `env` with tutti's variables laid over it, without
  * ANTHROPIC_API_KEY when there is a subscription login and billing isn't api, and given its share
- * of the cores, coreVariables (after the environment's GOFLAGS). Unset variables and the terminal
- * pane's (paneVariable) are left out.
+ * of the cores, coreVariables (after the environment's GOFLAGS). Unset variables, the terminal
+ * pane's (paneVariable) and a parent Claude Code session's (sessionVariable) are left out.
  */
 export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => {
   const result: Record<string, string> = {}
   for (const [name, value] of Object.entries(options.env ?? process.env)) {
-    if (value !== undefined && !paneVariable(name)) result[name] = value
+    if (value !== undefined && !paneVariable(name) && !sessionVariable(name)) result[name] = value
   }
   Object.assign(result, workerVariables(options.version, options.checkTimeout))
   if (options.cores !== undefined)
