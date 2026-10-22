@@ -1,6 +1,6 @@
 // Ctrl+C in tutti init's renderer once init takes its steps (orchestra-qa9p): a key in the
 // renderer's raw mode, not SIGINT, which stops init after the step under way, the spinner saying
-// it is stopping; before init takes its steps, Ctrl+C between questions does nothing.
+// it is stopping; before init takes its steps, Ctrl+C between questions cancels init (tutti-298).
 import { describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing"
 import { Deferred, Effect, Exit, Fiber, Scope } from "effect"
@@ -94,15 +94,39 @@ describe("Ctrl+C in init's renderer", () => {
     expect(Exit.isSuccess(exit) && exit.value).toBe("stopped")
   })
 
-  test("before init takes its steps, Ctrl+C between questions does nothing", async () => {
+  test("before init takes its steps, Ctrl+C between questions cancels init", async () => {
     const exit = await driven(
-      () => Effect.sleep("100 millis").pipe(Effect.as("went on")),
+      (form) =>
+        form.cancels === undefined
+          ? Effect.succeed("no cancels")
+          : form.cancels.pipe(Effect.as("went on")),
       async ({ until, press }) => {
         await until("Setting the project up…")
         await press((setup) => setup.mockInput.pressCtrlC())
         expect(await until("Setting the project up…")).not.toContain("Stopping")
       },
     )
-    expect(Exit.isSuccess(exit) && exit.value).toBe("went on")
+    expect(Exit.isFailure(exit) && String(exit.cause)).toContain("FormCancelled")
+  })
+
+  test("once init catches stops, Ctrl+C stops it and no longer cancels it", async () => {
+    const exit = await driven(
+      (form) =>
+        Effect.gen(function* () {
+          const stopped = yield* Deferred.make<void>()
+          if (form.catchStops === undefined || form.cancels === undefined) return "neither"
+          yield* form.catchStops(() => Deferred.doneUnsafe(stopped, Effect.void))
+          return yield* Effect.raceFirst(
+            Deferred.await(stopped).pipe(Effect.as("stopped")),
+            form.cancels,
+          )
+        }),
+      async ({ until, press }) => {
+        await until("Setting the project up…")
+        await press((setup) => setup.mockInput.pressCtrlC())
+        await until("Stopping after this step…")
+      },
+    )
+    expect(Exit.isSuccess(exit) && exit.value).toBe("stopped")
   })
 })

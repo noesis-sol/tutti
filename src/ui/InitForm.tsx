@@ -15,9 +15,10 @@
 // report split between two reads neither cancels it nor types into it.
 // Esc or Ctrl+C cancels the form, and init then changes nothing. While the scout looks for the
 // project's suites a spinner turns, with the time it has taken; Esc there skips it, and the choice
-// of checks starts on manual. Between questions, while init works, a spinner says so; once init
-// takes its steps, Ctrl+C there (a key in the renderer's raw mode, not SIGINT) stops init after the
-// step under way, and the spinner says it is stopping. The form is
+// of checks starts on manual. Between questions, while init works, a spinner says so; Ctrl+C there
+// (a key in the renderer's raw mode, not SIGINT) cancels init before it takes its steps, as it does
+// in a field, interrupting what it reads (bd, the lock), and once it takes them stops init after the
+// step under way, the spinner saying it is stopping. The form is
 // unmounted when the scope it was opened in closes; the summary is printed once the renderer is
 // gone (src/print/initSummary.ts). Its faint text is `formFaint`'s, as the summary's.
 import type { InputRenderable } from "@opentui/core"
@@ -116,6 +117,8 @@ export interface InitScreen {
   readonly asking: Asking | null
   /** What Ctrl+C does while init works between questions: stops it, once it takes its steps. */
   readonly stop?: () => void
+  /** What Ctrl+C does while init works between questions before it takes its steps: cancels it. */
+  readonly cancel?: () => void
 }
 
 export const emptyScreen: InitScreen = { steps: [], at: null, done: [], asking: null }
@@ -483,19 +486,28 @@ const DoneLine = ({ theme, done }: { readonly theme: Theme; readonly done: Done 
     </text>
   )
 
-/** init working between questions, its spinner at `now`: Ctrl+C calls `stop` where there is one. */
+/**
+ * init working between questions, its spinner at `now`: Ctrl+C calls `stop` where there is one, and
+ * `cancel` where there is none.
+ */
 const WorkingView = ({
   theme,
   now,
   stop,
+  cancel,
 }: {
   readonly theme: Theme
   readonly now: number
   readonly stop: (() => void) | undefined
+  readonly cancel: (() => void) | undefined
 }) => {
   const [stopping, setStopping] = useState(false)
   useKeyboard((key) => {
-    if (!key.ctrl || key.name !== "c" || stop === undefined) return
+    if (!key.ctrl || key.name !== "c") return
+    if (stop === undefined) {
+      cancel?.()
+      return
+    }
     stop()
     setStopping(true)
   })
@@ -527,7 +539,7 @@ export const InitView = ({
   const hint = hintOf(asking)
   let field: ReactNode
   if (asking === null) {
-    field = <WorkingView theme={theme} now={now} stop={screen.stop} />
+    field = <WorkingView theme={theme} now={now} stop={screen.stop} cancel={screen.cancel} />
   } else {
     switch (asking._tag) {
       case "Confirm":
@@ -735,7 +747,8 @@ export const screenFields = (screen: Settable<InitScreen>, clock: () => number):
 /**
  * init's form in `shell`'s renderer, for the repository `repo`, for the rest of the scope: shown
  * at once, init working until its first question, and unmounted when the scope closes. `clock`
- * turns the spinners and times the scout.
+ * turns the spinners and times the scout. Ctrl+C while init works fails `cancels` until init
+ * catches stops, and stops init from then on.
  */
 export const openInitForm = (
   shell: Shell,
@@ -745,7 +758,15 @@ export const openInitForm = (
 ): Effect.Effect<InitForm, never, Scope.Scope> =>
   Effect.acquireRelease(
     Effect.sync(() => {
-      const screen = external(emptyScreen)
+      const cancelled = Deferred.makeUnsafe<never, FormCancelled>()
+      // Set once init catches stops, for good: from then on Ctrl+C stops it, even in a key handler
+      // drawn before it did.
+      let caught = false
+      const cancel = () => {
+        if (caught) screen.get().stop?.()
+        else Deferred.doneUnsafe(cancelled, Effect.fail(new FormCancelled()))
+      }
+      const screen = external<InitScreen>({ ...emptyScreen, cancel })
       const root = createRoot(shell.renderer)
       root.render(
         <Themed appearance={shell.appearance} themeOf={themeOf}>
@@ -759,9 +780,14 @@ export const openInitForm = (
       )
       const form: InitForm = {
         ...initForm(screenFields(screen, clock)),
+        cancels: Deferred.await(cancelled),
         catchStops: (stop) =>
           Effect.acquireRelease(
-            Effect.sync(() => screen.set({ ...screen.get(), stop })),
+            Effect.sync(() => {
+              caught = true
+              const { cancel: _, ...rest } = screen.get()
+              screen.set({ ...rest, stop })
+            }),
             () =>
               Effect.sync(() => {
                 const { stop: _, ...rest } = screen.get()

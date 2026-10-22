@@ -177,6 +177,12 @@ export interface InitForm {
    * renderer's form, whose raw mode takes Ctrl+C as a key, not SIGINT.
    */
   readonly catchStops?: (stop: () => void) => Effect.Effect<void, never, Scope.Scope>
+  /**
+   * Fails with FormCancelled once Ctrl+C is pressed while init works between questions before it
+   * catches stops (reading the ticket prefix through bd, taking the lock): the renderer's form,
+   * whose raw mode takes Ctrl+C as a key. init is then interrupted, having changed nothing.
+   */
+  readonly cancels?: Effect.Effect<never, FormCancelled>
 }
 
 /** What init works on, and with. */
@@ -723,7 +729,14 @@ const probe = <R>(options: InitOptions<R>, config: AppConfigValue) =>
  * tutti init in the project at `options.repo`: its summary, or why it refused, having changed
  * nothing; FormCancelled when the form was cancelled, having changed nothing either.
  */
-export const init = <R>(options: InitOptions<R>) =>
+export const init = <R>(options: InitOptions<R>) => {
+  const work = initWork(options)
+  const cancels = options.form?.cancels
+  return cancels === undefined ? work : Effect.raceFirst(work, cancels)
+}
+
+/** init's work, which a cancel between questions interrupts (InitForm's `cancels`). */
+const initWork = <R>(options: InitOptions<R>) =>
   Effect.gen(function* () {
     const { repo, flags, form, machine } = options
     const lock = yield* RunLock
