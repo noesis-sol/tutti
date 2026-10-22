@@ -13,7 +13,7 @@
 // `Full check fails: <suite>`, unless one is open for that suite already, which is noted instead:
 // each failing suite has one ticket. A quit while it runs stops it (its process group is killed) and
 // says it was skipped. Each way it can go is a full_check record (§ 10).
-import { closeSync, openSync, readSync, writeSync } from "node:fs"
+import { readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Clock, Duration, Effect, Result, type Scope } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -196,20 +196,15 @@ const howFailed = (error: CheckError): string => {
   }
 }
 
-/** Copies the file at `from` to the descriptor `to`. */
-const copyTo = (from: string, to: number): void => {
-  const source = openSync(from, "r")
-  try {
-    const chunk = Buffer.alloc(64 * 1024)
-    for (;;) {
-      const read = readSync(source, chunk, 0, chunk.length, null)
-      if (read === 0) return
-      for (let written = 0; written < read; ) {
-        written += writeSync(to, chunk, written, read - written)
-      }
+/** Copies what the descriptor `from` reads to the descriptor `to`. */
+const copyTo = (from: number, to: number): void => {
+  const chunk = Buffer.alloc(64 * 1024)
+  for (;;) {
+    const read = readSync(from, chunk, 0, chunk.length, null)
+    if (read === 0) return
+    for (let written = 0; written < read; ) {
+      written += writeSync(to, chunk, written, read - written)
     }
-  } finally {
-    closeSync(source)
   }
 }
 
@@ -290,13 +285,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
           ),
         )
         if (Result.isFailure(ran)) {
-          return yield* failed(
-            options,
-            at,
-            yield* elapsed,
-            ran.failure,
-            join(path, runFolder, setupLogName),
-          )
+          return yield* failed(options, at, yield* elapsed, ran.failure, path, setupLogName)
         }
       }
       const ran = yield* Effect.scoped(
@@ -306,7 +295,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       )
       const ms = yield* elapsed
       if (Result.isFailure(ran)) {
-        return yield* failed(options, at, ms, ran.failure, join(path, runFolder, fullCheckLogName))
+        return yield* failed(options, at, ms, ran.failure, path, fullCheckLogName)
       }
       const text = ticketLine(
         `${Tag.fullCheck} passed`,
@@ -395,25 +384,34 @@ const flaky = (command: string, passed: CheckPassed) =>
   })
 
 /**
- * Keeps the whole output of the full check that failed, at `from` in its worktree, in the main
- * checkout's .tutti/run/check-full.log, and says where it is; the log, which has the output's end,
- * when it can't be kept there.
+ * Keeps the whole output of the full check that failed, `name` in its worktree's .tutti/run/, in
+ * the main checkout's .tutti/run/check-full.log, and says where it is; the log, which has the
+ * output's end, when it can't be kept there. Both are opened through the symlink guard, so a link
+ * or a named pipe the check left in place of its output is refused, not followed or waited on.
  */
-const keepOutput = (from: string) =>
+const keepOutput = (worktree: string, name: string) =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const worktrees = yield* Worktrees
+    const from = join(worktree, runFolder, name)
     const to = join(config.repo, runFolder, fullCheckLogName)
     const kept = yield* Effect.result(
       Effect.scoped(
-        Effect.flatMap(
-          worktrees.openRunFile(config.repo, fullCheckLogName, O.WRONLY | O.CREAT | O.TRUNC),
-          (fd) =>
-            Effect.try({
-              try: () => copyTo(from, fd),
-              catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-            }),
-        ),
+        Effect.gen(function* () {
+          const source = yield* Effect.mapError(
+            worktrees.openRunFile(worktree, name, O.RDONLY),
+            (error) => new Error(`${from} can't be read: ${error.message}`),
+          )
+          const target = yield* worktrees.openRunFile(
+            config.repo,
+            fullCheckLogName,
+            O.WRONLY | O.CREAT | O.TRUNC,
+          )
+          yield* Effect.try({
+            try: () => copyTo(source, target),
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          })
+        }),
       ),
     )
     if (Result.isSuccess(kept)) return to
@@ -428,13 +426,17 @@ const keepOutput = (from: string) =>
 const endLines = (end: ReadonlyArray<string>): ReadonlyArray<Line> =>
   end.length === 0 ? [] : [detail`the end of its output:`, ...end.map((each) => detail`  ${each}`)]
 
-/** Says the full check failed with `error`, its whole output at `from`, and files its ticket. */
+/**
+ * Says the full check failed with `error`, its whole output `name` in the worktree's .tutti/run/,
+ * and files its ticket.
+ */
 const failed = (
   options: FullCheckOptions,
   at: string,
   ms: number,
   error: CheckError,
-  from: string,
+  worktree: string,
+  name: string,
 ): Effect.Effect<FullChecked, never, Env> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -445,7 +447,7 @@ const failed = (
     const outcome: FullCheckOutcome = error._tag === "CheckTimedOut" ? "timed out" : "failed"
     const end = error._tag === "CheckNotRun" ? [] : error.lastLines.slice(-fullCheckEnd)
     const how = howFailed(error)
-    const output = yield* keepOutput(from)
+    const output = yield* keepOutput(worktree, name)
     if (error.check === "setup") {
       const filed = "no ticket filed: it is not a suite's failure"
       const text = ticketLine(
