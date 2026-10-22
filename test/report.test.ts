@@ -157,7 +157,7 @@ const report = async (setup: Setup = {}) => {
           requestId: "r1",
           what: "Bash(ffprobe in.mp4)",
           defaultToNo: false,
-          suppressAlwaysAllowRule: false,
+          answers: ["allow", "allow-run", "deny"],
         }),
         log.denied({ id: "t-1", what: "Bash(rm -rf $T/*)", by: "safetyCheck", reason: "held" }),
       )

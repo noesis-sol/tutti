@@ -542,7 +542,7 @@ describe("Attention: elicitations", () => {
     expect(seen.accepted).toEqual({ action: "accept", content: { name: "Ada" } })
     expect(seen.cancelled).toEqual({ action: "cancel" })
     expect(seen.log.slice(0, 2)).toEqual([
-      "  QUESTION: tut-1's worker asks: MCP server linear: Log in to Linear (open https://linear.app/login); answer in tutti, request r1",
+      "  QUESTION: tut-1's worker asks: MCP server linear: Log in to Linear (open https://linear.app/login); answer with: tutti answer r1 allow | deny",
       "  QUESTION: tut-1's worker: MCP server linear: Log in to Linear declined",
     ])
     expect(ofKind(seen.events, "attention")[0]).toMatchObject({
@@ -597,7 +597,7 @@ describe("Attention: the record", () => {
     expect(seen.log).toEqual([
       "  PERMISSION: tut-1's worker asks: Bash(rm -rf build) (held); answer with: tutti answer r1 allow --confirm | deny",
       "  PERMISSION: tut-1's worker: Bash(rm -rf build) denied (not yet), via tutti answer",
-      "  QUESTION: tut-1's worker asks: Which? (A | B); answer with: tutti answer r2 allow --choice <option>",
+      '  QUESTION: tut-1\'s worker asks: Which? (A | B); answer with: tutti answer r2 allow --choice "<option>" | deny',
       "  QUESTION: tut-1's worker: Which? answered (B)",
     ])
     const asked = ofKind(seen.events, "attention")

@@ -166,7 +166,7 @@ when an MCP server asks for input or a login. tutti shows each as an **attention
 
 ```
   PERMISSION: tut-9a1's worker asks: Bash: Remove the build cache; answer with: tutti answer 3f9a0c1e allow | allow-run | deny
-  QUESTION: tut-7k2's worker asks: Which flag name? (--json | --format); answer with: tutti answer 5d21b7aa allow --choice <option>
+  QUESTION: tut-7k2's worker asks: Which flag name? (--json | --format); answer with: tutti answer 5d21b7aa allow --choice "<option>" | deny
 ```
 
 A worker can have several requests open, its subagents' among them; its card shows the oldest, and

@@ -54,7 +54,7 @@ import { timestamp } from "../run/localTime.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
 import { sanitize } from "../ui/sanitize.ts"
-import { type Answer, Attention, type AttentionRequest, allowsForRun } from "./Attention.ts"
+import { type Answer, Attention, type AttentionRequest, answersOf } from "./Attention.ts"
 
 /** The folder of the open requests and their answers, relative to the main checkout (§ 9.1). */
 export const attentionFolder = ".tutti/run/attention"
@@ -190,19 +190,6 @@ export const parseRefusedFile = (text: string): string | undefined => {
   if (Result.isFailure(json)) return undefined
   const decoded = decodeRefusedFile(json.success)
   return decoded._tag === "Some" ? decoded.value.reason : undefined
-}
-
-/** The answers a request takes, as `tutti answer` spells them. */
-const answersOf = (request: AttentionRequest): ReadonlyArray<AnswerWord> => {
-  switch (request.kind._tag) {
-    case "Permission":
-      return allowsForRun(request) ? ["allow", "allow-run", "deny"] : ["allow", "deny"]
-    case "Question":
-      return ["allow", "deny"]
-    case "Elicitation":
-      // A form's fields can't be given here: only a URL login can be accepted (§ 7.6).
-      return request.kind.mode === "url" ? ["allow", "deny"] : ["deny"]
-  }
 }
 
 /** The request as its file holds it. */

@@ -42,6 +42,7 @@ import { EventStream } from "../run/eventstream.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+import type { AnswerWord } from "./attentionFiles.ts"
 
 /** The tool whose calls are questions rather than permission requests. */
 export const askUserQuestion = "AskUserQuestion"
@@ -223,6 +224,19 @@ export const runRules = (request: AttentionRequest): ReadonlyArray<PermissionUpd
 /** Whether the request offers Allow for this run: a permission with rules to keep, not suppressed. */
 export const allowsForRun = (request: AttentionRequest): boolean =>
   !request.suppressAlwaysAllowRule && runRules(request).length > 0
+
+/** The answers a request takes, as `tutti answer` spells them (its file's `answers`). */
+export const answersOf = (request: AttentionRequest): ReadonlyArray<AnswerWord> => {
+  switch (request.kind._tag) {
+    case "Permission":
+      return allowsForRun(request) ? ["allow", "allow-run", "deny"] : ["allow", "deny"]
+    case "Question":
+      return ["allow", "deny"]
+    case "Elicitation":
+      // A form's fields can't be given there: only a URL login can be accepted (§ 7.6).
+      return request.kind.mode === "url" ? ["allow", "deny"] : ["deny"]
+  }
+}
 
 /** Whether `answer` is one `request` can take. */
 export const fits = (request: AttentionRequest, answer: Answer): boolean => {
@@ -527,8 +541,8 @@ export const make = (
                   requestId: request.id,
                   what: describe(request),
                   ...(request.decisionReason === undefined ? {} : { why: request.decisionReason }),
+                  answers: answersOf(request),
                   defaultToNo: request.defaultToNo,
-                  suppressAlwaysAllowRule: !allowsForRun(request),
                 }),
               ],
               events.emit({ ...base, type: "permission", tool: kind.tool, summary: kind.summary }),
@@ -553,6 +567,8 @@ export const make = (
                 log.question({
                   id: request.ticket,
                   requestId: request.id,
+                  answers: answersOf(request),
+                  defaultToNo: request.defaultToNo,
                   questions: kind.questions.map((q) => ({
                     question: q.question,
                     options: q.options.map((o) => o.label),
@@ -570,6 +586,8 @@ export const make = (
                 log.elicitation({
                   id: request.ticket,
                   requestId: request.id,
+                  answers: answersOf(request),
+                  defaultToNo: request.defaultToNo,
                   server: kind.server,
                   message: kind.message,
                   ...(kind.url === undefined ? {} : { url: kind.url }),

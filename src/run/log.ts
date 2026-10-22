@@ -19,6 +19,8 @@ import {
   Result,
   Semaphore,
 } from "effect"
+import type { AnswerWord } from "../agent/attentionFiles.ts"
+import { answerWith } from "../answer/answerWith.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { stamp } from "./localTime.ts"
 
@@ -211,60 +213,62 @@ export const branchOn = (name: string, base: string, onTop: boolean): string =>
 /** A permission request as `<what>`: the request's title, else its tool and input. */
 const request = (id: string, what: string): Line => line`${id}'s worker asks: ${what}`
 
-/** PERMISSION: a worker's request, and how to answer it with `tutti answer` (§ 7.6). */
-export const permission = (p: {
-  readonly id: string
+/** What every request's line takes to say how to answer it: the answers it takes (§ 7.6). */
+interface Answering {
   readonly requestId: string
-  /** The tool call: `Bash(rm -rf build)`. */
-  readonly what: string
-  /** Why the worker is asked, when the SDK says: `held by the safety check`. */
-  readonly why?: string
+  /** The answers the request takes, as `tutti answer` spells them (its file's `answers`). */
+  readonly answers: ReadonlyArray<AnswerWord>
   /** Allowing needs `--confirm` (§ 4.5). */
   readonly defaultToNo: boolean
-  /** No allow-run: the SDK offers no rule to keep. */
-  readonly suppressAlwaysAllowRule: boolean
-}): Line => {
+}
+
+/** PERMISSION: a worker's request, and how to answer it with `tutti answer` (§ 7.6). */
+export const permission = (
+  p: Answering & {
+    readonly id: string
+    /** The tool call: `Bash(rm -rf build)`. */
+    readonly what: string
+    /** Why the worker is asked, when the SDK says: `held by the safety check`. */
+    readonly why?: string
+  },
+): Line => {
   const why = p.why === undefined ? "" : line` (${p.why})`
-  const answers = [
-    p.defaultToNo ? "allow --confirm" : "allow",
-    ...(p.suppressAlwaysAllowRule ? [] : [p.defaultToNo ? "allow-run --confirm" : "allow-run"]),
-    "deny",
-  ].join(" | ")
-  return ticketLine(
-    Tag.permission,
-  )`${request(p.id, p.what)}${why}; answer with: tutti answer ${p.requestId} ${answers}`
+  return ticketLine(Tag.permission)`${request(p.id, p.what)}${why}; answer with: ${answerWith(p)}`
 }
 
 /** QUESTION: a worker's AskUserQuestion, each question with its options, and how to answer it. */
-export const question = (q: {
-  readonly id: string
-  readonly requestId: string
-  readonly questions: ReadonlyArray<{
-    readonly question: string
-    readonly options: ReadonlyArray<string>
-  }>
-}): Line => {
+export const question = (
+  q: Answering & {
+    readonly id: string
+    readonly questions: ReadonlyArray<{
+      readonly question: string
+      readonly options: ReadonlyArray<string>
+    }>
+  },
+): Line => {
   const asked = q.questions
     .map((each) => line`${each.question} (${each.options.join(" | ")})`)
     .join("; ")
-  return ticketLine(
-    Tag.question,
-  )`${request(q.id, asked)}; answer with: tutti answer ${q.requestId} allow --choice <option>`
+  const answer = answerWith({ ...q, questions: q.questions.length })
+  return ticketLine(Tag.question)`${request(q.id, asked)}; answer with: ${answer}`
 }
 
 /** QUESTION: an MCP server's elicitation, asking for input or a URL login (§ 4.5). */
-export const elicitation = (e: {
-  readonly id: string
-  readonly requestId: string
-  readonly server: string
-  readonly message: string
-  /** The URL to open, for a URL login. */
-  readonly url?: string
-}): Line => {
+export const elicitation = (
+  e: Answering & {
+    readonly id: string
+    readonly server: string
+    readonly message: string
+    /** The URL to open, for a URL login. */
+    readonly url?: string
+  },
+): Line => {
   const url = e.url === undefined ? "" : line` (open ${e.url})`
+  // A form's fields are given on the dashboard only: tutti answer can decline it.
+  const form = e.answers.includes("allow") ? "" : " (a form, which only the dashboard fills in)"
   return ticketLine(
     Tag.question,
-  )`${request(e.id, line`MCP server ${e.server}: ${e.message}`)}${url}; answer in tutti, request ${e.requestId}`
+  )`${request(e.id, line`MCP server ${e.server}: ${e.message}`)}${url}${form}; answer with: ${answerWith(e)}`
 }
 
 /** How a request was answered, or that the SDK withdrew it. */

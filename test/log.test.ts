@@ -12,6 +12,7 @@ import {
   answered,
   denied,
   detail,
+  elicitation,
   fixing,
   hold,
   type Line,
@@ -220,8 +221,8 @@ describe("the tags' lines", () => {
         requestId: "a3f9",
         what: "Bash(rm -rf build)",
         why: "held by the safety check",
+        answers: ["allow", "deny"],
         defaultToNo: true,
-        suppressAlwaysAllowRule: true,
       }),
     ).toBe(
       "  PERMISSION: tut-9a1's worker asks: Bash(rm -rf build) (held by the safety check); answer with: tutti answer a3f9 allow --confirm | deny",
@@ -231,8 +232,8 @@ describe("the tags' lines", () => {
         id: "tut-2",
         requestId: "b001",
         what: "Read(foo.txt)",
+        answers: ["allow", "allow-run", "deny"],
         defaultToNo: false,
-        suppressAlwaysAllowRule: false,
       }),
     ).toBe(
       "  PERMISSION: tut-2's worker asks: Read(foo.txt); answer with: tutti answer b001 allow | allow-run | deny",
@@ -244,10 +245,12 @@ describe("the tags' lines", () => {
       question({
         id: "tut-4",
         requestId: "c2",
+        answers: ["allow", "deny"],
+        defaultToNo: false,
         questions: [{ question: "Which store?", options: ["SQLite", "Dolt"] }],
       }),
     ).toBe(
-      "  QUESTION: tut-4's worker asks: Which store? (SQLite | Dolt); answer with: tutti answer c2 allow --choice <option>",
+      '  QUESTION: tut-4\'s worker asks: Which store? (SQLite | Dolt); answer with: tutti answer c2 allow --choice "<option>" | deny',
     )
   })
 
@@ -364,10 +367,27 @@ describe("sanitising", () => {
           requestId: s,
           what: s,
           why: s,
+          answers: ["allow", "allow-run", "deny"],
           defaultToNo: false,
-          suppressAlwaysAllowRule: false,
         }),
-      (s) => question({ id: s, requestId: s, questions: [{ question: s, options: [s, s] }] }),
+      (s) =>
+        question({
+          id: s,
+          requestId: s,
+          answers: ["allow", "deny"],
+          defaultToNo: false,
+          questions: [{ question: s, options: [s, s] }],
+        }),
+      (s) =>
+        elicitation({
+          id: s,
+          requestId: s,
+          answers: ["allow", "deny"],
+          defaultToNo: false,
+          server: s,
+          message: s,
+          url: s,
+        }),
       (s) =>
         answered({
           id: s,

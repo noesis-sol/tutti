@@ -214,7 +214,7 @@ classifier can't decide or an `ask` rule matches), when the worker asks a questi
 
   ```
     PERMISSION: tut-9a1's worker asks: Bash(rm -rf build) (held by the safety check); answer with: tutti answer a3f9c2d1 allow --confirm | deny
-    QUESTION: tut-7k2's worker asks: Which store? (SQLite | Postgres); answer with: tutti answer 5be01c7a allow --choice <option>
+    QUESTION: tut-7k2's worker asks: Which store? (SQLite | Postgres); answer with: tutti answer 5be01c7a allow --choice "<option>" | deny
   ```
 
 - an `attention` record in the event stream, with `request`, `type` (`permission`, `question`,

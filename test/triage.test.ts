@@ -448,7 +448,7 @@ describe("triage in the background", () => {
         requestId: "r1",
         what: "Bash(xcodebuild)",
         defaultToNo: false,
-        suppressAlwaysAllowRule: false,
+        answers: ["allow", "allow-run", "deny"],
       }),
       log.answered({
         id,
@@ -462,7 +462,7 @@ describe("triage in the background", () => {
         requestId: "r2",
         what: "Bash(other)",
         defaultToNo: false,
-        suppressAlwaysAllowRule: false,
+        answers: ["allow", "allow-run", "deny"],
       }),
     )
   })

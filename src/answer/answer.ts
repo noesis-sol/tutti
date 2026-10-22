@@ -25,6 +25,7 @@ import {
   writeExclusive,
 } from "../agent/attentionFiles.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
+import { answerWith } from "./answerWith.ts"
 
 /** How long `tutti answer` waits for the run to take an answer (§ 4.5). */
 export const takeWithin: Duration.Duration = Duration.seconds(10)
@@ -173,18 +174,13 @@ export const answer = (
   })
 
 /** How to answer a request, as the log's PERMISSION and QUESTION lines say it (§ 7.6). */
-export const howToAnswer = (request: RequestFile): string => {
-  const id = request.id
-  const confirm = request.default_to_no ? " --confirm" : ""
-  if (request.kind === "question") {
-    const choices = (request.questions ?? []).map(() => ' --choice "<option>"').join("")
-    return `tutti answer ${id} allow${choices} | deny`
-  }
-  return request.answers
-    .map((word) => (word === "deny" ? "deny" : `${word}${confirm}`))
-    .map((each, i) => (i === 0 ? `tutti answer ${id} ${each}` : each))
-    .join(" | ")
-}
+export const howToAnswer = (request: RequestFile): string =>
+  answerWith({
+    requestId: request.id,
+    answers: request.answers,
+    defaultToNo: request.default_to_no,
+    ...(request.kind === "question" ? { questions: (request.questions ?? []).length } : {}),
+  })
 
 /** The open requests for people: each request's ticket, what it asks, and how to answer it. */
 export const show = (requests: ReadonlyArray<RequestFile>): string => {

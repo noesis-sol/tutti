@@ -115,12 +115,14 @@ describe("the tutti skill", () => {
       requestId: "a3f9c2d1",
       what: "Bash(rm -rf build)",
       why: "held by the safety check",
+      answers: ["allow", "deny"],
       defaultToNo: true,
-      suppressAlwaysAllowRule: true,
     })
     const question = log.question({
       id: "tut-7k2",
       requestId: "5be01c7a",
+      answers: ["allow", "deny"],
+      defaultToNo: false,
       questions: [{ question: "Which store?", options: ["SQLite", "Postgres"] }],
     })
     expect(skill).toContain(`\n  ${permission}\n`)
