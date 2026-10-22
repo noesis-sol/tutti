@@ -346,7 +346,7 @@ describe("the hold's reset", () => {
 
 describe("a worker's rejection", () => {
   const sdk = (message: object): WorkerEvent =>
-    WorkerEvent.Message({ message: message as unknown as SDKMessage })
+    WorkerEvent.Message({ session: "s", message: message as unknown as SDKMessage })
   const begins = [
     sdk({ type: "system", subtype: "session_state_changed", state: "running" }),
     sdk({ type: "system", subtype: "init", permissionMode: "auto", session_id: "s" }),
