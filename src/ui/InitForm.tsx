@@ -276,6 +276,7 @@ const TextView = ({
           flexGrow={1}
           onSubmit={submit}
           onInput={() => setError(null)}
+          {...(asking.field.initial === undefined ? {} : { value: asking.field.initial })}
           {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
           {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
           {...(form.placeholder.fg === undefined ? {} : { placeholderColor: form.placeholder.fg })}

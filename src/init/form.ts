@@ -59,6 +59,8 @@ export interface SelectField {
 export interface TextField {
   readonly title: string
   readonly description?: string
+  /** The line filled in at first, which Enter in the line forms keeps; none by default. */
+  readonly initial?: string
   readonly validate?: (answer: string) => string | null
 }
 
@@ -96,14 +98,35 @@ export interface Fields {
   ) => Effect.Effect<ScoutResult, FormCancelled>
 }
 
-/** The concurrency typed, or what is wrong with it; "" keeps `initial`. */
+/** The notes of the options for tickets at the same time, 1 to 4, as orchestra's init offers them. */
+export const concurrencyNotes = [
+  "one at a time (safest)",
+  "checks must cope with running side by side",
+  "that, and room for three workers and their checks",
+  "that, for four: a busy machine",
+] as const
+
+/** The index of the option Custom…, whose number is typed in an input: after 1 to 4. */
+export const customConcurrency = concurrencyNotes.length
+
+/** The options for tickets at the same time: 1 to 4, and Custom…, a number up to `max` typed in. */
+export const concurrencyOptions = (max: number): ReadonlyArray<string> => [
+  ...concurrencyNotes.map((note, at) => `${at + 1}  · ${note}`),
+  `Custom…  · type a number, up to ${max}`,
+]
+
+/** The option the choice starts on for the current setting: its own, or Custom… above 4. */
+export const concurrencyStart = (current: number): number =>
+  current > concurrencyNotes.length ? customConcurrency : Math.max(current, 1) - 1
+
+/** The concurrency typed, or what is wrong with it; "" keeps `initial`, or is wrong without one. */
 export const readConcurrency = (
   answer: string,
-  initial: number,
+  initial: number | null,
   max: number,
 ): { readonly ok: number } | { readonly error: string } => {
   const typed = answer.trim()
-  if (typed === "") return { ok: initial }
+  if (typed === "" && initial !== null) return { ok: initial }
   const n = /^\d+$/.test(typed) ? Number(typed) : Number.NaN
   return n >= 1 && n <= max ? { ok: n } : { error: `Enter a whole number from 1 to ${max}.` }
 }
@@ -125,15 +148,28 @@ export const initForm = (fields: Fields): InitForm => ({
       }
       if (questions.concurrent !== null) {
         const { initial, max } = questions.concurrent
-        const typed = yield* fields.text({
+        const option = yield* fields.select({
           title: "Tickets to run at the same time",
-          description: `1 to ${max}; each worker takes about 1 GiB of memory. Enter keeps ${initial}.`,
-          validate: (answer) => {
-            const read = readConcurrency(answer, initial, max)
-            return "error" in read ? read.error : null
-          },
+          description:
+            "Each gets its own worker, worktree and checks, and takes about 1 GiB of memory. A run can override it with --concurrent.",
+          options: concurrencyOptions(max),
+          initial: concurrencyStart(initial),
         })
-        const read = readConcurrency(typed, initial, max)
+        // Custom… asks the number, filled in with the current one where no option offers it.
+        const custom = initial > concurrencyNotes.length ? initial : null
+        const typed =
+          option === customConcurrency
+            ? yield* fields.text({
+                title: "Number of tickets at the same time",
+                description: `From 1 to ${max}. Above ${concurrencyNotes.length}: a big machine, and tickets that rarely touch the same files.`,
+                ...(custom === null ? {} : { initial: String(custom) }),
+                validate: (answer) => {
+                  const read = readConcurrency(answer, custom, max)
+                  return "error" in read ? read.error : null
+                },
+              })
+            : String(option + 1)
+        const read = readConcurrency(typed, custom, max)
         if ("ok" in read) {
           const note = concurrencyNote(read.ok)
           if (note !== null) yield* fields.note(`${read.ok} workers: ${note}`)

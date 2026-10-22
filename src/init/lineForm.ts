@@ -52,7 +52,15 @@ export const lineFields = (io: LineIO): Fields => {
     note: (line) => Effect.sync(() => io.write(`${form.description.paint(line)}\n\n`)),
     confirm: (field) => confirm(io, field),
     select: (field) => select(io, field),
-    text: (field) => text(io, field),
+    text: ({ initial, ...field }) =>
+      initial === undefined
+        ? text(io, field)
+        : text(io, {
+            ...field,
+            description: [field.description, `Enter keeps ${initial}.`].join(" ").trim(),
+            validate: (answer) =>
+              answer.trim() === "" ? null : (field.validate?.(answer) ?? null),
+          }).pipe(Effect.map((typed) => (typed === "" ? initial : typed))),
     checklist: (field) =>
       Effect.gen(function* () {
         const count = field.options.length

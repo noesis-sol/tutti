@@ -180,8 +180,9 @@ lines; `Ctrl+D` cancels.
 - **Install Beads?** Where `bd` isn't found: with Homebrew where `brew` is installed, else with the
   Beads install script. Where Beads isn't set up in the repository, `init` runs `bd init` (refusing
   while you have changes staged, which `bd init` would commit).
-- **Tickets to run at the same time**, 1 to 16. Each worker takes about 1 GiB of memory, which
-  `init` says for more than one.
+- **Tickets to run at the same time**: 1 (one at a time, the safest), 2, 3 or 4, or **Custom…**, a
+  number up to 16 typed in. It starts on the current setting, on Custom… above 4. Each worker takes
+  about 1 GiB of memory, which `init` says for more than one.
 - **MCP servers workers get**, from those defined for this project on your machine (see
   [MCP servers](workers.md#mcp-servers)).
 - **Merge CHANGELOG.md by union?** Where the project keeps a `CHANGELOG.md`: tickets that each add a

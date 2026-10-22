@@ -163,13 +163,19 @@ describe("init's form in the renderer", () => {
            ● Workers ──── ○ Checks
 
            ┃ Tickets to run at the same time
-           ┃ 1 to 16; each worker takes about 1 GiB of memory. Enter keeps 1.
-           ┃ >
+           ┃ Each gets its own worker, worktree and checks, and takes about 1 GiB of memory. A run
+           ┃ can override it with --concurrent.
+           ┃ > 1  · one at a time (safest)
+           ┃   2  · checks must cope with running side by side
+           ┃   3  · that, and room for three workers and their checks
+           ┃   4  · that, for four: a busy machine
+           ┃   Custom…  · type a number, up to 16
 
-           Enter confirm · Esc cancel"
+           ↑↓ choose · Enter confirm · Esc cancel"
         `)
-        await press(async (setup) => {
-          await setup.mockInput.typeText("3")
+        await press((setup) => {
+          setup.mockInput.pressArrow("down")
+          setup.mockInput.pressArrow("down")
           setup.mockInput.pressEnter()
         })
         await until("MCP servers workers get")
@@ -186,7 +192,8 @@ describe("init's form in the renderer", () => {
 
            ● Workers ──── ○ Checks
 
-             Tickets to run at the same time  3
+             Tickets to run at the same time  3  · that, and room for three workers and their
+             checks
              3 workers: about 3 GiB of memory, about 1 GiB per worker
              MCP servers workers get  github, linear
 
@@ -207,25 +214,49 @@ describe("init's form in the renderer", () => {
     })
   })
 
-  test("a number out of range is refused under the field until one in range is typed", async () => {
+  test("above 4, Custom… is chosen, its number filled in; one out of range is refused", async () => {
     const exit = await driven(
-      (form) => form.workers({ ...workers, mcp: null, changelogUnion: false }),
+      (form) =>
+        form.workers({
+          ...workers,
+          concurrent: { initial: 6, max: 16 },
+          mcp: null,
+          changelogUnion: false,
+        }),
       async ({ until, press }) => {
-        await until("Tickets to run at the same time")
+        expect(await until("Tickets to run at the same time")).toContain(
+          "> Custom…  · type a number, up to 16",
+        )
+        await press((setup) => setup.mockInput.pressEnter())
+        expect(await until("Number of tickets at the same time")).toMatchInlineSnapshot(`
+          "
+            tutti  init  /work/shop
+            Sets this project up for tutti, in .tutti/.
+
+           ● Workers ──── ○ Checks
+
+             Tickets to run at the same time  Custom…  · type a number, up to 16
+
+           ┃ Number of tickets at the same time
+           ┃ From 1 to 16. Above 4: a big machine, and tickets that rarely touch the same files.
+           ┃ > 6
+
+           Enter confirm · Esc cancel"
+        `)
         await press(async (setup) => {
-          await setup.mockInput.typeText("40")
+          await setup.mockInput.typeText("0")
           setup.mockInput.pressEnter()
         })
-        expect(await until("Enter a whole number from 1 to 16.")).toContain("> 40")
+        expect(await until("Enter a whole number from 1 to 16.")).toContain("> 60")
         await press(async (setup) => {
           setup.mockInput.pressBackspace()
           setup.mockInput.pressBackspace()
+          await setup.mockInput.typeText("12")
           setup.mockInput.pressEnter()
         })
       },
     )
-    // Enter on nothing keeps the number there.
-    expect(Exit.isSuccess(exit) ? exit.value : String(exit)).toEqual({ concurrent: 1 })
+    expect(Exit.isSuccess(exit) ? exit.value : String(exit)).toEqual({ concurrent: 12 })
   })
 
   test("the Checks step: the scout under its spinner, then the checklists", async () => {
@@ -454,8 +485,13 @@ describe("init's form in lines", () => {
       "Workers
 
       Tickets to run at the same time
-      1 to 16; each worker takes about 1 GiB of memory. Enter keeps 1.
-      > 
+      Each gets its own worker, worktree and checks, and takes about 1 GiB of memory. A run can override it with --concurrent.
+      1. 1  · one at a time (safest)
+      2. 2  · checks must cope with running side by side
+      3. 3  · that, and room for three workers and their checks
+      4. 4  · that, for four: a busy machine
+      5. Custom…  · type a number, up to 16
+      Enter a number between 1 and 5 > 
       3 workers: about 3 GiB of memory, about 1 GiB per worker
 
       MCP servers workers get
