@@ -173,11 +173,9 @@ below are the coverage report's uncovered lines at 368899e.
   `usage-limit*.test.ts`, `verifier-foreground.test.ts`, `verifier-rounds.test.ts`,
   `prompt*.test.ts`, `own-check.test.ts`, `worktree-setup.test.ts`, `worktrees.test.ts`,
   `worker-reaper.test.ts`, `process-tree.test.ts`, `account.test.ts`, `organ-billing.test.ts`,
+  `account-probe.test.ts` (the login probe against `test/fixtures/fake-claude`),
   `contract/*.test.ts` (live).
-- **Untested**: the live login probe without the real SDK, `startProbe` in
-  `src/agent/Account.ts` (365–423): its answer read from a Claude Code, no answer within
-  `probeTimeout`, and a Claude Code that won't exit once closed, whose process group is killed
-  after `probeCloseLimit` (336, 350–355). Only the live contract test runs it (tutti-8iz.12).
+- **Untested**: nothing found.
 
 ## Merging: the merge queue, the merge train, checks, hand-backs
 

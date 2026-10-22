@@ -351,13 +351,24 @@ interface Spawned {
 /** Kills `child`'s process group (it leads one), its descendants' first (killTree). */
 const killGroup = (child: ChildProcess) => Effect.sync(() => killTree(child.pid))
 
+/** The probe's time limits: the live probe's are probeTimeout and probeCloseLimit. */
+export interface ProbeLimits {
+  /** How long the session has to start and answer. */
+  readonly timeout: Duration.Duration
+  /** How long its Claude Code has to exit once closed, before its process group is killed. */
+  readonly closeLimit: Duration.Duration
+}
+
 /**
  * The probe over `open`, the SDK's query(): one session, closed once it has answered, its stderr
  * read until its process has exited, since the stderr and the answers arrive on different pipes.
  * A query() that throws as it is called, as the SDK's does when it finds no Claude Code, fails it.
  */
 export const startProbeWith =
-  (open: typeof query): StartProbe =>
+  (
+    open: typeof query,
+    limits: ProbeLimits = { timeout: probeTimeout, closeLimit: probeCloseLimit },
+  ): StartProbe =>
   (options) =>
     Effect.gen(function* () {
       const stderr: Array<string> = []
@@ -400,11 +411,11 @@ export const startProbeWith =
               }),
           }).pipe(
             Effect.timeoutOrElse({
-              duration: probeTimeout,
+              duration: limits.timeout,
               orElse: () =>
                 Effect.fail(
                   new AccountProbeFailed({
-                    reason: `no answer within ${Duration.format(probeTimeout)}`,
+                    reason: `no answer within ${Duration.format(limits.timeout)}`,
                   }),
                 ),
             }),
@@ -415,7 +426,10 @@ export const startProbeWith =
             const { child, closed } = spawned
             if (child !== undefined && closed !== undefined) {
               yield* Effect.promise(() => closed).pipe(
-                Effect.timeoutOrElse({ duration: probeCloseLimit, orElse: () => killGroup(child) }),
+                Effect.timeoutOrElse({
+                  duration: limits.closeLimit,
+                  orElse: () => killGroup(child),
+                }),
               )
             }
             abortController.abort()

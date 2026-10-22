@@ -14,6 +14,7 @@
 //
 // What it does is the scenario in FAKE_CLAUDE_SCENARIO, as JSON. It appends its arguments and every
 // line it reads to the scenario's log, one JSON line each, for the test to read back.
+import { spawn } from "node:child_process"
 import { appendFileSync } from "node:fs"
 import { createInterface } from "node:readline"
 
@@ -58,6 +59,15 @@ interface Scenario {
   readonly startupFailure?: string
   /** The process exits with this code at once, before reading anything. */
   readonly exitAtStart?: number
+  /** Written to stderr at once, before reading anything. */
+  readonly stderrAtStart?: string
+  /** The get_settings control request's answer, in place of `{}`. */
+  readonly settings?: Record<string, unknown>
+  /**
+   * Starts a process of its own that runs until killed, in the fake's process group, and logs
+   * `{ descendant: <pid> }`.
+   */
+  readonly descendant?: boolean
   /** Each turn's steps, in order; a turn past them answers `ECHO: <its messages>`. */
   readonly turns?: ReadonlyArray<ReadonlyArray<Step>>
   /** The file the arguments and every line read are appended to. */
@@ -131,6 +141,14 @@ log({
   env: Object.fromEntries((scenario.env ?? []).map((name) => [name, process.env[name] ?? null])),
 })
 if (scenario.exitAtStart !== undefined) await exit(scenario.exitAtStart)
+if (scenario.stderrAtStart !== undefined) process.stderr.write(scenario.stderrAtStart)
+if (scenario.descendant === true) {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], {
+    stdio: "ignore",
+  })
+  child.unref()
+  log({ descendant: child.pid })
+}
 
 /** The hook callback IDs the SDK registered, by event. */
 let hookIds: Record<string, ReadonlyArray<string>> = {}
@@ -438,6 +456,10 @@ const control = async (id: string, request: Record<string, unknown>) => {
       const [dropped] = queued.splice(at, 1)
       await answer({ cancelled: true })
       await lifecycle(dropped === undefined ? [] : [dropped], "cancelled")
+      return
+    }
+    case "get_settings": {
+      await answer(scenario.settings ?? {})
       return
     }
     default:
