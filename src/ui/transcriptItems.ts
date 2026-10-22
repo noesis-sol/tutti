@@ -367,7 +367,7 @@ const replacements = (
  * replacement is a hunk of its own, numbered from the replacement's own first line, since the input
  * doesn't say where in the file it is.
  */
-export const editOf = (
+const changeOf = (
   name: string,
   input: Readonly<Record<string, unknown>>,
 ): EditChange | undefined => {
@@ -393,6 +393,27 @@ export const editOf = (
   const diff =
     hunks.length === 0 ? "" : [`--- a/${path}`, `+++ b/${path}`, ...hunks].join("\n").concat("\n")
   return { path, added, removed, diff }
+}
+
+/**
+ * The changes made from each tool call's input, by its tool's name: an input never changes once its
+ * message is in, and the view draws a call's mark each time it draws the call (tutti-k2n1).
+ */
+const changes = new WeakMap<
+  Readonly<Record<string, unknown>>,
+  { readonly name: string; readonly change: EditChange | undefined }
+>()
+
+/** `changeOf` the call's input, worked out once for each input. */
+export const editOf = (
+  name: string,
+  input: Readonly<Record<string, unknown>>,
+): EditChange | undefined => {
+  const known = changes.get(input)
+  if (known?.name === name) return known.change
+  const change = changeOf(name, input)
+  changes.set(input, { name, change })
+  return change
 }
 
 /** What a collapsed tool call shows of its result, at the end of its line. */

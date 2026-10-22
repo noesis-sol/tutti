@@ -38,14 +38,7 @@ import {
   useTranscriptKeys,
   useTranscriptWindow,
 } from "./transcriptView.ts"
-import {
-  type External,
-  useCommand,
-  useNow,
-  useRunView,
-  useSpinner,
-  useTheme,
-} from "./useRunView.ts"
+import { type External, useCommand, useRunView, useTheme } from "./useRunView.ts"
 import {
   LooksContext,
   RequestPanel,
@@ -141,11 +134,9 @@ export const InterviewView = () => {
   const view = useRunView()
   const theme = useTheme()
   const looks = useSyntaxStyles(theme)
-  const now = useNow()
   const command = useCommand()
   const { width, height } = useTerminalDimensions()
   const card = view.cards.find((each) => each.ticket === interviewWorker)
-  const spin = useSpinner(card?.motion === "spinner")
 
   // The transcript, open while the view is; the panel: the session's oldest open requests.
   const transcript = useTranscriptWindow(
@@ -201,7 +192,7 @@ export const InterviewView = () => {
   const inner = Math.max(width, 1)
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
   const { styles } = theme
-  const head: Segments =
+  const head = (now: number, spin: string): Segments =>
     card === undefined
       ? [seg("Interview", styles.picked)]
       : [
@@ -220,7 +211,13 @@ export const InterviewView = () => {
   return (
     <LooksContext.Provider value={looks}>
       <box flexDirection="column" width={width} height={height}>
-        <ViewHead link={backLink} leave={leave} head={head} width={inner} />
+        <ViewHead
+          link={backLink}
+          leave={leave}
+          head={head}
+          spinning={card?.motion === "spinner"}
+          width={inner}
+        />
         <Line segments={rule} />
         <TranscriptPane transcript={transcript} selection={selection} width={inner} />
         <RequestPanel

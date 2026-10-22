@@ -6,7 +6,7 @@
 // leave question.
 import type { MouseEvent, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import type { Card } from "../run/runView.ts"
 import { answerBindings } from "./AttentionCard.tsx"
@@ -78,12 +78,15 @@ export const useTranscriptWindow = (
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const shown = bounded(entries, expanded, window.following)
   const flat = mounted(shown, expanded)
-  const toggle = (key: string) =>
-    setExpanded((open) => {
-      const next = new Set(open)
-      if (!next.delete(key)) next.add(key)
-      return next
-    })
+  const toggle = useCallback(
+    (key: string) =>
+      setExpanded((open) => {
+        const next = new Set(open)
+        if (!next.delete(key)) next.add(key)
+        return next
+      }),
+    [],
+  )
 
   const scroll = useRef<ScrollBoxRenderable>(null)
   const anchor = useRef<string | null>(null)
@@ -228,6 +231,18 @@ export const useSelection = (
     panel.answering.reset()
     choose(selectables[next] ?? null)
   }
+  // A click, the same function from one drawing to the next, so that the entries' memo holds
+  // (tutti-k2n1): it chooses as this drawing's selectables say.
+  const chooseNow = useRef(choose)
+  chooseNow.current = choose
+  const { toggle } = transcript
+  const click = useCallback(
+    (key: string) => {
+      chooseNow.current(key)
+      toggle(key)
+    },
+    [toggle],
+  )
   return {
     selected: current(),
     current,
@@ -242,10 +257,7 @@ export const useSelection = (
       move(step)
     },
     /** Selects the entry and expands or collapses it, as a click does. */
-    click: (key: string) => {
-      choose(key)
-      transcript.toggle(key)
-    },
+    click,
     /** Presses the selected request's focused button, or expands or collapses the selected entry. */
     enter: () => {
       const key = current()

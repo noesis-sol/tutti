@@ -695,23 +695,29 @@ export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
 ]
 
 /**
- * The head of a transcript's view: `link`, which a click follows as `leave`, then `head`, wrapped
- * rather than cut (tutti-rfs). Its lines after the first are under the link, not in the
- * transcript's scrollbox, so their height doesn't touch #1514.
+ * The head of a transcript's view: `link`, which a click follows as `leave`, then `head` at the
+ * shell's clock and the spinner's frame, wrapped rather than cut (tutti-rfs). Its lines after the
+ * first are under the link, not in the transcript's scrollbox, so their height doesn't touch #1514.
+ * The clock and the spinner tick here, in a leaf, so that the view over it isn't drawn anew ten
+ * times a second while `spinning` (tutti-k2n1).
  */
 export const ViewHead = ({
   link,
   leave,
   head,
+  spinning,
   width,
 }: {
   readonly link: string
   readonly leave: () => void
-  readonly head: Segments
+  readonly head: (now: number, spin: string) => Segments
+  readonly spinning: boolean
   readonly width: number
 }) => {
   const theme = useTheme()
-  const lines = wrap([seg("   "), ...head], width, {
+  const now = useNow()
+  const spin = useSpinner(spinning)
+  const lines = wrap([seg("   "), ...head(now, spin)], width, {
     indent: 4,
     long: "line",
     start: Bun.stringWidth(link),
@@ -775,6 +781,33 @@ export const TranscriptPane = ({
   )
 }
 
+/**
+ * A request's box in the panel, its parts worked out again only when what they show changes: its
+ * input is put as JSON and sanitized (tutti-k2n1).
+ */
+const PanelRequest = ({
+  request,
+  width,
+  selected,
+  focus,
+  room,
+  press,
+}: {
+  readonly request: AttentionRequest
+  readonly width: number
+  readonly selected: boolean
+  readonly focus: number | null
+  readonly room: number
+  readonly press: (index: number) => void
+}) => {
+  const theme = useTheme()
+  const parts = useMemo(
+    () => panelParts(request, theme, { width, selected, focus }),
+    [request, theme, width, selected, focus],
+  )
+  return <PanelBox parts={parts} room={room} press={press} />
+}
+
 /** The panel's requests, each in its box, `width` wide in a pane `height` tall, and how many more. */
 export const RequestPanel = ({
   panel,
@@ -795,13 +828,12 @@ export const RequestPanel = ({
       {panel.requests.map((request, i) => {
         const at = panel.cards[i]
         return at === undefined ? null : (
-          <PanelBox
+          <PanelRequest
             key={request.id}
-            parts={panelParts(request, theme, {
-              width,
-              selected: selection.selected === requestKey(request),
-              focus: answering.focusOf(at),
-            })}
+            request={request}
+            width={width}
+            selected={selection.selected === requestKey(request)}
+            focus={answering.focusOf(at)}
             room={inputRoom}
             press={(index) => answering.press(at, index)}
           />
@@ -834,7 +866,6 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const view = useRunView()
   const theme = useTheme()
   const looks = useSyntaxStyles(theme)
-  const now = useNow()
   const command = useCommand()
   const handBacks = useHandBacks()
   const { width, height } = useTerminalDimensions()
@@ -844,8 +875,6 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   if (found !== undefined) last.current = found
   const card = found ?? last.current
   const ticket = card?.ticket
-  const spin = useSpinner(card?.motion === "spinner")
-
   // While its ticket waits to merge or merges, the run holds your messages (held.ts).
   const holding = found !== undefined && holdsMessages(found.phase)
   const transcript = useTranscriptWindow(
@@ -928,7 +957,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
 
   const inner = Math.max(width, 1)
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
-  const head: Segments =
+  const head = (now: number, spin: string): Segments =>
     card === undefined
       ? [seg(`${sanitizeLine(viewed)} has no worker`, theme.styles.dim)]
       : [
@@ -941,7 +970,13 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   return (
     <LooksContext.Provider value={looks}>
       <box flexDirection="column" width={width} height={height}>
-        <ViewHead link=" ← Dashboard" leave={close} head={head} width={inner} />
+        <ViewHead
+          link=" ← Dashboard"
+          leave={close}
+          head={head}
+          spinning={card?.motion === "spinner"}
+          width={inner}
+        />
         <Line segments={rule} />
         <TranscriptPane transcript={transcript} selection={selection} width={inner} />
         {handBack ? (
