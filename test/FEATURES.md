@@ -205,10 +205,10 @@ below are the coverage report's uncovered lines at 368899e.
 - **Reached by**: `--triage`, `--review`, `--organ-model`, `--organ-effort`,
   `TUTTI_ORGAN_PROVIDER=anthropic`; the scout in `tutti init`.
 - **Tests**: `organs.test.ts`, `triage.test.ts`, `predict.test.ts`, `scout.test.ts`,
-  `agent-sdk-language-model.test.ts`, `anthropic-provider.test.ts`, `organ-cost-*.test.ts`,
-  `organ-usage-limit.test.ts`, `organ-billing.test.ts`.
-- **Untested**: the Messages API provider's language model as the organs call it
-  (`src/organs/AnthropicProvider.ts` 144–165) (tutti-8iz.16).
+  `agent-sdk-language-model.test.ts`, `anthropic-provider.test.ts`,
+  `anthropic-language-model.test.ts`, `organ-cost-*.test.ts`, `organ-usage-limit.test.ts`,
+  `organ-billing.test.ts`.
+- **Untested**: nothing found.
 
 ## The dashboard and the worker view
 
