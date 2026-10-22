@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/colour-scheme.json",
   "name": "orchestra",
-  "description": "orchestra's colours, carried over exactly, with huh's Charm theme for forms",
+  "description": "orchestra's colours, carried over exactly, with huh's Charm theme for forms, lighter on dark",
   "colours": {
     "live": { "light": "#0E7490", "dark": "#22D3EE" },
     "done": { "light": "#15803D", "dark": "#4ADE80" },
@@ -32,12 +32,13 @@
     "formSelected": { "light": "#02BA84", "dark": "#02BF87" },
     "formSelectedMark": { "light": "#02CF92", "dark": "#02A877" },
     "formError": { "light": "#FF4672", "dark": "#ED567A" },
-    "formMuted": { "light": "default", "dark": "ansi:243" },
-    "formHelpKey": { "light": "#909090", "dark": "#626262" },
-    "formHelpDesc": { "light": "#B2B2B2", "dark": "#4A4A4A" },
-    "formHelpSeparator": { "light": "#DDDADA", "dark": "#3C3C3C" },
+    "formMuted": { "light": "default", "dark": "ansi:248" },
+    "formFaint": { "light": "default", "dark": "ansi:245" },
+    "formHelpKey": { "light": "#909090", "dark": "#9A9A9A" },
+    "formHelpDesc": { "light": "#B2B2B2", "dark": "#7A7A7A" },
+    "formHelpSeparator": { "light": "#DDDADA", "dark": "#5A5A5A" },
     "formButton": { "light": "ansi:252", "dark": "ansi:237" },
-    "formPlaceholder": { "light": "ansi:248", "dark": "ansi:238" },
+    "formPlaceholder": { "light": "ansi:248", "dark": "ansi:243" },
     "formFrame": "ansi:238"
   }
 }

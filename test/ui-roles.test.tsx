@@ -72,12 +72,13 @@ const orchestraColours: { readonly [R in Role]: readonly [light: string, dark: s
   formSelected: ["#02BA84", "#02BF87"],
   formSelectedMark: ["#02CF92", "#02A877"],
   formError: ["#FF4672", "#ED567A"],
-  formMuted: ["default", "ansi:243"],
-  formHelpKey: ["#909090", "#626262"],
-  formHelpDesc: ["#B2B2B2", "#4A4A4A"],
-  formHelpSeparator: ["#DDDADA", "#3C3C3C"],
+  formMuted: ["default", "ansi:248"],
+  formFaint: ["default", "ansi:245"],
+  formHelpKey: ["#909090", "#9A9A9A"],
+  formHelpDesc: ["#B2B2B2", "#7A7A7A"],
+  formHelpSeparator: ["#DDDADA", "#5A5A5A"],
   formButton: ["ansi:252", "ansi:237"],
-  formPlaceholder: ["ansi:248", "ansi:238"],
+  formPlaceholder: ["ansi:248", "ansi:243"],
   formFrame: ["ansi:238", "ansi:238"],
 }
 

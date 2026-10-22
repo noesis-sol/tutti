@@ -14,8 +14,8 @@
 // takes its steps, Ctrl+C there (a key in the renderer's raw mode, not SIGINT) stops init after the
 // step under way, and the spinner says it is stopping. The form is
 // unmounted when the scope it was opened in closes; the summary is printed once the renderer is
-// gone (src/print/initSummary.ts).
-import { type InputRenderable, TextAttributes } from "@opentui/core"
+// gone (src/print/initSummary.ts). Its faint text is `formFaint`'s, as the summary's.
+import type { InputRenderable } from "@opentui/core"
 import { createRoot, useKeyboard } from "@opentui/react"
 import { Deferred, Effect, type Scope } from "effect"
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react"
@@ -337,7 +337,7 @@ const ScoutView = ({
         <span> </span>
         <span {...styled(form.fieldTitle)}>Looking for the project's suites</span>
         <span
-          {...styled(styles.dim)}
+          {...styled(form.faint)}
         >{` ${scoutClock(now - asking.since)} (up to 5 minutes)`}</span>
       </text>
       <text {...styled(form.description)}>Its tests, lints, type checks and builds.</text>
@@ -405,15 +405,16 @@ export const stepperParts = (
   steps: ReadonlyArray<StepName>,
   at: number,
 ): ReadonlyArray<{ readonly text: string; readonly style: Style }> => {
-  const { closed, organ, dim, done } = theme.styles
+  const { closed, organ, done } = theme.styles
+  const { faint } = theme.form
   if (steps.length === 1) return [{ text: steps[0] ?? "", style: organ }]
   return steps.flatMap((name, index) => [
-    ...(index === 0 ? [] : [{ text: " ──── ", style: index <= at ? done : dim }]),
+    ...(index === 0 ? [] : [{ text: " ──── ", style: index <= at ? done : faint }]),
     index < at
       ? { text: `✓ ${name}`, style: closed }
       : index === at
         ? { text: `● ${name}`, style: organ }
-        : { text: `○ ${name}`, style: dim },
+        : { text: `○ ${name}`, style: faint },
   ])
 }
 
@@ -450,7 +451,7 @@ const WorkingView = ({
     <box paddingLeft={2}>
       <text>
         <span {...styled(theme.styles.picked)}>{spinnerAt(now)}</span>
-        <span attributes={TextAttributes.DIM}>
+        <span {...styled(theme.form.faint)}>
           {stopping ? " Stopping after this step…" : " Setting the project up…"}
         </span>
       </text>
@@ -497,7 +498,7 @@ export const InitView = ({
   return (
     <box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
       <Title theme={theme} repo={repo} />
-      <text {...styled(theme.styles.dim)}>{initAbout}</text>
+      <text {...styled(theme.form.faint)}>{initAbout}</text>
       {screen.at === null ? null : (
         <box paddingTop={1}>
           <text>

@@ -1193,7 +1193,7 @@ Text tutti puts in Markdown, such as the report, is escaped for Markdown first. 
 
 ### 7.11 Colours and colour schemes
 
-tutti is as colourful as orchestra's Bubble Tea dashboard (D21). Its colours come from a **colour scheme**, a setting of its own (§8.4, §8.5). The default scheme, `orchestra`, is orchestra's colour scheme carried over exactly: the colours of its `internal/tui/style.go`, and for forms those of `huh`'s Charm theme, which orchestra's forms use. Other schemes are files in the same format (below).
+tutti is as colourful as orchestra's Bubble Tea dashboard (D21). Its colours come from a **colour scheme**, a setting of its own (§8.4, §8.5). The default scheme, `orchestra`, is orchestra's colour scheme carried over exactly: the colours of its `internal/tui/style.go`, and for forms those of `huh`'s Charm theme, which orchestra's forms use, lighter on dark on purpose (the form roles, below). Other schemes are files in the same format (below).
 
 **A scheme sets colours only.** What a scheme gives a colour to is a **role**, a meaning such as `live` (live work) or `needsYou`, never a screen element. Each screen element uses a role. The rest is fixed by tutti and is the same in every scheme, so every state reads the same whatever the colours: bold, faint, italic, the glyphs, the words and the border shapes.
 
@@ -1235,6 +1235,8 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 
 **Form roles**, from `huh`'s Charm theme. Forms are the start question, the init form, the confirmations, the attention card's buttons and the composer.
 
+The dark variants of `formMuted`, `formHelpKey`, `formHelpDesc`, `formHelpSeparator` and `formPlaceholder` depart from `huh`'s and bubbles' on purpose (the maintainer, 2026-10-22, in a dark terminal): theirs (`ansi:243`, `#626262`, `#4A4A4A`, `#3C3C3C`, `ansi:238`) read dim to barely there on a near-black background, so the descriptions, the hints and the placeholders are lighter on dark. `formFaint` is tutti's own, so that `tutti init`'s faint text is lighter on dark too, where faint text (SGR 2) is as dim. The light variants are huh's.
+
 | Role | Light | Dark | Used for |
 |---|---|---|---|
 | `formText` | `ansi:235` | `ansi:252` | options |
@@ -1244,12 +1246,13 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `formSelected` | `#02BA84` | `#02BF87` | a selected option, the text cursor |
 | `formSelectedMark` | `#02CF92` | `#02A877` | a selected option's `✓ ` prefix |
 | `formError` | `#FF4672` | `#ED567A` | a field's error |
-| `formMuted` | `default` | `ansi:243` | descriptions; the `• ` prefix of an unselected option |
-| `formHelpKey` | `#909090` | `#626262` | the keys in a form's hint (bubbles' help styles) |
-| `formHelpDesc` | `#B2B2B2` | `#4A4A4A` | what each key in a form's hint does |
-| `formHelpSeparator` | `#DDDADA` | `#3C3C3C` | the ` · ` between the keys in a form's hint |
+| `formMuted` | `default` | `ansi:248` | descriptions; the `• ` prefix of an unselected option |
+| `formFaint` | `default` | `ansi:245` | `tutti init`'s faint text: its about line, the repository, the stepper's steps to come, the scout's clock, the working line, and the summary's `•` marks, details and Next numbers. `default` draws it faint in the text's own colour; any other colour is drawn as is, not faint |
+| `formHelpKey` | `#909090` | `#9A9A9A` | the keys in a form's hint (bubbles' help styles) |
+| `formHelpDesc` | `#B2B2B2` | `#7A7A7A` | what each key in a form's hint does |
+| `formHelpSeparator` | `#DDDADA` | `#5A5A5A` | the ` · ` between the keys in a form's hint |
 | `formButton` | `ansi:252` | `ansi:237` | an unfocused button's background |
-| `formPlaceholder` | `ansi:248` | `ansi:238` | placeholders |
+| `formPlaceholder` | `ansi:248` | `ansi:243` | placeholders |
 | `formFrame` | `ansi:238` | `ansi:238` | the focused field's left bar |
 
 Faint text (SGR 2) carries the quiet parts: elapsed times, versions, the branch and run time, ` of N`, zero counts, header rows, the ` · ` separators, latest actions, durations, URLs. Bold is used where orchestra uses it (below). Neither is part of a scheme.
@@ -1306,8 +1309,9 @@ As orchestra draws it:
   - quotes faint italic behind a faint `│ `; rules a faint `─`, at most 40 long
   - links `link`, not underlined, with their URL faint
 - **`tutti init`**:
-  - the pill, `init` `organ` bold, the repository faint
-  - step marks: `✓` `done`, `•` faint, `✗` `needsYou` bold, `!` `notice`
+  - the pill, `init` `organ` bold, the repository `formFaint`; the about line under it `formFaint`
+  - the stepper: the step done `done` bold, the one under way `organ` bold, the steps to come and the lines to them `formFaint`, the lines reached `done`
+  - step marks: `✓` `done`, `•` `formFaint`, `✗` `needsYou` bold, `!` `notice`
   - the **Next** box framed `pill`, its title `organ` bold
   - `♪ tutti is ready.` `organ` bold; `♪ Almost ready: fix what's missing above.` `notice`; `Cancelled; nothing was changed.` `notice`
 - **A newer release**: the line `notice`, its command `emphasis` bold.

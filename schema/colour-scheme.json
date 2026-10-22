@@ -112,6 +112,9 @@
         "formMuted": {
           "$ref": "#/$defs/RoleColour"
         },
+        "formFaint": {
+          "$ref": "#/$defs/RoleColour"
+        },
         "formHelpKey": {
           "$ref": "#/$defs/RoleColour"
         },

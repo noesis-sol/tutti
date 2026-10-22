@@ -558,9 +558,9 @@ describe("init's summary on the main screen", () => {
   test("in init's styles: marks in their roles, the Next frame in the pill's colour", () => {
     const theme = themeOf("dark")
     const text = initSummary({ ...summary, ready: true }, theme, 72)
-    const { closed, dim, stop, deferred, organ } = theme.styles
+    const { closed, stop, deferred, organ } = theme.styles
     expect(text).toContain(closed.paint("✓"))
-    expect(text).toContain(dim.paint("•"))
+    expect(text).toContain(theme.form.faint.paint("•"))
     expect(text).toContain(stop.paint("✗"))
     expect(text).toContain(deferred.paint("!"))
     expect(text).toContain(organ.paint("Next"))

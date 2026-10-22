@@ -4,7 +4,8 @@
 // caution), wrapped under itself; what's left for you, numbered, in the Next box framed `pill`, its
 // title organ bold and each command on its own line; then the sign-off, `♪ tutti is ready.` organ
 // bold or `♪ Almost ready: …` notice. In the renderer's form the title is drawn above the steps;
-// after it, once the renderer is gone, it heads the summary.
+// after it, once the renderer is gone, it heads the summary. Its faint parts are `formFaint`'s:
+// faint where it is `default`, else drawn in it, lighter on dark than faint text.
 import { homedir } from "node:os"
 import type { InitSummary } from "../init/init.ts"
 import { cancelledLine, signOff } from "../init/init.ts"
@@ -22,13 +23,13 @@ export const tildify = (path: string, home: string = homedir()): string =>
 
 /** init's title: the pill, `init`, and the repository it sets up. */
 export const initTitle = (theme: Theme, repo: string): Line => {
-  const { title, organ, dim } = theme.styles
+  const { title, organ } = theme.styles
   return [
     { text: " tutti ", style: title },
     { text: " ", style: null },
     { text: "init", style: organ },
     { text: "  ", style: null },
-    { text: sanitizeLine(tildify(repo)), style: dim },
+    { text: sanitizeLine(tildify(repo)), style: theme.form.faint },
   ]
 }
 
@@ -40,7 +41,7 @@ const painted = (line: Line): string =>
 
 /** The title as the line forms and the summary print it: a blank line above, init's words under. */
 export const initHeader = (theme: Theme, repo: string): string =>
-  ["", painted(initTitle(theme, repo)), theme.styles.dim.paint(initAbout), ""].join("\n")
+  ["", painted(initTitle(theme, repo)), theme.form.faint.paint(initAbout), ""].join("\n")
 
 /** How long the scout has looked, as its spinner says it: m:ss. */
 export const scoutClock = (millis: number): string => {
@@ -58,8 +59,8 @@ const detailIndent = 4 + labelWidth
 const leastWidth = 20
 
 const markStyle = (theme: Theme, kind: StepKind): Style => {
-  const { closed, dim, stop, deferred } = theme.styles
-  return { done: closed, kept: dim, missing: stop, caution: deferred }[kind]
+  const { closed, stop, deferred } = theme.styles
+  return { done: closed, kept: theme.form.faint, missing: stop, caution: deferred }[kind]
 }
 
 const bold = (text: string): string => `\x1b[1m${text}\x1b[0m`
@@ -73,7 +74,8 @@ const paintWith = (open: string, text: string): string =>
  * on a line of its own.
  */
 const nextBox = (theme: Theme, items: ReadonlyArray<string>, width: number): Array<string> => {
-  const { organ, dim, key } = theme.styles
+  const { organ, key } = theme.styles
+  const { faint } = theme.form
   const frame = theme.ansi("pill", "fg")
   const inner = Math.max(width - 4, leastWidth)
   const rows: Array<{ readonly plain: string; readonly text: string }> = [
@@ -86,7 +88,7 @@ const nextBox = (theme: Theme, items: ReadonlyArray<string>, width: number): Arr
     wrap(sanitizeLine(said), inner - indent.length).forEach((line, n) => {
       rows.push(
         n === 0
-          ? { plain: `${number} ${line}`, text: `${dim.paint(number)} ${line}` }
+          ? { plain: `${number} ${line}`, text: `${faint.paint(number)} ${line}` }
           : { plain: `${indent}${line}`, text: `${indent}${line}` },
       )
     })
@@ -116,7 +118,7 @@ export const initSteps = (
   const lines: Array<string> = []
   for (const each of steps) {
     const detail = wrap(sanitizeLine(each.detail), Math.max(width - detailIndent, leastWidth))
-    const detailStyle = each.kind === "caution" ? styles.deferred : styles.dim
+    const detailStyle = each.kind === "caution" ? styles.deferred : theme.form.faint
     const label = sanitizeLine(each.label)
     const [first, ...rest] = each.detail === "" ? [] : detail
     // The label bold whatever the colours, as the other faces are (§ 7.11).

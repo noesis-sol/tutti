@@ -6,7 +6,8 @@ Where tutti's colours come from, how to choose a scheme, and how to write one. B
 ## Schemes and roles
 
 tutti's colours come from a **colour scheme**. The default, `orchestra`, is orchestra's colours
-carried over exactly, with the Charm theme of `huh` for the forms. It is the only scheme built in.
+carried over exactly, with the Charm theme of `huh` for the forms, whose dark variant is lighter than
+`huh`'s so the forms' quiet text reads on a dark background. It is the only scheme built in.
 Others are JSON files that a project or a person adds.
 
 A scheme gives colours to **roles**, never to screen elements. A role is a meaning, such as `live`
@@ -61,12 +62,13 @@ and the composer.
 | `formSelected` | `#02BA84` | `#02BF87` | a selected option, the text cursor |
 | `formSelectedMark` | `#02CF92` | `#02A877` | a selected option's `✓` |
 | `formError` | `#FF4672` | `#ED567A` | a field's error |
-| `formMuted` | `default` | `ansi:243` | descriptions, an unselected option's `•` |
-| `formHelpKey` | `#909090` | `#626262` | the keys in a form's hint |
-| `formHelpDesc` | `#B2B2B2` | `#4A4A4A` | what each key in a form's hint does |
-| `formHelpSeparator` | `#DDDADA` | `#3C3C3C` | the ` · ` between a form hint's keys |
+| `formMuted` | `default` | `ansi:248` | descriptions, an unselected option's `•` |
+| `formFaint` | `default` | `ansi:245` | `tutti init`'s faint text: its about line, the steps to come, the scout's clock, the summary's details; `default` draws it faint, any other colour as is |
+| `formHelpKey` | `#909090` | `#9A9A9A` | the keys in a form's hint |
+| `formHelpDesc` | `#B2B2B2` | `#7A7A7A` | what each key in a form's hint does |
+| `formHelpSeparator` | `#DDDADA` | `#5A5A5A` | the ` · ` between a form hint's keys |
 | `formButton` | `ansi:252` | `ansi:237` | an unfocused button's background |
-| `formPlaceholder` | `ansi:248` | `ansi:238` | placeholders |
+| `formPlaceholder` | `ansi:248` | `ansi:243` | placeholders |
 | `formFrame` | `ansi:238` | `ansi:238` | the focused field's left bar |
 
 `pill`, `formAccent`, `formButton` and `selection` are drawn as backgrounds.

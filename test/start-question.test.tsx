@@ -380,6 +380,7 @@ describe("the form styles", () => {
       selectedMark: { fg: "formSelectedMark", bg: null, bold: false, faint: false },
       error: { fg: "formError", bg: null, bold: false, faint: false },
       description: { fg: "formMuted", bg: null, bold: false, faint: false },
+      faint: { fg: "formFaint", bg: null, bold: false, faint: true },
       helpKey: { fg: "formHelpKey", bg: null, bold: false, faint: false },
       helpDesc: { fg: "formHelpDesc", bg: null, bold: false, faint: false },
       helpSeparator: { fg: "formHelpSeparator", bg: null, bold: false, faint: false },

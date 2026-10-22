@@ -87,7 +87,7 @@ describe("the preview", () => {
       "██",
       "default",
       "██",
-      "ansi:243",
+      "ansi:248",
     ])
     expect(lines[0]).toBe("Colour scheme dusk")
     expect(lines[1]).toBe(dusk.description)

@@ -1,5 +1,6 @@
 // The keys under a form (§ 7.11's form roles): as bubbles' help draws them for huh, each key in
-// formHelpKey, its words in formHelpDesc, ` · ` in formHelpSeparator, in both variants.
+// formHelpKey, its words in formHelpDesc, ` · ` in formHelpSeparator, in both variants, the dark one
+// lighter than bubbles'.
 import { describe, expect, test } from "bun:test"
 import type { RGBA } from "@opentui/core"
 import { formHintSegments } from "../src/ui/Form.tsx"
@@ -16,12 +17,15 @@ const variants: ReadonlyArray<Appearance> = ["light", "dark"]
 
 const ints = (colour: RGBA | undefined) => colour?.toInts().slice(0, 3)
 
-/** bubbles v1.0.0's help styles, as huh's Charm theme keeps them: keys, their words, separator. */
+/**
+ * bubbles v1.0.0's help styles, as huh's Charm theme keeps them: keys, their words, separator;
+ * lighter on dark, on purpose (§ 7.11's form roles).
+ */
 const bubbles: {
   readonly [A in Appearance]: Readonly<Record<Role & `formHelp${string}`, string>>
 } = {
   light: { formHelpKey: "#909090", formHelpDesc: "#B2B2B2", formHelpSeparator: "#DDDADA" },
-  dark: { formHelpKey: "#626262", formHelpDesc: "#4A4A4A", formHelpSeparator: "#3C3C3C" },
+  dark: { formHelpKey: "#9A9A9A", formHelpDesc: "#7A7A7A", formHelpSeparator: "#5A5A5A" },
 }
 
 const rgbOf = (hex: string) => [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16))

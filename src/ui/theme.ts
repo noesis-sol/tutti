@@ -45,6 +45,7 @@ export const roles = [
   "formSelectedMark",
   "formError",
   "formMuted",
+  "formFaint",
   "formHelpKey",
   "formHelpDesc",
   "formHelpSeparator",
@@ -548,6 +549,7 @@ export const formStyleNames = [
   "selectedMark",
   "error",
   "description",
+  "faint",
   "helpKey",
   "helpDesc",
   "helpSeparator",
@@ -568,6 +570,7 @@ export const formStyleSpecs: { readonly [S in FormStyleName]: StyleSpec } = {
   selectedMark: spec("formSelectedMark"),
   error: spec("formError"),
   description: spec("formMuted"),
+  faint: spec("formFaint", { faint: true }),
   helpKey: spec("formHelpKey"),
   helpDesc: spec("formHelpDesc"),
   helpSeparator: spec("formHelpSeparator"),
@@ -658,17 +661,21 @@ export const makeTheme = (
   const ansi = (role: Role, layer: Layer = backgroundRoles.has(role) ? "bg" : "fg") =>
     noColor || !styled ? "" : ansiOf(colourOf(role), layer, depth)
   const style = (spec: StyleSpec): Style => {
-    const attributes = (spec.bold ? TextAttributes.BOLD : 0) | (spec.faint ? TextAttributes.DIM : 0)
+    // A faint style with a colour is faint only where its colour is the default, and then in the
+    // text's own colour, as tutti's other faint text; any other colour is drawn as is, not faint.
+    const faint = spec.faint && (spec.fg === null || colourOf(spec.fg)._tag === "Default")
+    const fg = faint ? null : spec.fg
+    const attributes = (spec.bold ? TextAttributes.BOLD : 0) | (faint ? TextAttributes.DIM : 0)
     const open = !styled
       ? ""
       : [
           spec.bold ? "\x1b[1m" : "",
-          spec.faint ? "\x1b[2m" : "",
-          spec.fg === null ? "" : ansi(spec.fg, "fg"),
+          faint ? "\x1b[2m" : "",
+          fg === null ? "" : ansi(fg, "fg"),
           spec.bg === null ? "" : ansi(spec.bg, "bg"),
         ].join("")
     return {
-      fg: spec.fg === null ? undefined : rgba(spec.fg, "fg"),
+      fg: fg === null ? undefined : rgba(fg, "fg"),
       bg: spec.bg === null ? undefined : rgba(spec.bg, "bg"),
       attributes,
       open,
