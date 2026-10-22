@@ -51,21 +51,38 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
 
 ## Close
 - Close the ticket only when your checks pass after your last change.
+- Close it with a hand-off as its reason, `bd close TICKET_ID --reason "<the hand-off>"`: what a
+  ticket built on this one needs to know of it (the interfaces, files, commands or decisions it
+  changed), in one to three sentences, or `nothing for dependents`. orchestra gives it to the
+  workers of the tickets this one blocks as they start.
 - If a change can only be verified by CI (for example `.github/workflows/`, or a platform the
   local checks don't cover), close the ticket once your checks pass, with a note naming the CI
   job that will verify it ("Awaits CI: <job>"). The batch's pull request runs every CI job
   before anything reaches the main branch.
 - If the ticket needs a decision only the maintainer can make, ask it as a question and stop; don't
   wait for an answer in this session. Commit any finished work first, then run
-  `bd create --type=task --labels human --deps blocks:TICKET_ID --title "<the question, at most 60 characters>" --description "<the context, the options and your recommendation>"`
+  `bd create --type=task --labels human --deps blocks:TICKET_ID --title "<the question, at most 60 characters>" --description "<the context, the options and your recommendation>" --metadata '<the options, as below>'`
   and `bd update TICKET_ID --status open --append-notes "Waiting on <the question's ID>: <the question>"`.
   The ticket comes back to a worker once the question is answered.
+- A decision only the maintainer can make about another ticket, a follow-up you file or one you
+  name, is a question too: file it the same way, blocking that ticket and asked from yours
+  (`--deps 'blocks:<that ticket>,discovered-from:TICKET_ID'`), and go on with yours.
+  Never leave it only in your final message: nobody reads that, and that ticket's worker would
+  decide it instead. Your final message carries nothing for the maintainer.
+- Every question gives 2 to 4 options, each a short label and a one-line trade-off, one of them
+  recommended, in its description and in its metadata, in the same order:
+  `--metadata '{"options": [{"label": "<label>", "description": "<its trade-off>"}, ...], "recommended": <the recommended option's index, from 0>}'`
+  (or that JSON in a file of your scratchpad, `--metadata @<the file>`, where a quote is in it).
 - If the ticket depends on an answered question, read the answer first with `bd show <the question's ID>`.
 - If the ticket needs work from another ticket that isn't on your base yet, don't build on that
   ticket's branch or copy its code, and leave nothing committed or changed. Add the link
   (`bd dep add TICKET_ID <other>`), run
   `bd update TICKET_ID --status open --append-notes "Waiting on <other> to merge: <what you need from it>"`
   and stop. orchestra puts the ticket back in the queue until <other> merges.
+- When the same problem has resisted three different fixes, stop: note on the ticket what you
+  tried and what each attempt showed (`bd update TICKET_ID --append-notes "..."`), defer it
+  (`bd defer TICKET_ID`), and stop. Three different approaches count, not three runs of the same
+  command; rerunning a check that failed for reasons outside your change isn't an attempt.
 - If you cannot finish: note why on the ticket, defer it, and stop.
 
 ## Working unattended

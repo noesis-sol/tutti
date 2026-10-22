@@ -8,7 +8,7 @@
   "mcp_servers": [],
   "setup": "bun install --frozen-lockfile",
   "templates": {
-    "worker_prompt": 7,
+    "worker_prompt": 11,
     "verifier": 5
   },
   "worker_effort": "high"
