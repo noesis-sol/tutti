@@ -18,8 +18,9 @@ export const layer = (options: { readonly sink?: Sink } = {}): Layer.Layer<Log> 
           yield* toSink(options.sink ?? "none", text)
         })
       return Log.of({
-        write: (...lines) => one.withPermit(append(lines)),
-        writeWith: (lines, record) => one.withPermit(Effect.andThen(append(lines), record)),
+        write: (...lines) => one.withPermit(Effect.uninterruptible(append(lines))),
+        writeWith: (lines, record) =>
+          one.withPermit(Effect.andThen(Effect.uninterruptible(append(lines)), record)),
         lines: kept.lines,
         startBlockEnd: kept.startBlockEnd,
       })

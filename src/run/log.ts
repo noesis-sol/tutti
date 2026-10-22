@@ -470,9 +470,12 @@ export class Log extends Context.Service<
             yield* kept.add(lines, text)
             yield* toSink(options.sink ?? "none", text)
           })
+        // A fiber interrupted once it holds the permit (on quit) still writes its lines to the file,
+        // the kept lines and the sink together; one interrupted waiting for it writes them nowhere.
+        const whole = (lines: ReadonlyArray<Line>) => Effect.uninterruptible(append(lines))
         return Log.of({
-          write: (...lines) => one.withPermit(append(lines)),
-          writeWith: (lines, record) => one.withPermit(Effect.andThen(append(lines), record)),
+          write: (...lines) => one.withPermit(whole(lines)),
+          writeWith: (lines, record) => one.withPermit(Effect.andThen(whole(lines), record)),
           lines: kept.lines,
           startBlockEnd: kept.startBlockEnd,
         })
