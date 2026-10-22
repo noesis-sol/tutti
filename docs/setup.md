@@ -26,6 +26,12 @@ Claude Code embedded, for macOS or Linux, arm64 or x64. It needs `curl` or `wget
 - **musl.** On Linux it installs the musl build on a musl system, such as Alpine, and the glibc
   build otherwise, as `ldd --version` (or else the musl loader) tells. A musl build needs
   `libstdc++` and `libgcc`: `apk add libstdc++ libgcc` on a bare Alpine.
+- **AVX2.** On x64 it needs a CPU with AVX2 (Intel Haswell, 2013, or AMD Excavator, 2015, or
+  later), as the Claude Code tutti embeds does: without it the script stops before downloading
+  anything. It reads `/proc/cpuinfo` on Linux and `sysctl hw.optional.avx2_0` on macOS; where it
+  can't tell, it says so and installs all the same.
+- **Rosetta.** In a shell under Rosetta on Apple Silicon (an x64 Terminal or shell, whose
+  `uname -m` says `x86_64`), it installs the arm64 build, which runs natively, and says so.
 
 | Variable | |
 |---|---|

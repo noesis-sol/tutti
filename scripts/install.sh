@@ -15,12 +15,18 @@
 #   TUTTI_LIBC         musl or glibc, the Linux archive to install; else the system's, as ldd or the
 #                      musl loader tells
 #
+# On x64 it stops, before downloading anything, where the CPU lacks AVX2: tutti embeds Claude Code,
+# which ships only Bun's standard x64 builds, and those need it. In a shell under Rosetta on Apple
+# Silicon it installs the darwin arm64 archive, which runs natively.
+#
 # For the tests only (test/install-script.test.ts): TUTTI_DOWNLOAD_URL replaces the releases' address,
 # https://github.com/noesis-sol/tutti/releases. It may be a file:// URL of a folder laid out as GitHub
 # serves a release's files, download/<tag>/<name>, with a file `latest` holding the latest tag. In that
 # mode alone TUTTI_TEST_RELEASE_KEY (a PEM public key) replaces the release keys, TUTTI_TEST_SYSTEM_DIR
-# replaces /usr/local/bin, TUTTI_TEST_LIB_DIR replaces /lib, where the musl loader is looked for, and
-# TUTTI_TEST_OPENSSL (paths, separated by spaces) replaces the openssl commands tried.
+# replaces /usr/local/bin, TUTTI_TEST_LIB_DIR replaces /lib, where the musl loader is looked for,
+# TUTTI_TEST_CPUINFO replaces /proc/cpuinfo, where Linux's CPU flags are read, and TUTTI_TEST_OPENSSL
+# (paths, separated by spaces) replaces the openssl commands tried. macOS's sysctl is found on the
+# PATH (then in /usr/sbin), so a test puts a fake one first.
 #
 # Everything runs from main, at the end, so that a download cut short runs nothing. POSIX sh: it runs
 # under sh, dash and bash.
@@ -37,6 +43,7 @@ MCowBQYDK2VwAyEAtoGlzKgru416pWobucm9ICq3LtFfTEFkOaRy0Yx2Je4=
 releases=https://github.com/noesis-sol/tutti/releases
 system_dir=/usr/local/bin
 lib_dir=/lib
+cpuinfo=/proc/cpuinfo
 openssl_candidates='openssl /opt/homebrew/bin/openssl /usr/local/opt/openssl@3/bin/openssl'
 
 say() { printf '%s\n' "$*"; }
@@ -64,6 +71,45 @@ platform() {
     fail "there is no release binary for $kernel $machine: releases have darwin and linux, arm64 and x64.
 Build it from a clone with Bun instead: scripts/build.sh host"
   fi
+}
+
+# sysctl_value prints macOS's sysctl -n $1, or nothing where it has no such name (sysctl.proc_translated
+# on an Intel Mac, hw.optional.avx2_0 on Apple Silicon) or no sysctl is found.
+sysctl_value() {
+  if command -v sysctl >/dev/null 2>&1; then
+    sysctl -n "$1" 2>/dev/null </dev/null || true
+  elif [ -x /usr/sbin/sysctl ]; then
+    /usr/sbin/sysctl -n "$1" 2>/dev/null </dev/null || true
+  fi
+}
+
+# cpu sets arch to arm64 in a shell under Rosetta on Apple Silicon, saying so, and stops on an x64 CPU
+# without AVX2 (§ 12 Install). tutti embeds Claude Code, which ships only Bun's standard x64 builds,
+# and those need AVX2: a tutti without it would crash with "illegal instruction", without a word why.
+# Where the CPU's flags can't be read, it says so and goes on.
+cpu() {
+  if [ "$os" = darwin ] && [ "$arch" = x64 ] && [ "$(sysctl_value sysctl.proc_translated)" = 1 ]; then
+    arch=arm64
+    say "This shell runs under Rosetta on Apple Silicon: installing the darwin arm64 build, which runs natively."
+    return
+  fi
+  [ "$arch" = x64 ] || return 0
+  if [ "$os" = darwin ]; then
+    avx2="$(sysctl_value hw.optional.avx2_0)"
+    flags_from="sysctl hw.optional.avx2_0"
+  else
+    # Each CPU's line of flags, "flags : fpu vme … avx2 …": 1 where one names avx2, 0 where none
+    # does, nothing where there is no such line or no file to read.
+    avx2="$(awk '/^flags[ \t]*:/ { flags = 1; for (i = 1; i <= NF; i++) if ($i == "avx2") found = 1 }
+      END { if (found) print 1; else if (flags) print 0 }' "$cpuinfo" 2>/dev/null </dev/null || true)"
+    flags_from="$cpuinfo"
+  fi
+  case "$avx2" in
+  1) ;;
+  0) fail "tutti and Claude Code need a CPU with AVX2 (Intel Haswell, 2013, or AMD Excavator, 2015, or
+later), and this one has none. Nothing was installed." ;;
+  *) say "Couldn't tell from $flags_from whether this CPU has AVX2, which tutti and Claude Code need on x64; installing all the same." ;;
+  esac
 }
 
 # pick_libc sets libc to musl or glibc, for Linux (§ 12 Install), first match wins: TUTTI_LIBC; what
@@ -240,6 +286,7 @@ main() {
     keys="${TUTTI_TEST_RELEASE_KEY:-$keys}"
     system_dir="${TUTTI_TEST_SYSTEM_DIR:-$system_dir}"
     lib_dir="${TUTTI_TEST_LIB_DIR:-$lib_dir}"
+    cpuinfo="${TUTTI_TEST_CPUINFO:-$cpuinfo}"
     openssl_candidates="${TUTTI_TEST_OPENSSL:-$openssl_candidates}"
     say "Test mode: downloading from $releases"
   fi
@@ -250,6 +297,7 @@ release workflow from another. Nothing was installed." ;;
   esac
 
   platform
+  cpu
   target="$os $arch"
   suffix=
   libc=
