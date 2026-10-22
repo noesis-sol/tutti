@@ -20,8 +20,8 @@ import { make as makeView, type RunView, type Sources, type Status, same } from 
 /** The screen the run shows. */
 export type Screen = Data.TaggedEnum<{
   Dashboard: Record<never, never>
-  /** The worker view of the worker with this number (§ 7.5). */
-  Worker: { readonly worker: number }
+  /** The worker view of the ticket's worker (§ 7.5). */
+  Worker: { readonly ticket: string }
   /** The interview of a new feature (§ 4.10). */
   Interview: Record<never, never>
 }>

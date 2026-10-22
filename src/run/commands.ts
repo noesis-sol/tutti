@@ -1,16 +1,16 @@
 // UiCommand (§ 3.5): what the screen asks the run to do, and the queue it asks through. React's
 // handlers put commands in the queue with offer(), never running an Effect themselves, and the run
-// loop takes them out. A command carries IDs (a worker's number, a ticket, a request), never state
+// loop takes them out. A command carries IDs (a ticket, a request), never state
 // captured in a handler: the run loop resolves them against the state as it is when it takes the
 // command, so a key pressed as a worker finishes can't reach another one (OpenTUI #1660).
 import { Data, type Effect, Queue, Result, Schema } from "effect"
 import type { Answer as AttentionAnswer, AttentionRequest } from "../agent/Attention.ts"
-import { keepsWorker, type State, ticketOfWorker } from "./ledger.ts"
+import { keepsWorker, type State } from "./ledger.ts"
 
 /** A command from the screen. */
 export type UiCommand = Data.TaggedEnum<{
-  /** Open the worker view of the worker with this number (its card's, which never shifts). */
-  OpenWorker: { readonly worker: number }
+  /** Open the worker view of the ticket's worker: the card's ticket, never a position (§ 7.2). */
+  OpenWorker: { readonly ticket: string }
   /** Leave the worker view for the dashboard. */
   CloseWorker: Record<never, never>
   /** Answer the open attention request `requestId`. */
@@ -88,12 +88,10 @@ const withWorker = (
 /** Resolves `command`'s IDs against `current`; Stale when one no longer names anything. */
 export const resolve = (command: UiCommand, current: Current): Result.Result<Resolved, Stale> => {
   switch (command._tag) {
-    case "OpenWorker": {
-      const ticket = ticketOfWorker(current.ledger, command.worker)
-      return ticket === undefined
-        ? Result.fail(new Stale({ command: command._tag, why: `no worker ${command.worker}` }))
-        : Result.succeed({ command, ticket })
-    }
+    case "OpenWorker":
+      return current.ledger.tickets.get(command.ticket)?.worker == null
+        ? Result.fail(new Stale({ command: command._tag, why: `${command.ticket} has no worker` }))
+        : Result.succeed({ command, ticket: command.ticket })
     case "Answer": {
       const request = current.requests.find((open) => open.id === command.requestId)
       return request === undefined

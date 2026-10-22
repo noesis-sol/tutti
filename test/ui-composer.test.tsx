@@ -130,7 +130,7 @@ const shellOf = (
   feed: TranscriptFeed,
 ): ShellValue => ({
   view,
-  screen: external<Screen>(Screen.Worker({ worker: 1 })),
+  screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
   commands,
   appearance: external<Appearance>("dark"),
   themeOf,
@@ -255,7 +255,7 @@ describe("the composer", () => {
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
           Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
-          PgUp/PgDn scroll · g/G top/end · 1–9 workers
+          PgUp/PgDn scroll · g/G top/end
         "
       `)
       expect(colourOf(frame, ">")).toEqual(rgb(theme.form.selector))
@@ -480,7 +480,7 @@ describe("releasing", () => {
             steered: tutti sends it nothing until you release it       [ Release ]  Ctrl+R
            > i to write to the worker
             Esc dashboard · i write · Ctrl+X interrupt · Ctrl+R release · ↑↓ select
-            Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end · 1–9 workers
+            Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end
           "
         `)
         expect(colourOf(frame, "steered")).toEqual(rgb(theme.styles.key))

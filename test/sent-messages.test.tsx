@@ -306,7 +306,7 @@ describe("the worker view", () => {
     append([said("Working on it.")])
     const shell: ShellValue = {
       view,
-      screen: external<Screen>(Screen.Worker({ worker: 1 })),
+      screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
       commands,
       appearance: external<Appearance>("dark"),
       themeOf,

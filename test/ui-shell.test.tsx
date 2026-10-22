@@ -181,7 +181,7 @@ describe("the bridge", () => {
       </InterviewContext.Provider>,
     )
     expect(setup.captureCharFrame()).toContain("Completed")
-    await act(async () => screen.set(Screen.Worker({ worker: 2 })))
+    await act(async () => screen.set(Screen.Worker({ ticket: "t-2" })))
     await setup.waitForFrame((frame) => frame.includes("← Dashboard"))
     await act(async () => screen.set(Screen.Interview()))
     await setup.waitForFrame((frame) => frame.includes("← Back"))

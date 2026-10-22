@@ -85,7 +85,7 @@ const narrow = async (width: number, body: (rendered: Rendered) => Promise<void>
   const feed = Effect.runSync(transcriptFeed(transcripts).pipe(Scope.provide(scope)))
   const shell: ShellValue = {
     view: external(view),
-    screen: external<Screen>(Screen.Worker({ worker: 1 })),
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
     themeOf,
@@ -122,15 +122,14 @@ describe("the worker view in a narrow pane", () => {
       const frame = await until(rendered, "Reading the scripts.")
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   1 •  t-1  done  1m07s   Add tools/lint.sh to
-            run Biome and shellcheck on the files a branch changed
+         ← Dashboard   • t-1  done  1m07s   Add tools/lint.sh to run
+            Biome and shellcheck on the files a branch changed
         ────────────────────────────────────────────────────────────
           Reading the scripts.
         ────────────────────────────────────────────────────────────
          > i to write to the worker
           Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select
           Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end
-          1–9 workers
         "
       `)
     })
@@ -143,8 +142,8 @@ describe("the worker view in a narrow pane", () => {
       const frame = await until(rendered, "Enter send")
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   1 •  t-1  done  1m07s
-            Add tools/lint.sh to run Biome and
+         ← Dashboard   • t-1  done  1m07s   Add
+            tools/lint.sh to run Biome and
             shellcheck on the files a branch
             changed
         ────────────────────────────────────────
@@ -166,10 +165,9 @@ describe("the worker view in a narrow pane", () => {
       const lines = frame.chars.split("\n").map((line) => line.trimEnd())
       const hintAt = lines.findIndex((line) => line.startsWith("  Esc dashboard"))
       expect(lines[hintAt - 1]).toContain("tutti can't be suspended")
-      expect(lines.slice(hintAt, hintAt + 3)).toEqual([
+      expect(lines.slice(hintAt, hintAt + 2)).toEqual([
         "  Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select",
         "  Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end",
-        "  1–9 workers",
       ])
     })
   })

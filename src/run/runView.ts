@@ -183,7 +183,7 @@ export type Motion = "spinner" | "◼" | "◆" | "•"
 export interface Card {
   readonly ticket: string
   readonly title: string
-  /** Its worker's number, stable for the session (§ 7.2). */
+  /** Its worker's number, stable for the session: the cards' order, never shown (§ 7.2). */
   readonly worker: number
   readonly phase: TicketPhase
   /** Its worker's state, while its session is open. */
@@ -649,11 +649,9 @@ const hintOf = (
   ending: boolean,
 ): ReadonlyArray<Key> => {
   const keys: Array<Key> = []
-  if (cards.length > 0) keys.push({ keys: "Tab", does: "select" })
-  const numbered = cards.map((card) => card.worker).filter((n) => n <= 9)
-  if (numbered.length > 0) {
-    const highest = Math.max(...numbered)
-    keys.push({ keys: highest === 1 ? "1" : `1–${highest}`, does: "open" })
+  if (cards.length > 0) {
+    keys.push({ keys: "Tab", does: "select" })
+    keys.push({ keys: "Enter", does: "open" })
   }
   const target = requests[0]
   if (target !== undefined) {

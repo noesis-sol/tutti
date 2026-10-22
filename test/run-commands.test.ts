@@ -171,20 +171,24 @@ describe("the run takes the screen's commands (§ 3.5)", () => {
         const now = Effect.flatMap(SubscriptionRef.get(inputs.screen), (screen) =>
           Effect.sync(() => screens.push(screen)),
         )
-        yield* send(inputs, UiCommand.OpenWorker({ worker: 1 }))
+        yield* send(inputs, UiCommand.OpenWorker({ ticket: "a" }))
         yield* now
         yield* send(inputs, UiCommand.CloseWorker())
         yield* now
-        // No worker 2: the command is dropped, and the screen stays as it is.
-        yield* send(inputs, UiCommand.OpenWorker({ worker: 2 }))
+        // No ticket b in the run: the command is dropped, and the screen stays as it is.
+        yield* send(inputs, UiCommand.OpenWorker({ ticket: "b" }))
         yield* now
-        yield* send(inputs, UiCommand.OpenWorker({ worker: 1 }))
+        yield* send(inputs, UiCommand.OpenWorker({ ticket: "a" }))
         yield* allow(inputs, "a")
         yield* passes("2 minutes")
       }),
     )
     expectExitCode(ran, 0)
-    expect(screens).toEqual([Screen.Worker({ worker: 1 }), Screen.Dashboard(), Screen.Dashboard()])
+    expect(screens).toEqual([
+      Screen.Worker({ ticket: "a" }),
+      Screen.Dashboard(),
+      Screen.Dashboard(),
+    ])
   }, 30_000)
 
   test("Answer answers the open request; one no longer open is dropped", async () => {

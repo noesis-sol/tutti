@@ -458,7 +458,7 @@ describe("wind-down and hint", () => {
     const hint = (view: RunView) => view.hint.map((key) => `${key.keys} ${key.does}`).join(" · ")
     expect(result.before.windDown).toBeNull()
     expect(hint(result.before)).toBe(
-      "Tab select · 1–3 open · d deny · s stop after current · ? keys",
+      "Tab select · Enter open · d deny · s stop after current · ? keys",
     )
     expect(result.during.windDown).toEqual({
       marks: [
@@ -469,7 +469,7 @@ describe("wind-down and hint", () => {
       running: 1,
     })
     expect(result.during.totals.queueHeld).toBe(true)
-    expect(hint(result.during)).toBe("Tab select · 1–3 open · s keep taking tickets · ? keys")
+    expect(hint(result.during)).toBe("Tab select · Enter open · s keep taking tickets · ? keys")
     expect(result.after.windDown).toBeNull()
     expect(result.after.totals.queueHeld).toBe(false)
   })
@@ -502,13 +502,13 @@ describe("commands", () => {
         const state = yield* current
         const now = { ledger: state, requests: [permission("r1", "b")] }
         const commands = yield* makeCommands
-        offer(commands, UiCommand.OpenWorker({ worker: 2 }))
+        offer(commands, UiCommand.OpenWorker({ ticket: "b" }))
         offer(commands, UiCommand.Quit({ now: true }))
         const taken = [yield* Queue.take(commands), yield* Queue.take(commands)]
         return {
           taken: taken.map((command) => command._tag),
-          open2: resolve(UiCommand.OpenWorker({ worker: 2 }), now),
-          open1: resolve(UiCommand.OpenWorker({ worker: 1 }), now),
+          openB: resolve(UiCommand.OpenWorker({ ticket: "b" }), now),
+          openA: resolve(UiCommand.OpenWorker({ ticket: "a" }), now),
           answer: resolve(UiCommand.Answer({ requestId: "r1", answer: { _tag: "Deny" } }), now),
           answered: resolve(UiCommand.Answer({ requestId: "r9", answer: { _tag: "Deny" } }), now),
           message: resolve(UiCommand.SendMessage({ ticket: "a", text: "hi", uuid: "u-1" }), now),
@@ -516,12 +516,12 @@ describe("commands", () => {
         }
       }),
     )
-    const ticket = (r: (typeof result)["open2"]) =>
+    const ticket = (r: (typeof result)["openB"]) =>
       Result.isSuccess(r) ? r.success.ticket : `stale: ${r.failure.why}`
     expect(result.taken).toEqual(["OpenWorker", "Quit"])
-    expect(ticket(result.open2)).toBe("b")
-    // a finished, so worker 1 is free: a key pressed for it reaches nobody.
-    expect(ticket(result.open1)).toBe("stale: no worker 1")
+    expect(ticket(result.openB)).toBe("b")
+    // a finished, its worker gone: a key pressed for it reaches nobody, b no more than any.
+    expect(ticket(result.openA)).toBe("stale: a has no worker")
     expect(ticket(result.answer)).toBe("b")
     expect(ticket(result.answered)).toBe("stale: request r9 is no longer open")
     expect(ticket(result.message)).toBe("stale: a has no worker")

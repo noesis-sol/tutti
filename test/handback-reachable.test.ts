@@ -1,6 +1,6 @@
 // A conflict hand-back waiting for its steered worker stays within reach (§ 4.3): its ticket,
 // Blocked on MERGE_CONFLICT, keeps its worker's number and its card (`conflict waits for you`, no
-// spinner), so that its view opens by number or click; and with a dashboard the run waits for it
+// spinner), so that its view opens by click or Tab and Enter; and with a dashboard the run waits for it
 // as for a worker waiting on you, the end-of-run box naming it, until it is handed over or the
 // box's `q` ends the run, leaving it Blocked.
 import { describe, expect, test } from "bun:test"
@@ -171,7 +171,7 @@ describe("RunView", () => {
     expect(card?.status).toBe("conflict waits for you")
     expect(card?.motion).toBe("•")
     expect(card?.steered).toBe(true)
-    expect(view.hint.map((key) => key.keys)).toContain("1")
+    expect(view.hint.map((key) => key.keys)).toContain("Enter")
   })
 
   test("gives a Blocked ticket with no hand-back waiting no card", () => {
@@ -195,9 +195,9 @@ describe("RunView", () => {
 })
 
 describe("the screen's commands", () => {
-  test("open the Blocked ticket's view by its worker's number", () => {
+  test("open the Blocked ticket's view by its ticket", () => {
     const current = { ledger: ledgerOf({ ...blockedEntry, steered: false }), requests: [] }
-    const opened = resolve(UiCommand.OpenWorker({ worker: 1 }), current)
+    const opened = resolve(UiCommand.OpenWorker({ ticket: "a" }), current)
     expect(Result.isSuccess(opened) && opened.success.ticket).toBe("a")
     // Release and messages reach its worker though you have released it meanwhile.
     const released = resolve(UiCommand.Release({ ticket: "a" }), current)
@@ -354,7 +354,7 @@ const steered = (
         yield* Effect.promise(() => Bun.sleep(3))
       }
       const endedThen = fiber.pollUnsafe() !== undefined
-      yield* send(UiCommand.OpenWorker({ worker: 1 }))
+      yield* send(UiCommand.OpenWorker({ ticket: "a" }))
       const opened = yield* SubscriptionRef.get(inputs.screen)
       yield* send(UiCommand.CloseWorker())
       yield* finish(send)
@@ -379,7 +379,7 @@ const expectWaiting = (seen: Seen) => {
   expect(card?.motion).toBe("•")
   expect(seen.waiting.hint.map((key) => key.keys)).toContain("q")
   expect(seen.endedThen).toBe(false)
-  expect(seen.opened).toEqual(Screen.Worker({ worker: 1 }))
+  expect(seen.opened).toEqual(Screen.Worker({ ticket: "a" }))
 }
 
 describe("with a dashboard, the run waits for a hand-back waiting", () => {

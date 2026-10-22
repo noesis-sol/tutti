@@ -13,9 +13,9 @@
 // are drawn.
 //
 // The keys (§ 7.3), in the view's input layer (keys.ts): `Tab`, `Shift+Tab` and the arrows move the
-// highlight between cards, `Enter` opens the highlighted card, `1`–`9` open that worker, and a click
-// opens the card under it, each as an OpenWorker command naming the worker's stable number; `s`
-// opens the stop question. With the key help open, `?` and `Esc` close it and the other keys do
+// highlight between cards, `Enter` opens the highlighted card, and a click opens the card under it,
+// each as an OpenWorker command naming the card's ticket; `s` opens the stop question. The
+// highlight names a ticket too, so it stays on its card as other cards come and go. With the key help open, `?` and `Esc` close it and the other keys do
 // nothing.
 //
 // Attention cards (§ 4.5, AttentionCard.tsx): with no card chosen, the card of the oldest open
@@ -26,13 +26,13 @@
 //
 // With everything else done and workers waiting on you (D19), the end-of-run box (EndOfRunBox.tsx)
 // replaces the cards, and `q` ends the run (EndRun). The answer keys still answer the target
-// request, and `1`–`9` open a worker's view to answer there.
+// request, and `Tab` then `Enter` open a worker's view to answer there.
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { Card } from "../run/runView.ts"
 import { answerBindings } from "./AttentionCard.tsx"
-import { optionKeys, useAnswering } from "./attentionKeys.ts"
+import { useAnswering } from "./attentionKeys.ts"
 import { Cards, type CardsLayout, grows, keptLines, layoutOf, sectionLines } from "./Card.tsx"
 import { EndOfRunBox, endOfRunLines } from "./EndOfRunBox.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
@@ -108,16 +108,16 @@ export const showsGap = (
   foot: number,
 ): boolean => titleLines + 1 + totals + table + Math.max(slots, 1) + sectionChrome + foot <= height
 
-/** The worker `step` cards on from `from` in number order, round; the first or last from none. */
+/** The ticket of the card `step` cards on from `from`'s, round; the first or last from none. */
 export const moveHighlight = (
   cards: ReadonlyArray<Card>,
-  from: number | null,
+  from: string | null,
   step: 1 | -1,
-): number | null => {
+): string | null => {
   if (cards.length === 0) return null
-  const at = cards.findIndex((card) => card.worker === from)
+  const at = cards.findIndex((card) => card.ticket === from)
   const next = at === -1 ? (step === 1 ? 0 : cards.length - 1) : at + step
-  return cards[(next + cards.length) % cards.length]?.worker ?? null
+  return cards[(next + cards.length) % cards.length]?.ticket ?? null
 }
 
 export const Dashboard = () => {
@@ -126,24 +126,24 @@ export const Dashboard = () => {
   const now = useNow()
   const command = useCommand()
   const { width, height } = useTerminalDimensions()
-  // The highlight names a worker; one that has finished takes it with it. It is kept in a ref, so
+  // The highlight names a ticket; a card that has gone takes it with it. It is kept in a ref, so
   // that keys arriving together each see the one before them, and drawn from state.
-  const chosen = useRef<number | null>(null)
-  const [, redraw] = useState<number | null>(null)
+  const chosen = useRef<string | null>(null)
+  const [, redraw] = useState<string | null>(null)
   const [help, setHelp] = useState(false)
   const cards = view.cards
   // With none chosen, the card of the oldest open request is the target, and highlighted (§ 4.5).
   const oldest = view.requests[0]
-  const target = cards.find((card) => card.ticket === oldest?.ticket)?.worker ?? null
+  const target = cards.find((card) => card.ticket === oldest?.ticket)?.ticket ?? null
   const current = () =>
-    cards.some((card) => card.worker === chosen.current) ? chosen.current : target
+    cards.some((card) => card.ticket === chosen.current) ? chosen.current : target
   const highlighted = current()
-  const choose = (worker: number | null) => {
-    chosen.current = worker
-    redraw(worker)
+  const choose = (ticket: string | null) => {
+    chosen.current = ticket
+    redraw(ticket)
   }
   const spin = useSpinner(cards.length === 0 || cards.some((card) => card.motion === "spinner"))
-  const open = useCallback((worker: number) => command(UiCommand.OpenWorker({ worker })), [command])
+  const open = useCallback((ticket: string) => command(UiCommand.OpenWorker({ ticket })), [command])
   const answering = useAnswering(cards)
 
   const small = width < minWidth || height < minHeight
@@ -174,7 +174,7 @@ export const Dashboard = () => {
   }
   const key = (keys: ReadonlyArray<string>, run: () => void): ReadonlyArray<KeyBinding> =>
     keys.map((each) => ({ key: each, run: () => (helpOpen.current ? undefined : run()) }))
-  const highlightedCard = () => cards.find((card) => card.worker === current())
+  const highlightedCard = () => cards.find((card) => card.ticket === current())
   // The attention card highlighted, with its buttons drawn: the one Tab, Enter and 1–4 work in.
   const inCard = () => {
     const card = highlightedCard()
@@ -189,13 +189,13 @@ export const Dashboard = () => {
   const enter = () => {
     const card = highlightedCard()
     if (card === undefined) return
-    if (grows(card) && layout._tag !== "Cards") box.set(Box.Answer({ worker: card.worker }))
-    else if (inCard() === undefined || !answering.pressFocused(card)) open(card.worker)
+    if (grows(card) && layout._tag !== "Cards") box.set(Box.Answer({ ticket: card.ticket }))
+    else if (inCard() === undefined || !answering.pressFocused(card)) open(card.ticket)
   }
-  const number = (worker: number) => () => {
+  // `1`–`4` pick an option of the highlighted card's question; no number opens a worker.
+  const pick = (n: number) => () => {
     const card = inCard()
-    if (card !== undefined && worker <= optionKeys && answering.pick(card, worker)) return
-    if (cards.some((card) => card.worker === worker)) open(worker)
+    if (card !== undefined) answering.pick(card, n)
   }
   const targetCard = () => {
     const card = highlightedCard()
@@ -216,7 +216,7 @@ export const Dashboard = () => {
     ...key(["up"], () => step(-1, false)),
     ...key(["return", "enter"], enter),
     ...answerBindings(answering, targetCard).flatMap((binding) => key([binding.key], binding.run)),
-    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((worker) => key([String(worker)], number(worker))),
+    ...[1, 2, 3, 4].flatMap((n) => key([String(n)], pick(n))),
   ])
 
   const hint = hintSegments(view.hint, theme, width)

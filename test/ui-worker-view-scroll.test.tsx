@@ -82,7 +82,7 @@ const scrolling = async (count: number, body: (rendered: Rendered) => Promise<vo
   const feed = Effect.runSync(transcriptFeed(transcripts).pipe(Scope.provide(scope)))
   const shell: ShellValue = {
     view: external(view),
-    screen: external<Screen>(Screen.Worker({ worker: 1 })),
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
     commands: Effect.runSync(makeCommands),
     appearance: external<Appearance>("dark"),
     themeOf,

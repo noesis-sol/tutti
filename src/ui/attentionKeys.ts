@@ -296,7 +296,7 @@ export const useAnswering = (
     if (request === undefined || button === undefined || !settled(request)) return
     if (button.press._tag === "Answer") send(request, button.press.answer)
     else {
-      if (inView === undefined) command(UiCommand.OpenWorker({ worker: card.worker }))
+      if (inView === undefined) command(UiCommand.OpenWorker({ ticket: card.ticket }))
       else inView(request)
       sent()
     }

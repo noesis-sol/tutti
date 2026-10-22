@@ -23,11 +23,12 @@
 //
 // The keys, in the view's layer: `Tab`, `Shift+Tab` and the arrows move between the items and the
 // panel's requests, and between a request's buttons; `Enter` expands or collapses the selected item
-// or presses the focused button; `1`–`9` switch workers (or pick a question's option); `d`,
-// `Shift+D`, `a` and `r` answer the selected request, or the oldest; PgUp/PgDn and `g`/`G` scroll;
-// `i` or a click focuses the composer; `Ctrl+X` asks, then interrupts the worker's turn; `Ctrl+R`
-// releases a steered worker; `Esc` leaves the composer, then goes back to the dashboard, as a click
-// on `← Dashboard` does. While you write in the composer, it takes the printable keys, Enter and
+// or presses the focused button; `1`–`4` pick a question's option; `d`, `Shift+D`, `a` and `r`
+// answer the selected request, or the oldest; PgUp/PgDn and `g`/`G` scroll; `i` or a click focuses
+// the composer; `Ctrl+X` asks, then interrupts the worker's turn; `Ctrl+R` releases a steered
+// worker; `Esc` leaves the composer, then goes back to the dashboard, as a click on `← Dashboard`
+// does. No key switches workers: `Tab` is the items', so another worker is opened from the
+// dashboard (§ 7.3). While you write in the composer, it takes the printable keys, Enter and
 // the arrows; PgUp/PgDn, Ctrl+X, Ctrl+R and Esc still work.
 //
 // Branding (§ 7.5): tutti's own glyphs and layout, and the scheme's colours; the chrome names
@@ -57,7 +58,7 @@ import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
 import type { Card } from "../run/runView.ts"
 import { AttentionLines, answerBindings, type ButtonSegment } from "./AttentionCard.tsx"
-import { buttonsOf, optionKeys, picksOptions, requestText, useAnswering } from "./attentionKeys.ts"
+import { buttonsOf, picksOptions, requestText, useAnswering } from "./attentionKeys.ts"
 import { headOf, statusLook } from "./Card.tsx"
 import {
   Composer,
@@ -688,7 +689,6 @@ const hintKeys = (requests: boolean, composing: boolean, steered: boolean) => {
         { keys: "?", does: "keys" },
         { keys: "PgUp/PgDn", does: "scroll" },
         { keys: "g/G", does: "top/end" },
-        { keys: "1–9", does: "workers" },
       ]
 }
 
@@ -696,12 +696,12 @@ const hintKeys = (requests: boolean, composing: boolean, steered: boolean) => {
 export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
   ["Tab, Shift+Tab, arrows", "move between items; between a request's buttons"],
   ["Enter, a click", "expand or collapse the item; press the focused button"],
-  ["1–9", "switch to that worker"],
   [
     "i, a click on the composer",
     "write to the worker; Enter sends, Alt+Enter or Ctrl+J a new line",
   ],
   ["Esc, ← Dashboard", "leave the composer; back to the dashboard"],
+  ["Esc, Tab, Enter", "switch workers, by way of the dashboard"],
   ["Ctrl+X", "interrupt the worker's turn (asks first)"],
   ["Ctrl+R, Release", "release a steered worker"],
   ["d, Shift+D", "deny the request; deny with a reason"],
@@ -719,8 +719,8 @@ export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
 /** The store a view without a transcript reads. */
 const noTranscript = external<TranscriptState>(emptyTranscript)
 
-/** The view of worker `worker`, while the run shows it. */
-export const WorkerView = ({ worker }: { readonly worker: number }) => {
+/** The view of the ticket's worker, while the run shows it. */
+export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const view = useRunView()
   const theme = useTheme()
   const looks = useSyntaxStyles(theme)
@@ -730,7 +730,7 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   const feed = useTranscripts()
   const handBacks = useHandBacks()
   const { width, height } = useTerminalDimensions()
-  const found = view.cards.find((each) => each.worker === worker)
+  const found = view.cards.find((each) => each.ticket === viewed)
   // The card last seen, so that the view still shows a worker that has just finished.
   const last = useRef<Card | undefined>(found)
   if (found !== undefined) last.current = found
@@ -935,12 +935,9 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
     }
     toggle(key)
   }
-  const number = (n: number) => () => {
+  const pick = (n: number) => () => {
     const target = selectedCard()
-    if (target !== undefined && n <= optionKeys && answering.pick(target, n)) return
-    if (n !== worker && view.cards.some((each) => each.worker === n)) {
-      command(UiCommand.OpenWorker({ worker: n }))
-    }
+    if (target !== undefined) answering.pick(target, n)
   }
   const targetCard = () => selectedCard() ?? requestCards[0]
   const close = () => command(UiCommand.CloseWorker())
@@ -964,7 +961,7 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
     ...["shift+tab", "left"].map((key) => ({ key, run: () => stepOrMove(-1) })),
     ...["return", "enter"].map((key) => ({ key, run: enter })),
     ...answerBindings(answering, targetCard),
-    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ key: String(n), run: number(n) })),
+    ...[1, 2, 3, 4].map((n) => ({ key: String(n), run: pick(n) })),
     {
       key: "g",
       run: () => {
@@ -1005,7 +1002,7 @@ export const WorkerView = ({ worker }: { readonly worker: number }) => {
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
   const head: Segments =
     card === undefined
-      ? [seg(`no worker ${worker}`, theme.styles.dim)]
+      ? [seg(`${sanitizeLine(viewed)} has no worker`, theme.styles.dim)]
       : [
           ...headOf(card, theme, now, spin, [seg(card.status, statusLook(card, theme))]),
           seg("   "),

@@ -262,18 +262,18 @@ describe("the card", () => {
         "
           Current
         ╭──────────────────────────────────────────────────────────────────────────────╮
-        │ 1 •  t-1  done  0s                                                           │
+        │ • t-1  done  0s                                                              │
         │   Title of t-1                                                               │
         ╰──────────────────────────────────────────────────────────────────────────────╯
         ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-        ┃ 2 •  t-2  permission — waiting for you (3)  0s                               ┃
+        ┃ • t-2  permission — waiting for you (3)  0s                                  ┃
         ┃   Title of t-2                                                               ┃
         ┃   Bash: Remove the build cache                                               ┃
         ┃   rm -rf build                                                               ┃
         ┃   Path is outside allowed working directories                                ┃
         ┃   [ Deny ]  [ Allow ]  [ Allow for this run ]  +2 more                       ┃
         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-          Tab select · 1–2 open · d deny · a allow · s stop after current · ? keys
+          Tab select · Enter open · d deny · a allow · s stop after current · ? keys
         "
       `)
     })
@@ -342,35 +342,35 @@ describe("the card", () => {
           "
             Current
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-          ┃ 1 •  t-1  question — waiting for you  0s                                     ┃
+          ┃ • t-1  question — waiting for you  0s                                        ┃
           ┃   Title of t-1                                                               ┃
           ┃   Which migration?                                                           ┃
           ┃   [ 1 Keep the old ]                                                         ┃
           ┃   [ 2 Write a new ]                                                          ┃
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           ╭──────────────────────────────────────────────────────────────────────────────╮
-          │ 2 •  t-2  input — waiting for you  0s                                        │
+          │ • t-2  input — waiting for you  0s                                           │
           │   Title of t-2                                                               │
           │   docs: Log in to the docs server                                            │
           │   https://docs.example/login                                                 │
           │   [ Decline ]  [ Open URL ]                                                  │
           ╰──────────────────────────────────────────────────────────────────────────────╯
-            Tab select · 1–2 open · d deny · s stop after current · ? keys
+            Tab select · Enter open · d deny · s stop after current · ? keys
           "
         `)
       },
     )
   })
 
-  test("cards keep their number order; an attention card is taller, not moved", async () => {
+  test("cards keep their order; an attention card is taller, not moved", async () => {
     await scene(
       [permission("r1", "t-1")],
       async ({ rendered }) => {
         const lines = linesOf(await rendered.capture())
         const heads = lines.flatMap((line) =>
-          [...line.matchAll(/[│┃] (\d) [•⣾]/g)].map((m) => m[1]),
+          [...line.matchAll(/[│┃] [•⣾] (t-\d)/g)].map((m) => m[1]),
         )
-        expect(heads).toEqual(["1", "2", "3", "4"])
+        expect(heads).toEqual(["t-1", "t-2", "t-3", "t-4"])
       },
       { size: { width: 120, height: 40 }, workers: 4 },
     )
@@ -386,7 +386,7 @@ describe("the card", () => {
       [permission("r1", "t-3")],
       async ({ rendered, commands, clock }) => {
         const frame = await rendered.capture()
-        expect(linesOf(frame).some((line) => line.includes("3 •  t-3  ■ allow?"))).toBe(true)
+        expect(linesOf(frame).some((line) => line.includes("• t-3  ■ allow?"))).toBe(true)
         expect(linesOf(frame).some((line) => line.includes("[ Deny ]"))).toBe(false)
         await press(rendered, "enter")
         expect(linesOf(await rendered.capture()).some((line) => line.includes("[ Deny ]"))).toBe(
@@ -437,7 +437,7 @@ describe("answering by key", () => {
       expect(taken(commands)).toEqual([answerOf("r1", { _tag: "Allow" })])
       // Past the last button, Tab goes on to the next card, whose Enter opens it.
       await press(rendered, "tab", "enter")
-      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ worker: 2 })])
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-2" })])
     })
   })
 
@@ -476,14 +476,14 @@ describe("answering by key", () => {
       async ({ commands, clock, rendered }) => {
         clock.pass(settle)
         await press(rendered, "enter")
-        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ worker: 1 })])
+        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-1" })])
         await press(rendered, "2", "enter")
         expect(taken(commands)).toEqual([
           answerOf("q1", { _tag: "Choose", answers: ["Write a new"] }),
         ])
-        // 3 is no option of the question's: it opens worker 3, as on any card.
+        // 3 is no option of the question's, and no number opens a worker: it does nothing.
         await press(rendered, "3")
-        expect(taken(commands)).toEqual([UiCommand.OpenWorker({ worker: 3 })])
+        expect(taken(commands)).toEqual([])
       },
       { workers: 3 },
     )
@@ -676,14 +676,14 @@ describe("the answer names the request shown", () => {
       clock.pass(settle)
       const frame = await rendered.capture()
       const lines = linesOf(frame)
-      const second = lines.findIndex((line) => line.includes("2 •  t-2"))
+      const second = lines.findIndex((line) => line.includes("• t-2"))
       const deny = lines.findIndex((line, i) => i > second && line.includes("[ Deny ]"))
       const x = (lines[deny] ?? "").indexOf("[ Allow ]")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, deny))
       expect(taken(commands)).toEqual([answerOf("r2", { _tag: "Allow" })])
       // A click elsewhere on the card opens its worker.
       await rendered.input((setup) => setup.mockMouse.click(40, second))
-      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ worker: 2 })])
+      expect(taken(commands)).toEqual([UiCommand.OpenWorker({ ticket: "t-2" })])
     })
   })
 })

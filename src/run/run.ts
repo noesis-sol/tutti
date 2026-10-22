@@ -997,7 +997,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             case "OpenWorker":
               return yield* SubscriptionRef.set(
                 screen.screen,
-                Screen.Worker({ worker: command.worker }),
+                Screen.Worker({ ticket: command.ticket }),
               )
             case "CloseWorker":
               return yield* SubscriptionRef.set(screen.screen, Screen.Dashboard())

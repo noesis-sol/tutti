@@ -531,7 +531,8 @@ const cardsOf = (
     },
   )
 
-const head = (n: number) => `│ ${n} `
+/** The head line of `ticket`'s card: its ticket, then its status. */
+const head = (ticket: string) => ` ${ticket}  `
 
 const scenes: ReadonlyArray<Scene> = [
   {
@@ -567,19 +568,18 @@ const scenes: ReadonlyArray<Scene> = [
       ["↷ deferred", look("notice")],
       ["◆ environment · high", look("organ", "bold")],
       // The cards: a worker testing, a merge, and one waiting for you, highlighted.
-      [{ text: "│", on: "│ 1 ⣾" }, look("live")],
-      [{ text: "1", on: "1 ⣾  tut-zq4" }, look("emphasis", "bold")],
-      [{ text: "⣾", on: head(1) }, look("live", "bold")],
-      [{ text: "tut-zq4", on: head(1) }, look("live", "bold")],
-      [{ text: "testing", on: head(1) }, look("notice", "bold")],
-      [{ text: "18m40s", on: head(1) }, look("text", "faint")],
+      [{ text: "│", on: "│ ⣾ tut-zq4" }, look("live")],
+      [{ text: "⣾", on: "│ ⣾ tut-zq4" }, look("live", "bold")],
+      [{ text: "tut-zq4", on: head("tut-zq4") }, look("live", "bold")],
+      [{ text: "testing", on: head("tut-zq4") }, look("notice", "bold")],
+      [{ text: "18m40s", on: head("tut-zq4") }, look("text", "faint")],
       ["▸ Bash(bun test)", look("text", "faint")],
-      [{ text: "│", on: "│ 2 ◆" }, look("frame")],
-      [{ text: "◆", on: head(2) }, look("merging", "bold")],
-      [{ text: "merging", on: head(2) }, look("merging", "bold")],
+      [{ text: "│", on: "│ ◆ tut-kco" }, look("frame")],
+      [{ text: "◆", on: "│ ◆ tut-kco" }, look("merging", "bold")],
+      [{ text: "merging", on: head("tut-kco") }, look("merging", "bold")],
       ["running the check on batch/2026-10-20", look("text", "faint")],
       ["┏━━", look("needsYou", "bold")],
-      [{ text: "┃", on: "┃ 3 " }, look("needsYou", "bold")],
+      [{ text: "┃", on: "┃ • tut-9a1" }, look("needsYou", "bold")],
       ["permission — waiting for you", look("needsYou", "bold")],
       ["Bash: Remove the build cache", look("text")],
       [{ text: "rm -rf build", on: "┃   rm -rf" }, look("text", "faint")],
@@ -684,13 +684,13 @@ const scenes: ReadonlyArray<Scene> = [
     ),
     ready: "editing",
     checks: [
-      [{ text: "editing", on: head(1) }, look("live", "bold")],
-      [{ text: "reading", on: head(2) }, look("live", "bold")],
-      [{ text: "subagent", on: head(3) }, look("live", "bold")],
+      [{ text: "editing", on: head("t-1") }, look("live", "bold")],
+      [{ text: "reading", on: head("t-2") }, look("live", "bold")],
+      [{ text: "subagent", on: head("t-3") }, look("live", "bold")],
       ["retrying 3/10 (529)", look("notice")],
       ["usage limit · resets 14:05", look("notice")],
-      [{ text: "resolving", on: head(6) }, look("notice")],
-      [{ text: "working", on: head(7) }, look("live", "bold")],
+      [{ text: "resolving", on: head("t-6") }, look("notice")],
+      [{ text: "working", on: head("t-7") }, look("live", "bold")],
       ["▸ Bash(rm -rf build) denied by the classifier", look("notice")],
     ],
   },
@@ -712,13 +712,13 @@ const scenes: ReadonlyArray<Scene> = [
     ),
     ready: "steered",
     checks: [
-      [{ text: "•", on: head(1) }, look("done")],
-      [{ text: "done", on: head(1) }, look("done")],
+      [{ text: "•", on: "│ • t-1" }, look("done")],
+      [{ text: "done", on: head("t-1") }, look("done")],
       ["steered", look("emphasis")],
-      [{ text: "stopped", on: head(2) }, look("notice")],
-      [{ text: "failed", on: head(3) }, look("needsYou")],
-      [{ text: "gone", on: head(4) }, look("needsYou")],
-      [{ text: "◼", on: head(5) }, look("toMerge")],
+      [{ text: "stopped", on: head("t-2") }, look("notice")],
+      [{ text: "failed", on: head("t-3") }, look("needsYou")],
+      [{ text: "gone", on: head("t-4") }, look("needsYou")],
+      [{ text: "◼", on: "│ ◼ t-5" }, look("toMerge")],
       ["to merge (2nd)", look("toMerge")],
       ["fixing check", look("notice")],
       ["question — waiting for you", look("needsYou", "bold")],
@@ -860,10 +860,10 @@ const scenes: ReadonlyArray<Scene> = [
     view: illustrated,
     ready: "? keys",
     checks: [
-      [{ text: "│", on: "│ 1 ⣾" }, look("needsYou")],
-      [{ text: "Add an undo stack for property edits", on: "│ 1 ⣾" }, look("text", "faint")],
-      [{ text: "┃", on: "┃ 3 •" }, look("needsYou", "bold")],
-      [{ text: "■ allow?", on: "┃ 3 •" }, look("needsYou", "bold")],
+      [{ text: "│", on: "│ ⣾ tut-zq4" }, look("needsYou")],
+      [{ text: "Add an undo stack for property edits", on: "│ ⣾ tut-zq4" }, look("text", "faint")],
+      [{ text: "┃", on: "┃ • tut-9a1" }, look("needsYou", "bold")],
+      [{ text: "■ allow?", on: "┃ • tut-9a1" }, look("needsYou", "bold")],
     ],
   },
   {
@@ -916,7 +916,7 @@ const scenes: ReadonlyArray<Scene> = [
     view: viewOf([{ ticket: "t-1", phase: working("working"), worker: 1, steered: true }], {
       workers: [["t-1", WS.Idle({ at: began })]],
     }),
-    screen: Screen.Worker({ worker: 1 }),
+    screen: Screen.Worker({ ticket: "t-1" }),
     transcripts: feedOf(transcript),
     ready: highlighted,
     checks: [
@@ -1150,9 +1150,9 @@ describe("layouts", () => {
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ 1 ⣾  tut-zq4  testing   18m40s  Add an undo stack for property edits         │
-      │ 2 ◆  tut-kco  merging   18m40s  Open the property model                      │
-      ┃ 3 •  tut-9a1  ■ allow?  18m40s  Remove the build cache                       │
+      │ ⣾ tut-zq4  testing   18m40s  Add an undo stack for property edits            │
+      │ ◆ tut-kco  merging   18m40s  Open the property model                         │
+      ┃ • tut-9a1  ■ allow?  18m40s  Remove the build cache                          │
       ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
@@ -1163,7 +1163,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · 1–3 open · d deny · a allow · s stop after current · ? keys
+        Tab select · Enter open · d deny · a allow · s stop after current · ? keys
       "
     `)
     },
@@ -1200,12 +1200,12 @@ describe("layouts", () => {
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────╮
-      │ 1 ⣾  tut-zq4  testing  18m40s                            ││ 2 ◆  tut-kco  merging  18m40s                            │
+      │ ⣾ tut-zq4  testing  18m40s                               ││ ◆ tut-kco  merging  18m40s                               │
       │   Add an undo stack for property edits                   ││   Open the property model                                │
       │   ▸ Bash(bun test)                                       ││   running the check on batch/2026-10-20                  │
       ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
       ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-      ┃ 3 •  tut-9a1  permission — waiting for you  18m40s       ┃
+      ┃ • tut-9a1  permission — waiting for you  18m40s          ┃
       ┃   Remove the build cache                                 ┃
       ┃   Bash: Remove the build cache                           ┃
       ┃   rm -rf build                                           ┃
@@ -1216,7 +1216,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · 1–3 open · d deny · a allow · s stop after current · ? keys
+        Tab select · Enter open · d deny · a allow · s stop after current · ? keys
       "
     `)
     },
@@ -1237,15 +1237,15 @@ describe("layouts", () => {
        ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
         Current
       ╭──────────────────────────────────────────────────────────╮
-      │ 1 ⣾  tut-zq4  testing   18m40s  Add an undo stack for p… │
-      │ 2 ◆  tut-kco  merging   18m40s  Open the property model  │
-      ┃ 3 •  tut-9a1  ■ allow?  18m40s  Remove the build cache   │
+      │ ⣾ tut-zq4  testing   18m40s  Add an undo stack for prop… │
+      │ ◆ tut-kco  merging   18m40s  Open the property model     │
+      ┃ • tut-9a1  ■ allow?  18m40s  Remove the build cache      │
       ╰──────────────────────────────────────────────────────────╯
 
 
 
 
-        Tab select · 1–3 open · d deny · a allow · s stop after c…
+        Tab select · Enter open · d deny · a allow · s stop after…
       "
     `)
     },
@@ -1309,8 +1309,8 @@ describe("layouts", () => {
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      ┃ 1 •  t-1  ■ allow?  18m40s  Title of t-1                                     │
-      │ 2 •  t-2  ■ allow?  18m40s  Title of t-2                                     │
+      ┃ • t-1  ■ allow?  18m40s  Title of t-1                                        │
+      │ • t-2  ■ allow?  18m40s  Title of t-2                                        │
       ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
@@ -1324,7 +1324,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · 1–2 open · d deny · a allow · s stop after current · ? keys
+        Tab select · Enter open · d deny · a allow · s stop after current · ? keys
       "
     `)
     },
@@ -1365,7 +1365,7 @@ describe("layouts", () => {
 
 
 
-        Tab select · 1–2 open · d deny · a allow · q end the run · ? keys
+        Tab select · Enter open · d deny · a allow · q end the run · ? keys
       "
     `)
     },
@@ -1423,14 +1423,14 @@ describe("layouts", () => {
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
-      │ 1 ⣾  a  editing  18m40s                                                      │
+      │ ⣾ a  editing  18m40s                                                         │
       │   Title of a                                                                 │
       ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
 
         ■ ■ ■ ■  Winding down · 1 running, no new tickets
-        Tab select · 1 open · s keep taking tickets · ? keys
+        Tab select · Enter open · s keep taking tickets · ? keys
       "
     `)
     },
@@ -1543,12 +1543,12 @@ test(
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ 1 ⣾  tut-1  editing  18m40s                                                  │
+    │ ⣾ tut-1  editing  18m40s                                                     │
     │   Add an undo stack for property edits                                       │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
-      Tab select · 1 open · s stop after current · ? keys
+      Tab select · Enter open · s stop after current · ? keys
 
     ToMerge:
 
@@ -1566,12 +1566,12 @@ test(
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ 1 ◼  tut-1  to merge (2nd)  18m40s                                           │
+    │ ◼ tut-1  to merge (2nd)  18m40s                                              │
     │   Add an undo stack for property edits                                       │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
-      Tab select · 1 open · s stop after current · ? keys
+      Tab select · Enter open · s stop after current · ? keys
 
     Merging:
 
@@ -1589,12 +1589,12 @@ test(
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ 1 ◆  tut-1  merging  18m40s                                                  │
+    │ ◆ tut-1  merging  18m40s                                                     │
     │   Add an undo stack for property edits                                       │
     │   rebasing onto batch/2026-10-20                                             │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
-      Tab select · 1 open · s stop after current · ? keys
+      Tab select · Enter open · s stop after current · ? keys
 
     Resolving:
 
@@ -1612,12 +1612,12 @@ test(
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ 1 ⣾  tut-1  resolving  18m40s                                                │
+    │ ⣾ tut-1  resolving  18m40s                                                   │
     │   Add an undo stack for property edits                                       │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
-      Tab select · 1 open · s stop after current · ? keys
+      Tab select · Enter open · s stop after current · ? keys
 
     Fixing:
 
@@ -1635,12 +1635,12 @@ test(
     ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
       Current
     ╭──────────────────────────────────────────────────────────────────────────────╮
-    │ 1 ⣾  tut-1  fixing check  18m40s                                             │
+    │ ⣾ tut-1  fixing check  18m40s                                                │
     │   Add an undo stack for property edits                                       │
     ╰──────────────────────────────────────────────────────────────────────────────╯
 
 
-      Tab select · 1 open · s stop after current · ? keys
+      Tab select · Enter open · s stop after current · ? keys
 
     Done:
 

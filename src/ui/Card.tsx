@@ -1,16 +1,17 @@
 // The dashboard's Current section (§ 5.1 "How the phases are shown", § 7.2, § 7.11): under its
-// `Current` label, a card for each ticket with work under way, in its worker's number order. A card
-// says its worker's stable number, its mark (the spinner while the worker works, `◼` to merge, `◆`
-// merging, `•` once its turn has ended), its ticket, its status (`steered` beside it), how long it
-// has been in its phase, the memory its worker's processes take once the run has read it (`1.2 GB`,
-// `? GB` when they can't be found, src/run/load.ts), its title, and its action line: the phase's (a merge's step, a recheck), or
-// else the worker's latest action behind `▸`, a denied call `notice` for its 10 seconds.
+// `Current` label, a card for each ticket with work under way, in its worker's number order, a
+// number the card doesn't show (§ 7.2). A card says its mark (the spinner while the worker works,
+// `◼` to merge, `◆` merging, `•` once its turn has ended), its ticket, its status (`steered` beside
+// it), how long it has been in its phase, the memory its worker's processes take once the run has
+// read it (`1.2 GB`, `? GB` when they can't be found, src/run/load.ts), its title, and its action
+// line: the phase's (a merge's step, a recheck), or else the worker's latest action behind `▸`, a
+// denied call `notice` for its 10 seconds.
 //
 // A card is framed `live` while its worker works and `needsYou` when it waits for you, `frame`
 // otherwise; the highlighted one keeps its colour, bold in the heavy border style. From 120 columns
 // the cards go two to a row, every one as tall as the tallest. When the pane can't hold a card each,
 // they go one line each in a single compact box, framed `needsYou` when any of them waits for you,
-// their numbers, tickets, statuses, times and memory lined up as columns, each as wide as the widest.
+// their tickets, statuses, times and memory lined up as columns, each as wide as the widest.
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
 import { type MouseEvent, TextAttributes } from "@opentui/core"
@@ -140,12 +141,8 @@ const frameOf = (card: Card, theme: Theme): Look =>
 const steeredOf = (card: Card, theme: Theme): Segments =>
   card.steered ? [seg("  "), seg("steered", roleLook(theme, "emphasis"))] : []
 
-/**
- * The cells of a card's first line but its mark: its number, ticket, status, elapsed time and its
- * worker's memory.
- */
+/** The cells of a card's first line but its mark: its ticket, status, elapsed time and memory. */
 interface HeadCells {
-  readonly number: Segments
   readonly ticket: Segments
   /** Its status, `steered` beside it. */
   readonly status: Segments
@@ -154,18 +151,14 @@ interface HeadCells {
   readonly memory: Segments
 }
 
-/**
- * The widths of the compact box's columns: the widest number, ticket, status, time and memory on
- * screen.
- */
+/** The widths of the compact box's columns: the widest ticket, status, time and memory on screen. */
 type HeadColumns = { readonly [K in keyof HeadCells]: number }
 
-const noColumns: HeadColumns = { number: 0, ticket: 0, status: 0, time: 0, memory: 0 }
+const noColumns: HeadColumns = { ticket: 0, status: 0, time: 0, memory: 0 }
 
 const cellsOf = (card: Card, theme: Theme, now: number, status: Segments): HeadCells => {
   const { styles } = theme
   return {
-    number: [seg(String(card.worker), styles.key)],
     ticket: [seg(sanitizeLine(card.ticket), styles.picked)],
     status: [...status, ...steeredOf(card, theme)],
     time: [seg(elapsed(now - card.since), styles.dim)],
@@ -175,7 +168,6 @@ const cellsOf = (card: Card, theme: Theme, now: number, status: Segments): HeadC
 
 /** `cols` widened to hold `cells`. */
 const fit = (cols: HeadColumns, cells: HeadCells): HeadColumns => ({
-  number: Math.max(cols.number, widthOf(cells.number)),
   ticket: Math.max(cols.ticket, widthOf(cells.ticket)),
   status: Math.max(cols.status, widthOf(cells.status)),
   time: Math.max(cols.time, widthOf(cells.time)),
@@ -189,15 +181,13 @@ const padding = (segments: Segments, width: number): Segments => {
 }
 
 /**
- * A card's first line from its cells and `mark`, its ticket and status padded to `cols` and its
- * number, time and memory right-aligned in them, so that their digits line up with the other lines'.
+ * A card's first line from its cells and `mark`: its ticket in line with the lines below it, its
+ * ticket and status padded to `cols`, and its time and memory right-aligned in them, so that their
+ * digits line up with the other lines'.
  */
 const headLine = (cells: HeadCells, mark: Segment, cols: HeadColumns): Segments => [
-  ...padding(cells.number, cols.number),
-  ...cells.number,
-  seg(" "),
   mark,
-  seg("  "),
+  seg(" "),
   ...cells.ticket,
   ...padding(cells.ticket, cols.ticket),
   seg("  "),
@@ -211,7 +201,7 @@ const headLine = (cells: HeadCells, mark: Segment, cols: HeadColumns): Segments 
     : [seg("  "), ...padding(cells.memory, cols.memory), ...cells.memory]),
 ]
 
-/** The card's first line: its number, mark, ticket, status, elapsed time and memory. */
+/** The card's first line: its mark, ticket, status, elapsed time and memory. */
 export const headOf = (
   card: Card,
   theme: Theme,
@@ -296,7 +286,7 @@ const heavyBar = (frame: Look) =>
   seg("┃", { ...frame, attributes: frame.attributes | TextAttributes.BOLD })
 
 /**
- * The compact box's lines `width` wide, a line a card, its number, ticket, status and time in
+ * The compact box's lines `width` wide, a line a card, its ticket, status and time in
  * columns: framed `needsYou` when any of them waits for you, `live` while any works, `frame`
  * otherwise. The highlighted card's line has a heavy left bar.
  */
@@ -307,7 +297,8 @@ export const compactLines = (
     readonly now: number
     readonly spin: string
     readonly width: number
-    readonly highlighted: number | null
+    /** The highlighted card's ticket. */
+    readonly highlighted: string | null
   },
 ): ReadonlyArray<Segments> => {
   const frame = cards.some(waitsForYou)
@@ -315,7 +306,7 @@ export const compactLines = (
     : cards.some((card) => card.motion === "spinner")
       ? roleLook(theme, "live")
       : frameLook(theme)
-  // The numbers, tickets, statuses and times line up as columns, each as wide as the widest.
+  // The tickets, statuses and times line up as columns, each as wide as the widest.
   const cols = cards.reduce(
     (widths, card) => fit(widths, cellsOf(card, theme, options.now, compactStatus(card, theme))),
     noColumns,
@@ -327,7 +318,7 @@ export const compactLines = (
   )
   return lines.map((line, i) => {
     const card = cards[i - 1]
-    if (card === undefined || card.worker !== options.highlighted) return line
+    if (card === undefined || card.ticket !== options.highlighted) return line
     return [heavyBar(frame), ...line.slice(1)]
   })
 }
@@ -440,8 +431,10 @@ export const Cards = ({
   readonly now: number
   readonly spin: string
   readonly stopping: boolean
-  readonly highlighted: number | null
-  readonly open: (worker: number) => void
+  /** The highlighted card's ticket. */
+  readonly highlighted: string | null
+  /** Opens the view of the ticket's worker. */
+  readonly open: (ticket: string) => void
   /** The focused button of an attention card. */
   readonly focusOf: (card: Card) => number | null
   /** Presses an attention card's button. */
@@ -468,7 +461,7 @@ export const Cards = ({
                 // biome-ignore lint/suspicious/noArrayIndexKey: the box's lines are drawn anew in order
                 key={i}
                 height={1}
-                {...(card === undefined ? {} : { onMouseDown: clicked(() => open(card.worker)) })}
+                {...(card === undefined ? {} : { onMouseDown: clicked(() => open(card.ticket)) })}
               >
                 <Lines lines={[line]} />
               </box>
@@ -492,14 +485,14 @@ export const Cards = ({
               <box key={row[0]?.ticket ?? ""} flexDirection="row" height={tall}>
                 {row.map((card, i) => {
                   const w = i === 0 ? first : width - first
-                  const lit = card.worker === highlighted
+                  const lit = card.ticket === highlighted
                   return (
                     // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's
                     <box
                       key={card.ticket}
                       width={w}
                       height={tall}
-                      onMouseDown={clicked(() => open(card.worker))}
+                      onMouseDown={clicked(() => open(card.ticket))}
                     >
                       {grows(card) ? (
                         <AttentionLines

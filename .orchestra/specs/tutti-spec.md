@@ -397,7 +397,7 @@ These stay, as orchestra has them:
 
 - **tutti sends a steered worker nothing automatically:** no continue nudges, no hand-backs, no "carry on".
 - **A hand-back due to it waits.** It appears in its view as a notice with **Hand it the conflict now**. Its ticket is `Blocked{MERGE_CONFLICT}` meanwhile, and its session stays open (§4.8): its view still takes your messages, interrupts and **Release**.
-  - **It stays within reach.** The ticket keeps its worker's number and its card meanwhile, the card's status `conflict waits for you`, with no spinner, so `1`–`9` or a click opens its view as before; no other worker takes its number.
+  - **It stays within reach.** The ticket keeps its card meanwhile, in its place among the cards, the card's status `conflict waits for you`, with no spinner, so a click, or `Tab` then `Enter`, opens its view as before.
   - **The run waits for it**, with a dashboard, as for a worker waiting on you (D19, §5 item 14): the end-of-run box names it, `<id> (a merge conflict waits for you)`, until it is handed over, its worker is released, or `q` ends the run, leaving it `Blocked`. In plain mode, where nothing can hand it over, the run ends as usual.
   - **Hand it the conflict now** hands the conflict over. The ticket, `Blocked` on `MERGE_CONFLICT`, goes back in the merge queue (§5.1) and is rebased again. If it still conflicts, the conflict is handed back to the worker, steered as it is: the steered check is waived for that one hand-back.
 - **A message you type may join a turn of tutti's.** Sent while a nudge or hand-back runs, it can be folded into that turn (§4.1), and one turn then answers both. The worker is steered from your send. tutti sends nothing after that turn, but it still reads the ticket and verifies what a hand-back left (§4.7): reading and verifying send nothing.
@@ -1021,23 +1021,21 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
 ╰────────────┴─────────────┴─────────────────────────────────────────────╯
   Current
 ╭──────────────────────────────────╮╭──────────────────────────────────╮
-│ 1 ◆  tut-kco  merging  6m31s     ││ 2 ⣾  tut-zq4  testing  1m07s     │
+│ ◆ tut-kco  merging  6m31s        ││ ⣾ tut-zq4  testing  1m07s        │
 │   Open the property model: Int…  ││   Add an undo stack for propert… │
 │   merging into batch/2026-10-20… ││   ▸ Bash(scripts/check-fast.sh)  │
 ╰──────────────────────────────────╯╰──────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────╮
-│ 3 •  tut-9a1  permission — waiting for you  2m10s                    │
+│ • tut-9a1  permission — waiting for you  2m10s                       │
 │   Claude wants to run: rm -rf build                                  │
 │   held by the safety check          [ Deny ]  [ Allow ]              │
 ╰──────────────────────────────────────────────────────────────────────╯
-  Tab select · 1–3 open · d deny · s stop after current · ? keys
+  Tab select · Enter open · d deny · s stop after current · ? keys
 ```
 
-- **Cards are click targets.** A click, or `Enter` on the highlighted card, opens that worker's view.
-- **Numbers are stable.** A worker keeps its number for the whole of its session. A new worker takes the lowest free number, and numbers never shift as others finish. orchestra renumbered, which let a key or click meant for one worker reach another as a worker finished.
-  - `1`–`9` open workers 1 to 9.
-  - Workers 10 to 16 are reached by click or `Tab`.
-- **Attention cards.** An attention card grows to show its request and buttons (§4.5). The cards keep their stable number order, so an attention card stands out by its red border and size, not by moving. A card in the compact one-line layout shows `■ allow?` and opens its request with `Enter`.
+- **Cards are click targets.** A click, or `Tab` to highlight a card and `Enter`, opens that worker's view. Cards show no worker number, and no number key opens a worker: orchestra's `1`–`9` switch tabs, a departure on purpose (maintainer, 2026-10-22), as a click or `Tab` reaches every card, the 10th to the 16th too.
+- **The order is stable, and the highlight stays on its ticket.** Each worker holds a place for the whole of its session; a new worker takes the first place free, and the cards never shift as others finish. The highlight, and every command a click or key sends, names the card's ticket, never a place, so as cards come and go the highlight stays on its card, and goes with it when it ends, rather than pass to the card that takes its place. orchestra renumbered, which let a key or click meant for one worker reach another as a worker finished.
+- **Attention cards.** An attention card grows to show its request and buttons (§4.5). The cards keep their stable order, so an attention card stands out by its red border and size, not by moving. A card in the compact one-line layout shows `■ allow?` and opens its request with `Enter`.
   - The illustration shows a request held by the safety check, as it comes in default mode (`defaultToNo`, §4.5): Deny comes first and has the focus, and there is no `a` hint.
 - **Needs you** counts open attention requests, plus orchestra's questions and tickets blocked from merging.
 - **Banners on the title line**: usage (§4.12), and holds (`BLOCKED`, `USAGE_LIMIT · resets 14:05`).
@@ -1046,7 +1044,7 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
 - **The hint** names the keys there are. `?` opens a key-help overlay.
 - **Unchanged from orchestra:**
   - the tickets table's stable height, its `+N earlier tickets` row, and leaving it out in short panes
-  - cards two to a row from 120 columns, all as tall as the tallest (attention cards excepted); the one-line compact mode when the pane can't hold a card each, its numbers, IDs, statuses and times lined up as columns, each as wide as the widest on screen, the numbers and times right-aligned, so that the titles start at one column; spaces only, no lines (orchestra-1dvh)
+  - cards two to a row from 120 columns, all as tall as the tallest (attention cards excepted); the one-line compact mode when the pane can't hold a card each, its IDs, statuses and times lined up as columns, each as wide as the widest on screen, the times right-aligned, so that the titles start at one column; spaces only, no lines (orchestra-1dvh). Without orchestra's numbers, each line starts with its mark, the ID straight after it
   - the wind-down line (`■ ■ ■ ■  Winding down · 3 running, no new tickets`) and the queue marked `held`
   - a 3-second tick for elapsed times
 
@@ -1059,9 +1057,9 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 | Input | Dashboard | Worker view |
 |---|---|---|
 | `Tab`, `Shift+Tab`, arrows | move the highlight between cards; inside an attention card, between its buttons | move between transcript items |
-| `1`–`9` | open that worker | switch to that worker |
 | `Enter`, a click | open the highlighted card; press the focused button | expand or collapse the selected item; press the focused button |
 | `Esc`, a click on `← Dashboard` | close an open box | leave the composer, then the view |
+| `Esc`, then `Tab` and `Enter` | | switch workers: back to the dashboard, where `Tab` highlights the other's card and `Enter` opens it. `Tab` stays the transcript's, so the view has no key of its own for it (§7.2) |
 | `d`, `Shift+D` | deny the target request; deny with a reason | the same |
 | `a` | allow the target request, only without `defaultToNo` (§4.5) | the same |
 | `r` | allow for this run (not with `suppressAlwaysAllowRule`, nor without a suggested `addRules` that allows) | the same |
@@ -1113,7 +1111,7 @@ Workers and commands run in process groups of their own (§3.2), so none of thes
 Opened by selecting a card. Full-screen, with orchestra-style chrome:
 
 ```
- ← Dashboard   2  tut-zq4  testing  1m07s   Add an undo stack for property edits
+ ← Dashboard   ⣾ tut-zq4  testing  1m07s   Add an undo stack for property edits
 ─────────────────────────────────────────────────────────────────────────────────
   Read  internal/history/undo.ts
   Edit  internal/history/undo.ts                                       +42 −3
@@ -1216,7 +1214,7 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `organText` | lilac | `#7C3AED` | `#C4B5FD` | the organ phase's progress text |
 | `toMerge` | blue | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | pink | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`, bold) |
-| `emphasis` | chalk | `#374151` | `#E5E7EB` | emphasis near the text's own colour: keys to press, the `Tickets` label, worker numbers, tool names, `steered` |
+| `emphasis` | chalk | `#374151` | `#E5E7EB` | emphasis near the text's own colour: keys to press, the `Tickets` label, tool names, `steered` |
 | `pill` | Charm purple | `#7D56F4` | `#7D56F4` | the title pill's background and init's **Next** frame: the Charm purple of the Bubble Tea and Lip Gloss examples |
 | `pillText` | | `#FAFAFA` | `#FAFAFA` | text on the pill |
 
@@ -1782,7 +1780,7 @@ Draft 1's Q4 (checking the login) is answered by the probe (§4.13), and Q6 (emb
 | | `--tickets`, `--ticket`, `--feature`, `--yes` | Kept |
 | | nothing to run, its box and reasons, `DEFERRED_FREE` | Kept |
 | Terminals | Herdr, tmux, cmux; `--terminal`, `--workspace`; window names; sessions; `cmux.json` | Dropped (D3) |
-| | 1–9 switch tabs | Changed: 1–9 open a worker view; numbers stable (§7.2) |
+| | 1–9 switch tabs | Changed: no numbers; a click, or Tab and Enter, opens a worker view; the highlight stays on its ticket (§7.2) |
 | Workers | worker prompt, `TICKET_ID`, scope and time-limit lines | Changed: rewritten where tmux shows; per-start lines in the first message (§4.11) |
 | | rules in the system prompt, first message apart | Kept (§4.1), with the snapshot caveat |
 | | `prompt.md`, prompt at launch, paste and Enter recovery, `PROMPT_FAILED` | Dropped (§4.3) |
@@ -1907,7 +1905,7 @@ orchestra's changes from 0.8.0 to 0.9.1 and those unreleased after it, as its ch
 | | no ticket limit unless `--limit` gives one | Done (tutti-kkb.22) |
 | | workers start without the tools they never use; Skill kept for enabled plugins | Done (tutti-kkb.13) |
 | | the breakdown, the refinement and the interview get the workers' MCP servers, `--strict-mcp-config` | Already so: every session has `strictMcpConfig`, and the interview's one server is tutti's own (§4.6, §4.10) |
-| | the compact Current list's IDs, statuses and times in columns | Done (tutti-kkb.30), the workers' numbers too |
+| | the compact Current list's IDs, statuses and times in columns | Done (tutti-kkb.30); no workers' numbers (tutti-zhz) |
 | | Ctrl+C keeps a ticket waiting to merge from rebasing after the stop | Already so: a quit interrupts the merge queue, and an interrupted rebase is aborted (§3.4) |
 | | a file renamed or copied in the work tree read under its new name | Already so: `git status --porcelain -z`, a rename's old path read apart (`src/services/Git.ts`) |
 | | a setup cut short runs again (`setup.started`); a ticket back from a question whose setup fails is requeued | Done (tutti-kkb.4) |

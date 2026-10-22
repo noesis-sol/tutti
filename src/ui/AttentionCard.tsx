@@ -184,13 +184,13 @@ export const AnswerBox = () => {
   const { width, height } = useTerminalDimensions()
   const { box } = useInput()
   const open = useSyncExternalStore(box.subscribe, box.get)
-  const worker = open?._tag === "Answer" ? open.worker : null
-  const card = view.cards.find((each) => each.worker === worker && each.requests.length > 0)
+  const ticket = open?._tag === "Answer" ? open.ticket : null
+  const card = view.cards.find((each) => each.ticket === ticket && each.requests.length > 0)
   const close = () => {
     if (box.get()?._tag === "Answer") box.set(null)
   }
   const answering = useAnswering(card === undefined ? [] : [card], close)
-  const gone = worker !== null && card === undefined
+  const gone = ticket !== null && card === undefined
   // biome-ignore lint/correctness/useExhaustiveDependencies: close reads the box as it is then
   useEffect(() => {
     if (gone) close()
@@ -202,7 +202,7 @@ export const AnswerBox = () => {
     if (card !== undefined) return card
     const shown = box.get()
     return shown?._tag === "Answer"
-      ? latest().cards.find((each) => each.worker === shown.worker && each.requests.length > 0)
+      ? latest().cards.find((each) => each.ticket === shown.ticket && each.requests.length > 0)
       : undefined
   }
   const on = (run: (card: Card) => void) => () => {
@@ -225,7 +225,6 @@ export const AnswerBox = () => {
   const outer = Math.max(Math.min(width - 4, answerBoxWidth), 8)
   const head: ReadonlyArray<Segments> = [
     [
-      seg(String(card.worker), theme.styles.key),
       seg("  "),
       seg(card.ticket, theme.styles.picked),
       seg("  "),

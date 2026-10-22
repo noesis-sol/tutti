@@ -32,7 +32,7 @@ Each role has a variant for light backgrounds and one for dark ones. In the `orc
 | `organText` | `#7C3AED` | `#C4B5FD` | the organ lines' text |
 | `toMerge` | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`) |
-| `emphasis` | `#374151` | `#E5E7EB` | keys to press, the `Tickets` label, worker numbers, tool names, `steered` |
+| `emphasis` | `#374151` | `#E5E7EB` | keys to press, the `Tickets` label, tool names, `steered` |
 | `pill` | `#7D56F4` | `#7D56F4` | the title pill's background, and the frame of `tutti init`'s **Next** box |
 | `pillText` | `#FAFAFA` | `#FAFAFA` | text on the pill |
 

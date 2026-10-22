@@ -416,7 +416,7 @@ const shellOf = (
   extra: Partial<ShellValue> = {},
 ): ShellValue => ({
   view,
-  screen: external<Screen>(Screen.Worker({ worker: 1 })),
+  screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
   commands,
   appearance: external<Appearance>("dark"),
   themeOf,
@@ -505,7 +505,7 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("The undo stack now records"))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   1 •  t-1  done  1m07s   Title of t-1
+         ← Dashboard   • t-1  done  1m07s   Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
@@ -520,7 +520,7 @@ describe("the worker view", () => {
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
           Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
-          PgUp/PgDn scroll · g/G top/end · 1–9 workers
+          PgUp/PgDn scroll · g/G top/end
         "
       `)
     })
@@ -534,7 +534,7 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("214 tests"))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   1 •  t-1  done  1m07s   Title of t-1
+         ← Dashboard   • t-1  done  1m07s   Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
@@ -558,7 +558,7 @@ describe("the worker view", () => {
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
           Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
-          PgUp/PgDn scroll · g/G top/end · 1–9 workers
+          PgUp/PgDn scroll · g/G top/end
         "
       `)
       // Enter again collapses it, back to its one line.
@@ -611,7 +611,7 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("Looking for callers."))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   1 •  t-1  done  1m07s   Title of t-1
+         ← Dashboard   • t-1  done  1m07s   Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
         ▸ Agent  Find the callers                                                      ✓
           │   Looking for callers.
@@ -619,7 +619,7 @@ describe("the worker view", () => {
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
           Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
-          PgUp/PgDn scroll · g/G top/end · 1–9 workers
+          PgUp/PgDn scroll · g/G top/end
         "
       `)
     })
@@ -636,14 +636,10 @@ describe("the worker view", () => {
     })
   })
 
-  test("Esc goes back to the dashboard; 1–9 switch workers", async () => {
+  test("Esc goes back to the dashboard; no number switches workers", async () => {
     await scene(itemsOf(work), async ({ rendered, commands }) => {
       await press(rendered, "2", "1", "7", "escape")
-      // 1 is this worker, and there is no worker 7.
-      expect(taken(commands)).toEqual([
-        UiCommand.OpenWorker({ worker: 2 }),
-        UiCommand.CloseWorker(),
-      ])
+      expect(taken(commands)).toEqual([UiCommand.CloseWorker()])
     })
   })
 
@@ -651,10 +647,10 @@ describe("the worker view", () => {
     await scene(itemsOf(work), async ({ rendered, commands }) => {
       await press(rendered, "?")
       const frame = await rendered.capture()
-      expect(frame.chars).toContain("switch to that worker")
-      await press(rendered, "2", "escape")
+      expect(frame.chars).toContain("switch workers, by way of the dashboard")
+      await press(rendered, "i", "escape")
       expect(taken(commands)).toEqual([])
-      expect((await rendered.capture()).chars).not.toContain("switch to that worker")
+      expect((await rendered.capture()).chars).not.toContain("switch workers, by way of the dashboard")
       await press(rendered, "escape")
       expect(taken(commands)).toEqual([UiCommand.CloseWorker()])
     })
@@ -706,7 +702,7 @@ describe("the attention panel", () => {
         const frame = await until(rendered, has("clean the build"))
         expect(shownOf(frame)).toMatchInlineSnapshot(`
           "
-           ← Dashboard   1 •  t-1  permission — waiting for you  1m07s   Title of t-1
+           ← Dashboard   • t-1  permission — waiting for you  1m07s   Title of t-1
           ────────────────────────────────────────────────────────────────────────────────
             I'll clean the build.
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -718,7 +714,7 @@ describe("the attention panel", () => {
           ────────────────────────────────────────────────────────────────────────────────
            > i to write to the worker
             Esc dashboard · i write · d deny · Ctrl+X interrupt · ↑↓ select · Enter expand
-            ? keys · PgUp/PgDn scroll · g/G top/end · 1–9 workers
+            ? keys · PgUp/PgDn scroll · g/G top/end
           "
         `)
       },

@@ -52,7 +52,7 @@ export type Box = Data.TaggedEnum<{
   /** `s`'s: stop after the current tickets, or, `windingDown`, take tickets again. */
   Stop: { readonly windingDown: boolean }
   /** Enter's on a compact card waiting for you: the worker's request and its buttons (§ 7.2). */
-  Answer: { readonly worker: number }
+  Answer: { readonly ticket: string }
   /** Shift+D's: a reason to deny the request `requestId` with, typed in a small field. */
   Reason: { readonly requestId: string; readonly ticket: string }
   /** Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5). */

@@ -50,7 +50,10 @@ export interface Entry {
   readonly phase: TicketPhase
   /** When it entered its phase. */
   readonly since: number
-  /** Its worker's number, held for as long as its session is open; null without one. */
+  /**
+   * Its worker's number, held for as long as its session is open; null without one. It orders the
+   * cards and is never shown (§ 7.2).
+   */
   readonly worker: number | null
   /**
    * Its place in the tickets table, from the first phase that has a row; null before. It takes the
@@ -128,14 +131,6 @@ export const lowestFree = (tickets: ReadonlyMap<string, Entry>): number => {
   let n = 1
   while (taken.has(n)) n++
   return n
-}
-
-/** The ticket whose worker has number `worker`, if any. */
-export const ticketOfWorker = (state: State, worker: number): string | undefined => {
-  for (const entry of state.tickets.values()) {
-    if (entry.worker === worker) return entry.ticket
-  }
-  return undefined
 }
 
 /** The phase's details, as a `phase` record carries them. */

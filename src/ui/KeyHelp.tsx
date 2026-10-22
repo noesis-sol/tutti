@@ -8,7 +8,6 @@ import type { Theme } from "./theme.ts"
 /** The dashboard's keys, and what each does. */
 export const dashboardKeys: ReadonlyArray<readonly [string, string]> = [
   ["Tab, Shift+Tab, arrows", "move the highlight between cards"],
-  ["1–9", "open that worker"],
   ["Enter, a click", "open the highlighted card; press the focused button"],
   ["Esc", "close an open box"],
   ["d, Shift+D", "deny the request; deny with a reason"],

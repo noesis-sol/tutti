@@ -31,8 +31,8 @@ export const App = () => {
     case "Dashboard":
       return <Dashboard />
     case "Worker":
-      // Keyed by the worker, so that switching workers opens the other's transcript afresh.
-      return <WorkerView key={screen.worker} worker={screen.worker} />
+      // Keyed by the ticket, so that switching workers opens the other's transcript afresh.
+      return <WorkerView key={screen.ticket} ticket={screen.ticket} />
     case "Interview":
       return <InterviewView />
   }

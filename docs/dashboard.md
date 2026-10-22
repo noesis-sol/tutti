@@ -26,17 +26,17 @@ terminal shows what it showed before, followed by the run's summary.
 ╰────────────┴─────────────┴─────────────────────────────────────────────╯
   Current
 ╭──────────────────────────────────╮╭──────────────────────────────────╮
-│ 1 ◆  tut-kco  merging  6m31s  1… ││ 2 ⣾  tut-zq4  testing  1m07s  1… │
+│ ◆ tut-kco  merging  6m31s  1.1 … ││ ⣾ tut-zq4  testing  1m07s  1.4 … │
 │   Open the property model: Int…  ││   Add an undo stack for propert… │
 │   merging into batch/2026-10-20  ││   ▸ Bash(scripts/check-fast.sh)  │
 ╰──────────────────────────────────╯╰──────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────╮
-│ 3 •  tut-9a1  permission — waiting for you  2m10s  0.9 GB            │
+│ • tut-9a1  permission — waiting for you  2m10s  0.9 GB               │
 │   Bash: Remove the build cache                                       │
 │   rm -rf build                                                       │
 │   [ Deny ]  [ Allow ]                                                │
 ╰──────────────────────────────────────────────────────────────────────╯
-  Tab select · 1–3 open · d deny · s stop after current · ? keys
+  Tab select · Enter open · d deny · s stop after current · ? keys
 ```
 
 ### The title line
@@ -137,12 +137,14 @@ leaves it out. The summary after the run lists every ticket.
 
 ### The cards
 
-Under `Current`, a card per ticket with work under way: its worker's number, a mark, the ticket, the
+Under `Current`, a card per ticket with work under way: a mark, the ticket, the
 worker's status, how long it has gone, the title, and the latest action (`▸ Bash(scripts/check-fast.sh)`,
 or the last line the worker wrote).
 
-- **Numbers are stable.** A worker keeps its number for its whole session; a new one takes the
-  lowest free number. `1` to `9` open workers 1 to 9; those above are reached with `Tab` or a click.
+- **The order is stable.** A worker keeps its place for its whole session; a new one takes the
+  first place free. Cards show no number: a click, or `Tab` then `Enter`, opens one, and the
+  highlight stays on its ticket as other cards come and go. orchestra's `1`–`9` are left out on
+  purpose.
 - **The mark** is a spinner while the worker works, `◼` while its ticket waits to merge, `◆` while it
   merges, and `•` once the worker's turn has ended: motion means a worker at work.
 - **The status** is the worker's (`working`, `editing`, `reading`, `testing`, `subagent`,
@@ -163,7 +165,7 @@ or the last line the worker wrote).
   highlighted card.
 
 Cards go two to a row from 120 columns, all as tall as the tallest. When the pane can't hold a card
-each, they take one line each in a single box, their numbers, tickets, statuses and times lined up
+each, they take one line each in a single box, their tickets, statuses and times lined up
 as columns, so that the titles start at one column. With nothing running, a box says
 `picking the next ticket…`, or `stopping…`. The environment probe has a card of its own, labelled
 `probe`. Elapsed times update every 3 seconds.
@@ -192,7 +194,7 @@ on you: `■ ■ ■ ■  Winding down · 3 running, no new tickets`. Warnings t
 as a colour scheme that can't be used or the usage limit's hold
 (`usage limit (five-hour) · resets 14:05 · 3 workers wait for it`).
 
-The hint names the keys there are: `Tab select · 1–3 open · d deny · a allow · s stop after current · ? keys`.
+The hint names the keys there are: `Tab select · Enter open · d deny · a allow · s stop after current · ? keys`.
 
 ### The end-of-run box
 
@@ -261,7 +263,8 @@ When the run ends, the dashboard closes and the main screen gets:
 - **A hand-back waiting.** A steered worker isn't handed a conflict or a failing check. The view
   says `A merge conflict waits for this worker` with **Hand it the conflict now**.
 
-`Esc` leaves the composer, then the view; `1`–`9` switch to another worker.
+`Esc` leaves the composer, then the view; to switch to another worker, go back to the dashboard and
+open its card (`Tab`, then `Enter`).
 
 ## Keys
 
@@ -269,7 +272,7 @@ When the run ends, the dashboard closes and the main screen gets:
 |---|---|---|
 | `Tab`, `Shift+Tab`, `←`, `→` | move the highlight between cards; inside an attention card, between its buttons | move between a request's buttons, else between items |
 | `↑`, `↓` | move the highlight between cards | move between items |
-| `1`–`9` | open that worker; in a highlighted question, `1`–`4` pick an option | switch to that worker; in a selected question, pick an option |
+| `1`–`4` | in a highlighted question, pick an option | in a selected question, pick an option |
 | `Enter`, a click | press the focused button, or open the card (in the one-line layout, open its request) | expand or collapse the item; press the focused button |
 | `d` | deny the request (decline an MCP server's) | the same |
 | `Shift+D` | deny, with a reason you type for the worker | the same |

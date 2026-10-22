@@ -139,7 +139,7 @@ describe("dashboard()", () => {
         Effect.gen(function* () {
           return {
             view: yield* SubscriptionRef.make(view),
-            screen: yield* SubscriptionRef.make<Screen>(Screen.Worker({ worker: 1 })),
+            screen: yield* SubscriptionRef.make<Screen>(Screen.Worker({ ticket: "t-1" })),
             commands: yield* makeCommands,
             transcripts: yield* Transcripts,
             handBacks: yield* SubscriptionRef.make<ReadonlyArray<string>>([]),
