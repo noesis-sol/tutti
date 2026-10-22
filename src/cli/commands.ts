@@ -64,7 +64,7 @@ import {
 } from "./flags.ts"
 import { login, runInTerminal } from "./login.ts"
 import { requires, requiresExits } from "./requires.ts"
-import { releaseBuild, tuttiVersion } from "./version.ts"
+import { buildKind, tuttiVersion } from "./version.ts"
 
 /** The main checkout of the repository `dir` is in: the first of its worktrees. */
 export const mainCheckout = (dir: string) =>
@@ -366,7 +366,7 @@ export const thisBuild = Effect.map(tuttiVersion, (shown): Build => {
   return {
     version: pkg.version,
     shown,
-    kind: releaseBuild ? "release" : target !== null ? "clone" : "source",
+    kind: buildKind(target),
     target,
     exe: process.execPath,
   }
@@ -403,7 +403,7 @@ export const updateCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "replace this tutti with the latest GitHub Release's binary for its platform, once the signature of the release's checksums.txt verifies with a release key built into tutti and the archive's SHA-256 matches it. A build from a clone is replaced only with --force. Exit codes: 0 updated or nothing to do (--check: none newer), 1 --check: a newer release is out, 2 refused (a build from a clone, tutti run from source, a folder it can't write in), 4 the update failed",
+    "replace this tutti with the latest GitHub Release's binary for its platform, once the signature of the release's checksums.txt verifies with a release key built into tutti and the archive's SHA-256 matches it. A build from a clone is replaced only with --force; the npm package is updated with the package manager. Exit codes: 0 updated or nothing to do (--check: none newer), 1 --check: a newer release is out, 2 refused (a build from a clone, tutti run from source or from the npm package, a folder it can't write in), 4 the update failed",
   ),
 )
 

@@ -66,11 +66,13 @@ renames it over the old one. A run going meanwhile keeps the old build.
   one is.
 - A build from a clone (`scripts/build.sh`) is replaced only with `--force`, which also replaces a
   build newer than the latest release. tutti run from source (`bun src/main.ts`) is never replaced.
+- The npm package is never replaced either: its package manager updates it. `tutti update` and
+  `--check` say so, naming `bunx @noesis-sol/tutti@latest` and `bun add @noesis-sol/tutti@latest`.
 - Where the binary's folder is root's, run `sudo tutti update`.
 - Exit codes: 0 updated or nothing to do, 1 a newer release is out (`--check`), 2 refused, 4 the
   update failed, the old binary unchanged.
 
-A release build checks for a newer release once a day as a run starts, and says so after the run:
+A release build, not the npm package, checks for a newer release once a day as a run starts, and says so after the run:
 `tutti v0.2.0 is available (you have v0.1.0): tutti update`. `TUTTI_NO_UPDATE_CHECK=1` turns that
 off.
 

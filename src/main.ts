@@ -25,12 +25,13 @@ import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
+import { buildTarget } from "./agent/claudeBinary.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
 import { AppConfig } from "./cli/AppConfig.ts"
 import { checkoutOf, mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
 import type { RunFlags } from "./cli/flags.ts"
-import { releaseBuild, tuttiVersion } from "./cli/version.ts"
+import { buildKind, tuttiVersion } from "./cli/version.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
@@ -203,10 +204,11 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       drain: (signal) => Queue.offerUnsafe(drains, { on: true, how: `by ${signal}` }),
       suspend: () => Queue.offerUnsafe(suspends, undefined),
     })
-    // A release build's daily check for a newer release (§ 12), in the background; its answer, if
+    // A release build's daily check for a newer release (§ 12), in the background (not the npm
+    // package's, which tutti update leaves to the package manager); its answer, if
     // it has one by then, is said once the run has ended.
     const env = (name: string) => process.env[name]
-    const newer = checksForUpdates({ kind: releaseBuild ? "release" : "clone" }, env)
+    const newer = checksForUpdates({ kind: buildKind(buildTarget()) }, env)
       ? yield* startCheck({
           releases: githubReleases,
           current: version,

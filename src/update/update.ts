@@ -172,13 +172,20 @@ export interface Build {
   readonly version: string
   /** The version as `tutti --version` shows it, with a clone's commit: 0.9.0 0123456789ab. */
   readonly shown: string
-  /** A release (built from a tag), a build from a clone, or tutti run from source. */
-  readonly kind: "release" | "clone" | "source"
+  /**
+   * A release (built from a tag), a build from a clone, tutti run from source, or the npm package's
+   * bundle, run by Bun and updated by the package manager that installed it.
+   */
+  readonly kind: "release" | "clone" | "source" | "npm"
   /** Its target, as its entry names it (darwin-arm64, linux-x64-musl); null from source. */
   readonly target: string | null
   /** The binary to replace. */
   readonly exe: string
 }
+
+/** The npm package's name, and how to get its latest version, for tutti update's lines. */
+export const npmPackage = "@noesis-sol/tutti"
+const npmUpgrade = `bunx ${npmPackage}@latest runs it, and bun add ${npmPackage}@latest (with -g where it is installed globally) installs it`
 
 /** The name of the release `tag`'s archive for `target`: tutti_0.9.0_linux_x64_musl.tar.gz. */
 export const archiveName = (tag: string, target: string): string =>
@@ -504,11 +511,16 @@ export interface Verdict {
   readonly behind: boolean
 }
 
-/** How `build` stands against the latest release, `tag`. */
+/**
+ * How `build` stands against the latest release, `tag`: the npm package built from a release, its
+ * version bare, is that release.
+ */
 export const verdictOf = (build: Build, tag: string): Verdict => {
   const order = compareVersions(build.version, tag)
+  const release =
+    build.kind === "release" || (build.kind === "npm" && build.shown === build.version)
   return {
-    latest: build.kind === "release" && Option.contains(order, 0),
+    latest: release && Option.contains(order, 0),
     newer: Option.contains(order, 1),
     behind: Option.isNone(order) || Option.contains(order, -1),
   }
@@ -520,7 +532,7 @@ export const updateExit = {
   ok: 0,
   /** --check: a newer release is out. */
   available: 1,
-  /** Refused: a build from a clone without --force, tutti run from source, a folder it can't write in. */
+  /** Refused: a build from a clone without --force, tutti run from source or the npm package, a folder it can't write in. */
   refused: 2,
   /** The update failed; the binary is unchanged. */
   failed: 4,
@@ -570,13 +582,21 @@ export const update = (
           ? `tutti ${current}; the latest release is ${release.tag} (${page}): tutti update installs it.`
           : build.kind === "clone"
             ? `tutti ${current} is a build from a clone; the latest release is ${release.tag} (${page}): tutti update --force installs it.`
-            : `tutti ${current} runs from source; the latest release is ${release.tag} (${page}): scripts/install.sh installs it.`,
+            : build.kind === "npm"
+              ? `tutti ${current} is the npm package ${npmPackage}; the latest release is ${release.tag} (${page}): ${npmUpgrade}.`
+              : `tutti ${current} runs from source; the latest release is ${release.tag} (${page}): scripts/install.sh installs it.`,
       )
       return verdict.behind ? updateExit.available : updateExit.ok
     }
     if (verdict.latest) {
       say.out(`tutti ${current} is the latest release already.`)
       return updateExit.ok
+    }
+    if (build.kind === "npm") {
+      say.error(
+        `tutti update: tutti ${current} is the npm package ${npmPackage}, which tutti update doesn't replace: ${npmUpgrade}.`,
+      )
+      return updateExit.refused
     }
     if (build.kind === "source" || build.target === null) {
       say.error(
@@ -629,7 +649,7 @@ export const noUpdateCheck = "TUTTI_NO_UPDATE_CHECK"
 
 /**
  * Whether a run of `build` checks for a newer release: a release build, unless
- * TUTTI_NO_UPDATE_CHECK is on. A value that is neither on nor off turns it off too.
+ * TUTTI_NO_UPDATE_CHECK is on; not the npm package, whose package manager updates it. A value that is neither on nor off turns it off too.
  */
 export const checksForUpdates = (
   build: Pick<Build, "kind">,

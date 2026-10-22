@@ -6,6 +6,7 @@ import { resolve } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
 import pkg from "../../package.json" with { type: "json" }
 import { exec } from "../services/exec.ts"
+import type { Build } from "../update/update.ts"
 
 // `bun build --define 'TUTTI_BUILD_COMMIT:"<hash>[+dirty]"'`, or "" for a release; undefined from source.
 declare const TUTTI_BUILD_COMMIT: string | undefined
@@ -28,6 +29,22 @@ export const formatVersion = (version: string, commit: Option.Option<BuildCommit
 /** Whether tutti is a release build: built from a tag, its define "". */
 export const releaseBuild: boolean =
   typeof TUTTI_BUILD_COMMIT === "string" && TUTTI_BUILD_COMMIT === ""
+
+// Whether tutti runs from the npm package's bundle: set by its entry, src/npm.ts.
+let npmBundle = false
+
+/** Called by the npm package's entry, src/npm.ts, before tutti starts: tutti is the npm package. */
+export const markNpmBundle = (): void => {
+  npmBundle = true
+}
+
+/**
+ * What the running tutti is, for tutti update and the daily check, given its compiled `target`
+ * (null without one): the npm package's bundle, which its package manager updates, whether built
+ * as a release or not; a release; a build from a clone; or tutti run from source.
+ */
+export const buildKind = (target: string | null): Build["kind"] =>
+  npmBundle ? "npm" : releaseBuild ? "release" : target !== null ? "clone" : "source"
 
 /** The define's value as a commit: none for a release's "". */
 export const parseBuildCommit = (define: string): Option.Option<BuildCommit> => {
