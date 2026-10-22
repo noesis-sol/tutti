@@ -349,21 +349,30 @@ export const globMatch = (
   parts: ReadonlyArray<string>,
   asWritten = false,
 ): boolean => {
-  const [first, ...rest] = pattern
-  if (first === undefined) return parts.length === 0
-  if (first === "**") {
-    for (let i = 0; i <= parts.length; i++) {
-      if (globMatch(rest, parts.slice(i), asWritten)) return true
-    }
-    return false
+  // The ways tried that matched nothing, as in partsMeet: each pattern part and path part is
+  // compared once, however many **s the pattern has.
+  const failed = new Set<number>()
+  const match = (i: number, j: number): boolean => {
+    const key = i * (parts.length + 1) + j
+    if (failed.has(key)) return false
+    const first = pattern[i]
+    const name = parts[j]
+    let ok: boolean
+    if (first === undefined) ok = name === undefined
+    else if (first === "**") ok = match(i + 1, j) || (name !== undefined && match(i, j + 1))
+    else
+      ok =
+        name !== undefined &&
+        ((asWritten && first === name) || partMatch(first, name)) &&
+        match(i + 1, j + 1)
+    if (!ok) failed.add(key)
+    return ok
   }
-  const [name, ...others] = parts
-  return (
-    name !== undefined &&
-    ((asWritten && first === name) || partMatch(first, name)) &&
-    globMatch(rest, others, asWritten)
-  )
+  return match(0, 0)
 }
+
+// A glob with each run of **s as one, which matches the same paths: a/**/**/b as a/**/b.
+const collapseAny = (glob: string): string => glob.replace(/(^|\/)\*\*(?:\/\*\*)+(?=\/|$)/g, "$1**")
 
 /** Whether a files metadata entry is a glob: it has a *, a ? or a [. */
 const isGlob = (name: string): boolean => /[*?[]/.test(name)
@@ -590,8 +599,9 @@ export const repoFiles = (
   const listed = (
     raw: string,
   ): { readonly files: ReadonlyArray<string>; readonly globs: ReadonlyArray<string> } => {
-    const { name, folder } = cleanName(raw)
-    if (!isGlob(name)) return { files: resolve(raw, true), globs: [] }
+    const { name: cleaned, folder } = cleanName(raw)
+    if (!isGlob(cleaned)) return { files: resolve(raw, true), globs: [] }
+    const name = collapseAny(cleaned)
     // A name with brackets around names and no * or ? (pages/[id].tsx, app/[[...slug]]/) also
     // means the file or folder of that name, one the ticket adds among them.
     const named =
@@ -967,15 +977,40 @@ export const mentionsIn = (contents: ReadonlyMap<string, string>): Mentions => {
 export const maxSource = 4 << 20
 
 /**
- * Reads the files the footprints work on from the checkout at repo, for `shared` to place their
- * functions in: up to `maxSource` bytes of each, never a file that resolves outside repo. A file
- * that can't be read mentions nothing.
+ * The files `shared` may ask mentions about as it compares each pair: those either footprint works
+ * on, for a pair of which one names a function and that share no area or function, which `shared`
+ * would answer first. A folder is never asked about.
+ */
+export const askedFiles = (
+  pairs: Iterable<readonly [Footprint, Footprint]>,
+): ReadonlySet<string> => {
+  const asked = new Set<string>()
+  for (const [a, b] of pairs) {
+    if (a.funcs.length + b.funcs.length === 0) continue
+    if (a.areas.some((x) => b.areas.includes(x)) || sharedFunc(a, b) !== "") continue
+    for (const f of [...a.files, ...a.changed, ...b.files, ...b.changed])
+      if (!f.endsWith("/") && repoPath(f)) asked.add(f)
+  }
+  return asked
+}
+
+/**
+ * The contents of files read so far, by path, kept for one fill so that each is read once however
+ * often its footprint is compared: undefined for a file that couldn't be read.
+ */
+export type Sources = Map<string, string | undefined>
+
+/**
+ * Places the functions of the footprints paired in the files `shared` asks about comparing them
+ * (askedFiles), read from the checkout at repo and kept in `sources`: a fill's comparisons read
+ * none for footprints that name no function, and each file once.
  */
 export const readMentions = (
   repo: string,
-  footprints: Iterable<Footprint>,
+  pairs: Iterable<readonly [Footprint, Footprint]>,
+  sources: Sources = new Map(),
 ): Effect.Effect<Mentions, never, FileSystem.FileSystem> =>
-  Effect.map(readSources(repo, footprints), mentionsIn)
+  Effect.map(readFiles(repo, askedFiles(pairs), sources), mentionsIn)
 
 /**
  * The contents of the files the footprints work on, in the checkout at repo: up to `maxSource`
@@ -984,17 +1019,30 @@ export const readMentions = (
 export const readSources = (
   repo: string,
   footprints: Iterable<Footprint>,
+): Effect.Effect<ReadonlyMap<string, string>, never, FileSystem.FileSystem> => {
+  const wanted = new Set<string>()
+  for (const fp of footprints) {
+    for (const f of [...fp.files, ...fp.changed]) if (!f.endsWith("/") && repoPath(f)) wanted.add(f)
+  }
+  return readFiles(repo, wanted, new Map())
+}
+
+/**
+ * The contents of files, in the checkout at repo: up to `maxSource` bytes of each, never a file that
+ * resolves outside repo, those in `sources` as read before, and the others read into it. A file
+ * that can't be read is left out.
+ */
+const readFiles = (
+  repo: string,
+  files: ReadonlySet<string>,
+  sources: Sources,
 ): Effect.Effect<ReadonlyMap<string, string>, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const root = yield* fs.realPath(repo).pipe(Effect.orElseSucceed(() => repo))
-    const wanted = new Set<string>()
-    for (const fp of footprints) {
-      for (const f of [...fp.files, ...fp.changed])
-        if (!f.endsWith("/") && repoPath(f)) wanted.add(f)
-    }
-    const contents = new Map<string, string>()
-    for (const file of wanted) {
+    const unread = [...files].filter((f) => !sources.has(f))
+    const root =
+      unread.length === 0 ? repo : yield* fs.realPath(repo).pipe(Effect.orElseSucceed(() => repo))
+    for (const file of unread) {
       const content = yield* Effect.scoped(
         Effect.gen(function* () {
           const real = yield* fs.realPath(join(repo, file))
@@ -1003,7 +1051,15 @@ export const readSources = (
           return yield* handle.readAlloc(maxSource)
         }),
       ).pipe(Effect.orElseSucceed(() => Option.none<Uint8Array>()))
-      if (Option.isSome(content)) contents.set(file, new TextDecoder().decode(content.value))
+      sources.set(
+        file,
+        Option.isSome(content) ? new TextDecoder().decode(content.value) : undefined,
+      )
+    }
+    const contents = new Map<string, string>()
+    for (const file of files) {
+      const content = sources.get(file)
+      if (content !== undefined) contents.set(file, content)
     }
     return contents
   })

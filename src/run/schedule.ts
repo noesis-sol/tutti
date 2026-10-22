@@ -52,6 +52,7 @@ import {
   type RepoFiles,
   readMentions,
   repoFiles,
+  type Sources,
   showFootprint,
   withChanges,
   worktreeChanges,
@@ -112,8 +113,14 @@ export interface Footprints {
    * over) is footprinted from them (`branchFootprint`); without `branch`, none is.
    */
   branch?(ticket: string): Effect.Effect<ReadonlyArray<string>>
-  /** Places the footprints' functions in the files they work on. */
-  mentions(footprints: ReadonlyArray<Footprint>): Effect.Effect<Mentions>
+  /**
+   * Places the functions of the footprints paired in the files comparing them asks about
+   * (`askedFiles`), keeping what it reads in `sources`, the fill's, so that each is read once a fill.
+   */
+  mentions(
+    pairs: ReadonlyArray<readonly [Footprint, Footprint]>,
+    sources: Sources,
+  ): Effect.Effect<Mentions>
 }
 
 /**
@@ -164,8 +171,8 @@ export const footprintsOf = (options: {
           Effect.orElseSucceed((): ReadonlyArray<string> => []),
           Effect.provideContext(context),
         ),
-      mentions: (footprints) =>
-        readMentions(options.repo, footprints).pipe(Effect.provideContext(context)),
+      mentions: (pairs, sources) =>
+        readMentions(options.repo, pairs, sources).pipe(Effect.provideContext(context)),
     }
   })
 
@@ -693,7 +700,9 @@ export const make = (
             return issue
           })
 
-        // The repository's files and the running tickets' changes, read once a fill.
+        // The repository's files and the running tickets' changes, read once a fill, and the files'
+        // contents comparing their footprints asks about.
+        const sources: Sources = new Map()
         const footprints = options.footprints
         const repo = footprints === undefined ? undefined : yield* footprints.repo
         // The ready tickets naming nothing go to the predictor; its guesses so far join footprints.
@@ -820,7 +829,10 @@ export const make = (
             for (const issue of asked) {
               mine.set(issue.id, footprintOf(issue, repo, predicted, yield* branchIn(issue.id)))
             }
-            const mentions = yield* footprints.mentions([...mine.values(), ...running.values()])
+            const pairs = [...mine.values()].flatMap((fp) =>
+              [...running.values()].map((other) => [fp, other] as const),
+            )
+            const mentions = yield* footprints.mentions(pairs, sources)
             for (const issue of asked) {
               const held = overlapHold(mine.get(issue.id) as Footprint, running, mentions)
               if (skipSaid.changed(issue.id, held?.text ?? "")) {

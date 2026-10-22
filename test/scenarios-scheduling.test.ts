@@ -363,31 +363,31 @@ describe("several tickets at once", () => {
     for (const id of ["a", "b", "c", "d"]) expect(pathOf(ran, id)).toEqual(straight)
     // No ticket twice, and never more than two at once.
     expect(dispatches(ran)).toEqual(["a 0m", "b 0m", "c 1m", "d 3m"])
+    // A ticket past its work takes no slot as it merges, so the next may dispatch before or after
+    // it closes.
     expectLog(ran, [
       "START tutti 0.1.0-test",
       "[1] a dispatching: a",
       "[2] b dispatching: b",
-      closedLine("b"),
       "[3] c dispatching: c",
-      closedLine("c"),
       "[4] d dispatching: d",
-      closedLine("d"),
       closedLine("a"),
       "  Completed 4 · Set aside 0 · Needs you 0",
       "READY_EMPTY after 4 tickets",
     ])
+    expectLog(ran, [closedLine("b"), closedLine("c"), closedLine("d")])
+    expectLog(ran, [closedLine("b"), "[4] d dispatching: d", closedLine("d")])
     expectEvents(ran, [
       "dispatch",
       "dispatch",
-      "closed",
       "dispatch",
-      "closed",
       "dispatch",
       "closed",
       "closed",
       "done",
       "end",
     ])
+    expect(ran.events.filter((record) => record.kind === "closed")).toHaveLength(4)
   }, 30_000)
 
   test("the ready poll every 30 s gives a free slot to a ticket that became ready meanwhile", async () => {

@@ -463,7 +463,10 @@ describe("readMentions", () => {
     symlinkSync(join(base, "outside.ts"), join(repo, "src/link.ts"))
     const mentions = await Effect.runPromise(
       readMentions(repo, [
-        fp({ files: ["src/loop.ts", "src/"], changed: ["src/link.ts", "gone.ts"] }),
+        [
+          fp({ files: ["src/loop.ts", "src/"], changed: ["src/link.ts", "gone.ts"] }),
+          fp({ funcs: ["Loop.merge"] }),
+        ],
       ]).pipe(Effect.provide(BunServices.layer)),
     )
     expect(mentions("src/loop.ts", "Loop.merge")).toBe(true)

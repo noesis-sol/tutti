@@ -212,8 +212,9 @@ describe("a ticket past its work", () => {
     expect(ran.log.filter((text) => text.startsWith("  skipping"))).toEqual([
       "  skipping o: touches src/a.ts, like running a",
     ])
+    // x takes no slot as it merges, so a may dispatch before or after it closes.
+    expectLog(ran, [closedLine("x"), closedLine("b")])
     expectLog(ran, [
-      closedLine("x"),
       "[3] a dispatching: a",
       "  skipping o: touches src/a.ts, like running a",
       "[4] c dispatching: c",
