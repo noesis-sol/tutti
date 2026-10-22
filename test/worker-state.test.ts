@@ -442,8 +442,8 @@ describe("UsageLimited", () => {
     expect(stateAfter(init, limited)).toEqual(WorkerState.UsageLimited({ resetsAt: null }))
   })
 
-  test("resetsAt comes from the rate_limit_event, in milliseconds", () => {
-    expect(stateAfter(rateLimit("rejected", 1_700_000_000), init, limited)).toEqual(
+  test("resetsAt comes from the turn's rate_limit_event, in milliseconds", () => {
+    expect(stateAfter(init, rateLimit("rejected", 1_700_000_000), limited)).toEqual(
       WorkerState.UsageLimited({ resetsAt: 1_700_000_000_000 }),
     )
   })

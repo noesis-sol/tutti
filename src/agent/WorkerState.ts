@@ -186,7 +186,10 @@ export interface Worker {
   readonly tool: Doing | null
   /** Subagents started and not stopped in this turn, by agent ID. */
   readonly subagents: ReadonlyArray<string>
-  /** The usage limit's latest `rate_limit_event`: whether it is rejected, and when it resets. */
+  /**
+   * The usage limit's latest `rate_limit_event` in this turn: whether it is rejected, and when it
+   * resets.
+   */
   readonly limit: { readonly rejected: boolean; readonly resetsAt: number | null }
   /** Whether an assistant message of this turn carried the `rate_limit` error. */
   readonly rateLimited: boolean
@@ -217,10 +220,11 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
 const epochMillis = (at: number): number => (at < 1e12 ? at * 1000 : at)
 
 /**
- * A new turn: what the last one left about its retries and limit goes. Its tool calls and
- * subagents went with its result; a tool or subagent set now came from a hook of this turn, folded
- * before its `system/init` (hooks come on the SDK's control channel, messages through its queue),
- * and stays.
+ * A new turn: what the last one left about its retries and limit goes, so that a turn failing for
+ * another reason after one refused for the limit reads as Failed, not UsageLimited; the new turn's
+ * own `rate_limit_event`s come after its `system/init`. Its tool calls and subagents went with its
+ * result; a tool or subagent set now came from a hook of this turn, folded before its
+ * `system/init` (hooks come on the SDK's control channel, messages through its queue), and stays.
  */
 const newTurn = (worker: Worker): Worker => ({
   ...worker,
@@ -228,6 +232,7 @@ const newTurn = (worker: Worker): Worker => ({
   idle: false,
   report: null,
   retry: null,
+  limit: { rejected: false, resetsAt: null },
   rateLimited: false,
 })
 
