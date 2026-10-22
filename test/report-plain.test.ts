@@ -45,8 +45,9 @@ const plainEnd = async (setup: Setup = {}): Promise<string> => {
     log: (...args: ReadonlyArray<unknown>) => stdout.push(`${args.join(" ")}\n`),
   })
   const asked = await Effect.runPromise(Ref.make(0))
-  const held = Effect.map(Ref.getAndUpdate(asked, (n) => n + 1), (n) =>
-    setup.held === "start" ? true : setup.held === "reviewer" ? n > 0 : false,
+  const held = Effect.map(
+    Ref.getAndUpdate(asked, (n) => n + 1),
+    (n) => (setup.held === "start" ? true : setup.held === "reviewer" ? n > 0 : false),
   )
   const deps = Layer.mergeAll(
     cannedLayer(setup.answers ?? { reviewer: { report: body } }),
@@ -69,7 +70,12 @@ const plainEnd = async (setup: Setup = {}): Promise<string> => {
         started: 0,
         base: "main",
         startHead,
-        ending: Ending.Done({ text: "READY_EMPTY: nothing left", tickets: 0, limit: null, took: 0 }),
+        ending: Ending.Done({
+          text: "READY_EMPTY: nothing left",
+          tickets: 0,
+          limit: null,
+          took: 0,
+        }),
         exitCode: 0,
         quit: false,
       }
@@ -91,9 +97,8 @@ const plainEnd = async (setup: Setup = {}): Promise<string> => {
 
 /** How many of stdout's lines hold `text`. */
 const times = (printed: string, text: string | RegExp): number =>
-  printed
-    .split("\n")
-    .filter((l) => (typeof text === "string" ? l.includes(text) : text.test(l))).length
+  printed.split("\n").filter((l) => (typeof text === "string" ? l.includes(text) : text.test(l)))
+    .length
 
 describe("a plain run's report says each outcome once, in the log's line", () => {
   test("REPORT: the report is written, and its path said once", async () => {

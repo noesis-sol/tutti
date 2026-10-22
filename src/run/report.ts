@@ -452,7 +452,9 @@ export const runReport = (
     const unlogged = (line: Effect.Effect<void>) => (out.logged === true ? Effect.void : line)
     if (yield* hold.held) {
       yield* logs.write(skippedLine("reviewer"))
-      yield* unlogged(out.printer.say("Run report skipped: the usage limit held the run to its end"))
+      yield* unlogged(
+        out.printer.say("Run report skipped: the usage limit held the run to its end"),
+      )
       return
     }
     const step = yield* out.printer.organ("Writing the run report with Claude…")
@@ -471,7 +473,7 @@ export const runReport = (
       }
       const message = reviewFailed`${organFailure(error)}`
       yield* logs.write(message)
-      return yield* (out.logged === true ? step.drop : step.warn(message))
+      return yield* out.logged === true ? step.drop : step.warn(message)
     }
     yield* step.done("Run report written")
     const report = compose({
