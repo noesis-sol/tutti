@@ -27,6 +27,7 @@ import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
+import { UsageProbe } from "./agent/UsageProbe.ts"
 import { AppConfig } from "./cli/AppConfig.ts"
 import { checkoutOf, mainCheckout, planServices, thisBuildKind, tuttiWith } from "./cli/commands.ts"
 import type { RunFlags } from "./cli/flags.ts"
@@ -145,11 +146,14 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
   // The organs, over the Agent SDK or, with TUTTI_ORGAN_PROVIDER=anthropic, the Messages API, their
   // costs logged, skipped while the usage limit holds, as the report asks too. The startup checks
   // reported a choice that can't be used.
-  const organs = Organs.layer.pipe(
-    Layer.provideMerge(Layer.orDie(languageModelLayer({ account: started.account }))),
-    Layer.provideMerge(OrganCost.layer),
-    Layer.provideMerge(organHold),
-  )
+  // The usage-limit hold's probe of the account (§ 4.12) is billed and its cost logged as an
+  // organ call's.
+  const organs = Layer.mergeAll(
+    Organs.layer.pipe(
+      Layer.provideMerge(Layer.orDie(languageModelLayer({ account: started.account }))),
+    ),
+    UsageProbe.layer({ account: started.account }),
+  ).pipe(Layer.provideMerge(OrganCost.layer), Layer.provideMerge(organHold))
   // Attention's records notify too: it is given the EventStream that notifies (notices.ts).
   return Layer.mergeAll(host, organs).pipe(
     Layer.provideMerge(Attention.layer),

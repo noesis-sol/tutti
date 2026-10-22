@@ -84,6 +84,7 @@ import { Attention, blockedAfter } from "../agent/Attention.ts"
 import { serve } from "../agent/attentionFiles.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import type { UsageLimits } from "../agent/UsageLimits.ts"
+import type { UsageProbe } from "../agent/UsageProbe.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { section } from "../organs/evidence.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
@@ -235,6 +236,7 @@ export type RunEnv =
   | Transcripts
   | Tty
   | UsageLimits
+  | UsageProbe
   | Notifier
   | FileSystem.FileSystem
   | ChildProcessSpawner.ChildProcessSpawner

@@ -18,6 +18,7 @@ import type { Attention, Policy } from "../src/agent/Attention.ts"
 import { AttentionPoll } from "../src/agent/attentionFiles.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import type { UsageLimits } from "../src/agent/UsageLimits.ts"
+import type { UsageProbe } from "../src/agent/UsageProbe.ts"
 import type { AppConfig, AppConfigValue } from "../src/cli/AppConfig.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
@@ -61,6 +62,7 @@ import { layer as storeLayer } from "../src/testing/Store.ts"
 import { type Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { layer as ttyLayer } from "../src/testing/Tty.ts"
 import { type Reported, layer as usageLayer } from "../src/testing/UsageLimits.ts"
+import { type Probed, type Scripted, layer as usageProbeLayer } from "../src/testing/UsageProbe.ts"
 import {
   type WorktreeCall,
   type Options as WorktreesOptions,
@@ -93,6 +95,8 @@ export type Env =
   | Notices
   | UsageLimits
   | Reported
+  | UsageProbe
+  | Probed
   | Spending
   | RunFibers
   | TestClock.TestClock
@@ -133,6 +137,8 @@ export interface Setup {
   readonly worktrees?: WorktreesOptions
   /** The terminal: `tty()`'s builder makes one; an 80×24 256-colour TTY by default. */
   readonly tty?: TtyValue
+  /** What the usage-limit hold's probes are answered, in order; Allowed once they run out. */
+  readonly usageProbe?: ReadonlyArray<Scripted>
 }
 
 /** What a run gives back: its exit code and each ticket's phase at the end. */
@@ -214,6 +220,7 @@ export const environment = (
         attentionLayer(setup.policy ?? allowAll),
         transcriptsLayer(),
         usageLayer,
+        usageProbeLayer(setup.usageProbe),
         spendingLayer(),
       ),
     ),

@@ -360,6 +360,17 @@ export const usageLimit = (u: { readonly limit: string; readonly resets?: string
         Tag.usageLimit,
       )`the ${u.limit} limit is reached; no new tickets until it resets at ${u.resets}`
 
+/**
+ * USAGE_LIMIT: the probe the hold sent before lifting was refused for the limit, so it holds on
+ * (§ 4.12): `until` is when it tries again, `it resets at 14:05, in 42m` or `tutti tries again …`.
+ */
+export const usageProbeRefused = (u: { readonly limit: string; readonly until: string }): Line =>
+  tagged(Tag.usageLimit)`a probe is refused for the ${u.limit} limit still; ${u.until}`
+
+/** The usage probe got no answer, for `reason`: the hold lifts on the clock (§ 4.12). */
+export const usageProbeUnanswered = (reason: string): Line =>
+  detail`the usage probe got no answer (${reason}); the hold lifts on the clock`
+
 /** The usage-limit hold is lifted: workers waiting for it carry on (§ 4.12). */
 export const usageLimitLifted: Line = `${Tag.usageLimit} lifted` as Line
 

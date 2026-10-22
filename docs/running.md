@@ -530,7 +530,11 @@ Claude Code reports:
 - **A minute after the reset**, or sooner once a running worker's session says the account is under
   the limit again, the hold lifts (`USAGE_LIMIT lifted`). A reset that has already passed, or none
   given, is tried again 15 minutes on, and lifts are at least 15 minutes apart, so a limit that keeps
-  refusing never sets the workers going at request speed. Each waiting worker is told
+  refusing never sets the workers going at request speed. Before a lift on the clock, tutti asks
+  the account with one haiku turn of a few tokens (about $0.0001, its `ORGAN usage-probe` line in
+  the log): refused, the hold stays, at the reset that refusal gives or 15 minutes on
+  (`USAGE_LIMIT: a probe is refused for the five-hour limit still; it resets at 15:05, in 59m`), and
+  no worker is woken into a refusal. Each waiting worker is told
   to carry on: with its ticket, or with its hand-back, whose 20 minutes don't count the wait
   ([Hand-backs](workers.md#hand-backs)). A worker handed back its ticket while at the limit is sent
   the hand-back then.

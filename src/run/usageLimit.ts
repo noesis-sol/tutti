@@ -22,6 +22,11 @@
 //   the hold, whether or not a reset is known. Lifts
 //   are at least retryEvery apart, so a limit that keeps refusing holds the run again at most that
 //   often, never at request speed.
+// - Before it lifts on the clock (at the reset or the next try, not on a session's word), the hold
+//   asks the account (UsageProbe): one tiny model turn, in place of a carry-on per worker that the
+//   limit may refuse again. Refused, the hold holds on to the reset the probe's rate_limit_event
+//   gave, or tries again retryEvery later (`USAGE_LIMIT: a probe is refused for the five-hour limit
+//   still; it resets at 14:05, in 42m`); unanswered, it lifts on the clock as before.
 // - With nothing else running, the run waits for the reset, the title line counting down and the
 //   log saying the countdown every countdownEvery; for a reset that has passed, for the next try.
 //   It ends USAGE_LIMIT (exit 8) only when no reset was ever given or the reset is later than
@@ -48,6 +53,7 @@ import {
 } from "effect"
 import { type AgentGone, AgentHost } from "../agent/AgentHost.ts"
 import { type RateLimit, UsageLimits, type Waiting } from "../agent/UsageLimits.ts"
+import { type ProbeAnswer, UsageProbe } from "../agent/UsageProbe.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { OrganHold } from "../organs/Organs.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -59,7 +65,17 @@ import { type AtReset, type HandBackMode, handedWords } from "./handback.ts"
 import { type StopReason, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { resetLabel, timestamp } from "./localTime.ts"
-import { detail, Log, Tag, tagged, usageLimit, usageLimitLifted, usageWarning } from "./log.ts"
+import {
+  detail,
+  Log,
+  Tag,
+  tagged,
+  usageLimit,
+  usageLimitLifted,
+  usageProbeRefused,
+  usageProbeUnanswered,
+  usageWarning,
+} from "./log.ts"
 import type { TicketPhase } from "./phase.ts"
 import { countdown, type RunHold, type Usage } from "./runView.ts"
 
@@ -317,6 +333,7 @@ export const make = (options: {
   | AppConfig
   | AgentHost
   | UsageLimits
+  | UsageProbe
   | Ledger
   | Log
   | EventStream
@@ -329,6 +346,7 @@ export const make = (options: {
     const config = yield* AppConfig
     const host = yield* AgentHost
     const usage = yield* UsageLimits
+    const probe = yield* UsageProbe
     const ledger = yield* Ledger
     const logs = yield* Log
     const events = yield* EventStream
@@ -368,15 +386,51 @@ export const make = (options: {
     const resetsAt = (at: number | null) =>
       at === null ? {} : { resets_at: timestamp(new Date(at)) }
 
-    // Lifts the hold at its liftTime, in place of any lift set before.
+    // What the probe at a try answered: Refused, the hold takes the reset it gave, and the next try
+    // to go with it; otherwise null, for the lift. One at a time with the hold's other changes, which
+    // interrupt the try in place of setting it.
+    const probed = (held: Hold & { readonly _tag: "Held" }, answer: ProbeAnswer) =>
+      Effect.gen(function* () {
+        const s = yield* Ref.get(state)
+        if (s.hold._tag === "Free") return null
+        if (answer._tag === "Allowed") return null
+        if (answer._tag === "Unanswered") {
+          yield* logs.write(usageProbeUnanswered(answer.reason))
+          return null
+        }
+        const now = yield* Clock.currentTimeMillis
+        const limit = held.limit ?? answer.limit
+        const next = Hold.Held({ ...held, limit, reset: resetOf(answer.resetsAt, now) })
+        yield* update((each) => ({ ...each, hold: next }))
+        const at = liftTime(next)
+        const until =
+          next.reset._tag === "Known"
+            ? `it resets at ${resetLabel(next.reset.at, now)}, in ${countdown(next.reset.at, now)}`
+            : `tutti tries again at ${resetLabel(at, now)}, in ${countdown(at, now)}`
+        yield* logs.write(usageProbeRefused({ limit: limitName(limit), until }))
+        yield* options.wakeUp
+        return next
+      }).pipe(one.withPermit)
+
+    // At its liftTime the hold lifts: at once on a session's word that the account is under the
+    // limit, else once the probe finds it so, or gets no answer, which lifts it on the clock as
+    // before the probe. Refused, the hold holds on to the probe's reset, or its next try.
+    const tries = (held: Hold & { readonly _tag: "Held" }): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const wait = liftTime(held) - (yield* Clock.currentTimeMillis)
+        yield* Effect.sleep(Duration.millis(Math.max(0, wait)))
+        if (held.reset._tag !== "Allowed") {
+          const next = yield* probed(held, yield* probe.probe(held.limit))
+          if (next !== null) return yield* tries(next)
+        }
+        yield* lift
+      })
+
+    // Tries the hold at its liftTime, in place of any try set before.
     const liftAt = (held: Hold & { readonly _tag: "Held" }) =>
       Effect.gen(function* () {
         yield* FiberSet.clear(lifter)
-        const wait = liftTime(held) - (yield* Clock.currentTimeMillis)
-        yield* FiberSet.run(
-          lifter,
-          Effect.andThen(Effect.sleep(Duration.millis(Math.max(0, wait))), lift),
-        )
+        yield* FiberSet.run(lifter, tries(held))
       })
 
     // Sets the held reset, and the lift that goes with it.
