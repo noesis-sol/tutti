@@ -13,10 +13,10 @@ export class Probed extends Context.Service<
   }
 >()("tutti/testing/UsageProbe/Probed") {}
 
-/** A probe's answer in a script: the answer, or an Effect that gives it, as a probe that takes time. */
+/** A probe's answer in a script: the answer, or an Effect giving it, as a probe that takes time. */
 export type Scripted = ProbeAnswer | Effect.Effect<ProbeAnswer>
 
-/** A UsageProbe that answers `answers` in order, then Allowed, and Probed, to read what it was asked. */
+/** A UsageProbe answering `answers` in order, then Allowed, and Probed, to read what it was asked. */
 export const layer = (answers: ReadonlyArray<Scripted> = []): Layer.Layer<UsageProbe | Probed> =>
   Layer.effectContext(
     Effect.gen(function* () {

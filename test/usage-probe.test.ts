@@ -199,7 +199,7 @@ const settle = Effect.promise(() => Bun.sleep(50))
 const lifted = /^USAGE_LIMIT lifted$/
 const refusedProbe = /^USAGE_LIMIT: a probe is refused for the five-hour limit still; /
 
-/** The usage-limit hold alone, under `setup`'s probe answers, held by a rejection resetting at 1h. */
+/** The hold alone, under `setup`'s probe answers, held by a rejection resetting at 1h. */
 const heldHold = <A>(
   setup: Setup,
   during: Effect.Effect<A, unknown, Env | UsageLimits>,
