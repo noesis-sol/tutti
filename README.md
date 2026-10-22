@@ -1,4 +1,7 @@
-# tutti
+# Tutti for Claude
+
+<img width="1559" height="666" alt="Abstract AI Ensemble Conductor" src="https://github.com/user-attachments/assets/2b1f46a7-7ef3-40d2-b707-7f82f202cf9e" />
+
 
 Runs Claude Code workers on a Beads backlog, one git worktree per ticket.
 
