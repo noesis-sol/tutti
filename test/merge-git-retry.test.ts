@@ -4,7 +4,7 @@
 // the merge rides out, and always, which sets the ticket aside or stops the merges. Each scenario
 // is a merge queue under TestClock, moved on gitAgainAfter at a time while the merges run.
 import { describe, expect, test } from "bun:test"
-import { Effect, Exit, Fiber } from "effect"
+import { Duration, Effect, Exit, Fiber } from "effect"
 import { Ledger } from "../src/run/ledger.ts"
 import {
   baseSince,
@@ -17,7 +17,7 @@ import {
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, GitFailed, GitTimedOut } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Fault, Repository, type Tree } from "../src/testing/Git.ts"
@@ -136,6 +136,7 @@ describe("a read failed once is asked again, and the merges go on", () => {
 
   for (const [op, dir] of [
     ["symbolic-ref", "worktree"],
+    ["symbolic-ref", "/repo"],
     ["rev-parse", "/repo"],
     ["merge-base", "/repo"],
     ["status", "/repo"],
@@ -153,6 +154,66 @@ describe("a read failed once is asked again, and the merges go on", () => {
       expect(ran.log.some((text) => text.includes("GIT_FAILED"))).toBe(false)
     })
   }
+})
+
+describe("the files the branch changes, read as its fast-forward fails", () => {
+  test("failed once: asked again, the main checkout's change in their way is DIRTY_TREE", async () => {
+    let ffFailed = false
+    let changedFailed = false
+    const ran = await scenario(
+      setup,
+      Effect.gen(function* () {
+        const repository = yield* Repository
+        const a = yield* finished("a")
+        // A file git leaves out of the main checkout's clean tree, which the branch changes too.
+        yield* repository.commit(a.worktree, "Note it (a)", { ".beads/notes.txt": "a\n" })
+        yield* repository.write(repository.dir, { ".beads/notes.txt": "local\n" })
+        const git = yield* Git
+        const queue = yield* makeQueue(options).pipe(
+          Effect.provideService(Git, {
+            ...git,
+            fastForward: (dir, branch) =>
+              Effect.suspend(() => {
+                ffFailed = true
+                return git.fastForward(dir, branch).pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      new GitFailed({
+                        op: "merge --ff-only",
+                        command: "git merge --ff-only tutti/a",
+                        exitCode: 1,
+                        stderr: "error: untracked files would be overwritten",
+                      }),
+                    ),
+                  ),
+                )
+              }),
+            changedFiles: (dir, from, to) =>
+              Effect.suspend(() => {
+                if (!ffFailed || changedFailed) return git.changedFiles(dir, from, to)
+                changedFailed = true
+                return Effect.fail(
+                  new GitTimedOut({
+                    op: "diff --name-only",
+                    command: "git diff --name-only",
+                    timeLimit: Duration.seconds(30),
+                  }),
+                )
+              }),
+          }),
+        )
+        const fiber = yield* Effect.forkChild(
+          Effect.andThen(queue.offer(a), Effect.andThen(queue.settled, queue.state)),
+        )
+        return (yield* joinMovingClock(fiber)).stop?.why
+      }).pipe(Effect.provide(Ledger.layer)),
+    )
+    expect(changedFailed).toBe(true)
+    expect(resultOf(ran)).toBe("DIRTY_TREE")
+    expectLog(ran, [
+      /^HOLD: DIRTY_TREE: uncommitted changes in \/repo to \.beads\/notes\.txt, which tutti\/a changes/,
+    ])
+  })
 })
 
 describe("a read that always fails is 'can't tell'", () => {
