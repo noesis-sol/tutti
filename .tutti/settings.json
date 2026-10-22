@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/noesis-sol/tutti/main/schema/settings.json",
+  "version": 1,
+  "concurrent": 4,
+  "checks": {
+    "fast": {
+      "command": "scripts/check-fast.sh",
+      "timeout": "30m"
+    },
+    "full": {
+      "command": "scripts/check-full.sh",
+      "timeout": "60m"
+    },
+    "own": {
+      "command": "scripts/check-own.sh"
+    },
+    "setup": {
+      "command": "bun install --frozen-lockfile"
+    }
+  },
+  "workers": {
+    "mcp_servers": [],
+    "effort": "high"
+  }
+}
