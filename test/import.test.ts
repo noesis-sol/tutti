@@ -84,7 +84,7 @@ describe("orchestra's settings, imported", () => {
         key: "environment_hold.notify (true)",
         why: "not an orchestra setting tutti knows",
       },
-      { key: 'terminal ("tmux")', why: "tutti has no terminals; its workers run inside it" },
+      { key: "terminal", why: "tutti has no terminals; its workers run inside it" },
       { key: 'agent_kind ("codex")', why: "not an orchestra setting tutti knows" },
     ])
     expect(imported.mcpUnset).toBe(false)
@@ -331,7 +331,7 @@ describe("init's import", () => {
     expect(offers[0]?.imports).toContain("concurrent")
     expect(offers[0]?.imports).toContain("the worker prompt")
     expect(offers[0]?.leftOut).toContain(
-      'terminal ("tmux"): tutti has no terminals; its workers run inside it',
+      "terminal: tutti has no terminals; its workers run inside it",
     )
     expect(offerDescription(offers[0] as ImportOffer)).toContain(".orchestra/ is left as it is.")
     // The Workers step starts from the imported settings.
@@ -353,7 +353,7 @@ describe("init's import", () => {
       "from .orchestra/settings.json; .orchestra/ is left as it is",
     )
     expect(lines).toContain(
-      '! import  not imported: terminal ("tmux"): tutti has no terminals; its workers run inside it',
+      "! import  not imported: terminal: tutti has no terminals; its workers run inside it",
     )
     expect(lines).toContain(
       '! import  not imported: agent_kind ("codex"): not an orchestra setting tutti knows',

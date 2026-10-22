@@ -34,7 +34,10 @@ export interface Imported {
   readonly to: string
 }
 
-/** An orchestra setting left out: its key, as the summary shows it with its value, and why. */
+/**
+ * An orchestra setting left out: its key as the summary shows it, with its value where that is why
+ * (one tutti can't take, or doesn't know), and why.
+ */
 export interface LeftOut {
   readonly key: string
   readonly why: string
@@ -220,10 +223,13 @@ export const importSettings = (orchestra: unknown): SettingsImport => {
       }
       continue
     }
-    leftOut.push({
-      key: shown(key, value),
-      why: own(unplaced, key) ?? "not an orchestra setting tutti knows",
-    })
+    // A setting tutti has no place for is named alone: its value isn't why it is left out.
+    const why = own(unplaced, key)
+    leftOut.push(
+      why === undefined
+        ? { key: shown(key, value), why: "not an orchestra setting tutti knows" }
+        : { key, why },
+    )
   }
   return {
     json,

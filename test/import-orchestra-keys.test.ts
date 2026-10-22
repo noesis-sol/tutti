@@ -1,6 +1,6 @@
 // tutti init's import from orchestra (§ 8.3), key by key: worker_permission_mode goes to
 // workers.permission_mode, orchestra's manual as default, and each setting orchestra has that tutti
-// has no place for is left out with why, not as one tutti doesn't know.
+// has no place for is left out with why, named without its value, not as one tutti doesn't know.
 import { describe, expect, test } from "bun:test"
 import { Exit } from "effect"
 import { importSettings } from "../src/init/import.ts"
@@ -66,7 +66,7 @@ describe("orchestra's settings tutti has no place for", () => {
       const imported = importSettings({ [key]: value })
       expect(imported.json).toEqual({})
       expect(imported.imported).toEqual([])
-      expect(imported.leftOut).toEqual([{ key: `${key} (${JSON.stringify(value)})`, why }])
+      expect(imported.leftOut).toEqual([{ key, why }])
       expect(imported.leftOut[0]?.why).not.toBe(unknown)
     })
   }

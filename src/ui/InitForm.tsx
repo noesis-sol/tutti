@@ -21,7 +21,7 @@
 // unmounted when the scope it was opened in closes; the summary is printed once the renderer is
 // gone (src/print/initSummary.ts). Its faint text is `formFaint`'s, as the summary's.
 import type { InputRenderable } from "@opentui/core"
-import { createRoot, useKeyboard } from "@opentui/react"
+import { createRoot, useKeyboard, useTerminalDimensions } from "@opentui/react"
 import { Deferred, Effect, type Scope } from "effect"
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { type ScoutResult, scoutSkipped } from "../init/checks.ts"
@@ -42,7 +42,7 @@ import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
 import { clickable, Field, Hint, Themed } from "./Form.tsx"
 import { InputGuards } from "./keys.ts"
-import { styled } from "./line.tsx"
+import { seg, styled, wrap } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Style, Theme } from "./theme.ts"
@@ -142,6 +142,32 @@ const useKeyState = <A,>(initial: () => A) => {
   return [shown, change, now] as const
 }
 
+/** The columns a field's text is in from the screen's edges: the form's padding, and the bar's. */
+const fieldInset = 4
+
+/**
+ * `text` in `style`, wrapped between words by tutti's wrap to the screen's width less `inset`
+ * columns: OpenTUI's word mode breaks after a `.`, `-` or `/` too, which splits a path such as
+ * `.orchestra/` after its dot.
+ */
+const Paragraph = ({
+  text,
+  style,
+  inset,
+}: {
+  readonly text: string
+  readonly style: Style
+  readonly inset: number
+}) => {
+  const { width } = useTerminalDimensions()
+  const lines = wrap([seg(text)], Math.max(width - inset, 1))
+  return (
+    <text wrapMode="none" {...styled(style)}>
+      {lines.map((line) => line.map((each) => each.text).join("")).join("\n")}
+    </text>
+  )
+}
+
 /** The text of a field's title and description, as huh draws them. */
 const Heading = ({
   theme,
@@ -155,9 +181,7 @@ const Heading = ({
   <>
     <text {...styled(theme.form.fieldTitle)}>{title}</text>
     {description === undefined || description === "" ? null : (
-      <text wrapMode="word" {...styled(theme.form.description)}>
-        {description}
-      </text>
+      <Paragraph text={description} style={theme.form.description} inset={fieldInset} />
     )}
   </>
 )
@@ -450,9 +474,7 @@ export const stepperParts = (
 
 const DoneLine = ({ theme, done }: { readonly theme: Theme; readonly done: Done }) =>
   done._tag === "Note" ? (
-    <text wrapMode="word" {...styled(theme.form.description)}>
-      {done.text}
-    </text>
+    <Paragraph text={done.text} style={theme.form.description} inset={fieldInset} />
   ) : (
     <text>
       <span {...styled(theme.form.description)}>{done.title}</span>
@@ -528,7 +550,7 @@ export const InitView = ({
   return (
     <box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
       <Title theme={theme} repo={repo} />
-      <text {...styled(theme.form.faint)}>{initAbout}</text>
+      <Paragraph text={initAbout} style={theme.form.faint} inset={2} />
       {screen.at === null ? null : (
         <box paddingTop={1}>
           <text>
