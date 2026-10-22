@@ -6,6 +6,16 @@
   "check_own": "scripts/check-own.sh",
   "concurrent": 4,
   "mcp_servers": [],
+  "requires": [
+    {
+      "name": "duckdb",
+      "check": "command -v duckdb",
+      "install": "brew install duckdb",
+      "platforms": [
+        "darwin"
+      ]
+    }
+  ],
   "setup": "bun install --frozen-lockfile",
   "templates": {
     "worker_prompt": 11,

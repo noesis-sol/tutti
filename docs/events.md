@@ -190,3 +190,6 @@ jq -r 'select(.kind == "end") | "\(.run) \(.code)"' $E
 # follow a run
 tail -f $E | jq -c 'select(.kind != "queue" and .kind != "phase") | del(.v, .run)'
 ```
+
+For questions across many records, such as each ticket's time in each phase, the checks that fail
+most, or a week across every project, [Analytics](analytics.md) has ready-made DuckDB queries.
