@@ -4,11 +4,15 @@
 // epic holds its subtickets back; a deferred or in-progress one doesn't). parent-child,
 // discovered-from and related links don't block. A deferral whose date has passed wakes the issue
 // as bd ready does. bd close refuses an issue with a live blocker or a child that isn't closed, and
-// so does this. Time comes from Effect's Clock, so TestClock moves it.
+// so does this. Time comes from Effect's Clock, so TestClock moves it. A test can also make the
+// next call of any bd command fail or time out, as the test Git layer's fail does, which is how
+// scenarios reach bd failing part-way through a run.
 import { Clock, Context, Effect, Layer, Ref } from "effect"
 import {
   Beads,
+  type BeadsError,
   BeadsFailed,
+  BeadsTimedOut,
   type Dependency,
   type DependencyType,
   HumanLabel,
@@ -21,6 +25,7 @@ import {
   type Status,
   type Update,
 } from "../services/Beads.ts"
+import { TimeLimit } from "../services/exec.ts"
 
 /** An issue to start the backlog with; what it leaves out takes bd's defaults. */
 export interface Seed {
@@ -44,6 +49,24 @@ export interface Seed {
   readonly deferUntil?: string
   readonly closeReason?: string
 }
+
+/** A failure to give the next call of a bd command, instead of what it would do. */
+export interface Fault {
+  /**
+   * Only a call about this issue: the ID it is given, or the parent bd list or bd ready lists
+   * under; any call when absent.
+   */
+  readonly id?: string
+  /** The call times out (BeadsTimedOut) instead of failing (BeadsFailed). */
+  readonly timedOut?: boolean
+  readonly exitCode?: number
+  readonly stderr?: string
+  /** How many calls fail; 1 by default, every one with Infinity. */
+  readonly times?: number
+}
+
+/** The bd commands a Fault's id is the parent of, not the issue. */
+const listsUnder: ReadonlySet<string> = new Set(["list", "ready", "create"])
 
 /** An issue as the backlog holds it: its links, the parent-child one among them. */
 interface Stored {
@@ -83,6 +106,11 @@ export class Backlog extends Context.Service<
     get(id: string): Effect.Effect<Issue | undefined>
     /** Adds the issue, or replaces the one with its ID. */
     put(seed: Seed): Effect.Effect<void>
+    /**
+     * Makes the next call of the bd command op (`list`, `show`, `update`, `label add`, `dep list`,
+     * `human list`, …) fail.
+     */
+    fail(op: string, fault?: Fault): Effect.Effect<void>
   }
 >()("tutti/testing/Beads/Backlog") {}
 
@@ -373,74 +401,148 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
           return brief(stored)
         })
 
+      const faults: Array<{ readonly op: string; readonly fault: Fault; left: number }> = []
+
+      /** The call, or bd's failure when a test made the next call of op (about id) fail. */
+      const faultable = <A>(
+        kind: "read" | "write",
+        op: string,
+        id: string | undefined,
+        call: Effect.Effect<A, BeadsError>,
+      ): Effect.Effect<A, BeadsError> =>
+        Effect.suspend(() => {
+          const found = faults.find(
+            (each) => each.op === op && (each.fault.id === undefined || each.fault.id === id),
+          )
+          if (found === undefined) return call
+          found.left -= 1
+          if (found.left <= 0) faults.splice(faults.indexOf(found), 1)
+          const { fault } = found
+          const about = id === undefined ? "" : listsUnder.has(op) ? ` --parent=${id}` : ` ${id}`
+          const command = `bd ${op}${about} --json`
+          return Effect.fail(
+            fault.timedOut
+              ? new BeadsTimedOut({ command, timeLimit: TimeLimit[kind] })
+              : new BeadsFailed({
+                  command,
+                  exitCode: fault.exitCode ?? 1,
+                  stderr: fault.stderr ?? `Error: bd ${op} failed`,
+                  noSuchIssue: false,
+                }),
+          )
+        })
+
       const beads = Beads.of({
-        ready,
-        show,
-        list,
-        update,
+        ready: (options) => faultable("read", "ready", options?.parent, ready(options)),
+        show: (id) => faultable("read", "show", id, show(id)),
+        list: (options) => faultable("read", "list", options?.parent, list(options)),
+        update: (id, changes) => faultable("write", "update", id, update(id, changes)),
         close: (id, reason) =>
-          change(`bd close ${id}`, id, (issue) => ({
-            ...issue,
-            status: "closed",
-            closeReason: reason ?? issue.closeReason,
-          })),
+          faultable(
+            "write",
+            "close",
+            id,
+            change(`bd close ${id}`, id, (issue) => ({
+              ...issue,
+              status: "closed",
+              closeReason: reason ?? issue.closeReason,
+            })),
+          ),
         defer: (id, deferral = {}) =>
-          change(`bd defer ${id}`, id, (issue) => {
-            const { deferUntil: _, ...rest } = issue
-            return {
-              ...rest,
-              status: "deferred",
-              ...(deferral.until === undefined ? {} : { deferUntil: deferral.until }),
-              notes:
-                deferral.reason === undefined
-                  ? issue.notes
-                  : appended(issue.notes, deferral.reason),
-            }
-          }),
-        addLabel: (id, label) =>
-          Effect.asVoid(
-            change(`bd label add ${id} ${label}`, id, (issue) => ({
-              ...issue,
-              labels: issue.labels.includes(label) ? issue.labels : [...issue.labels, label],
-            })),
-          ),
-        removeLabel: (id, label) =>
-          Effect.asVoid(
-            change(`bd label remove ${id} ${label}`, id, (issue) => ({
-              ...issue,
-              labels: issue.labels.filter((other) => other !== label),
-            })),
-          ),
-        addDependency: (id, dependsOn, type = "blocks") => addLink(id, { id: dependsOn, type }),
-        dependencies: (id, options = {}) =>
-          Effect.flatMap(show(id), (issue) =>
-            Effect.map(Ref.get(state), (issues) => {
-              const linked: ReadonlyArray<Dependency> =
-                options.direction === "up"
-                  ? [...issues.values()].flatMap((other) =>
-                      other.links
-                        .filter((link) => link.id === id)
-                        .map((link) => ({
-                          id: other.id,
-                          type: link.type,
-                          issue: { ...brief(other), dependencies: [] },
-                        })),
-                    )
-                  : issue.dependencies
-              return linked.filter(
-                (link) => options.type === undefined || link.type === options.type,
-              )
+          faultable(
+            "write",
+            "defer",
+            id,
+            change(`bd defer ${id}`, id, (issue) => {
+              const { deferUntil: _, ...rest } = issue
+              return {
+                ...rest,
+                status: "deferred",
+                ...(deferral.until === undefined ? {} : { deferUntil: deferral.until }),
+                notes:
+                  deferral.reason === undefined
+                    ? issue.notes
+                    : appended(issue.notes, deferral.reason),
+              }
             }),
           ),
-        create,
-        questions: () =>
-          Effect.map(list(), (issues) =>
-            issues.filter((issue) => issue.labels.includes(HumanLabel)),
+        addLabel: (id, label) =>
+          faultable(
+            "write",
+            "label add",
+            id,
+            Effect.asVoid(
+              change(`bd label add ${id} ${label}`, id, (issue) => ({
+                ...issue,
+                labels: issue.labels.includes(label) ? issue.labels : [...issue.labels, label],
+              })),
+            ),
           ),
-        metadata: (id) => Effect.map(show(id), (issue) => issue.metadata),
+        removeLabel: (id, label) =>
+          faultable(
+            "write",
+            "label remove",
+            id,
+            Effect.asVoid(
+              change(`bd label remove ${id} ${label}`, id, (issue) => ({
+                ...issue,
+                labels: issue.labels.filter((other) => other !== label),
+              })),
+            ),
+          ),
+        addDependency: (id, dependsOn, type = "blocks") =>
+          faultable("write", "dep add", id, addLink(id, { id: dependsOn, type })),
+        dependencies: (id, options = {}) =>
+          faultable(
+            "read",
+            "dep list",
+            id,
+            Effect.flatMap(show(id), (issue) =>
+              Effect.map(Ref.get(state), (issues) => {
+                const linked: ReadonlyArray<Dependency> =
+                  options.direction === "up"
+                    ? [...issues.values()].flatMap((other) =>
+                        other.links
+                          .filter((link) => link.id === id)
+                          .map((link) => ({
+                            id: other.id,
+                            type: link.type,
+                            issue: { ...brief(other), dependencies: [] },
+                          })),
+                      )
+                    : issue.dependencies
+                return linked.filter(
+                  (link) => options.type === undefined || link.type === options.type,
+                )
+              }),
+            ),
+          ),
+        create: (issue) => faultable("write", "create", issue.parent, create(issue)),
+        questions: () =>
+          faultable(
+            "read",
+            "human list",
+            undefined,
+            Effect.map(list(), (issues) =>
+              issues.filter((issue) => issue.labels.includes(HumanLabel)),
+            ),
+          ),
+        metadata: (id) =>
+          faultable(
+            "read",
+            "show",
+            id,
+            Effect.map(show(id), (issue) => issue.metadata),
+          ),
         setMetadata: (id, key, value) =>
-          Effect.asVoid(update(id, { setMetadata: { [key]: value } })),
-        unsetMetadata: (id, key) => Effect.asVoid(update(id, { unsetMetadata: [key] })),
+          faultable(
+            "write",
+            "update",
+            id,
+            Effect.asVoid(update(id, { setMetadata: { [key]: value } })),
+          ),
+        unsetMetadata: (id, key) =>
+          faultable("write", "update", id, Effect.asVoid(update(id, { unsetMetadata: [key] }))),
       })
 
       const backlog = Backlog.of({
@@ -461,6 +563,8 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
               return new Map(issues).set(seed.id, stored)
             }),
           ),
+        fail: (op, fault = {}) =>
+          Effect.sync(() => void faults.push({ op, fault, left: fault.times ?? 1 })),
       })
 
       return Context.make(Beads, beads).pipe(Context.add(Backlog, backlog))
