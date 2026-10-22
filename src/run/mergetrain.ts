@@ -586,14 +586,16 @@ export const make = (
           const fiber = run.fiber as Fiber.Fiber<void>
           const waited = yield* Effect.exit(restore(Fiber.await(fiber)))
           yield* show(run, undefined)
-          const at = yield* Effect.result(git.revParse(repo, branch))
           if (Exit.isFailure(waited)) {
-            // Quitting, before its turn's merge began: put back for the next run.
+            // Quitting, before its turn's merge began: put back for the next run. Its branch is read
+            // once its train has ended, as a rebase under way finishes first and moves it.
             yield* cancel(run)
             yield* Fiber.await(fiber)
-            if (Result.isSuccess(at)) yield* Effect.ignore(putBack(run, at.success))
+            const left = yield* Effect.result(git.revParse(repo, branch))
+            if (Result.isSuccess(left)) yield* Effect.ignore(putBack(run, left.success))
             return yield* Effect.interrupt
           }
+          const at = yield* Effect.result(git.revParse(repo, branch))
           if (Result.isFailure(at)) {
             // The branch may have the commits of the branch ahead, which didn't merge.
             const stop = yield* stopOver(
