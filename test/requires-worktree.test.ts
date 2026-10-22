@@ -66,31 +66,34 @@ describe("the checkout tutti requires works in", () => {
     expect(found).toBe(worktree)
   })
 
-  slow.test("reads the worktree's list and writes its README; the main checkout's stay", async () => {
-    const repo = makeRepo()
-    const readme = withRequires("# demo\n", [old]) ?? ""
-    repo.commit("Requires", {
-      ".tutti/settings.json": settings([old]),
-      ".gitignore": ".tutti/run/\n",
-      "README.md": readme,
-    })
-    const worktree = repo.worktree("wt/added")
-    repo.write({ ".tutti/settings.json": settings([old, added]) }, worktree)
+  slow.test(
+    "reads the worktree's list and writes its README; the main checkout's stay",
+    async () => {
+      const repo = makeRepo()
+      const readme = withRequires("# demo\n", [old]) ?? "no section"
+      repo.commit("Requires", {
+        ".tutti/settings.json": settings([old]),
+        ".gitignore": ".tutti/run/\n",
+        "README.md": readme,
+      })
+      const worktree = repo.worktree("wt/added")
+      repo.write({ ".tutti/settings.json": settings([old, added]) }, worktree)
 
-    const written = await tuttiRequires(worktree, ["--readme"])
-    expect(written.error).toBe("")
-    expect(written.code).toBe(0)
-    expect(readFileSync(join(worktree, "README.md"), "utf8")).toBe(
-      withRequires("# demo\n", [old, added]),
-    )
-    expect(readFileSync(join(repo.dir, "README.md"), "utf8")).toBe(readme)
+      const written = await tuttiRequires(worktree, ["--readme"])
+      expect(written.error).toBe("")
+      expect(written.code).toBe(0)
+      expect(readFileSync(join(worktree, "README.md"), "utf8")).toBe(
+        withRequires("# demo\n", [old, added]) ?? "",
+      )
+      expect(readFileSync(join(repo.dir, "README.md"), "utf8")).toBe(readme)
 
-    const checked = await tuttiRequires(worktree, [])
-    expect(checked.code).toBe(0)
-    expect(checked.out).toContain("added: ")
-    expect(existsSync(join(worktree, "marker"))).toBe(true)
-    expect(existsSync(join(repo.dir, "marker"))).toBe(false)
+      const checked = await tuttiRequires(worktree, [])
+      expect(checked.code).toBe(0)
+      expect(checked.out).toContain("added: ")
+      expect(existsSync(join(worktree, "marker"))).toBe(true)
+      expect(existsSync(join(repo.dir, "marker"))).toBe(false)
 
-    expect(repo.git(["status", "--porcelain"])).toBe("")
-  })
+      expect(repo.git(["status", "--porcelain"])).toBe("")
+    },
+  )
 })
