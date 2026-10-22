@@ -21,7 +21,7 @@ import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import * as log from "./log.ts"
 import { type Line, Log } from "./log.ts"
-import { gitWhy } from "./merge.ts"
+import { beadsWhy, gitWhy } from "./merge.ts"
 import { Cause } from "./phase.ts"
 
 /** The ticket set aside: its ID and title, as its records name it. */
@@ -111,7 +111,7 @@ export const putAside = (
     }
     const text = log.ticketLine(
       log.Tag.deferFailed,
-    )`${aside.failed}: ${deferred.failure.message}; kept out of this run, ${aside.instead}`
+    )`${aside.failed}: ${beadsWhy(deferred.failure)}; kept out of this run, ${aside.instead}`
     yield* ledger.transition(ticket.id, cause, {
       beside: [{ kind: "warn", ticket: ticket.id, aside: true, detail: aside.detail, text }],
       lines: [text],

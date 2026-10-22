@@ -12,7 +12,7 @@
 import { Cause, Effect, FiberSet, Queue, Ref, Result, type Scope } from "effect"
 import { type OrganError, Organs } from "../organs/Organs.ts"
 import { predictFiles } from "../organs/predictor.ts"
-import { Beads, type Issue, MetadataKey } from "../services/Beads.ts"
+import { Beads, beadsWhy, type Issue, MetadataKey } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { RunFibers } from "./fibers.ts"
 import {
@@ -131,7 +131,7 @@ export const make = (options: {
           .pipe(Effect.result)
         if (Result.isFailure(kept)) {
           yield* logs.write(
-            detail`${issue.id} footprint predicted, but bd could not keep it: ${kept.failure.message || kept.failure._tag}`,
+            detail`${issue.id} footprint predicted, but bd could not keep it: ${beadsWhy(kept.failure)}`,
           )
         }
         yield* logs.write(predictedLine(issue.id, files))
