@@ -488,8 +488,10 @@ export class Log extends Context.Service<
     write(...lines: ReadonlyArray<Written>): Effect.Effect<void>
     /**
      * Appends the lines as `write` does and runs `record`, the happening's record in events.jsonl,
-     * before another fiber's line: the log and the event stream give happenings in one order.
-     * `record` mustn't write the log itself.
+     * before another fiber's line: the log and the event stream give happenings in one order. The
+     * lines and `record` are written together or not at all, interrupted or not, so `record` must be
+     * quick and bounded, as an EventStream append is: a quit waits for it. `record` mustn't write the
+     * log itself.
      */
     writeWith(lines: ReadonlyArray<Written>, record: Effect.Effect<void>): Effect.Effect<void>
     /**
@@ -530,11 +532,12 @@ export class Log extends Context.Service<
             yield* toSink(options.sink ?? "none", text)
           })
         // A fiber interrupted once it holds the permit (on quit) still writes its lines to the file,
-        // the kept lines and the sink together; one interrupted waiting for it writes them nowhere.
-        const whole = (lines: ReadonlyArray<Written>) => Effect.uninterruptible(append(lines))
+        // the kept lines and the sink together, and writeWith's record with them; one interrupted
+        // waiting for it writes them nowhere.
         return Log.of({
-          write: (...lines) => one.withPermit(whole(lines)),
-          writeWith: (lines, record) => one.withPermit(Effect.andThen(whole(lines), record)),
+          write: (...lines) => one.withPermit(Effect.uninterruptible(append(lines))),
+          writeWith: (lines, record) =>
+            one.withPermit(Effect.uninterruptible(Effect.andThen(append(lines), record))),
           lines: kept.lines,
           startBlockEnd: kept.startBlockEnd,
         })

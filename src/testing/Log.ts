@@ -20,7 +20,7 @@ export const layer = (options: { readonly sink?: Sink } = {}): Layer.Layer<Log> 
       return Log.of({
         write: (...lines) => one.withPermit(Effect.uninterruptible(append(lines))),
         writeWith: (lines, record) =>
-          one.withPermit(Effect.andThen(Effect.uninterruptible(append(lines)), record)),
+          one.withPermit(Effect.uninterruptible(Effect.andThen(append(lines), record))),
         lines: kept.lines,
         startBlockEnd: kept.startBlockEnd,
       })
