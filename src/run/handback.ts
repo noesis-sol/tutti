@@ -356,7 +356,7 @@ export const handOver = (
     const events = yield* EventStream
     const { id } = stop.ticket
     const attempt = (yield* handBacks.count(id)) + 1
-    // The rebase left in progress is its worker's now: a run killed meanwhile doesn't abort it.
+    // The rebase left in progress is its worker's now: carried over unfinished, it is said so.
     yield* markHandedBack(id)
     const moved = yield* ledger.transition(id, Cause.ConflictsHandedBack({ attempt }))
     if (Result.isFailure(moved)) {

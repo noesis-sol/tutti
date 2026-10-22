@@ -1,7 +1,8 @@
 // A rebase a killed run's merge left in progress (check.ts's `rebased_unchecked` mark): the next
 // run's carry-over aborts it, the branch back as its worker left it, and the ticket goes back in
 // line to merge, rather than set aside OFF_BRANCH mid-rebase. One whose conflicts were handed back
-// to its worker is its worker's resolution, left as it is.
+// to its worker is aborted too, its resolution unfinished, for the merge to hand them back afresh,
+// naming the commit the resolution had got to.
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -47,14 +48,19 @@ interface Ended {
 }
 
 /**
- * A whole run after one killed while its merge rebased b, closed: b's worktree left mid-rebase,
- * its branch marked rebased and unchecked, the mark holding `extra` besides where it was. main
- * moved on meanwhile, apart from b's change, so b merges once its branch is rebased again.
+ * A whole run after one killed while its merge rebased b, closed: b's worktree left mid-rebase onto
+ * a commit of main's that conflicts with it, its branch marked rebased and unchecked, the mark
+ * holding `extra` besides where it was; with `resolved`, its worker had committed a resolution of
+ * the conflict mid-rebase. main moved on meanwhile, the conflicting file gone again, so b merges
+ * once its branch is rebased again.
  */
-const afterKill = async (extra: Record<string, boolean> = {}): Promise<Ended> => {
+const afterKill = async (
+  extra: Record<string, boolean> = {},
+  resolved = false,
+): Promise<Ended & { readonly resolution: string }> => {
   const repo = folder("repo")
   const root = folder("worktrees")
-  let ended: Omit<Ended, "ran"> | undefined
+  let ended: (Omit<Ended, "ran"> & { readonly resolution: string }) | undefined
   const ran = await scenario(
     {
       backlog: backlog().ticket("b", { status: "closed" }).seeds,
@@ -73,19 +79,25 @@ const afterKill = async (extra: Record<string, boolean> = {}): Promise<Ended> =>
       yield* repository.commit(worktree, "Do b (b)", { "b.txt": "b\n" })
       const orig = yield* repository.head("tutti/b")
       const fork = yield* git.mergeBase(repo, "main", "tutti/b")
-      // The rebase the killed run's merge began: stopped in b's worktree, which a side branch's
-      // commit conflicts with, as git would be on any commit mid-rebase.
-      yield* git.addWorktree(repo, join(root, "side"), { branch: "side", base: "main" })
-      yield* repository.commit(join(root, "side"), "Side", { "b.txt": "side\n" })
-      yield* Effect.flip(git.rebase(worktree, yield* repository.head("side")))
+      // The rebase the killed run's merge began: stopped in b's worktree, which a commit of main's
+      // conflicts with, as git would be on any commit mid-rebase.
+      yield* repository.commit(repo, "Land a conflict", { "b.txt": "main\n" })
+      yield* Effect.flip(git.rebase(worktree, yield* repository.head("main")))
       yield* store.setMetadata("b", uncheckedKey, { fork, head: orig, ...extra })
-      yield* repository.commit(repo, "Land something else", { "main.txt": "moved\n" })
+      const resolution = resolved
+        ? yield* repository.commit(worktree, "Do b (b)", { "b.txt": "main\nb\n" })
+        : ""
+      yield* repository.commit(repo, "Land something else", {
+        "b.txt": null,
+        "main.txt": "moved\n",
+      })
       const fiber = yield* Effect.forkChild(
         Effect.scoped(run({ version: "0.1.0-test", base: "main" })),
       )
       const outcome = yield* Fiber.join(fiber)
       ended = {
         orig,
+        resolution,
         rebasing: yield* git.rebaseInProgress(worktree),
         main: yield* repository.tree("main"),
         state: yield* store.state,
@@ -99,6 +111,9 @@ const afterKill = async (extra: Record<string, boolean> = {}): Promise<Ended> =>
 
 const abortedLine =
   "  b, carried over from the last run, was left mid-rebase as the last run ended: the rebase is aborted, tutti/b back as its worker left it"
+
+const handedBackLine =
+  "  b, carried over from the last run, was left mid-rebase as the last run ended, its worker resolving its conflicts: the rebase is aborted, tutti/b back as its worker left it, for its merge to hand the conflicts back afresh"
 
 describe("a rebase a killed run's merge left in progress", () => {
   test("is aborted as the next run starts, and the ticket goes back in line and merges", async () => {
@@ -116,14 +131,28 @@ describe("a rebase a killed run's merge left in progress", () => {
     expect(ended.ran.log.some((text) => text.includes("OFF_BRANCH"))).toBe(false)
   })
 
-  test("whose conflicts were handed back to its worker, is left as it is", async () => {
+  test("whose conflicts were handed back to its worker, is aborted too, and the ticket merges", async () => {
     const ended = await afterKill({ handed_back: true })
-    expect(ended.rebasing).toBe(true)
-    expect(ended.ran.log.some((text) => text.includes("left mid-rebase as the last run"))).toBe(
-      false,
-    )
-    expect(ended.main.has("b.txt")).toBe(false)
-    expect(ended.ran.log.some((text) => text.includes("OFF_BRANCH"))).toBe(true)
+    expectExitCode(ended.ran, 0)
+    expectPhases(ended.ran, { b: "Done" })
+    expect(ended.rebasing).toBe(false)
+    expect(ended.main.get("b.txt")).toBe("b\n")
+    expectLog(ended.ran, [
+      `${handedBackLine}`,
+      "  b, carried over from the last run, is closed, so it waits to merge",
+      /^ {2}b closed .*; merged into main/,
+    ])
+    expect(ended.ran.log.some((text) => text.includes("OFF_BRANCH"))).toBe(false)
+  })
+
+  test("whose worker had committed part of its resolution, names the commit git keeps", async () => {
+    const ended = await afterKill({ handed_back: true }, true)
+    expectPhases(ended.ran, { b: "Done" })
+    expect(ended.rebasing).toBe(false)
+    expectLog(ended.ran, [
+      `${handedBackLine}; its resolution had got to ${ended.resolution.slice(0, 10)}, which git keeps`,
+    ])
+    expect(ended.main.get("b.txt")).toBe("b\n")
   })
 })
 

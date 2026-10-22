@@ -205,25 +205,61 @@ const savedQuestion = (record: TicketRecord): string | undefined => {
 }
 
 /**
- * Aborts the rebase of the ticket's branch a merge left in progress in its worktree, its run killed
- * while git rebased it: one its rebased-and-unchecked mark (check.ts) shows tutti began, not one
- * whose conflicts were handed back to its worker to resolve. The branch is back as its worker left
- * it, for this run's merge to rebase again, rather than set aside OFF_BRANCH mid-rebase. git that
- * can't say or can't abort it leaves it as it is, saying so of an abort that failed.
+ * The commit a worker's resolution of its handed-back conflicts had got to in `worktree`, mid-rebase,
+ * which git keeps once the rebase is aborted: its `HEAD`, unless that is where the branch was before
+ * the rebase or on the base, the commit it was rebased onto. "" for none, or when git can't say.
  */
-const abortLeftRebase = (id: string, record: TicketRecord, worktree: string, branch: string) =>
+const resolutionAt = (worktree: string, before: string, repo: string, base: string) =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const head = yield* Effect.result(git.revParse(worktree, "HEAD"))
+    if (Result.isFailure(head) || head.success === before) return ""
+    const fork = yield* Effect.result(git.mergeBase(repo, base, head.success))
+    return Result.isSuccess(fork) && fork.success !== head.success ? head.success : ""
+  })
+
+/**
+ * Aborts the rebase of the ticket's branch a merge left in progress in its worktree, its run ended
+ * while git rebased it: one its rebased-and-unchecked mark (check.ts) shows tutti began. The branch
+ * is back as its worker left it, for this run's merge to rebase again, rather than set aside
+ * OFF_BRANCH mid-rebase. One whose conflicts were handed back to its worker is aborted too, its
+ * resolution unfinished: the ticket is closed, so its worker isn't resumed, and the merge hands the
+ * conflicts back afresh, as the usage-limit end does for a hand-back never sent (§ 4.12); the
+ * commit its resolution had got to is named, which git keeps. git that can't say or can't abort it
+ * leaves it as it is, saying so of an abort that failed.
+ */
+const abortLeftRebase = (
+  id: string,
+  record: TicketRecord,
+  worktree: string,
+  branch: string,
+  at: { readonly repo: string; readonly base: string },
+) =>
   Effect.gen(function* () {
     const mark = Object.hasOwn(record.metadata, uncheckedKey)
       ? record.metadata[uncheckedKey]
       : undefined
-    if (uncheckedOf(mark) === undefined || handedBackOf(mark)) return undefined
+    const unchecked = uncheckedOf(mark)
+    if (unchecked === undefined) return undefined
     const git = yield* Git
     const rebasing = yield* Effect.result(git.rebaseInProgress(worktree))
     if (Result.isFailure(rebasing) || !rebasing.success) return undefined
+    const handed = handedBackOf(mark)
+    const attempt = handed ? yield* resolutionAt(worktree, unchecked.head, at.repo, at.base) : ""
     const aborted = yield* Effect.result(git.abortRebase(worktree))
-    return Result.isSuccess(aborted)
-      ? line`was left mid-rebase as the last run ended: the rebase is aborted, ${branch} back as its worker left it`
-      : line`was left mid-rebase as the last run ended, and git could not abort it: ${gitWhy(aborted.failure)}`
+    if (Result.isFailure(aborted)) {
+      return handed
+        ? line`was left mid-rebase as the last run ended, its worker resolving its conflicts, and git could not abort it: ${gitWhy(aborted.failure)}`
+        : line`was left mid-rebase as the last run ended, and git could not abort it: ${gitWhy(aborted.failure)}`
+    }
+    if (!handed) {
+      return line`was left mid-rebase as the last run ended: the rebase is aborted, ${branch} back as its worker left it`
+    }
+    const kept =
+      attempt === ""
+        ? line``
+        : line`; its resolution had got to ${attempt.slice(0, 10)}, which git keeps`
+    return line`was left mid-rebase as the last run ended, its worker resolving its conflicts: the rebase is aborted, ${branch} back as its worker left it, for its merge to hand the conflicts back afresh${kept}`
   })
 
 /**
@@ -342,7 +378,10 @@ export const carryOver = (
       const branch = record.branch ?? branchOf(id)
 
       if (issue.status === "closed") {
-        const undone = yield* abortLeftRebase(id, record, worktree, branch)
+        const undone = yield* abortLeftRebase(id, record, worktree, branch, {
+          repo: config.repo,
+          base,
+        })
         if (undone !== undefined) yield* logs.write(carriedLine(id, undone))
         const found = yield* mergedSince(issue, { repo: config.repo, base })
         if (found.merged !== undefined) {

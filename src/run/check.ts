@@ -201,7 +201,7 @@ const handedBackField = "handed_back"
 
 /**
  * Whether the mark `value` says its rebase's conflicts were handed back to the ticket's worker: a
- * rebase in progress in its worktree is then its worker's resolution, not one a killed run left.
+ * rebase in progress in its worktree is then its worker's unfinished resolution (carry.ts).
  */
 export const handedBackOf = (value: Schema.Json | undefined): boolean =>
   typeof value === "object" &&
