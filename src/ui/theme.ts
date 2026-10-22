@@ -410,44 +410,60 @@ export const parseBackgroundReply = (text: string): Option.Option<Appearance> =>
 /** How long tutti waits for the terminal to say its background. */
 export const backgroundQueryLimit = Duration.millis(250)
 
+/** The streams queryAppearance asks the terminal on: process's own, or fakes in the tests. */
+export interface TerminalStreams {
+  readonly stdin: {
+    readonly isTTY?: boolean
+    readonly isRaw: boolean
+    setRawMode(mode: boolean): unknown
+    on(event: "data", listener: (chunk: Buffer | string) => void): unknown
+    off(event: "data", listener: (chunk: Buffer | string) => void): unknown
+    resume(): unknown
+    pause(): unknown
+  }
+  readonly stdout: { readonly isTTY?: boolean; write(text: string): unknown }
+}
+
 /**
- * Asks the terminal for its background (OSC 11), for output where no renderer ran, and waits up
- * to 250 ms. A terminal that doesn't answer it answers the device attributes query sent after
- * it, ending the wait early. None without an answer, or when stdin and stdout aren't a terminal.
+ * Asks the terminal on `streams` (process's stdin and stdout) for its background (OSC 11), for
+ * output where no renderer ran, and waits up to 250 ms. A terminal that doesn't answer it answers
+ * the device attributes query sent after it, ending the wait early. None without an answer, or
+ * when stdin and stdout aren't a terminal.
  */
-export const queryAppearance: Effect.Effect<Option.Option<Appearance>> = Effect.callback<
-  Option.Option<Appearance>
->((resume) => {
-  const { stdin, stdout } = process
-  if (!stdin.isTTY || !stdout.isTTY) {
-    resume(Effect.succeedNone)
-    return
-  }
-  const wasRaw = stdin.isRaw
-  let heard = ""
-  let listening = true
-  const stop = () => {
-    if (!listening) return
-    listening = false
-    stdin.off("data", onData)
-    stdin.setRawMode(wasRaw)
-    stdin.pause()
-  }
-  const onData = (chunk: Buffer | string) => {
-    heard += chunk.toString()
-    const appearance = parseBackgroundReply(heard)
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: the reply is an escape sequence
-    if (Option.isNone(appearance) && !/\x1b\[\?[\d;]*c/.test(heard)) return
-    stop()
-    resume(Effect.succeed(appearance))
-  }
-  stdin.setRawMode(true)
-  stdin.on("data", onData)
-  stdin.resume()
-  stdout.write("\x1b]11;?\x07\x1b[c")
-  // Run when the wait ends unanswered, at the time limit.
-  return Effect.sync(stop)
-}).pipe(Effect.timeoutOption(backgroundQueryLimit), Effect.map(Option.flatten))
+export const queryAppearance = (
+  streams: TerminalStreams = process,
+): Effect.Effect<Option.Option<Appearance>> =>
+  Effect.callback<Option.Option<Appearance>>((resume) => {
+    const { stdin, stdout } = streams
+    if (!stdin.isTTY || !stdout.isTTY) {
+      resume(Effect.succeedNone)
+      return
+    }
+    const wasRaw = stdin.isRaw
+    let heard = ""
+    let listening = true
+    const stop = () => {
+      if (!listening) return
+      listening = false
+      stdin.off("data", onData)
+      stdin.setRawMode(wasRaw)
+      stdin.pause()
+    }
+    const onData = (chunk: Buffer | string) => {
+      heard += chunk.toString()
+      const appearance = parseBackgroundReply(heard)
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the reply is an escape sequence
+      if (Option.isNone(appearance) && !/\x1b\[\?[\d;]*c/.test(heard)) return
+      stop()
+      resume(Effect.succeed(appearance))
+    }
+    stdin.setRawMode(true)
+    stdin.on("data", onData)
+    stdin.resume()
+    stdout.write("\x1b]11;?\x07\x1b[c")
+    // Run when the wait ends unanswered, at the time limit.
+    return Effect.sync(stop)
+  }).pipe(Effect.timeoutOption(backgroundQueryLimit), Effect.map(Option.flatten))
 
 /**
  * The appearance for output outside the renderer: the user's choice, else the one the renderer
@@ -460,7 +476,7 @@ export const outputAppearance = (
 ): Effect.Effect<Appearance> =>
   chosen !== "auto" || detected !== null
     ? Effect.succeed(appearanceOf(chosen, detected))
-    : Effect.map(queryAppearance, (answer) => appearanceOf(chosen, Option.getOrNull(answer)))
+    : Effect.map(queryAppearance(), (answer) => appearanceOf(chosen, Option.getOrNull(answer)))
 
 /**
  * The theme, from `themeOf`, of what is printed to stdout outside the renderer where no renderer

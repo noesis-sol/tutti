@@ -563,7 +563,7 @@ describe("the appearance", () => {
     expect(await Effect.runPromise(outputAppearance("light", "dark"))).toBe("light")
     expect(await Effect.runPromise(outputAppearance("auto", "light"))).toBe("light")
     // The tests' stdin isn't a terminal, so the query has no answer.
-    expect(await Effect.runPromise(queryAppearance)).toEqual(Option.none())
+    expect(await Effect.runPromise(queryAppearance())).toEqual(Option.none())
     expect(await Effect.runPromise(outputAppearance("auto", null))).toBe("dark")
   })
 

@@ -95,12 +95,11 @@ below are the coverage report's uncovered lines at 368899e.
 ## `tutti colours`
 
 - **Reached by**: `tutti colours [<name>]`; `--colour-scheme`, the scheme files.
-- **Tests**: `colours-command.test.ts`, `theme.test.ts`, `ui-roles.test.tsx`,
-  `start-scheme-notices.test.ts`, `plain-report-unstyled.test.ts`, `tty.test.ts`.
-- **Untested**: `queryAppearance`, which asks the terminal for its background colour to choose the
-  light or dark variant (`src/ui/theme.ts` 424–443; it reads `process.stdin` itself, so a test
-  needs a seam for the streams), and a scheme file that is there but can't be read (277, 298)
-  (tutti-8iz.8).
+- **Tests**: `colours-command.test.ts`, `theme.test.ts`, `theme-appearance.test.ts` (unit:
+  `queryAppearance` on fake TTY streams under TestClock, and a scheme file that can't be read),
+  `ui-roles.test.tsx`, `start-scheme-notices.test.ts`, `plain-report-unstyled.test.ts`,
+  `tty.test.ts`.
+- **Untested**: nothing found.
 
 ## `tutti requires`
 
