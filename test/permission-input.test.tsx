@@ -128,6 +128,27 @@ describe("a permission request's input in the worker view", () => {
     expect(lines[2]?.[0]?.look).toEqual(roleLook(theme, "added"))
   })
 
+  test("an Edit's lines that start like a diff's headers are shown as any other", () => {
+    const lines = permissionLines(
+      "Edit",
+      {
+        file_path: "q.sql",
+        old_string: "-- old comment\nselect 1\n@@ marker",
+        new_string: "-- new comment\n++ counter\nselect 1\n@@ marker",
+      },
+      theme,
+      60,
+    )
+    expect(textOf(lines)).toEqual([
+      "q.sql",
+      "--- old comment",
+      "+-- new comment",
+      "+++ counter",
+      " select 1",
+      " @@ marker",
+    ])
+  })
+
   test("a Write shows its file and its content, a long line wrapped", () => {
     const lines = permissionLines(
       "Write",

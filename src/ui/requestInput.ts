@@ -6,7 +6,7 @@ import type { AttentionRequest } from "../agent/Attention.ts"
 import { type Look, roleLook, type Segments, seg, wrap } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import type { Theme } from "./theme.ts"
-import { editOf } from "./transcriptItems.ts"
+import { lineDiff } from "./transcriptItems.ts"
 
 /** How far a line wrapped onto the next is indented, past the line's own start. */
 const continued = 2
@@ -85,30 +85,28 @@ const restOf = (
 ): ReadonlyArray<readonly [string, unknown]> =>
   Object.entries(input).filter(([key]) => !shown.includes(key))
 
-/** An Edit's change as diff lines: removed lines and added ones in their roles, the rest plain. */
+/**
+ * An Edit's change as diff lines, each its `-`, `+` or space and its text: removed lines and added
+ * ones in their roles, the rest plain. Made from the line diff itself, so that a line whose text
+ * starts like a diff's header (`-- a comment`) is shown as any other.
+ */
 const diffLines = (
-  input: Readonly<Record<string, unknown>>,
+  before: string,
+  after: string,
   theme: Theme,
   width: number,
 ): ReadonlyArray<Segments> => {
-  const diff = editOf("Edit", input)?.diff ?? ""
   const looks: Readonly<Record<string, Look | null>> = {
     "-": roleLook(theme, "removed"),
     "+": roleLook(theme, "added"),
     " ": null,
   }
-  return diff
-    .split("\n")
-    .filter((line) => line !== "" && !/^(---|\+\+\+|@@) /.test(line))
-    .flatMap((line) =>
-      wrap(
-        [seg(line.slice(0, 1) + untabbed(line.slice(1)), looks[line[0] ?? " "] ?? null)],
-        width,
-        {
-          indent: indentOf(1 + leading(line.slice(1)), width),
-        },
-      ),
-    )
+  const sides = (text: string) => (text === "" ? [] : linesOf(text))
+  return lineDiff(sides(before), sides(after)).flatMap(({ op, line }) =>
+    wrap([seg(op + line, looks[op] ?? null)], width, {
+      indent: indentOf(1 + leading(line), width),
+    }),
+  )
 }
 
 /**
@@ -141,7 +139,7 @@ export const permissionLines = (
   if (tool === "Edit" && strings("file_path", "old_string", "new_string")) {
     return [
       ...path("file_path"),
-      ...diffLines(input, theme, width),
+      ...diffLines(input.old_string as string, input.new_string as string, theme, width),
       ...rest(["file_path", "old_string", "new_string"]),
     ]
   }
