@@ -713,10 +713,7 @@ describe("the attention panel", () => {
           ┃ Bash: Remove the build cache                                               ┃
           ┃ Path is outside allowed working directories                                ┃
           ┃ [ Deny ]  [ Allow ]                                                        ┃
-          ┃ {                                                                          ┃
-          ┃   "command": "rm -rf build",                                               ┃
-          ┃   "description": "Remove the build cache"                                  ┃
-          ┃ }                                                                          ┃
+          ┃ rm -rf build                                                               ┃
           ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           ────────────────────────────────────────────────────────────────────────────────
            > i to write to the worker
@@ -822,14 +819,14 @@ describe("the attention panel", () => {
       async ({ rendered }) => {
         const frame = await rendered.capture()
         expect(frame.chars).toContain("[ Deny ]")
-        expect(frame.chars).toContain('"field1"')
-        expect(frame.chars).not.toContain('"field30"')
-        const y = linesOf(frame).findIndex((line) => line.includes('"field1"'))
+        expect(frame.chars).toContain("field1: value 1")
+        expect(frame.chars).not.toContain("field30: value 30")
+        const y = linesOf(frame).findIndex((line) => line.includes("field1: value 1"))
         await rendered.input(async (setup) => {
           for (let i = 0; i < 40; i++) await setup.mockMouse.scroll(10, y, "down")
         })
         const scrolled = await rendered.capture()
-        expect(scrolled.chars).toContain('"field30"')
+        expect(scrolled.chars).toContain("field30: value 30")
         expect(scrolled.chars).toContain("[ Deny ]")
       },
       { requests: [long], size: { width: 80, height: 40 } },

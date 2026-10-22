@@ -85,6 +85,7 @@ import {
   wrap,
   wrapped,
 } from "./line.tsx"
+import { requestInputLines } from "./requestInput.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import { useHintHeight } from "./Toasts.tsx"
 import type { Role, Theme } from "./theme.ts"
@@ -558,33 +559,6 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
 /** Whether the selection can rest on `entry`: one that expands. */
 export const selectable = (entry: Entry): boolean => entry._tag !== "Text"
 
-/** A request's input, as the panel shows it whole (§ 7.5): its JSON, its questions, its form. */
-export const inputOf = (request: AttentionRequest): ReadonlyArray<string> => {
-  const kind = request.kind
-  const lines = (text: string) => sanitize(text).split("\n")
-  switch (kind._tag) {
-    case "Permission":
-      return lines(JSON.stringify(kind.input, null, 2) ?? "")
-    case "Question":
-      return kind.questions.flatMap((question) => [
-        ...lines(question.question),
-        ...question.options.map(
-          (option, i) =>
-            `  ${i + 1} ${sanitizeLine(option.label)}${option.description ? ` — ${sanitizeLine(option.description)}` : ""}`,
-        ),
-      ])
-    case "Elicitation": {
-      const fields = Object.keys(
-        (kind.requestedSchema?.properties as Record<string, unknown> | undefined) ?? {},
-      )
-      return [
-        ...lines(kind.message),
-        ...(fields.length === 0 ? [] : [`fields: ${fields.map(sanitizeLine).join(", ")}`]),
-      ]
-    }
-  }
-}
-
 /** A request's box in the panel: its lines over its input, its input, and its frame's foot. */
 export interface PanelParts {
   readonly head: ReadonlyArray<Segments>
@@ -605,14 +579,17 @@ export const panelParts = (
 ): PanelParts => {
   const { styles } = theme
   const text = requestText(request)
-  const faint = (line: string): Segments => [seg(line, styles.dim)]
+  // Within the frame's sides and the space each side of them; wrapped there, never cut (§ 4.5).
+  const inner = Math.max(options.width - 4, 1)
+  const faint = (lines: ReadonlyArray<string>): ReadonlyArray<Segments> =>
+    lines.flatMap((line) => wrap([seg(line, styles.dim)], inner, { indent: 2 }))
   const description =
     request.description === undefined || text.line.includes(sanitizeLine(request.description))
       ? []
       : sanitize(request.description).split("\n")
   const reason =
     request.decisionReason === undefined ? [] : sanitize(request.decisionReason).split("\n")
-  const input = inputOf(request)
+  const input = requestInputLines(request, theme, inner)
   const button = (label: string, index: number): ButtonSegment => ({
     text: `[ ${label} ]`,
     look: index === options.focus ? theme.form.focusedButton : theme.form.button,
@@ -622,9 +599,14 @@ export const panelParts = (
   const rows: ReadonlyArray<Segments> = picksOptions(request)
     ? buttons.map((each) => [each])
     : [buttons.flatMap((each, i) => (i === 0 ? [each] : [seg("  "), each]))]
-  const above = [[seg(text.line)], ...description.map(faint), ...reason.map(faint), ...rows]
+  const above = [
+    ...wrap([seg(text.line)], inner, { indent: 2 }),
+    ...faint(description),
+    ...faint(reason),
+    ...rows,
+  ]
   const lines = boxed(
-    [...above, ...input.map(faint)],
+    [...above, ...input],
     options.width,
     roleLook(theme, "needsYou"),
     options.selected ? "heavy" : "rounded",

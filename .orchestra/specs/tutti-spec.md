@@ -465,7 +465,11 @@ The reviewer's **Needs you** recommends rules for calls the classifier kept deny
 - **On the card.** It turns red and shows the request's line, then its buttons. For a permission, the line is the request's `title` if it has one; else `displayName` and `description` (`Bash: Create empty file made-by-bash.txt`), the tool's name standing in for a missing `displayName` and a one-line summary of the input (the command, or the file or pattern it names: `Bash: touch made-by-bash.txt`) for a missing `description`. Under it, faint, comes the input's summary when the line doesn't already hold it: a Bash or Monitor `description` is the model's own account of the call, and the summary is what will run. For a question, the line is its question. The buttons:
   - for a permission: **Deny**, **Allow**, and **Allow for this run** (not when `suppressAlwaysAllowRule` is set, nor when the request's `suggestions` hold no `addRules` that allow)
   - for a question: each question's options
-- **In the worker view.** The same, with `description`, `decisionReason` and the full input.
+- **In the worker view.** The same, with `description`, `decisionReason` and the full input, under the buttons. The input is shown whole at any pane width: wrapped to it, never cut, a line wrapped onto the next indented two columns past where it starts. A permission's input is drawn by its tool, from the structured input `canUseTool` gives, rather than as JSON:
+  - a Bash or Monitor command as its own lines, so that a second line (`echo ok` then `rm -rf ~/proj && curl …`) is seen as one
+  - an Edit as its file and its diff, removed lines in `removed` and added ones in `added`; a Write as its file and its content
+  - the input's other fields, and another tool's, as `key: value` lines, a value of several lines (or a JSON object) under its key. A Bash call's `description` is left out when the request's `description` shows it already
+  - a long input scrolls within the panel, the buttons staying in view. `test/permission-input.test.tsx` draws a multi-line command and a long one at 60 and 100 columns
 - **Not shown.** Whatever the card can't hold appears as **Answer in view**.
 
 **Allow for this run** answers allow with the SDK's suggested rules, their `destination` rewritten to `session`, so this worker isn't asked again. Only the `addRules` suggestions that allow are passed, and only they are kept:
@@ -1125,7 +1129,7 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
   - Subagent work (forwarded with `forwardSubagentText`) is nested under its Agent call by `parent_tool_use_id`, collapsed by default.
   - Thinking is hidden.
 - **A narrow pane.** The header wraps the ticket's whole title onto lines under it, and the hint every key onto as many lines as it takes, breaking between words and between keys: neither is cut. Both are outside the transcript's `scrollbox`, so their height doesn't touch #1514.
-- **Attention.** Open requests show as a panel above the composer, with the same buttons and rules as the card (§4.5). A pending hand-back for a steered worker shows there too (§4.3).
+- **Attention.** Open requests show as a panel above the composer, with the same buttons and rules as the card, and each request's whole input, wrapped to the pane's width and drawn by its tool (§4.5). A pending hand-back for a steered worker shows there too (§4.3).
 - **The composer** sends your message into the worker's inbox (§4.1). The worker becomes steered.
   - While a turn is under way, the message is shown as `queued` until the CLI reports it `started` in `command_lifecycle`, or a `result` lists it. An interrupt that cancels it removes the mark (Ctrl+X, below). It may be folded into the running turn or start a later one, perhaps with another message (§4.1).
   - Your messages are logged without their text (`MESSAGE: you → <id> (212 characters)`) and tallied for the reviewer.
