@@ -37,7 +37,7 @@ import {
   seg,
   styled,
 } from "./line.tsx"
-import { modalMaxWidth } from "./Modal.tsx"
+import { Backdrop, modalMaxWidth } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
 import { useLatestRunView, useRunView, useTheme } from "./useRunView.ts"
 
@@ -238,18 +238,21 @@ export const AnswerBox = () => {
     focus: answering.focusOf(card),
   })
   return (
-    <box
-      position="absolute"
-      zIndex={10}
-      left={Math.max(Math.floor((width - outer) / 2), 0)}
-      top={Math.max(Math.floor((height - lines.length) / 2), 0)}
-      width={outer}
-      height={lines.length}
-      // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
-      backgroundColor={RGBA.defaultBackground()}
-    >
-      <AttentionLines lines={lines} press={(index) => answering.press(card, index)} />
-    </box>
+    <>
+      <Backdrop />
+      <box
+        position="absolute"
+        zIndex={10}
+        left={Math.max(Math.floor((width - outer) / 2), 0)}
+        top={Math.max(Math.floor((height - lines.length) / 2), 0)}
+        width={outer}
+        height={lines.length}
+        // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
+        backgroundColor={RGBA.defaultBackground()}
+      >
+        <AttentionLines lines={lines} press={(index) => answering.press(card, index)} />
+      </box>
+    </>
   )
 }
 
@@ -303,48 +306,55 @@ export const ReasonBox = ({
   ]
   const rule = "─".repeat(outer - 2)
   return (
-    <box
-      position="absolute"
-      zIndex={10}
-      left={Math.max(Math.floor((width - outer) / 2), 0)}
-      top={Math.max(Math.floor((height - reasonBoxLines) / 2), 0)}
-      width={outer}
-      height={reasonBoxLines}
-      // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
-      backgroundColor={RGBA.defaultBackground()}
-      flexDirection="column"
-    >
-      <Line segments={[seg(`╭${rule}╮`, frame)]} />
-      <Line
-        segments={row([seg(reasonQuestion(ticket), { ...frame, attributes: TextAttributes.BOLD })])}
-      />
-      <Line segments={row([])} />
-      <box flexDirection="row" height={1}>
-        <Line segments={[bar, seg(" "), seg("> ", theme.form.selector)]} />
-        <input
-          focused
-          width={Math.max(inner - 2, 1)}
-          ref={field}
-          onSubmit={() => submit(field.current?.value ?? "")}
-          placeholder="what the worker is told"
-          {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
-          {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
-          {...(form.placeholder.fg === undefined ? {} : { placeholderColor: form.placeholder.fg })}
-          {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
+    <>
+      <Backdrop />
+      <box
+        position="absolute"
+        zIndex={10}
+        left={Math.max(Math.floor((width - outer) / 2), 0)}
+        top={Math.max(Math.floor((height - reasonBoxLines) / 2), 0)}
+        width={outer}
+        height={reasonBoxLines}
+        // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
+        backgroundColor={RGBA.defaultBackground()}
+        flexDirection="column"
+      >
+        <Line segments={[seg(`╭${rule}╮`, frame)]} />
+        <Line
+          segments={row([
+            seg(reasonQuestion(ticket), { ...frame, attributes: TextAttributes.BOLD }),
+          ])}
         />
-        <Line segments={[seg(" "), bar]} />
+        <Line segments={row([])} />
+        <box flexDirection="row" height={1}>
+          <Line segments={[bar, seg(" "), seg("> ", theme.form.selector)]} />
+          <input
+            focused
+            width={Math.max(inner - 2, 1)}
+            ref={field}
+            onSubmit={() => submit(field.current?.value ?? "")}
+            placeholder="what the worker is told"
+            {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
+            {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
+            {...(form.placeholder.fg === undefined
+              ? {}
+              : { placeholderColor: form.placeholder.fg })}
+            {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
+          />
+          <Line segments={[seg(" "), bar]} />
+        </box>
+        <Line segments={row([])} />
+        <Line
+          segments={row([
+            seg("Enter", theme.styles.key),
+            seg(" deny", theme.styles.dim),
+            seg(" · ", theme.styles.dim),
+            seg("Esc", theme.styles.key),
+            seg(" cancel", theme.styles.dim),
+          ])}
+        />
+        <Line segments={[seg(`╰${rule}╯`, frame)]} />
       </box>
-      <Line segments={row([])} />
-      <Line
-        segments={row([
-          seg("Enter", theme.styles.key),
-          seg(" deny", theme.styles.dim),
-          seg(" · ", theme.styles.dim),
-          seg("Esc", theme.styles.key),
-          seg(" cancel", theme.styles.dim),
-        ])}
-      />
-      <Line segments={[seg(`╰${rule}╯`, frame)]} />
-    </box>
+    </>
   )
 }

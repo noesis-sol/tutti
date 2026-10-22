@@ -40,6 +40,7 @@ import { staleToast, useSendAnswer } from "./attentionKeys.ts"
 import { hintSegments } from "./Hint.tsx"
 import { useInput, useLayer } from "./keys.ts"
 import { cut, Line, plainFg, roleLook, type Segments, seg, styled } from "./line.tsx"
+import { Backdrop } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
 import { useRunView, useTheme } from "./useRunView.ts"
 
@@ -235,117 +236,129 @@ const FormBody = ({
   )
   let index = 0
   return (
-    <box
-      position="absolute"
-      zIndex={10}
-      left={Math.max(Math.floor((width - outer) / 2), 0)}
-      top={Math.max(Math.floor((height - boxHeight) / 2), 0)}
-      width={outer}
-      height={boxHeight}
-      // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
-      backgroundColor={RGBA.defaultBackground()}
-      flexDirection="column"
-      border
-      borderStyle="rounded"
-      {...(frame.fg === undefined ? {} : { borderColor: frame.fg })}
-      paddingX={1}
-    >
-      <Line
-        segments={cut(
-          [seg(request.ticket, theme.styles.key), seg(" asks", theme.styles.dim)],
-          inner,
-        )}
-      />
-      <scrollbox
-        ref={scroll}
-        height={bodyHeight}
-        flexShrink={0}
-        scrollbarOptions={{ visible: false }}
+    <>
+      <Backdrop />
+      <box
+        position="absolute"
+        zIndex={10}
+        left={Math.max(Math.floor((width - outer) / 2), 0)}
+        top={Math.max(Math.floor((height - boxHeight) / 2), 0)}
+        width={outer}
+        height={boxHeight}
+        // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
+        backgroundColor={RGBA.defaultBackground()}
+        flexDirection="column"
+        border
+        borderStyle="rounded"
+        {...(frame.fg === undefined ? {} : { borderColor: frame.fg })}
+        paddingX={1}
       >
-        {form.fields.map((field, f) => {
-          const value = values[f] ?? { picked: [], text: "", on: false }
-          const first = index
-          index += rows.filter((row) => row.field === f).length
-          return (
-            <box key={field.key} flexDirection="column" flexShrink={0} paddingTop={f === 0 ? 0 : 1}>
-              {titleLines(field, theme).map((segments, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
-                <Line key={i} segments={cut(segments, inner)} />
-              ))}
-              {rows
-                .filter((row) => row.field === f)
-                .map((row, i) => {
-                  const n = first + i
-                  const focused = n === focus
-                  const typing = typesAt(form, row)
-                  const before: Segments = [
-                    seg(focused ? "> " : "  ", looks.selector),
-                    ...rowText(field, value, row.option, theme),
-                  ]
-                  return (
-                    // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's; Enter is its key
-                    <box
-                      key={row.option}
-                      id={rowId(n)}
-                      flexDirection="row"
-                      height={1}
-                      flexShrink={0}
-                      onMouseDown={(event: MouseEvent) => {
-                        if (event.button !== 0) return
-                        event.stopPropagation()
-                        setFocus(n)
-                        if (!typing) pickRow(row)
-                      }}
-                    >
-                      <Line segments={cut(before, inner)} />
-                      {typing ? (
-                        <input
-                          ref={(input: InputRenderable | null) => {
-                            if (input === null) inputs.current.delete(n)
-                            else inputs.current.set(n, input)
-                          }}
-                          focused={focused}
-                          flexGrow={1}
-                          value={value.text}
-                          onInput={(typed: string) => update(f, (now) => typeIn(field, now, typed))}
-                          placeholder={
-                            field._tag === "Text" && field.number !== null ? "a number" : ""
-                          }
-                          {...(looks.option.fg === undefined ? {} : { textColor: looks.option.fg })}
-                          {...(looks.option.fg === undefined
-                            ? {}
-                            : { focusedTextColor: looks.option.fg })}
-                          {...(looks.placeholder.fg === undefined
-                            ? {}
-                            : { placeholderColor: looks.placeholder.fg })}
-                          {...(looks.selected.fg === undefined
-                            ? {}
-                            : { cursorColor: looks.selected.fg })}
-                        />
-                      ) : null}
-                    </box>
-                  )
-                })}
-            </box>
-          )
-        })}
-      </scrollbox>
-      <Line segments={[]} />
-      <box flexDirection="row" height={1} flexShrink={0}>
-        {button(sendLabel, rows.length)}
-        <text wrapMode="none" height={1} fg={plainFg}>
-          {"  "}
-        </text>
-        {button(refuseLabel, rows.length + 1)}
+        <Line
+          segments={cut(
+            [seg(request.ticket, theme.styles.key), seg(" asks", theme.styles.dim)],
+            inner,
+          )}
+        />
+        <scrollbox
+          ref={scroll}
+          height={bodyHeight}
+          flexShrink={0}
+          scrollbarOptions={{ visible: false }}
+        >
+          {form.fields.map((field, f) => {
+            const value = values[f] ?? { picked: [], text: "", on: false }
+            const first = index
+            index += rows.filter((row) => row.field === f).length
+            return (
+              <box
+                key={field.key}
+                flexDirection="column"
+                flexShrink={0}
+                paddingTop={f === 0 ? 0 : 1}
+              >
+                {titleLines(field, theme).map((segments, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
+                  <Line key={i} segments={cut(segments, inner)} />
+                ))}
+                {rows
+                  .filter((row) => row.field === f)
+                  .map((row, i) => {
+                    const n = first + i
+                    const focused = n === focus
+                    const typing = typesAt(form, row)
+                    const before: Segments = [
+                      seg(focused ? "> " : "  ", looks.selector),
+                      ...rowText(field, value, row.option, theme),
+                    ]
+                    return (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's; Enter is its key
+                      <box
+                        key={row.option}
+                        id={rowId(n)}
+                        flexDirection="row"
+                        height={1}
+                        flexShrink={0}
+                        onMouseDown={(event: MouseEvent) => {
+                          if (event.button !== 0) return
+                          event.stopPropagation()
+                          setFocus(n)
+                          if (!typing) pickRow(row)
+                        }}
+                      >
+                        <Line segments={cut(before, inner)} />
+                        {typing ? (
+                          <input
+                            ref={(input: InputRenderable | null) => {
+                              if (input === null) inputs.current.delete(n)
+                              else inputs.current.set(n, input)
+                            }}
+                            focused={focused}
+                            flexGrow={1}
+                            value={value.text}
+                            onInput={(typed: string) =>
+                              update(f, (now) => typeIn(field, now, typed))
+                            }
+                            placeholder={
+                              field._tag === "Text" && field.number !== null ? "a number" : ""
+                            }
+                            {...(looks.option.fg === undefined
+                              ? {}
+                              : { textColor: looks.option.fg })}
+                            {...(looks.option.fg === undefined
+                              ? {}
+                              : { focusedTextColor: looks.option.fg })}
+                            {...(looks.placeholder.fg === undefined
+                              ? {}
+                              : { placeholderColor: looks.placeholder.fg })}
+                            {...(looks.selected.fg === undefined
+                              ? {}
+                              : { cursorColor: looks.selected.fg })}
+                          />
+                        ) : null}
+                      </box>
+                    )
+                  })}
+              </box>
+            )
+          })}
+        </scrollbox>
+        <Line segments={[]} />
+        <box flexDirection="row" height={1} flexShrink={0}>
+          {button(sendLabel, rows.length)}
+          <text wrapMode="none" height={1} fg={plainFg}>
+            {"  "}
+          </text>
+          {button(refuseLabel, rows.length + 1)}
+        </box>
+        <Line
+          segments={
+            missing === null
+              ? cut(hintSegments(formKeys, theme, inner + 2).slice(1), inner)
+              : cut([seg(missing, looks.error)], inner)
+          }
+        />
       </box>
-      <Line
-        segments={
-          missing === null
-            ? cut(hintSegments(formKeys, theme, inner + 2).slice(1), inner)
-            : cut([seg(missing, looks.error)], inner)
-        }
-      />
-    </box>
+    </>
   )
 }
 

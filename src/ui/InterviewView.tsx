@@ -251,6 +251,14 @@ export const InterviewView = () => {
     ],
     "Leave",
   )
+  // The view draws its Leave box and binds its keys: unmounted with it open, nothing would, and the
+  // box would hold the keys of the view after it (tutti-por).
+  useEffect(
+    () => () => {
+      if (input.box.get()?._tag === "Leave") input.box.set(null)
+    },
+    [input],
+  )
 
   // The selection names an entry or a request; with none chosen, the oldest request is the target.
   const chosen = useRef<string | null>(null)

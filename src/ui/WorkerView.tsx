@@ -823,6 +823,14 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     ],
     "Interrupt",
   )
+  // The view draws its Interrupt box and binds its keys: unmounted with it open, nothing would, and the
+  // box would hold the keys of the view after it (tutti-por).
+  useEffect(
+    () => () => {
+      if (input.box.get()?._tag === "Interrupt") input.box.set(null)
+    },
+    [input],
+  )
   const release = () => {
     if (found?.steered === true) command(UiCommand.Release({ ticket: found.ticket }))
   }
