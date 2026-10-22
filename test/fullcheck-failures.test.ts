@@ -247,8 +247,8 @@ describe("bd failing as the full check's ticket is filed", () => {
       }),
     })
     const result = checked(ran)
-    const tickets = checkFullTickets(ran)
-    expect(tickets.map((issue) => issue.id)).toEqual(["cf-1", result.ticket])
+    if (result.ticket === undefined) throw new Error("no ticket was filed")
+    expect(checkFullTickets(ran).map((issue) => issue.id)).toEqual(["cf-1", result.ticket])
     expect(result.ticket).not.toBe("cf-1")
     expect(result.filed).toBe(`filed ${result.ticket}`)
     expectLog(ran, [
