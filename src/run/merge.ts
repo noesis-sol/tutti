@@ -519,8 +519,10 @@ const rebaseAndCheck = (
       fork,
       head: Result.isSuccess(before) ? before.success.head : "",
     })
+    // Onto the commit read as `onto`, not the base's name: one committed to the base since lands in
+    // the next pass, so the stop, the setup's diff and the hand-back's check agree with the rebase.
     const rebased = yield* Effect.result(
-      git.rebase(worktree, base).pipe(Effect.onInterrupt(() => abandonRebase(worktree))),
+      git.rebase(worktree, onto).pipe(Effect.onInterrupt(() => abandonRebase(worktree))),
     )
     if (Result.isFailure(rebased)) {
       const error = rebased.failure
