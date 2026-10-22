@@ -51,6 +51,35 @@ export class RebaseConflict extends Schema.TaggedError<RebaseConflict>()("Rebase
 
 export type GitError = GitFailed | GitTimedOut
 
+/**
+ * The oldest git tutti runs on: `git merge-tree --write-tree` (`holds`) came in git 2.38, after
+ * `worktree list -z` (2.36) and `rev-parse --path-format=absolute` (2.31).
+ */
+export const minimumGitVersion: readonly [number, number] = [2, 38]
+
+/**
+ * Reads `git --version`: `git version 2.34.1`, `git version 2.39.3 (Apple Git-146)`,
+ * `git version 2.45.1.windows.1`. Its major, minor and patch numbers, or null for other output.
+ */
+export const parseGitVersion = (output: string): readonly [number, number, number] | null => {
+  const match = /^git version (\d+)\.(\d+)(?:\.(\d+))?/.exec(output.trim())
+  if (match === null) return null
+  return [Number(match[1]), Number(match[2]), Number(match[3] ?? "0")]
+}
+
+/**
+ * What a run says when git's `git --version` output is older than `minimumGitVersion`, or null:
+ * output tutti can't read says nothing, and the git commands that follow say what they find.
+ */
+export const gitTooOld = (output: string): string | null => {
+  const version = parseGitVersion(output)
+  if (version === null) return null
+  const [major, minor, patch] = version
+  const [needMajor, needMinor] = minimumGitVersion
+  if (major > needMajor || (major === needMajor && minor >= needMinor)) return null
+  return `git ${major}.${minor}.${patch} is too old: tutti needs git ${needMajor}.${needMinor} or later. Update git, then run tutti again.`
+}
+
 /** A worktree, as `git worktree list` gives it. */
 export interface Worktree {
   readonly path: string
@@ -299,6 +328,8 @@ export class Git extends Context.Service<
     topLevel(dir: string): Effect.Effect<string, GitError>
     /** The branch checked out in dir; none on a detached HEAD. */
     currentBranch(dir: string): Effect.Effect<Option.Option<string>, GitError>
+    /** git --version: what git says it is, as `git version 2.47.1`, for `gitTooOld`. */
+    version(dir: string): Effect.Effect<string, GitError>
   }
 >()("tutti/services/Git") {
   /**
@@ -642,6 +673,7 @@ export class Git extends Context.Service<
                     ? Effect.succeed(Option.none())
                     : Effect.fail(failed("symbolic-ref", shown, output)),
             ),
+          version: (dir) => Effect.map(read("--version", dir, ["--version"]), (out) => out.trim()),
         })
       }),
     )

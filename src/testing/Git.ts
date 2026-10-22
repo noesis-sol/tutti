@@ -97,6 +97,8 @@ export interface Seed {
   readonly branch?: string
   /** `README.md` by default. */
   readonly files?: Readonly<Record<string, string>>
+  /** What `git --version` prints; `git version 2.47.1` by default. */
+  readonly version?: string
 }
 
 interface CommitObject {
@@ -1027,6 +1029,10 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
                   ? Option.some(checkout.head.branch)
                   : Option.none(),
               ),
+          ),
+        version: (dir) =>
+          operation("read", "--version", dir, ["--version"], () =>
+            Effect.succeed(seed.version ?? "git version 2.47.1"),
           ),
       })
 

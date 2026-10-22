@@ -18,8 +18,8 @@ and drops its terminal multiplexers:
 - **Exact worker state**, from the sessions' own messages, not from reading a screen.
 - **Requests answered in tutti.** A worker's permission requests and questions are answered on its
   card, in its view, or with `tutti answer`.
-- **Any terminal**, on macOS or Linux, inside tmux or over ssh. Nothing to install beyond `git`, `bd`
-  and a Claude login.
+- **Any terminal**, on macOS or Linux, inside tmux or over ssh. Nothing to install beyond `git`
+  (2.38 or later), `bd` and a Claude login.
 
 ## Install
 

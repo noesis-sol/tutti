@@ -1,7 +1,7 @@
 // The startup checks (§ 5 item 1): everything a run needs before it takes the run lock, each
 // problem collected so that they are all reported at once, and the run exits 2. A repository
 // `tutti init` hasn't set up says so first, in place of the problems that init fixes. In § 5's
-// order: the git repository and its main checkout, on a branch; a clean tree; bd and the Beads
+// order: git, 2.38 or later; the git repository and its main checkout, on a branch; a clean tree; bd and the Beads
 // database, and the ticket --ticket names (open, and work rather than a question); the login probe
 // (§ 4.13); organs' provider (§ 6.1); the settings, flags, variables and user config; the MCP names
 // (§ 4.6); the worker prompt (§ 4.11). A run that starts notes the project's worker prompt and
@@ -35,7 +35,7 @@ import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
 import { readmeStaleLine } from "../project/requires.ts"
 import { settingsFile } from "../project/settings.ts"
 import { Beads, type BeadsError, HumanLabel } from "../services/Beads.ts"
-import { Git } from "../services/Git.ts"
+import { Git, gitTooOld } from "../services/Git.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { type Line, start, Tag } from "./log.ts"
@@ -181,13 +181,30 @@ const real = (fs: FileSystem.FileSystem, path: string) =>
   fs.realPath(path).pipe(Effect.orElseSucceed(() => resolvePath(path)))
 
 /**
+ * The problem with the git tutti runs from `cwd`, if any: one not installed, or older than
+ * `minimumGitVersion`, whose commands would fail on options it doesn't know.
+ */
+export const checkGit = (cwd: string) =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    const shown = yield* Effect.result(git.version(cwd))
+    if (Result.isSuccess(shown)) return Option.fromNullishOr(gitTooOld(shown.success))
+    // Another failure is left to the git commands after it, which say what they find.
+    return shown.failure._tag === "GitFailed" && shown.failure.exitCode === 127
+      ? Option.some("Required command not found: git")
+      : Option.none<string>()
+  })
+
+/**
  * The main checkout of the repository `cwd` is in, and the linked worktree `cwd` is in instead,
- * if it is in one; or the problem.
+ * if it is in one; or the problem, a git too old among them.
  */
 export const findRepository = (cwd: string) =>
   Effect.gen(function* () {
     const git = yield* Git
     const fs = yield* FileSystem.FileSystem
+    const problem = yield* checkGit(cwd)
+    if (Option.isSome(problem)) return Result.fail(problem.value)
     const listed = yield* Effect.result(git.worktrees(cwd))
     if (Result.isFailure(listed)) {
       return Result.fail(

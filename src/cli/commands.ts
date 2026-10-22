@@ -32,7 +32,7 @@ import { maxConcurrent } from "../project/settings.ts"
 import { exitCodes } from "../run/holds.ts"
 import { Log } from "../run/log.ts"
 import { listen } from "../run/quit.ts"
-import { findRepository } from "../run/startup.ts"
+import { checkGit, findRepository } from "../run/startup.ts"
 import { Beads } from "../services/Beads.ts"
 import { Git, GitWriter } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
@@ -70,6 +70,8 @@ import { releaseBuild, tuttiVersion } from "./version.ts"
 export const mainCheckout = (dir: string) =>
   Effect.gen(function* () {
     const git = yield* Git
+    const problem = yield* checkGit(dir)
+    if (Option.isSome(problem)) return yield* Effect.fail(problem.value)
     const worktrees = yield* git.worktrees(dir)
     const main = worktrees[0]
     if (main === undefined) return yield* Effect.fail(`${dir} has no main checkout`)
