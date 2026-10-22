@@ -1609,9 +1609,17 @@ It is `flock(LOCK_EX|LOCK_NB)` on `<git-common-dir>/tutti.lock`, so the system r
 | `steered`, `released` | new | `ticket` |
 | `suspended` | new: a worker's session was suspended as the run ended | `ticket`, `session`, `why` |
 | `resumed` | new (the log's `RESUMED`) | `ticket`, `session`, `why` (`suspended`, `answered`, `gone`, `hand_back`) |
+| `turn` | new: a worker's turn ended, from its SDK result | `ticket`, `session`, `subtype`, `is_error`, `cost_usd` and `tokens` (by model: `input`, `output`, `cache_write`, `cache_read`), the turn's share of the session's running totals, `turns` (`num_turns`), `duration_ms`, `api_ms` |
+| `check` | new here, orchestra's: a check or setup ended | `suite` (`merge`, `recheck`, `fix`, `full`, `setup`), `ticket` (none for the full check's), `command`, `seconds`, `result` (`passed`, `failed`, `timed_out`, `not_run`), `output`, `train` |
+| `organ` | new: an organ call ended | `organ`, `ticket`, `outcome` (`answered`, `unpriced`, `no_result`), `cost_usd`, `turns`, `duration_ms`, `session` |
+| `ticket_end` | new: a ticket's part in the run ended, or ended again | `ticket`, `outcome` (`merged`, `no_change`, `set_aside`, `needs_you`, `stopped`), `phase`, `why`, `seconds`, `turns`, and what it spent, as below |
+| `closed`, `deferred`, `warn` with `aside` | orchestra's `phases`, `hand_backs`, `carried`, `tokens` added, and `cost_usd` | |
+| `end` | orchestra's `tokens` and `organs` added, and `cost_usd` | |
 | `start` | `terminal` removed; `billing` and `permission_mode` added | `version`, `repo`, `branch`, `scope`, `feature`, `concurrency`, `billing`, `permission_mode` |
 | `hold` | `USAGE_LIMIT` added; `lifted: true` when a hold is lifted | |
 | `stop` | `TERMINAL_FAILED` becomes `AGENT_FAILED` | |
+
+**What runs spend.** The SDK's result messages say what each turn cost and used, which orchestra could only read from transcripts, so the records give a ticket's cost as well as orchestra's time and tokens, under orchestra's field names where the meaning is the same (`check`'s `suite`, `seconds`, `result`; `phases`, `hand_backs`, `carried`, `tokens`; `end`'s `organs`), so one set of queries reads both streams. A result's `total_cost_usd` and `modelUsage` are the session's running totals: cumulative across a query's turns, and a resumed session goes on from those its transcript saved (the SDK's `sdk.d.ts`, and a live contract test). `Spending` (`src/run/spending.ts`) keeps each session's last totals in the run, and a `turn` record gives the difference; a total lower than the last started again from 0 (`/clear`), and its share is the whole; a zeroed crash result counts as nothing. A ticket's phases are counted by the ledger as it moves (`working` for Working, `waiting` for ToMerge, `merging`, `resolving`, `fixing`), from when the run first took it up; its `ticket_end` comes after the records its ending writes. The same sums feed the `end` record, so analysis has one source.
 
 The orchestra skill's `jq` recipes carry over, with `.orchestra` replaced by `.tutti`. A published JSON Schema (`schema/events.json`) is generated from the Effect Schema.
 

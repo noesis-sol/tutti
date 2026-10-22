@@ -42,12 +42,31 @@ const count = (value: unknown): number =>
 
 const whole = (value: unknown): number => Math.round(count(value))
 
+// A model's usage in a result's modelUsage, as given: nothing of it is trusted to be a count.
+interface UsageFields {
+  readonly inputTokens?: unknown
+  readonly outputTokens?: unknown
+  readonly cacheCreationInputTokens?: unknown
+  readonly cacheReadInputTokens?: unknown
+}
+
+// The fields of a result Spending reads, as given.
+interface ResultFields {
+  readonly subtype?: unknown
+  readonly is_error?: unknown
+  readonly total_cost_usd?: unknown
+  readonly modelUsage?: unknown
+  readonly num_turns?: unknown
+  readonly duration_ms?: unknown
+  readonly duration_api_ms?: unknown
+}
+
 /** A result's modelUsage as tokens by model; what isn't a count is 0. */
 export const tokensOf = (modelUsage: unknown): TokensByModel => {
   if (typeof modelUsage !== "object" || modelUsage === null) return {}
   const tokens: Record<string, Tokens> = {}
   for (const [model, usage] of Object.entries(modelUsage)) {
-    const u = (typeof usage === "object" && usage !== null ? usage : {}) as Record<string, unknown>
+    const u = (typeof usage === "object" && usage !== null ? usage : {}) as UsageFields
     tokens[model] = {
       input: whole(u["inputTokens"]),
       output: whole(u["outputTokens"]),
@@ -154,7 +173,7 @@ export class Spending extends Context.Service<
       const message = (ticket: string, session: string, message: SDKMessage) =>
         Effect.gen(function* () {
           if (message.type !== "result") return
-          const r = message as unknown as Record<string, unknown>
+          const r = message as unknown as ResultFields
           const now: Totals = {
             costUsd: count(r["total_cost_usd"]),
             tokens: tokensOf(r["modelUsage"]),

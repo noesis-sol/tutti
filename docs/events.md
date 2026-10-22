@@ -47,7 +47,7 @@ the time.
 |---|---|---|
 | `start` | the run's first record, once its startup checks pass and it knows its work | `version`; `repo`, the main checkout; `branch`, where finished tickets land; `scope`, the ticket of a `--ticket` or feature run; `feature`, the feature request; `concurrency`; `billing` (`subscription` or `api`); `permission_mode`, the mode workers run in |
 | `info` | progress about a ticket: its worktree, a hand-back, a recheck, a ticket carried over, an epic closed, … | `ticket`, `text` |
-| `warn` | something to review while the run goes on: `CHECKS_FAILED`, `MERGE_CONFLICT`, `LIKELY_CONFLICT`, `FLAKY`, `LONG_RUNNING`, … | `ticket` when it is about one; `aside: true` when that ticket is left for review, with `detail`, why in a few words (`checks failed`, `closed without a commit`, …); `blocked` when its work is done but it can't merge until you act (`merge conflict in a.ts, b.ts`); `text` |
+| `warn` | something to review while the run goes on: `CHECKS_FAILED`, `MERGE_CONFLICT`, `LIKELY_CONFLICT`, `FLAKY`, `LONG_RUNNING`, … | `ticket` when it is about one; `aside: true` when that ticket is left for review, with `detail`, why in a few words (`checks failed`, `closed without a commit`, …), and `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd`; `blocked` when its work is done but it can't merge until you act (`merge conflict in a.ts, b.ts`); `text` |
 | `hold` | something holds the run: no new tickets while the running ones finish; or a hold is lifted | `text` (`HOLD: <WORD>: …`, or `PROBE: …` for the environment probe's wait); `ticket` and `blocked` on some; `lifted: true` when it is lifted (`HOLD lifted: …`, `HOLD: USAGE_LIMIT lifted`) |
 | `drain`, `resume` | the run was asked to wind down (`s`, SIGUSR1), or that was taken back | `text` |
 | `probed` | the probe found the machine working after an environment hold: tickets start again | `text` |
@@ -56,7 +56,9 @@ the time.
 | `stop` | the run stopped and needs you | `detail`, the word that says why: `REQUIREMENTS_MISSING`, `PAUSED`, `BLOCKED`, `TICKET_LIMIT`, `BEADS_FAILED`, `GIT_FAILED`, `AGENT_FAILED`, `WORKTREE_FAILED`, `STATE_UNWRITABLE`, `PANIC`, `DIRTY_TREE`, `MERGE_FAILED`, `ENVIRONMENT`, `USAGE_LIMIT` or `INTERRUPTED`; `ticket` and `blocked` when a ticket stopped it; `text`, every stop, joined by `; also ` |
 | `done` | the run finished by itself | `text`: `READY_EMPTY after N tickets`, `LIMIT_REACHED at N tickets` or `DRAINED after N tickets`, with `; SCOPE_DONE: …` or `; SCOPE_OPEN: …` in a scoped run; `READY_EMPTY after 0 tickets: everything is done` or `: nothing ready` when there was nothing to run |
 | `full_check` | the [full check](running.md#the-full-check) | `detail`: `passed`, `failed`, `timed out`, `skipped` or `not run`; when it failed, `suite`, `output` (where its whole output is) and `ticket` (the ticket filed for the suite, or the one open for it already); `text` |
-| `end` | the run's last record, as tutti exits | `code`, the [exit code](running.md#exit-codes) |
+| `check` | a check or a setup tutti ran ended; the log has no line for it | `suite`: `merge` (a ticket's merge check, the merge train's included), `recheck` (the check once more of a ticket set aside for its failed check), `fix` (the check of a fix its worker made for a failed check), `full` (the full check) or `setup` (the setup, in a ticket's worktree or before the full check); `ticket`, absent for the full check's; `command`; `seconds`, from its start to its end, to a tenth; `result`: `passed`, `failed`, `timed_out` or `not_run` (it couldn't start); `output`, where its whole output is, when it didn't pass; `train: true` when it ran ahead of its ticket's turn |
+| `organ` | an [organ](organs.md) call ended; the log has its `ORGAN` line | `organ` (`triage`, `predictor`, `reviewer`, `scout`, …); `ticket`, the one it was about (triage's and the predictor's); `outcome`: `answered`, `unpriced` (answered by a provider that reports no price) or `no_result` (it timed out or failed first); `cost_usd`, `turns` and `session` when it `answered`; `duration_ms` |
+| `end` | the run's last record, as tutti exits | `code`, the [exit code](running.md#exit-codes); `tokens`, its workers' by model, `cost_usd`, their turns' cost, and `organs`, its organ calls' `{"calls":3,"turns":5,"cost_usd":0.0456}`, each left out when there is none (see [What runs spend](#what-runs-spend)) |
 
 **Tickets:**
 
@@ -65,13 +67,14 @@ the time.
 | `phase` | a ticket moved from one phase to another | `ticket`; `from`, absent as it enters the run; `to`, absent as it leaves it (gone from `bd ready`); `cause`; and the new phase's details: `place` (`ToMerge`, 1 is next), `step` (`Merging`), `attempt` (`Resolving`, `Fixing`), `why` (`HeldBack`, `Deferred`, `Review`, `Blocked`, `Stopped`) |
 | `queue` | the number of ready tickets waiting for a slot, or held back, changed: the dashboard's **In queue** | `queued`; `held` and `held_by` while some are held back; `solo`; `machine_full: true` while the run holds at `--machine-workers` |
 | `dispatch` | a ticket was picked up | `ticket`, `title`; `n` and `limit`, as in `[n/limit]` (no `limit` for a run without one); `queued`, `held`, `held_by`, `solo` as for `queue`; `text` |
-| `closed` | a ticket merged, or closed with no change of its own to merge | `ticket`, `title`; `detail`, `ffd6ce4 merged into main` or `no change to merge`; `text` |
-| `deferred` | a ticket was set aside, deferred | `ticket`, `title`; `detail`, why (`by the worker`, `still in_progress, noted for review`, …); `text` |
+| `closed` | a ticket merged, or closed with no change of its own to merge | `ticket`, `title`; `detail`, `ffd6ce4 merged into main` or `no change to merge`; `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd` (see [What runs spend](#what-runs-spend)); `text` |
+| `deferred` | a ticket was set aside, deferred | `ticket`, `title`; `detail`, why (`by the worker`, `still in_progress, noted for review`, …); `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd`; `text` |
 | `asked` | a ticket waits on a question ticket for you | `ticket`, `title`; `detail`, the question's ID and title; `text` |
 | `answered` | its question was answered: it comes back | `ticket`, `title`, `detail`, `text` |
 | `waits` | a ticket's worker stopped with nothing done, having found it needs a ticket not merged yet: back in the queue until that merges (`WAITS_FOR_MERGE`) | `ticket`, `title`; `detail`, the tickets it waits for; `text` |
 | `reopened` | a ticket set aside for failing at once was reopened by an environment hold | `ticket`; `detail`; `text` |
 | `triage` | triage's verdict on a deferred ticket | `ticket`; `title`, the verdict; `detail`, as in `environment · high`; `text` |
+| `ticket_end` | a ticket's part in the run ended: it merged, closed with no change, was set aside, waits on you or stopped; again each time it comes back and ends again, so its last in a run gives its whole | `ticket`; `outcome`: `merged`, `no_change`, `set_aside`, `needs_you` or `stopped`; `phase`, the one it ended in (`Done`, `Deferred`, `Review`, `Asked`, `Blocked`, `Stopped`); `why`, as that phase gives it (`CHECKS_FAILED`, the question's ID, `PAUSED`, …); `seconds`, from when the run first took it up; `turns`, its workers' model round-trips; `phases`, `hand_backs`, `carried`, `tokens` and `cost_usd` |
 
 **Workers:**
 
@@ -85,6 +88,7 @@ the time.
 | `steered`, `released` | a worker became steered, or was released (see [Steering](workers.md#steering)) | `ticket`, `text` |
 | `suspended` | a worker's session was suspended as the run ended | `ticket`, `session`; `why`: `quit`, `PAUSED`, `TICKET_LIMIT`, `waiting on you`, `run ended`, … |
 | `resumed` | a worker's session was resumed | `ticket`, `session`; `why`: `suspended` (by the last run), `answered` (its question), `gone` (it ended unexpectedly), `hand_back`; `text` |
+| `turn` | a worker's turn ended: its SDK result | `ticket` (`tutti-probe` for the environment probe's session, `tutti-interview` for the feature interview's); `session`; `subtype`, the result's (`success`, `error_during_execution`, `error_max_turns`, …); `is_error: true` when it ended on an error; `cost_usd`, the turn's share of the session's cost; `turns`, its model round-trips; `duration_ms`, and `api_ms` of it waiting on the API; `tokens`, the turn's share by model, its subagents' and compactions' included |
 
 **Phases.** A `phase` record's `from` and `to` are among `Queued`, `HeldBack`, `Working`, `ToMerge`,
 `Merging`, `Resolving`, `Fixing`, `Done`, `Asked`, `Waiting`, `Deferred`, `Review`, `Blocked` and
@@ -103,6 +107,35 @@ blocker, or the ticket it was filed from, not merged yet; `solo`, a solo ticket 
 a probe passes.
 `solo` is `{"ticket":"<id>"}` while a ticket labelled `solo` runs, `{"ticket":"<id>","next":true}`
 while it is next.
+
+## What runs spend
+
+tutti hosts Claude Code through the Agent SDK, whose result messages say what each turn cost and
+used, so the stream has what orchestra's has of a ticket's time and tokens, and its cost besides.
+
+- **Each turn's share.** A result's `total_cost_usd` and `modelUsage` are the session's running
+  totals: within one session's process each result carries the turns before it too, and a resumed
+  session goes on from the totals its transcript saved (the SDK's docs say so, and the contract
+  test `test/contract/sdk.test.ts` checks both). So a `turn` record gives the difference from the
+  session's last result in this run: its own share. A total lower than the last means it started
+  again from 0 (a `/clear`), and the turn's share is then the whole; a zeroed result, as a crash
+  gives, counts as nothing. A session carried over from an earlier run has no last result in this
+  one, so its first turn's share includes what it spent before. `num_turns`, `duration_ms` and
+  `duration_api_ms` are the turn's own.
+- **Tokens**, as orchestra's: by model, `input` neither written to the prompt cache nor read from
+  it, `cache_write` written to it, `cache_read` read from it, and `output`, thinking included; each
+  given, 0 included.
+- **What a ticket spent.** The records that end a ticket's part in the run, `closed`, `deferred`, a
+  `warn` with `aside: true` and `ticket_end`, give what it spent from when the run first took it up:
+  - `phases`, as orchestra's: seconds, to a tenth, in each phase it entered: `working` (Working),
+    `waiting` (ToMerge), `merging` (Merging), `resolving` and `fixing`; a ticket that comes back
+    adds to the same phases, and the time between, waiting on you or on a merge, counts in none;
+  - `hand_backs`: `resolve`, for conflicts, and `fix`, for a failing check, 0 included;
+  - `carried: true` for a ticket carried over from an earlier run;
+  - `tokens` and `cost_usd`, its workers' turns' shares summed, left out when none reported any.
+- **The run's.** The `end` record sums its workers' `tokens` and `cost_usd`, and its organ calls in
+  `organs`. Costs are the SDK's estimates at list prices, not a bill: a subscription doesn't pay by
+  the token.
 
 ## Reading it
 
@@ -139,6 +172,16 @@ jq -r 'select(.kind == "denied") | .reason_type' $E | sort | uniq -c
 
 # one ticket's way through the run
 jq -r --arg t tut-12 'select(.kind == "phase" and .ticket == $t) | "\(.time) \(.from // "-") → \(.to // "-") (\(.cause))"' $E
+
+# each ticket's cost and time, as the run left it
+jq -r --arg run "$run" 'select(.run == $run and .kind == "ticket_end") | "\(.ticket) \(.outcome) $\(.cost_usd // 0) \(.seconds)s"' $E
+
+# each suite's runs and their median time
+jq -rs 'map(select(.kind == "check")) | group_by(.suite)[] | (map(.seconds) | sort) as $s
+  | "\(.[0].suite): \(length) runs, median \($s[length / 2 | floor])s"' $E
+
+# what the latest run's workers and organs cost
+jq -r --arg run "$run" 'select(.run == $run and .kind == "end") | "workers $\(.cost_usd // 0), organs $\(.organs.cost_usd // 0)"' $E
 
 # every run's exit code
 jq -r 'select(.kind == "end") | "\(.run) \(.code)"' $E

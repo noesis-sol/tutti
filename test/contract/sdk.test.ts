@@ -1081,6 +1081,58 @@ live.describe("Agent SDK contract: resume", () => {
   )
 })
 
+// What Spending (src/run/spending.ts) relies on for each turn's share (§ 10): total_cost_usd and
+// modelUsage are the query's running totals, so a second turn's are above the first's, while
+// num_turns is the turn's own; and a resumed session goes on from the totals its transcript saved.
+live.describe("Agent SDK contract: a result's cost is the session's running total", () => {
+  live.test(
+    "two turns of one query, then a resume: each total above the last, num_turns the turn's",
+    async () => {
+      const dir = repository()
+      const sessionId = randomUUID()
+      const turn = async (s: Direct, text: string) => {
+        const sent = s.send(text)
+        await until(
+          "the turn answered",
+          () => answered(sent)(s.messages),
+          () => "",
+        )
+        const [result] = resultsFor(s.messages, sent)
+        if (result === undefined) throw new Error("no result")
+        return result
+      }
+      const first = direct(dir, dir, { _tag: "New", sessionId })
+      let one: SDKResultMessage
+      let two: SDKResultMessage
+      try {
+        one = await turn(first, "Reply with the single word ALPHA.")
+        two = await turn(first, "Reply with the single word BRAVO.")
+      } finally {
+        await first.close()
+      }
+      const resumed = direct(dir, dir, { _tag: "Resume", sessionId })
+      let three: SDKResultMessage
+      try {
+        three = await turn(resumed, "Reply with the single word CHARLIE.")
+      } finally {
+        await resumed.close()
+      }
+      const output = (r: SDKResultMessage) =>
+        Object.values(r.modelUsage).reduce((sum, usage) => sum + usage.outputTokens, 0)
+      expect(one.total_cost_usd).toBeGreaterThan(0)
+      // A running total within the query: the second result carries the first turn's cost too.
+      expect(two.total_cost_usd).toBeGreaterThan(one.total_cost_usd)
+      expect(output(two)).toBeGreaterThan(output(one))
+      // num_turns is the turn's own round-trips, not a running count.
+      expect(two.num_turns).toBe(1)
+      // A resume goes on from the totals the transcript saved, as sdk.d.ts says.
+      expect(three.total_cost_usd).toBeGreaterThan(two.total_cost_usd)
+      expect(output(three)).toBeGreaterThan(output(two))
+    },
+    testLimit,
+  )
+})
+
 live.describe("Agent SDK contract: a removed worktree", () => {
   live.test(
     "resuming a session whose worktree was removed fails the spawn, with no message and no result",
