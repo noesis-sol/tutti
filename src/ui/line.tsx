@@ -249,8 +249,14 @@ export const wrap = <L,>(
       case "Word": {
         const w = token.cells.reduce((sum, cell) => sum + cell.width, 0)
         const own = options.long === "line" || w <= width - indent
-        if (!token.more && own && used + w > room() && taken()) {
-          if (!next(segmentsOf(token.cells), true)) return lines
+        if (!token.more && used + w > room()) {
+          if (own && taken()) {
+            if (!next(segmentsOf(token.cells), true)) return lines
+          } else if (options.long === "line") {
+            // Only spaces before it, which the word needs the room of: they go, as at a wrap.
+            line = []
+            used = 0
+          }
         }
         for (const [i, cell] of token.cells.entries()) {
           if (used + cell.width > room() && (line.length > 0 || taken())) {

@@ -95,6 +95,26 @@ describe("wrap", () => {
 })
 
 describe("a word longer than a line", () => {
+  test("as prose, a word that fits a line is never broken, the spaces before it giving way", () => {
+    expect(wrap([seg("  abcdefgh")], 9, { indent: 4, long: "line" }).map(textOf)).toEqual([
+      "abcdefgh",
+    ])
+    fc.assert(
+      fc.property(
+        fc.array(fc.stringMatching(/^[a-z界]{1,8}$/), { maxLength: 12 }),
+        fc.integer({ min: 0, max: 3 }),
+        fc.integer({ min: 20, max: 40 }),
+        (words, lead, width) => {
+          const lines = wrap([seg(" ".repeat(lead) + words.join(" "))], width, {
+            indent: 4,
+            long: "line",
+          })
+          expect(lines.flatMap((line) => textOf(line).split(" ")).filter(Boolean)).toEqual(words)
+        },
+      ),
+    )
+  })
+
   test("is broken at the line's edge, or starts a line of its own", () => {
     expect(wrap([seg("ab abcdefghij")], 6).map(textOf)).toEqual(["ab abc", "defghi", "j"])
     expect(wrap([seg("ab abcdefghij")], 6, { long: "line" }).map(textOf)).toEqual([
