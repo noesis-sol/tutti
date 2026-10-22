@@ -55,6 +55,11 @@ On the right, the banners:
   `USAGE_LIMIT · resets 14:05` while the usage limit does, with `· in 1h12m` while the run has
   nothing else to do but wait for it (see [The usage limit](running.md#the-usage-limit)).
 
+In a narrow pane the line gives up the least needed first: the branch and the time, then the usage
+banner's detail (`usage 85% · resets 14:05`, then `usage 85%`, then nothing), then the states, cut
+from their end, then what the holds say beyond their words. A hold's word, such as `BLOCKED`, stays
+whole.
+
 ### The load line
 
 Under the title line, a blank line between, a line says whether the workers are overloading the
