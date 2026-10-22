@@ -17,7 +17,13 @@ import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Cause, ConfigProvider, Effect, Exit, Option } from "effect"
 import { readInitFlags } from "../src/cli/commands.ts"
-import { suitesIntro, verifierPath, verifierSection, verifierText } from "../src/init/checks.ts"
+import {
+  skillText,
+  suitesIntro,
+  verifierPath,
+  verifierSection,
+  verifierText,
+} from "../src/init/checks.ts"
 import { type InitFlags, type InitForm, type InitSummary, init } from "../src/init/init.ts"
 import { fastScript, fullScript } from "../src/init/runners.ts"
 import { type Machine, stepLine } from "../src/init/steps.ts"
@@ -27,6 +33,7 @@ import {
   latestVersion,
   promptChanges,
   sections,
+  skillChanges,
   type TemplateChange,
   templateNotes,
   unifiedDiff,
@@ -130,9 +137,11 @@ describe("the templates' versions", () => {
     }
     check(currentPrompt(verifierSection), promptChanges)
     check(verifierText(["TypeScript"], ["pnpm lint"], []), verifierChanges)
+    check(skillText, skillChanges)
     expect(currentTemplates).toEqual({
       worker_prompt: latestVersion(promptChanges),
       verifier: latestVersion(verifierChanges),
+      check_suite_skill: latestVersion(skillChanges),
     })
   })
 
@@ -279,7 +288,7 @@ describe("tutti init --update", () => {
     }
 
     const settings = await settingsOf(repo)
-    expect(settings.templates).toEqual(currentTemplates)
+    expect(settings.templates).toEqual({ ...currentTemplates, check_suite_skill: 0 })
     expect(settings.concurrent).toBe(2)
     expect(await notesOf(repo)).toEqual([])
 
@@ -482,7 +491,11 @@ describe("tutti init and the templates' versions", () => {
       `! templates  ${verifierPath} is older than tutti's verifier template, which has since changed the opening, Its checks, How to verify and Rules: tutti init --update takes those sections`,
     )
     expect(summary.next).toContain("Take the templates' changes with: tutti init --update")
-    expect((await settingsOf(project.repo)).templates).toEqual({ worker_prompt: 0, verifier: 0 })
+    expect((await settingsOf(project.repo)).templates).toEqual({
+      worker_prompt: 0,
+      verifier: 0,
+      check_suite_skill: 0,
+    })
   })
 
   test("says an imported orchestra prompt is older, and records no version for it", async () => {
@@ -510,7 +523,10 @@ describe("tutti init and the templates' versions", () => {
   test("records the versions of the templates it writes", async () => {
     const project = oldProject(false)
     const summary = await runInit(project, { force: true, verifier: true })
-    expect((await settingsOf(project.repo)).templates).toEqual(currentTemplates)
+    expect((await settingsOf(project.repo)).templates).toEqual({
+      ...currentTemplates,
+      check_suite_skill: 0,
+    })
     expect(summary.steps.some((each) => each.label === "templates")).toBe(false)
     expect(await notesOf(project.repo)).toEqual([])
   })

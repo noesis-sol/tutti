@@ -1,22 +1,29 @@
 // The versions of tutti's templates (§ 8.3), as orchestra 0.9.0 records its own: init writes the
-// worker prompt and the verifier from tutti's templates, and from then on they are the project's,
-// kept as they are. So that a project still hears of what tutti changes in its templates later,
-// .tutti/settings.json records the version of each template its copy came from (`templates`), and
-// the changes below say, section by section, what each later version changed. A run says under its
-// START line which sections a project's copy lacks (templateNotes), init says it of the files it
-// keeps, and `tutti init --update` rewrites those sections from the templates, keeping the rest of
-// each file (./update.ts).
+// worker prompt, the verifier and the create-check-suite skill from tutti's templates, and from then
+// on they are the project's, kept as they are. So that a project still hears of what tutti changes
+// in its templates later, .tutti/settings.json records the version of each template its copy came
+// from (`templates`), and the changes below say, section by section, what each later version
+// changed. A run says under its START line which sections a project's copy lacks (templateNotes),
+// init says it of the files it keeps, and `tutti init --update` rewrites those sections from the
+// templates, keeping the rest of each file (./update.ts).
 //
-// A change to worker-prompt.md, verifierSection or verifier.md is recorded here, as a new version
-// of its template: the test that pins the templates (test/template-versions.test.ts) fails until
-// it is.
+// A change to worker-prompt.md, verifierSection, verifier.md or create-check-suite.md is recorded
+// here, as a new version of its template: the test that pins the templates
+// (test/template-versions.test.ts) fails until it is.
 import { join } from "node:path"
 import { Effect, FileSystem, Option } from "effect"
 import { builtInWorkerPrompt, requiresRule, withSuites } from "../project/prompt.ts"
 import type { Settings } from "../project/settings.ts"
 import verifierTemplate from "../project/templates/verifier.md" with { type: "text" }
 import { lineDiff } from "../ui/transcriptItems.ts"
-import { suitesIntro, usesVerifier, verifierPath, verifierSection } from "./checks.ts"
+import {
+  skillPath,
+  skillText,
+  suitesIntro,
+  usesVerifier,
+  verifierPath,
+  verifierSection,
+} from "./checks.ts"
 import { joinAnd } from "./steps.ts"
 
 /** One change to a template, made by one of its versions. */
@@ -132,6 +139,19 @@ export const verifierChanges: ReadonlyArray<TemplateChange> = [
   },
 ]
 
+/** The heading of the skill's section that gets the runners passing. */
+export const passingHeading = "4. Get the runners passing on main"
+
+/** The changes to the create-check-suite skill's template, create-check-suite.md. */
+export const skillChanges: ReadonlyArray<TemplateChange> = [
+  {
+    version: 1,
+    section: passingHeading,
+    what: "check-fast is run three times in all to catch a flaky test, and check-full once, at the end",
+    marker: "Once check-fast passes, run it twice more",
+  },
+]
+
 /** The versions of tutti's templates a project's files came from, as its settings record them. */
 export type Templates = Settings["templates"]
 
@@ -143,6 +163,7 @@ export const latestVersion = (changes: ReadonlyArray<TemplateChange>): number =>
 export const currentTemplates: Templates = {
   worker_prompt: latestVersion(promptChanges),
   verifier: latestVersion(verifierChanges),
+  check_suite_skill: latestVersion(skillChanges),
 }
 
 /**
@@ -207,6 +228,16 @@ const verifierFile: TemplateFile = {
   optional: () => false,
 }
 
+const skillFile: TemplateFile = {
+  path: skillPath,
+  template: "create-check-suite skill",
+  changes: skillChanges,
+  recorded: (templates) => templates.check_suite_skill,
+  order: sections(skillText).map((each) => each.title),
+  // A copy without the section is the project's own skill, not tutti's to change.
+  optional: () => true,
+}
+
 /**
  * The changes of `file`'s template that `text`, the project's copy, which came from version
  * `recorded` of it, lacks: those since that version, unless the copy has their marker; in the
@@ -260,7 +291,7 @@ export const changedSections = (changes: ReadonlyArray<TemplateChange>): string 
 export interface OutdatedTemplate {
   /** From the project's top. */
   readonly path: string
-  /** The template's name: "worker prompt", "verifier". */
+  /** The template's name: "worker prompt", "verifier", "create-check-suite skill". */
   readonly template: string
   /** The project's copy. */
   readonly text: string
@@ -276,15 +307,16 @@ export const keptNote = (outdated: OutdatedTemplate): string =>
   `${outdated.path} is older than tutti's ${outdated.template} template, which has since changed ${sectionNames(outdated.missing)}: tutti init --update takes those sections`
 
 /**
- * The project's worker prompt and verifier at `repo`, those it has, that lack changes tutti made to
- * their templates since the versions `recorded` names; the worker prompt only where `prompt`. A file
- * tutti can't read is left out: the run and init each say so where they read it.
+ * The project's worker prompt, verifier and create-check-suite skill at `repo`, those it has, that
+ * lack changes tutti made to their templates since the versions `recorded` names; the worker prompt
+ * only where `prompt`. A file tutti can't read is left out: the run and init each say so where they
+ * read it.
  */
 export const outdatedTemplates = (repo: string, recorded: Templates, prompt = true) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const outdated: Array<OutdatedTemplate> = []
-    for (const file of prompt ? [promptFile, verifierFile] : [verifierFile]) {
+    for (const file of prompt ? [promptFile, verifierFile, skillFile] : [verifierFile, skillFile]) {
       const text = yield* fs.readFileString(join(repo, file.path)).pipe(Effect.option)
       if (Option.isNone(text)) continue
       const missing = missingChanges(file, text.value, file.recorded(recorded))
@@ -296,8 +328,8 @@ export const outdatedTemplates = (repo: string, recorded: Templates, prompt = tr
   })
 
 /**
- * What a run says at its start of the project's worker prompt and verifier where they are older
- * than tutti's templates: a line each (templateNote). `prompt` is false where the run's worker
+ * What a run says at its start of the project's worker prompt, verifier and skill where they are
+ * older than tutti's templates: a line each (templateNote). `prompt` is false where the run's worker
  * prompt is its own (--prompt), and the project's isn't used.
  */
 export const templateNotes = (repo: string, recorded: Templates, prompt: boolean) =>

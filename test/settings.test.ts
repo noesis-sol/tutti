@@ -37,7 +37,7 @@ const example = {
     ticket_limit: "2h",
     ask_user_question: true,
   },
-  templates: { worker_prompt: 5, verifier: 2 },
+  templates: { worker_prompt: 5, verifier: 2, check_suite_skill: 1 },
   organs: { effort: null, model: null, triage: true, review: true },
   queue: { exclude_types: ["epic"], footprint: true },
   merge: { resolve_conflicts: true, resolve_timeout: "20m", check_hand_backs: 2 },
@@ -106,7 +106,7 @@ describe("settings", () => {
         ticket_limit: Duration.hours(2),
         ask_user_question: true,
       },
-      templates: { worker_prompt: 5, verifier: 2 },
+      templates: { worker_prompt: 5, verifier: 2, check_suite_skill: 1 },
       organs: { effort: null, model: null, triage: true, review: true },
       queue: { exclude_types: ["epic"], footprint: true },
       merge: {
@@ -139,7 +139,7 @@ describe("settings", () => {
       ticket_limit: null,
       ask_user_question: true,
     },
-    templates: { worker_prompt: 0, verifier: 0 },
+    templates: { worker_prompt: 0, verifier: 0, check_suite_skill: 0 },
     organs: { effort: null, model: null, triage: true, review: true },
     queue: { exclude_types: ["epic"], footprint: true },
     merge: {

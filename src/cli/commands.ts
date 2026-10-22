@@ -470,7 +470,7 @@ export const initFlags = {
   ),
   update: Flag.Boolean("update").pipe(
     Flag.withDescription(
-      "bring .tutti/worker-prompt.md and .claude/agents/verifier.md up to date with tutti's templates: rewrite only the sections the templates changed since they were written, keeping the rest of each file, record the templates' versions in .tutti/settings.json, and print the diff to commit; it asks nothing and takes no other flag",
+      "bring .tutti/worker-prompt.md, .claude/agents/verifier.md and the create-check-suite skill up to date with tutti's templates: rewrite only the sections the templates changed since they were written, keeping the rest of each file, record the templates' versions in .tutti/settings.json, and print the diff to commit; it asks nothing and takes no other flag",
     ),
     Flag.withDefault(false),
   ),

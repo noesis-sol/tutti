@@ -24,6 +24,7 @@
   },
   "templates": {
     "worker_prompt": 6,
-    "verifier": 2
+    "verifier": 2,
+    "check_suite_skill": 1
   }
 }

@@ -141,8 +141,8 @@ export interface InitFlags {
   /** Replace an existing .tutti/worker-prompt.md with the template. */
   readonly force: boolean
   /**
-   * Bring the worker prompt and the verifier up to date with tutti's templates (./update.ts), and
-   * nothing else.
+   * Bring the worker prompt, the verifier and the create-check-suite skill up to date with tutti's
+   * templates (./update.ts), and nothing else.
    */
   readonly update?: boolean
 }
@@ -333,7 +333,11 @@ interface SettingsChanges {
   readonly fastRunnerChecks: boolean
   readonly fullRunnerChecks: boolean
   /** The files init wrote from tutti's templates now, whose versions the settings record. */
-  readonly fromTemplates: { readonly prompt: boolean; readonly verifier: boolean }
+  readonly fromTemplates: {
+    readonly prompt: boolean
+    readonly verifier: boolean
+    readonly skill: boolean
+  }
 }
 
 /**
@@ -385,6 +389,11 @@ const writeSettings = (
     if (changes.fromTemplates.verifier) {
       const templates = section(json, "templates")
       set(templates, "verifier", currentTemplates.verifier, "templates.verifier")
+    }
+    if (changes.fromTemplates.skill) {
+      const templates = section(json, "templates")
+      const version = currentTemplates.check_suite_skill
+      set(templates, "check_suite_skill", version, "templates.check_suite_skill")
     }
     const file = join(repo, settingsFile)
     const decoded = decodeConfig(Settings, file, json)
@@ -915,7 +924,8 @@ export const init = <R>(options: InitOptions<R>) =>
       )
       steps.push(...prompt.steps)
       steps.push(...(yield* writeRunners(repo, { fast: fastPlan, full: fullPlan })))
-      steps.push(...(yield* applySkill(repo, choice, checked.replaceSkill ?? false)))
+      const skill = yield* applySkill(repo, choice, checked.replaceSkill ?? false)
+      steps.push(...skill)
       const verifier = yield* applyVerifier(
         repo,
         workerPromptPath,
@@ -926,6 +936,7 @@ export const init = <R>(options: InitOptions<R>) =>
       const fromTemplates = {
         prompt: prompt.fromTemplate,
         verifier: verifier.some((each) => each.commit?.includes(verifierPath) === true),
+        skill: skill.some((each) => (each.commit ?? []).length > 0),
       }
       const written = yield* writeSettings(repo, existing, {
         concurrent,

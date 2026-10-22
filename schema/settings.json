@@ -293,6 +293,12 @@
           "minimum": 0,
           "maximum": 9007199254740991,
           "default": 0
+        },
+        "check_suite_skill": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "default": 0
         }
       },
       "additionalProperties": false,

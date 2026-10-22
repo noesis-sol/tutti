@@ -770,8 +770,8 @@ export const testWork = (
     labels: [testWorkLabel, soloLabel],
     parent: null,
     blockedBy: [],
-    description: `tutti init wrote ${runners} from the suites the project has. Every merge runs ${fastRunner}, so it runs first and alone (P1, solo).\n\nRun them, check-fast first, and fix what fails. A failing test whose fix isn't trivial and plainly right is skipped with its framework's own skip, naming in the skip's reason a bug ticket filed for it. Run each runner twice more, to catch a test that passes only sometimes, and record how long each takes in this ticket's notes.`,
-    acceptance: `${runners} exit 0 on ${base}, three times running; how long each takes is in the notes.`,
+    description: `tutti init wrote ${runners} from the suites the project has. Every merge runs ${fastRunner}, so it runs first and alone (P1, solo).\n\nRun ${fastRunner} and fix what fails; once it passes, run it twice more, to catch a test that passes only sometimes. Then run ${fullRunner} once, as a run does at its end, fixing what fails, and again only where a fix since touched what it runs. A failing test whose fix isn't trivial and plainly right is skipped with its framework's own skip, naming in the skip's reason a bug ticket filed for it. Record how long each runner takes in this ticket's notes.`,
+    acceptance: `${fastRunner} exits 0 on ${base} three times running, and ${fullRunner} once; how long each takes is in the notes.`,
   }
   if (!choice.fileUntested) return [pass]
   return [

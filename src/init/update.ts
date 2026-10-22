@@ -1,15 +1,15 @@
-// tutti init --update (§ 8.3): brings the project's worker prompt and verifier up to date with
-// tutti's templates (./templates.ts). In each, only the sections the templates changed since the
-// project's copy was written are rewritten from them, the rest of the file, the project's own
-// sections included, kept as it is; .tutti/settings.json then records the templates' versions now.
-// It prints the diff of each file it rewrote and leaves the commit to you. It holds the run lock,
-// as init does, so that no run starts in a tree it writes into.
+// tutti init --update (§ 8.3): brings the project's worker prompt, verifier and create-check-suite
+// skill up to date with tutti's templates (./templates.ts). In each, only the sections the templates
+// changed since the project's copy was written are rewritten from them, the rest of the file, the
+// project's own sections included, kept as it is; .tutti/settings.json then records the templates'
+// versions now. It prints the diff of each file it rewrote and leaves the commit to you. It holds
+// the run lock, as init does, so that no run starts in a tree it writes into.
 import { join } from "node:path"
 import { Clock, Effect, FileSystem } from "effect"
 import { settingsFile } from "../project/settings.ts"
 import { writeFileAtomic } from "../services/atomicFile.ts"
 import { RunLock } from "../services/RunLock.ts"
-import { verifierFor, verifierPath } from "./checks.ts"
+import { skillPath, skillText, verifierFor, verifierPath } from "./checks.ts"
 import { readSettingsJson, refused, workerPromptPath } from "./init.ts"
 import { joinAnd, type Step, step, stepLine } from "./steps.ts"
 import {
@@ -38,18 +38,19 @@ export interface TemplatesUpdated {
 }
 
 /** The template `outdated` came from, as init would write it for the project at `repo` now. */
-const currentText = (repo: string, outdated: OutdatedTemplate) =>
-  outdated.path === verifierPath
-    ? // The verifier's stack, which the scout found, is the copy's: no change touches that section.
-      verifierFor(repo, [])
-    : Effect.succeed(currentPrompt(outdated.text))
+const currentText = (repo: string, outdated: OutdatedTemplate) => {
+  // The verifier's stack, which the scout found, is the copy's: no change touches that section.
+  if (outdated.path === verifierPath) return verifierFor(repo, [])
+  if (outdated.path === skillPath) return Effect.succeed(skillText)
+  return Effect.succeed(currentPrompt(outdated.text))
+}
 
 /**
- * Brings the worker prompt and the verifier of the project at `repo` up to date with tutti's
- * templates: in each, the sections the templates changed since the project's copy was written are
- * rewritten from them (`updated`), and the settings record the templates' versions now. It writes
- * nothing where nothing is out of date but the versions the settings record. Refused in a project
- * init hasn't set up, and with settings it can't read.
+ * Brings the worker prompt, the verifier and the create-check-suite skill of the project at `repo`,
+ * those it has, up to date with tutti's templates: in each, the sections the templates changed since
+ * the project's copy was written are rewritten from them (`updated`), and the settings record the
+ * templates' versions now. It writes nothing where nothing is out of date but the versions the
+ * settings record. Refused in a project init hasn't set up, and with settings it can't read.
  */
 export const updateTemplates = (repo: string) =>
   Effect.gen(function* () {
@@ -62,15 +63,17 @@ export const updateTemplates = (repo: string) =>
     const outdated = yield* outdatedTemplates(repo, recorded)
     const steps: Array<Step> = []
     const updates: Array<TemplateUpdate> = []
-    const files = [
-      { path: workerPromptPath, label: "worker prompt" },
-      { path: verifierPath, label: "verifier" },
-    ]
     const verifierThere = yield* fs.exists(join(repo, verifierPath))
+    const skillThere = yield* fs.exists(join(repo, skillPath))
+    const files = [
+      { path: workerPromptPath, label: "worker prompt", there: true },
+      { path: verifierPath, label: "verifier", there: verifierThere },
+      { path: skillPath, label: "skill", there: skillThere },
+    ]
     for (const file of files) {
       const found = outdated.find((each) => each.path === file.path)
       if (found === undefined) {
-        if (file.path === verifierPath && !verifierThere) continue
+        if (!file.there) continue
         steps.push(step("kept", file.label, `${file.path} has every change to its template`))
         continue
       }
@@ -89,17 +92,29 @@ export const updateTemplates = (repo: string) =>
     const now: Templates = {
       worker_prompt: currentTemplates.worker_prompt,
       verifier: verifierThere ? currentTemplates.verifier : 0,
+      check_suite_skill: skillThere ? currentTemplates.check_suite_skill : 0,
     }
     if (
       read.json === null ||
       recorded.worker_prompt !== now.worker_prompt ||
-      recorded.verifier !== now.verifier
+      recorded.verifier !== now.verifier ||
+      recorded.check_suite_skill !== now.check_suite_skill
     ) {
       const json = structuredClone(read.json ?? {})
-      json.templates = now.verifier === 0 ? { worker_prompt: now.worker_prompt } : { ...now }
+      json.templates = {
+        worker_prompt: now.worker_prompt,
+        ...(now.verifier === 0 ? {} : { verifier: now.verifier }),
+        ...(now.check_suite_skill === 0 ? {} : { check_suite_skill: now.check_suite_skill }),
+      }
       yield* fs.makeDirectory(join(repo, ".tutti"), { recursive: true })
       yield* writeFileAtomic(join(repo, settingsFile), `${JSON.stringify(json, null, 2)}\n`)
-      const versions = `worker prompt ${now.worker_prompt}${now.verifier === 0 ? "" : `, verifier ${now.verifier}`}`
+      const versions = [
+        `worker prompt ${now.worker_prompt}`,
+        ...(now.verifier === 0 ? [] : [`verifier ${now.verifier}`]),
+        ...(now.check_suite_skill === 0
+          ? []
+          : [`create-check-suite skill ${now.check_suite_skill}`]),
+      ].join(", ")
       steps.push(
         step(
           "done",
@@ -122,7 +137,7 @@ export const updateNext = (updated: TemplatesUpdated): ReadonlyArray<string> => 
           "Read the diff above: a section rewritten from the template loses the project's own edits in it, which you may want to carry over.",
         ]),
     commit.length === 0
-      ? "Nothing to commit: the worker prompt and the verifier have every change to their templates."
+      ? `Nothing to commit: the worker prompt${updated.steps.some((each) => each.label === "skill") ? ", the verifier and the create-check-suite skill" : " and the verifier"} have every change to their templates.`
       : `Commit ${joinAnd(commit)}.`,
   ]
 }

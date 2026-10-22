@@ -231,13 +231,14 @@ export const Settings = Schema.Struct({
     ask_user_question: Schema.Boolean.pipe(withDefault(true)),
   }).pipe(withDefault({})),
   /**
-   * The versions of tutti's templates the project's worker prompt and verifier came from, as `tutti
-   * init` writes them (src/init/templates.ts); 0 for a file written before versions were recorded,
-   * whose text is read for each change's words instead.
+   * The versions of tutti's templates the project's worker prompt, verifier and create-check-suite
+   * skill came from, as `tutti init` writes them (src/init/templates.ts); 0 for a file written before
+   * versions were recorded, whose text is read for each change's words instead.
    */
   templates: Schema.Struct({
     worker_prompt: Count.pipe(withDefault(0)),
     verifier: Count.pipe(withDefault(0)),
+    check_suite_skill: Count.pipe(withDefault(0)),
   }).pipe(withDefault({})),
   organs: Schema.Struct({
     /** null: each organ's own. */

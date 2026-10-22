@@ -231,7 +231,7 @@ lines; `Ctrl+D` cancels.
 | `--prefix <name>` | the ticket prefix: lowercase letters, digits and hyphens, starting with a letter |
 | `--no-mouse` | leave the mouse to the terminal, for its own selection; the form takes keys only. Else the form takes clicks on its buttons and options, unless `"mouse": false` is in the [user config](#the-user-config) |
 | `--force` | replace `.tutti/worker-prompt.md` with the built-in template |
-| `--update` | take the changes to tutti's templates into the worker prompt and the verifier, and nothing else; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |
+| `--update` | take the changes to tutti's templates into the worker prompt, the verifier and the create-check-suite skill, and nothing else; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |
 
 ### Trusting the main checkout
 
@@ -396,13 +396,14 @@ worker's turn waits for its answer.
 
 ## Keeping the worker prompt and the verifier up to date
 
-`init` writes `.tutti/worker-prompt.md` and `.claude/agents/verifier.md` from tutti's templates, and
-from then on they are the project's: `init` keeps them as they are. So that a project still hears of
+`init` writes `.tutti/worker-prompt.md`, `.claude/agents/verifier.md` and
+`.claude/skills/create-check-suite/SKILL.md` from tutti's templates, and from then on they are the
+project's: `init` keeps them as they are. So that a project still hears of
 what tutti changes in its templates later, `.tutti/settings.json` records the version of each
 template its files came from (`"templates"`), as `init` writes them; a project set up before, or a
 prompt imported from orchestra, has its files read for each change's words instead.
 
-A run says under its `START` line when either file is older than tutti's template, naming the
+A run says under its `START` line when one of them is older than tutti's template, naming the
 sections changed since and what changed in them:
 
 ```
@@ -446,7 +447,7 @@ for a project that sets them all; the table below gives each one's default:
     "ticket_limit": "2h",
     "ask_user_question": true
   },
-  "templates": { "worker_prompt": 6, "verifier": 2 },
+  "templates": { "worker_prompt": 6, "verifier": 2, "check_suite_skill": 1 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
   "queue": { "exclude_types": ["epic"], "footprint": true },
   "merge": {
@@ -480,7 +481,7 @@ for a project that sets them all; the table below gives each one's default:
 | `workers.model` | Claude Code's | `--worker-model` for a run |
 | `workers.ticket_limit` | none | how long a worker may go on after dispatch before the run holds; `--ticket-limit` for a run |
 | `workers.ask_user_question` | `true` | whether workers may ask you quick questions; [Attention requests](workers.md#attention-requests) |
-| `templates.worker_prompt`, `templates.verifier` | `0` | the versions of tutti's templates the worker prompt and the verifier came from, which `init` records; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |
+| `templates.worker_prompt`, `templates.verifier`, `templates.check_suite_skill` | `0` | the versions of tutti's templates the worker prompt, the verifier and the create-check-suite skill came from, which `init` records; [Keeping them up to date](#keeping-the-worker-prompt-and-the-verifier-up-to-date) |
 | `organs.effort`, `organs.model` | each organ's | every organ's effort and model; [Organs](organs.md) |
 | `organs.triage` | `true` | the triage organ; `--triage` for a run |
 | `organs.review` | `true` | the run report; `--review` for a run |
