@@ -2,7 +2,8 @@
 // test/fixtures/analytics/events.jsonl with the machine's duckdb, and skipped where it has none. The
 // fixture is two runs of a project: proj-a1 merges after a fix hand-back, proj-a2 is set aside for
 // its failing check, proj-a3 asks a question across a usage-limit window and merges in the second
-// run, carried over, and proj-b1 merges there after a conflict hand-back.
+// run, carried over, proj-b1 merges there after a conflict hand-back, its cleanup failing, and
+// proj-b2 closes with no change.
 import { describe, expect, test } from "bun:test"
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -45,12 +46,12 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
       started: "2026-10-21 06:18:12.04+00",
       minutes: 16.1,
       merged: 2,
-      no_change: 0,
+      no_change: 1,
       set_aside: 0,
       needs_you: 0,
       stopped: 0,
       code: 0,
-      cost_usd: 1.1,
+      cost_usd: 1.2,
     },
   ],
   // Each ticket
@@ -103,6 +104,18 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
       resolves: 1,
       fixes: 0,
     },
+    {
+      ticket: "proj-b2",
+      outcome: "no_change",
+      runs: 1,
+      cost_usd: 0.1,
+      tokens: 47100,
+      turns: 5,
+      minutes_to_merge: null,
+      resumes: 0,
+      resolves: 0,
+      fixes: 0,
+    },
   ],
   // Time per phase, from the phase records
   [
@@ -125,6 +138,8 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
     ["proj-b1", "Resolving", 1, 176],
     ["proj-b1", "ToMerge", 2, 2],
     ["proj-b1", "Queued", 1, 1],
+    ["proj-b2", "Working", 1, 120],
+    ["proj-b2", "Queued", 1, 1],
   ].map(([ticket, phase, entered, seconds]) => ({ ticket, phase, entered, seconds })),
   // Time per phase, from the records that end a ticket's part in a run
   [
@@ -132,6 +147,14 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
     { ticket: "proj-a2", working: 538, waiting: 788, merging: 203, resolving: null, fixing: null },
     { ticket: "proj-a3", working: 3119, waiting: 243, merging: 181, resolving: null, fixing: null },
     { ticket: "proj-b1", working: 419, waiting: 2, merging: 184, resolving: 176, fixing: null },
+    {
+      ticket: "proj-b2",
+      working: 120,
+      waiting: null,
+      merging: null,
+      resolving: null,
+      fixing: null,
+    },
   ],
   // Checks by kind and command
   [
@@ -222,7 +245,7 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
   [
     ["2026-10-20T06:00:00.000Z", "claude-haiku-5-5", 300, 5000, 20000, 79.1],
     ["2026-10-20T06:00:00.000Z", "claude-opus-5-5", 3000, 190000, 1960000, 91],
-    ["2026-10-21T06:18:11.587Z", "claude-opus-5-5", 900, 45000, 800000, 94.6],
+    ["2026-10-21T06:18:11.587Z", "claude-opus-5-5", 1000, 50000, 840000, 94.3],
   ].map(([run, model, input, cache_write, cache_read, cache_read_pct]) => ({
     run,
     model,
@@ -239,18 +262,18 @@ const expected: ReadonlyArray<ReadonlyArray<Record<string, unknown>>> = [
     merged: 3,
     set_aside: 1,
     hours: 1,
-    cost_usd: 4.15,
+    cost_usd: 4.25,
   })),
   // Two runs side by side
   [
     ["checks", 6, 2, -4],
-    ["cost_usd", 3.05, 1.1, -1.95],
+    ["cost_usd", 3.05, 1.2, -1.85],
     ["failed_checks", 3, 0, -3],
     ["merged", 1, 2, 1],
     ["minutes", 44.1, 16.1, -28],
     ["requests", 3, 0, -3],
     ["set_aside", 1, 0, -1],
-    ["turns", 95, 35, -60],
+    ["turns", 95, 40, -55],
   ].map(([measure, earlier, later, change]) => ({ measure, earlier, later, change })),
 ]
 

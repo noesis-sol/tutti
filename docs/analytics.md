@@ -102,7 +102,7 @@ WITH ends AS (
   FROM ends GROUP BY ticket
 ), times AS (
   SELECT ticket, min(time) FILTER (kind = 'dispatch') AS dispatched,
-    max(time) FILTER (kind = 'closed' AND detail LIKE '% merged into %') AS merged,
+    max(time) FILTER (kind = 'ticket_end' AND outcome = 'merged') AS merged,
     count(*) FILTER (kind = 'resumed') AS resumes
   FROM events('.tutti/run/events.jsonl') GROUP BY ticket
 )
@@ -239,19 +239,26 @@ Each week across every project under `~/Projects`, a glob over their streams: th
 merged and set aside, the hours the runs went, and the cost. The latest week is the first row.
 
 ```sql
-WITH runs AS (
-  SELECT regexp_extract(filename, '([^/]+)/\.tutti/run/events\.jsonl$', 1) AS project, run,
-    min(time) AS started,
-    date_diff('second', min(time), max(time)) AS seconds,
-    count(*) FILTER (kind = 'closed') AS merged,
-    count(*) FILTER (kind = 'deferred' OR (kind = 'warn' AND aside)) AS set_aside,
+WITH stream AS (
+  SELECT regexp_extract(filename, '([^/]+)/\.tutti/run/events\.jsonl$', 1) AS project, *
+  FROM events('~/Projects/*/.tutti/run/events.jsonl')
+), ends AS (  -- each ticket's last ticket_end in a run
+  SELECT project, run, ticket, outcome FROM stream WHERE kind = 'ticket_end'
+  QUALIFY row_number() OVER (PARTITION BY project, run, ticket ORDER BY time DESC, seq DESC) = 1
+), tickets AS (
+  SELECT project, run, count(*) FILTER (outcome = 'merged') AS merged,
+    count(*) FILTER (outcome = 'set_aside') AS set_aside
+  FROM ends GROUP BY ALL
+), runs AS (
+  SELECT project, run, min(time) AS started, date_diff('second', min(time), max(time)) AS seconds,
     sum(cost_usd) FILTER (kind IN ('turn', 'organ')) AS cost_usd
-  FROM events('~/Projects/*/.tutti/run/events.jsonl') GROUP BY ALL
+  FROM stream GROUP BY ALL
 )
-SELECT date_trunc('week', started) AS week, project, count(*) AS runs, sum(merged)::BIGINT AS merged,
-  sum(set_aside)::BIGINT AS set_aside, round(sum(seconds) / 3600, 1) AS hours,
-  round(sum(cost_usd), 2) AS cost_usd
-FROM runs GROUP BY ALL ORDER BY week DESC, project;
+SELECT date_trunc('week', started) AS week, project, count(*) AS runs,
+  coalesce(sum(merged), 0)::BIGINT AS merged, coalesce(sum(set_aside), 0)::BIGINT AS set_aside,
+  round(sum(seconds) / 3600, 1) AS hours, round(sum(cost_usd), 2) AS cost_usd
+FROM runs LEFT JOIN tickets USING (project, run)
+GROUP BY ALL ORDER BY week DESC, project;
 ```
 
 ## Two runs side by side
@@ -260,17 +267,24 @@ The latest two runs compared, a row for each measure; to compare two others, pic
 `run` in `two`, as the comment there says.
 
 ```sql
-WITH per_run AS (
+WITH ends AS (  -- each ticket's last ticket_end in a run
+  SELECT run, ticket, outcome FROM events('.tutti/run/events.jsonl') WHERE kind = 'ticket_end'
+  QUALIFY row_number() OVER (PARTITION BY run, ticket ORDER BY time DESC, seq DESC) = 1
+), tickets AS (
+  SELECT run, count(*) FILTER (outcome = 'merged') AS merged,
+    count(*) FILTER (outcome = 'set_aside') AS set_aside
+  FROM ends GROUP BY run
+), per_run AS (
   SELECT run,
-    count(*) FILTER (kind = 'closed')::DOUBLE AS merged,
-    count(*) FILTER (kind = 'deferred' OR (kind = 'warn' AND aside))::DOUBLE AS set_aside,
+    coalesce(any_value(t.merged), 0)::DOUBLE AS merged,
+    coalesce(any_value(t.set_aside), 0)::DOUBLE AS set_aside,
     round(date_diff('second', min(time), max(time)) / 60, 1)::DOUBLE AS minutes,
     round(sum(cost_usd) FILTER (kind IN ('turn', 'organ')), 2)::DOUBLE AS cost_usd,
     sum(turns) FILTER (kind = 'turn')::DOUBLE AS turns,
     count(*) FILTER (kind = 'check')::DOUBLE AS checks,
     count(*) FILTER (kind = 'check' AND result <> 'passed')::DOUBLE AS failed_checks,
     count(*) FILTER (kind = 'attention')::DOUBLE AS requests
-  FROM events('.tutti/run/events.jsonl') GROUP BY run
+  FROM events('.tutti/run/events.jsonl') LEFT JOIN tickets t USING (run) GROUP BY run
 ), two AS (
   SELECT *, row_number() OVER (ORDER BY run) AS pos
   FROM (SELECT * FROM per_run ORDER BY run DESC LIMIT 2)
