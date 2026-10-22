@@ -45,16 +45,20 @@ export const sdkClaudes = (platform: string, arch: string, musl: boolean): Array
 
 /**
  * The embedded Claude Code, the one the SDK runs when it isn't given another: its platform
- * package's, resolved from the SDK's own folder. Null when none is installed.
+ * package's, resolved from the SDK's own folder. Null when none is installed. `sdk` and `claudes`
+ * are the SDK's package and its platform packages' Claude Code, given otherwise only by the tests.
  */
-export const embeddedClaude = (): string | null => {
+export const embeddedClaude = (
+  sdk: string = sdkPackage,
+  claudes: ReadonlyArray<string> = sdkClaudes(process.platform, process.arch, onMusl()),
+): string | null => {
   let resolve: (id: string) => string
   try {
-    resolve = createRequire(import.meta.resolve(sdkPackage)).resolve
+    resolve = createRequire(import.meta.resolve(sdk)).resolve
   } catch {
     return null
   }
-  for (const id of sdkClaudes(process.platform, process.arch, onMusl())) {
+  for (const id of claudes) {
     try {
       return resolve(id)
     } catch {

@@ -86,10 +86,12 @@ below are the coverage report's uncovered lines at 368899e.
 
 - **Reached by**: `tutti login [--claude <path>]`.
 - **Tests**: `login.test.ts`, `account.test.ts` (unit; a live test of the probe),
-  `probe-options.test.ts`, `probe-settings-contract.test.ts` (live).
-- **Untested**: `runInTerminal`, which runs `claude auth login` on the terminal
-  (`src/cli/login.ts` 89–103), the embedded Claude Code's lookup (54–63), and the command's
-  failure lines (`src/cli/commands.ts` 221–235) (tutti-8iz.7).
+  `login-terminal.test.ts` (`runInTerminal` running a fake claude on the terminal's stdio, and
+  one it can't start; the embedded Claude Code's lookup with none installed; `bun src/main.ts
+  login` with --claude or TUTTI_CLAUDE naming a fake that fails, each problem a `tutti login:`
+  line, exit 1), `probe-options.test.ts`, `probe-settings-contract.test.ts` (live).
+- **Untested**: a login that succeeds through the binary, which runs the live probe after it
+  (the probe is covered on its own, under the login probe below).
 
 ## `tutti colours`
 
