@@ -12,7 +12,7 @@ import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import { scoutSearch } from "../init/checks.ts"
 import { cancelledLine, type InitFlags, type InitForm, init, summaryLines } from "../init/init.ts"
 import { lineForm } from "../init/lineForm.ts"
-import { type InitStopped, liveMachine, stepLine } from "../init/steps.ts"
+import { type InitFailed, type InitStopped, liveMachine, stepLine } from "../init/steps.ts"
 import { initUpdate, updateLines } from "../init/update.ts"
 import { parseMcpNames } from "../init/workers.ts"
 import { layer as languageModelLayer } from "../organs/AgentSdkLanguageModel.ts"
@@ -526,6 +526,17 @@ export const stoppedEnding = (stopped: InitStopped, theme: Theme | null, width: 
 })
 
 /**
+ * What init says when one of its steps failed, and its exit code: the steps it took before it, on
+ * stdout, in `theme`'s styles where it has one, `width` columns wide; then on stderr why it failed;
+ * 2, as a setup problem's.
+ */
+export const failedEnding = (failed: InitFailed, theme: Theme | null, width: number) => ({
+  stdout: theme === null ? failed.steps.map(stepLine) : initSteps(failed.steps, theme, width),
+  stderr: `tutti init: ${failed.message}`,
+  code: exitCodes.setup,
+})
+
+/**
  * tutti init in the folder `cwd`: from the main checkout, asking in its own renderer where stdin and
  * stdout are a terminal that draws one, in lines with TERM=dumb, else asking nothing; then its
  * summary on the main screen.
@@ -679,9 +690,13 @@ const runInit = (cwd: string, flags: InitFlags) =>
     const { theme } = printed
     if (Result.isFailure(ran)) {
       const error = ran.failure
-      if (error._tag === "InitStopped") {
+      if (error._tag === "InitStopped" || error._tag === "InitFailed") {
         if (theme !== null && kind === "renderer") yield* Console.log(initHeader(theme, repo))
-        const ending = stoppedEnding(error, theme, Math.min(process.stdout.columns ?? 80, 100))
+        const width = Math.min(process.stdout.columns ?? 80, 100)
+        const ending =
+          error._tag === "InitStopped"
+            ? stoppedEnding(error, theme, width)
+            : failedEnding(error, theme, width)
         if (ending.stdout.length > 0) yield* Console.log(ending.stdout.join("\n"))
         yield* Console.error(ending.stderr)
         process.exitCode = ending.code

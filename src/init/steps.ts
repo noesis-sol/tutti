@@ -74,20 +74,38 @@ export class InitStopped extends Schema.TaggedError<InitStopped>()("InitStopped"
 }
 
 /**
+ * One of init's steps failed: the steps taken before it, the step that failed, and why. A step
+ * that writes files takes back what it wrote before it fails (./staged.ts).
+ */
+export class InitFailed extends Schema.TaggedError<InitFailed>()("InitFailed", {
+  steps: Schema.Array(StepSchema),
+  step: Schema.String,
+  reason: Schema.String,
+}) {
+  override get message(): string {
+    return this.reason
+  }
+}
+
+/** Why a step failed, from its error: the text itself, or its message. */
+const reasonOf = (error: unknown): string =>
+  typeof error === "string"
+    ? error
+    : typeof error === "object" && error !== null && "message" in error
+      ? String(error.message)
+      : String(error)
+
+/**
  * Takes `steps` in turn, `starting` told each one's name as it starts, until one fails or `stop` is
- * done, checking it after each: the lines they took; InitStopped where a stop came, with the lines
- * taken until then. A whole step runs to its end, uninterrupted; another is interrupted by a stop,
- * and isn't started once one has come.
+ * done, checking it after each: the lines they took; InitStopped where a stop came, and InitFailed
+ * where a step failed, each with the lines taken until then. A whole step runs to its end,
+ * uninterrupted; another is interrupted by a stop, and isn't started once one has come.
  */
 export const runSteps = <S extends SetupStep<unknown, unknown>>(
   steps: ReadonlyArray<S>,
   stop: Deferred.Deferred<void>,
   starting: (name: string) => Effect.Effect<void> = () => Effect.void,
-): Effect.Effect<
-  ReadonlyArray<Step>,
-  Effect.Error<S["run"]> | InitStopped,
-  Effect.Services<S["run"]>
-> =>
+): Effect.Effect<ReadonlyArray<Step>, InitFailed | InitStopped, Effect.Services<S["run"]>> =>
   Effect.gen(function* () {
     const did: Array<Step> = []
     for (const each of steps) {
@@ -99,19 +117,19 @@ export const runSteps = <S extends SetupStep<unknown, unknown>>(
           words: each.stopped(took),
         })
       if (!each.whole && (yield* Deferred.isDone(stop))) return yield* halt(null)
+      const run = Effect.mapError(
+        each.run,
+        (error) => new InitFailed({ steps: [...did], step: each.name, reason: reasonOf(error) }),
+      )
       const took = each.whole
-        ? yield* Effect.uninterruptible(each.run)
-        : yield* Effect.raceFirst(each.run, Effect.as(Deferred.await(stop), null))
+        ? yield* Effect.uninterruptible(run)
+        : yield* Effect.raceFirst(run, Effect.as(Deferred.await(stop), null))
       if (took === null) return yield* halt(null)
       if (yield* Deferred.isDone(stop)) return yield* halt(took)
       did.push(...took)
     }
     return did
-  }) as Effect.Effect<
-    ReadonlyArray<Step>,
-    Effect.Error<S["run"]> | InitStopped,
-    Effect.Services<S["run"]>
-  >
+  }) as Effect.Effect<ReadonlyArray<Step>, InitFailed | InitStopped, Effect.Services<S["run"]>>
 
 /** The summary's mark for each kind. */
 export const marks: Record<StepKind, string> = {

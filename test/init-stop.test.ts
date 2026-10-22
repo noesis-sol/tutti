@@ -18,7 +18,14 @@ import { ConfigProvider, Deferred, Effect, Exit } from "effect"
 import { stoppedEnding } from "../src/cli/commands.ts"
 import type { InitForm } from "../src/init/init.ts"
 import { init } from "../src/init/init.ts"
-import { InitStopped, type Machine, runSteps, type Step, step } from "../src/init/steps.ts"
+import {
+  InitFailed,
+  InitStopped,
+  type Machine,
+  runSteps,
+  type Step,
+  step,
+} from "../src/init/steps.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
@@ -97,7 +104,7 @@ describe("runSteps", () => {
     expect(ended).toEqual(["whole"])
   })
 
-  test("a step that fails ends the steps with its error; without a stop all are taken", async () => {
+  test("a step that fails ends the steps with its error and those taken; without a stop all are taken", async () => {
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const stop = yield* Deferred.make<void>()
@@ -114,7 +121,9 @@ describe("runSteps", () => {
         }
       }),
     )
-    expect(fail(outcome.failed)).toBe("b broke")
+    expect(fail(outcome.failed)).toEqual(
+      new InitFailed({ steps: lines("a"), step: "b", reason: "b broke" }),
+    )
     expect(outcome.all.map((each) => each.label)).toEqual(["a", "b"])
   })
 })
@@ -285,24 +294,28 @@ describe("tutti init stopped", () => {
 })
 
 /**
- * A git first on the PATH that, the first time it runs in `repo` once it has a worker prompt (as the
- * setup's check of the changelog's merge does, once it has written the prompt), waits until
- * `release` is there, having made `stalled`. Only in `repo`: tutti's version, read at its start
- * from its own checkout, runs git there, and that checkout may have a prompt of its own.
+ * A git first on the PATH that, the second time it runs `git check-attr` in `repo` (the setup's
+ * check of the changelog's merge, after the offer's before the questions), waits until `release`
+ * is there, having made `stalled`. Only in `repo`: tutti's version, read at its start from its own
+ * checkout, runs git there.
  */
 const stallingGit = (root: string, repo: string) => {
   const bin = join(root, "bin")
   mkdirSync(bin)
   const stalled = join(root, "stalled")
   const release = join(root, "release")
+  const checked = join(root, "checked")
   const real = which("git")
   if (real === null) throw new Error("git isn't on the tests' PATH")
   writeFileSync(
     join(bin, "git"),
     `#!/bin/sh
-if [ "$(pwd -P)" = '${realpathSync(repo)}' ] && [ -e .tutti/worker-prompt.md ] && [ ! -e '${stalled}' ]; then
-  : > '${stalled}'
-  while [ ! -e '${release}' ]; do sleep 0.01; done
+if [ "$(pwd -P)" = '${realpathSync(repo)}' ] && [ "$1" = check-attr ]; then
+  if [ -e '${checked}' ] && [ ! -e '${stalled}' ]; then
+    : > '${stalled}'
+    while [ ! -e '${release}' ]; do sleep 0.01; done
+  fi
+  : > '${checked}'
 fi
 exec '${real}' "$@"
 `,
@@ -328,7 +341,7 @@ describe("tutti init on real git", () => {
     })
     const output = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
     for (const deadline = Date.now() + 20_000; !existsSync(git.stalled); ) {
-      if (Date.now() > deadline) throw new Error("git never stalled in a checkout with a prompt")
+      if (Date.now() > deadline) throw new Error("git never stalled in the setup")
       await Bun.sleep(10)
     }
     proc.kill("SIGINT")

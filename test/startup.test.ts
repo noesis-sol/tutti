@@ -432,10 +432,12 @@ describe("the startup checks", () => {
       expect(passed(await run(repo, { config: { prompt } })).prompt.file).toBe(prompt)
     })
 
-    test("a worker prompt of its own sets it up enough", async () => {
+    test("a worker prompt without the settings isn't set up: init didn't finish", async () => {
       const { repo } = project({ setUp: false })
       write(join(repo, ".tutti", "worker-prompt.md"), "Work on TICKET_ID.\n")
-      passed(await run(repo))
+      const failure = failed(await run(repo))
+      expect(failure.notSetUp).toBe(true)
+      expect(failure.message).toBe(notSetUpMessage)
     })
   })
 

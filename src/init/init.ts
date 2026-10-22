@@ -10,6 +10,9 @@
 //   scripts/check-fast.sh     the runners, in orchestra's format; one there is kept unless its
 //   scripts/check-full.sh     flag gives it a command
 //
+// The setup is written as one (./staged.ts): its files staged as init plans them, then written
+// together, the settings last, so that a failure leaves the setup as it was.
+//
 // In a project with .orchestra/ and no .tutti/, it first offers to import orchestra's settings and
 // worker prompt (./import.ts), which then stand in for the template's; the flags still win.
 //
@@ -82,6 +85,7 @@ import {
   type Suite,
   withoutRunners,
 } from "./runners.ts"
+import { commitStaged, staging } from "./staged.ts"
 import { joinAnd, type Machine, runSteps, type Step, step, stepLine } from "./steps.ts"
 import { currentTemplates, keptNote, outdatedTemplates, type Templates } from "./templates.ts"
 import {
@@ -872,11 +876,10 @@ export const init = <R>(options: InitOptions<R>) =>
     const verifierConsent = consent(flags.verifier, checksQuestions.verifier, checked.verifier)
 
     /**
-     * The setup, written as one group so that a run never takes it half written: the worker
-     * prompt, the runners, the skill and the verifier, the settings, the .gitignore and the
-     * changelog's merge.
+     * The setup, planned as one group: the worker prompt, the runners, the skill and the verifier,
+     * the settings, the README's section, the .gitignore and the changelog's merge.
      */
-    const writeSetup = Effect.gen(function* () {
+    const planSetup = Effect.gen(function* () {
       const steps: Array<Step> = []
       if (found !== null) steps.push(...importSteps(found, importConsent))
       const prompt = yield* writePrompt(
@@ -935,6 +938,17 @@ export const init = <R>(options: InitOptions<R>) =>
           defined.includes(chromeServer),
         ),
       )
+      return steps
+    })
+
+    /**
+     * The setup, written as one group so that a run never takes it half written: its files staged
+     * as planSetup writes them, then written together, the settings last (./staged.ts).
+     */
+    const writeSetup = Effect.gen(function* () {
+      const staged = staging(fs)
+      const steps = yield* Effect.provideService(planSetup, FileSystem.FileSystem, staged.fs)
+      yield* commitStaged(fs, repo, staged.writes(), join(repo, settingsFile))
       return steps
     })
 

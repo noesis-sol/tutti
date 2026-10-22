@@ -302,15 +302,14 @@ const checkBeads = <R>(
     return [`Cannot read the Beads database in ${repo}: ${beadsReason(error)}`]
   })
 
-/** Whether `tutti init` has set up the repository: it wrote the settings or the worker prompt. */
+/**
+ * Whether `tutti init` has set up the repository: it wrote the settings, which it writes after the
+ * rest of its files (src/init/staged.ts). A worker prompt without them is a setup init didn't finish.
+ */
 const setUp = (repo: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    for (const file of [settingsFile, workerPromptFile]) {
-      if (yield* fs.exists(join(repo, file)).pipe(Effect.orElseSucceed(() => true))) return true
-    }
-    return false
-  })
+  Effect.flatMap(FileSystem.FileSystem, (fs) =>
+    fs.exists(join(repo, settingsFile)).pipe(Effect.orElseSucceed(() => true)),
+  )
 
 /**
  * The tickets of the workers orchestra's run state names in `repo`: none when it has no state, or
