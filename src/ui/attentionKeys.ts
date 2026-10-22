@@ -9,13 +9,14 @@
 // (openUrl.ts). Input to a card is ignored for `settle` ms after its request
 // appears or changes, so a key meant for the request before can't answer the next. Allow is never
 // focused first: a permission opens on Deny, and one with `defaultToNo` has no one-key allow.
-import { useContext, useRef, useState } from "react"
+import { useContext, useRef } from "react"
 import { type Answer, type AttentionRequest, allowsForRun } from "../agent/Attention.ts"
 import { UiCommand } from "../run/commands.ts"
 import type { Card } from "../run/runView.ts"
 import { Box, useInput } from "./keys.ts"
 import { type Opened, openedToast, urlCopiedToast, urlFailedToast } from "./openUrl.ts"
 import { sanitizeLine } from "./sanitize.ts"
+import { useKeyState } from "./useKeyState.ts"
 import { ShellContext, useClock, useCommand, useLatestRunView } from "./useRunView.ts"
 
 /** How long input to a card is ignored after its request appears or changes, in ms (§ 4.5). */
@@ -271,12 +272,12 @@ export const useAnswering = (
   }
   shown.current = drawn
   // The focus moved by Tab, the arrows or a pick, for the request it was moved on.
-  const moved = useRef<{ readonly request: string; readonly focus: number | null } | null>(null)
-  const [, redraw] = useState(0)
-  const move = (to: { readonly request: string; readonly focus: number | null } | null) => {
-    moved.current = to
-    redraw((n) => n + 1)
-  }
+  const [, setMoved, moved] = useKeyState<{
+    readonly request: string
+    readonly focus: number | null
+  } | null>(() => null)
+  const move = (to: { readonly request: string; readonly focus: number | null } | null) =>
+    setMoved(() => to)
 
   const requestOf = (card: Card) => card.requests[0]
   const settled = (request: AttentionRequest) =>
@@ -284,7 +285,8 @@ export const useAnswering = (
   const focusOf = (card: Card) => {
     const request = requestOf(card)
     if (request === undefined) return null
-    return moved.current?.request === request.id ? moved.current.focus : defaultFocus(request)
+    const now = moved()
+    return now?.request === request.id ? now.focus : defaultFocus(request)
   }
   const send = (request: AttentionRequest, given: Answer) => {
     answer(request, given)

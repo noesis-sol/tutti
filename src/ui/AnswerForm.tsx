@@ -42,6 +42,7 @@ import { useInput, useLayer } from "./keys.ts"
 import { cut, Line, plainFg, roleLook, type Segments, seg, styled } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
+import { useKeyState } from "./useKeyState.ts"
 import { useRunView, useTheme } from "./useRunView.ts"
 
 /** The widest the form gets, its frame included. */
@@ -122,14 +123,13 @@ const FormBody = ({
   const theme = useTheme()
   const { width, height } = useTerminalDimensions()
   const answer = useSendAnswer()
-  const [values, setValues] = useState<ReadonlyArray<Value>>(() => initialValues(request, form))
+  const [values, setValues, valuesNow] = useKeyState<ReadonlyArray<Value>>(() =>
+    initialValues(request, form),
+  )
   const rows = useMemo(() => rowsOf(form), [form])
-  // The focus: a row, or past them the two buttons. In a ref too, so keys arriving together each
-  // see the one before them.
-  const [focus, setFocusState] = useState(0)
-  const at = useRef(0)
-  const latest = useRef(values)
-  latest.current = values
+  // The focus: a row, or past them the two buttons. Key state, so keys arriving together each see
+  // the one before them.
+  const [focus, setFocusState, at] = useKeyState(() => 0)
   const [missing, setMissing] = useState<string | null>(null)
   const scroll = useRef<ScrollBoxRenderable>(null)
   const last = rows.length + 1
@@ -137,19 +137,17 @@ const FormBody = ({
   // with the one moving it goes where it now is, not where it was before React draws it.
   const inputs = useRef(new Map<number, InputRenderable>())
   const setFocus = (to: number) => {
-    at.current = Math.min(Math.max(to, 0), last)
-    for (const [row, input] of inputs.current) if (row !== at.current && input.focused) input.blur()
-    inputs.current.get(at.current)?.focus()
-    setFocusState(at.current)
+    const row = Math.min(Math.max(to, 0), last)
+    setFocusState(() => row)
+    for (const [each, input] of inputs.current) if (each !== row && input.focused) input.blur()
+    inputs.current.get(row)?.focus()
   }
   useEffect(() => {
     if (focus < rows.length) scroll.current?.scrollChildIntoView(rowId(focus))
   }, [focus, rows.length])
 
   const update = (field: number, change: (value: Value) => Value) => {
-    const next = latest.current.map((each, i) => (i === field ? change(each) : each))
-    latest.current = next
-    setValues(next)
+    setValues((now) => now.map((each, i) => (i === field ? change(each) : each)))
     setMissing(null)
   }
   const pickRow = (row: Row) => {
@@ -157,7 +155,7 @@ const FormBody = ({
     if (field !== undefined) update(row.field, (value) => pick(field, value, row.option))
   }
   const send = () => {
-    const outcome = answerOf(form, latest.current)
+    const outcome = answerOf(form, valuesNow())
     if (outcome._tag === "Missing") {
       setMissing(outcome.message)
       setFocus(rows.findIndex((row) => row.field === outcome.field))
@@ -179,7 +177,7 @@ const FormBody = ({
     else pickRow(row)
   }
   const number = (n: number) => () => {
-    const row = rows[at.current]
+    const row = rows[at()]
     const field = row === undefined ? undefined : form.fields[row.field]
     if (row === undefined || field?._tag !== "Choice" || n > field.options.length) return
     const to = rows.findIndex((each) => each.field === row.field && each.option === n - 1)
@@ -189,14 +187,14 @@ const FormBody = ({
   useLayer(
     "box",
     [
-      ...["down", "tab"].map((key) => ({ key, run: () => setFocus(at.current + 1) })),
-      ...["up", "shift+tab"].map((key) => ({ key, run: () => setFocus(at.current - 1) })),
-      ...["return", "enter"].map((key) => ({ key, run: () => press(at.current) })),
+      ...["down", "tab"].map((key) => ({ key, run: () => setFocus(at() + 1) })),
+      ...["up", "shift+tab"].map((key) => ({ key, run: () => setFocus(at() - 1) })),
+      ...["return", "enter"].map((key) => ({ key, run: () => press(at()) })),
       {
         key: "space",
         run: () => {
-          const row = rows[at.current]
-          if (row === undefined) press(at.current)
+          const row = rows[at()]
+          if (row === undefined) press(at())
           else if (!typesAt(form, row)) pickRow(row)
         },
       },
