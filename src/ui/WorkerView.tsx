@@ -644,15 +644,20 @@ export const handBackLines = (
   )
 }
 
-/** The worker view's hint: the keys there are; the composer's while you write in it. */
-const hintKeys = (requests: boolean, composing: boolean, steered: boolean) => {
-  const steering = [
-    { keys: "Ctrl+X", does: "interrupt" },
-    ...(steered ? [{ keys: "Ctrl+R", does: "release" }] : []),
-  ]
+/**
+ * The worker view's hint: the keys there are; the composer's while you write in it. Once the worker
+ * has `finished`, nothing is sent to it, so the hint has no Enter send, Ctrl+X or Ctrl+R (tutti-2n7y).
+ */
+const hintKeys = (requests: boolean, composing: boolean, steered: boolean, finished: boolean) => {
+  const steering = finished
+    ? []
+    : [
+        { keys: "Ctrl+X", does: "interrupt" },
+        ...(steered ? [{ keys: "Ctrl+R", does: "release" }] : []),
+      ]
   return composing
     ? [
-        { keys: "Enter", does: "send" },
+        ...(finished ? [] : [{ keys: "Enter", does: "send" }]),
         { keys: "Alt+Enter/Ctrl+J", does: "new line" },
         { keys: "Esc", does: "leave" },
         ...steering,
@@ -873,6 +878,9 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   // The card last seen, so that the view still shows a worker that has just finished.
   const last = useRef<Card | undefined>(found)
   if (found !== undefined) last.current = found
+  // When the view first drew the worker finished: its head's clock stops there.
+  const ended = useRef<number | undefined>(undefined)
+  if (found !== undefined) ended.current = undefined
   const card = found ?? last.current
   const ticket = card?.ticket
   // While its ticket waits to merge or merges, the run holds your messages (held.ts).
@@ -957,14 +965,21 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
 
   const inner = Math.max(width, 1)
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
-  const head = (now: number, spin: string): Segments =>
-    card === undefined
-      ? [seg(`${sanitizeLine(viewed)} has no worker`, theme.styles.dim)]
-      : [
-          ...headOf(card, theme, now, spin, [seg(card.status, statusLook(card, theme))]),
-          seg("   "),
-          seg(sanitizeLine(card.title)),
-        ]
+  const head = (now: number, spin: string): Segments => {
+    if (card === undefined) return [seg(`${sanitizeLine(viewed)} has no worker`, theme.styles.dim)]
+    // Once its card has gone, the head says finished, its time stopped where the view first saw it
+    // gone (tutti-2n7y).
+    if (finished) ended.current ??= now
+    const shown: Card = finished ? { ...card, motion: "•", steered: false } : card
+    const status = finished
+      ? seg(finishedWords(viewed).status, theme.styles.done)
+      : seg(card.status, statusLook(card, theme))
+    return [
+      ...headOf(shown, theme, ended.current ?? now, spin, [status]),
+      seg("   "),
+      seg(sanitizeLine(card.title)),
+    ]
+  }
   const panelWidth = Math.max(inner - 2, 8)
   const { box } = composer
   return (
@@ -974,7 +989,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           link=" ← Dashboard"
           leave={close}
           head={head}
-          spinning={card?.motion === "spinner"}
+          spinning={!finished && card?.motion === "spinner"}
           width={inner}
         />
         <Line segments={rule} />
@@ -1010,7 +1025,12 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           {...(finished ? { placeholder: () => finishedWords(viewed).placeholder } : {})}
         />
         <ViewHint
-          keys={hintKeys(panel.requests.length > 0, composer.typing, card?.steered === true)}
+          keys={hintKeys(
+            panel.requests.length > 0,
+            composer.typing,
+            card?.steered === true,
+            finished,
+          )}
           width={inner}
         />
         {help ? (

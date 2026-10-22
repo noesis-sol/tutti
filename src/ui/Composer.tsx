@@ -36,11 +36,12 @@ export const queuedShown = 3
 export const composerPlaceholder = (focused: boolean): string =>
   focused ? "your message to the worker" : "i to write to the worker"
 
-/** What the composer says once `ticket`'s worker has finished, and what Enter toasts then. */
+/** What the composer and head say once `ticket`'s worker has finished; what Enter toasts then. */
 export const finishedWords = (ticket: string) => ({
   finished: `${sanitizeLine(ticket)}'s worker has finished`,
   line: ": tutti can't send it messages",
   placeholder: "the worker has finished",
+  status: "finished",
   toast: `${sanitizeLine(ticket)}'s worker has finished: your message wasn't sent`,
 })
 
