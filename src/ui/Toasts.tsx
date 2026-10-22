@@ -1,6 +1,7 @@
 // Toasts (§ 7.3, § 7.11): a short line at the foot of the screen, over the view, that goes after a
 // few seconds by itself. Faint, or `needsYou` for a failure (`couldn't copy`). Ctrl+Z shows one,
 // since tutti can't be suspended (D18).
+import { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useSyncExternalStore } from "react"
 import { cut, Line, seg } from "./line.tsx"
@@ -106,7 +107,10 @@ export const Toasts = ({ store }: { readonly store: ToastStore }) => {
       alignItems="flex-end"
     >
       {lines.map((segments, i) => (
-        <Line key={toasts[i]?.id ?? i} segments={segments} />
+        // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
+        <box key={toasts[i]?.id ?? i} height={1} backgroundColor={RGBA.defaultBackground()}>
+          <Line segments={segments} />
+        </box>
       ))}
     </box>
   )

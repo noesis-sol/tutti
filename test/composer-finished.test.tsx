@@ -147,7 +147,9 @@ describe("the composer of a worker that has finished", () => {
 
       await rendered.input((setup) => setup.mockInput.pressEnter())
       frame = await until(rendered, has(finishedWords("t-1").toast))
-      expect(frame.chars).toContain(" > Please also cover the empty case")
+      // The toast is drawn over the composer's row, opaque: the text under it is still in the
+      // field, as backspacing it below shows.
+      expect(frame.chars).toContain(` > Please also cover the e ${finishedWords("t-1").toast}`)
       expect(taken(commands)).toEqual([])
 
       // Emptied by hand, the field's placeholder says the worker has finished.
