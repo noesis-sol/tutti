@@ -272,6 +272,13 @@ const cut = (text: string, width: number): string => {
 }
 
 /**
+ * When the run went, as the reviewer's closing line says it: `from 09:05 to 10:30`, the end's date
+ * given when it is on another day, `from 23:10 to 2026-10-18 01:40`.
+ */
+export const ranFrom = (started: number, ended: number): string =>
+  `from ${clock(started)} to ${clockFrom(ended, started)}`
+
+/**
  * The reviewer's input: the run's evidence, in sections, then tutti's own line on the run, with the
  * request last, as Claude reads long inputs best with it at the end.
  */
@@ -387,8 +394,8 @@ export const gather = (
       ),
       section("What the run's organs (triage, the predictor and the like) cost", costSaid),
       ...(run.sections ?? []),
-      `${scope}, on branch ${run.base} of ${config.repo}, from ${clock(run.started)} to ` +
-        `${clockFrom(now, run.started)}. Exit code ${run.exitCode} (${meaning}). Write its report.\n`,
+      `${scope}, on branch ${run.base} of ${config.repo}, ${ranFrom(run.started, now)}. ` +
+        `Exit code ${run.exitCode} (${meaning}). Write its report.\n`,
     ]
   })
 

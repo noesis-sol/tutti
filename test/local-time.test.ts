@@ -18,7 +18,7 @@ import {
   stamp,
 } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
-import { compose } from "../src/run/report.ts"
+import { compose, ranFrom } from "../src/run/report.ts"
 import { run } from "../src/run/run.ts"
 import { type RunView, stateStatus } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
@@ -110,6 +110,15 @@ describe("the report's span", () => {
       expect(
         report(new Date(2026, 9, 17, 9, 5).getTime(), new Date(2026, 9, 17, 10, 30).getTime()),
       ).toBe("# tutti run · 2026-10-17 09:05–10:30 · main")
+    }))
+
+  test("the reviewer's closing line gives the end's date when the run crossed midnight", () =>
+    inBerlin(() => {
+      const late = new Date(2026, 9, 17, 23, 10).getTime()
+      expect(ranFrom(late, new Date(2026, 9, 18, 1, 40).getTime())).toBe(
+        "from 23:10 to 2026-10-18 01:40",
+      )
+      expect(ranFrom(late, new Date(2026, 9, 17, 23, 55).getTime())).toBe("from 23:10 to 23:55")
     }))
 
   test("the report's name, date and clock are local", () =>
