@@ -47,7 +47,15 @@ import type { PermissionModeInEffect } from "./Account.ts"
 import { Attention } from "./Attention.ts"
 import { Transcripts } from "./Transcripts.ts"
 import { UsageLimits } from "./UsageLimits.ts"
-import { initial, reportWait, step, type Worker, WorkerEvent, WorkerState } from "./WorkerState.ts"
+import {
+  initial,
+  reportWait,
+  step,
+  unreadable,
+  type Worker,
+  WorkerEvent,
+  WorkerState,
+} from "./WorkerState.ts"
 
 /**
  * Who wrote a message: tutti (sent `client_composed`, delivered as written, § 4.1) or a person at
@@ -423,6 +431,17 @@ export const makeWorkers = (
         yield* fold(entry, WorkerEvent.ReportLate({ session, since }))
       }).pipe(Effect.raceFirst(Deferred.await(entry.ended)), Effect.forkIn(scope), Effect.asVoid)
 
+    // A message whose fields the worker's state reads didn't decode: it was no change (§ 4.2).
+    const misread = (ticket: string, message: SDKMessage, why: string) => {
+      const raw = message as { readonly type: unknown; readonly subtype?: unknown }
+      const kind = typeof raw.subtype === "string" ? `${raw.type}/${raw.subtype}` : `${raw.type}`
+      const text = `a ${kind} message it couldn't read, left out of its state: ${why}`
+      return Option.match(log, {
+        onNone: () => Effect.logWarning(`${ticket}: ${text}`),
+        onSome: (each) => each.write(detail`${ticket}: ${text}`),
+      })
+    }
+
     const openCount = (ticket: string) =>
       Effect.map(attention.current, (all) => all.filter((r) => r.ticket === ticket).length)
 
@@ -512,6 +531,8 @@ export const makeWorkers = (
           yield* transcripts.record(entry.ticket, session, message)
           yield* PubSub.publish(entry.messages, { session, message })
           yield* fold(entry, WorkerEvent.Message({ session, message }))
+          const why = unreadable(message)
+          if (why !== undefined) yield* misread(entry.ticket, message, why)
           keepCalls(entry.calls, message)
           if (isDenial(message)) {
             yield* attention.denial(entry.ticket, message, entry.calls.get(message.tool_use_id))

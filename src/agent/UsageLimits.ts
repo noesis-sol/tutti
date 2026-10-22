@@ -8,7 +8,18 @@
 // The live layer keeps them in memory, as the test layer (src/testing/UsageLimits.ts) does; a test
 // reports scripted events through it.
 import type { SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk"
-import { Context, Effect, Layer, PubSub, Ref, type Scope, Stream, SubscriptionRef } from "effect"
+import {
+  Context,
+  Effect,
+  Layer,
+  PubSub,
+  Ref,
+  Result,
+  Schema,
+  type Scope,
+  Stream,
+  SubscriptionRef,
+} from "effect"
 
 /** A `rate_limit_event`'s status. */
 export type LimitStatus = SDKRateLimitInfo["status"]
@@ -30,14 +41,36 @@ export interface RateLimit {
 // milliseconds is kept, as WorkerState reads it.
 const epochMillis = (at: number): number => (at < 1e12 ? at * 1000 : at)
 
-/** The info of a `rate_limit_event` as tutti reads it. */
-export const rateLimitOf = (info: SDKRateLimitInfo): RateLimit => ({
-  status: info.status,
-  limit: info.rateLimitType ?? null,
-  resetsAt: info.resetsAt === undefined ? null : epochMillis(info.resetsAt),
-  utilization: info.utilization ?? null,
-  overage: info.isUsingOverage === true,
+/**
+ * The fields of a `rate_limit_info` tutti reads. A CLI of another version may send one without
+ * them, or with a status this SDK doesn't name: such an info isn't read.
+ */
+export const RateLimitInfo = Schema.Struct({
+  status: Schema.Literals(["allowed", "allowed_warning", "rejected"]),
+  rateLimitType: Schema.optional(Schema.String),
+  resetsAt: Schema.optional(Schema.Number),
+  utilization: Schema.optional(Schema.Number),
+  isUsingOverage: Schema.optional(Schema.Boolean),
 })
+
+const decodeInfo = Schema.decodeUnknownResult(RateLimitInfo)
+
+/**
+ * The info of a `rate_limit_event` as tutti reads it; undefined for one it can't read, without a
+ * status, say: no event, for the reader.
+ */
+export const rateLimitOf = (info: unknown): RateLimit | undefined => {
+  const decoded = decodeInfo(info)
+  if (Result.isFailure(decoded)) return undefined
+  const read = decoded.success
+  return {
+    status: read.status,
+    limit: read.rateLimitType ?? null,
+    resetsAt: read.resetsAt === undefined ? null : epochMillis(read.resetsAt),
+    utilization: read.utilization ?? null,
+    overage: read.isUsingOverage === true,
+  }
+}
 
 /** An organ call refused for the limit: which limit and when it resets, null when unknown. */
 export interface Refusal {
@@ -61,7 +94,7 @@ export type Waiting = ReadonlyMap<string, number | null>
 export class UsageLimits extends Context.Service<
   UsageLimits,
   {
-    /** A worker's session emitted a `rate_limit_event` with this info. */
+    /** A worker's session emitted a `rate_limit_event` with this info; one it can't read is none. */
     report(info: SDKRateLimitInfo): Effect.Effect<void>
     /** An organ's call was refused for the limit: a rejection, among the events. */
     refused(refusal: Refusal): Effect.Effect<void>
@@ -92,7 +125,10 @@ export const make: Effect.Effect<UsageLimits["Service"]> = Effect.gen(function* 
   const held = yield* Ref.make(false)
   const waiting = yield* SubscriptionRef.make<Waiting>(new Map())
   return UsageLimits.of({
-    report: (info) => Effect.asVoid(PubSub.publish(events, rateLimitOf(info))),
+    report: (info) => {
+      const read = rateLimitOf(info)
+      return read === undefined ? Effect.void : Effect.asVoid(PubSub.publish(events, read))
+    },
     refused: (refusal) => Effect.asVoid(PubSub.publish(events, refusalOf(refusal))),
     subscribe: Effect.map(PubSub.subscribe(events), Stream.fromSubscription),
     limited: (ticket, resetsAt) =>

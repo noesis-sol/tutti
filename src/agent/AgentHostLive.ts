@@ -470,10 +470,26 @@ export const layer = (
           }
         })
 
-      /** Reads the session's stream to its end; an end tutti didn't ask for makes the worker Gone. */
+      /**
+       * A message `onMessage` died on, a CLI of another version sending a shape tutti didn't
+       * expect: written to the log and skipped, so the session reads on.
+       */
+      const skipped = (session: Live, defect: unknown) =>
+        log.write(
+          detail`${session.ticket}: a message tutti couldn't take in, skipped: ${messageOf(defect)}`,
+        )
+
+      /**
+       * Reads the session's stream to its end, a message that dies skipped; an end tutti didn't ask
+       * for makes the worker Gone.
+       */
       const read = (session: Live) =>
         Stream.fromAsyncIterable(session.query, (cause) => cause).pipe(
-          Stream.runForEach((message) => onMessage(session, message)),
+          Stream.runForEach((message) =>
+            onMessage(session, message).pipe(
+              Effect.catchDefect((defect) => skipped(session, defect)),
+            ),
+          ),
           Effect.exit,
           Effect.flatMap((exit) =>
             gone(session, Exit.isSuccess(exit) ? endedWhy : failedWhy(causeMessage(exit.cause))),

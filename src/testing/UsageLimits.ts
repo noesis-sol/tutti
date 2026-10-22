@@ -24,7 +24,10 @@ export const layer: Layer.Layer<UsageLimits | Reported> = Layer.effectContext(
       ...usage,
       report: (info) =>
         Effect.andThen(
-          Ref.update(events, (all) => [...all, rateLimitOf(info)]),
+          Ref.update(events, (all) => {
+            const read = rateLimitOf(info)
+            return read === undefined ? all : [...all, read]
+          }),
           usage.report(info),
         ),
       refused: (refusal) =>

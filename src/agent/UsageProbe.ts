@@ -66,6 +66,7 @@ export const answerOf = (messages: ReadonlyArray<SDKMessage>): ProbeAnswer => {
   for (const m of messages) {
     if (m.type === "rate_limit_event") {
       const info = rateLimitOf(m.rate_limit_info)
+      if (info === undefined) continue
       rejected = info.status === "rejected"
       allowed = !rejected
       if (rejected) {

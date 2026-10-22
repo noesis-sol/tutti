@@ -6,8 +6,13 @@
 // the event changes, then derives the state from them afresh, so no order of events can leave a
 // stale state behind; only Idle's and Failed's `at` carries over, from the step that first made it
 // so.
+//
+// The fields the reducer reads of a message are decoded with a Schema, not trusted to the SDK's
+// types: a CLI of another version may send a message without one, and such a message is no change
+// (unreadable says why, for the host to log).
 import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Data, type Duration } from "effect"
+import { Data, type Duration, Result, Schema } from "effect"
+import { RateLimitInfo, rateLimitOf } from "./UsageLimits.ts"
 
 /** What a working worker is doing, from its hook callbacks, as orchestra classifies it. */
 export type Doing = "testing" | "editing" | "reading" | "subagent" | "working"
@@ -216,9 +221,65 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   rateLimited: false,
 })
 
-// rate_limit_info.resetsAt is in seconds since the epoch, as the API's reset header is; a value
-// already in milliseconds is kept.
-const epochMillis = (at: number): number => (at < 1e12 ? at * 1000 : at)
+// The fields the reducer reads of each message it reads any of. Those it can do without are
+// optional: a result without `errors` fails with its subtype for the error.
+const ApiRetry = Schema.Struct({
+  attempt: Schema.Number,
+  max_retries: Schema.Number,
+  error_status: Schema.optional(Schema.NullOr(Schema.Number)),
+})
+const StateChanged = Schema.Struct({ state: Schema.String })
+const TasksChanged = Schema.Struct({
+  tasks: Schema.Array(
+    Schema.Struct({ task_id: Schema.String, ambient: Schema.optional(Schema.Boolean) }),
+  ),
+})
+const RateLimitEvent = Schema.Struct({ rate_limit_info: RateLimitInfo })
+const TurnResult = Schema.Struct({
+  subtype: Schema.String,
+  is_error: Schema.Boolean,
+  user_message_uuids: Schema.optional(Schema.Array(Schema.String)),
+  startup_failure_reason: Schema.optional(Schema.String),
+  api_error_status: Schema.optional(Schema.NullOr(Schema.Number)),
+  result: Schema.optional(Schema.String),
+  errors: Schema.optional(Schema.Array(Schema.String)),
+})
+
+const decodeApiRetry = Schema.decodeUnknownResult(ApiRetry)
+const decodeStateChanged = Schema.decodeUnknownResult(StateChanged)
+const decodeTasksChanged = Schema.decodeUnknownResult(TasksChanged)
+const decodeRateLimitEvent = Schema.decodeUnknownResult(RateLimitEvent)
+const decodeResult = Schema.decodeUnknownResult(TurnResult)
+
+/** The fields the reducer reads of `message`, decoded; undefined when it reads none of it. */
+const decode = (message: SDKMessage): Result.Result<unknown, Schema.SchemaError> | undefined => {
+  switch (message.type) {
+    case "system":
+      switch (message.subtype) {
+        case "api_retry":
+          return decodeApiRetry(message)
+        case "session_state_changed":
+          return decodeStateChanged(message)
+        case "background_tasks_changed":
+          return decodeTasksChanged(message)
+      }
+      return undefined
+    case "rate_limit_event":
+      return decodeRateLimitEvent(message)
+    case "result":
+      return decodeResult(message)
+  }
+  return undefined
+}
+
+/**
+ * Why the reducer can't read `message`, a field it reads missing or of another type: the message is
+ * no change. Undefined when it can.
+ */
+export const unreadable = (message: SDKMessage): string | undefined => {
+  const decoded = decode(message)
+  return decoded !== undefined && Result.isFailure(decoded) ? decoded.failure.message : undefined
+}
 
 /**
  * A new turn: what the last one left about its retries and limit goes, so that a turn failing for
@@ -259,7 +320,8 @@ const onMessage = (worker: Worker, message: SDKMessage, now: number): Worker => 
     const ended = lifecycleEnd(message)
     return ended === null ? worker : done(worker, [ended])
   }
-  // An api_retry holds until the turn's next message, whatever that is.
+  // An api_retry holds until the turn's next message, whatever that is; a message whose fields the
+  // reducer can't read is no change, to an api_retry neither.
   const next =
     message.type === "system" && message.subtype === "api_retry"
       ? worker
@@ -269,8 +331,10 @@ const onMessage = (worker: Worker, message: SDKMessage, now: number): Worker => 
       switch (message.subtype) {
         case "init":
           return { ...newTurn(next), started: true }
-        case "session_state_changed":
-          switch (message.state) {
+        case "session_state_changed": {
+          const read = decodeStateChanged(message)
+          if (Result.isFailure(read)) return worker
+          switch (read.success.state) {
             case "running":
               return {
                 ...(next.turn._tag === "Running" ? next : newTurn(next)),
@@ -284,45 +348,55 @@ const onMessage = (worker: Worker, message: SDKMessage, now: number): Worker => 
               return { ...next, idle: true, requiresAction: false }
           }
           return next
-        case "api_retry":
+        }
+        case "api_retry": {
+          const read = decodeApiRetry(message)
+          if (Result.isFailure(read)) return worker
+          const retry = read.success
           return {
             ...next,
             retry: {
-              attempt: message.attempt,
-              max: message.max_retries,
-              status: message.error_status,
+              attempt: retry.attempt,
+              max: retry.max_retries,
+              status: retry.error_status ?? null,
             },
           }
+        }
         case "background_tasks_changed": {
-          const live = message.tasks.map((task) => task.task_id)
+          const read = decodeTasksChanged(message)
+          if (Result.isFailure(read)) return worker
+          const { tasks } = read.success
+          const live = tasks.map((task) => task.task_id)
           // A task that counted and has ended, between idle and the next running: the CLI starts a
           // turn to report it, about 70 ms after this message (docs/spikes/01-sdk-session.md).
           const ended = next.tasks.some((task) => !live.includes(task))
           return {
             ...next,
-            tasks: message.tasks
-              .filter((task) => task.ambient !== true)
-              .map((task) => task.task_id),
+            tasks: tasks.filter((task) => task.ambient !== true).map((task) => task.task_id),
             report: next.idle && ended && next.report === null ? now : next.report,
           }
         }
       }
       return next
     case "rate_limit_event": {
-      const info = message.rate_limit_info
+      const info = rateLimitOf(message.rate_limit_info)
+      if (info === undefined) return worker
       return {
         ...next,
         limit: {
           rejected: info.status === "rejected",
-          resetsAt: info.resetsAt === undefined ? next.limit.resetsAt : epochMillis(info.resetsAt),
+          resetsAt: info.resetsAt ?? next.limit.resetsAt,
         },
       }
     }
     case "assistant":
       return message.error === "rate_limit" ? { ...next, rateLimited: true } : next
     case "result": {
+      const read = decodeResult(message)
+      if (Result.isFailure(read)) return worker
+      const result = read.success
       // A result that lists no sends, from a CLI that doesn't report them, answered them all.
-      const listed = message.user_message_uuids ?? next.outstanding
+      const listed = result.user_message_uuids ?? next.outstanding
       const ended = {
         ...done(next, listed),
         idle: false,
@@ -330,21 +404,21 @@ const onMessage = (worker: Worker, message: SDKMessage, now: number): Worker => 
         tool: null,
         subagents: [],
       }
-      if (message.subtype !== "success" && message.startup_failure_reason !== undefined) {
-        return { ...ended, end: { closed: false, why: message.startup_failure_reason } }
+      if (result.subtype !== "success" && result.startup_failure_reason !== undefined) {
+        return { ...ended, end: { closed: false, why: result.startup_failure_reason } }
       }
-      if (!message.is_error) {
+      if (!result.is_error) {
         return { ...ended, turn: Turn.Ended() }
       }
-      const status = message.subtype === "success" ? message.api_error_status : undefined
+      const status = result.subtype === "success" ? result.api_error_status : undefined
       if (status === 429 || next.limit.rejected || next.rateLimited) {
         return { ...ended, turn: Turn.Limited() }
       }
       const error =
-        message.subtype === "success"
-          ? message.result
-          : message.errors.join("\n") || message.subtype
-      const interrupted = message.subtype === "error_during_execution"
+        result.subtype === "success"
+          ? (result.result ?? result.subtype)
+          : result.errors?.join("\n") || result.subtype
+      const interrupted = result.subtype === "error_during_execution"
       return { ...ended, turn: Turn.Failed({ error, interrupted }) }
     }
   }

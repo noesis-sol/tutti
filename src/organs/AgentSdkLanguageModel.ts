@@ -284,6 +284,7 @@ const limitSeen = (messages: ReadonlyArray<SDKMessage>): LimitSeen => {
   for (const m of messages) {
     if (m.type === "rate_limit_event") {
       const info = rateLimitOf(m.rate_limit_info)
+      if (info === undefined) continue
       seen = {
         ...seen,
         rejected: info.status === "rejected",
