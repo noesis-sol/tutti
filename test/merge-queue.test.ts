@@ -5,7 +5,13 @@ import { Deferred, Duration, Effect, Exit, Fiber, Layer, Ref, Scope, Stream } fr
 import { AppConfig } from "../src/cli/AppConfig.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
-import { type FinishedTicket, type MergeStop, maxPasses } from "../src/run/merge.ts"
+import {
+  type FinishedTicket,
+  gitAgainAfter,
+  gitTries,
+  type MergeStop,
+  maxPasses,
+} from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
@@ -16,7 +22,7 @@ import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { passed, type Scripted } from "../src/testing/Checks.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
-import { backlog, type Env, expectLog, type Ran, type Setup, scenario } from "./harness.ts"
+import { advance, backlog, type Env, expectLog, type Ran, type Setup, scenario } from "./harness.ts"
 
 const options = { repo: "/repo", base: "main" }
 
@@ -510,18 +516,31 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
     expectLog(ran, [/^HOLD: DIRTY_TREE: \/repo is no longer on main; tutti\/a is not merged/])
   })
 
-  test("GIT_FAILED: git can't read the main checkout", async () => {
+  test("GIT_FAILED: git can't read the main checkout, asked gitTries times", async () => {
     const ran = await mergeOne(() =>
       Effect.gen(function* () {
         const repository = yield* Repository
-        yield* repository.fail("status", { dir: "/repo", stderr: "fatal: index file corrupt" })
+        yield* repository.fail("status", {
+          dir: "/repo",
+          stderr: "fatal: index file corrupt",
+          times: gitTries,
+        })
+        // git is asked again a few seconds after each failure.
+        yield* Effect.forkChild(
+          Effect.gen(function* () {
+            for (let i = 0; i < 3 * gitTries; i++) {
+              for (let j = 0; j < 200; j++) yield* Effect.yieldNow
+              yield* advance(gitAgainAfter)
+            }
+          }),
+        )
       }),
     )
     const merged = resultOf(ran)
     expect(merged.phases.a).toEqual(expect.objectContaining({ _tag: "Blocked", why: "GIT_FAILED" }))
     expect(merged.stop).toMatchObject({ why: "GIT_FAILED", code: 4 })
     expectLog(ran, [
-      /^HOLD: GIT_FAILED: could not read the state of \/repo: fatal: index file corrupt; tutti\/a is not merged/,
+      /^HOLD: GIT_FAILED: could not read the state of \/repo \(3 tries\): fatal: index file corrupt; tutti\/a is not merged/,
     ])
   })
 

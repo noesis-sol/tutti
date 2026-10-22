@@ -26,7 +26,7 @@ import { runFolder } from "../services/Worktrees.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
-import { type MergeEnv, offBranch } from "./merge.ts"
+import { type MergeEnv, onBranch } from "./merge.ts"
 import { readAgainAfter, readTries } from "./schedule.ts"
 import { resumeGone } from "./sessions.ts"
 import type { StartedWorker } from "./start.ts"
@@ -281,8 +281,9 @@ const readClosed = (worker: StartedWorker, title: string, base: string) =>
   Effect.gen(function* () {
     const git = yield* Git
     const { id, branch, path } = worker.worktree
-    const on = yield* offBranch({ id, title, branch, worktree: path })
-    if (on !== undefined) return Reading.OffBranch({ on })
+    const on = yield* onBranch({ id, title, branch, worktree: path })
+    if (on._tag === "OffBranch") return Reading.OffBranch({ on: on.on })
+    if (on._tag === "Unknown") return yield* Effect.fail(on.error)
     const commits = yield* git.log(path, base)
     const files = changeEntries(yield* git.status(path))
     const named = commits.find((commit) => namesTicket(commit.message, id))

@@ -21,13 +21,19 @@
 //   change nothing. The ticket is Done{noChange}, cleaned up as after a merge. A hand-back's
 //   resolution that skipped every commit is closed so at once too (handback.ts).
 //
+// The git reads that steer a merge (what the worktree has checked out, its status, where the branch
+// left the base, the main checkout's state) are made again a few seconds later while they fail, up
+// to gitTries reads (steering), and give a tagged result whose failure is Unknown: never on its
+// branch, clean or the base not moved. A worktree git can't read sets its ticket aside (GIT_FAILED),
+// the other merges going on; the main repository git can't read stops them (GIT_FAILED).
+//
 // A rebase that stops on conflicts is handed back to the ticket's worker when it can take it
 // (handback.ts): prepare is then over with the rebase left in progress, for the merge queue to hand
 // it over; one that can't be handed back is Blocked. So is a check, or the setup before it, that
 // fails on the branch, rebased or on top of the base already (checkback.ts): one that can't be
 // handed back is set aside for review, kept to be checked once more once the base moves on
 // (recheck.ts).
-import { Effect, Result } from "effect"
+import { Data, Duration, Effect, Result, Schedule } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -246,20 +252,77 @@ export const stopOver = (ticket: FinishedTicket, why: StopWhy, blocked: string, 
     return { why, code: stopCodes[why], ticket: ticket.id, line: text } satisfies MergeStop
   })
 
-/** What the worktree has checked out when it isn't the ticket's branch; undefined when it is. */
-export const offBranch = (ticket: FinishedTicket) =>
+/** How many times a git read that steers a merge is made while it fails, as orchestra asks git. */
+export const gitTries = 3
+
+/** How long after a failed read, or one past its time limit, git is asked again. */
+export const gitAgainAfter: Duration.Duration = Duration.seconds(3)
+
+/**
+ * A git read that steers the merge, made again `gitAgainAfter` later while it fails, up to `tries`
+ * reads in all: one slow or failed read, as on a loaded machine, is not the merge's answer. Then
+ * it fails with git's last error, which its caller takes for "can't tell".
+ */
+export const steering = <A, R>(
+  read: Effect.Effect<A, GitError, R>,
+  tries = gitTries,
+): Effect.Effect<A, GitError, R> =>
+  tries <= 1
+    ? read
+    : Effect.retry(read, { times: tries - 1, schedule: Schedule.spaced(gitAgainAfter) })
+
+/** What a ticket's worktree has checked out: its branch, something else, or git can't tell. */
+export type Checkout = Data.TaggedEnum<{
+  OnBranch: Record<never, never>
+  /** `on` says what it has instead, as in `main checked out` or `a detached HEAD`. */
+  OffBranch: { readonly on: string }
+  Unknown: { readonly error: GitError }
+}>
+
+export const Checkout = Data.taggedEnum<Checkout>()
+
+/**
+ * What the ticket's worktree has checked out, git asked up to `tries` times while it fails. A
+ * failure is Unknown, never its branch.
+ */
+export const onBranch = (
+  ticket: FinishedTicket,
+  tries = gitTries,
+): Effect.Effect<Checkout, never, Git> =>
   Effect.gen(function* () {
-    const { git } = yield* services
-    const on = yield* Effect.result(git.currentBranch(ticket.worktree))
-    // git's own errors set the ticket aside later, if need be.
-    if (Result.isFailure(on)) return undefined
+    const git = yield* Git
+    const on = yield* Effect.result(steering(git.currentBranch(ticket.worktree), tries))
+    if (Result.isFailure(on)) return Checkout.Unknown({ error: on.failure })
     if (on.success._tag === "Some") {
-      return on.success.value === ticket.branch ? undefined : `${on.success.value} checked out`
+      return on.success.value === ticket.branch
+        ? Checkout.OnBranch()
+        : Checkout.OffBranch({ on: `${on.success.value} checked out` })
     }
     const rebasing = yield* Effect.result(git.rebaseInProgress(ticket.worktree))
-    return Result.isSuccess(rebasing) && rebasing.success
-      ? "a rebase in progress, on a detached HEAD"
-      : "a detached HEAD"
+    return Checkout.OffBranch({
+      on:
+        Result.isSuccess(rebasing) && rebasing.success
+          ? "a rebase in progress, on a detached HEAD"
+          : "a detached HEAD",
+    })
+  })
+
+/** Whether a worktree has uncommitted changes to tracked files (`uncommitted`), or git can't tell. */
+export type WorktreeStatus = Data.TaggedEnum<{
+  Clean: Record<never, never>
+  Dirty: { readonly files: ReadonlyArray<string> }
+  Unknown: { readonly error: GitError }
+}>
+
+export const WorktreeStatus = Data.taggedEnum<WorktreeStatus>()
+
+/** The worktree's status, git asked up to gitTries times while it fails: a failure is Unknown. */
+export const worktreeStatus = (worktree: string): Effect.Effect<WorktreeStatus, never, Git> =>
+  Effect.gen(function* () {
+    const status = yield* Effect.result(steering((yield* Git).status(worktree)))
+    if (Result.isFailure(status)) return WorktreeStatus.Unknown({ error: status.failure })
+    const files = uncommitted(status.success)
+    return files.length === 0 ? WorktreeStatus.Clean() : WorktreeStatus.Dirty({ files })
   })
 
 /**
@@ -332,33 +395,62 @@ export const notePass = (
     if (Result.isSuccess(at)) yield* passes.set(ticket.id, at.success)
   })
 
+/** Whether the base has moved on from a commit, or git can't tell. */
+export type BaseSince = Data.TaggedEnum<{
+  Moved: Record<never, never>
+  Still: Record<never, never>
+  Unknown: { readonly error: GitError }
+}>
+
+export const BaseSince = Data.taggedEnum<BaseSince>()
+
 /**
  * Whether the base has moved on from `onto`, the commit a branch was rebased onto or is on top of,
- * as when other tickets merged while its worker worked on a hand-back; false when git can't say,
- * the check then running on the branch as it is, and the merge rebasing it after if need be.
+ * as when other tickets merged while its worker worked on a hand-back, git asked up to gitTries
+ * times while it fails. Still when `onto` is "" (git couldn't say what it was): the merge reads
+ * where the branch is again. A failure is Unknown, never Still.
  */
-export const baseMoved = (
+export const baseSince = (
   options: MergeOptions,
   onto: string,
-): Effect.Effect<boolean, never, Git> =>
+): Effect.Effect<BaseSince, never, Git> =>
   Effect.gen(function* () {
-    const now = yield* Effect.result((yield* Git).revParse(options.repo, options.base))
-    return Result.isSuccess(now) && onto !== "" && now.success !== onto
+    const now = yield* Effect.result(steering((yield* Git).revParse(options.repo, options.base)))
+    if (Result.isFailure(now)) return BaseSince.Unknown({ error: now.failure })
+    return onto !== "" && now.success !== onto ? BaseSince.Moved() : BaseSince.Still()
   })
 
 /**
  * Sets the ticket aside, DIRTY_WORKTREE, when its worktree has uncommitted changes to tracked files,
  * `text` saying so of them: neither a rebase nor a check can go on with them there, as only the
- * branch's commits reach the base. True when it did; a status git can't read counts as clean.
+ * branch's commits reach the base. A status git can't read, asked gitTries times, can't show them
+ * not there: the ticket is set aside, GIT_FAILED, the other merges going on. True when it did.
  */
 const setAsideDirty = (ticket: FinishedTicket, text: (files: ReadonlyArray<string>) => Line) =>
   Effect.gen(function* () {
-    const { git } = yield* services
-    const status = yield* Effect.result(git.status(ticket.worktree))
-    const dirty = Result.isSuccess(status) ? uncommitted(status.success) : []
-    if (dirty.length === 0) return false
-    yield* aside(ticket, Tag.dirtyWorktree, "uncommitted changes in its worktree", text(dirty))
-    return true
+    const status = yield* worktreeStatus(ticket.worktree)
+    switch (status._tag) {
+      case "Clean":
+        return false
+      case "Dirty":
+        yield* aside(
+          ticket,
+          Tag.dirtyWorktree,
+          "uncommitted changes in its worktree",
+          text(status.files),
+        )
+        return true
+      case "Unknown":
+        yield* aside(
+          ticket,
+          Tag.gitFailed,
+          "git could not read its worktree",
+          ticketLine(
+            Tag.gitFailed,
+          )`${ticket.id} closed, but git could not read the status of ${ticket.worktree} (${gitTries} tries): ${gitWhy(status.error)}, so it can't be shown to have no uncommitted changes; ${ticket.branch} is not merged, its worktree left for review`,
+        )
+        return true
+    }
   })
 
 /**
@@ -626,15 +718,27 @@ export const prepare = (
       carried = undefined
       return was
     }
-    const on = yield* offBranch(ticket)
-    if (on !== undefined) {
+    const on = yield* onBranch(ticket)
+    if (on._tag === "OffBranch") {
       yield* aside(
         ticket,
         Tag.offBranch,
         `worktree not on ${branch}`,
         ticketLine(
           Tag.offBranch,
-        )`${id} closed, but its worktree ${worktree} has ${on}, not ${branch}; worktree left for review`,
+        )`${id} closed, but its worktree ${worktree} has ${on.on}, not ${branch}; worktree left for review`,
+      )
+      return { _tag: "Over" } satisfies Prepared
+    }
+    // Only its worktree can't be read: the ticket is set aside, the other merges going on.
+    if (on._tag === "Unknown") {
+      yield* aside(
+        ticket,
+        Tag.gitFailed,
+        "git could not read its worktree",
+        ticketLine(
+          Tag.gitFailed,
+        )`${id} closed, but git could not tell what its worktree ${worktree} has checked out (${gitTries} tries): ${gitWhy(on.error)}; ${branch} is not merged, its worktree left for review`,
       )
       return { _tag: "Over" } satisfies Prepared
     }
@@ -643,14 +747,17 @@ export const prepare = (
     let checked = false
     for (let pass = 0; ; pass++) {
       const where = yield* Effect.result(
-        Effect.all({ onto: git.revParse(repo, base), fork: git.mergeBase(repo, base, branch) }),
+        Effect.all({
+          onto: steering(git.revParse(repo, base)),
+          fork: steering(git.mergeBase(repo, base, branch)),
+        }),
       )
       if (Result.isFailure(where)) {
         const stop = yield* stopOver(
           ticket,
           "GIT_FAILED",
           "git failed",
-          line`could not tell where ${branch} left ${base}: ${gitWhy(where.failure)}; ${branch} is not merged, its worktree ${worktree} left for review`,
+          line`could not tell where ${branch} left ${base} (${gitTries} tries): ${gitWhy(where.failure)}; ${branch} is not merged, its worktree ${worktree} left for review`,
         )
         return { _tag: "Over", stop } satisfies Prepared
       }
@@ -835,14 +942,17 @@ export const fastForward = (
     yield* ledger.refine(id, Detail.Step({ step: "fast-forward" }))
     const left = line`${branch} is not merged, its worktree ${worktree} left for review`
     const checkout = yield* Effect.result(
-      Effect.all({ status: git.status(repo), on: git.currentBranch(repo) }),
+      Effect.all({
+        status: steering(git.status(repo)),
+        on: steering(git.currentBranch(repo)),
+      }),
     )
     if (Result.isFailure(checkout)) {
       return yield* stopOver(
         ticket,
         "GIT_FAILED",
         "git failed",
-        line`could not read the state of ${repo}: ${gitWhy(checkout.failure)}; ${left}`,
+        line`could not read the state of ${repo} (${gitTries} tries): ${gitWhy(checkout.failure)}; ${left}`,
       )
     }
     if (changedOutsideTools(checkout.success.status).length > 0) {
@@ -866,7 +976,7 @@ export const fastForward = (
     if (Result.isFailure(merged)) {
       // Changes git leaves out of a clean tree (.beads/, .tutti/run/) can be in the way too.
       const local = new Set(checkout.success.status.map((entry) => entry.path))
-      const changed = yield* Effect.result(git.changedFiles(repo, base, branch))
+      const changed = yield* Effect.result(steering(git.changedFiles(repo, base, branch)))
       const inTheWay = Result.isSuccess(changed)
         ? changed.success.filter((path) => local.has(path)).sort()
         : []

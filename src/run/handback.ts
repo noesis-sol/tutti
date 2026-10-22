@@ -64,14 +64,14 @@ import { loadEvery } from "./load.ts"
 import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "./log.ts"
 import {
   abandonRebase,
-  baseMoved,
+  baseSince,
   type FinishedTicket,
   gitWhy,
   type MergeEnv,
   type MergeMemory,
   type MergeOptions,
   notePass,
-  offBranch,
+  onBranch,
   type Unchanged,
   unchanged,
   uncommitted,
@@ -838,8 +838,11 @@ export const verifyResolved = (
         if (uncommitted(yield* git.status(worktree)).length > 0) {
           return line`its worker left uncommitted changes in ${worktree}`
         }
-        const on = yield* offBranch(stop.ticket)
-        if (on !== undefined) return line`its worker left ${worktree} with ${on}, not ${branch}`
+        const on = yield* onBranch(stop.ticket)
+        if (on._tag === "Unknown") return yield* Effect.fail(on.error)
+        if (on._tag === "OffBranch") {
+          return line`its worker left ${worktree} with ${on.on}, not ${branch}`
+        }
         if ((yield* git.mergeBase(repo, stop.onto, branch)) !== stop.onto) {
           return line`${branch} is not on top of ${base} as it was rebased onto`
         }
@@ -889,9 +892,12 @@ export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, M
     if (dirty) {
       return line`${branch} is left as its worker left it (it was at ${short(to)} before the rebase)`
     }
-    const on = yield* offBranch(stop.ticket)
-    if (on !== undefined) {
-      return line`${branch} is left at ${short(now)} (it was at ${short(to)} before the rebase), as ${worktree} has ${on}`
+    const on = yield* onBranch(stop.ticket)
+    if (on._tag === "OffBranch") {
+      return line`${branch} is left at ${short(now)} (it was at ${short(to)} before the rebase), as ${worktree} has ${on.on}`
+    }
+    if (on._tag === "Unknown") {
+      return line`${branch} is left at ${short(now)} (it was at ${short(to)} before the rebase), as git could not tell what ${worktree} has checked out: ${gitWhy(on.error)}`
     }
     const reset = yield* Effect.result(git.resetBranch(worktree, to))
     if (Result.isFailure(reset)) {
@@ -989,9 +995,13 @@ export const resolve = (
       if (nothing !== undefined) return { _tag: "Unchanged", unchanged: nothing } satisfies Resolved
       // Checked once, where it merges: a check on stop.onto would be run again on the branch
       // rebased.
-      if (yield* baseMoved(options, stop.onto)) {
+      // Where git can't tell whether the base moved on, the merge reads where the branch is again.
+      const since = yield* baseSince(options, stop.onto)
+      if (since._tag !== "Still") {
         yield* logs.write(
-          detail`${id}'s worker finished the rebase, but ${base} moved on meanwhile: rebasing ${branch} onto it before checking it`,
+          since._tag === "Moved"
+            ? detail`${id}'s worker finished the rebase, but ${base} moved on meanwhile: rebasing ${branch} onto it before checking it`
+            : detail`${id}'s worker finished the rebase, but git could not tell whether ${base} moved on meanwhile: ${gitWhy(since.error)}; ${branch} goes back to its merge, which checks it`,
         )
         // Kept as the setup here would have them, for the setup before the merge's check.
         yield* memory.setUps.from(id, stop.fork)

@@ -412,6 +412,12 @@ What can go wrong, and what becomes of the ticket:
 | `DIRTY_TREE` | the main checkout has uncommitted changes, or left its branch: the merges stop, and the run holds |
 | `GIT_FAILED`, `MERGE_FAILED` | git fails, or the branch doesn't fast-forward: the merges stop, and the run holds |
 
+A git read that steers the merge (what the worktree has checked out, its status, where its branch
+left the base, the main checkout's state) is asked again 3 seconds after it fails or times out, up
+to 3 reads, so one slow read on a loaded machine changes nothing. One that still fails is never
+taken for an answer: when it is the ticket's worktree git can't read, the ticket is left for review,
+`GIT_FAILED`, and the other merges go on; when it is the main repository, the merges stop.
+
 A failing check's whole output is kept in the worktree, `.tutti/run/check.log` (`setup.log` for the
 setup), and its line ends with the lines that say what failed. Each line about a ticket set aside also
 goes into the ticket's notes.

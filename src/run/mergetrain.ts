@@ -56,7 +56,7 @@ import {
   type MergeEnv,
   type MergeMemory,
   type MergeOptions,
-  offBranch,
+  onBranch,
   type Prepared,
   stopOver,
   uncommitted,
@@ -328,7 +328,8 @@ export const make = (
     const rebaseAhead = (run: Run) =>
       Effect.gen(function* () {
         const { id, branch, worktree } = run.ticket
-        if ((yield* offBranch(run.ticket)) !== undefined) return false
+        // Asked once: its turn asks again, and this step can't be interrupted.
+        if ((yield* onBranch(run.ticket, 1))._tag !== "OnBranch") return false
         const status = yield* Effect.result(git.status(worktree))
         if (Result.isFailure(status) || uncommitted(status.success).length > 0) return false
         const before = yield* Effect.result(

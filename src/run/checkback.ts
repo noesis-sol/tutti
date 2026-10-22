@@ -50,7 +50,7 @@ import { usageHolds } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { branchOn, detail, fixing, Log, line } from "./log.ts"
 import {
-  baseMoved,
+  baseSince,
   checksFailed,
   type FinishedTicket,
   gitWhy,
@@ -58,7 +58,7 @@ import {
   type MergeMemory,
   type MergeOptions,
   notePass,
-  offBranch,
+  onBranch,
   uncommitted,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
@@ -307,9 +307,10 @@ export const verifyFixed = (
         if (uncommitted(yield* git.status(worktree)).length > 0) {
           return reject(line`its worker left uncommitted changes in ${worktree}`)
         }
-        const on = yield* offBranch(stop.ticket)
-        if (on !== undefined)
-          return reject(line`its worker left ${worktree} with ${on}, not ${branch}`)
+        const on = yield* onBranch(stop.ticket)
+        if (on._tag === "Unknown") return yield* Effect.fail(on.error)
+        if (on._tag === "OffBranch")
+          return reject(line`its worker left ${worktree} with ${on.on}, not ${branch}`)
         if ((yield* git.mergeBase(options.repo, stop.at, branch)) !== stop.at) {
           return reject(line`its worker rewrote the commits on ${branch} rather than add to them`)
         }
@@ -351,9 +352,12 @@ export const undoFix = (stop: CheckStop): Effect.Effect<string, never, MergeEnv>
     }
     const at = yield* Effect.result(git.revParse(worktree, branch))
     const now = Result.isSuccess(at) ? at.success : ""
-    const on = yield* offBranch(stop.ticket)
-    if (on !== undefined)
-      return line`; ${branch} is left at ${short(now)}, as ${worktree} has ${on}`
+    const on = yield* onBranch(stop.ticket)
+    if (on._tag === "OffBranch")
+      return line`; ${branch} is left at ${short(now)}, as ${worktree} has ${on.on}`
+    if (on._tag === "Unknown") {
+      return line`; ${branch} is left at ${short(now)}, as git could not tell what ${worktree} has checked out: ${gitWhy(on.error)}`
+    }
     if (now === to) return ""
     const reset = yield* Effect.result(git.resetBranch(worktree, to))
     if (Result.isFailure(reset)) {
@@ -559,9 +563,13 @@ export const fixCheck = (
         )
         return "aside"
       }
-      if (yield* baseMoved(options, stop.onto)) {
+      // Where git can't tell whether the base moved on, the merge reads where the branch is again.
+      const since = yield* baseSince(options, stop.onto)
+      if (since._tag !== "Still") {
         yield* logs.write(
-          detail`${id}'s worker committed ${committed(verified)}, but ${options.base} moved on meanwhile: rebasing ${branch} onto it before checking it`,
+          since._tag === "Moved"
+            ? detail`${id}'s worker committed ${committed(verified)}, but ${options.base} moved on meanwhile: rebasing ${branch} onto it before checking it`
+            : detail`${id}'s worker committed ${committed(verified)}, but git could not tell whether ${options.base} moved on meanwhile: ${gitWhy(since.error)}; ${branch} goes back to its merge, which checks it`,
         )
         // Kept as checkFix's setup would have them, for the setup before the merge's check.
         yield* memory.setUps.from(id, stop.fork)

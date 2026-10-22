@@ -20,6 +20,7 @@ import {
   stopsLine,
 } from "../src/run/holds.ts"
 import { type Line, line } from "../src/run/log.ts"
+import { gitAgainAfter, gitTries } from "../src/run/merge.ts"
 import { errorStop, type Outcome, panicStop, run, runTime } from "../src/run/run.ts"
 import { Beads, BeadsFailed } from "../src/services/Beads.ts"
 import { Git, GitFailed } from "../src/services/Git.ts"
@@ -447,6 +448,14 @@ describe("stops and exit codes", () => {
         Effect.flatMap(Repository, (repository) =>
           repository.fail("status", { dir: repo, times: 10 }),
         ),
+      // git is asked again a few seconds after each failure, gitTries times.
+      during: () =>
+        Effect.gen(function* () {
+          for (let i = 0; i < 3 * gitTries; i++) {
+            for (let j = 0; j < 200; j++) yield* Effect.yieldNow
+            yield* advance(gitAgainAfter)
+          }
+        }),
     })
     expectExitCode(ran, 4)
     expectLog(ran, [/^GIT_FAILED: could not read the state of /])
