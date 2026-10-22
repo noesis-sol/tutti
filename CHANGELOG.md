@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The merge queue's writes no longer undo each other (§ 5 item 7, § 5.1; `src/run/mergequeue.ts`'s `offer`, `turn` and `backInLine`; tutti-125): an offer, a ticket's turn or a quit's put-back read the queue's state, waited on the ledger, then wrote a copy of what they had read, so a hand-back ending or the merges stopping in that gap was undone. A hand-back's ticket came back into `resolving` and the run never ended by itself; a live hand-back dropped from it let the run end in its middle; a dropped stop let the next ticket merge after `DIRTY_TREE` or `MERGE_FAILED`. Now each write updates the state as it is then, the queue's lock kept only to order places in line. `test/merge-queue-writes.test.ts` covers it, holding an offer or a turn on the ledger while a hand-back ends, and an offer while the merges stop.
+
 ## [0.1.1] - 2026-10-22
 
 - A Release's notes stay within GitHub's limit (`scripts/release-notes.sh`): GitHub refuses notes over 125,000 characters (HTTP 422), and 0.1.1's section, every change since tutti began, was 253,019, so its release failed to publish after every build had passed. A longer section is cut after the last whole entry within 120,000 characters (`RELEASE_NOTES_LIMIT`), and a last line says how many more there are and links to `CHANGELOG.md` at the version's tag. `test/release-notes.test.ts` covers it.

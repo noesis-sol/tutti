@@ -164,7 +164,10 @@ export const make = (
     const handBacks = yield* makeHandBacks
     const fixes = yield* makeFixes
     const passes = yield* makePasses
-    // Changes to the line and the places it gives, one at a time.
+    // Changes to the line and the places it gives, one at a time: the waiting list changes only
+    // under it, so a place read under it holds until its write. The rest of the state changes
+    // outside it (a merge over, a hand-back under way or done, while an offer waits on the ledger),
+    // so every write updates the state as it is then, not as it was read.
     const lock = yield* Semaphore.make(1)
     const state = SubscriptionRef.get(ref)
     const guarded = <A, E, R>(where: string, effect: Effect.Effect<A, E, R>) =>
@@ -193,13 +196,16 @@ export const make = (
         lock.withPermit(
           Effect.uninterruptible(
             Effect.gen(function* () {
-              const state = yield* SubscriptionRef.get(ref)
-              const moved = yield* ledger.transition(ticket.id, cause(state.waiting.length + 1), {
+              const place = (yield* SubscriptionRef.get(ref)).waiting.length + 1
+              const moved = yield* ledger.transition(ticket.id, cause(place), {
                 title: ticket.title,
               })
               if (Result.isFailure(moved)) return moved
               if (ahead) yield* train.mayCheckAhead(ticket)
-              yield* SubscriptionRef.set(ref, { ...state, waiting: [...state.waiting, ticket.id] })
+              yield* SubscriptionRef.update(ref, (now) => ({
+                ...now,
+                waiting: [...now.waiting, ticket.id],
+              }))
               yield* Queue.offer(line, ticket)
               return moved
             }),
@@ -221,7 +227,11 @@ export const make = (
             const moved = yield* ledger.transition(ticket.id, Cause.ItsTurn())
             yield* renumber(waiting)
             const merging = Result.isSuccess(moved) ? ticket.id : null
-            yield* SubscriptionRef.set(ref, { ...state, waiting, merging })
+            yield* SubscriptionRef.update(ref, (now) => ({
+              ...now,
+              waiting: now.waiting.filter((id) => id !== ticket.id),
+              merging,
+            }))
             return merging !== null
           }),
         ),
@@ -234,15 +244,17 @@ export const make = (
       lock.withPermit(
         Effect.gen(function* () {
           yield* abandonRebase(ticket.worktree)
-          const state = yield* SubscriptionRef.get(ref)
           const entry = (yield* ledger.current).tickets.get(ticket.id)
           if (entry?.phase._tag !== "Merging") {
-            return yield* SubscriptionRef.set(ref, { ...state, merging: null })
+            return yield* SubscriptionRef.update(ref, (now) => ({ ...now, merging: null }))
           }
           yield* ledger.transition(ticket.id, Cause.MergeInterrupted({ place: 1 }))
-          const waiting = [ticket.id, ...state.waiting]
-          yield* renumber(waiting)
-          yield* SubscriptionRef.set(ref, { ...state, waiting, merging: null })
+          yield* renumber([ticket.id, ...(yield* SubscriptionRef.get(ref)).waiting])
+          yield* SubscriptionRef.update(ref, (now) => ({
+            ...now,
+            waiting: [ticket.id, ...now.waiting],
+            merging: null,
+          }))
         }),
       )
 
