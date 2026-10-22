@@ -538,17 +538,17 @@ export const verifierText = (
   const list = (items: ReadonlyArray<string>, indent: string, none: string) =>
     items.length === 0 ? `${indent}- ${none}` : items.map((item) => `${indent}- ${item}`).join("\n")
   const code = (items: ReadonlyArray<string>) => items.map((item) => `\`${item}\``)
+  const stackLines = list(
+    stack,
+    "",
+    "tutti init's scout didn't describe the stack: read the manifests (go.mod, package.json,\n  pyproject.toml and the like) to learn it.",
+  )
+  // Functions, not strings, as replacements: a string's $$, $&, $` and $' are patterns, and the
+  // commands are the project's own shell.
   return verifierTemplate
-    .replace(
-      "{{stack}}",
-      list(
-        stack,
-        "",
-        "tutti init's scout didn't describe the stack: read the manifests (go.mod, package.json,\n  pyproject.toml and the like) to learn it.",
-      ),
-    )
-    .replace("{{fast}}", list(code(fast), "  ", "nothing yet."))
-    .replace("{{full}}", list(code(full), "  ", "nothing more."))
+    .replace("{{stack}}", () => stackLines)
+    .replace("{{fast}}", () => list(code(fast), "  ", "nothing yet."))
+    .replace("{{full}}", () => list(code(full), "  ", "nothing more."))
     .replaceAll("{{fastRunner}}", fastRunner)
     .replaceAll("{{fullRunner}}", fullRunner)
 }

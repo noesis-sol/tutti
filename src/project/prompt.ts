@@ -23,9 +23,12 @@ export const unknownSuitesLines =
   "  line: run each on part of the project where its tool allows it (`go test ./<package>/...`,\n" +
   "  `pytest <paths>`, `eslint <files>`), and whole where it doesn't.\n"
 
-/** `prompt` with `lines` on how to run each suite on part of the project; as it is with none. */
+/**
+ * `prompt` with `lines` on how to run each suite on part of the project; as it is with none. A
+ * function puts them in, as a replacement string would read the commands' $$, $&, $` and $'.
+ */
 export const withSuites = (prompt: string, lines: string): string =>
-  lines === "" ? prompt : prompt.replace(unknownSuitesLines, lines)
+  lines === "" ? prompt : prompt.replace(unknownSuitesLines, () => lines)
 
 /** The worker prompt's placeholder for the ticket's ID. */
 export const ticketIdPlaceholder = "TICKET_ID"
@@ -71,7 +74,7 @@ export const withoutAskUserQuestion = (prompt: string): string => {
 
 /** The worker prompt for ticket `id`: its standing rules. */
 export const forTicket = (prompt: WorkerPrompt, id: string): string =>
-  prompt.text.replaceAll(ticketIdPlaceholder, id)
+  prompt.text.replaceAll(ticketIdPlaceholder, () => id)
 
 /**
  * The file in a worktree that checkNote has a worker save a check's whole output to, under its
