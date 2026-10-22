@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { availableParallelism, tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { ConfigProvider, Duration, Effect, Exit, Option, Result } from "effect"
@@ -28,7 +28,7 @@ import {
 } from "../src/cli/flags.ts"
 import type { Settings } from "../src/project/settings.ts"
 import type { UserConfig } from "../src/project/userConfig.ts"
-import { runsDir } from "../src/run/machine.ts"
+import { defaultMachineWorkers, defaultMachineWorkersFrom, runsDir } from "../src/run/machine.ts"
 import { appConfig, layer as testLayer } from "../src/testing/AppConfig.ts"
 
 const repo = "/work/project"
@@ -580,7 +580,19 @@ describe("the live layer", () => {
     if (Exit.isFailure(exit)) throw new Error(`${exit.cause}`)
     // The folder of runs is orchestra's in HOME's cache folder (src/run/machine.ts).
     const runs = runsDir((name) => (name === "HOME" ? "/nowhere" : undefined))
-    expect(exit.value).toEqual(appConfig({ runs }, dirs.project))
+    // The live layer counts this machine's cores for the default cap, where appConfig takes
+    // testCores (10): CI's runners have 2 (2026-10-22).
+    const cores = availableParallelism()
+    expect(exit.value).toEqual(
+      appConfig(
+        {
+          runs,
+          machineWorkers: defaultMachineWorkers(cores),
+          machineWorkersFrom: defaultMachineWorkersFrom(cores),
+        },
+        dirs.project,
+      ),
+    )
   })
 })
 
