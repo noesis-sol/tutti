@@ -55,14 +55,12 @@ below are the coverage report's uncovered lines at 368899e.
   `init-stop.test.ts` (unit, and e2e slow: SIGINT while it writes), `import.test.ts`,
   `checks-runners.test.ts`, `checks-typescript.test.ts`, `template-versions.test.ts`,
   `scout.test.ts`, `line-forms.test.ts`, `ui-init-form.test.tsx`, `ui-init-stop.test.tsx`,
-  `form-hint.test.tsx`, `run-lock-init-refusal.test.ts`, `init-form-questions.test.ts`.
-- **Untested**:
-  - the command's own wiring, `runInit` in `src/cli/commands.ts` (lines 533–706): no test runs
-    `tutti init` through `bun src/main.ts` but the slow SIGINT one. Its refusals (outside a
-    repository, in a linked worktree, flag problems: exit 2), `--update`'s lines, and the summary it
-    prints without a terminal are untested end to end (tutti-8iz.3).
-  - `liveMachine` (`src/init/steps.ts` 164–201), the machine init runs commands on: reached only
-    through `runInit` (tutti-8iz.3).
+  `form-hint.test.tsx`, `run-lock-init-refusal.test.ts`, `init-form-questions.test.ts`,
+  `init-command.test.ts` (e2e slow: `bun src/main.ts init` without a terminal, its refusals,
+  `--update`, a whole init's summary and `liveMachine` running a fake bd).
+- **Untested**: `runInit`'s terminal branches (`src/cli/commands.ts`), which need stdin and stdout a
+  terminal: opening the renderer's form or the line forms under `TERM=dumb`, the scout, and the
+  summary in the theme's styles, are tested only below the command, not through `bun src/main.ts`.
 
 ## `tutti answer`
 
