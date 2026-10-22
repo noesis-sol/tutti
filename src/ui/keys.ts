@@ -15,10 +15,12 @@
 // a bracketed paste left unterminated (#1270) is ended after `pasteLimit`.
 import {
   type CliRenderer,
+  type Clock,
   type KeyEvent,
   parseKeypress,
   type Renderable,
   TextareaRenderable,
+  type TimerHandle,
 } from "@opentui/core"
 import type { Keymap, ReactiveMatcher } from "@opentui/keymap"
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
@@ -264,15 +266,20 @@ export interface EscapeHolder {
  * parser joins the rest (`[<64;87;26M`) to it as the mouse event. The Esc would close an open box
  * or leave the composer. A lone Esc waits `hold` ms: it is dropped when the next bytes read start
  * the rest of a report (`[<`, or `[M` in X10), the test the parser makes, and `press`ed when other
- * bytes or another key come first, or when the wait ends.
+ * bytes or another key come first, or when the wait ends. The wait is on `clock`, the renderer's,
+ * which the parser's timeout is on too.
  */
-export const escapeHolder = (press: () => void, hold: number = escapeHold): EscapeHolder => {
-  let timer: ReturnType<typeof setTimeout> | undefined
+export const escapeHolder = (
+  press: () => void,
+  clock: Clock,
+  hold: number = escapeHold,
+): EscapeHolder => {
+  let timer: TimerHandle | undefined
   // The bytes read since the Esc: a lone `[` waits for the next read.
   let rest = ""
   const release = (pressed: boolean) => {
     if (timer === undefined) return
-    clearTimeout(timer)
+    clock.clearTimeout(timer)
     timer = undefined
     rest = ""
     if (pressed) press()
@@ -281,7 +288,7 @@ export const escapeHolder = (press: () => void, hold: number = escapeHold): Esca
     key: (sequence) => {
       release(true)
       if (sequence !== "\x1b") return false
-      timer = setTimeout(() => release(true), hold)
+      timer = clock.setTimeout(() => release(true), hold)
       return true
     },
     read: (bytes) => {
@@ -305,10 +312,14 @@ export const holdEscape = (
   renderer: CliRenderer,
   hold: number = escapeHold,
 ): (() => void) => {
-  const holder = escapeHolder(() => {
-    const key = parseKeypress("\x1b")
-    if (key !== null) renderer.keyInput.processParsedKey(key)
-  }, hold)
+  const holder = escapeHolder(
+    () => {
+      const key = parseKeypress("\x1b")
+      if (key !== null) renderer.keyInput.processParsedKey(key)
+    },
+    renderer.clock,
+    hold,
+  )
   const onData = (chunk: Buffer | string) =>
     holder.read(typeof chunk === "string" ? chunk : chunk.toString("latin1"))
   renderer.stdin.prependListener("data", onData)

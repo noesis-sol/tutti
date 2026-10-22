@@ -2,6 +2,7 @@
 // stdin parser's timeout, gives an Esc key and then the mouse event; the Esc is held a moment and
 // dropped when the rest of a report follows, so it doesn't close an open box.
 import { describe, expect, test } from "bun:test"
+import { ManualClock } from "@opentui/core/testing"
 import { Effect } from "effect"
 import fc from "fast-check"
 import { makeCommands } from "../src/run/commands.ts"
@@ -12,46 +13,51 @@ import { escapeHold, escapeHolder } from "../src/ui/keys.ts"
 import { quitQuestion } from "../src/ui/QuitBox.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
-import { pressEscape, type Rendered, withRender } from "./render.ts"
+import { leap, parserWait, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const ESC = "\x1b"
 
-/** A holder over `hold` ms, and what it has pressed: `esc` for each Esc it let through. */
+/**
+ * A holder over `hold` ms on a manual clock, and what it has pressed: `esc` for each Esc it let
+ * through.
+ */
 const holderOf = (hold: number = 20) => {
   const pressed: Array<string> = []
-  const holder = escapeHolder(() => pressed.push("esc"), hold)
+  const clock = new ManualClock()
+  const holder = escapeHolder(() => pressed.push("esc"), clock, hold)
   /** A key, noted in `pressed` when the holder lets it through. */
   const key = (sequence: string) => {
     if (!holder.key(sequence)) pressed.push(sequence)
   }
-  return { holder, key, pressed }
+  return { clock, holder, key, pressed }
 }
 
 describe("the Esc hold", () => {
-  test("presses a lone Esc once the hold ends", async () => {
-    const { key, pressed } = holderOf()
+  test("presses a lone Esc once the hold ends", () => {
+    const { clock, key, pressed } = holderOf()
     key(ESC)
+    clock.advance(19)
     expect(pressed).toEqual([])
-    await Bun.sleep(40)
+    clock.advance(1)
     expect(pressed).toEqual(["esc"])
   })
 
-  test("drops it when the rest of a report is read next, SGR or X10", async () => {
+  test("drops it when the rest of a report is read next, SGR or X10", () => {
     for (const rest of ["[<64;87;26M", "[<0;1;2m", "[M`!!"]) {
-      const { holder, key, pressed } = holderOf()
+      const { clock, holder, key, pressed } = holderOf()
       key(ESC)
       holder.read(rest)
-      await Bun.sleep(40)
+      clock.runAll()
       expect(pressed).toEqual([])
     }
   })
 
-  test("a lone [ waits for the next read: the rest of a report drops it, other bytes press it", async () => {
+  test("a lone [ waits for the next read: the rest of a report drops it, other bytes press it", () => {
     const report = holderOf()
     report.key(ESC)
     report.holder.read("[")
     report.holder.read("<64;87;26M")
-    await Bun.sleep(40)
+    report.clock.runAll()
     expect(report.pressed).toEqual([])
     const typed = holderOf()
     typed.key(ESC)
@@ -76,20 +82,20 @@ describe("the Esc hold", () => {
     expect(pressed).toEqual(["esc", "q"])
   })
 
-  test("a second Esc presses the first and is held in turn", async () => {
-    const { key, pressed } = holderOf()
+  test("a second Esc presses the first and is held in turn", () => {
+    const { clock, key, pressed } = holderOf()
     key(ESC)
     key(ESC)
     expect(pressed).toEqual(["esc"])
-    await Bun.sleep(40)
+    clock.runAll()
     expect(pressed).toEqual(["esc", "esc"])
   })
 
-  test("stopping drops a held Esc", async () => {
-    const { holder, key, pressed } = holderOf()
+  test("stopping drops a held Esc", () => {
+    const { clock, holder, key, pressed } = holderOf()
     key(ESC)
     holder.stop()
-    await Bun.sleep(40)
+    clock.runAll()
     expect(pressed).toEqual([])
   })
 
@@ -128,17 +134,14 @@ const withQuitBox = (body: (rendered: Rendered) => Promise<void>) =>
     await body(rendered)
   })
 
-/** How long the stdin parser waits before a lone ESC is a key: its 20 ms, and some. */
-const parserWait = 40
-
 describe("a mouse report split after its ESC", () => {
   test("leaves the quit box open", async () => {
     await withQuitBox(async (rendered) => {
-      await rendered.input(async (setup) => {
+      await rendered.input((setup) => {
         setup.renderer.stdin.emit("data", Buffer.from(ESC))
-        await Bun.sleep(parserWait)
+        leap(setup, parserWait)
         setup.renderer.stdin.emit("data", Buffer.from("[<64;87;26M"))
-        await Bun.sleep(escapeHold + 20)
+        leap(setup, escapeHold)
       })
       expect((await rendered.capture()).chars).toContain(quitQuestion)
     })

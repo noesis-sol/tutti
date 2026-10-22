@@ -25,7 +25,7 @@ import {
   orchestra,
 } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { type Frame, pressEscape, type Rendered, TestClock, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -217,6 +217,7 @@ describe("askStart", () => {
     const setup = await createTestRenderer({
       ...rendererConfig,
       ...size,
+      clock: new TestClock(),
       onDestroy: () => {
         actEnvironment.IS_REACT_ACT_ENVIRONMENT = false
       },

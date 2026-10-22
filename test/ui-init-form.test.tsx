@@ -18,7 +18,7 @@ import { streamInput } from "../src/ui/plain/forms.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { pressEscape } from "./render.ts"
+import { pressEscape, TestClock } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -107,6 +107,7 @@ const driven = async <A, E>(
   const setup = await createTestRenderer({
     ...rendererConfig,
     ...size,
+    clock: new TestClock(),
     onDestroy: () => {
       actEnvironment.IS_REACT_ACT_ENVIRONMENT = false
     },
