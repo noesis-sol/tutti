@@ -30,6 +30,7 @@ import {
   fullScript,
   runnerCommands,
   runsCheckScript,
+  runsNothing,
   runsRunner,
   type Suite,
   withoutRunners,
@@ -335,33 +336,36 @@ export const chooseFound = (
   return { kind: "found", fast: pick(fast), full: pick(own), fileUntested }
 }
 
-/** The runners a choice writes, or null for manual, whose command init writes over the one there. */
+/**
+ * The runners a choice writes, or null for manual, whose command init writes over the one there:
+ * check-full.sh as it is beside `keptFast`, the check-fast.sh there that init keeps, where it keeps
+ * one.
+ */
 export const choiceScripts = (
   choice: ChecksChoice,
+  keptFast: string | null = null,
 ): { readonly fast: string; readonly full: string } | null => {
   if (choice.kind === "manual") return null
-  const fast = choice.kind === "found" ? choice.fast : []
+  const fast = fastScript(choice.kind === "found" ? choice.fast : [])
   const full = choice.kind === "found" ? choice.full : []
-  return {
-    fast: fastScript(fast),
-    full: fullScript(full, withoutRunners(fast).kept.length === 0),
-  }
+  return { fast, full: fullScript(full, runsNothing(keptFast ?? fast)) }
 }
 
 /**
  * Whether each runner there differs from what `choice` writes, for the form to ask whether to keep
- * it (the default) or replace it.
+ * it (the default) or replace it: check-full.sh's as it is beside check-fast.sh's, kept unless
+ * `replaceFast`.
  */
 export const runnersDiffer = (
   runners: { readonly fast: string | null; readonly full: string | null },
   choice: ChecksChoice,
+  replaceFast = false,
 ): { readonly fast: boolean; readonly full: boolean } => {
-  const scripts = choiceScripts(choice)
-  if (scripts === null) return { fast: false, full: false }
-  return {
-    fast: runners.fast !== null && runners.fast !== scripts.fast,
-    full: runners.full !== null && runners.full !== scripts.full,
-  }
+  const planned = choiceScripts(choice)
+  if (planned === null) return { fast: false, full: false }
+  const fast = runners.fast !== null && runners.fast !== planned.fast
+  const scripts = fast && !replaceFast ? choiceScripts(choice, runners.fast) : planned
+  return { fast, full: runners.full !== null && runners.full !== scripts?.full }
 }
 
 /** What a runner's script runs, for the question whether to keep it. */

@@ -283,6 +283,13 @@ export const runnerCommands = (script: string): ReadonlyArray<string> =>
     )
 
 /**
+ * Whether a runner's script, init's or the project's own, runs no command but `exit 0`: a
+ * check-full.sh beside it needn't run it first.
+ */
+export const runsNothing = (script: string): boolean =>
+  runnerCommands(script).every((command) => command === "exit 0")
+
+/**
  * Whether a suite's command runs the project's own check, scripts/check.sh: a word of it is the
  * script's path from the repository's root, or that path from a variable or the file system's root.
  */

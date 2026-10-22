@@ -297,7 +297,8 @@ export const initForm = (fields: Fields): InitForm => ({
         if (differ.fast) {
           answers = { ...answers, replaceFast: yield* replace(fastRunner, asked.runners.fast) }
         }
-        if (differ.full) {
+        // check-full.sh as init writes it beside the check-fast.sh answered for.
+        if (runnersDiffer(asked.runners, choice, answers.replaceFast === true).full) {
           answers = { ...answers, replaceFull: yield* replace(fullRunner, asked.runners.full) }
         }
         if (asked.skill === "differs" && filesTestWork(choice)) {

@@ -83,6 +83,7 @@ import {
   fullScript,
   isRunner,
   runnerSuites,
+  runsNothing,
   type Suite,
   withoutRunners,
 } from "./runners.ts"
@@ -502,9 +503,73 @@ interface RunnerPlan {
 }
 
 /**
+ * Writes the runner at `path` from `suites`, mode 755, as the plan for it says (see writeRunners):
+ * its steps, and the script there afterwards, null where there is none.
+ */
+const writeRunner = (
+  repo: string,
+  runner: {
+    readonly label: string
+    readonly path: string
+    readonly flag: string
+    readonly suites: ReadonlyArray<Suite> | null
+    readonly script: (suites: ReadonlyArray<Suite>) => string
+    readonly planned: RunnerPlan
+  },
+) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const { label, path, flag, suites, script, planned } = runner
+    const file = join(repo, path)
+    const there = yield* fs.readFileString(file).pipe(Effect.option)
+    const kept = (step: Step) => ({ steps: [step], onDisk: Option.getOrNull(there) })
+    if (suites === null) {
+      return kept(
+        Option.isSome(there)
+          ? step("kept", label, `${path} is there; left as it is`)
+          : step("missing", label, `${path} is missing`),
+      )
+    }
+    const text = script(suites)
+    if (Option.isSome(there) && there.value === text) {
+      return kept(step("kept", label, `${path} is there; left as it is`))
+    }
+    if (Option.isSome(there) && !planned.replace) {
+      return kept(
+        step(
+          "caution",
+          label,
+          `${path} differs from what init would write; kept (tutti init ${flag} "<command>" replaces it)`,
+        ),
+      )
+    }
+    yield* fs.makeDirectory(join(repo, "scripts"), { recursive: true })
+    yield* writeFileAtomic(file, text, { mode: 0o755 })
+    const did = Option.isSome(there) ? "replaced" : "wrote"
+    const covering = withoutRunners(suites).kept.find((suite) => suite.coversFast === true)
+    const about = checksNothing(text)
+      ? `: it checks nothing yet (${flag} "<command>" gives it one)`
+      : path === fullRunner && covering !== undefined
+        ? `: '${covering.command.trim()}' runs all ${fastRunner} does, so ${fastRunner} doesn't run first`
+        : ""
+    const steps = [step("done", label, `${did} ${path}${about}`, [path])]
+    for (const left of withoutRunners(suites).left) {
+      steps.push(
+        step(
+          "caution",
+          label,
+          `left out '${left.command.trim()}' (from ${left.foundIn}): it runs a runner, and ${path} would run itself until fork fails`,
+        ),
+      )
+    }
+    return { steps, onDisk: text }
+  })
+
+/**
  * Writes the runners, mode 755: a runner the plan gives suites, and one that is missing; one that
  * is there is kept, as is one that differs from what the plan writes unless it replaces it. A
- * missing check-fast.sh calls an existing scripts/check.sh as its suite.
+ * missing check-fast.sh calls an existing scripts/check.sh as its suite. check-full.sh is `exit 0`
+ * only where the check-fast.sh there afterwards runs nothing either: one init keeps runs first.
  */
 const writeRunners = (
   repo: string,
@@ -513,10 +578,7 @@ const writeRunners = (
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const exists = (path: string) => fs.exists(join(repo, path))
-    const steps: Array<Step> = []
-    const fastGiven = plan.fast.suites
-    const fullGiven = plan.full.suites
-    let fastSuites: ReadonlyArray<Suite> | null = fastGiven
+    let fastSuites: ReadonlyArray<Suite> | null = plan.fast.suites
     if (fastSuites === null && !(yield* exists(fastRunner))) {
       fastSuites = (yield* exists(checkScript))
         ? [
@@ -529,66 +591,24 @@ const writeRunners = (
           ]
         : []
     }
-    const fastEmpty = fastSuites !== null && withoutRunners(fastSuites).kept.length === 0
-    const fullSuites = fullGiven ?? ((yield* exists(fullRunner)) ? null : [])
-    const runners = [
-      ["check-fast", fastRunner, "--check-fast", fastSuites, fastScript, plan.fast] as const,
-      [
-        "check-full",
-        fullRunner,
-        "--check-full",
-        fullSuites,
-        (suites: ReadonlyArray<Suite>) => fullScript(suites, fastEmpty),
-        plan.full,
-      ] as const,
-    ]
-    for (const [label, path, flag, suites, script, planned] of runners) {
-      const file = join(repo, path)
-      const there = yield* fs.readFileString(file).pipe(Effect.option)
-      if (suites === null) {
-        steps.push(
-          Option.isSome(there)
-            ? step("kept", label, `${path} is there; left as it is`)
-            : step("missing", label, `${path} is missing`),
-        )
-        continue
-      }
-      const text = script(suites)
-      if (Option.isSome(there) && there.value === text) {
-        steps.push(step("kept", label, `${path} is there; left as it is`))
-        continue
-      }
-      if (Option.isSome(there) && !planned.replace) {
-        steps.push(
-          step(
-            "caution",
-            label,
-            `${path} differs from what init would write; kept (tutti init ${flag} "<command>" replaces it)`,
-          ),
-        )
-        continue
-      }
-      yield* fs.makeDirectory(join(repo, "scripts"), { recursive: true })
-      yield* writeFileAtomic(file, text, { mode: 0o755 })
-      const did = Option.isSome(there) ? "replaced" : "wrote"
-      const covering = withoutRunners(suites).kept.find((suite) => suite.coversFast === true)
-      const about = checksNothing(text)
-        ? `: it checks nothing yet (${flag} "<command>" gives it one)`
-        : path === fullRunner && covering !== undefined
-          ? `: '${covering.command.trim()}' runs all ${fastRunner} does, so ${fastRunner} doesn't run first`
-          : ""
-      steps.push(step("done", label, `${did} ${path}${about}`, [path]))
-      for (const left of withoutRunners(suites).left) {
-        steps.push(
-          step(
-            "caution",
-            label,
-            `left out '${left.command.trim()}' (from ${left.foundIn}): it runs a runner, and ${path} would run itself until fork fails`,
-          ),
-        )
-      }
-    }
-    return steps
+    const fast = yield* writeRunner(repo, {
+      label: "check-fast",
+      path: fastRunner,
+      flag: "--check-fast",
+      suites: fastSuites,
+      script: fastScript,
+      planned: plan.fast,
+    })
+    const fastEmpty = fast.onDisk === null || runsNothing(fast.onDisk)
+    const full = yield* writeRunner(repo, {
+      label: "check-full",
+      path: fullRunner,
+      flag: "--check-full",
+      suites: plan.full.suites ?? ((yield* exists(fullRunner)) ? null : []),
+      script: (suites) => fullScript(suites, fastEmpty),
+      planned: plan.full,
+    })
+    return [...fast.steps, ...full.steps]
   })
 
 /** What tutti needs and whether it is there: bd on the PATH, and Beads set up. */
@@ -869,7 +889,7 @@ export const init = <R>(options: InitOptions<R>) =>
     // written from the suites found: none where a runner there that differs from them is kept.
     const differ =
       choice?.kind === "found" && checksQuestions.checks !== null
-        ? runnersDiffer(checksQuestions.checks.runners, choice)
+        ? runnersDiffer(checksQuestions.checks.runners, choice, checked.replaceFast === true)
         : { fast: false, full: false }
     const promptSuites =
       choice?.kind === "found" &&
