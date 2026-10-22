@@ -25,11 +25,11 @@ and drops its terminal multiplexers:
 
 The recommended install is a release archive: one binary, with its Claude Code embedded, from the
 repository's GitHub Releases. The install script picks the archive for your platform (macOS or Linux,
-arm64 or x64, glibc or musl), checks its signature and SHA-256, and installs it in `/usr/local/bin` or
-`~/.local/bin`:
+arm64 or x64, glibc or musl), checks its signature and SHA-256, and installs it in `~/.local/bin`
+(`TUTTI_INSTALL_DIR` names another folder). Each release carries its own install script:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/noesis-sol/tutti/main/scripts/install.sh | sh
+curl -fsSL https://github.com/noesis-sol/tutti/releases/latest/download/install.sh | sh
 ```
 
 `tutti update` updates it to the latest release, and `tutti --version` says which you have.

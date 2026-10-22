@@ -1,9 +1,9 @@
 # Releases a version (§ 12 Releases) for each v* tag pushed: the check first, then the six builds
 # (scripts/build.sh, cross-compiled on Linux), each run on its own system, their archives
 # tutti_<ver>_<os>_<arch>[_musl].tar.gz with checksums.txt, signed with the ed25519 release key as
-# checksums.txt.sig, and the archives' build provenance attested. A tag with a suffix (v1.2.0-rc.1)
-# makes a pre-release. Run it from the Actions tab (workflow_dispatch) with a tag to release an
-# existing tag again: its notes and assets are replaced.
+# checksums.txt.sig, and the archives' build provenance attested; the tag's scripts/install.sh is
+# attached too. A tag with a suffix (v1.2.0-rc.1) makes a pre-release. Run it from the Actions tab
+# (workflow_dispatch) with a tag to release an existing tag again: its notes and assets are replaced.
 #
 # Releasing: in CHANGELOG.md, rename "## Unreleased" to "## [X.Y.Z] - YYYY-MM-DD" (its section
 # becomes the notes, scripts/release-notes.sh), set package.json's version to X.Y.Z, commit on main,
@@ -213,7 +213,9 @@ jobs:
           subject-path: dist/*.tar.gz
 
       # Only the newest release is GitHub's latest, which tutti update downloads: releasing an older
-      # tag again leaves it where it is. A pre-release never is.
+      # tag again leaves it where it is. A pre-release never is. The tag's scripts/install.sh goes with
+      # the archives, as install.sh, so releases/latest/download/install.sh (the README's install)
+      # is the script made with the latest release, not main's.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -223,7 +225,7 @@ jobs:
           newest="$(git tag -l 'v*' --sort=-v:refname | { grep -v -e - || true; } | head -n 1)"
           if [ "$TAG" = "$newest" ]; then latest=true; else latest=false; fi
           echo "$TAG: pre-release $prerelease, latest $latest (newest release tag: $newest)"
-          set -- dist/tutti_*.tar.gz dist/checksums.txt dist/checksums.txt.sig
+          set -- dist/tutti_*.tar.gz dist/checksums.txt dist/checksums.txt.sig scripts/install.sh
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" \
               --prerelease="$prerelease" --latest="$latest"

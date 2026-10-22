@@ -32,15 +32,15 @@ describe("scripts/install.sh", () => {
         const ran = install({ releases, key: publicPem(key), shell })
         expect(ran.code, ran.out).toBe(0)
         // On Linux the host's archive may be the musl one; this suite runs on macOS and glibc Linux.
-        expect(installed(ran.system)).toEqual({
+        expect(installed(ran.dir)).toEqual({
           archive: hostArchive("v0.2.0"),
           version: "tutti v0.2.0",
         })
         expect(signatureChecked(ran.out)).toBe(hasOpenssl3)
         expect(ran.out).toContain("Installing tutti v0.2.0 for")
-        expect(ran.out).toContain(`Installed tutti v0.2.0 in ${join(ran.system, "tutti")}.`)
-        expect(ran.out).toContain(`${ran.system} isn't on your PATH`)
-        expect(ran.out).toContain(`echo 'export PATH="${ran.system}:$PATH"' >> ~/.zshrc`)
+        expect(ran.out).toContain(`Installed tutti v0.2.0 in ${join(ran.dir, "tutti")}.`)
+        expect(ran.out).toContain(`${ran.dir} isn't on your PATH`)
+        expect(ran.out).toContain(`echo 'export PATH="${ran.dir}:$PATH"' >> ~/.zshrc`)
         expect(ran.out).toContain("'tutti init'")
       },
       timeout,
@@ -53,7 +53,7 @@ describe("scripts/install.sh", () => {
       for (const version of ["v0.1.0", "0.1.0"]) {
         const ran = install({ releases, key: publicPem(key), env: { TUTTI_VERSION: version } })
         expect(ran.code, ran.out).toBe(0)
-        expect(installed(ran.system)?.version).toBe("tutti v0.1.0")
+        expect(installed(ran.dir)?.version).toBe("tutti v0.1.0")
       }
     },
     timeout,
@@ -68,7 +68,7 @@ describe("scripts/install.sh", () => {
       expect(ran.code).toBe(1)
       expect(ran.out).toContain(`${hostArchive("v0.2.0")}'s SHA-256 is`)
       expect(ran.out).toContain(`not checksums.txt's ${"0".repeat(64)}. Nothing was installed.`)
-      expect(installed(ran.system)).toBeUndefined()
+      expect(installed(ran.dir)).toBeUndefined()
       expect(readdirSync(ran.home)).toEqual([])
     },
     timeout,
@@ -84,7 +84,7 @@ describe("scripts/install.sh", () => {
       expect(ran.out).toContain("checksums.txt.sig doesn't verify checksums.txt with a release key")
       expect(ran.out).toContain("Nothing was installed.")
       expect(ran.out).not.toContain("SHA-256 is")
-      expect(installed(ran.system)).toBeUndefined()
+      expect(installed(ran.dir)).toBeUndefined()
     },
     timeout,
   )
@@ -113,7 +113,7 @@ describe("scripts/install.sh", () => {
       expect(ran.code, ran.out).toBe(0)
       expect(signatureChecked(ran.out)).toBe(false)
       expect(ran.out).toContain("The archive's SHA-256 is still checked against checksums.txt.")
-      expect(installed(ran.system)?.version).toBe("tutti v0.2.0")
+      expect(installed(ran.dir)?.version).toBe("tutti v0.2.0")
     },
     timeout,
   )
@@ -130,7 +130,7 @@ describe("scripts/install.sh", () => {
       const ran = install({ releases, key: "" })
       expect(ran.code).toBe(1)
       expect(ran.out).toContain("this install script holds no release key yet")
-      expect(installed(ran.system)).toBeUndefined()
+      expect(installed(ran.dir)).toBeUndefined()
     },
     timeout,
   )
@@ -141,7 +141,7 @@ describe("scripts/install.sh", () => {
       const ran = install({ releases, key: "" })
       expect(ran.code).toBe(1)
       expect(ran.out).toContain("checksums.txt.sig doesn't verify checksums.txt with a release key")
-      expect(installed(ran.system)).toBeUndefined()
+      expect(installed(ran.dir)).toBeUndefined()
     },
     timeout,
   )
@@ -203,7 +203,7 @@ describe("scripts/install.sh", () => {
           })
           expect(ran.code, ran.out).toBe(0)
           const suffix = c.want === "musl" ? "_musl" : ""
-          expect(installed(ran.system)?.archive).toBe(`tutti_0.2.0_linux_${arch}${suffix}.tar.gz`)
+          expect(installed(ran.dir)?.archive).toBe(`tutti_0.2.0_linux_${arch}${suffix}.tar.gz`)
           expect(ran.out).toContain(`Installing tutti v0.2.0 for linux ${arch} ${c.want}.`)
           const note =
             "A musl build needs libstdc++ and libgcc (on Alpine: apk add libstdc++ libgcc)."
@@ -225,7 +225,7 @@ describe("scripts/install.sh", () => {
         })
         expect(ran.code).toBe(1)
         expect(ran.out).toContain("TUTTI_LIBC is 'uclibc', not musl or glibc")
-        expect(installed(ran.system)).toBeUndefined()
+        expect(installed(ran.dir)).toBeUndefined()
       },
       timeout,
     )
@@ -241,7 +241,7 @@ describe("scripts/install.sh", () => {
         env: { TUTTI_LIBC: "musl" },
       })
       expect(ran.code, ran.out).toBe(0)
-      expect(installed(ran.system)?.archive).toBe("tutti_0.2.0_darwin_x64.tar.gz")
+      expect(installed(ran.dir)?.archive).toBe("tutti_0.2.0_darwin_x64.tar.gz")
       expect(ran.out).toContain("Installing tutti v0.2.0 for darwin x64.")
     },
     timeout,
@@ -258,28 +258,11 @@ describe("scripts/install.sh", () => {
         expect(ran.code).toBe(1)
         expect(ran.out).toContain(`there is no release binary for ${kernel} ${machine}`)
         expect(ran.out).toContain("darwin and linux, arm64 and x64")
-        expect(installed(ran.system)).toBeUndefined()
+        expect(installed(ran.dir)).toBeUndefined()
       },
       timeout,
     )
   }
-
-  test(
-    "installs in ~/.local/bin where /usr/local/bin isn't writable, and says how to install there",
-    () => {
-      const ran = install({
-        releases,
-        key: publicPem(key),
-        env: { TUTTI_TEST_SYSTEM_DIR: join(temp("absent"), "bin") },
-      })
-      expect(ran.code, ran.out).toBe(0)
-      const local = join(ran.home, ".local/bin")
-      expect(installed(local)?.version).toBe("tutti v0.2.0")
-      expect(ran.out).toContain(`Installing in ${local}, as`)
-      expect(ran.out).toContain("sudo TUTTI_INSTALL_DIR=")
-    },
-    timeout,
-  )
 
   test(
     "replaces the tutti in TUTTI_INSTALL_DIR, and says when another tutti comes first on the PATH",
@@ -297,7 +280,7 @@ describe("scripts/install.sh", () => {
       })
       expect(ran.code, ran.out).toBe(0)
       expect(installed(dir)?.version).toBe("tutti v0.2.0")
-      expect(installed(ran.system)).toBeUndefined()
+      expect(installed(ran.dir)).toBeUndefined()
       expect(ran.out).toContain(`${join(earlier, "tutti")} comes before ${dir} on your PATH`)
     },
     timeout,
@@ -309,7 +292,7 @@ describe("scripts/install.sh", () => {
       const ran = install({ releases, key: publicPem(key), env: { TUTTI_VERSION: "v9.9.9" } })
       expect(ran.code).toBe(1)
       expect(ran.out).toContain("cannot download")
-      expect(existsSync(join(ran.system, "tutti"))).toBe(false)
+      expect(existsSync(join(ran.dir, "tutti"))).toBe(false)
     },
     timeout,
   )

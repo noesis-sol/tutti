@@ -2,7 +2,10 @@
 # scripts/install.sh: installs tutti from its latest GitHub Release, or the one TUTTI_VERSION names
 # (§ 12 Install):
 #
-#   curl -fsSL https://raw.githubusercontent.com/noesis-sol/tutti/main/scripts/install.sh | sh
+#   curl -fsSL https://github.com/noesis-sol/tutti/releases/latest/download/install.sh | sh
+#
+# Each release carries this script among its assets (.github/workflows/release.yml), so the script
+# that installs a release is the one it was made with, not main's.
 #
 # It downloads the release's archive for this platform (darwin or linux, arm64 or x64, and on Linux
 # glibc or musl), checksums.txt and its signature, checksums.txt.sig; verifies the signature with the
@@ -11,7 +14,8 @@
 # tutti in it in place. It never calls sudo.
 #
 #   TUTTI_VERSION      the release to install, such as v0.9.0; the latest when unset
-#   TUTTI_INSTALL_DIR  the folder to install in; else /usr/local/bin where it can write, or ~/.local/bin
+#   TUTTI_INSTALL_DIR  the folder to install in, made where it doesn't exist; else ~/.local/bin, never
+#                      /usr/local/bin, which Homebrew owns on many Macs
 #   TUTTI_LIBC         musl or glibc, the Linux archive to install; else the system's, as ldd or the
 #                      musl loader tells
 #
@@ -22,8 +26,8 @@
 # For the tests only (test/install-script.test.ts): TUTTI_DOWNLOAD_URL replaces the releases' address,
 # https://github.com/noesis-sol/tutti/releases. It may be a file:// URL of a folder laid out as GitHub
 # serves a release's files, download/<tag>/<name>, with a file `latest` holding the latest tag. In that
-# mode alone TUTTI_TEST_RELEASE_KEY (a PEM public key) replaces the release keys, TUTTI_TEST_SYSTEM_DIR
-# replaces /usr/local/bin, TUTTI_TEST_LIB_DIR replaces /lib, where the musl loader is looked for,
+# mode alone TUTTI_TEST_RELEASE_KEY (a PEM public key) replaces the release keys, TUTTI_TEST_LIB_DIR
+# replaces /lib, where the musl loader is looked for,
 # TUTTI_TEST_CPUINFO replaces /proc/cpuinfo, where Linux's CPU flags are read, and TUTTI_TEST_OPENSSL
 # (paths, separated by spaces) replaces the openssl commands tried. macOS's sysctl is found on the
 # PATH (then in /usr/sbin), so a test puts a fake one first.
@@ -41,7 +45,7 @@ MCowBQYDK2VwAyEAtoGlzKgru416pWobucm9ICq3LtFfTEFkOaRy0Yx2Je4=
 -----END PUBLIC KEY-----'
 
 releases=https://github.com/noesis-sol/tutti/releases
-system_dir=/usr/local/bin
+script_url=https://github.com/noesis-sol/tutti/releases/latest/download/install.sh
 lib_dir=/lib
 cpuinfo=/proc/cpuinfo
 openssl_candidates='openssl /opt/homebrew/bin/openssl /usr/local/opt/openssl@3/bin/openssl'
@@ -228,23 +232,19 @@ sha256() {
   fi
 }
 
-# install_dir sets dir to the folder to install in, making it where it doesn't exist.
+# install_dir sets dir to the folder to install in, TUTTI_INSTALL_DIR or else ~/.local/bin, making
+# it where it doesn't exist. /usr/local/bin is never the default: Homebrew owns it on many Macs.
 install_dir() {
   if [ -n "${TUTTI_INSTALL_DIR:-}" ]; then
     dir="$TUTTI_INSTALL_DIR"
-    mkdir -p "$dir" 2>/dev/null || fail "cannot make $dir"
-    [ -w "$dir" ] || fail "cannot write in $dir. Where it belongs to root, run the install with sudo:
-curl -fsSL https://raw.githubusercontent.com/noesis-sol/tutti/main/scripts/install.sh | sudo TUTTI_INSTALL_DIR=$dir sh"
-    return
+  elif [ -n "${HOME:-}" ]; then
+    dir="$HOME/.local/bin"
+  else
+    fail "HOME isn't set: set TUTTI_INSTALL_DIR to the folder to install in"
   fi
-  if [ -d "$system_dir" ] && [ -w "$system_dir" ]; then
-    dir="$system_dir"
-    return
-  fi
-  dir="$HOME/.local/bin"
-  mkdir -p "$dir" || fail "cannot make $dir"
-  say "Installing in $dir, as $system_dir isn't writable without sudo. To install there instead:"
-  say "  curl -fsSL https://raw.githubusercontent.com/noesis-sol/tutti/main/scripts/install.sh | sudo TUTTI_INSTALL_DIR=$system_dir sh"
+  mkdir -p "$dir" 2>/dev/null || fail "cannot make $dir"
+  [ -w "$dir" ] || fail "cannot write in $dir. Where it belongs to root, run the install with sudo:
+curl -fsSL $script_url | sudo TUTTI_INSTALL_DIR=$dir sh"
 }
 
 # after says how to put dir on the PATH when it isn't there, or that another tutti comes first.
@@ -284,7 +284,6 @@ main() {
   if [ -n "${TUTTI_DOWNLOAD_URL:-}" ]; then
     releases="$TUTTI_DOWNLOAD_URL"
     keys="${TUTTI_TEST_RELEASE_KEY:-$keys}"
-    system_dir="${TUTTI_TEST_SYSTEM_DIR:-$system_dir}"
     lib_dir="${TUTTI_TEST_LIB_DIR:-$lib_dir}"
     cpuinfo="${TUTTI_TEST_CPUINFO:-$cpuinfo}"
     openssl_candidates="${TUTTI_TEST_OPENSSL:-$openssl_candidates}"

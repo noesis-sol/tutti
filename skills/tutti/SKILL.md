@@ -6,7 +6,7 @@ description: Run and look after tutti, which works through a Beads backlog with 
 <!--
 Install: copy this folder to ~/.claude/skills/tutti/ (every project) or to .claude/skills/tutti/ in
 one project, then ask the agent to "run tutti". tutti itself installs with
-curl -fsSL https://raw.githubusercontent.com/noesis-sol/tutti/main/scripts/install.sh | sh
+curl -fsSL https://github.com/noesis-sol/tutti/releases/latest/download/install.sh | sh
 (or bunx @noesis-sol/tutti, for development and agents). This is orchestra v0.7.7's orchestra
 skill, rewritten for tutti.
 -->

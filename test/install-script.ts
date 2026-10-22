@@ -8,6 +8,7 @@ import { expect } from "bun:test"
 import { generateKeyPairSync, type KeyObject } from "node:crypto"
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -158,8 +159,8 @@ export type Install = {
 export type Ran = {
   readonly code: number | null
   readonly out: string
-  /** The folder in place of /usr/local/bin, and the HOME. */
-  readonly system: string
+  /** The folder it installs in by default, ~/.local/bin, and the HOME. */
+  readonly dir: string
   readonly home: string
 }
 
@@ -177,7 +178,6 @@ export const temp = (name: string) => mkdtempSync(join(tmpdir(), `tutti-install-
 
 /** Runs the script piped into the shell, `curl … | sh`, and what it printed, stdout and stderr. */
 export const install = (options: Install): Ran => {
-  const system = temp("system")
   const home = temp("home")
   const lib = temp("lib")
   for (const loader of options.loaders ?? []) writeFileSync(join(lib, loader), "")
@@ -201,7 +201,6 @@ export const install = (options: Install): Ran => {
     FAKE_TRANSLATED: options.sysctl?.translated ?? "",
     TUTTI_DOWNLOAD_URL: options.releases,
     TUTTI_TEST_RELEASE_KEY: options.key,
-    TUTTI_TEST_SYSTEM_DIR: system,
     TUTTI_TEST_LIB_DIR: lib,
     // The host's own /proc/cpuinfo where uname isn't faked.
     ...(options.uname === undefined ? {} : { TUTTI_TEST_CPUINFO: cpuinfo }),
@@ -216,13 +215,17 @@ export const install = (options: Install): Ran => {
   return {
     code: proc.exitCode,
     out: proc.stdout.toString() + proc.stderr.toString(),
-    system,
+    dir: join(home, ".local/bin"),
     home,
   }
 }
 
-/** What dir/tutti is: the archive it came from and what --version prints; undefined when none. */
+/**
+ * What dir/tutti is: the archive it came from and what --version prints; undefined when none, or no
+ * such folder.
+ */
 export const installed = (dir: string) => {
+  if (!existsSync(dir)) return undefined
   const names = readdirSync(dir)
   if (names.length === 0) return undefined
   // Nothing else is left behind, such as a temporary copy.

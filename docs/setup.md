@@ -6,17 +6,21 @@ settings and your own config. Back to the [README](../README.md).
 ## Installing
 
 ```
-curl -fsSL https://raw.githubusercontent.com/noesis-sol/tutti/main/scripts/install.sh | sh
+curl -fsSL https://github.com/noesis-sol/tutti/releases/latest/download/install.sh | sh
 ```
 
 [The install script](../scripts/install.sh) installs the latest release: one binary with its own
 Claude Code embedded, for macOS or Linux, arm64 or x64. It needs `curl` or `wget`, and `tar`.
 
-- **Where.** In `/usr/local/bin` where it can write there, else in `~/.local/bin`. It never calls
+- **Where.** In `~/.local/bin`, made where it doesn't exist, or the folder `TUTTI_INSTALL_DIR`
+  names. Never `/usr/local/bin` unless you name it: Homebrew owns it on many Macs. It never calls
   `sudo`; to install where only root can write:
-  `curl -fsSL https://raw.githubusercontent.com/noesis-sol/tutti/main/scripts/install.sh | sudo TUTTI_INSTALL_DIR=/usr/local/bin sh`.
+  `curl -fsSL https://github.com/noesis-sol/tutti/releases/latest/download/install.sh | sudo TUTTI_INSTALL_DIR=/usr/local/bin sh`.
   It says so when the folder isn't on your `PATH`, with the line that adds it for your shell, or
   when another `tutti` comes before it there.
+- **Which script.** Each release carries the install script it was made with, so the address
+  above runs the latest release's script, not the one on `main`; a release's own is at
+  `https://github.com/noesis-sol/tutti/releases/download/<tag>/install.sh`.
 - **What it checks.** It downloads the release's `checksums.txt` and its signature,
   `checksums.txt.sig`, and verifies the signature with the release key built into the script, where
   an OpenSSL 3 is installed. macOS's own `openssl` is LibreSSL, which can't verify the signature:
@@ -36,7 +40,7 @@ Claude Code embedded, for macOS or Linux, arm64 or x64. It needs `curl` or `wget
 | Variable | |
 |---|---|
 | `TUTTI_VERSION` | the release to install, such as `v0.9.0`; the latest when unset |
-| `TUTTI_INSTALL_DIR` | the folder to install in |
+| `TUTTI_INSTALL_DIR` | the folder to install in, made where it doesn't exist; `~/.local/bin` when unset |
 | `TUTTI_LIBC` | `musl` or `glibc`: the Linux build to install, whatever the system says |
 
 The releases are archives on GitHub Releases, `tutti_<version>_<os>_<arch>.tar.gz` for `darwin` or

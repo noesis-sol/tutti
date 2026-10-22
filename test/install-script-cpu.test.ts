@@ -36,7 +36,7 @@ describe("scripts/install.sh's CPU checks", () => {
   const installs = (options: Omit<Install, "releases" | "key">, archive: string) => {
     const ran = install({ releases, key: publicPem(key), ...options })
     expect(ran.code, ran.out).toBe(0)
-    expect(installed(ran.system)?.archive).toBe(archive)
+    expect(installed(ran.dir)?.archive).toBe(archive)
     return ran.out
   }
 
@@ -47,7 +47,7 @@ describe("scripts/install.sh's CPU checks", () => {
     expect(ran.out).toContain(noAvx2)
     expect(ran.out).not.toContain("cannot download")
     expect(ran.out).not.toContain("Installing tutti")
-    expect(installed(ran.system)).toBeUndefined()
+    expect(installed(ran.dir)).toBeUndefined()
   }
 
   describe("on x64 Linux, reads /proc/cpuinfo's flags", () => {
@@ -105,7 +105,7 @@ describe("scripts/install.sh's CPU checks", () => {
           expect(ran.out).toMatch(
             /Couldn't tell from \S+cpuinfo whether this CPU has AVX2, which tutti and Claude Code need on x64; installing all the same\./,
           )
-          expect(installed(ran.system)?.archive).toBe("tutti_0.2.0_linux_x64.tar.gz")
+          expect(installed(ran.dir)?.archive).toBe("tutti_0.2.0_linux_x64.tar.gz")
         },
         timeout,
       )
