@@ -904,7 +904,7 @@ export const prepare = (
         checked = result
         continue
       }
-      if (pass === maxPasses) return yield* keptChanging(ticket, `${base} kept changing`)
+      if (pass >= maxPasses) return yield* keptChanging(ticket, `${base} kept changing`)
       const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto, waived, taken())
       if (rebased === false) return { _tag: "Over" } satisfies Prepared
       if (typeof rebased === "string") {
