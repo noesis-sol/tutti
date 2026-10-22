@@ -274,7 +274,7 @@ describe("the answer form takes clicks", () => {
       <Root
         value={{
           view: external(viewOf([asked])),
-          screen: external<Screen>(Screen.Worker({ worker: 1 })),
+          screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
           commands,
           appearance: external<Appearance>("dark"),
           themeOf,
