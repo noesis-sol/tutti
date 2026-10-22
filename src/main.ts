@@ -28,7 +28,7 @@ import { Attention } from "./agent/Attention.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
 import { AppConfig } from "./cli/AppConfig.ts"
-import { mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
+import { checkoutOf, mainCheckout, planServices, tuttiWith } from "./cli/commands.ts"
 import type { RunFlags } from "./cli/flags.ts"
 import { releaseBuild, tuttiVersion } from "./cli/version.ts"
 import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts"
@@ -600,11 +600,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
     ),
   )
 
-/** tutti's commands, each finding the main checkout from the folder it was started in. */
+/**
+ * tutti's commands, each finding the main checkout from the folder it was started in; `tutti
+ * requires` works in that folder's own checkout.
+ */
 export const tutti = tuttiWith(
   Effect.suspend(() => mainCheckout(process.cwd())),
   planServices,
   (flags) => runFrom(process.cwd(), flags),
+  Effect.suspend(() => checkoutOf(process.cwd())),
 )
 
 /**

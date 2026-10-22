@@ -1457,7 +1457,7 @@ Carried over too, and not part of any scheme:
 | `tutti answer [<request-id> <answer> …] [--json]` | lists or answers open attention requests (§4.5, D20) |
 | `tutti login` | runs the embedded Claude Code's `auth login`, the claude.ai login (§4.13) |
 | `tutti colours [<name>]` | previews and checks a colour scheme, the one in use by default (§7.11) |
-| `tutti requires [--no-install] [--markdown\|--readme]` | checks the project's requires list (§8.4) as a run's start does, installing what it can, each entry's state a line, exit 2 for one missing, as `orchestra requires`; `--markdown` prints the README's section on what to install generated from the list, `--readme` writes it into `README.md` |
+| `tutti requires [--no-install] [--markdown\|--readme]` | checks the project's requires list (§8.4) as a run's start does, installing what it can, each entry's state a line, exit 2 for one missing, as `orchestra requires`; `--markdown` prints the README's section on what to install generated from the list, `--readme` writes it into `README.md`. It reads and writes the checkout it is started in (`git rev-parse --show-toplevel`), a ticket's worktree its own, as orchestra's does, where the other subcommands find the main checkout: a worker that changes the list in its worktree checks that list and writes that README, on its branch |
 | `tutti update [--check] [--force]` | updates the binary from the latest signed release (§12) |
 | `tutti --version` | the version; a build from a clone ends with its commit's 12-character hash, plus `+dirty` |
 

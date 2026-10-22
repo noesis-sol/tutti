@@ -295,6 +295,8 @@ export class Git extends Context.Service<
     revParse(dir: string, rev: string): Effect.Effect<string, GitError>
     /** git rev-parse --git-common-dir: the absolute path of the git folder every worktree shares. */
     commonDir(dir: string): Effect.Effect<string, GitError>
+    /** git rev-parse --show-toplevel: the top of the checkout dir is in, a linked worktree's own. */
+    topLevel(dir: string): Effect.Effect<string, GitError>
     /** The branch checked out in dir; none on a detached HEAD. */
     currentBranch(dir: string): Effect.Effect<Option.Option<string>, GitError>
   }
@@ -622,6 +624,11 @@ export class Git extends Context.Service<
                 "--path-format=absolute",
                 "--git-common-dir",
               ]),
+              (out) => out.trim(),
+            ),
+          topLevel: (dir) =>
+            Effect.map(
+              read("rev-parse --show-toplevel", dir, ["rev-parse", "--show-toplevel"]),
               (out) => out.trim(),
             ),
           currentBranch: (dir) =>

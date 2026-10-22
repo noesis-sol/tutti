@@ -35,7 +35,7 @@ export const requiresExits =
   "Exit codes: 0 every requirement met, 2 one missing or the list refused, 130 Ctrl+C."
 
 /**
- * `tutti requires` in the main checkout `top`, as `flags` say: its exit code, having said what it
+ * `tutti requires` in the checkout `top` (the one it is started in, a worktree's own), as `flags` say: its exit code, having said what it
  * found through `say`. Ctrl+C (and SIGTERM, SIGHUP) stops the check, 130.
  */
 export const requires = (top: string, flags: RequiresFlags, say: Say) =>

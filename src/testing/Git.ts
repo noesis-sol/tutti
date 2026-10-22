@@ -1007,6 +1007,14 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             ["rev-parse", "--path-format=absolute", "--git-common-dir"],
             (refuse) => Effect.map(inRepo(refuse, dir), () => posix.join(main, ".git")),
           ),
+        topLevel: (dir) =>
+          operation(
+            "read",
+            "rev-parse --show-toplevel",
+            dir,
+            ["rev-parse", "--show-toplevel"],
+            (refuse) => Effect.map(inRepo(refuse, dir), (checkout) => checkout.path),
+          ),
         currentBranch: (dir) =>
           operation(
             "read",

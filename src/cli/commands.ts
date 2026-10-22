@@ -1,6 +1,8 @@
 // tutti's commands (§ 8.1): `tutti` takes the run flags (§ 8.2), and its subcommands are in the
 // table below. Each subcommand finds the project's main checkout from wherever it is started, a
-// ticket's worktree included, since that is where an agent answering a request runs.
+// ticket's worktree included, since that is where an agent answering a request runs; but `tutti
+// requires`, which reads and writes the checkout it is started in, so that a worker changing the
+// list in its worktree checks its own list and writes its own README.
 import { Console, Effect, Layer, Option, Result, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
@@ -79,6 +81,21 @@ export const mainCheckout = (dir: string) =>
         : error._tag === "GitFailed"
           ? `${dir} isn't in a git repository: ${error.stderr.trim()}`
           : `git took too long to list ${dir}'s worktrees`,
+    ),
+    Effect.provide(Git.layer()),
+    Effect.provide(GitWriter.layer),
+  )
+
+/** The checkout `dir` is in, a linked worktree's own folder: git rev-parse --show-toplevel. */
+export const checkoutOf = (dir: string) =>
+  Effect.gen(function* () {
+    const git = yield* Git
+    return yield* git.topLevel(dir)
+  }).pipe(
+    Effect.mapError((error) =>
+      error._tag === "GitFailed"
+        ? `${dir} isn't in a git checkout: ${error.stderr.trim()}`
+        : `git took too long to find the top of ${dir}'s checkout`,
     ),
     Effect.provide(Git.layer()),
     Effect.provide(GitWriter.layer),
@@ -277,7 +294,7 @@ export const coloursCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
     ),
   )
 
-/** `tutti requires`, in the main checkout `repo` finds. */
+/** `tutti requires`, in the checkout `repo` finds: the one it is started in, a worktree included. */
 export const requiresCommand = <E extends { readonly message: string } | string, R>(
   repo: Effect.Effect<string, E, R>,
 ) =>
@@ -319,7 +336,7 @@ export const requiresCommand = <E extends { readonly message: string } | string,
       }),
   ).pipe(
     Command.withDescription(
-      `check what this machine must have for the project, the requires list in .tutti/settings.json, as each run does before its first ticket: run each entry's check, and for one that fails, its install, then check again. It prints each entry's state; what is still missing says its manual step, or why its install failed and where its output is. --markdown and --readme give the list as the README's section on what to install instead, for people to read. ${requiresExits}`,
+      `check what this machine must have for the project, the requires list in .tutti/settings.json of the checkout it is started in (a worktree's own), as each run does before its first ticket: run each entry's check, and for one that fails, its install, then check again. It prints each entry's state; what is still missing says its manual step, or why its install failed and where its output is. --markdown and --readme give the list as the README's section on what to install instead, for people to read. ${requiresExits}`,
     ),
   )
 
@@ -755,13 +772,15 @@ export const initCommand = Command.make("init", initFlags, (given) =>
 
 /**
  * tutti and its subcommands, the main checkout found with `repo`; `tutti plan` reads it with
- * `services`. A bare `tutti` is `run` with its flags (src/main.ts gives it the run); without one, it
- * prints the version.
+ * `services`, and `tutti requires` works in the checkout `here` finds, the one it is started in
+ * (`repo` without it). A bare `tutti` is `run` with its flags (src/main.ts gives it the run);
+ * without one, it prints the version.
  */
 export const tuttiWith = <E extends { readonly message: string } | string, R, S, R2 = never>(
   repo: Effect.Effect<string, E, R>,
   services: (repo: string) => Layer.Layer<Beads | Git | RunLock, never, S>,
   run: (flags: RunFlags) => Effect.Effect<void, never, R2> = () => Console.log(pkg.version),
+  here: Effect.Effect<string, E, R> = repo,
 ) =>
   Command.make("tutti", cliFlags, run).pipe(
     Command.withDescription("runs Claude Code workers on a Beads backlog, one worktree per ticket"),
@@ -771,7 +790,7 @@ export const tuttiWith = <E extends { readonly message: string } | string, R, S,
       planCommand(repo, services),
       loginCommand(repo),
       coloursCommand(repo),
-      requiresCommand(repo),
+      requiresCommand(here),
       updateCommand,
     ]),
   )
