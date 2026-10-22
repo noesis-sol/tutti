@@ -85,6 +85,7 @@ const mapped: Readonly<Record<string, ReadonlyArray<string>>> = {
   ticket_limit: ["workers", "ticket_limit"],
   mcp_servers: ["workers", "mcp_servers"],
   worker_effort: ["workers", "effort"],
+  worker_permission_mode: ["workers", "permission_mode"],
   organ_effort: ["organs", "effort"],
   exclude_types: ["queue", "exclude_types"],
   footprint: ["queue", "footprint"],
@@ -105,6 +106,12 @@ const oldNames: Readonly<Record<string, string>> = {
 const unplaced: Readonly<Record<string, string>> = {
   terminal: "tutti has no terminals; its workers run inside it",
   templates: "the versions of orchestra's templates; tutti records those of its own",
+  usage_limit_wait:
+    "tutti takes it for each run, as --usage-limit-wait (6h by default), not from its settings",
+  overnight_free_disk_gb: "tutti has no overnight runs yet, whose pre-flight checks the free disk",
+  spec_timeout: "tutti has no spec runs yet, whose breakdown it limits",
+  spec_effort: "tutti has no spec runs yet, whose breakdown's effort it sets",
+  questions: "tutti has no answer talk yet for it to say how to open",
 }
 
 const environmentHoldKeys = ["count", "window", "probe"]
@@ -120,9 +127,15 @@ const own = <T>(record: Readonly<Record<string, T>>, key: string): T | undefined
 const unset = (key: string, value: unknown): boolean =>
   value === null || value === "" || (key === "concurrent" && value === 0)
 
-/** The value tutti's key takes for orchestra's: its ticket limit "0" is no limit, tutti's null. */
-const converted = (key: string, value: unknown): unknown =>
-  key === "ticket_limit" && value === "0" ? null : value
+/**
+ * The value tutti's key takes for orchestra's: its ticket limit "0" is no limit, tutti's null, and
+ * its permission mode "manual" is Claude Code's new name for "default", the one tutti takes.
+ */
+const converted = (key: string, value: unknown): unknown => {
+  if (key === "ticket_limit" && value === "0") return null
+  if (key === "worker_permission_mode" && value === "manual") return "default"
+  return value
+}
 
 /** Why `fragment` doesn't decode as tutti's settings, or null when it does. */
 const problemWith = (fragment: Json): string | null => {
