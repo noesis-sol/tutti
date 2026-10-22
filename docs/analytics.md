@@ -59,7 +59,7 @@ for another).
 ## Runs
 
 Each run: when it started, how long it went, the tickets it merged, closed with no change, set aside,
-left waiting on you and stopped, its exit code (none while it goes, or when it was killed) and what
+left waiting on you, stopped and left back in the queue, its exit code (none while it goes, or when it was killed) and what
 its workers and organs cost.
 
 ```sql
@@ -78,6 +78,7 @@ SELECT r.run, r.started, round(date_diff('second', r.started, r.last) / 60, 1) A
   count(e.ticket) FILTER (e.outcome = 'set_aside') AS set_aside,
   count(e.ticket) FILTER (e.outcome = 'needs_you') AS needs_you,
   count(e.ticket) FILTER (e.outcome = 'stopped') AS stopped,
+  count(e.ticket) FILTER (e.outcome = 'queued') AS queued,
   r.code, round(r.cost_usd, 2) AS cost_usd
 FROM runs r LEFT JOIN ends e USING (run)
 GROUP BY ALL ORDER BY r.started;

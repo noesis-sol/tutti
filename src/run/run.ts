@@ -909,6 +909,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           yield* Effect.ignore(store.suspend(entry.ticket, why, "Stopped"))
           saved.push(entry.ticket)
         }
+        yield* ledger.endQueued
         yield* saveAsked
         yield* saveLeft
         const stop = stopFor("INTERRUPTED", atOnceText(request.how, saved, merging))
@@ -1341,6 +1342,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       const handed = phase._tag === "Resolving" || phase._tag === "Fixing"
       if (handed && !unsent.some(([each]) => each === ticket)) handedBack.push(ticket)
     }
+    // The tickets left in the queue, waiting for a merge, a probe or a slot, end their part too.
+    yield* ledger.endQueued
     for (const each of suspended) yield* host.close(each.ticket)
     if (quit !== null) yield* Effect.forEach(yield* openWorkers, host.close, { discard: true })
     // One whose worker never began has no session to resume: bd ready gives it to the next run.

@@ -26,6 +26,7 @@ import type {
   endingPhases,
   Phases,
   phaseSeconds,
+  queuePhases,
   TokensByModel,
   ticketOutcomes,
 } from "./events.ts"
@@ -131,6 +132,8 @@ const countsIn: { readonly [P in PhaseTag]?: PhaseSeconds } = {
 
 type EndingPhase = (typeof endingPhases)[number]
 
+type QueuePhase = (typeof queuePhases)[number]
+
 /** How a ticket's part in the run ended, by the phase it ended in. */
 const outcomeOf = (phase: TicketPhase): (typeof ticketOutcomes)[number] | undefined => {
   switch (phase._tag) {
@@ -144,6 +147,10 @@ const outcomeOf = (phase: TicketPhase): (typeof ticketOutcomes)[number] | undefi
       return "needs_you"
     case "Stopped":
       return "stopped"
+    case "Waiting":
+    case "Queued":
+    case "HeldBack":
+      return "queued"
   }
   return undefined
 }
@@ -157,6 +164,9 @@ const endsPart: ReadonlySet<PhaseTag> = new Set<EndingPhase>([
   "Blocked",
   "Stopped",
 ])
+
+/** The phases in the queue: a ticket the run took up and left in one gets its ticket_end at the end. */
+const inQueue: ReadonlySet<PhaseTag> = new Set<QueuePhase>(["Waiting", "Queued", "HeldBack"])
 
 /** The causes that bring a ticket carried over from an earlier run into this one. */
 const carriedIn: ReadonlySet<Cause["_tag"]> = new Set(["Resumed", "StillAsked", "Unmerged"])
@@ -206,7 +216,13 @@ export const ending = (
   if (outcome === undefined) return beside
   const fields = spentFields(entry, spent)
   const why =
-    phase._tag === "Asked" ? phase.question : "why" in phase ? (phase.why as string) : undefined
+    phase._tag === "Asked"
+      ? phase.question
+      : phase._tag === "Waiting"
+        ? phase.for
+        : "why" in phase
+          ? (phase.why as string)
+          : undefined
   const ends = (event: Event) =>
     event.kind === "closed" ||
     event.kind === "deferred" ||
@@ -221,7 +237,7 @@ export const ending = (
       kind: "ticket_end",
       ticket: entry.ticket,
       outcome,
-      phase: phase._tag as EndingPhase,
+      phase: phase._tag as EndingPhase | QueuePhase,
       ...(why === undefined ? {} : { why }),
       seconds: tenths(now - (entry.account?.took ?? now)),
       turns: spent.turns,
@@ -474,6 +490,11 @@ export class Ledger extends Context.Service<
     goneResumed(ticket: string): Effect.Effect<boolean>
     /** Adds `by` (1 by default) to one of `ticket`'s tallies; a ticket not in the run has none. */
     count(ticket: string, tally: TallyName, by?: number): Effect.Effect<void>
+    /**
+     * Writes the ticket_end of each ticket the run took up that is back in the queue as it ends
+     * (Waiting, Queued, HeldBack): no RunEnded moves it, and its workers spent what they spent.
+     */
+    readonly endQueued: Effect.Effect<void>
     /** Begins the wind-down, noting the tickets running now; nothing when it has begun. */
     readonly windDown: Effect.Effect<void>
     /** Ends the wind-down: the run takes tickets again. */
@@ -633,6 +654,22 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
     const goneResumedOf: Ledger["Service"]["goneResumed"] = (ticket) =>
       Effect.map(Ref.get(goneResumed), (resumed) => resumed.has(ticket))
 
+    const endQueued = SubscriptionRef.modifyEffect(ref, (state) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis
+        for (const entry of state.tickets.values()) {
+          if (!inQueue.has(entry.phase._tag) || entry.account?.took == null) continue
+          const spent = Option.isSome(spending)
+            ? yield* spending.value.ofTicket(entry.ticket)
+            : nothingSpent
+          yield* Effect.forEach(ending(entry, entry.phase, now, spent, []), events.emit, {
+            discard: true,
+          })
+        }
+        return [undefined, state] as const
+      }),
+    )
+
     const windDown = SubscriptionRef.updateEffect(ref, (state) =>
       state.windDown !== null
         ? Effect.succeed(state)
@@ -660,6 +697,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       claimGoneResume,
       goneResumed: goneResumedOf,
       count,
+      endQueued,
       windDown,
       windUp,
       current: SubscriptionRef.get(ref),

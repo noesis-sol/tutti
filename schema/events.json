@@ -1641,7 +1641,8 @@
             "no_change",
             "set_aside",
             "needs_you",
-            "stopped"
+            "stopped",
+            "queued"
           ]
         },
         "phase": {
@@ -1652,7 +1653,10 @@
             "Deferred",
             "Review",
             "Blocked",
-            "Stopped"
+            "Stopped",
+            "Waiting",
+            "Queued",
+            "HeldBack"
           ]
         },
         "why": {

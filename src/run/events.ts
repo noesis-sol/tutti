@@ -339,11 +339,24 @@ export const Organ = Schema.Struct({
   session: optional(Schema.String),
 })
 
-/** How a ticket's part in the run ended. */
-export const ticketOutcomes = ["merged", "no_change", "set_aside", "needs_you", "stopped"] as const
+/**
+ * How a ticket's part in the run ended; `queued`: the run ended with it back in the queue, waiting
+ * for a merge, a probe or a slot, after the run took it up.
+ */
+export const ticketOutcomes = [
+  "merged",
+  "no_change",
+  "set_aside",
+  "needs_you",
+  "stopped",
+  "queued",
+] as const
 
 /** The phases that end a ticket's part in the run, for now or for good. */
 export const endingPhases = ["Done", "Asked", "Deferred", "Review", "Blocked", "Stopped"] as const
+
+/** The phases in the queue, that a ticket the run took up may be left in as the run ends. */
+export const queuePhases = ["Waiting", "Queued", "HeldBack"] as const
 
 /**
  * A ticket's part in the run ended, or ended again after it came back: the totals since the run
@@ -353,9 +366,15 @@ export const TicketEnd = Schema.Struct({
   ...head("ticket_end"),
   ticket: Schema.String,
   outcome: Schema.Literals(ticketOutcomes),
-  /** The phase it ended in: `Done`, `Deferred`, `Review`, `Asked`, `Blocked` or `Stopped`. */
-  phase: Schema.Literals(endingPhases),
-  /** Why, where its phase says: `CHECKS_FAILED`, the question's ID, `PAUSED`, … */
+  /**
+   * The phase it ended in: `Done`, `Deferred`, `Review`, `Asked`, `Blocked` or `Stopped`; or, as
+   * the run ended, `Waiting`, `Queued` or `HeldBack`.
+   */
+  phase: Schema.Literals([...endingPhases, ...queuePhases]),
+  /**
+   * Why, where its phase says: `CHECKS_FAILED`, the question's ID, `PAUSED`, what a Waiting
+   * ticket waits for, …
+   */
   why: optional(Schema.String),
   /** From when the run first took it up to now. */
   seconds: Seconds,
