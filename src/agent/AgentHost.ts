@@ -307,9 +307,10 @@ export interface Workers {
   /**
    * The ticket's worker, made if the host doesn't know it, its state back at Starting for its new
    * session `session`, whose events alone it folds from now on. Its open attention requests are
-   * counted into its state from then on.
+   * counted into its state from then on. A `resumed` session's totals are seeded into Spending, when
+   * there is one, from its last result in the ticket's transcript; a new session has none there.
    */
-  readonly open: (ticket: string, session: string) => Effect.Effect<WorkerEntry>
+  readonly open: (ticket: string, session: string, resumed: boolean) => Effect.Effect<WorkerEntry>
   readonly get: (ticket: string) => Effect.Effect<WorkerEntry, AgentGone>
   /**
    * Folds `event` into the worker's state, at the clock's time, unless it is of an earlier session
@@ -474,9 +475,9 @@ export const makeWorkers = (
         }
       })
 
-    const open = (ticket: string, session: string) =>
+    const open = (ticket: string, session: string, resumed: boolean) =>
       Effect.gen(function* () {
-        yield* seedSpending(ticket, session)
+        if (resumed) yield* seedSpending(ticket, session)
         const found = known.get(ticket)
         if (found === undefined) {
           const entry = yield* make(ticket, session)

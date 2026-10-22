@@ -389,7 +389,7 @@ export const layer = (
               reason: "the script has no more sessions",
             })
           }
-          const entry = yield* workers.open(ticket, session.sessionId)
+          const entry = yield* workers.open(ticket, session.sessionId, sentAs._tag === "Resumed")
           const first = steps[0]
           if (first?._tag === "FailStart") {
             yield* workers.fold(

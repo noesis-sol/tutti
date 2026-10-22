@@ -550,7 +550,7 @@ export const layer = (
             })
           }
           const sessionId = session.sessionId
-          const entry = yield* workers.open(ticket, sessionId)
+          const entry = yield* workers.open(ticket, sessionId, how._tag === "Resume")
           const callbacks = yield* Effect.provideContext(
             workerCallbacks(ticket, {
               activity: (input) =>
