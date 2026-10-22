@@ -31,6 +31,7 @@ const Markdown = ({
       content={text}
       syntaxStyle={looks.markdown}
       renderNode={looks.blocks}
+      {...looks.highlighter}
       conceal
       streaming={live}
     />

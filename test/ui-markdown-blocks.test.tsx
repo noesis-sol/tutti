@@ -26,6 +26,7 @@ const Markdown = ({
       content={text}
       syntaxStyle={looks.markdown}
       renderNode={looks.blocks}
+      {...looks.highlighter}
       conceal
       streaming={streaming}
     />
@@ -72,7 +73,10 @@ const render = (
   width: number,
   body: (r: Rendered) => Promise<void>,
   streaming = false,
-) => withRender(<Markdown content={content} streaming={streaming} />, { width, height: 16 }, body)
+) =>
+  withRender(<Markdown content={content} streaming={streaming} />, { width, height: 16 }, body, {
+    treeSitter: "real",
+  })
 
 describe("Markdown quotes and rules", () => {
   test("a quote is drawn behind a faint │ on each of its lines, its words faint italic", async () => {

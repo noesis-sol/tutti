@@ -486,6 +486,8 @@ const scene = async (
     readonly requests?: ReadonlyArray<AttentionRequest>
     readonly size?: { readonly width: number; readonly height: number }
     readonly extra?: Partial<ShellValue>
+    /** The real tree-sitter, for the Markdown's styles (test/render.ts). */
+    readonly treeSitter?: "real"
   } = {},
 ) => {
   clock.reset()
@@ -496,6 +498,7 @@ const scene = async (
     <Root value={shellOf(view, commands, feed.feed, options.extra)} />,
     options.size ?? { width: 80, height: 30 },
     (rendered) => body({ view, commands, rendered, feed }),
+    { treeSitter: options.treeSitter ?? "mock" },
   )
 }
 
@@ -509,14 +512,14 @@ describe("the worker view", () => {
         ────────────────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
-          I'll read the undo module first.
+          I'll read the **undo** module first.
           Read  internal/history/undo.ts                                               ✓
           Edit  internal/history/undo.ts                                           +2 −1
           Bash  scripts/check-fast.sh                                                  ✓
           Bash  bun x nope                                                   Exit code 1
-          Done
-          The undo stack now records edits in groups. See the spec (https://x.test/spec)
-          .
+          ## Done
+          The undo stack now records \`edits\` in groups. See [the spec](https://x.test/
+          spec).
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
           Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
@@ -538,7 +541,7 @@ describe("the worker view", () => {
         ────────────────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
-          I'll read the undo module first.
+          I'll read the **undo** module first.
         ▸ Read  internal/history/undo.ts                                               ✓
             lines 40–42
           Edit  internal/history/undo.ts                                           +2 −1
@@ -552,9 +555,9 @@ describe("the worker view", () => {
           Bash  bun x nope                                                   Exit code 1
             Exit code 1
             error: nope not found
-          Done
-          The undo stack now records edits in groups. See the spec (https://x.test/spec)
-          .
+          ## Done
+          The undo stack now records \`edits\` in groups. See [the spec](https://x.test/
+          spec).
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
           Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
@@ -676,23 +679,27 @@ describe("the worker view", () => {
   })
 
   test("in the theme's roles: tool names emphasis bold, ✓ done, an error needsYou, +N added", async () => {
-    await scene(itemsOf(work), async ({ rendered }) => {
-      const frame = await until(rendered, has("The undo stack now records"))
-      const span = (text: string) => {
-        for (const line of frame.spans.lines) {
-          const found = line.spans.find((each) => each.text.trim() === text)
-          if (found !== undefined) return found
+    await scene(
+      itemsOf(work),
+      async ({ rendered }) => {
+        const frame = await until(rendered, has("The undo stack now records"))
+        const span = (text: string) => {
+          for (const line of frame.spans.lines) {
+            const found = line.spans.find((each) => each.text.trim() === text)
+            if (found !== undefined) return found
+          }
+          throw new Error(`no span ${text}`)
         }
-        throw new Error(`no span ${text}`)
-      }
-      const ints = (role: Parameters<typeof theme.rgba>[0]) => theme.rgba(role, "fg").toInts()
-      expect(span("Edit").fg.toInts()).toEqual(ints("emphasis"))
-      expect(span("+2").fg.toInts()).toEqual(ints("added"))
-      expect(span("−1").fg.toInts()).toEqual(ints("removed"))
-      expect(span("✓").fg.toInts()).toEqual(ints("done"))
-      expect(span("Exit code 1").fg.toInts()).toEqual(ints("needsYou"))
-      expect(span("Done").fg.toInts()).toEqual(ints("heading2"))
-    })
+        const ints = (role: Parameters<typeof theme.rgba>[0]) => theme.rgba(role, "fg").toInts()
+        expect(span("Edit").fg.toInts()).toEqual(ints("emphasis"))
+        expect(span("+2").fg.toInts()).toEqual(ints("added"))
+        expect(span("−1").fg.toInts()).toEqual(ints("removed"))
+        expect(span("✓").fg.toInts()).toEqual(ints("done"))
+        expect(span("Exit code 1").fg.toInts()).toEqual(ints("needsYou"))
+        expect(span("Done").fg.toInts()).toEqual(ints("heading2"))
+      },
+      { treeSitter: "real" },
+    )
   })
 })
 

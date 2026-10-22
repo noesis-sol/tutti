@@ -44,6 +44,7 @@ import {
   type MouseEvent,
   RGBA,
   SyntaxStyle,
+  type TreeSitterClient,
 } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import { createContext, memo, useContext, useEffect, useMemo, useRef } from "react"
@@ -130,9 +131,18 @@ interface Looks {
   /** A command's output, faint; and an error's, `needsYou`. */
   readonly output: SyntaxStyle
   readonly error: SyntaxStyle
+  /** The Markdown's, the output's and the diffs' tree-sitter client, if not OpenTUI's shared one. */
+  readonly highlighter: { readonly treeSitterClient?: TreeSitterClient }
 }
 
 export const LooksContext = createContext<Looks | null>(null)
+
+/**
+ * The tree-sitter client the transcript highlights with: OpenTUI's shared one when undefined. The
+ * UI tests put OpenTUI's MockTreeSitterClient here, to resolve the highlighting when they capture a
+ * frame rather than wait for tree-sitter's (test/render.ts).
+ */
+export const HighlighterContext = createContext<TreeSitterClient | undefined>(undefined)
 
 const useLooks = (): Looks => {
   const looks = useContext(LooksContext)
@@ -182,6 +192,7 @@ const markdownBlocks = (theme: Theme): NonNullable<MarkdownOptions["renderNode"]
 /** The syntax styles of `theme`, made in the renderer's native scene and freed with it. */
 export const useSyntaxStyles = (theme: Theme): Looks => {
   const renderer = useRenderer()
+  const client = useContext(HighlighterContext)
   const looks = useMemo(() => {
     const role = (name: Role) => ({ fg: theme.rgba(name, "fg") })
     // A style with no role of its own is the terminal's text colour: OpenTUI's own is white.
@@ -216,8 +227,9 @@ export const useSyntaxStyles = (theme: Theme): Looks => {
       blocks: markdownBlocks(theme),
       output: make({ default: { ...plain, dim: true } }),
       error: make({ default: role("needsYou") }),
+      highlighter: client === undefined ? {} : { treeSitterClient: client },
     }
-  }, [renderer, theme])
+  }, [renderer, theme, client])
   useEffect(
     () => () => {
       looks.markdown.destroy()
@@ -431,6 +443,7 @@ const Expanded = ({ tool, ...props }: Omit<EntryProps, "entry"> & { readonly too
             addedLineNumberBg={clear}
             removedLineNumberBg={clear}
             syntaxStyle={looks.markdown}
+            {...looks.highlighter}
             wrapMode="char"
             addedSignColor={theme.rgba("added", "fg")}
             removedSignColor={theme.rgba("removed", "fg")}
@@ -452,6 +465,7 @@ const Expanded = ({ tool, ...props }: Omit<EntryProps, "entry"> & { readonly too
             filetype="text"
             wrapMode="char"
             syntaxStyle={expansion.error ? looks.error : looks.output}
+            {...looks.highlighter}
           />
           {shown.more > 0 ? (
             <Line segments={[seg(`… ${shown.more} more lines`, theme.styles.dim)]} />
@@ -494,6 +508,7 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
             content={entry.text}
             syntaxStyle={looks.markdown}
             renderNode={looks.blocks}
+            {...looks.highlighter}
             conceal
             streaming={entry.live}
           />

@@ -221,12 +221,12 @@ const chat = itemsOf([
 describe("the Interview view", () => {
   test("its chrome, the chat, and the composer for your answers", async () => {
     await scene(chat, async ({ rendered }) => {
-      const frame = await until(rendered, has("Should --json replace"))
+      const frame = await until(rendered, has("Should `--json` replace"))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
          ← Back   •  Interview  your turn  1m07s   Add a --json flag to list.
         ────────────────────────────────────────────────────────────────────────────────
-          1. Should --json replace the table, or sit beside it? I'd keep the table as
+          1. Should \`--json\` replace the table, or sit beside it? I'd keep the table as
           default.
         ────────────────────────────────────────────────────────────────────────────────
          > i to answer
@@ -238,7 +238,7 @@ describe("the Interview view", () => {
 
   test("an answer typed in the composer is sent to the session", async () => {
     await scene(chat, async ({ commands, rendered }) => {
-      await until(rendered, has("Should --json replace"))
+      await until(rendered, has("Should `--json` replace"))
       await press(rendered, "i", "Beside it.", "enter")
       expect(taken(commands)).toEqual([
         UiCommand.SendMessage({
@@ -272,7 +272,7 @@ describe("the Interview view", () => {
 
   test("leaving with nothing filed asks first: n stays, y ends the interview", async () => {
     await scene(chat, async ({ commands, rendered }) => {
-      await until(rendered, has("Should --json replace"))
+      await until(rendered, has("Should `--json` replace"))
       await press(rendered, "escape")
       const asked = await until(rendered, has(leaveQuestion))
       expect(asked.chars).toContain(leaveAbout)
@@ -288,7 +288,7 @@ describe("the Interview view", () => {
 
   test("Esc in the composer leaves the composer, not the interview", async () => {
     await scene(chat, async ({ commands, rendered }) => {
-      await until(rendered, has("Should --json replace"))
+      await until(rendered, has("Should `--json` replace"))
       await press(rendered, "i", "escape")
       expect((await rendered.capture()).chars).not.toContain(leaveQuestion)
       expect(taken(commands)).toEqual([])
@@ -297,7 +297,7 @@ describe("the Interview view", () => {
 
   test("a click on ← Back asks too", async () => {
     await scene(chat, async ({ rendered }) => {
-      await until(rendered, has("Should --json replace"))
+      await until(rendered, has("Should `--json` replace"))
       await rendered.input((setup) => setup.mockMouse.click(2, 0))
       expect((await until(rendered, has(leaveQuestion))).chars).toContain(leaveAbout)
     })
@@ -305,7 +305,7 @@ describe("the Interview view", () => {
 
   test("once file_feature filed something, leaving asks nothing", async () => {
     await scene(chat, async ({ commands, filing, rendered }) => {
-      await until(rendered, has("Should --json replace"))
+      await until(rendered, has("Should `--json` replace"))
       filing.set(Filing.Filed({ plan, filed }))
       await press(rendered, "escape")
       expect((await rendered.capture()).chars).not.toContain(leaveQuestion)

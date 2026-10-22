@@ -10,10 +10,11 @@ import {
   type KeyEvent,
   type TimerHandle,
 } from "@opentui/core"
-import { ManualClock, type TestRendererSetup } from "@opentui/core/testing"
+import { ManualClock, MockTreeSitterClient, type TestRendererSetup } from "@opentui/core/testing"
 import { testRender } from "@opentui/react/test-utils"
-import { act, type ReactNode } from "react"
+import { act, createElement, type ReactNode } from "react"
 import { escapeHold } from "../src/ui/keys.ts"
+import { HighlighterContext } from "../src/ui/WorkerView.tsx"
 
 export type Size = { readonly width: number; readonly height: number }
 
@@ -28,7 +29,18 @@ export type Rendered = {
   readonly capture: () => Promise<Frame>
 }
 
-/** How long `capture` waits for text still being highlighted before it fails, in ms. */
+/** How a render highlights its <markdown>, <code> and <diff> text. */
+export type RenderOptions = {
+  /**
+   * `mock`, the default: the transcript's looks carry a MockTreeSitterClient that `capture`
+   * resolves, highlighting nothing, so its Markdown is drawn as written, in the default style.
+   * `real`: OpenTUI's shared tree-sitter, for a test of what the highlighting draws (the Markdown's
+   * styles, its marks concealed), which `capture` waits for.
+   */
+  readonly treeSitter?: "mock" | "real"
+}
+
+/** How long `capture` waits for the real tree-sitter to highlight text before it fails, in ms. */
 const highlightDeadline = 4000
 
 /** The <code> renderables under node still highlighting, as <markdown> draws its blocks with. */
@@ -39,16 +51,24 @@ const highlighting = (node: BaseRenderable): ReadonlyArray<CodeRenderable> => [
 
 /**
  * Waits until the renderer is idle and no text is still being highlighted. A <markdown> block is a
- * <code> renderable that draws nothing until tree-sitter has highlighted it, off the render loop: a
- * loaded machine finishes after the renderer went idle, and the frame lacks the text (tutti-8wh).
+ * <code> renderable that draws nothing until it has been highlighted. The real tree-sitter does so
+ * off the render loop: a loaded machine finishes after the renderer went idle, and the frame lacks
+ * the text (tutti-8wh), so this waits for it, up to `highlightDeadline`. The mock's highlighting
+ * resolves here, at once: a block highlighted again as it resolves (its text changed meanwhile)
+ * asks the mock again, so this resolves until none is left, rather than wait for the blocks.
  */
-const settle = async (setup: TestRendererSetup): Promise<void> => {
+const settle = async (
+  setup: TestRendererSetup,
+  mock: MockTreeSitterClient | undefined,
+): Promise<void> => {
   const deadline = Date.now() + highlightDeadline
   await setup.waitForVisualIdle()
   for (let busy = highlighting(setup.renderer.root); busy.length > 0; ) {
-    const left = deadline - Date.now()
-    if (left <= 0) throw new Error(`text still highlighting ${highlightDeadline} ms on`)
-    await Promise.race([Promise.all(busy.map((code) => code.highlightingDone)), Bun.sleep(left)])
+    if (mock === undefined) {
+      const left = deadline - Date.now()
+      if (left <= 0) throw new Error(`text still highlighting ${highlightDeadline} ms on`)
+      await Promise.race([Promise.all(busy.map((code) => code.highlightingDone)), Bun.sleep(left)])
+    } else mock.resolveAllHighlightOnce()
     await setup.waitForVisualIdle()
     busy = highlighting(setup.renderer.root)
   }
@@ -117,8 +137,12 @@ export const withRender = async <A>(
   node: ReactNode,
   size: Size,
   body: (rendered: Rendered) => Promise<A>,
+  options: RenderOptions = {},
 ): Promise<A> => {
-  const setup = await testRender(node, {
+  const mock = options.treeSitter === "real" ? undefined : new MockTreeSitterClient()
+  const tree =
+    mock === undefined ? node : createElement(HighlighterContext.Provider, { value: mock }, node)
+  const setup = await testRender(tree, {
     width: size.width,
     height: size.height,
     clock: new TestClock(),
@@ -132,7 +156,7 @@ export const withRender = async <A>(
       await setup.flush()
     },
     capture: async () => {
-      await settle(setup)
+      await settle(setup, mock)
       return { chars: setup.captureCharFrame(), spans: setup.captureSpans() }
     },
   }
@@ -147,8 +171,11 @@ export const withRender = async <A>(
 }
 
 /** Renders node at size and returns its first frame. */
-export const renderFrame = (node: ReactNode, size: Size): Promise<Frame> =>
-  withRender(node, size, (rendered) => rendered.capture())
+export const renderFrame = (
+  node: ReactNode,
+  size: Size,
+  options: RenderOptions = {},
+): Promise<Frame> => withRender(node, size, (rendered) => rendered.capture(), options)
 
 /** How long the stdin parser waits before a lone ESC is a key, in ms: OpenTUI's 20 ms. */
 export const parserWait = 20

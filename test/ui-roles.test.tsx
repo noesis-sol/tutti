@@ -313,6 +313,8 @@ interface Scene {
   readonly drag?: readonly [number, number, number, number]
   /** What the frame holds once drawn: text, or a test of it (Markdown is highlighted later). */
   readonly ready: string | ((frame: Frame) => boolean)
+  /** Its Markdown highlighted by the real tree-sitter, for its styles (test/render.ts). */
+  readonly treeSitter?: "real"
   readonly checks: ReadonlyArray<readonly [Where | string, Look]>
 }
 
@@ -450,19 +452,24 @@ const draw = (
     ...(scene.transcripts === undefined ? {} : { transcripts: scene.transcripts }),
   }
   const children = scene.children?.(themeOf(appearance))
-  return withRender(<Root value={value}>{children}</Root>, scene.size, async (rendered) => {
-    if (scene.keys !== undefined) await press(rendered, scene.keys)
-    const drag = scene.drag
-    if (drag !== undefined) await rendered.input((setup) => setup.mockMouse.drag(...drag))
-    const ready = scene.ready
-    const deadline = Date.now() + readyWait
-    for (;;) {
-      const frame = await rendered.capture()
-      const drawn = typeof ready === "string" ? frame.chars.includes(ready) : ready(frame)
-      if (drawn || Date.now() > deadline) return frame
-      await Bun.sleep(20)
-    }
-  })
+  return withRender(
+    <Root value={value}>{children}</Root>,
+    scene.size,
+    async (rendered) => {
+      if (scene.keys !== undefined) await press(rendered, scene.keys)
+      const drag = scene.drag
+      if (drag !== undefined) await rendered.input((setup) => setup.mockMouse.drag(...drag))
+      const ready = scene.ready
+      const deadline = Date.now() + readyWait
+      for (;;) {
+        const frame = await rendered.capture()
+        const drawn = typeof ready === "string" ? frame.chars.includes(ready) : ready(frame)
+        if (drawn || Date.now() > deadline) return frame
+        await Bun.sleep(20)
+      }
+    },
+    { treeSitter: scene.treeSitter ?? "mock" },
+  )
 }
 
 const where = (each: Where | string): Where => (typeof each === "string" ? { text: each } : each)
@@ -919,6 +926,7 @@ const scenes: ReadonlyArray<Scene> = [
     screen: Screen.Worker({ ticket: "t-1" }),
     transcripts: feedOf(transcript),
     ready: highlighted,
+    treeSitter: "real",
     checks: [
       ["← Dashboard", look("emphasis", "bold")],
       [{ text: "t-1", on: "← Dashboard" }, look("live", "bold")],
