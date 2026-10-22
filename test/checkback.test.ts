@@ -276,6 +276,13 @@ describe("a fix accepted", () => {
     // The check ran twice in its worktree: as it failed, and on the fix.
     expect(ran.checkRuns.map((each) => each.cwd)).toEqual([worktreeOf("a"), worktreeOf("a")])
     expect(files.get("fix.txt")).toBe("fixed\n")
+    // Its check records (§ 10): the merge check that failed, then the fix's.
+    expect(
+      ran.events.flatMap((r) => (r.kind === "check" ? [[r.suite, r.result, r.ticket]] : [])),
+    ).toEqual([
+      ["merge", "failed", "a"],
+      ["fix", "passed", "a"],
+    ])
   })
 
   test("after a resolution: Resolving → Fixing{afterResolution} → ToMerge → Done", async () => {

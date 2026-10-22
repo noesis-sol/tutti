@@ -117,10 +117,11 @@ used, so the stream has what orchestra's has of a ticket's time and tokens, and 
   totals: within one session's process each result carries the turns before it too, and a resumed
   session goes on from the totals its transcript saved (the SDK's docs say so, and the contract
   test `test/contract/sdk.test.ts` checks both). So a `turn` record gives the difference from the
-  session's last result in this run: its own share. A total lower than the last means it started
+  session's last result: its own share. A total lower than the last means it started
   again from 0 (a `/clear`), and the turn's share is then the whole; a zeroed result, as a crash
-  gives, counts as nothing. A session carried over from an earlier run has no last result in this
-  one, so its first turn's share includes what it spent before. `num_turns`, `duration_ms` and
+  gives, counts as nothing. A session resumed from an earlier run takes its last result from its
+  ticket's transcript (`.tutti/run/workers/<id>/messages.jsonl`), so its first turn here counts only
+  its own share too. `num_turns`, `duration_ms` and
   `duration_api_ms` are the turn's own.
 - **Tokens**, as orchestra's: by model, `input` neither written to the prompt cache nor read from
   it, `cache_write` written to it, `cache_read` read from it, and `output`, thinking included; each

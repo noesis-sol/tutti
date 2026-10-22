@@ -212,6 +212,13 @@ describe("a failed full check's last 40 lines", () => {
     expect(report).toMatch(
       /\n## Full check\n\n`scripts\/check-full\.sh` did not run: the setup before it, `bun install`, failed; no ticket filed: it is not a suite's failure\. The whole output is in `[^`]+`\. Its end:\n\n```\nresolving\nerror: no left-pad\n```\n/,
     )
+    // The check records (§ 10): the setup in the ticket's worktree, then the full check's.
+    expect(
+      ran.events.flatMap((r) => (r.kind === "check" ? [[r.suite, r.ticket, r.result]] : [])),
+    ).toEqual([
+      ["setup", "t-1", "passed"],
+      ["setup", undefined, "failed"],
+    ])
   })
 
   test("a full check that passed has no end in the log, the reviewer's section or the report", async () => {
@@ -221,6 +228,12 @@ describe("a failed full check's last 40 lines", () => {
     expect(sectionOf(input, "The full check")).toMatch(/^ *FULL_CHECK passed: [^\n]*$/)
     expect(report).toStartWith("# tutti run · ")
     expect(report).not.toContain("## Full check")
+    // The full check's record has no ticket (§ 10).
+    expect(ran.events.filter((r) => r.kind === "check").at(-1)).toMatchObject({
+      suite: "full",
+      result: "passed",
+    })
+    expect(ran.events.filter((r) => r.kind === "check").at(-1)).not.toHaveProperty("ticket")
   })
 })
 

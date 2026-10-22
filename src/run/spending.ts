@@ -61,6 +61,12 @@ interface ResultFields {
   readonly duration_api_ms?: unknown
 }
 
+/** A result's running totals. */
+const totalsOf = (r: ResultFields): Totals => ({
+  costUsd: count(r.total_cost_usd),
+  tokens: tokensOf(r.modelUsage),
+})
+
 /** A result's modelUsage as tokens by model; what isn't a count is 0. */
 export const tokensOf = (modelUsage: unknown): TokensByModel => {
   if (typeof modelUsage !== "object" || modelUsage === null) return {}
@@ -68,10 +74,10 @@ export const tokensOf = (modelUsage: unknown): TokensByModel => {
   for (const [model, usage] of Object.entries(modelUsage)) {
     const u = (typeof usage === "object" && usage !== null ? usage : {}) as UsageFields
     tokens[model] = {
-      input: whole(u["inputTokens"]),
-      output: whole(u["outputTokens"]),
-      cache_write: whole(u["cacheCreationInputTokens"]),
-      cache_read: whole(u["cacheReadInputTokens"]),
+      input: whole(u.inputTokens),
+      output: whole(u.outputTokens),
+      cache_write: whole(u.cacheCreationInputTokens),
+      cache_read: whole(u.cacheReadInputTokens),
     }
   }
   return tokens
@@ -153,6 +159,13 @@ export class Spending extends Context.Service<
      * Any other message is nothing to it.
      */
     message(ticket: string, session: string, message: SDKMessage): Effect.Effect<void>
+    /** Whether the run has seen a result of the session, or was told its totals. */
+    knows(session: string): Effect.Effect<boolean>
+    /**
+     * The session's totals before this run, as `result`, its last result in its transcript, gives
+     * them: its first turn here counts only what it spends over them. A zeroed result is nothing.
+     */
+    seed(session: string, result: SDKMessage): Effect.Effect<void>
     /** What the ticket's workers' turns spent in the run so far. */
     ofTicket(ticket: string): Effect.Effect<Spent>
     /** What every worker's turns spent in the run so far. */
@@ -174,11 +187,8 @@ export class Spending extends Context.Service<
         Effect.gen(function* () {
           if (message.type !== "result") return
           const r = message as unknown as ResultFields
-          const now: Totals = {
-            costUsd: count(r["total_cost_usd"]),
-            tokens: tokensOf(r["modelUsage"]),
-          }
-          const turns = whole(r["num_turns"])
+          const now = totalsOf(r)
+          const turns = whole(r.num_turns)
           const share = yield* Ref.modify(state, (s) => {
             const share = shareOf(s.sessions.get(session), now)
             const sessions = zeroed(now) ? s.sessions : new Map(s.sessions).set(session, now)
@@ -192,18 +202,25 @@ export class Spending extends Context.Service<
             kind: "turn",
             ticket,
             session,
-            subtype: typeof r["subtype"] === "string" ? r["subtype"] : "unknown",
-            ...(r["is_error"] === true ? { is_error: true as const } : {}),
+            subtype: typeof r.subtype === "string" ? r.subtype : "unknown",
+            ...(r.is_error === true ? { is_error: true as const } : {}),
             cost_usd: share.costUsd,
             turns,
-            duration_ms: whole(r["duration_ms"]),
-            api_ms: whole(r["duration_api_ms"]),
+            duration_ms: whole(r.duration_ms),
+            api_ms: whole(r.duration_api_ms),
             ...(Object.keys(share.tokens).length === 0 ? {} : { tokens: share.tokens }),
           })
         })
 
       return Spending.of({
         message,
+        knows: (session) => Effect.map(Ref.get(state), (s) => s.sessions.has(session)),
+        seed: (session, result) =>
+          Ref.update(state, (s) => {
+            if (result.type !== "result" || s.sessions.has(session)) return s
+            const totals = totalsOf(result as unknown as ResultFields)
+            return zeroed(totals) ? s : { ...s, sessions: new Map(s.sessions).set(session, totals) }
+          }),
         ofTicket: (ticket) =>
           Effect.map(Ref.get(state), (s) => s.tickets.get(ticket) ?? nothingSpent),
         total: Effect.map(Ref.get(state), (s) => s.total),

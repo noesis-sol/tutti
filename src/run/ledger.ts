@@ -100,8 +100,8 @@ export interface Entry {
 
 /** A ticket's time and hand-backs in the run. Times are epoch milliseconds. */
 export interface Account {
-  /** When the run first took it up. */
-  readonly took: number
+  /** When the run first took it up (it entered Working, ToMerge, …); null before. */
+  readonly took: number | null
   /** How long it spent in each of orchestra's phases it entered (§ 10), in milliseconds. */
   readonly spentIn: { readonly [P in PhaseSeconds]?: number }
   /** Its hand-backs in the run: for conflicts, and for a failing check. */
@@ -110,9 +110,9 @@ export interface Account {
   readonly carried: boolean
 }
 
-/** The account of a ticket the run takes up at `now`. */
-export const newAccount = (now: number): Account => ({
-  took: now,
+/** The account of a ticket entering the run. */
+export const newAccount = (): Account => ({
+  took: null,
   spentIn: {},
   handBacks: { resolve: 0, fix: 0 },
   carried: false,
@@ -178,7 +178,7 @@ export const spentFields = (
   tokens?: TokensByModel
   cost_usd?: number
 } => {
-  const account = entry.account ?? newAccount(entry.since)
+  const account = entry.account ?? newAccount()
   const phases: Record<string, number> = {}
   for (const [phase, ms] of Object.entries(account.spentIn)) phases[phase] = tenths(ms)
   return {
@@ -369,7 +369,7 @@ const moved = (
 export const accounted = (entry: Entry, phase: TicketPhase, cause: Cause, now: number): Entry => {
   // A ticket entering the run has no account yet: its phase is the one it enters.
   const fresh = entry.account === undefined
-  const account = entry.account ?? newAccount(now)
+  const account = entry.account ?? newAccount()
   const spentIn = { ...account.spentIn }
   const left = countsIn[entry.phase._tag]
   if (left !== undefined && !fresh) {
@@ -381,7 +381,7 @@ export const accounted = (entry: Entry, phase: TicketPhase, cause: Cause, now: n
   return {
     ...entry,
     account: {
-      took: account.took,
+      took: account.took ?? (entered === undefined ? null : now),
       spentIn,
       handBacks: {
         resolve: account.handBacks.resolve + (handedBack && phase._tag === "Resolving" ? 1 : 0),

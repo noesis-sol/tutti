@@ -255,6 +255,9 @@ export interface WorkerEntry {
   readonly calls: Map<string, Readonly<Record<string, unknown>>>
 }
 
+/** How many pages of a transcript are read back for a resumed session's last result. */
+export const spendingPages = 25
+
 /** How many of a worker's last tool calls keep their input, for the denials that name them. */
 export const callsKept = 64
 
@@ -443,8 +446,27 @@ export const makeWorkers = (
         return entry
       })
 
+    // The session's totals as its last result in the ticket's transcript gave them, for Spending,
+    // so the first turn of a session resumed from an earlier run counts only its own share (§ 10).
+    const seedSpending = (ticket: string, session: string) =>
+      Effect.gen(function* () {
+        if (Option.isNone(spending) || (yield* spending.value.knows(session))) return
+        let before: number | undefined
+        for (let pages = 0; pages < spendingPages; pages++) {
+          const items = yield* transcripts.page(ticket, before)
+          const last = items.findLast(
+            (item) => item.session === session && item.message.type === "result",
+          )
+          if (last !== undefined) return yield* spending.value.seed(session, last.message)
+          const first = items[0]
+          if (first === undefined || first.seq <= 1) return
+          before = first.seq
+        }
+      })
+
     const open = (ticket: string, session: string) =>
       Effect.gen(function* () {
+        yield* seedSpending(ticket, session)
         const found = known.get(ticket)
         if (found === undefined) {
           const entry = yield* make(ticket, session)

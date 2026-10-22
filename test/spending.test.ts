@@ -7,13 +7,26 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Effect, Fiber, Layer } from "effect"
+import { Effect, Fiber, Layer, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import fc from "fast-check"
+import { AgentHost } from "../src/agent/AgentHost.ts"
+import { Transcripts } from "../src/agent/Transcripts.ts"
+import { settled } from "../src/agent/WorkerState.ts"
 import { OrganCost } from "../src/organs/OrganCost.ts"
 import { makePrinter } from "../src/print/organLine.ts"
+import { recorded } from "../src/run/check.ts"
 import type { EventRecord } from "../src/run/events.ts"
+import { Ledger } from "../src/run/ledger.ts"
+import { Cause } from "../src/run/phase.ts"
 import { finish, run } from "../src/run/run.ts"
 import { endRecord, nothingSpent, Spending, shareOf, type Totals } from "../src/run/spending.ts"
+import {
+  type CheckError,
+  CheckFailed,
+  CheckNotRun,
+  type CheckResult,
+} from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, tool, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -329,5 +342,199 @@ describe("a whole run", () => {
     const kinds = ran.events.map((r) => r.kind)
     expect(kinds.indexOf("ticket_end")).toBe(kinds.indexOf("closed") + 1)
     expect(ran.events.at(-1)).toMatchObject({ kind: "end", cost_usd: 0.4, tokens })
+  })
+})
+
+/** The ledger over Spending and captured records, under TestClock: `body`'s records. */
+const inLedger = (body: Effect.Effect<void, never, Ledger | Spending>) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      yield* body
+      return (yield* (yield* Captured).records).filter((r) => r.kind !== "phase")
+    }).pipe(
+      Effect.provide(
+        Ledger.layer.pipe(
+          Layer.provideMerge(spendingLayer()),
+          Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer(), TestClock.layer())),
+        ),
+      ),
+    ),
+  )
+
+const endsOf = (records: ReadonlyArray<EventRecord>) =>
+  records.flatMap((r) => (r.kind === "ticket_end" ? [r] : []))
+
+describe("what a ticket spent, on the records that end its part in the run", () => {
+  test("its phases, both kinds of hand-back and its cost, as it merges after each", async () => {
+    const records = await inLedger(
+      Effect.gen(function* () {
+        const ledger = yield* Ledger
+        const move = (cause: Cause, wait = 0) =>
+          Effect.andThen(TestClock.adjust(wait), ledger.transition("t-1", cause, { title: "T" }))
+        yield* move(Cause.Ready())
+        yield* move(Cause.Dispatched(), 1000)
+        yield* (yield* Spending).message("t-1", "s-1", resultMessage(0.5, usage(1, 10)))
+        yield* move(Cause.Verified({ place: 1 }), 60_000)
+        yield* move(Cause.ItsTurn(), 5000)
+        yield* move(Cause.ConflictsHandedBack({ attempt: 1 }), 2000)
+        yield* move(Cause.Verified({ place: 1 }), 3000)
+        yield* move(Cause.ItsTurn())
+        yield* move(Cause.CheckHandedBack({ attempt: 1 }), 2000)
+        yield* move(Cause.Verified({ place: 1 }), 4000)
+        yield* move(Cause.ItsTurn())
+        yield* ledger.transition("t-1", Cause.FastForwarded({ commit: "abc1234" }), {
+          beside: [{ kind: "closed", ticket: "t-1", title: "T", text: "  t-1 closed" }],
+        })
+      }),
+    )
+    const spent = {
+      phases: { working: 60, waiting: 5, merging: 4, resolving: 3, fixing: 4 },
+      hand_backs: { resolve: 1, fix: 1 },
+      tokens: { [model]: { input: 1, output: 10, cache_write: 0, cache_read: 0 } },
+      cost_usd: 0.5,
+    }
+    expect(records.find((r) => r.kind === "closed")).toMatchObject(spent)
+    expect(endsOf(records)).toEqual([
+      expect.objectContaining({
+        ticket: "t-1",
+        outcome: "merged",
+        phase: "Done",
+        seconds: 76,
+        turns: 2,
+        ...spent,
+      }),
+    ])
+  })
+
+  test("each way its part ends: set aside, needs you, stopped, no change; carried over", async () => {
+    const records = await inLedger(
+      Effect.gen(function* () {
+        const ledger = yield* Ledger
+        for (const id of ["a", "b", "c", "d"]) {
+          yield* ledger.transition(id, Cause.Ready(), { title: id })
+          yield* ledger.transition(id, Cause.Dispatched())
+        }
+        yield* ledger.transition("a", Cause.Aside({ why: "CHECKS_FAILED" }), {
+          beside: [{ kind: "warn", ticket: "a", aside: true, detail: "checks failed", text: "x" }],
+        })
+        yield* ledger.transition("b", Cause.FiledQuestion({ question: "q-1" }))
+        yield* ledger.transition("c", Cause.RunEnded({ why: "run ended" }))
+        yield* ledger.transition("d", Cause.NoChange())
+        // Carried over from an earlier run: its worker resumed, then deferred.
+        yield* ledger.transition("e", Cause.Resumed(), { title: "e" })
+        yield* ledger.transition("e", Cause.Defer({ why: "by the worker" }), {
+          beside: [{ kind: "deferred", ticket: "e", title: "e", text: "x" }],
+        })
+      }),
+    )
+    expect(endsOf(records).map((r) => [r.ticket, r.outcome, r.phase, r.why, r.carried])).toEqual([
+      ["a", "set_aside", "Review", "CHECKS_FAILED", undefined],
+      ["b", "needs_you", "Asked", "q-1", undefined],
+      ["c", "stopped", "Stopped", "run ended", undefined],
+      ["d", "no_change", "Done", undefined, undefined],
+      ["e", "set_aside", "Deferred", "by the worker", true],
+    ])
+    expect(records.find((r) => r.kind === "warn")).toMatchObject({
+      phases: { working: 0 },
+      hand_backs: { resolve: 0, fix: 0 },
+    })
+    expect(records.find((r) => r.kind === "deferred")).toMatchObject({ carried: true })
+  })
+})
+
+describe("a check's record", () => {
+  const ran = (check: Effect.Effect<CheckResult, CheckError>, train = false) =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        yield* recorded("fix", "t-1", Effect.andThen(TestClock.adjust(2550), check), { train })
+        return (yield* (yield* Captured).records).map(({ v, time, run, ...rest }) => rest)
+      }).pipe(Effect.provide(Layer.mergeAll(eventsLayer(), TestClock.layer()))),
+    )
+  const said = {
+    failingLines: [],
+    lastLines: [],
+    suites: [],
+    suite: null,
+    flaky: [],
+    flakyCount: 0,
+  }
+
+  test("says how it went, for how long, and where its output is when it didn't pass", async () => {
+    expect(
+      await ran(
+        Effect.succeed({ _tag: "CheckPassed", check: "fast", command: "c", ...said }),
+        true,
+      ),
+    ).toEqual([
+      {
+        kind: "check",
+        suite: "fix",
+        ticket: "t-1",
+        seconds: 2.6,
+        train: true,
+        command: "c",
+        result: "passed",
+      },
+    ])
+    expect(
+      await ran(
+        Effect.fail(
+          new CheckFailed({ check: "fast", command: "c", exitCode: 1, outputFile: "/o", ...said }),
+        ),
+      ),
+    ).toEqual([
+      {
+        kind: "check",
+        suite: "fix",
+        ticket: "t-1",
+        seconds: 2.6,
+        command: "c",
+        result: "failed",
+        output: "/o",
+      },
+    ])
+    expect(
+      await ran(Effect.fail(new CheckNotRun({ check: "fast", command: "c", reason: "no sh" }))),
+    ).toEqual([
+      { kind: "check", suite: "fix", ticket: "t-1", seconds: 2.6, command: "c", result: "not_run" },
+    ])
+  })
+
+  test("a check with no command ran nothing and has none", async () => {
+    expect(await ran(Effect.succeed({ _tag: "NoCheckCommand", check: "fast" }))).toEqual([])
+  })
+})
+
+describe("a session resumed from an earlier run", () => {
+  test("its first turn counts only what it spent over its last result in its transcript", async () => {
+    const ran = await scenario(
+      {
+        backlog: backlog().ticket("t-1").seeds,
+        scripts: {
+          "t-1": [turn([], result("DONE", { total_cost_usd: 1.25, modelUsage: usage(14, 250) }))],
+        },
+      },
+      Effect.gen(function* () {
+        // What the earlier run's transcript holds of the session: two results, the last at $1.
+        const transcripts = yield* Transcripts
+        yield* transcripts.record("t-1", "s-1", resultMessage(0.5, usage(10, 100)))
+        yield* transcripts.record("t-1", "s-1", resultMessage(1, usage(13, 200)))
+        yield* transcripts.record("t-1", "s-0", resultMessage(9, usage(90, 900)))
+        const host = yield* AgentHost
+        yield* host.resume(
+          "t-1",
+          { sessionId: "s-1", cwd: "/w/t-1" },
+          { text: "Carry on.", from: "clientComposed" },
+        )
+        yield* host.state("t-1").pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
+        yield* host.end("t-1")
+        return yield* (yield* Spending).ofTicket("t-1")
+      }),
+    )
+    if (ran.exit._tag !== "Success") throw new Error(`the scenario failed: ${String(ran.exit)}`)
+    expect(turnsOf(ran.events).map((t) => [t.session, t.cost_usd, t.tokens?.[model]])).toEqual([
+      ["s-1", 0.25, { input: 1, output: 50, cache_write: 0, cache_read: 0 }],
+    ])
+    expect(ran.exit.value.costUsd).toBe(0.25)
   })
 })

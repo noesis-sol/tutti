@@ -151,6 +151,13 @@ describe("a ticket set aside as its check failed", () => {
     ])
     // Its check ran twice; b, on top of main, merged unchecked.
     expect(ran.checkRuns.map((run) => run.check)).toEqual(["fast", "fast"])
+    // Its check records (§ 10): the merge check, then the check once more.
+    expect(
+      ran.events.flatMap((r) => (r.kind === "check" ? [[r.ticket, r.suite, r.result]] : [])),
+    ).toEqual([
+      ["a", "merge", "failed"],
+      ["a", "recheck", "passed"],
+    ])
     expect(records(ran, "phase")).toContainEqual(
       expect.objectContaining({ ticket: "a", from: "Review", to: "ToMerge", cause: "Recheck" }),
     )

@@ -198,6 +198,14 @@ describe("the next ticket in line", () => {
     ])
     expectLog(ran, [`  '${check}' passes on the rebased tutti/a`, /^ {2}a closed /, noFurther])
     expect(ran.log.some((text) => text.includes("rebased tutti/b onto main"))).toBe(false)
+    // b's check record says it ran ahead of its turn (§ 10); a's doesn't.
+    const records = ran.events.flatMap((r) => (r.kind === "check" ? [r] : []))
+    expect(records.map((r) => [r.ticket, r.suite, r.train ?? false])).toEqual(
+      expect.arrayContaining([
+        ["a", "merge", false],
+        ["b", "merge", true],
+      ]),
+    )
   })
 
   test("whose own check fails ahead of its turn is put back, rebased and checked in its turn", async () => {
