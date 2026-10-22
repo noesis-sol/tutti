@@ -638,6 +638,7 @@ const runInit = (cwd: string, flags: InitFlags) =>
         write: () => Effect.void,
         writeWith: (_, record) => record,
         lines: Effect.succeed([]),
+        startBlockEnd: Effect.succeed(0),
       }),
     )
     const scout = Effect.gen(function* () {

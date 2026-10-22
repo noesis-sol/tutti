@@ -221,6 +221,47 @@ const attentionTags = [Tag.permission, Tag.question, Tag.allowed, Tag.denied]
 export const attentionLines = (logLines: ReadonlyArray<string>): ReadonlyArray<string> =>
   logLines.filter((each) => attentionTags.some((tag) => each.includes(`  ${tag}: `)))
 
+/**
+ * How much of the log's end the reviewer is given past the START block: so many lines, and no more
+ * than so many characters, so that an overnight run's log leaves room in its context for the rest.
+ */
+export const logCap = { lines: 1500, characters: 150_000 }
+
+/**
+ * The run's log as the reviewer reads it: whole when it fits `cap`, else its first `kept` lines
+ * (those up to the end of the START block), a line saying how many lines were cut, and the last
+ * lines that fit. The attention lines have their own section, uncut by this.
+ */
+export const cappedLog = (
+  logLines: ReadonlyArray<string>,
+  kept: number,
+  cap: { readonly lines: number; readonly characters: number } = logCap,
+): string => {
+  const headEnd = Math.min(Math.max(kept, 0), logLines.length)
+  let tailStart = logLines.length
+  let characters = 0
+  while (tailStart > headEnd && logLines.length - tailStart < cap.lines) {
+    characters += (logLines[tailStart - 1] ?? "").length + 1
+    if (characters > cap.characters) break
+    tailStart -= 1
+  }
+  const cut = tailStart - headEnd
+  if (cut === 0) return logLines.join("\n")
+  const left = logLines.length - tailStart
+  const last =
+    left === 0
+      ? "its last line is too long to give"
+      : left === 1
+        ? "the last line follows"
+        : `the last ${left} follow`
+  const where = headEnd === 0 ? "" : ", after the START block"
+  return [
+    ...logLines.slice(0, headEnd),
+    `[${counted(cut, "line")} of the log cut here${where}; ${last}]`,
+    ...logLines.slice(tailStart),
+  ].join("\n")
+}
+
 /** Whether `entry` is in the reviewer's `section` (phase.ts counting). */
 const inSection =
   (section: ReportSection) =>
@@ -266,7 +307,9 @@ export const gather = (
     const attention = yield* Attention
     const beads = yield* Beads
     const git = yield* Git
-    const logLines = yield* (yield* Log).lines
+    const logs = yield* Log
+    const logLines = yield* logs.lines
+    const startBlockEnd = yield* logs.startBlockEnd
     const entries = [...(yield* (yield* Ledger).current).tickets.values()]
     const now = yield* Clock.currentTimeMillis
 
@@ -338,7 +381,7 @@ export const gather = (
     // summary written from a ticket.
     return [
       section("The run's final line", ending),
-      section("tutti's log for this run", logLines.join("\n")),
+      section("tutti's log for this run", cappedLog(logLines, startBlockEnd)),
       section(`Commits merged into ${run.base} in this run`, commits),
       section(
         "Tickets closed in this run, merged or with no change to merge (ID, title, phase, close reason)",

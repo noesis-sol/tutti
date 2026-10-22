@@ -15,7 +15,6 @@ import {
   Effect,
   FileSystem,
   Layer,
-  Ref,
   Result,
   Semaphore,
 } from "effect"
@@ -376,6 +375,12 @@ export const phaseBug = (p: {
 export const dated = (lines: ReadonlyArray<Line>): Effect.Effect<ReadonlyArray<string>> =>
   Effect.map(Clock.currentTimeMillis, (now) => lines.map((each) => `${stamp(now)} ${each}`))
 
+/** The time a dated line starts with, and the space after it. */
+const stamped = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d\d:\d\d /
+
+/** A dated line without its time: the line as written. */
+export const undated = (dated: string): string => dated.replace(stamped, "")
+
 /** Where else the log's lines go: none, or stdout, for plain mode (§ 7.6). */
 export type Sink = "none" | "stdout"
 
@@ -388,6 +393,27 @@ export const toSink = (sink: Sink, lines: ReadonlyArray<string>): Effect.Effect<
         }),
       )
     : Effect.void
+
+/**
+ * The run's lines as written, dated, kept in memory for the reviewer: appended in place, as a run
+ * of a few hundred tickets writes tens of thousands of lines, with where its START block ends.
+ */
+export const keptLines = () => {
+  const lines: Array<string> = []
+  let startBlockEnd = 0
+  return {
+    /** Keeps `text`, the dated `written`. */
+    add: (written: ReadonlyArray<Line>, text: ReadonlyArray<string>): Effect.Effect<void> =>
+      Effect.sync(() => {
+        for (const each of text) lines.push(each)
+        if (startBlockEnd === 0 && written[0]?.startsWith(`${Tag.start} `) === true) {
+          startBlockEnd = lines.length
+        }
+      }),
+    lines: Effect.sync((): ReadonlyArray<string> => lines.slice()),
+    startBlockEnd: Effect.sync(() => startBlockEnd),
+  }
+}
 
 export class Log extends Context.Service<
   Log,
@@ -402,6 +428,12 @@ export class Log extends Context.Service<
     writeWith(lines: ReadonlyArray<Line>, record: Effect.Effect<void>): Effect.Effect<void>
     /** This run's lines as written, dated, for the reviewer. */
     readonly lines: Effect.Effect<ReadonlyArray<string>>
+    /**
+     * How many of this run's lines lead up to the end of its START block, which the reviewer is
+     * given however long the log: 0 before it is written. Its notes are indented as a ticket's
+     * lines are, so the lines alone can't tell where it ends.
+     */
+    readonly startBlockEnd: Effect.Effect<number>
   }
 >()("tutti/run/Log") {
   /**
@@ -416,7 +448,7 @@ export class Log extends Context.Service<
         const fs = yield* FileSystem.FileSystem
         const file = yield* fs.open(options.file, { flag: "a" })
         const encoder = new TextEncoder()
-        const written = yield* Ref.make<ReadonlyArray<string>>([])
+        const kept = keptLines()
         const one = yield* Semaphore.make(1)
         const append = (lines: ReadonlyArray<Line>) =>
           Effect.gen(function* () {
@@ -424,13 +456,14 @@ export class Log extends Context.Service<
             yield* file
               .writeAll(encoder.encode(text.map((l) => `${l}\n`).join("")))
               .pipe(Effect.ignore)
-            yield* Ref.update(written, (all) => [...all, ...text])
+            yield* kept.add(lines, text)
             yield* toSink(options.sink ?? "none", text)
           })
         return Log.of({
           write: (...lines) => one.withPermit(append(lines)),
           writeWith: (lines, record) => one.withPermit(Effect.andThen(append(lines), record)),
-          lines: Ref.get(written),
+          lines: kept.lines,
+          startBlockEnd: kept.startBlockEnd,
         })
       }),
     )
