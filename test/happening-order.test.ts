@@ -127,7 +127,7 @@ describe("a happening's line and record", () => {
           events.emit({ kind: "info", text: line`one` }),
           Effect.flatMap(logs.lines, (now) =>
             Effect.sync(() => {
-              order.push(...now.map((each) => each.replace(/^\S+ \S+ \S+ /, "")))
+              order.push(...now.map((each) => each.text))
             }),
           ),
         ),

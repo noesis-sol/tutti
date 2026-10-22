@@ -13,6 +13,7 @@ import {
   denied,
   detail,
   elicitation,
+  filed,
   fixing,
   hold,
   type Line,
@@ -32,6 +33,7 @@ import {
   usageLimit,
   usageLimitLifted,
   usageWarning,
+  type Written,
 } from "../src/run/log.ts"
 import { layer as capturedLayer, texts } from "../src/testing/Log.ts"
 
@@ -67,7 +69,7 @@ const live = <A>(
   )
 }
 
-const write = (...lines: ReadonlyArray<Line>) =>
+const write = (...lines: ReadonlyArray<Written>) =>
   Effect.gen(function* () {
     yield* (yield* Log).write(...lines)
   })
@@ -129,7 +131,7 @@ describe("a line's format", () => {
         return yield* log.lines
       }),
     )
-    expect(lines).toEqual([`${dated} one`, `${stamp(at + 61_000)}   two`])
+    expect(lines.map(filed)).toEqual([`${dated} one`, `${stamp(at + 61_000)}   two`])
   })
 
   test("a block written at once stays together while other fibers write", async () => {
@@ -223,7 +225,7 @@ describe("the tags' lines", () => {
         why: "held by the safety check",
         answers: ["allow", "deny"],
         defaultToNo: true,
-      }),
+      }).line,
     ).toBe(
       "  PERMISSION: tut-9a1's worker asks: Bash(rm -rf build) (held by the safety check); answer with: tutti answer a3f9 allow --confirm | deny",
     )
@@ -234,7 +236,7 @@ describe("the tags' lines", () => {
         what: "Read(foo.txt)",
         answers: ["allow", "allow-run", "deny"],
         defaultToNo: false,
-      }),
+      }).line,
     ).toBe(
       "  PERMISSION: tut-2's worker asks: Read(foo.txt); answer with: tutti answer b001 allow | allow-run | deny",
     )
@@ -248,7 +250,7 @@ describe("the tags' lines", () => {
         answers: ["allow", "deny"],
         defaultToNo: false,
         questions: [{ question: "Which store?", options: ["SQLite", "Dolt"] }],
-      }),
+      }).line,
     ).toBe(
       '  QUESTION: tut-4\'s worker asks: Which store? (SQLite | Dolt); answer with: tutti answer c2 allow --choice "<option>" | deny',
     )
@@ -263,7 +265,7 @@ describe("the tags' lines", () => {
         verdict: "denied",
         detail: "use the clean script",
         via: "tutti answer",
-      }),
+      }).line,
     ).toBe(
       "  PERMISSION: tut-9a1's worker: Bash(rm -rf build) denied (use the clean script), via tutti answer",
     )
@@ -275,32 +277,35 @@ describe("the tags' lines", () => {
         verdict: "answered",
         detail: "Dolt",
         via: "screen",
-      }),
+      }).line,
     ).toBe("  QUESTION: tut-4's worker: Which store? answered (Dolt)")
-    expect<unknown>(allowedByRule("tut-5", "Bash(bun test)")).toBe(
+    expect<unknown>(allowedByRule("tut-5", "Bash(bun test)").line).toBe(
       "  ALLOWED: tut-5's worker: Bash(bun test), by a rule you allowed for this run",
     )
   })
 
   test("DENIED, STEERED, RELEASED and MESSAGE as § 4.3, § 4.5 and § 7.5 word them", () => {
     expect<unknown>(
-      denied({ id: "tut-9a1", what: "Bash(rm -rf build)", by: "classifier", reason: "too wide" }),
+      denied({ id: "tut-9a1", what: "Bash(rm -rf build)", by: "classifier", reason: "too wide" })
+        .line,
     ).toBe("  DENIED: tut-9a1's worker: Bash(rm -rf build), by the classifier: too wide")
     expect<unknown>(
-      denied({ id: "tut-9a1", what: "Bash(rm -rf $T/*)", by: "safetyCheck", reason: "held" }),
+      denied({ id: "tut-9a1", what: "Bash(rm -rf $T/*)", by: "safetyCheck", reason: "held" }).line,
     ).toBe("  DENIED: tut-9a1's worker: Bash(rm -rf $T/*), by the safety check: held")
     expect<unknown>(
-      denied({ id: "tut-9a1", what: "Bash(ls)", by: "sandbox\u001b[2J", reason: "no" }),
+      denied({ id: "tut-9a1", what: "Bash(ls)", by: "sandbox\u001b[2J", reason: "no" }).line,
     ).toBe("  DENIED: tut-9a1's worker: Bash(ls), by sandbox: no")
     expect<unknown>(
-      denied({ id: "tut-9a1", what: "Bash(ls)", by: "constructor", reason: "no" }),
+      denied({ id: "tut-9a1", what: "Bash(ls)", by: "constructor", reason: "no" }).line,
     ).toBe("  DENIED: tut-9a1's worker: Bash(ls), by constructor: no")
-    expect<unknown>(steered("tut-9a1")).toBe("  STEERED: tut-9a1")
-    expect<unknown>(released("tut-9a1")).toBe("  RELEASED: tut-9a1")
-    expect<unknown>(message("tut-9a1", "x".repeat(212))).toBe(
+    expect<unknown>(steered("tut-9a1").line).toBe("  STEERED: tut-9a1")
+    expect<unknown>(released("tut-9a1").line).toBe("  RELEASED: tut-9a1")
+    expect<unknown>(message("tut-9a1", "x".repeat(212)).line).toBe(
       "  MESSAGE: you → tut-9a1 (212 characters)",
     )
-    expect<unknown>(message("tut-9a1", "👍🏽 ok")).toBe("  MESSAGE: you → tut-9a1 (5 characters)")
+    expect<unknown>(message("tut-9a1", "👍🏽 ok").line).toBe(
+      "  MESSAGE: you → tut-9a1 (5 characters)",
+    )
   })
 
   test("USAGE, USAGE_LIMIT and PHASE_BUG", () => {
@@ -369,7 +374,7 @@ describe("sanitising", () => {
           why: s,
           answers: ["allow", "allow-run", "deny"],
           defaultToNo: false,
-        }),
+        }).line,
       (s) =>
         question({
           id: s,
@@ -377,7 +382,7 @@ describe("sanitising", () => {
           answers: ["allow", "deny"],
           defaultToNo: false,
           questions: [{ question: s, options: [s, s] }],
-        }),
+        }).line,
       (s) =>
         elicitation({
           id: s,
@@ -387,7 +392,7 @@ describe("sanitising", () => {
           server: s,
           message: s,
           url: s,
-        }),
+        }).line,
       (s) =>
         answered({
           id: s,
@@ -396,12 +401,12 @@ describe("sanitising", () => {
           verdict: "denied",
           detail: s,
           via: "screen",
-        }),
-      (s) => allowedByRule(s, s),
-      (s) => denied({ id: s, what: s, by: "rule", reason: s }),
-      (s) => steered(s),
-      (s) => released(s),
-      (s) => message(s, s),
+        }).line,
+      (s) => allowedByRule(s, s).line,
+      (s) => denied({ id: s, what: s, by: "rule", reason: s }).line,
+      (s) => steered(s).line,
+      (s) => released(s).line,
+      (s) => message(s, s).line,
       (s) => usageWarning({ percent: 1, limit: s, resets: s }),
       (s) => usageLimit({ limit: s, resets: s }),
       (s) => phaseBug({ id: s, from: s, to: s, cause: s }),
@@ -459,7 +464,7 @@ describe("the test layer", () => {
       ),
     )
     expect(result.texts).toEqual(["one", "  RELEASED: tut-1"])
-    expect(result.lines).toEqual([`${dated} one`, `${dated}   RELEASED: tut-1`])
-    expect(printed).toEqual([...result.lines])
+    expect(result.lines.map(filed)).toEqual([`${dated} one`, `${dated}   RELEASED: tut-1`])
+    expect(printed).toEqual(result.lines.map(filed))
   })
 })

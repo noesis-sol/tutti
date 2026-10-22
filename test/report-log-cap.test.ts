@@ -159,9 +159,9 @@ describe("the run's log as kept for the reviewer", () => {
         return [before, yield* logs.lines] as const
       }).pipe(Effect.provide(logLayer()), Effect.provide(TestClock.layer())),
     )
-    expect(before.map(undated)).toEqual(["one"])
+    expect<unknown>(before.map((each) => each.text)).toEqual(["one"])
     expect(after).toHaveLength(20_001)
-    expect(undated(after[20_000] ?? "")).toBe("  line 19999")
+    expect<unknown>(after[20_000]?.text).toBe("  line 19999")
   })
 
   const startEnds = Effect.gen(function* () {

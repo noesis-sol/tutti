@@ -91,7 +91,7 @@ const logLine = (request: AttentionRequest): string => {
   const kind = request.kind
   switch (kind._tag) {
     case "Permission":
-      return log.permission({ ...answering, what: `${kind.tool}(${kind.summary})` })
+      return log.permission({ ...answering, what: `${kind.tool}(${kind.summary})` }).line
     case "Question":
       return log.question({
         ...answering,
@@ -99,14 +99,14 @@ const logLine = (request: AttentionRequest): string => {
           question: q.question,
           options: q.options.map((o) => o.label),
         })),
-      })
+      }).line
     case "Elicitation":
       return log.elicitation({
         ...answering,
         server: kind.server,
         message: kind.message,
         ...(kind.url === undefined ? {} : { url: kind.url }),
-      })
+      }).line
   }
 }
 

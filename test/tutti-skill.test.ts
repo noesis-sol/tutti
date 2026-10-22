@@ -125,8 +125,8 @@ describe("the tutti skill", () => {
       defaultToNo: false,
       questions: [{ question: "Which store?", options: ["SQLite", "Postgres"] }],
     })
-    expect(skill).toContain(`\n  ${permission}\n`)
-    expect(skill).toContain(`\n  ${question}\n`)
+    expect(skill).toContain(`\n  ${permission.line}\n`)
+    expect(skill).toContain(`\n  ${question.line}\n`)
   })
 
   test("names every field of tutti answer --json's requests", () => {

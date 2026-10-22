@@ -10,7 +10,7 @@ import { OrganCost } from "../src/organs/OrganCost.ts"
 import { Ending } from "../src/print/summary.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { stamp } from "../src/run/localTime.ts"
-import { detail, Log, line, start, undated } from "../src/run/log.ts"
+import { denied, detail, Log, line, start, undated } from "../src/run/log.ts"
 import { attentionCap, cappedAttention, gather } from "../src/run/report.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
@@ -96,7 +96,9 @@ describe("the reviewer's attention section", () => {
         const logs = yield* Log
         yield* logs.write(...start({ version: "0.1.0", repo, base: "main", settings: [] }))
         for (let i = 0; i < total; i++) {
-          yield* logs.write(detail`DENIED: t-${i} Bash rm -rf build`)
+          yield* logs.write(
+            denied({ id: `t-${i}`, what: "Bash(rm -rf build)", by: "rule", reason: "no" }),
+          )
           yield* logs.write(detail`CHECKS_PASSED: t-${i}`)
         }
         yield* logs.write(line`DONE`)
@@ -119,6 +121,8 @@ describe("the reviewer's attention section", () => {
         `${attentionCap.lines} follow]`,
     )
     expect(given).toHaveLength(1 + attentionCap.lines)
-    expect(undated(given.at(-1) ?? "")).toBe(`  DENIED: t-${total - 1} Bash rm -rf build`)
+    expect(undated(given.at(-1) ?? "")).toBe(
+      `  DENIED: t-${total - 1}'s worker: Bash(rm -rf build), by a rule: no`,
+    )
   })
 })

@@ -52,7 +52,7 @@ import { Git } from "../services/Git.ts"
 import type { EnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
-import { causeWhy, detail, type Line, Log, line, Tag } from "./log.ts"
+import { causeWhy, detail, filed, type Line, Log, line, Tag } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { attentionLines, attentionSaid } from "./report.ts"
 import { changes } from "./settle.ts"
@@ -174,8 +174,9 @@ export const make = (options: {
     const attentionText = (id: string) =>
       Effect.gen(function* () {
         const said = attentionSaid(yield* attention.tally(id))
-        const own = `: ${id}'s worker`
-        const logged = attentionLines(yield* logs.lines).filter((each) => each.includes(own))
+        const logged = attentionLines(yield* logs.lines)
+          .filter((each) => each.ticket === id)
+          .map(filed)
         const tally =
           said.length === 0
             ? "No attention requests, and no calls Claude Code denied without asking."

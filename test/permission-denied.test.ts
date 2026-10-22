@@ -284,7 +284,7 @@ describe("Attention.denial", () => {
           )
           expect(seen.lines).toHaveLength(1)
           // biome-ignore lint/suspicious/noControlCharactersInRegex: the property is their absence.
-          expect(seen.lines[0]).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+          expect(seen.lines[0]?.text).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
           expect(seen.events).toHaveLength(1)
           expect(Object.values(seen.tally.deniedBy)).toEqual([1])
         },

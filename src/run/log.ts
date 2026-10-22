@@ -139,6 +139,34 @@ export const ticketLine =
   (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>): Line =>
     `  ${tag}: ${compose(strings, args)}` as Line
 
+/**
+ * A ticket's line marked with its tag and its ticket, which the log keeps beside its text (Kept):
+ * the report reads them there, not out of the text, where a title or a model's words could say
+ * `PERMISSION: ` too.
+ */
+export interface Marked {
+  readonly line: Line
+  readonly tag: string
+  /** The ticket's ID, as the run has it. */
+  readonly ticket: string
+}
+
+/** What the log is given to write: a line, or a ticket's line marked with its tag and ticket. */
+export type Written = Line | Marked
+
+/** A ticket's line starting with `tag`, as `ticketLine` makes it, marked with `tag` and `ticket`. */
+const marked =
+  (tag: string, ticket: string) =>
+  (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>): Marked => ({
+    line: ticketLine(tag)(strings, ...args),
+    tag,
+    ticket,
+  })
+
+/** A written line's text. */
+export const textOf = (written: Written): Line =>
+  typeof written === "string" ? written : written.line
+
 /** The branch a ticket's work is on (§ 11). */
 const branch = (id: string): Line => line`tutti/${id}`
 
@@ -230,9 +258,9 @@ export const permission = (
     /** Why the worker is asked, when the SDK says: `held by the safety check`. */
     readonly why?: string
   },
-): Line => {
+): Marked => {
   const why = p.why === undefined ? "" : line` (${p.why})`
-  return ticketLine(Tag.permission)`${request(p.id, p.what)}${why}; answer with: ${answerWith(p)}`
+  return marked(Tag.permission, p.id)`${request(p.id, p.what)}${why}; answer with: ${answerWith(p)}`
 }
 
 /** QUESTION: a worker's AskUserQuestion, each question with its options, and how to answer it. */
@@ -244,12 +272,12 @@ export const question = (
       readonly options: ReadonlyArray<string>
     }>
   },
-): Line => {
+): Marked => {
   const asked = q.questions
     .map((each) => line`${each.question} (${each.options.join(" | ")})`)
     .join("; ")
   const answer = answerWith({ ...q, questions: q.questions.length })
-  return ticketLine(Tag.question)`${request(q.id, asked)}; answer with: ${answer}`
+  return marked(Tag.question, q.id)`${request(q.id, asked)}; answer with: ${answer}`
 }
 
 /** QUESTION: an MCP server's elicitation, asking for input or a URL login (§ 4.5). */
@@ -261,12 +289,13 @@ export const elicitation = (
     /** The URL to open, for a URL login. */
     readonly url?: string
   },
-): Line => {
+): Marked => {
   const url = e.url === undefined ? "" : line` (open ${e.url})`
   // A form's fields are given on the dashboard only: tutti answer can decline it.
   const form = e.answers.includes("allow") ? "" : " (a form, which only the dashboard fills in)"
-  return ticketLine(
+  return marked(
     Tag.question,
+    e.id,
   )`${request(e.id, line`MCP server ${e.server}: ${e.message}`)}${url}${form}; answer with: ${answerWith(e)}`
 }
 
@@ -288,16 +317,16 @@ export const answered = (a: {
   /** The reason given with a denial, or the options chosen for a question. */
   readonly detail?: string
   readonly via: "screen" | "tutti answer"
-}): Line => {
+}): Marked => {
   const tag = a.kind === "permission" ? Tag.permission : Tag.question
   const detailed = a.detail === undefined ? "" : line` (${a.detail})`
   const via = a.via === "tutti answer" ? ", via tutti answer" : ""
-  return ticketLine(tag)`${a.id}'s worker: ${a.what} ${a.verdict}${detailed}${via}`
+  return marked(tag, a.id)`${a.id}'s worker: ${a.what} ${a.verdict}${detailed}${via}`
 }
 
 /** ALLOWED: a request allowed without asking, by a rule allowed for this run (§ 4.5). */
-export const allowedByRule = (id: string, what: string): Line =>
-  ticketLine(Tag.allowed)`${id}'s worker: ${what}, by a rule you allowed for this run`
+export const allowedByRule = (id: string, what: string): Marked =>
+  marked(Tag.allowed, id)`${id}'s worker: ${what}, by a rule you allowed for this run`
 
 /** What denied a tool call, from the SDK's `decision_reason_type`. */
 export type DeniedBy = "classifier" | "safetyCheck" | "mode" | "rule"
@@ -324,21 +353,21 @@ export const denied = (d: {
   /** A `decision_reason_type` tutti doesn't know is named as given. */
   readonly by: DeniedBy | (string & {})
   readonly reason: string
-}): Line => ticketLine(Tag.denied)`${d.id}'s worker: ${d.what}, by ${denier(d.by)}: ${d.reason}`
+}): Marked => marked(Tag.denied, d.id)`${d.id}'s worker: ${d.what}, by ${denier(d.by)}: ${d.reason}`
 
 /** A worker's context was compacted, `trigger` its PreCompact hook's (§ 4.2), as orchestra says it. */
 export const compacted = (id: string, trigger: string): Line =>
   detail`${id}'s worker's context was compacted (${trigger})`
 
 /** STEERED: you sent the worker a message or interrupted it (§ 4.3). */
-export const steered = (id: string): Line => ticketLine(Tag.steered)`${id}`
+export const steered = (id: string): Marked => marked(Tag.steered, id)`${id}`
 
 /** RELEASED: the worker is no longer steered (§ 4.3). */
-export const released = (id: string): Line => ticketLine(Tag.released)`${id}`
+export const released = (id: string): Marked => marked(Tag.released, id)`${id}`
 
 /** MESSAGE: you sent the worker a message; its length, never its text (§ 7.5). */
-export const message = (id: string, text: string): Line =>
-  ticketLine(Tag.message)`you → ${id} (${[...text].length} characters)`
+export const message = (id: string, text: string): Marked =>
+  marked(Tag.message, id)`you → ${id} (${[...text].length} characters)`
 
 /** USAGE: an account's usage nears a limit (`allowed_warning`), said once per limit (§ 4.12). */
 export const usageWarning = (u: {
@@ -382,9 +411,35 @@ export const phaseBug = (p: {
   readonly cause: string
 }): Line => ticketLine(Tag.phaseBug)`${p.id} ${p.from} → ${p.to} (${p.cause})`
 
+/**
+ * A line of the run's log as kept: its time, its tag and its ticket where it was marked with them
+ * (Marked), else null, and its text as written.
+ */
+export interface Kept {
+  /** The local time it was written at, as the file dates it. */
+  readonly stamp: string
+  readonly tag: string | null
+  readonly ticket: string | null
+  readonly text: Line
+}
+
+/** The lines as kept, each dated with the time now from Effect's Clock. */
+export const keep = (lines: ReadonlyArray<Written>): Effect.Effect<ReadonlyArray<Kept>> =>
+  Effect.map(Clock.currentTimeMillis, (now) =>
+    lines.map((each) => ({
+      stamp: stamp(now),
+      tag: typeof each === "string" ? null : each.tag,
+      ticket: typeof each === "string" ? null : each.ticket,
+      text: textOf(each),
+    })),
+  )
+
+/** A kept line as the file has it: its time, a space, and its text. */
+export const filed = (kept: Kept): string => `${kept.stamp} ${kept.text}`
+
 /** The lines as written, each dated with the time now from Effect's Clock. */
-export const dated = (lines: ReadonlyArray<Line>): Effect.Effect<ReadonlyArray<string>> =>
-  Effect.map(Clock.currentTimeMillis, (now) => lines.map((each) => `${stamp(now)} ${each}`))
+export const dated = (lines: ReadonlyArray<Written>): Effect.Effect<ReadonlyArray<string>> =>
+  Effect.map(keep(lines), (kept) => kept.map(filed))
 
 /** The time a dated line starts with, and the space after it. */
 const stamped = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d\d:\d\d /
@@ -406,22 +461,22 @@ export const toSink = (sink: Sink, lines: ReadonlyArray<string>): Effect.Effect<
     : Effect.void
 
 /**
- * The run's lines as written, dated, kept in memory for the reviewer: appended in place, as a run
- * of a few hundred tickets writes tens of thousands of lines, with where its START block ends.
+ * The run's lines as kept, in memory for the reviewer: appended in place, as a run of a few hundred
+ * tickets writes tens of thousands of lines, with where its START block ends.
  */
 export const keptLines = () => {
-  const lines: Array<string> = []
+  const lines: Array<Kept> = []
   let startBlockEnd = 0
   return {
-    /** Keeps `text`, the dated `written`. */
-    add: (written: ReadonlyArray<Line>, text: ReadonlyArray<string>): Effect.Effect<void> =>
+    /** Keeps the lines of one write. */
+    add: (kept: ReadonlyArray<Kept>): Effect.Effect<void> =>
       Effect.sync(() => {
-        for (const each of text) lines.push(each)
-        if (startBlockEnd === 0 && written[0]?.startsWith(`${Tag.start} `) === true) {
+        for (const each of kept) lines.push(each)
+        if (startBlockEnd === 0 && kept[0]?.text.startsWith(`${Tag.start} `) === true) {
           startBlockEnd = lines.length
         }
       }),
-    lines: Effect.sync((): ReadonlyArray<string> => lines.slice()),
+    lines: Effect.sync((): ReadonlyArray<Kept> => lines.slice()),
     startBlockEnd: Effect.sync(() => startBlockEnd),
   }
 }
@@ -430,15 +485,18 @@ export class Log extends Context.Service<
   Log,
   {
     /** Appends the lines, dated now, together: a START block isn't split by another fiber's line. */
-    write(...lines: ReadonlyArray<Line>): Effect.Effect<void>
+    write(...lines: ReadonlyArray<Written>): Effect.Effect<void>
     /**
      * Appends the lines as `write` does and runs `record`, the happening's record in events.jsonl,
      * before another fiber's line: the log and the event stream give happenings in one order.
      * `record` mustn't write the log itself.
      */
-    writeWith(lines: ReadonlyArray<Line>, record: Effect.Effect<void>): Effect.Effect<void>
-    /** This run's lines as written, dated, for the reviewer. */
-    readonly lines: Effect.Effect<ReadonlyArray<string>>
+    writeWith(lines: ReadonlyArray<Written>, record: Effect.Effect<void>): Effect.Effect<void>
+    /**
+     * This run's lines as kept, for the reviewer: each one's time, its tag and ticket where it was
+     * marked with them, and its text.
+     */
+    readonly lines: Effect.Effect<ReadonlyArray<Kept>>
     /**
      * How many of this run's lines lead up to the end of its START block, which the reviewer is
      * given however long the log: 0 before it is written. Its notes are indented as a ticket's
@@ -461,18 +519,19 @@ export class Log extends Context.Service<
         const encoder = new TextEncoder()
         const kept = keptLines()
         const one = yield* Semaphore.make(1)
-        const append = (lines: ReadonlyArray<Line>) =>
+        const append = (lines: ReadonlyArray<Written>) =>
           Effect.gen(function* () {
-            const text = yield* dated(lines)
+            const these = yield* keep(lines)
+            const text = these.map(filed)
             yield* file
               .writeAll(encoder.encode(text.map((l) => `${l}\n`).join("")))
               .pipe(Effect.ignore)
-            yield* kept.add(lines, text)
+            yield* kept.add(these)
             yield* toSink(options.sink ?? "none", text)
           })
         // A fiber interrupted once it holds the permit (on quit) still writes its lines to the file,
         // the kept lines and the sink together; one interrupted waiting for it writes them nowhere.
-        const whole = (lines: ReadonlyArray<Line>) => Effect.uninterruptible(append(lines))
+        const whole = (lines: ReadonlyArray<Written>) => Effect.uninterruptible(append(lines))
         return Log.of({
           write: (...lines) => one.withPermit(whole(lines)),
           writeWith: (lines, record) => one.withPermit(Effect.andThen(whole(lines), record)),

@@ -65,7 +65,7 @@ describe("a log line interrupted on quit", () => {
       console,
     )
     expect(written.join("")).toMatch(/ STOP\n$/)
-    expect(undated(kept)).toEqual(["STOP"])
+    expect<unknown>(kept.map((each) => each.text)).toEqual(["STOP"])
     expect(undated(printed)).toEqual(["STOP"])
   })
 
@@ -89,7 +89,7 @@ describe("a log line interrupted on quit", () => {
     )
     expect(written).toHaveLength(1)
     expect(written[0]).toMatch(/ FIRST\n$/)
-    expect(undated(kept)).toEqual(["FIRST"])
+    expect<unknown>(kept.map((each) => each.text)).toEqual(["FIRST"])
     expect(undated(printed)).toEqual(["FIRST"])
   })
 })

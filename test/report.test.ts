@@ -351,9 +351,10 @@ describe("steering and tallies", () => {
     expect(steeredInRun(entry, [])).toBe(false)
     expect(steeredInRun({ ...entry, steered: true }, [])).toBe(true)
     expect(steeredInRun({ ...entry, tallies: { ...entry.tallies, messages: 1 } }, [])).toBe(true)
-    expect(steeredInRun(entry, [`2026-10-17 09:00:00 ${log.steered("t-1")}`])).toBe(true)
-    expect(steeredInRun(entry, [`2026-10-17 09:00:00 ${log.steered("xt-1")}`])).toBe(false)
-    expect(steeredInRun(entry, [`2026-10-17 09:00:00 ${log.steered("t-10")}`])).toBe(false)
+    const kept = (written: log.Written) => Effect.runSync(log.keep([written]))
+    expect(steeredInRun(entry, kept(log.steered("t-1")))).toBe(true)
+    expect(steeredInRun(entry, kept(log.steered("xt-1")))).toBe(false)
+    expect(steeredInRun(entry, kept(log.steered("t-10")))).toBe(false)
   })
 })
 

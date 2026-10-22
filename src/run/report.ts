@@ -35,7 +35,7 @@ import { exitCodes, exitMeanings } from "./holds.ts"
 import { type Entry, Ledger } from "./ledger.ts"
 import { clock, clockFrom, reportName, span } from "./localTime.ts"
 import * as log from "./log.ts"
-import { type Line, Log, line, Tag, tagged } from "./log.ts"
+import { filed, type Kept, type Line, Log, line, Tag, tagged } from "./log.ts"
 import { counting, type ReportSection, type TicketPhase } from "./phase.ts"
 
 /** Where the reports go, below the repository. */
@@ -122,11 +122,10 @@ const times = (n: number): string => (n === 1 ? "once" : n === 2 ? "twice" : `${
  * Whether you steered `entry`'s worker at any time in this run: it is steered now, you sent it a
  * message, or the log has its STEERED line (an interrupt, released since).
  */
-export const steeredInRun = (entry: Entry, logLines: ReadonlyArray<string>): boolean => {
-  if (entry.steered || entry.tallies.messages > 0) return true
-  const steered = log.steered(entry.ticket)
-  return logLines.some((each) => each.endsWith(steered))
-}
+export const steeredInRun = (entry: Entry, logLines: ReadonlyArray<Kept>): boolean =>
+  entry.steered ||
+  entry.tallies.messages > 0 ||
+  logLines.some((each) => each.tag === Tag.steered && each.ticket === entry.ticket)
 
 /** A phase as the reviewer reads it: `Review (CHECKS_FAILED)`, `Done (merged in abc123)`. */
 export const phaseSaid = (phase: TicketPhase): string => {
@@ -216,11 +215,11 @@ export const talliesLine = (entry: Entry, attention: Tally, steered: boolean): s
 }
 
 /** The tags of the log lines that record attention requests, their answers and denials. */
-const attentionTags = [Tag.permission, Tag.question, Tag.allowed, Tag.denied]
+const attentionTags: ReadonlyArray<string> = [Tag.permission, Tag.question, Tag.allowed, Tag.denied]
 
-/** The run's log lines that record attention requests, their answers and denials. */
-export const attentionLines = (logLines: ReadonlyArray<string>): ReadonlyArray<string> =>
-  logLines.filter((each) => attentionTags.some((tag) => each.includes(`  ${tag}: `)))
+/** The run's log lines that record attention requests, their answers and denials, by their tags. */
+export const attentionLines = (logLines: ReadonlyArray<Kept>): ReadonlyArray<Kept> =>
+  logLines.filter((each) => each.tag !== null && attentionTags.includes(each.tag))
 
 /**
  * How much of the log's end the reviewer is given past the START block: so many lines, and no more
@@ -417,7 +416,7 @@ export const gather = (
     // summary written from a ticket.
     return [
       section("The run's final line", ending),
-      section("tutti's log for this run", cappedLog(logLines, startBlockEnd)),
+      section("tutti's log for this run", cappedLog(logLines.map(filed), startBlockEnd)),
       section(`Commits merged into ${run.base} in this run`, commits),
       section(
         "Tickets closed in this run, merged or with no change to merge (ID, title, phase, close reason)",
@@ -437,7 +436,7 @@ export const gather = (
       ),
       section(
         "The attention requests, answers and denials of this run, as the log has them",
-        cappedAttention(attentionLines(logLines)),
+        cappedAttention(attentionLines(logLines).map(filed)),
       ),
       section("What the run's organs (triage, the predictor and the like) cost", costSaid),
       ...(run.sections ?? []),

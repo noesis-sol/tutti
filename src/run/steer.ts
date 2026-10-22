@@ -49,8 +49,8 @@ export const steer = (ticket: string, by: "message" | "interrupt") =>
     if (entry === undefined) return
     yield* ledger.steer(ticket, by)
     if (entry.steered) return
-    const text = log.steered(ticket)
-    yield* logs.writeWith([text], events.emit({ kind: "steered", ticket, text }))
+    const said = log.steered(ticket)
+    yield* logs.writeWith([said], events.emit({ kind: "steered", ticket, text: said.line }))
   })
 
 /**
@@ -78,7 +78,7 @@ export const sendMessage = (
     const said = log.message(ticket, text)
     yield* logs.writeWith(
       [said],
-      events.emit({ kind: "message", ticket, length: lengthOf(text), text: said }),
+      events.emit({ kind: "message", ticket, length: lengthOf(text), text: said.line }),
     )
     return true
   })
@@ -110,8 +110,8 @@ export const release = (ticket: string): Effect.Effect<boolean, never, SteerEnv>
     const events = yield* EventStream
     if ((yield* ledger.current).tickets.get(ticket)?.steered !== true) return false
     yield* ledger.release(ticket)
-    const text = log.released(ticket)
-    yield* logs.writeWith([text], events.emit({ kind: "released", ticket, text }))
+    const said = log.released(ticket)
+    yield* logs.writeWith([said], events.emit({ kind: "released", ticket, text: said.line }))
     return true
   })
 
