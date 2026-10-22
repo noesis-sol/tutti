@@ -2,9 +2,11 @@
 // a repository on real git, with the tests' environment and, for plan, a fake bd on the PATH. Each
 // command's lines on stdout and stderr and its exit code: answer's listing and its errors as the
 // command prints them (src/answer/answer.ts), plan's proposal and the problems it stops on
-// (src/plan/plan.ts' settingsProblem and beadsProblem), and requires' exit codes.
-import { describe, expect, setDefaultTimeout } from "bun:test"
+// (src/plan/plan.ts' settingsProblem and beadsProblem), and requires' exit codes. bd taking too
+// long is the one case run in-process, as bd's read limit is 30 s.
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -16,12 +18,19 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { BunServices } from "@effect/platform-bun"
+import { Console, Effect, Layer } from "effect"
+import { Command } from "effect/cli"
 import {
   answerFile,
   attentionFolder,
   refusedFile,
   requestFile,
 } from "../src/agent/attentionFiles.ts"
+import { tuttiWith } from "../src/cli/commands.ts"
+import { Beads } from "../src/services/Beads.ts"
+import { layer as gitLayer } from "../src/testing/Git.ts"
+import { layer as lockLayer } from "../src/testing/RunLock.ts"
 import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
@@ -188,6 +197,22 @@ describe("tutti answer", () => {
     expect(readFileSync(join(repo.dir, answerFile("r1")), "utf8")).toBe(waiting)
   })
 
+  slow.test("an answer that can't be written: exit 1, and why", async () => {
+    const repo = withRequest()
+    const attention = join(repo.dir, attentionFolder)
+    chmodSync(attention, 0o555)
+    try {
+      const { code, stdout, stderr } = await tutti(repo.dir, ["answer", "r1", "deny"])
+      expect(stderr).toStartWith("tutti answer: the answer to request r1 couldn't be written: ")
+      expect(stderr).toContain("EACCES")
+      expect(stdout).toBe("")
+      expect(code).toBe(1)
+    } finally {
+      chmodSync(attention, 0o755)
+    }
+    expect(existsSync(join(repo.dir, answerFile("r1")))).toBe(false)
+  })
+
   slow.test("an answer no run takes: exit 1 after 10 s, and the answer withdrawn", async () => {
     const repo = withRequest()
     const started = Date.now()
@@ -337,6 +362,43 @@ describe("tutti plan", () => {
       /^tutti plan: cannot read the open tickets: bd list .*: a list of issues: not JSON\n$/,
     )
     expect(code).toBe(1)
+  })
+
+  // bd's read limit is 30 s, so the command runs in-process with the real Beads layer given a
+  // shorter one, over in-memory git.
+  test("bd taking too long to list the tickets: the command fails, saying so", async () => {
+    const dir = folder()
+    const bd = fakeBd(() => "sleep 30\n")
+    const errors: Array<string> = []
+    const console: Console.Console = Object.assign(Object.create(globalThis.console), {
+      log: () => {},
+      error: (...said: ReadonlyArray<unknown>) => errors.push(said.join(" ")),
+    })
+    const services = () =>
+      Layer.mergeAll(
+        Beads.layer({
+          cwd: dir,
+          command: join(bd.bin, "bd"),
+          timeLimits: { read: "300 millis", write: "300 millis" },
+        }),
+        gitLayer({ dir, files: {} }),
+        lockLayer(),
+      )
+    const exit = await Effect.runPromise(
+      Command.runWith(tuttiWith(Effect.succeed(dir), services), {
+        version: "test",
+        renderErrors: false,
+      })(["plan"]).pipe(
+        Effect.provideService(Console.Console, console),
+        Effect.exit,
+        Effect.provide(BunServices.layer),
+      ),
+    )
+    expect(exit._tag).toBe("Failure")
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatch(
+      /^tutti plan: cannot read the open tickets: \S*bd list .* took too long$/,
+    )
   })
 
   slow.test("two tickets naming one function: the proposal, and nothing changed", async () => {

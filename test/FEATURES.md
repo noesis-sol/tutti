@@ -69,7 +69,8 @@ below are the coverage report's uncovered lines at 368899e.
 - **Tests**: `attention-files.test.ts` (the request and answer files, `answer`, `show`),
   `attention-poll.test.ts`, `run-answers.test.ts`, `tutti-skill.test.ts` (the `--json` fields),
   `cli-commands.test.ts` (slow: the command through `bun src/main.ts`, its listing, `--json`, an
-  answer the run takes or refuses, and each error as the command prints it).
+  answer the run takes or refuses, and each error as the command prints it, one that can't be
+  written included).
 - **Untested**: nothing found.
 
 ## `tutti plan`
@@ -78,7 +79,7 @@ below are the coverage report's uncovered lines at 368899e.
 - **Tests**: `plan-command.test.ts`, `plan-lock-warning.test.ts`, `plan-stop.test.ts`,
   `footprint.test.ts`, `footprint-globs.test.ts`, `footprint-leave-out.test.ts`,
   `cli-commands.test.ts` (slow: the command through `bun src/main.ts` with a fake bd, the
-  proposal, `--apply`, and settings or bd that can't be read).
+  proposal, `--apply`, and settings or bd that can't be read; bd taking too long in-process).
 - **Untested**: nothing found.
 
 ## `tutti login`
