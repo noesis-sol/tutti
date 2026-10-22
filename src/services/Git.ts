@@ -117,6 +117,19 @@ export const parseWorktrees = (output: string): ReadonlyArray<Worktree> => {
   return worktrees
 }
 
+/**
+ * A command's revisions after --end-of-options, so that none is taken for an option, and, for a
+ * command that takes pathspecs, those after --, so that no revision is taken for a path: git refuses
+ * a name that is both, such as a base `main` beside a top-level main/ folder.
+ */
+const revisions = (
+  revs: ReadonlyArray<string>,
+  paths?: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  paths === undefined
+    ? ["--end-of-options", ...revs]
+    : ["--end-of-options", ...revs, "--", ...paths]
+
 /** The format `log` asks for: the hash, the subject and the message, each ended by -z's NUL. */
 export const logFormat = "--format=%H%x00%s%x00%B"
 
@@ -381,8 +394,23 @@ export class Git extends Context.Service<
         const abortRebase = (worktree: string) =>
           Effect.asVoid(write("rebase --abort", worktree, ["rebase", "--abort"]))
 
+        // --verify: without it, git prints back a rev it can't find as if it named a commit.
+        const revParse = (dir: string, rev: string) =>
+          Effect.map(
+            read("rev-parse", dir, ["rev-parse", "--verify", "--quiet", ...revisions([rev])]),
+            (out) => out.trim(),
+          )
+
+        // git reset before 2.44 keeps --end-of-options among its arguments and takes it for a
+        // revision, so it is given the hash `to` names, which no option or path can be taken for.
         const resetBranch = (worktree: string, to: string) =>
-          Effect.asVoid(write("reset --hard", worktree, ["reset", "--hard", "--quiet", to]))
+          writer.withLock(
+            Effect.flatMap(revParse(worktree, to), (hash) =>
+              Effect.asVoid(
+                write("reset --hard", worktree, ["reset", "--hard", "--quiet", hash, "--"]),
+              ),
+            ),
+          )
 
         const rebaseInProgress = (worktree: string) =>
           Effect.gen(function* () {
@@ -414,7 +442,7 @@ export class Git extends Context.Service<
               const { shown, output } = yield* git(
                 "rebase",
                 worktree,
-                ["rebase", "--no-autostash", onto],
+                ["rebase", "--no-autostash", ...revisions([onto])],
                 limits.write,
               ).pipe(Effect.tapError(() => abandonRebase(worktree)))
               if (output.exitCode === 0) return
@@ -441,8 +469,16 @@ export class Git extends Context.Service<
                 "worktree add",
                 repo,
                 worktree.base === undefined
-                  ? ["worktree", "add", "--quiet", path, worktree.branch]
-                  : ["worktree", "add", "--quiet", "-b", worktree.branch, path, worktree.base],
+                  ? ["worktree", "add", "--quiet", path, ...revisions([worktree.branch])]
+                  : [
+                      "worktree",
+                      "add",
+                      "--quiet",
+                      "-b",
+                      worktree.branch,
+                      path,
+                      ...revisions([worktree.base]),
+                    ],
               ),
             ),
           addDetachedWorktree: (repo, path, commit) =>
@@ -453,8 +489,7 @@ export class Git extends Context.Service<
                 "--quiet",
                 "--detach",
                 path,
-                "--end-of-options",
-                commit,
+                ...revisions([commit]),
               ]),
             ),
           removeWorktree: (repo, path, remove = {}) =>
@@ -474,7 +509,7 @@ export class Git extends Context.Service<
           pruneWorktrees: (repo) =>
             Effect.asVoid(write("worktree prune", repo, ["worktree", "prune"])),
           createBranch: (repo, branch, start) =>
-            Effect.asVoid(write("branch", repo, ["branch", branch, start])),
+            Effect.asVoid(write("branch", repo, ["branch", ...revisions([branch, start])])),
           // Deleting a ref takes packed-refs.lock, which a worker's commit in its worktree takes for a
           // moment too; git gives up after a second, too soon on a loaded machine, so it waits longer.
           deleteBranch: (repo, branch, remove = {}) =>
@@ -484,7 +519,7 @@ export class Git extends Context.Service<
                 "core.packedRefsTimeout=10000",
                 "branch",
                 remove.force ? "-D" : "-d",
-                branch,
+                ...revisions([branch]),
               ]),
             ),
           rebase,
@@ -492,31 +527,30 @@ export class Git extends Context.Service<
           rebaseInProgress,
           resetBranch,
           mergeBase: (repo, a, b) =>
-            Effect.map(read("merge-base", repo, ["merge-base", a, b]), (out) => out.trim()),
+            Effect.map(read("merge-base", repo, ["merge-base", ...revisions([a, b])]), (out) =>
+              out.trim(),
+            ),
           holds: (repo, base, branch) =>
             Effect.gen(function* () {
               const { shown, output } = yield* gitRead("merge-tree", repo, [
                 "merge-tree",
                 "--write-tree",
-                "--end-of-options",
-                base,
-                branch,
+                ...revisions([base, branch]),
               ])
               // The merged tree's hash is its first line; exit 1 is conflicts, a merge that changes base.
               if (output.exitCode === 1) return false
               if (output.exitCode !== 0) return yield* failed("merge-tree", shown, output)
-              const tree = yield* read("rev-parse", repo, [
-                "rev-parse",
-                "--verify",
-                "--quiet",
-                "--end-of-options",
-                `${base}^{tree}`,
-              ])
+              const tree = yield* revParse(repo, `${base}^{tree}`)
               return (output.stdout.split("\n")[0] ?? "").trim() === tree.trim()
             }),
           fastForward: (repo, branch) =>
             Effect.asVoid(
-              write("merge --ff-only", repo, ["merge", "--ff-only", "--quiet", branch]),
+              write("merge --ff-only", repo, [
+                "merge",
+                "--ff-only",
+                "--quiet",
+                ...revisions([branch]),
+              ]),
             ),
           log: (repo, base, head = "HEAD") =>
             Effect.map(
@@ -525,8 +559,7 @@ export class Git extends Context.Service<
                 "-z",
                 "--no-show-signature",
                 logFormat,
-                `${base}..${head}`,
-                "--",
+                ...revisions([`${base}..${head}`], []),
               ]),
               parseLog,
             ),
@@ -549,8 +582,7 @@ export class Git extends Context.Service<
                 "--no-renames",
                 "--name-only",
                 "-z",
-                `${base}...${head}`,
-                "--",
+                ...revisions([`${base}...${head}`], []),
               ]),
               splitNul,
             ),
@@ -561,15 +593,12 @@ export class Git extends Context.Service<
                 "--no-renames",
                 "--name-only",
                 "-z",
-                "--end-of-options",
-                from,
-                to,
-                "--",
+                ...revisions([from, to], []),
               ]),
               splitNul,
             ),
           fileAt: (dir, commit, path) =>
-            read("show", dir, ["show", "--end-of-options", `${commit}:${path}`]),
+            read("show", dir, ["show", ...revisions([`${commit}:${path}`])]),
           trackedFiles: (dir) => Effect.map(read("ls-files", dir, ["ls-files", "-z"]), splitNul),
           // The paths go in on stdin, NUL-separated, so a repository of any size fits; -z gives
           // back a path, the attribute and its value for each.
@@ -585,12 +614,7 @@ export class Git extends Context.Service<
                   ),
                   parseUnion,
                 ),
-          // --verify: without it, git prints back a rev it can't find as if it named a commit.
-          revParse: (dir, rev) =>
-            Effect.map(
-              read("rev-parse", dir, ["rev-parse", "--verify", "--quiet", "--end-of-options", rev]),
-              (out) => out.trim(),
-            ),
+          revParse,
           commonDir: (dir) =>
             Effect.map(
               read("rev-parse --git-common-dir", dir, [
