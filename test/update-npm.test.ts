@@ -2,8 +2,12 @@
 // and tutti update --check and tutti update name the package manager's upgrade, not tutti update's
 // nor scripts/install.sh.
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
+import pkg from "../package.json" with { type: "json" }
 import { buildKind, markNpmBundle } from "../src/cli/version.ts"
 import {
   type Build,
@@ -13,6 +17,10 @@ import {
   update,
   updateExit,
 } from "../src/update/update.ts"
+import { testEnv } from "./env.ts"
+import { slow } from "./gates.ts"
+
+const checkout = resolve(import.meta.dir, "..")
 
 const api = "https://api.test/repos/noesis-sol/tutti"
 
@@ -108,4 +116,60 @@ describe("the npm package's bundle", () => {
       expect(ran.asked).toEqual([`${api}/releases/latest`])
     }
   })
+
+  test("is marked by its entry before main, and a run's daily check goes by the mark", () => {
+    const entry = readFileSync(join(checkout, "src/npm.ts"), "utf8")
+    const marked = entry.indexOf("\nmarkNpmBundle()\n")
+    expect(marked).toBeGreaterThan(-1)
+    expect(entry.indexOf("\nmain()")).toBeGreaterThan(marked)
+    const main = readFileSync(join(checkout, "src/main.ts"), "utf8")
+    expect(main).toContain("checksForUpdates({ kind: thisBuildKind() }, env)")
+  })
+
+  // The real bundle, built as the package's prepack builds it, run by Bun with a fetch that answers
+  // GitHub's latest release with v99.0.0 and nothing else.
+  slow.test(
+    "built, tutti update --check and tutti update name the package manager's upgrade",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "tutti-update-npm-"))
+      symlinkSync(join(checkout, "node_modules"), join(dir, "node_modules"))
+      const env = { ...testEnv }
+      delete env.NODE_ENV
+      const build = Bun.spawnSync(["scripts/build-npm.sh", "--out", join(dir, "bundle")], {
+        cwd: checkout,
+        env,
+        stderr: "pipe",
+      })
+      expect(build.stderr.toString()).toBe("")
+      expect(build.exitCode).toBe(0)
+      const stub = join(dir, "stub.ts")
+      writeFileSync(
+        stub,
+        `globalThis.fetch = (async (url: string | URL | Request) =>
+  String(url).endsWith("/releases/latest")
+    ? Response.json({ tag_name: "v99.0.0", html_url: "https://releases.test/v99.0.0", assets: [] })
+    : Response.json({ message: "Not Found" }, { status: 404 })) as typeof fetch
+`,
+      )
+      const tutti = (...args: ReadonlyArray<string>) => {
+        const ran = Bun.spawnSync(
+          ["bun", "--config=/dev/null", "--preload", stub, join(dir, "bundle/tutti.js"), ...args],
+          { cwd: dir, env, stdout: "pipe", stderr: "pipe" },
+        )
+        return { code: ran.exitCode, out: ran.stdout.toString(), err: ran.stderr.toString() }
+      }
+      const checked = tutti("update", "--check")
+      expect(checked.out).toContain(
+        `is the npm package ${npmPackage}; the latest release is v99.0.0 (https://releases.test/v99.0.0): ${upgrade}.`,
+      )
+      expect(checked.out).toStartWith(`tutti v${pkg.version} `)
+      expect(checked.code).toBe(updateExit.available)
+      const refused = tutti("update", "--force")
+      expect(refused.err).toContain(
+        `is the npm package ${npmPackage}, which tutti update doesn't replace: ${upgrade}.`,
+      )
+      expect(refused.code).toBe(updateExit.refused)
+    },
+    120_000,
+  )
 })

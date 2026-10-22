@@ -360,13 +360,16 @@ export const requiresCommand = <E extends { readonly message: string } | string,
     ),
   )
 
+/** What the running tutti is, for tutti update and a run's daily check for a newer release. */
+export const thisBuildKind = (): Build["kind"] => buildKind(buildTarget())
+
 /** The running tutti, for tutti update: the compiled binary, or Bun running it from source. */
 export const thisBuild = Effect.map(tuttiVersion, (shown): Build => {
   const target = buildTarget()
   return {
     version: pkg.version,
     shown,
-    kind: buildKind(target),
+    kind: thisBuildKind(),
     target,
     exe: process.execPath,
   }
