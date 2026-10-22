@@ -12,9 +12,11 @@ import {
   type ChecksQuestions,
   checksOptions,
   chooseFound,
+  ciBuild,
   filesTestWork,
   runnersDiffer,
   runsDescription,
+  type Scouted,
   type ScoutResult,
   settleScout,
   skillDir,
@@ -131,6 +133,25 @@ export const readConcurrency = (
   return n >= 1 && n <= max ? { ok: n } : { error: `Enter a whole number from 1 to ${max}.` }
 }
 
+/**
+ * What check-full's checklist says: when it runs, and, where the scout found them, that a suite
+ * covering check-fast's runs instead of it and that the build steps found only in CI start unticked.
+ */
+export const fullChecklistDescription = (scouted: Scouted): string => {
+  const offered = scouted.full.flatMap((index) => scouted.suites[index] ?? [])
+  return [
+    `${fullRunner} runs ${fastRunner}, then these, once at the end of a run. A suite ticked above as well runs in check-fast only.`,
+    ...(offered.some((suite) => suite.covers_fast)
+      ? [`One that runs all check-fast does runs instead of ${fastRunner}, so each test runs once.`]
+      : []),
+    ...(offered.some(ciBuild)
+      ? [
+          "Build steps found only in CI start unticked: CI runs them already, and a full check runs at the end of every run.",
+        ]
+      : []),
+  ].join(" ")
+}
+
 /** init's form, asked with `fields`. */
 export const initForm = (fields: Fields): InitForm => ({
   workers: (questions) =>
@@ -238,9 +259,9 @@ export const initForm = (fields: Fields): InitForm => ({
           )
           const full = yield* checklist(
             "At the end of a run (check-full)",
-            `${fullRunner} runs ${fastRunner}, then these, once at the end of a run. A suite ticked above as well runs in check-fast only.`,
+            fullChecklistDescription(scouted),
             scouted.full,
-            scouted.full,
+            scouted.fullTicked,
           )
           const fileUntested = yield* fields.confirm({
             question: "Also file tickets for untested areas?",

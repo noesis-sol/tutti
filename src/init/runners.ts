@@ -4,6 +4,10 @@
 //   scripts/check-fast.sh   the merge check, run on every ticket before it merges
 //   scripts/check-full.sh   everything: check-fast.sh, then the slower suites, run once at the end
 //
+// A full suite that runs all check-fast.sh does and more (the project's own full check, a slow-mode
+// flag on the same runner) stands for check-fast.sh: check-full.sh runs it, not check-fast.sh first,
+// so each test runs once.
+//
 // Their format is orchestra's, so runners orchestra wrote work as they are: a suite a line, each in
 // a subshell under a comment saying where it was found, after a line printing `SUITE: <name>`; a
 // suite that can't run in two worktrees at once between `lock <name>` and `unlock`. A runner with no
@@ -38,6 +42,8 @@ export interface Suite {
   readonly foundIn: string
   /** It can't run in two worktrees at once (a fixed port, a shared database): it takes turns. */
   readonly serial: boolean
+  /** A full suite that runs all check-fast.sh does and more: check-full.sh runs it instead. */
+  readonly coversFast?: boolean
 }
 
 /** The shell functions a runner with a serial suite starts with, orchestra's. */
@@ -144,6 +150,7 @@ const suiteComment = (suite: Suite): string => {
     ...(oneLine(suite.name) === "" ? [] : [oneLine(suite.name)]),
     ...(oneLine(suite.foundIn) === "" ? [] : [`from ${oneLine(suite.foundIn)}`]),
     ...(suite.serial ? ["one worktree at a time"] : []),
+    ...(suite.coversFast === true ? [`runs all ${fastRunner} does, and more`] : []),
   ]
   return parts.length === 0 ? "# a suite" : `# ${parts.join(", ")}`
 }
@@ -199,12 +206,37 @@ const runnerScript = (header: string, suites: ReadonlyArray<Suite>): string => {
 export const fastScript = (suites: ReadonlyArray<Suite>): string =>
   runnerScript(fastHeader, withoutRunners(suites).kept)
 
+/** Whether a runner's suites stand for check-fast.sh: one runs all it does, and more. */
+export const coversFast = (suites: ReadonlyArray<Suite>): boolean =>
+  suites.some((suite) => suite.coversFast === true && suite.command.trim() !== "")
+
+/**
+ * check-full.sh's header where its suites stand for check-fast.sh: the template's, its first lines,
+ * which say check-fast.sh runs first, saying it doesn't.
+ */
+const coveringHeader = (): string => {
+  const shebang = "#!/bin/sh\n"
+  const rest = fullHeader.indexOf("# tutti init wrote it")
+  if (!fullHeader.startsWith(shebang) || rest < 0) return fullHeader
+  return `${shebang}# scripts/check-full.sh: every check, each test once. Its first suite runs all
+# scripts/check-fast.sh does, and more, so check-fast.sh doesn't run first. tutti runs it once at
+# the end of a run.
+${fullHeader.slice(rest)}`
+}
+
 /**
  * The scripts/check-full.sh init writes for its own suites, the slower ones: check-fast.sh first,
- * then those. With none, and `fastEmpty` (check-fast.sh checks nothing either), it is `exit 0`.
+ * then those. Where one of them runs all check-fast.sh does, it runs them alone, that one first, so
+ * each test runs once. With none, and `fastEmpty` (check-fast.sh checks nothing either), it is
+ * `exit 0`.
  */
 export const fullScript = (suites: ReadonlyArray<Suite>, fastEmpty: boolean): string => {
   const kept = withoutRunners(suites).kept
+  if (coversFast(kept)) {
+    const covering = kept.filter((suite) => suite.coversFast === true)
+    const rest = kept.filter((suite) => suite.coversFast !== true)
+    return runnerScript(coveringHeader(), [...covering, ...rest])
+  }
   const all =
     kept.length > 0 || !fastEmpty
       ? [{ name: "", command: fastRunner, foundIn: "the merge check", serial: false }, ...kept]

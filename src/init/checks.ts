@@ -159,8 +159,10 @@ export interface Scouted {
   readonly suites: ReadonlyArray<ScoutSuite>
   /** The suites ticked at first: in check-fast's checklist, those the scout calls fast. */
   readonly fast: ReadonlyArray<number>
-  /** check-full's checklist: the other suites, which are all it offers, all ticked. */
+  /** check-full's checklist: the other suites, which are all it offers. */
   readonly full: ReadonlyArray<number>
+  /** Those of them ticked at first: all but the build steps found only in CI. */
+  readonly fullTicked: ReadonlyArray<number>
   /** What the project is built with. */
   readonly stack: ReadonlyArray<string>
 }
@@ -169,10 +171,31 @@ const capitalize = (text: string): string => `${text.charAt(0).toUpperCase()}${t
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
+/** Where CI is defined: a suite found there is a build step found only in CI, if a build. */
+const ciPaths = [
+  /^\.github\/workflows\//,
+  /^\.gitlab-ci\.ya?ml/,
+  /^\.circleci\//,
+  /^\.buildkite\//,
+  /^Jenkinsfile/,
+  /^azure-pipelines\.ya?ml/,
+  /^bitbucket-pipelines\.ya?ml/,
+]
+
+/**
+ * Whether a suite is a build or packaging step found only in CI, which CI runs already: the scout
+ * says so, or it is a build found in a CI file.
+ */
+export const ciBuild = (suite: ScoutSuite): boolean =>
+  suite.ci_build ||
+  (suite.kind === "build" && ciPaths.some((path) => path.test(suite.found_in.replace(/^\.\//, ""))))
+
 /**
  * The scout's suites as the checklists offer them: without those that run a runner, which would
  * run itself, and, where the project has scripts/check.sh, with the suite running it first, as a
  * fast suite. A scout that left it out has it added, taking turns: nobody said it can run twice.
+ * A full suite running it that covers the fast ones (TUTTI_SLOW=1 scripts/check.sh) isn't that
+ * suite: it stays a full one.
  */
 export const offeredSuites = (
   suites: ReadonlyArray<ScoutSuite>,
@@ -180,7 +203,7 @@ export const offeredSuites = (
 ): ReadonlyArray<ScoutSuite> => {
   const offered = suites.filter((suite) => !runsRunner(suite.command))
   if (!hasCheckScript) return offered
-  const at = offered.findIndex((suite) => runsCheckScript(suite.command))
+  const at = offered.findIndex((suite) => runsCheckScript(suite.command) && !suite.covers_fast)
   const check: ScoutSuite =
     at < 0
       ? {
@@ -190,6 +213,9 @@ export const offeredSuites = (
           targeted: "",
           found_in: `${checkScript}:1`,
           tier: "fast",
+          covers_fast: false,
+          ci_build: false,
+          cost: "",
           parallel_safe: false,
           needs: [],
         }
@@ -209,6 +235,7 @@ export const settleScout = (result: ScoutResult, hasCheckScript: boolean): Scout
       suites: [],
       fast: [],
       full: [],
+      fullTicked: [],
       stack: [],
     }
   }
@@ -224,16 +251,27 @@ export const settleScout = (result: ScoutResult, hasCheckScript: boolean): Scout
       suites,
       fast: [],
       full: [],
+      fullTicked: [],
       stack,
     }
   }
   const indexes = suites.map((_, index) => index)
+  // A build found only in CI is a full suite, whatever the scout's tier, and starts unticked.
+  const fast = indexes.filter((index) => {
+    const suite = suites[index]
+    return suite !== undefined && suite.tier === "fast" && !ciBuild(suite)
+  })
+  const full = indexes.filter((index) => !fast.includes(index))
   return {
     picked: "found",
     why: `The scout found ${plural(suites.length, "suite", "suites")}.${note}`,
     suites,
-    fast: indexes.filter((index) => suites[index]?.tier === "fast"),
-    full: indexes.filter((index) => suites[index]?.tier !== "fast"),
+    fast,
+    full,
+    fullTicked: full.filter((index) => {
+      const suite = suites[index]
+      return suite !== undefined && !ciBuild(suite)
+    }),
     stack,
   }
 }
@@ -245,6 +283,11 @@ export const suiteLabel = (suite: ScoutSuite): string => {
     ...(suite.needs.length === 0 ? [] : [`needs ${suite.needs.join(", ")}`]),
     // In a runner, between lock and unlock.
     ...(suite.parallel_safe ? [] : ["takes turns"]),
+    ...(suite.covers_fast ? ["runs all check-fast does"] : []),
+    ...(ciBuild(suite)
+      ? [`CI only${suite.cost === "" ? ", which runs it already" : `: ${suite.cost}`}`]
+      : []),
+    ...(!ciBuild(suite) && suite.cost !== "" ? [suite.cost] : []),
   ]
   return sanitizeLine(`${suite.command}  · ${about.join(" · ")}`)
 }
@@ -256,11 +299,12 @@ export const runnerSuite = (suite: ScoutSuite): Suite => ({
   targeted: suite.targeted,
   foundIn: suite.found_in,
   serial: !suite.parallel_safe,
+  ...(suite.covers_fast ? { coversFast: true } : {}),
 })
 
 /**
  * The choice "use them as they are" with the suites ticked in each checklist: a suite ticked in
- * both runs in check-fast.sh only, which check-full.sh runs first.
+ * both runs in check-fast.sh only, which check-full.sh runs first, or one of its suites covers.
  */
 export const chooseFound = (
   scouted: Scouted,
@@ -526,14 +570,19 @@ export const suiteLines = (fast: ReadonlyArray<Suite>, full: ReadonlyArray<Suite
 /** Whether a worker prompt has workers run the verifier. */
 export const usesVerifier = (prompt: string): boolean => prompt.includes(verifierPath)
 
+/** The verifier template's words saying check-full.sh runs check-fast.sh first. */
+const fastFirst = "`{{fastRunner}}`, then:"
+
 /**
  * The verifier for a project built with `stack`, whose runners run `fast` and, after check-fast.sh,
- * `full`.
+ * `full`; or, where `fullAlone` (check-full.sh doesn't run check-fast.sh, as one of its suites runs
+ * all it does), `full` alone.
  */
 export const verifierText = (
   stack: ReadonlyArray<string>,
   fast: ReadonlyArray<string>,
   full: ReadonlyArray<string>,
+  fullAlone = false,
 ): string => {
   const list = (items: ReadonlyArray<string>, indent: string, none: string) =>
     items.length === 0 ? `${indent}- ${none}` : items.map((item) => `${indent}- ${item}`).join("\n")
@@ -546,6 +595,7 @@ export const verifierText = (
   // Functions, not strings, as replacements: a string's $$, $&, $` and $' are patterns, and the
   // commands are the project's own shell.
   return verifierTemplate
+    .replace(fastFirst, () => (fullAlone ? "these, each test once:" : fastFirst))
     .replace("{{stack}}", () => stackLines)
     .replace("{{fast}}", () => list(code(fast), "  ", "nothing yet."))
     .replace("{{full}}", () => list(code(full), "  ", "nothing more."))
@@ -553,15 +603,20 @@ export const verifierText = (
     .replaceAll("{{fullRunner}}", fullRunner)
 }
 
-/** The commands of the runner at `path` in `repo`, for the verifier: check-full's own, after check-fast. */
+/**
+ * The commands of the runner at `path` in `repo`, for the verifier: check-full's own, after
+ * check-fast; and whether it runs another runner (check-full.sh, check-fast.sh first).
+ */
 const runnerSuites = (repo: string, path: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const script = yield* fs.readFileString(join(repo, path)).pipe(Effect.option)
-    if (Option.isNone(script)) return []
-    return runnerCommands(script.value).filter(
-      (command) => command !== "exit 0" && !runsRunner(command),
-    )
+    if (Option.isNone(script)) return { commands: [], runsRunner: false }
+    const commands = runnerCommands(script.value).filter((command) => command !== "exit 0")
+    return {
+      commands: commands.filter((command) => !runsRunner(command)),
+      runsRunner: commands.some(runsRunner),
+    }
   })
 
 /**
@@ -572,7 +627,9 @@ export const verifierFor = (repo: string, stack: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const fast = yield* runnerSuites(repo, fastRunner)
     const full = yield* runnerSuites(repo, fullRunner)
-    return verifierText(stack, fast, full)
+    // A check-full.sh with suites that doesn't run check-fast.sh runs every check itself.
+    const alone = full.commands.length > 0 && !full.runsRunner
+    return verifierText(stack, fast.commands, full.commands, alone)
   })
 
 /**

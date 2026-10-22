@@ -283,6 +283,9 @@ const canned = {
       targeted: " scripts/check.sh ",
       found_in: " scripts/check.sh:1 ",
       tier: "fast",
+      covers_fast: true,
+      ci_build: false,
+      cost: "",
       parallel_safe: true,
       needs: [],
     },
@@ -293,6 +296,9 @@ const canned = {
       targeted: " npm run e2e -- <files>\n",
       found_in: "package.json:9",
       tier: "full",
+      covers_fast: true,
+      ci_build: false,
+      cost: " a database per run\n",
       parallel_safe: false,
       needs: [" postgres ", "", "  "],
     },
@@ -339,6 +345,9 @@ describe("the scout's answer", () => {
           targeted: "",
           found_in: "scripts/check.sh:1",
           tier: "fast",
+          covers_fast: false,
+          ci_build: false,
+          cost: "",
           parallel_safe: true,
           needs: [],
         },
@@ -349,6 +358,9 @@ describe("the scout's answer", () => {
           targeted: "npm run e2e -- <files>",
           found_in: "package.json:9",
           tier: "full",
+          covers_fast: true,
+          ci_build: false,
+          cost: "a database per run",
           parallel_safe: false,
           needs: ["postgres"],
         },
@@ -392,6 +404,9 @@ describe("the scout's answer", () => {
       ),
       found_in: text,
       tier: fc.constantFrom("fast", "full" as const),
+      covers_fast: fc.boolean(),
+      ci_build: fc.boolean(),
+      cost: text,
       parallel_safe: fc.boolean(),
       needs: fc.array(text, { maxLength: 4 }),
     })
@@ -409,6 +424,9 @@ describe("the scout's answer", () => {
         for (const item of once.stack) expect(item).toBe(item.trim())
         for (const s of once.suites) {
           expect(s.needs.every((n) => n !== "" && n === n.trim())).toBe(true)
+          expect(s.cost).toBe(s.cost.trim())
+          // Only a full suite stands for the fast ones.
+          if (s.covers_fast) expect(s.tier).toBe("full")
           // A command for part of the project has a placeholder for the part, or is none.
           if (s.targeted !== "") expect(s.targeted).toBe(s.targeted.trim())
           expect(s.targeted === "" || hasPlaceholder(s.targeted)).toBe(true)

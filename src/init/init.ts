@@ -571,10 +571,13 @@ const writeRunners = (
       yield* fs.writeFileString(file, text)
       yield* fs.chmod(file, 0o755)
       const did = Option.isSome(there) ? "replaced" : "wrote"
-      const nothing = checksNothing(text)
+      const covering = withoutRunners(suites).kept.find((suite) => suite.coversFast === true)
+      const about = checksNothing(text)
         ? `: it checks nothing yet (${flag} "<command>" gives it one)`
-        : ""
-      steps.push(step("done", label, `${did} ${path}${nothing}`, [path]))
+        : path === fullRunner && covering !== undefined
+          ? `: '${covering.command.trim()}' runs all ${fastRunner} does, so ${fastRunner} doesn't run first`
+          : ""
+      steps.push(step("done", label, `${did} ${path}${about}`, [path]))
       for (const left of withoutRunners(suites).left) {
         steps.push(
           step(

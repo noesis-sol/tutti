@@ -54,6 +54,15 @@ export const Suite = Schema.Struct({
   /** Where it is defined, as `path:line`. */
   found_in: Schema.String,
   tier: Schema.Literals(tiers),
+  /**
+   * A full suite that runs everything the fast suites do and more, as a slow-mode flag on the same
+   * runner does: the full check runs it alone, not after the fast ones, so each test runs once.
+   */
+  covers_fast: Schema.Boolean,
+  /** A build or packaging step found only in CI (a release compile, a docker build). */
+  ci_build: Schema.Boolean,
+  /** What running it costs where that is much, such as "a 340 MB compile"; "" otherwise. */
+  cost: Schema.String,
   /** False for a fixed port, a shared database and the like. */
   parallel_safe: Schema.Boolean,
   /** Services, a browser, credentials; empty for none. */
@@ -80,8 +89,9 @@ export type Scouting = typeof ScoutAnswer.Type
 export const hasPlaceholder = (command: string): boolean => /<[^<>]*\S[^<>]*>/.test(command)
 
 /**
- * The answer tidied, as orchestra's: names, commands and places trimmed, a command for part of the
- * project without a placeholder dropped, blank needs and stack items dropped, stack items' spaces
+ * The answer tidied, as orchestra's: names, commands, places and costs trimmed, a command for part
+ * of the project without a placeholder dropped, covers_fast kept only on a full suite, blank needs
+ * and stack items dropped, stack items' spaces
  * collapsed and duplicates dropped. A suite with no name or no command is the reason it can't be
  * used.
  */
@@ -100,6 +110,9 @@ export const tidy = (answer: Scouting): Scouting | string => {
       command,
       targeted: hasPlaceholder(targeted) ? targeted : "",
       found_in: suite.found_in.trim(),
+      // Only a full suite stands for the fast ones.
+      covers_fast: suite.covers_fast && suite.tier === "full",
+      cost: suite.cost.trim(),
       needs: suite.needs.map((need) => need.trim()).filter((need) => need !== ""),
     })
   }
