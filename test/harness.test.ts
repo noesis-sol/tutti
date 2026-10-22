@@ -99,6 +99,8 @@ const oneTicket = {
 }
 
 describe("scenario", () => {
+  // Slow under load, not hanging: the ticket's sleep is registered before the command runs, but
+  // as the file's first scenario it pays the cold start (~4× a warm run) and spawns a real sh.
   test("a trivial run passes, and its log, events, phases and exit code can be asserted", async () => {
     const ran = await scenario(oneTicket, trivialRun)
     expectExitCode(ran, 0)
@@ -109,7 +111,7 @@ describe("scenario", () => {
     expect(ran.worktreeCalls).toEqual([{ op: "prepare", id: "t-1" }])
     expect(ran.sent.map((sent) => sent._tag)).toEqual(["Started", "Message", "Closed", "Ended"])
     expect(ran.issues.find((issue) => issue.id === "t-1")?.status).toBe("closed")
-  })
+  }, 30_000)
 
   test("a fiber left in a registered FiberSet once the run's scope closes fails it", async () => {
     // The set lives in a scope that outlives the run, as a service's would.
