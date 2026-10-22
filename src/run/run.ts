@@ -99,7 +99,7 @@ import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
-import { carryOver, saveAsked, saveLeft } from "./carry.ts"
+import { type Carried, carryOver, saveAsked, saveLeft } from "./carry.ts"
 import { closedBranches } from "./closedBranches.ts"
 import { resolve, type UiCommand } from "./commands.ts"
 import { noteCompactions } from "./compactions.ts"
@@ -727,32 +727,102 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* Ref.set(queueRecord, scheduler.recordQueue)
     yield* Ref.set(schedulerSlots, scheduler.slots)
 
+    // The run's watchers: one that dies panics the run.
+    const watchers = yield* fibers.make("run")
+    const watch = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      FiberSet.run(
+        watchers,
+        Effect.catchDefect(effect, (defect) =>
+          panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
+        ),
+      )
+
+    // Requests to quit (quit.ts): the first quits, the second says what is under way and how to
+    // abandon it, and the third ends tutti at once, saving the workers not merged or dropped.
+    const atOnce = (request: QuitRequest) =>
+      Effect.gen(function* () {
+        const merging = (yield* queue.state).merging
+        const saved: Array<string> = []
+        for (const entry of (yield* ledger.current).tickets.values()) {
+          const phase = entry.phase
+          if (!stopsAtEnd(phase) && phase._tag !== "Merging" && phase._tag !== "Stopped") continue
+          if ((yield* store.ticket(entry.ticket))?.session === undefined) continue
+          const why = phase._tag === "Stopped" ? phase.why : "quit"
+          yield* Effect.ignore(store.suspend(entry.ticket, why, "Stopped"))
+          saved.push(entry.ticket)
+        }
+        yield* ledger.endQueued
+        yield* saveAsked
+        yield* saveLeft
+        const stop = stopFor("INTERRUPTED", atOnceText(request.how, saved, merging))
+        yield* logs.writeWith(
+          [stop.text],
+          events.emit({ kind: "stop", detail: stop.why, text: stop.text }),
+        )
+        yield* Effect.flatMap(endRecord(stop.code), events.emit)
+        if (options.exitNow !== undefined) yield* options.exitNow(stop.code, [stop.text])
+      })
+    let asked = 0
+    const hearQuit = (request: QuitRequest) =>
+      Effect.gen(function* () {
+        asked += 1
+        switch (heard(asked)) {
+          case "quit":
+            yield* Deferred.succeed(quitting, { request })
+            return
+          case "warn": {
+            const merging = (yield* queue.state).merging
+            const text =
+              merging === null
+                ? stillQuittingLine(yield* Ref.get(awaiting), request)
+                : underWayLine(merging, request)
+            yield* logs.writeWith(
+              [text],
+              events.emit({
+                kind: "warn",
+                ...(merging === null ? {} : { ticket: merging }),
+                text,
+              }),
+            )
+            return
+          }
+          case "exit":
+            yield* atOnce(request)
+        }
+      })
+    // Heard from before the requirements check: a quit during the start's steps cuts the step under
+    // way short and skips the rest (untilQuit), so that no worker the last run left is resumed.
+    const quits = options.quits
+    if (quits !== undefined)
+      yield* watch(Effect.forever(Effect.flatMap(Queue.take(quits), hearQuit)))
+    // One of the start's steps, cut short by a quit, `cut` then; not begun once the run quits.
+    const untilQuit = <A, E, R>(step: Effect.Effect<A, E, R>, cut: A) =>
+      Effect.flatMap(Deferred.isDone(quitting), (done) =>
+        done
+          ? Effect.succeed(cut)
+          : Effect.raceFirst(step, Effect.as(Deferred.await(quitting), cut)),
+      )
+
     // The project's requirements, checked before the first dispatch and before any worker is
     // carried over (requires.ts): what is still missing stops the run, REQUIREMENTS_MISSING, exit 2,
-    // and nothing starts or resumes; the workers the last run left stay for the next. A request to
-    // quit cuts an install short: it is heard once the run listens for them, below, and the run
-    // quits with nothing resumed.
-    const quitEarly = yield* Ref.make<QuitRequest | null>(null)
-    const checking = runRequires(config.settings.requires, {
-      repo: config.repo,
-      installLimit: config.settings.checks.fast.timeout,
-    })
-    const quitsNow = options.quits
-    const missing =
-      quitsNow === undefined
-        ? yield* checking
-        : yield* Effect.raceFirst(
-            checking,
-            Effect.flatMap(Queue.take(quitsNow), (request) =>
-              Effect.as(Ref.set(quitEarly, request), ""),
-            ),
-          )
+    // and nothing starts or resumes; the workers the last run left stay for the next. A quit cuts an
+    // install short, and the run quits with nothing resumed.
+    const missing = yield* untilQuit(
+      runRequires(config.settings.requires, {
+        repo: config.repo,
+        installLimit: config.settings.checks.fast.timeout,
+      }),
+      "",
+    )
     if (missing !== "") yield* stopped(stopFor("REQUIREMENTS_MISSING", missing))
 
     // The tickets earlier runs left unmerged, checked before the first dispatch: one merged by hand
     // since loses its label, so the tickets it blocks can start.
-    const loaded = yield* Effect.result(loadUnmerged({ repo: config.repo, base }))
-    if (Result.isFailure(loaded)) {
+    const loaded = yield* untilQuit(
+      Effect.result(loadUnmerged({ repo: config.repo, base })),
+      undefined,
+    )
+    if (loaded !== undefined && Result.isFailure(loaded)) {
       yield* stopped(
         stopFor(
           "BEADS_FAILED",
@@ -762,49 +832,47 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     }
 
     // The branches a killed run's trains left rebased onto the branch ahead, put back before their
-    // tickets are carried over to merge (mergetrain.ts).
-    yield* putBackLeft(config.repo, setUps)
+    // tickets are carried over to merge (mergetrain.ts). One cut short by a quit keeps its mark in
+    // state.json, for the next run to put back.
+    yield* untilQuit(putBackLeft(config.repo, setUps), undefined)
 
     // The workers the last run left (carry.ts), taken up before the first dispatch: each resumed
-    // takes a slot, counting toward no limit, its ticket limit counted afresh.
-    const carried =
-      missing !== "" || (yield* Ref.get(quitEarly)) !== null
+    // takes a slot, counting toward no limit, its ticket limit counted afresh. A quit takes up no
+    // more of them: those not yet taken stay in state.json as they were, for the next run.
+    const carried: ReadonlyMap<string, Carried> =
+      missing !== ""
         ? new Map()
-        : yield* carryOver({
-            base,
-            queue,
-            triage,
-            closedBranches: branches,
-            onTicketLimit: (stop) =>
-              stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop),
-            carry: (ticket, worked, issue) =>
-              scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
-          }).pipe(Effect.provideContext(context))
+        : yield* untilQuit(
+            carryOver({
+              base,
+              queue,
+              triage,
+              closedBranches: branches,
+              onTicketLimit: (stop) =>
+                stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop),
+              carry: (ticket, worked, issue) =>
+                scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
+            }).pipe(Effect.provideContext(context)),
+            new Map(),
+          )
 
     // The deferred tickets in the run's scope whose blockers have all merged, each a DEFERRED_FREE
     // line of the START block (deferredFree.ts); not when bd can't list those left unmerged.
-    if (Result.isSuccess(loaded)) {
-      yield* sayDeferredFree({
-        repo: config.repo,
-        base,
-        filter: { excludeTypes: config.settings.queue.exclude_types },
-        root: config.ticket,
-        carried,
-        unmerged: new Set(loaded.success.map((left) => left.issue.id)),
-        closedBranches: branches,
-      })
+    if (loaded !== undefined && Result.isSuccess(loaded)) {
+      yield* untilQuit(
+        sayDeferredFree({
+          repo: config.repo,
+          base,
+          filter: { excludeTypes: config.settings.queue.exclude_types },
+          root: config.ticket,
+          carried,
+          unmerged: new Set(loaded.success.map((left) => left.issue.id)),
+          closedBranches: branches,
+        }),
+        undefined,
+      )
     }
 
-    // The ready poll, the merge queue's changes and drain requests each wake the run. A watcher that
-    // dies panics the run.
-    const watchers = yield* fibers.make("run")
-    const watch = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-      FiberSet.run(
-        watchers,
-        Effect.catchDefect(effect, (defect) =>
-          panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
-        ),
-      )
     // Held at --machine-workers, the run reads the other runs every machinePoll, and looks again once
     // one of their workers has finished, so that the slot it freed is filled within seconds; it
     // doesn't read bd ready meanwhile.
@@ -879,6 +947,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         ),
       )
     }
+    // The ready poll, the merge queue's changes and drain requests each wake the run.
     yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp)))
     yield* watch(
       Stream.runForEach(queue.changes, (state) => Effect.andThen(mergeStop(state), wakeUp)),
@@ -895,65 +964,6 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       )
     }
 
-    // Requests to quit (quit.ts): the first quits, the second says what is under way and how to
-    // abandon it, and the third ends tutti at once, saving the workers not merged or dropped.
-    const atOnce = (request: QuitRequest) =>
-      Effect.gen(function* () {
-        const merging = (yield* queue.state).merging
-        const saved: Array<string> = []
-        for (const entry of (yield* ledger.current).tickets.values()) {
-          const phase = entry.phase
-          if (!stopsAtEnd(phase) && phase._tag !== "Merging" && phase._tag !== "Stopped") continue
-          if ((yield* store.ticket(entry.ticket))?.session === undefined) continue
-          const why = phase._tag === "Stopped" ? phase.why : "quit"
-          yield* Effect.ignore(store.suspend(entry.ticket, why, "Stopped"))
-          saved.push(entry.ticket)
-        }
-        yield* ledger.endQueued
-        yield* saveAsked
-        yield* saveLeft
-        const stop = stopFor("INTERRUPTED", atOnceText(request.how, saved, merging))
-        yield* logs.writeWith(
-          [stop.text],
-          events.emit({ kind: "stop", detail: stop.why, text: stop.text }),
-        )
-        yield* Effect.flatMap(endRecord(stop.code), events.emit)
-        if (options.exitNow !== undefined) yield* options.exitNow(stop.code, [stop.text])
-      })
-    let asked = 0
-    const hearQuit = (request: QuitRequest) =>
-      Effect.gen(function* () {
-        asked += 1
-        switch (heard(asked)) {
-          case "quit":
-            yield* Deferred.succeed(quitting, { request })
-            return
-          case "warn": {
-            const merging = (yield* queue.state).merging
-            const text =
-              merging === null
-                ? stillQuittingLine(yield* Ref.get(awaiting), request)
-                : underWayLine(merging, request)
-            yield* logs.writeWith(
-              [text],
-              events.emit({
-                kind: "warn",
-                ...(merging === null ? {} : { ticket: merging }),
-                text,
-              }),
-            )
-            return
-          }
-          case "exit":
-            yield* atOnce(request)
-        }
-      })
-    const quits = options.quits
-    if (quits !== undefined) {
-      const early = yield* Ref.get(quitEarly)
-      if (early !== null) yield* hearQuit(early)
-      yield* watch(Effect.forever(Effect.flatMap(Queue.take(quits), hearQuit)))
-    }
     // The screen's commands, each resolved against the ledger and the open requests as it is taken:
     // one that no longer names anything (the worker finished, the request was answered) is dropped.
     // The end-of-run box's `q` (EndRun) ends the run. Quit without `now` is the quit box's to ask.
@@ -1265,7 +1275,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         Effect.never,
       ),
     )
-    // A quit heard before the loop, during the check of the requirements, starts no ticket.
+    // A quit heard before the loop, during the start's steps, starts no ticket.
     const quit = (yield* Deferred.isDone(quitting))
       ? yield* Deferred.await(quitting)
       : yield* Effect.raceFirst(guardedLoop, Deferred.await(quitting))
