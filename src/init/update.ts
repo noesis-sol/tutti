@@ -7,6 +7,7 @@
 import { join } from "node:path"
 import { Clock, Effect, FileSystem } from "effect"
 import { settingsFile } from "../project/settings.ts"
+import { writeFileAtomic } from "../services/atomicFile.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { verifierFor, verifierPath } from "./checks.ts"
 import { readSettingsJson, refused, workerPromptPath } from "./init.ts"
@@ -74,7 +75,7 @@ export const updateTemplates = (repo: string) =>
         continue
       }
       const after = updated(found.text, yield* currentText(repo, found), found.missing)
-      yield* fs.writeFileString(join(repo, file.path), after)
+      yield* writeFileAtomic(join(repo, file.path), after)
       updates.push({ path: file.path, before: found.text, after })
       steps.push(
         step(
@@ -97,7 +98,7 @@ export const updateTemplates = (repo: string) =>
       const json = structuredClone(read.json ?? {})
       json.templates = now.verifier === 0 ? { worker_prompt: now.worker_prompt } : { ...now }
       yield* fs.makeDirectory(join(repo, ".tutti"), { recursive: true })
-      yield* fs.writeFileString(join(repo, settingsFile), `${JSON.stringify(json, null, 2)}\n`)
+      yield* writeFileAtomic(join(repo, settingsFile), `${JSON.stringify(json, null, 2)}\n`)
       const versions = `worker prompt ${now.worker_prompt}${now.verifier === 0 ? "" : `, verifier ${now.verifier}`}`
       steps.push(
         step(

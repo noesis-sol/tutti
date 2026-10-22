@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { BunFileSystem } from "@effect/platform-bun"
@@ -288,7 +295,11 @@ describe("atomic writes", () => {
     )
     const before = readFileSync(statePath(repo), "utf8")
 
-    const crashing = fileSystem(() => ({ rename: () => Effect.die(new Error("killed")) }))
+    // Nothing runs after a crash: the temporary file isn't removed either.
+    const crashing = fileSystem(() => ({
+      rename: () => Effect.die(new Error("killed")),
+      remove: () => Effect.die(new Error("killed")),
+    }))
     const crashed = await withStore(
       repo,
       Effect.flatMap(Store, (store) => store.saveSession("demo-2", session)),
@@ -297,7 +308,12 @@ describe("atomic writes", () => {
     expect(Exit.isFailure(crashed)).toBe(true)
     expect(readFileSync(statePath(repo), "utf8")).toBe(before)
     // The new state was written in full beside it, and only the rename was missed.
-    expect(readFileSync(`${statePath(repo)}.tmp`, "utf8")).toContain('"demo-2"')
+    const left = readdirSync(dirname(statePath(repo))).filter((name) => name.endsWith(".tmp"))
+    expect(left).toHaveLength(1)
+    expect(left[0]).toMatch(/^\.state\.json\.tutti-\d+-[0-9a-f-]+\.tmp$/)
+    expect(readFileSync(join(dirname(statePath(repo)), left[0] ?? ""), "utf8")).toContain(
+      '"demo-2"',
+    )
 
     const after = value(
       await withStore(

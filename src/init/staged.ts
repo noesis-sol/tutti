@@ -5,9 +5,16 @@
 // as a run counts the project set up once they are there (src/run/startup.ts). A write or rename
 // that fails takes back what came before it: the setup is left as it was, or as init would leave
 // it, and SetupNotWritten names any file it couldn't take back.
-import { basename, dirname, join, relative, resolve } from "node:path"
+import { dirname, relative, resolve } from "node:path"
 import { ByteSize, Effect, FileSystem, Option, Schema, Sink, Stream } from "effect"
 import { badArgument, type PlatformError, systemError } from "effect/PlatformError"
+import {
+  type FileWriter,
+  modeOf,
+  temporaryBeside,
+  writeSynced,
+  writeTarget,
+} from "../services/atomicFile.ts"
 import { joinAnd } from "./steps.ts"
 
 /** A file the setup writes: where, what, and its mode where the setup gives one. */
@@ -17,9 +24,13 @@ export interface StagedWrite {
   readonly mode: number | null
 }
 
-/** A FileSystem that stages its writes over `real`, and the writes it staged, in order. */
+/**
+ * A FileSystem that stages its writes over `real`, the writer that stages writeFileAtomic's on it
+ * (for AtomicWriter), and the writes it staged, in order.
+ */
 export interface Staging {
   readonly fs: FileSystem.FileSystem
+  readonly write: FileWriter
   readonly writes: () => ReadonlyArray<StagedWrite>
 }
 
@@ -167,8 +178,21 @@ export const staging = (real: FileSystem.FileSystem): Staging => {
     truncate: () => unstaged("truncate"),
     utimes: () => unstaged("utimes"),
   })
+  const atomic: FileWriter = (path, data, options) =>
+    Effect.gen(function* () {
+      const mode =
+        options?.mode ??
+        (options?.newMode !== undefined && !(yield* exists(path)) ? options.newMode : undefined)
+      yield* write(
+        "writeFileAtomic",
+        path,
+        typeof data === "string" ? encoder.encode(data) : data,
+        mode === undefined ? undefined : { mode },
+      )
+    })
   return {
     fs,
+    write: atomic,
     writes: () => [...files].map(([path, file]) => ({ path, data: file.data, mode: file.mode })),
   }
 }
@@ -190,10 +214,6 @@ export class SetupNotWritten extends Schema.TaggedError<SetupNotWritten>()("Setu
     }`
   }
 }
-
-/** A name for a file beside `path`, hidden, that no other init picks. */
-const beside = (path: string, kind: string) =>
-  join(dirname(path), `.${basename(path)}.tutti-${process.pid}-${crypto.randomUUID()}.${kind}`)
 
 /**
  * A file being put in: the file it is written to (where a link there points), its temporary file,
@@ -258,14 +278,7 @@ export const commitStaged = (
       const done = yield* Effect.result(
         Effect.gen(function* () {
           // A link is written through, to the file it points at, as writing the file would.
-          const target = yield* real.realPath(write.path).pipe(
-            Effect.catch(() =>
-              real.readLink(write.path).pipe(
-                Effect.map((link) => resolve(dirname(write.path), link)),
-                Effect.orElseSucceed(() => write.path),
-              ),
-            ),
-          )
+          const target = yield* writeTarget(real, write.path)
           const folder = dirname(target)
           let top: string | null = null
           for (let at = folder; at !== dirname(at) && !(yield* real.exists(at)); at = dirname(at)) {
@@ -275,25 +288,10 @@ export const commitStaged = (
             yield* real.makeDirectory(folder, { recursive: true })
             made.push(top)
           }
-          const mode =
-            write.mode ??
-            (yield* real.stat(target).pipe(
-              Effect.map((info) => info.mode & 0o7777),
-              Effect.orElseSucceed(() => null),
-            ))
-          const temporary = beside(target, "new")
+          const mode = write.mode ?? (yield* modeOf(real, target))
+          const temporary = temporaryBeside(target, "new")
           putting.push({ write, target, temporary, backup: null, renamed: false })
-          yield* Effect.scoped(
-            Effect.gen(function* () {
-              const handle = yield* real.open(temporary, {
-                flag: "wx",
-                ...(mode === null ? {} : { mode }),
-              })
-              yield* handle.writeAll(write.data)
-              yield* handle.sync
-            }),
-          )
-          if (mode !== null) yield* real.chmod(temporary, mode)
+          yield* writeSynced(real, temporary, write.data, mode)
         }),
       )
       if (done._tag === "Failure") return yield* fail(write, done.failure)
@@ -303,7 +301,7 @@ export const commitStaged = (
       const done = yield* Effect.result(
         Effect.gen(function* () {
           if (yield* real.exists(each.target)) {
-            const backup = beside(each.target, "old")
+            const backup = temporaryBeside(each.target, "old")
             yield* real
               .link(each.target, backup)
               .pipe(Effect.catch(() => real.copyFile(each.target, backup)))

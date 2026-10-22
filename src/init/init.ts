@@ -44,6 +44,7 @@ import { builtInWorkerPrompt, withSuites } from "../project/prompt.ts"
 import { maxConcurrent, Settings, settingsFile } from "../project/settings.ts"
 import settingsTemplate from "../project/templates/settings.json" with { type: "json" }
 import gitignoreTemplate from "../project/templates/tutti-gitignore" with { type: "text" }
+import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { RunLock } from "../services/RunLock.ts"
 import type { FormCancelled } from "../ui/questions.ts"
@@ -394,7 +395,7 @@ const writeSettings = (
       return { settings, step: step("kept", "settings", `${settingsFile} is there; left as it is`) }
     }
     yield* fs.makeDirectory(join(repo, ".tutti"), { recursive: true })
-    yield* fs.writeFileString(file, `${JSON.stringify(json, null, 2)}\n`)
+    yield* writeFileAtomic(file, `${JSON.stringify(json, null, 2)}\n`)
     return {
       settings,
       step:
@@ -414,7 +415,7 @@ const writeIfMissing = (repo: string, path: string, text: string, replace = fals
     const there = yield* fs.exists(file)
     if (there && !replace) return "kept" as const
     yield* fs.makeDirectory(join(file, ".."), { recursive: true })
-    yield* fs.writeFileString(file, text)
+    yield* writeFileAtomic(file, text)
     return there ? ("replaced" as const) : ("wrote" as const)
   })
 
@@ -568,8 +569,7 @@ const writeRunners = (
         continue
       }
       yield* fs.makeDirectory(join(repo, "scripts"), { recursive: true })
-      yield* fs.writeFileString(file, text)
-      yield* fs.chmod(file, 0o755)
+      yield* writeFileAtomic(file, text, { mode: 0o755 })
       const did = Option.isSome(there) ? "replaced" : "wrote"
       const covering = withoutRunners(suites).kept.find((suite) => suite.coversFast === true)
       const about = checksNothing(text)
@@ -952,7 +952,10 @@ export const init = <R>(options: InitOptions<R>) =>
      */
     const writeSetup = Effect.gen(function* () {
       const staged = staging(fs)
-      const steps = yield* Effect.provideService(planSetup, FileSystem.FileSystem, staged.fs)
+      const steps = yield* planSetup.pipe(
+        Effect.provideService(FileSystem.FileSystem, staged.fs),
+        Effect.provideService(AtomicWriter, staged.write),
+      )
       yield* commitStaged(fs, repo, staged.writes(), join(repo, settingsFile))
       return steps
     })

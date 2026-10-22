@@ -4,8 +4,8 @@
 // left the run and how often its session was resumed.
 //
 // Every write goes through one fiber, which takes the changes queued and commits them in order: it
-// writes the whole state to `state.json.tmp` in the same folder, fsyncs it, and renames it over
-// `state.json`. A crash at any point leaves either the old file or the new one, never a mix. An
+// writes the whole state to a temporary file in the same folder, fsyncs it, and renames it over
+// `state.json` (writeFileAtomic). A crash at any point leaves either the old file or the new one, never a mix. An
 // update returns once its change is on disk, so a session ID saved before its session starts
 // survives a crash (§ 4.8). Readers get the last committed state.
 import { join } from "node:path"
@@ -22,6 +22,7 @@ import {
   Schema,
 } from "effect"
 import type { PlatformError } from "effect/PlatformError"
+import { writeFileAtomic } from "./atomicFile.ts"
 
 /** The carry-over file, relative to the project's top (§ 9.1). */
 export const stateFile = join(".tutti", "run", "state.json")
@@ -265,8 +266,8 @@ export const readState = (file: string) =>
   })
 
 /**
- * Writes `state` to `file` atomically: to a temporary file in the same folder, fsynced, then
- * renamed over it, and the folder fsynced so the rename itself lasts.
+ * Writes `state` to `file` atomically (writeFileAtomic): to a temporary file in the same folder,
+ * fsynced, then renamed over it, and the folder fsynced so the rename itself lasts.
  */
 export const writeStateAtomically = (
   fs: FileSystem.FileSystem,
@@ -274,21 +275,8 @@ export const writeStateAtomically = (
   state: State,
 ): Effect.Effect<void, PlatformError> =>
   Effect.gen(function* () {
-    const folder = join(file, "..")
-    const temporary = `${file}.tmp`
-    yield* fs.makeDirectory(folder, { recursive: true })
-    yield* Effect.scoped(
-      Effect.gen(function* () {
-        const handle = yield* fs.open(temporary, { flag: "w" })
-        yield* handle.writeAll(new TextEncoder().encode(stateText(state)))
-        yield* handle.sync
-      }),
-    )
-    yield* fs.rename(temporary, file)
-    // Some file systems refuse to fsync a folder; the rename has happened either way.
-    yield* Effect.ignore(
-      Effect.scoped(Effect.flatMap(fs.open(folder, { flag: "r" }), (handle) => handle.sync)),
-    )
+    yield* fs.makeDirectory(join(file, ".."), { recursive: true })
+    yield* Effect.provideService(writeFileAtomic(file, stateText(state)), FileSystem.FileSystem, fs)
   })
 
 /**

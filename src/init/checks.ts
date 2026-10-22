@@ -19,6 +19,7 @@ import { type Scouting, type Suite as ScoutSuite, scoutChecks } from "../organs/
 import skillTemplate from "../project/templates/create-check-suite.md" with { type: "text" }
 import verifierTemplate from "../project/templates/verifier.md" with { type: "text" }
 import { soloLabel } from "../run/holds.ts"
+import { writeFileAtomic } from "../services/atomicFile.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import {
@@ -502,7 +503,7 @@ export const applySkill = (repo: string, choice: ChecksChoice | undefined, repla
       ]
     }
     yield* fs.makeDirectory(join(repo, skillDir), { recursive: true })
-    yield* fs.writeFileString(join(repo, skillPath), skillText)
+    yield* writeFileAtomic(join(repo, skillPath), skillText)
     return [
       step(
         "done",
@@ -673,7 +674,7 @@ export const applyVerifier = (
     } else {
       const text = yield* verifierFor(repo, stack)
       yield* fs.makeDirectory(join(file, ".."), { recursive: true })
-      yield* fs.writeFileString(file, text)
+      yield* writeFileAtomic(file, text)
       did.push(`wrote ${verifierPath}`)
       commit.push(verifierPath)
     }
@@ -683,7 +684,7 @@ export const applyVerifier = (
     if (runs) {
       did.push("the worker prompt runs it already")
     } else {
-      yield* fs.writeFileString(
+      yield* writeFileAtomic(
         prompt,
         `${text === "" || text.endsWith("\n") ? text : `${text}\n`}${verifierSection}`,
       )

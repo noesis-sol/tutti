@@ -25,6 +25,7 @@ import { review } from "../organs/reviewer.ts"
 import { printReport } from "../print/markdown.ts"
 import type { Printer } from "../print/organLine.ts"
 import type { Ending } from "../print/summary.ts"
+import { writeFileAtomic } from "../services/atomicFile.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git, type GitError } from "../services/Git.ts"
 import { escapeMarkdown, sanitize, sanitizeLine } from "../ui/sanitize.ts"
@@ -511,7 +512,7 @@ export const runReport = (
     const saved = yield* Effect.exit(
       Effect.andThen(
         fs.makeDirectory(join(config.repo, reportsDir), { recursive: true }),
-        fs.writeFileString(join(config.repo, name), report),
+        writeFileAtomic(join(config.repo, name), report),
       ),
     )
     if (saved._tag === "Failure") {

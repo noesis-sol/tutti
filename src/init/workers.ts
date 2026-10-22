@@ -21,6 +21,7 @@ import { chromeServer } from "../agent/mcp.ts"
 import { accountLine } from "../cli/login.ts"
 import { unmergedLabel } from "../run/scope.ts"
 import { memoryEstimate } from "../run/startup.ts"
+import { writeFileAtomic } from "../services/atomicFile.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { stateFile } from "../services/Store.ts"
@@ -680,8 +681,13 @@ export const applyUnion = (machine: Machine, repo: string, union: Consent) =>
     if (!union)
       return [step("kept", label, `${attributesFile} left as it is: ${why} will conflict`)]
     const path = join(repo, attributesFile)
-    const text = yield* fs.readFileString(path).pipe(Effect.orElseSucceed(() => ""))
-    yield* fs.writeFileString(
+    const text = yield* fs.readFileString(path).pipe(
+      Effect.catchTag("PlatformError", (error) =>
+        // Rewriting a file that couldn't be read would lose the attributes it holds.
+        error.reason._tag === "NotFound" ? Effect.succeed("") : Effect.fail(error),
+      ),
+    )
+    yield* writeFileAtomic(
       path,
       `${text === "" || text.endsWith("\n") ? text : `${text}\n`}${unionLine}\n`,
     )
@@ -776,7 +782,7 @@ export const trustDeclined = (checkout: string): string =>
 /**
  * Sets `projects[checkout].hasTrustDialogAccepted` to true in Claude Code's user config `file`,
  * re-reading it just before, changing that one key and leaving everything else, and replacing it
- * atomically: a temporary file in the same folder, with the same mode, renamed over it.
+ * atomically (writeFileAtomic): through a link to it, with the same mode, 0600 where it is new.
  */
 export const markTrusted = (file: string, checkout: string) =>
   Effect.gen(function* () {
@@ -814,17 +820,7 @@ export const markTrusted = (file: string, checkout: string) =>
       ...config,
       projects: { ...projects, [checkout]: { ...project, hasTrustDialogAccepted: true } },
     }
-    const mode = yield* fs.stat(file).pipe(
-      Effect.map((info) => info.mode & 0o777),
-      Effect.orElseSucceed(() => 0o600),
-    )
-    const temporary = join(dirname(file), `.claude.json.tutti-${process.pid}.tmp`)
-    yield* Effect.gen(function* () {
-      yield* fs.writeFileString(temporary, `${JSON.stringify(changed, null, 2)}\n`, { mode })
-      yield* fs.chmod(temporary, mode)
-      yield* fs.rename(temporary, file)
-    }).pipe(
-      Effect.mapError((error) => `${file} couldn't be written: ${error.message}`),
-      Effect.tapError(() => Effect.ignore(fs.remove(temporary))),
-    )
+    yield* writeFileAtomic(file, `${JSON.stringify(changed, null, 2)}\n`, {
+      newMode: 0o600,
+    }).pipe(Effect.mapError((error) => `${file} couldn't be written: ${error.message}`))
   })

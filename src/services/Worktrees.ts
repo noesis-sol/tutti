@@ -25,6 +25,7 @@ import {
   type PathRefused,
   SymlinkRefused,
 } from "../native/libc.ts"
+import { writeFileAtomic } from "./atomicFile.ts"
 import { type Commit, Git, type GitError, GitFailed, GitWriter, type StatusEntry } from "./Git.ts"
 
 /** A ticket ID that can't name a worktree folder and a branch; `why` says what is wrong with it. */
@@ -142,7 +143,7 @@ export interface TicketWorktree {
  * Adds `/.tutti/run/` to the info/exclude in the git folder `commonDir`, unless it has it, keeping
  * every other line. info/exclude is shared by every worktree and never committed, so the run files
  * are ignored even on a branch cut before .tutti/.gitignore was committed. The file is rewritten
- * atomically (a temporary file beside it, then a rename), and through a link to it, as git reads
+ * atomically (writeFileAtomic), and through a link to it, as git reads
  * it: the user's entries, which git keeps nowhere else, are never left half written.
  */
 export const ensureExcluded = (
@@ -163,17 +164,9 @@ export const ensureExcluded = (
     const lines = text === "" ? [] : text.replace(/\n+$/, "").split("\n")
     if (lines.some((line) => line.trim() === runExcludeEntry)) return
     const updated = `${[...lines, runExcludeComment, runExcludeEntry].join("\n")}\n`
-    const folder = join(file, "..")
-    // A name of its own, so a temporary file a crash left behind is never in the way.
-    const temporary = `${file}.${crypto.randomUUID()}.tmp`
-    yield* Effect.gen(function* () {
-      yield* fs.makeDirectory(folder, { recursive: true })
-      yield* fs.writeFileString(temporary, updated)
-      yield* fs.rename(temporary, file)
-    }).pipe(
-      Effect.tapError(() => Effect.ignore(fs.remove(temporary))),
-      Effect.mapError(unwritable),
-    )
+    yield* fs
+      .makeDirectory(join(file, ".."), { recursive: true })
+      .pipe(Effect.andThen(writeFileAtomic(file, updated)), Effect.mapError(unwritable))
   })
 
 // makeRunFolder makes .tutti and .tutti/run in the worktree where they are missing, stopping at

@@ -7,6 +7,7 @@
 // start says when it differs (README_STALE).
 import { join } from "node:path"
 import { Effect, FileSystem } from "effect"
+import { writeFileAtomic } from "../services/atomicFile.ts"
 import { type Requirement, settingsFile } from "./settings.ts"
 
 /** Whether `r` applies on the operating system `platform` (process.platform). */
@@ -192,14 +193,13 @@ export const readmeState = (repo: string, list: ReadonlyArray<Requirement>) =>
  */
 export const writeReadmeRequires = (repo: string, list: ReadonlyArray<Requirement>) =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
     const text = (yield* readReadme(repo)) ?? ""
     const written = withRequires(text, list)
     if (written === undefined) return yield* Effect.fail(readmeMarkersProblem)
     if (written === text) return false
-    yield* fs
-      .writeFileString(join(repo, readmeName), written)
-      .pipe(Effect.mapError((error) => error.message))
+    yield* writeFileAtomic(join(repo, readmeName), written).pipe(
+      Effect.mapError((error) => error.message),
+    )
     return true
   })
 

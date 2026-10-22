@@ -16,6 +16,7 @@
 import { isAbsolute, join } from "node:path"
 import { Context, Duration, Effect, FileSystem, Layer, Ref, type Scope, Semaphore } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
+import { writeFileAtomic } from "../services/atomicFile.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
 import { detail, type Line, Tag, tagged } from "./log.ts"
 
@@ -355,11 +356,12 @@ export const make = (options: {
     const write = (reg: Registration) =>
       Effect.gen(function* () {
         if (dir === null || path === null) return false
-        const temporary = `${path}.tmp`
-        const text = writeRegistration(reg)
         yield* fs.makeDirectory(dir, { recursive: true })
-        yield* fs.writeFileString(temporary, text)
-        yield* fs.rename(temporary, path)
+        yield* Effect.provideService(
+          writeFileAtomic(path, writeRegistration(reg)),
+          FileSystem.FileSystem,
+          fs,
+        )
         return true
       })
 
