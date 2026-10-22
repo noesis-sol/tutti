@@ -304,7 +304,9 @@ export const runnerSuite = (suite: ScoutSuite): Suite => ({
 
 /**
  * The choice "use them as they are" with the suites ticked in each checklist: a suite ticked in
- * both runs in check-fast.sh only, which check-full.sh runs first, or one of its suites covers.
+ * both runs in check-fast.sh only, which check-full.sh runs first. Where a suite check-full.sh runs
+ * covers the fast ones instead, a suite ticked for check-fast that the scout didn't call fast runs
+ * in check-full.sh too, as nothing else there runs it.
  */
 export const chooseFound = (
   scouted: Scouted,
@@ -317,12 +319,19 @@ export const chooseFound = (
       const suite = scouted.suites[index]
       return suite === undefined ? [] : [runnerSuite(suite)]
     })
-  return {
-    kind: "found",
-    fast: pick(fast),
-    full: pick(full.filter((index) => !fast.includes(index))),
-    fileUntested,
-  }
+  const covering = full.some((index) => scouted.suites[index]?.covers_fast === true)
+  // A covering suite runs instead of check-fast.sh, and covers only the suites the scout calls
+  // fast: one ticked for check-fast that it doesn't cover still runs in check-full.
+  const own = covering
+    ? scouted.suites
+        .map((_, index) => index)
+        .filter(
+          (index) =>
+            (full.includes(index) && !fast.includes(index)) ||
+            (fast.includes(index) && !scouted.fast.includes(index)),
+        )
+    : full.filter((index) => !fast.includes(index))
+  return { kind: "found", fast: pick(fast), full: pick(own), fileUntested }
 }
 
 /** The runners a choice writes, or null for manual, whose command init writes over the one there. */

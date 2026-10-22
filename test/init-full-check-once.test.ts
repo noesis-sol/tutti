@@ -148,6 +148,31 @@ describe("a full suite covering the fast ones", () => {
     expect(runnerCommands(scripts?.full ?? "")).toEqual(["TUTTI_SLOW=1 scripts/check.sh"])
   })
 
+  test("a full suite ticked for check-fast still runs in check-full, which the covering one doesn't cover", () => {
+    const found: Scouting = {
+      ...tutti,
+      suites: [
+        suite({ name: "unit", command: "npm test" }),
+        suite({ name: "slow", command: "SLOW=1 npm test", tier: "full", covers_fast: true }),
+        suite({ name: "e2e", kind: "e2e", command: "npx playwright test", tier: "full" }),
+      ],
+    }
+    const scouted = settleScout({ found }, false)
+    // e2e ticked in both checklists, or in check-fast's only.
+    for (const full of [[1, 2], [1]]) {
+      const choice = chooseFound(scouted, [0, 2], full, false)
+      const scripts = choiceScripts(choice)
+      expect(runnerCommands(scripts?.fast ?? "")).toEqual(["npm test", "npx playwright test"])
+      expect(runnerCommands(scripts?.full ?? "")).toEqual([
+        "SLOW=1 npm test",
+        "npx playwright test",
+      ])
+    }
+    // Without a covering suite, check-full.sh runs check-fast.sh, which runs it.
+    const plain = chooseFound(scouted, [0, 2], [2], false)
+    expect(runnerCommands(choiceScripts(plain)?.full ?? "")).toEqual(["scripts/check-fast.sh"])
+  })
+
   test("a covering suite running scripts/check.sh isn't taken for the project's own check", () => {
     const offered = offeredSuites([tutti.suites[1] as ScoutSuite], true)
     expect(offered.map((each) => [each.command, each.tier])).toEqual([
