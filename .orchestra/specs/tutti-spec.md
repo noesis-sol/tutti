@@ -1564,7 +1564,7 @@ scripts/check-full.sh            committed: the full check
 <git-common-dir>/tutti.lock      the run lock (§9.2)
 ```
 
-The worktree files are excluded through `info/exclude`, as orchestra does. The symlink guard (`RUN_FILES_OUTSIDE`) is kept: files under a worktree's `.tutti/run/` are opened relative to a directory handle that refuses to follow a link out of the worktree. In Bun, this is `openat` with `O_NOFOLLOW` per path component, through `bun:ffi` or a small native helper; settle which in M0. Files in `attention/` are created exclusively (`O_EXCL`), mode 0600.
+The worktree files are excluded through `info/exclude`, as orchestra does. The symlink guard (`RUN_FILES_OUTSIDE`) is kept: files under a worktree's `.tutti/run/` are opened relative to a directory handle that refuses to follow a link out of the worktree. In Bun, this is `openat` with `O_NOFOLLOW` per path component, through `bun:ffi` or a small native helper; settle which in M0. Files in `attention/` are created exclusively (`O_EXCL`), mode 0600. What the guard opens must be a regular file (a folder where it asks for one): the last component is opened with `O_NONBLOCK`, checked with `fstat` and `O_NONBLOCK` cleared, so a named pipe, a socket or a device put at a run file's, an answer file's or a transcript's name is refused at once, naming what it is, rather than holding the open, which `bun:ffi` makes on the JavaScript thread, until its other end opens.
 
 The hook files, the rules file, the prompt file, `mcp.json` and `feature.json` go. MCP definitions are passed in memory (§4.6) and the interview files through a tool (§4.10).
 

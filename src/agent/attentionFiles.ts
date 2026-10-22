@@ -41,7 +41,15 @@ import {
   Semaphore,
   Stream,
 } from "effect"
-import { close, LibcError, O, openUnder, type PathRefused, SymlinkRefused } from "../native/libc.ts"
+import {
+  close,
+  LibcError,
+  NotAFileRefused,
+  O,
+  openUnder,
+  type PathRefused,
+  SymlinkRefused,
+} from "../native/libc.ts"
 import { timestamp } from "../run/events.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
@@ -329,7 +337,7 @@ export const writeExclusive = (
   repo: string,
   relativePath: string,
   bytes: Buffer,
-): Effect.Effect<void, LibcError | SymlinkRefused | PathRefused> => {
+): Effect.Effect<void, LibcError | SymlinkRefused | PathRefused | NotAFileRefused> => {
   const slash = relativePath.lastIndexOf("/")
   const part = `${relativePath.slice(0, slash + 1)}.${relativePath.slice(slash + 1)}.${randomBytes(6).toString("hex")}.part`
   return Effect.acquireUseRelease(
@@ -378,7 +386,9 @@ export const readFileUnder = (
             ? { _tag: "Missing" }
             : error instanceof SymlinkRefused
               ? { _tag: "Refused", reason: "it is a symbolic link" }
-              : { _tag: "Refused", reason: error.message },
+              : error instanceof NotAFileRefused
+                ? { _tag: "Refused", reason: `it is ${error.kind}, not a regular file` }
+                : { _tag: "Refused", reason: error.message },
         ),
       onSuccess: (fd) =>
         Effect.sync((): Read => {

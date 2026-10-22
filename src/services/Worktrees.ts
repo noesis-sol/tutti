@@ -19,6 +19,7 @@ import type { PlatformError } from "effect/PlatformError"
 import {
   close,
   type LibcError,
+  type NotAFileRefused,
   O,
   openUnder,
   type PathRefused,
@@ -56,7 +57,7 @@ export class ExcludeUnwritable extends Schema.TaggedError<ExcludeUnwritable>()(
   }
 }
 
-export type RunFilesError = RunFilesOutside | LibcError | PathRefused
+export type RunFilesError = RunFilesOutside | LibcError | PathRefused | NotAFileRefused
 
 /** The folder, relative to a checkout, of the files tutti keeps there (§ 9.1). */
 export const runFolder = ".tutti/run"

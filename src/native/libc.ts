@@ -15,7 +15,7 @@
 //   slot, where va_arg reads it. Without them a created file gets whatever was on the stack as its
 //   mode. Elsewhere variadic integers travel in the same registers as fixed ones.
 import { dlopen, FFIType, type Pointer, read } from "bun:ffi"
-import { constants as fsConstants, lstatSync } from "node:fs"
+import { constants as fsConstants, fstatSync, lstatSync, type Stats } from "node:fs"
 import { constants as osConstants } from "node:os"
 import { join } from "node:path"
 import { Effect, Schema } from "effect"
@@ -40,16 +40,19 @@ export const O = {
   APPEND: fsConstants.O_APPEND,
   NOFOLLOW: fsConstants.O_NOFOLLOW,
   DIRECTORY: fsConstants.O_DIRECTORY,
+  NONBLOCK: fsConstants.O_NONBLOCK,
   CLOEXEC: os.O_CLOEXEC,
 } as const
 
 const F_GETFD = 1
+const F_GETFL = 3
+const F_SETFL = 4
 const FD_CLOEXEC = 1
 const LOCK_SH = 1
 const LOCK_EX = 2
 const LOCK_NB = 4
 const LOCK_UN = 8
-const { EEXIST, ELOOP, ENOTDIR, EWOULDBLOCK } = osConstants.errno
+const { EEXIST, ELOOP, ENOTDIR, ENXIO, EOPNOTSUPP, EWOULDBLOCK } = osConstants.errno
 
 // darwin's libc is libSystem (in the dyld shared cache, so the file needn't exist on disk);
 // glibc's is libc.so.6, a name musl's loader also maps to itself.
@@ -62,14 +65,19 @@ const errnoSymbol = process.platform === "darwin" ? "__error" : "__errno_locatio
 const variadicOnStack = process.platform === "darwin" && process.arch === "arm64"
 const padOpenat = variadicOnStack ? 5 : 0
 const padOpen = variadicOnStack ? 6 : 0
+const padFcntl = variadicOnStack ? 6 : 0
 const padding = (n: number) => Array<FFIType>(n).fill(FFIType.i64)
 const zeros = (n: number) => Array<number>(n).fill(0)
 
 const symbols = {
   flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
   close: { args: [FFIType.i32], returns: FFIType.i32 },
-  // Variadic too, but F_GETFD takes no third argument.
-  fcntl: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+  // Variadic too: F_SETFL's third argument goes where open's mode does; F_GETFD and F_GETFL
+  // ignore it.
+  fcntl: {
+    args: [FFIType.i32, FFIType.i32, ...padding(padFcntl), FFIType.i64],
+    returns: FFIType.i32,
+  },
   open: {
     args: [FFIType.ptr, FFIType.i32, ...padding(padOpen), FFIType.i64],
     returns: FFIType.i32,
@@ -101,7 +109,7 @@ export const libcPath: string = libc.path
 const s = libc.lib.symbols as unknown as {
   flock: (fd: number, op: number) => number
   close: (fd: number) => number
-  fcntl: (fd: number, cmd: number) => number
+  fcntl: (...args: Array<unknown>) => number
   open: (...args: Array<unknown>) => number
   openat: (...args: Array<unknown>) => number
   __error?: () => Pointer
@@ -140,6 +148,17 @@ export class SymlinkRefused extends Schema.TaggedError<SymlinkRefused>()("Symlin
   }
 }
 
+/** openUnder found something other than a regular file at `path`, a named pipe or a device. */
+export class NotAFileRefused extends Schema.TaggedError<NotAFileRefused>()("NotAFileRefused", {
+  directory: Schema.String,
+  path: Schema.String,
+  kind: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.path} under ${this.directory} is ${this.kind}, not a regular file`
+  }
+}
+
 /** openUnder was given an absolute path, or one with an empty, `.` or `..` component. */
 export class PathRefused extends Schema.TaggedError<PathRefused>()("PathRefused", {
   directory: Schema.String,
@@ -161,6 +180,9 @@ const attempt = (call: string, path: string, f: () => number): number | LibcErro
 
 const unwrap = <A>(result: A | LibcError): Effect.Effect<A, LibcError> =>
   result instanceof LibcError ? Effect.fail(result) : Effect.succeed(result)
+
+const rawFcntl = (fd: number, cmd: number, arg = 0) =>
+  attempt("fcntl", `fd ${fd}`, () => s.fcntl(fd, cmd, ...zeros(padFcntl), arg))
 
 const rawOpen = (path: string, flags: number, mode: number) =>
   attempt("open", path, () => s.open(cstr(path), flags, ...zeros(padOpen), mode))
@@ -210,7 +232,7 @@ export const unlock = (fd: number): Effect.Effect<void, LibcError> =>
 
 /** Whether `fd` is marked close-on-exec, from fcntl(F_GETFD). */
 export const isCloseOnExec = (fd: number): Effect.Effect<boolean, LibcError> =>
-  Effect.suspend(() => unwrap(attempt("fcntl", `fd ${fd}`, () => s.fcntl(fd, F_GETFD)))).pipe(
+  Effect.suspend(() => unwrap(rawFcntl(fd, F_GETFD))).pipe(
     Effect.map((flags) => (flags & FD_CLOEXEC) !== 0),
   )
 
@@ -226,12 +248,69 @@ const isSymlink = (path: string): boolean => {
   }
 }
 
+/** What a file is, in words, for a refusal. */
+const kindOf = (stat: Stats): string =>
+  stat.isFIFO()
+    ? "a named pipe"
+    : stat.isSocket()
+      ? "a socket"
+      : stat.isCharacterDevice()
+        ? "a character device"
+        : stat.isBlockDevice()
+          ? "a block device"
+          : stat.isDirectory()
+            ? "a folder"
+            : stat.isSymbolicLink()
+              ? "a symbolic link"
+              : "something else"
+
+const kindAt = (path: string): string | undefined => {
+  try {
+    const stat = lstatSync(path)
+    return stat.isFile() ? undefined : kindOf(stat)
+  } catch {
+    return undefined
+  }
+}
+
+// opened checks what the last openat opened: a folder where O_DIRECTORY asked for one, a regular
+// file otherwise. The open was non-blocking, so a named pipe or a device opened at once; it is
+// closed and refused. A regular file has O_NONBLOCK taken off again, as the caller didn't ask for it.
+const opened = (
+  fd: number,
+  directory: string,
+  relativePath: string,
+  flags: number,
+): number | LibcError | NotAFileRefused => {
+  let stat: Stats
+  try {
+    stat = fstatSync(fd)
+  } catch (error) {
+    s.close(fd)
+    const code = (error as NodeJS.ErrnoException).code ?? "EIO"
+    return failure("fstat", relativePath, (osConstants.errno as Record<string, number>)[code] ?? 0)
+  }
+  const wanted = (flags & O.DIRECTORY) !== 0 ? stat.isDirectory() : stat.isFile()
+  if (!wanted) {
+    s.close(fd)
+    return new NotAFileRefused({ directory, path: relativePath, kind: kindOf(stat) })
+  }
+  if ((flags & O.NONBLOCK) !== 0) return fd
+  const status = rawFcntl(fd, F_GETFL)
+  const cleared = status instanceof LibcError ? status : rawFcntl(fd, F_SETFL, status & ~O.NONBLOCK)
+  if (cleared instanceof LibcError) {
+    s.close(fd)
+    return cleared
+  }
+  return fd
+}
+
 const walk = (
   directory: string,
   relativePath: string,
   flags: number,
   mode: number,
-): number | LibcError | SymlinkRefused | PathRefused => {
+): number | LibcError | SymlinkRefused | PathRefused | NotAFileRefused => {
   const parts = relativePath.split("/")
   if (relativePath.startsWith("/") || parts.some((p) => p === "" || p === "." || p === "..")) {
     return new PathRefused({ directory, path: relativePath })
@@ -245,18 +324,27 @@ const walk = (
       const last = i === parts.length - 1
       const component = parts.slice(0, i + 1).join("/")
       const next = last
-        ? rawOpenat(dir, part, component, flags | O.NOFOLLOW | O.CLOEXEC, mode)
+        ? rawOpenat(dir, part, component, flags | O.NOFOLLOW | O.NONBLOCK | O.CLOEXEC, mode)
         : rawOpenat(dir, part, component, O.RDONLY | O.DIRECTORY | O.NOFOLLOW | O.CLOEXEC, 0)
       if (next instanceof LibcError) {
         // A link mid-path fails O_DIRECTORY (ENOTDIR), a last one O_NOFOLLOW (ELOOP), or O_EXCL
         // (EEXIST). Each of those is also a plain failure, so the link is confirmed by lstat; the
         // refusal never depended on it.
         const linkish = next.errno === ENOTDIR || next.errno === ELOOP || next.errno === EEXIST
-        return linkish && isSymlink(join(directory, component))
-          ? new SymlinkRefused({ directory, path: relativePath, component })
-          : next
+        if (linkish && isSymlink(join(directory, component))) {
+          return new SymlinkRefused({ directory, path: relativePath, component })
+        }
+        // A named pipe opened for writing with no reader fails ENXIO under O_NONBLOCK, and a
+        // socket ENXIO or EOPNOTSUPP: named for what they are.
+        const kind =
+          last && (next.errno === ENXIO || next.errno === EOPNOTSUPP)
+            ? kindAt(join(directory, component))
+            : undefined
+        return kind === undefined
+          ? next
+          : new NotAFileRefused({ directory, path: relativePath, kind })
       }
-      if (last) return next
+      if (last) return opened(next, directory, relativePath, flags)
       s.close(dir)
       dir = next
     }
@@ -271,14 +359,17 @@ const walk = (
  * that a symbolic link at any component is refused, naming it (§ 9.1). Each step holds its
  * directory open, so swapping a folder for a link between steps doesn't help. Absolute paths and
  * empty, `.` or `..` components are refused before any call. O_NOFOLLOW and O_CLOEXEC are added to
- * `flags`.
+ * `flags`. What is opened must be a regular file, or a folder where `flags` has O_DIRECTORY:
+ * anything else, a named pipe or a device, is refused with NotAFileRefused. The last component is
+ * opened with O_NONBLOCK, so a named pipe never holds the open, which bun:ffi makes on the
+ * JavaScript thread, until its other end opens; O_NONBLOCK is then cleared unless `flags` has it.
  */
 export const openUnder = (
   directory: string,
   relativePath: string,
   flags: number,
   mode = 0o644,
-): Effect.Effect<number, LibcError | SymlinkRefused | PathRefused> =>
+): Effect.Effect<number, LibcError | SymlinkRefused | PathRefused | NotAFileRefused> =>
   Effect.suspend(() => {
     const result = walk(directory, relativePath, flags, mode)
     return typeof result === "number" ? Effect.succeed(result) : Effect.fail(result)

@@ -102,6 +102,7 @@ describe("constants", () => {
       APPEND: 0x8,
       NOFOLLOW: 0x100,
       DIRECTORY: 0x100000,
+      NONBLOCK: 0x4,
       CLOEXEC: 0x1000000,
     },
     "linux-x64": {
@@ -114,6 +115,7 @@ describe("constants", () => {
       APPEND: 0x400,
       NOFOLLOW: 0x20000,
       DIRECTORY: 0x10000,
+      NONBLOCK: 0x800,
       CLOEXEC: 0x80000,
     },
     "linux-arm64": {
@@ -126,6 +128,7 @@ describe("constants", () => {
       APPEND: 0x400,
       NOFOLLOW: 0x8000,
       DIRECTORY: 0x4000,
+      NONBLOCK: 0x800,
       CLOEXEC: 0x80000,
     },
   }
