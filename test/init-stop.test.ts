@@ -285,11 +285,12 @@ describe("tutti init stopped", () => {
 })
 
 /**
- * A git first on the PATH that, the first time it runs in a checkout with a worker prompt (as the
+ * A git first on the PATH that, the first time it runs in `repo` once it has a worker prompt (as the
  * setup's check of the changelog's merge does, once it has written the prompt), waits until
- * `release` is there, having made `stalled`.
+ * `release` is there, having made `stalled`. Only in `repo`: tutti's version, read at its start
+ * from its own checkout, runs git there, and that checkout may have a prompt of its own.
  */
-const stallingGit = (root: string) => {
+const stallingGit = (root: string, repo: string) => {
   const bin = join(root, "bin")
   mkdirSync(bin)
   const stalled = join(root, "stalled")
@@ -299,7 +300,7 @@ const stallingGit = (root: string) => {
   writeFileSync(
     join(bin, "git"),
     `#!/bin/sh
-if [ -e .tutti/worker-prompt.md ] && [ ! -e '${stalled}' ]; then
+if [ "$(pwd -P)" = '${realpathSync(repo)}' ] && [ -e .tutti/worker-prompt.md ] && [ ! -e '${stalled}' ]; then
   : > '${stalled}'
   while [ ! -e '${release}' ]; do sleep 0.01; done
 fi
@@ -317,7 +318,7 @@ describe("tutti init on real git", () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "tutti-init-sigint-")))
     const home = join(root, "home")
     mkdirSync(home)
-    const git = stallingGit(root)
+    const git = stallingGit(root, repo.dir)
     const proc = Bun.spawn(["bun", join(import.meta.dir, "..", "src", "main.ts"), "init"], {
       cwd: repo.dir,
       stdin: "ignore",
