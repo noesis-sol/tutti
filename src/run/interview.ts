@@ -14,7 +14,7 @@
 // ends without a run, and interviewEnding says what was filed, if anything, and the exit code.
 import { Clock, Data, Effect, Queue, Ref, type Scope, Stream, SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
-import { Attention } from "../agent/Attention.ts"
+import { Attention, type AttentionRequest } from "../agent/Attention.ts"
 import { filedPlan, interviewWorker, startInterview } from "../agent/interview.ts"
 import type { Filing } from "../agent/interviewTools.ts"
 import { Transcripts } from "../agent/Transcripts.ts"
@@ -28,7 +28,7 @@ import { sanitizeLine } from "../ui/sanitize.ts"
 import { makeCommands, type UiCommand } from "./commands.ts"
 import { exitCodes } from "./holds.ts"
 import { TicketPhase } from "./phase.ts"
-import { type Card, emptyView, type RunView, stateStatus } from "./runView.ts"
+import { type Card, emptyView, type RunView, shownRequest, stateStatus } from "./runView.ts"
 import { Screen, type ScreenInputs } from "./screen.ts"
 
 /** What the run hands the Interview view: a dashboard's inputs, the description, the filing. */
@@ -77,28 +77,32 @@ export const interviewCard = (
   description: string,
   since: number,
   state: WorkerState | null,
-  requests: Card["requests"],
+  open: ReadonlyArray<AttentionRequest>,
   now?: number,
-): Card => ({
-  ticket: interviewWorker,
-  title: description.split("\n").find((line) => line.trim() !== "") ?? "",
-  worker: 1,
-  phase: TicketPhase.Working({ activity: requests.length > 0 ? "answer" : "working" }),
-  state,
-  status: interviewStatus(state, requests, now),
-  motion:
-    state === null ||
-    state._tag === "Starting" ||
-    state._tag === "Working" ||
-    state._tag === "Retrying"
-      ? "spinner"
-      : "•",
-  since,
-  action: null,
-  latest: null,
-  steered: false,
-  requests,
-})
+): Card => {
+  const requests = open.map(shownRequest)
+  return {
+    ticket: interviewWorker,
+    label: interviewWorker,
+    title: description.split("\n").find((line) => line.trim() !== "") ?? "",
+    worker: 1,
+    phase: TicketPhase.Working({ activity: requests.length > 0 ? "answer" : "working" }),
+    state,
+    status: interviewStatus(state, requests, now),
+    motion:
+      state === null ||
+      state._tag === "Starting" ||
+      state._tag === "Working" ||
+      state._tag === "Retrying"
+        ? "spinner"
+        : "•",
+    since,
+    action: null,
+    latest: null,
+    steered: false,
+    requests,
+  }
+}
 
 /** The RunView the Interview view reads: the interview's card, and its open requests. */
 export const interviewView = (card: Card): RunView => ({
@@ -138,7 +142,10 @@ export const interview = <E>(
     const ended = yield* Effect.scoped(
       Effect.gen(function* () {
         const since = yield* Clock.currentTimeMillis
-        const now = { state: null as WorkerState | null, requests: [] as Card["requests"] }
+        const now = {
+          state: null as WorkerState | null,
+          requests: [] as ReadonlyArray<AttentionRequest>,
+        }
         const view = yield* SubscriptionRef.make(
           interviewView(interviewCard(description, since, null, [])),
         )

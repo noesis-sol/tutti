@@ -55,7 +55,7 @@ export const ticketsLines = (
   // A worker files tickets, so an ID is untrusted, and one longer than a third of the table is cut.
   const idWidth = Math.max(
     Math.min(
-      Math.max(minIdWidth, ...rows.map((row) => Bun.stringWidth(row.ticket))),
+      Math.max(minIdWidth, ...rows.map((row) => Bun.stringWidth(row.label))),
       Math.max(Math.floor(width / 3), minIdWidth),
       width - 4 - (stateWidth + 2) - 2 - (minAboutWidth + 2),
     ),
@@ -81,7 +81,7 @@ export const ticketsLines = (
         : seg(fit(row.note, aboutWidth), look.faint ? styles.dim : null)
     cells.push([
       [seg(fit(`${row.mark} ${row.word}`, stateWidth), style)],
-      [seg(fit(row.ticket, idWidth), style)],
+      [seg(fit(row.label, idWidth), style)],
       [about],
     ])
   }

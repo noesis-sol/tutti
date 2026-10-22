@@ -20,7 +20,7 @@ import {
 } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { AttentionRequest } from "../agent/Attention.ts"
+import type { ShownRequest } from "../run/runView.ts"
 import {
   answerOf,
   buttonLabels,
@@ -116,7 +116,7 @@ const FormBody = ({
   form,
   close,
 }: {
-  readonly request: AttentionRequest
+  readonly request: ShownRequest
   readonly form: Form
   readonly close: () => void
 }) => {
@@ -253,7 +253,7 @@ const FormBody = ({
       >
         <Line
           segments={cut(
-            [seg(request.ticket, theme.styles.key), seg(" asks", theme.styles.dim)],
+            [seg(request.label, theme.styles.key), seg(" asks", theme.styles.dim)],
             inner,
           )}
         />

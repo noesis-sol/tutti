@@ -330,7 +330,8 @@ export const useAnswering = (
       const request = requestOf(card)
       if (request === undefined || !settled(request)) return
       if (request.kind._tag === "Elicitation") send(request, { _tag: "Decline" })
-      else box.set(Box.Reason({ requestId: request.id, ticket: request.ticket }))
+      else
+        box.set(Box.Reason({ requestId: request.id, ticket: request.ticket, label: request.label }))
     },
     pick: (card, n) => {
       const request = requestOf(card)

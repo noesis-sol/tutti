@@ -179,7 +179,10 @@ export interface Totals {
  * as its ticket leaves Current, when it moves to the end.
  */
 export interface Row {
+  /** Its ticket's ID, the key the run's commands take; draw `label` instead. */
   readonly ticket: string
+  /** Its ticket's ID as drawn: a worker files tickets, so it is sanitised (§ 7.10). */
+  readonly label: string
   readonly title: string
   /** The row's status, as `▶ testing`: its mark and its word. */
   readonly mark: string
@@ -195,7 +198,10 @@ export type Motion = "spinner" | "◼" | "◆" | "•"
 
 /** A card, for a ticket with work under way. */
 export interface Card {
+  /** Its ticket's ID, the key the run's commands take; draw `label` instead. */
   readonly ticket: string
+  /** Its ticket's ID as drawn: a worker files tickets, so it is sanitised (§ 7.10). */
+  readonly label: string
   readonly title: string
   /** Its worker's number, stable for the session: the cards' order, never shown (§ 7.2). */
   readonly worker: number
@@ -214,7 +220,7 @@ export interface Card {
   /** You steered its worker and haven't released it (§ 4.3). */
   readonly steered: boolean
   /** Its worker's open requests, oldest first. */
-  readonly requests: ReadonlyArray<AttentionRequest>
+  readonly requests: ReadonlyArray<ShownRequest>
   /**
    * The memory its worker's processes take, in bytes, as the run last read it: unknownMemory when
    * they can't be found; absent when the reading has none for it.
@@ -285,6 +291,18 @@ export interface LoadView {
   readonly levels: Levels
 }
 
+/** An open request as RunView holds it, with its ticket's ID sanitised to draw (§ 7.10). */
+export interface ShownRequest extends AttentionRequest {
+  /** Its ticket's ID as drawn; `ticket` is the key an answer names. */
+  readonly label: string
+}
+
+/** `request` as RunView holds it: its ticket's ID sanitised to draw. */
+export const shownRequest = (request: AttentionRequest): ShownRequest => ({
+  ...request,
+  label: sanitizeLine(request.ticket),
+})
+
 export interface RunView {
   readonly title: TitleView
   /** The load line's figures; null until the run has read the machine's load. */
@@ -293,7 +311,7 @@ export interface RunView {
   readonly rows: ReadonlyArray<Row>
   /** In their workers' number order. */
   readonly cards: ReadonlyArray<Card>
-  readonly requests: ReadonlyArray<AttentionRequest>
+  readonly requests: ReadonlyArray<ShownRequest>
   /** Usage first, then each hold. */
   readonly banners: ReadonlyArray<Banner>
   readonly windDown: WindDownView | null
@@ -573,6 +591,7 @@ const probeCard = (
   const phase = TicketPhase.Working({ activity: "working" })
   return {
     ticket: probeLabel,
+    label: probeLabel,
     title: probeLabel,
     worker: 0,
     phase,
@@ -717,16 +736,18 @@ const keepAll = <A>(
 /** RunView for `inputs`, keeping every part of `previous` that is unchanged, and `previous` itself
  * when nothing is. */
 export const project = (inputs: Inputs, previous: RunView = emptyView): RunView => {
-  const { ledger, workers, requests, status } = inputs
+  const { ledger, workers, status } = inputs
   const actions = inputs.actions ?? new Map<string, LatestAction>()
   const branch = sanitizeLine(status.branch)
-  const requestsOf = new Map<string, Array<AttentionRequest>>()
+  // Ticket IDs are sanitised here, once, as they enter RunView; every view draws `label`.
+  const requests = inputs.requests.map(shownRequest)
+  const requestsOf = new Map<string, Array<ShownRequest>>()
   for (const request of requests) {
     const list = requestsOf.get(request.ticket)
     if (list === undefined) requestsOf.set(request.ticket, [request])
     else list.push(request)
   }
-  const none: ReadonlyArray<AttentionRequest> = []
+  const none: ReadonlyArray<ShownRequest> = []
 
   const totals = { ...emptyView.totals, slots: status.concurrency, unclosed: status.unclosed }
   const needsYou = new Set(requestsOf.keys())
@@ -736,6 +757,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     const state = workers.get(entry.ticket)
     const open = requestsOf.get(entry.ticket) ?? none
     const phase = shown(entry.phase, state, open)
+    const label = sanitizeLine(entry.ticket)
     const title = sanitizeLine(entry.title)
     const verdict = setAside.has(phase._tag) ? (status.verdicts.get(entry.ticket) ?? null) : null
     for (const total of countsUnder(phase)) {
@@ -751,6 +773,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         at: entry.row,
         row: {
           ticket: entry.ticket,
+          label,
           title,
           ...rowStatus(phase),
           note: noteOf(entry, title, branch),
@@ -762,6 +785,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       const waits = handBackWaits(entry)
       cards.push({
         ticket: entry.ticket,
+        label,
         title,
         worker: entry.worker,
         phase: entry.phase,

@@ -31,7 +31,6 @@ import {
   seg,
   widthOf,
 } from "./line.tsx"
-import { sanitizeLine } from "./sanitize.ts"
 import type { Theme } from "./theme.ts"
 
 /** From this many columns the cards go two to a row (§ 7.2). */
@@ -159,7 +158,7 @@ const noColumns: HeadColumns = { ticket: 0, status: 0, time: 0, memory: 0 }
 const cellsOf = (card: Card, theme: Theme, now: number, status: Segments): HeadCells => {
   const { styles } = theme
   return {
-    ticket: [seg(sanitizeLine(card.ticket), styles.picked)],
+    ticket: [seg(card.label, styles.picked)],
     status: [...status, ...steeredOf(card, theme)],
     time: [seg(elapsed(now - card.since), styles.dim)],
     memory: card.memory === undefined ? [] : [seg(workerMemory(card.memory), styles.dim)],

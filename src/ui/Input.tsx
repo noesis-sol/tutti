@@ -62,7 +62,7 @@ const OpenBox = ({ input }: { readonly input: InputState }) => {
       // the worker view draws its interrupt question and the Interview view its leave question.
       return null
     case "Reason":
-      return <ReasonBox requestId={box.requestId} ticket={box.ticket} />
+      return <ReasonBox requestId={box.requestId} ticket={box.ticket} label={box.label} />
     case "Form":
       return <AnswerForm requestId={box.requestId} ticket={box.ticket} />
   }

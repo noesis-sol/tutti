@@ -226,7 +226,7 @@ export const AnswerBox = () => {
   const head: ReadonlyArray<Segments> = [
     [
       seg("  "),
-      seg(card.ticket, theme.styles.picked),
+      seg(card.label, theme.styles.picked),
       seg("  "),
       seg(card.status, theme.styles.stop),
     ],
@@ -277,9 +277,12 @@ export const ReasonKeys = () => {
 export const ReasonBox = ({
   requestId,
   ticket,
+  label,
 }: {
   readonly requestId: string
   readonly ticket: string
+  /** The ticket's ID as drawn (§ 7.10). */
+  readonly label: string
 }) => {
   const theme = useTheme()
   const { form } = theme
@@ -322,7 +325,7 @@ export const ReasonBox = ({
         <Line segments={[seg(`╭${rule}╮`, frame)]} />
         <Line
           segments={row([
-            seg(reasonQuestion(ticket), { ...frame, attributes: TextAttributes.BOLD }),
+            seg(reasonQuestion(label), { ...frame, attributes: TextAttributes.BOLD }),
           ])}
         />
         <Line segments={row([])} />

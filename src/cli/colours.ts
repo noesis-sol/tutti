@@ -9,7 +9,7 @@ import { Console, Effect } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { WorkerState } from "../agent/WorkerState.ts"
 import { TicketPhase } from "../run/phase.ts"
-import type { Card, Key, Row } from "../run/runView.ts"
+import { type Card, type Key, type Row, shownRequest } from "../run/runView.ts"
 import { Tty } from "../services/Tty.ts"
 import { attentionLines } from "../ui/AttentionCard.tsx"
 import { defaultFocus } from "../ui/attentionKeys.ts"
@@ -133,6 +133,7 @@ const began = (now: number, millis: number) => now - millis
 /** The mock's worker card: a worker editing, its latest action under its title. */
 const workingCard = (now: number): Card => ({
   ticket: "tut-12",
+  label: "tut-12",
   title: "Retry a merge that lost the race",
   worker: 1,
   phase: TicketPhase.Working({ activity: "editing" }),
@@ -167,6 +168,7 @@ const permission = (now: number): AttentionRequest => ({
 /** The mock's attention card: a worker waiting for you to allow a command. */
 const attentionCard = (now: number): Card => ({
   ticket: "tut-14",
+  label: "tut-14",
   title: "Clear the build cache between checks",
   worker: 2,
   phase: TicketPhase.Working({ activity: "allow" }),
@@ -177,23 +179,41 @@ const attentionCard = (now: number): Card => ({
   action: null,
   latest: null,
   steered: false,
-  requests: [permission(now)],
+  requests: [shownRequest(permission(now))],
 })
 
 /** The mock's ticket rows, one in each of a few states. */
 const rows: ReadonlyArray<Row> = [
-  { ticket: "tut-9", mark: "✓", word: "done", title: "", note: "merged in 4m12s", verdict: null },
+  {
+    ticket: "tut-9",
+    label: "tut-9",
+    mark: "✓",
+    word: "done",
+    title: "",
+    note: "merged in 4m12s",
+    verdict: null,
+  },
   {
     ticket: "tut-12",
+    label: "tut-12",
     mark: "▶",
     word: "editing",
     title: "",
     note: "Retry a merge that lost the race",
     verdict: null,
   },
-  { ticket: "tut-13", mark: "◼", word: "to merge", title: "", note: "Tidy the log", verdict: null },
+  {
+    ticket: "tut-13",
+    label: "tut-13",
+    mark: "◼",
+    word: "to merge",
+    title: "",
+    note: "Tidy the log",
+    verdict: null,
+  },
   {
     ticket: "tut-14",
+    label: "tut-14",
     mark: "■",
     word: "allow?",
     title: "",

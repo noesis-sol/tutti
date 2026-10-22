@@ -31,6 +31,7 @@ import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { RunLock } from "../services/RunLock.ts"
 import { branchOf } from "../services/Worktrees.ts"
+import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 
 /** A blocks link: `blocked` waits for `blocker` (bd dep add <blocked> <blocker>). */
 export interface Link {
@@ -189,12 +190,16 @@ export const planLinks = (
 /** n and the noun, which takes an s unless n is 1. */
 export const plural = (n: number, noun: string): string => (n === 1 ? `1 ${noun}` : `${n} ${noun}s`)
 
-/** A link as the proposal lists it: `  <blocked> (P2) waits for <blocker> (P1): both touch <why>`. */
+/**
+ * A link as the proposal lists it: `  <blocked> (P2) waits for <blocker> (P1): both touch <why>`.
+ * Workers file tickets, and why can be a ticket's files entry, so each is sanitised (§ 7.10).
+ */
 export const linkLine = (link: Link, priorities: ReadonlyMap<string, number>): string =>
-  `  ${link.blocked} (P${priorities.get(link.blocked) ?? 9}) waits for ${link.blocker} (P${priorities.get(link.blocker) ?? 9}): both touch ${link.why}`
+  `  ${sanitizeLine(link.blocked)} (P${priorities.get(link.blocked) ?? 9}) waits for ${sanitizeLine(link.blocker)} (P${priorities.get(link.blocker) ?? 9}): both touch ${sanitizeLine(link.why)}`
 
 /** A link as a stop names it: `<blocked> waits for <blocker>`. */
-const waits = (link: Link): string => `${link.blocked} waits for ${link.blocker}`
+const waits = (link: Link): string =>
+  `${sanitizeLine(link.blocked)} waits for ${sanitizeLine(link.blocker)}`
 
 /** What plan says on stderr when stopped before it proposed a link. */
 export const stoppedReadingLine = "tutti plan: stopped before proposing any link; nothing changed."
@@ -222,11 +227,11 @@ const settingsProblem = (error: ConfigFileInvalid): string =>
 const beadsProblem = (error: BeadsError): string => {
   switch (error._tag) {
     case "BeadsFailed":
-      return `${error.command} exited with ${error.exitCode}: ${error.stderr.trim()}`
+      return `${sanitizeLine(error.command)} exited with ${error.exitCode}: ${sanitize(error.stderr).trim()}`
     case "BeadsTimedOut":
-      return `${error.command} took too long`
+      return `${sanitizeLine(error.command)} took too long`
     case "BeadsUnreadable":
-      return `${error.command}: ${error.reason}`
+      return `${sanitizeLine(error.command)}: ${sanitize(error.reason)}`
   }
 }
 
@@ -360,7 +365,7 @@ export const plan = (
         }
         notAdded.push(link)
         yield* Console.error(
-          `tutti plan: bd dep add ${link.blocked} ${link.blocker}: ${beadsProblem(result.failure)}`,
+          `tutti plan: bd dep add ${sanitizeLine(link.blocked)} ${sanitizeLine(link.blocker)}: ${beadsProblem(result.failure)}`,
         )
       }).pipe(Effect.uninterruptible)
     yield* Effect.forEach(links, add, { discard: true }).pipe(

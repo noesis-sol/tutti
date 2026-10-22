@@ -79,7 +79,7 @@ export const StopQuestion = ({ windingDown }: { readonly windingDown: boolean })
   const answers = useAnswers()
   const words = stopWords(
     windingDown,
-    view.cards.map((card) => card.ticket),
+    view.cards.map((card) => card.label),
   )
   const notice = theme.rgba("notice")
   return (

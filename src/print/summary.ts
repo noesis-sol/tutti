@@ -203,7 +203,7 @@ const parts = (theme: Theme, width: number) => {
   const tickets = (rows: ReadonlyArray<Row>): ReadonlyArray<string> => {
     const stateWidth = 11
     const idWidth = Math.min(
-      Math.max(7, ...rows.map((row) => Bun.stringWidth(sanitizeLine(row.ticket)))),
+      Math.max(7, ...rows.map((row) => Bun.stringWidth(row.label))),
       Math.max(Math.floor(w / 3), 7),
       // Room left for the note's eight columns at the least, so the table is never wider than w.
       w - 4 - (stateWidth + 2) - 2 - 2 - 8,
@@ -215,7 +215,7 @@ const parts = (theme: Theme, width: number) => {
       const about = fit(row.note, aboutWidth)
       return [
         style.paint(fit(`${row.mark} ${row.word}`, stateWidth)),
-        style.paint(fit(row.ticket, idWidth)),
+        style.paint(fit(row.label, idWidth)),
         look.faint ? styles.dim.paint(about) : about,
       ]
     })

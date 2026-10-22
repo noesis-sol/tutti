@@ -56,7 +56,7 @@ export type Box = Data.TaggedEnum<{
   /** Enter's on a compact card waiting for you: the worker's request and its buttons (§ 7.2). */
   Answer: { readonly ticket: string }
   /** Shift+D's: a reason to deny the request `requestId` with, typed in a small field. */
-  Reason: { readonly requestId: string; readonly ticket: string }
+  Reason: { readonly requestId: string; readonly ticket: string; readonly label: string }
   /** Answer in view's in the worker view: the answer form for the request `requestId` (§ 4.5). */
   Form: { readonly requestId: string; readonly ticket: string }
   /** Ctrl+X's in a worker view: whether to interrupt the turn of the ticket's worker (§ 7.5). */

@@ -33,6 +33,7 @@ const unsafe = (text: string): boolean =>
 
 const row = (ticket: string, mark: string, word: string, note: string): Row => ({
   ticket,
+  label: ticket,
   title: note,
   mark,
   word,
