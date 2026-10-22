@@ -367,31 +367,70 @@ export const guardPaste = (stdin: PasteInput, limit: number = pasteLimit): (() =
   }
 }
 
+// The guards up on each renderer, and how many screens have asked for them: a renderer has one set,
+// however many roots on it guard their input, so that the run's input layers and a form's guards
+// over the same renderer don't hold an Esc twice or filter a report's rest twice.
+const guarded = new WeakMap<CliRenderer, { users: number; readonly stop: () => void }>()
+
 /**
- * The guards in front of `keymap`'s keys: split mouse reports filtered out, a lone Esc held, an
- * unterminated paste ended after `limit` ms. The returned function stops them.
+ * The guards in front of `renderer`'s keys: split mouse reports filtered out, a lone Esc held, an
+ * unterminated paste ended after `limit` ms. Raw input stops at the renderer, before any keymap or
+ * key handler hears it. The first call on a renderer puts them up, on `keymap`; a call while they
+ * are up shares them, its `limit` unused. The returned function stops them once every call's has
+ * run.
  */
 export const guardInput = (
   keymap: Keymap<Renderable, KeyEvent>,
   renderer: CliRenderer,
   limit: number = pasteLimit,
 ): (() => void) => {
-  const unfilter = filterMouse(keymap)
-  const unhold = holdEscape(keymap, renderer)
-  const unguard = guardPaste(renderer.stdin, limit)
+  let guards = guarded.get(renderer)
+  if (guards === undefined) {
+    const unfilter = filterMouse(keymap)
+    const unhold = holdEscape(keymap, renderer)
+    const unguard = guardPaste(renderer.stdin, limit)
+    guards = {
+      users: 0,
+      stop: () => {
+        unguard()
+        unhold()
+        unfilter()
+      },
+    }
+    guarded.set(renderer, guards)
+  }
+  const mine = guards
+  mine.users++
+  let stopped = false
   return () => {
-    unguard()
-    unhold()
-    unfilter()
+    if (stopped) return
+    stopped = true
+    mine.users--
+    if (mine.users > 0) return
+    guarded.delete(renderer)
+    mine.stop()
   }
 }
 
+// The keymap InputGuards puts the guards up on, one a renderer: a keymap listens on its renderer
+// until the renderer is destroyed.
+const guardKeymaps = new WeakMap<CliRenderer, Keymap<Renderable, KeyEvent>>()
+
+const guardKeymap = (renderer: CliRenderer): Keymap<Renderable, KeyEvent> => {
+  const made = guardKeymaps.get(renderer)
+  if (made !== undefined) return made
+  const keymap = createOpenTuiKeymap(renderer)
+  guardKeymaps.set(renderer, keymap)
+  return keymap
+}
+
 /**
- * guardInput over the renderer for a screen without the run's input layers, as init's form: on a
- * keymap of their own, which the guards stop raw input on before any key handler hears it.
+ * guardInput over the renderer for a screen without the run's input layers, as init's form and
+ * the forms ask() shows: on a keymap of their own. Mounted beside the run's input layers, it shares
+ * their guards.
  */
 export const InputGuards = () => {
   const renderer = useRenderer()
-  useEffect(() => guardInput(createOpenTuiKeymap(renderer), renderer), [renderer])
+  useEffect(() => guardInput(guardKeymap(renderer), renderer), [renderer])
   return null
 }

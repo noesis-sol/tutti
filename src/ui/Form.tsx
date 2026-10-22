@@ -3,12 +3,15 @@
 // a bar on its left (`┃`, formFrame); the others keep its width, blank.
 //
 // ask() shows a form in the renderer until it is answered or cancelled, then unmounts it, leaving
-// the renderer to the screen after it: the dashboard, or the interview.
+// the renderer to the screen after it: the dashboard, or the interview. Taking the mouse, the form
+// has the run's guards in front of its keys (InputGuards): a mouse report split between two reads
+// neither cancels it as a lone Esc nor types its rest into a field.
 import type { MouseEvent } from "@opentui/core"
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import { type ReactNode, useMemo, useSyncExternalStore } from "react"
 import type { Key } from "../run/runView.ts"
+import { InputGuards } from "./keys.ts"
 import { plainFg, type Segments, seg, styled } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
@@ -130,9 +133,12 @@ export const ask = <A,>(
       },
     }
     root.render(
-      <Themed appearance={shell.appearance} themeOf={themeOf}>
-        {(theme) => draw(theme, answers)}
-      </Themed>,
+      <>
+        <InputGuards />
+        <Themed appearance={shell.appearance} themeOf={themeOf}>
+          {(theme) => draw(theme, answers)}
+        </Themed>
+      </>,
     )
     return Effect.sync(close)
   })
