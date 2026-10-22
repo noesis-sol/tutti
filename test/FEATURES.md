@@ -67,21 +67,19 @@ below are the coverage report's uncovered lines at 368899e.
 - **Reached by**: `tutti answer` (lists the open attention requests), `tutti answer --json`,
   `tutti answer <request-id> allow|allow-run|deny [--reason] [--choice] [--confirm]`.
 - **Tests**: `attention-files.test.ts` (the request and answer files, `answer`, `show`),
-  `attention-poll.test.ts`, `run-answers.test.ts`, `tutti-skill.test.ts` (the `--json` fields).
-- **Untested**: the command through `bun src/main.ts`: listing, `--json`, an answer the run
-  takes, a request ID with no answer given (`src/cli/commands.ts` 150–152), and each error's
-  message as the command prints it (no such request, a request file that can't be read, an
-  answer already waiting, not taken in time; `src/answer/answer.ts` 38–80, 132–136)
-  (tutti-8iz.6).
+  `attention-poll.test.ts`, `run-answers.test.ts`, `tutti-skill.test.ts` (the `--json` fields),
+  `cli-commands.test.ts` (slow: the command through `bun src/main.ts`, its listing, `--json`, an
+  answer the run takes or refuses, and each error as the command prints it).
+- **Untested**: nothing found.
 
 ## `tutti plan`
 
 - **Reached by**: `tutti plan`, `tutti plan --apply`.
 - **Tests**: `plan-command.test.ts`, `plan-lock-warning.test.ts`, `plan-stop.test.ts`,
-  `footprint.test.ts`, `footprint-globs.test.ts`, `footprint-leave-out.test.ts`.
-- **Untested**: `tutti plan` when `.tutti/settings.json` or bd can't be read
-  (`src/plan/plan.ts` 213, 226), and the command through `bun src/main.ts` with a fake bd
-  (tutti-8iz.6).
+  `footprint.test.ts`, `footprint-globs.test.ts`, `footprint-leave-out.test.ts`,
+  `cli-commands.test.ts` (slow: the command through `bun src/main.ts` with a fake bd, the
+  proposal, `--apply`, and settings or bd that can't be read).
+- **Untested**: nothing found.
 
 ## `tutti login`
 
@@ -104,9 +102,10 @@ below are the coverage report's uncovered lines at 368899e.
 ## `tutti requires`
 
 - **Reached by**: `tutti requires [--no-install] [--markdown|--readme]`; a run's start.
-- **Tests**: `requires.test.ts`, `requires-run.test.ts`, `requires-recheck.test.ts`.
-- **Untested**: the command's action through `bun src/main.ts` (`src/cli/commands.ts` 304–317):
-  its exit codes, and outside a repository (tutti-8iz.6).
+- **Tests**: `requires.test.ts`, `requires-run.test.ts`, `requires-recheck.test.ts`,
+  `requires-worktree.test.ts`, `cli-commands.test.ts` (slow: the command through
+  `bun src/main.ts`, its exit codes, and outside a repository).
+- **Untested**: nothing found.
 
 ## `tutti update` and the daily release check
 
