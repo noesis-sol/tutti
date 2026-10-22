@@ -44,6 +44,7 @@ import {
   type Response,
 } from "effect/ai"
 import type { AccountProbe } from "../agent/Account.ts"
+import { queryThrew } from "../agent/claudeBinary.ts"
 import { workerEnv } from "../agent/env.ts"
 import { chromeArgs } from "../agent/mcp.ts"
 import { spawnInOwnProcessGroup } from "../agent/options.ts"
@@ -449,6 +450,8 @@ export interface LiveOptions {
   readonly account: Pick<AccountProbe, "subscription">
   /** tutti's environment, organs' is made from; process.env by default. */
   readonly env?: Readonly<Record<string, string | undefined>>
+  /** The Agent SDK's query(), which a test stands in for. */
+  readonly query?: typeof query
 }
 
 /** How much of Claude Code's stderr an error quotes, at most. */
@@ -464,6 +467,7 @@ export const layer = (
       const config = yield* AppConfig
       const costs = yield* OrganCost
       const fs = yield* FileSystem.FileSystem
+      const openQuery = options.query ?? query
       const env = workerEnv({
         subscription: options.account.subscription,
         billing: config.billing,
@@ -538,23 +542,29 @@ export const layer = (
                 ))
             const abortController = new AbortController()
             let stderr = ""
-            const q = query({
-              prompt: (async function* () {
-                yield userMessage(turn.userText)
-              })(),
-              options: organOptions({
-                turn,
-                jsonSchema,
-                call,
-                cwd,
-                env,
-                claude: config.claude,
-                abortController,
-                partial,
-                stderr: (data) => {
-                  stderr = (stderr + data).slice(-stderrLimit)
-                },
-              }),
+            // query() throws as it is called when there is no Claude Code for the platform.
+            const q = yield* Effect.try({
+              try: () =>
+                openQuery({
+                  prompt: (async function* () {
+                    yield userMessage(turn.userText)
+                  })(),
+                  options: organOptions({
+                    turn,
+                    jsonSchema,
+                    call,
+                    cwd,
+                    env,
+                    claude: config.claude,
+                    abortController,
+                    partial,
+                    stderr: (data) => {
+                      stderr = (stderr + data).slice(-stderrLimit)
+                    },
+                  }),
+                }),
+              catch: (cause) =>
+                fail(method, new AiError.UnknownError({ description: queryThrew(cause) })),
             })
             yield* Effect.addFinalizer(() =>
               Effect.sync(() => {
