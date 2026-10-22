@@ -25,6 +25,7 @@ import {
   openCloexec,
   unlock,
 } from "../native/libc.ts"
+import { clock } from "../run/localTime.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 
 /** The two programs whose lock files a run takes. */
@@ -70,10 +71,8 @@ export type SeenHolder = Schema.Schema.Type<typeof SeenHolder>
 
 /** The local time of an RFC 3339 instant as `08:31`, or undefined when it isn't one. */
 const clockTime = (started: string): string | undefined => {
-  const time = new Date(started)
-  if (Number.isNaN(time.getTime())) return undefined
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${pad(time.getHours())}:${pad(time.getMinutes())}`
+  const time = new Date(started).getTime()
+  return Number.isNaN(time) ? undefined : clock(time)
 }
 
 /**

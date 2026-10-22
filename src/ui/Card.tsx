@@ -15,6 +15,7 @@
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
 import { type MouseEvent, TextAttributes } from "@opentui/core"
+import { pad } from "../run/localTime.ts"
 import type { Card } from "../run/runView.ts"
 import { AttentionLines, attentionInside, attentionLines } from "./AttentionCard.tsx"
 import { workerMemory } from "./LoadLine.tsx"
@@ -54,7 +55,6 @@ const acrossOf = (width: number): number => (width >= twoUpWidth ? 2 : 1)
 /** How long a card has been in its phase: `42s`, `6m31s`, `1h05m`. */
 export const elapsed = (millis: number): string => {
   const seconds = Math.floor(Math.max(0, millis) / 1000)
-  const pad = (n: number) => String(n).padStart(2, "0")
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes}m${pad(seconds % 60)}s`

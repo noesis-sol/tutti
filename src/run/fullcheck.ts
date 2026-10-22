@@ -33,7 +33,8 @@ import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import { saidOf } from "./check.ts"
 import type { fullCheckOutcomes } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
-import { detail, type Line, Log, line, logFile, stamp, Tag, ticketLine } from "./log.ts"
+import { dateClock } from "./localTime.ts"
+import { detail, type Line, Log, line, logFile, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import type { TicketPhase } from "./phase.ts"
 
@@ -503,7 +504,7 @@ const file = (f: {
     const beads = yield* Beads
     const logs = yield* Log
     const command = config.settings.checks.full.command ?? ""
-    const run = stamp(f.started).slice(0, 16)
+    const run = dateClock(f.started)
     const where = `on ${f.base} at ${short(f.at)}, ${suiteSaid(f.suite)} of ${run}`
     // A second ticket is easier to close than a failure nobody hears of.
     const open = yield* Effect.result(beads.list({ labels: [fullCheckLabel] }))

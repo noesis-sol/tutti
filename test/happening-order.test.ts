@@ -30,7 +30,7 @@ const live = async (effect: Effect.Effect<void, never, Log | EventStream | Ledge
   const logged = readFileSync(join(repo, logFile), "utf8")
     .split("\n")
     .slice(0, -1)
-    .map((each) => each.replace(/^\S+ \S+ /, ""))
+    .map((each) => each.replace(/^\S+ \S+ \S+ /, ""))
   const recorded = readFileSync(join(repo, eventsFile), "utf8")
     .split("\n")
     .slice(0, -1)
@@ -127,7 +127,7 @@ describe("a happening's line and record", () => {
           events.emit({ kind: "info", text: line`one` }),
           Effect.flatMap(logs.lines, (now) =>
             Effect.sync(() => {
-              order.push(...now.map((each) => each.replace(/^\S+ \S+ /, "")))
+              order.push(...now.map((each) => each.replace(/^\S+ \S+ \S+ /, "")))
             }),
           ),
         ),

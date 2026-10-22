@@ -541,10 +541,9 @@ describe("a run with nothing to run", () => {
         Effect.provideService(Console.Console, console),
       ),
     )
-    expect(printed.map((each) => each.replace(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d /, ""))).toEqual([
-      "○ Nothing ready to run",
-      "  1 question waits for your answer: bd human list",
-    ])
+    expect(
+      printed.map((each) => each.replace(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d\d:\d\d /, "")),
+    ).toEqual(["○ Nothing ready to run", "  1 question waits for your answer: bd human list"])
   })
 
   test("a run with a ticket to start goes on to its loop, printing nothing", async () => {

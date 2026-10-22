@@ -9,8 +9,8 @@ import { join } from "node:path"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Duration, Effect, Exit, Fiber } from "effect"
 import { step as fold, initial, WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
+import { resetLabel } from "../src/run/localTime.ts"
 import { run } from "../src/run/run.ts"
-import { clock } from "../src/run/runView.ts"
 import type { Dashboard } from "../src/run/screen.ts"
 import { nudgeText } from "../src/run/settle.ts"
 import {
@@ -166,7 +166,7 @@ describe("when the hold lifts", () => {
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done" })
-    const passed = clock(0)
+    const passed = resetLabel(0, 0)
     expectLog(ran, [
       "USAGE_LIMIT: the five-hour limit is reached; no new tickets until it resets",
       new RegExp(

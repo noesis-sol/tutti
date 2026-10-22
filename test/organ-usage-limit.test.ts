@@ -10,9 +10,9 @@ import { DateTime, type Duration, Effect, Exit, Fiber, Layer, Schema } from "eff
 import { AiError, LanguageModel, type Prompt } from "effect/ai"
 import { layer, limitOf, metadataKey, OrganCall } from "../src/organs/AgentSdkLanguageModel.ts"
 import { make, OrganFailed, Organs, refusalOf } from "../src/organs/Organs.ts"
+import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
-import { clock } from "../src/run/runView.ts"
 import { organHold } from "../src/run/usageLimit.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, type SessionScript, sleep } from "../src/testing/AgentHost.ts"
@@ -243,7 +243,7 @@ describe("the usage-limit hold from an organ", () => {
     expectLog(ran, [
       "[1] t-1 dispatching: t-1",
       "[2] t-2 dispatching: t-2",
-      `USAGE_LIMIT: the five-hour limit is reached; no new tickets until it resets at ${clock(2 * hour * 1000)}`,
+      `USAGE_LIMIT: the five-hour limit is reached; no new tickets until it resets at ${resetLabel(2 * hour * 1000, 0)}`,
       closed("t-2"),
       "USAGE_LIMIT lifted",
       "[3] t-3 dispatching: t-3",

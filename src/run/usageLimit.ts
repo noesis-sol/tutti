@@ -53,15 +53,15 @@ import { OrganHold } from "../organs/Organs.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
-import { timestamp } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { type AtReset, type HandBackMode, handedWords } from "./handback.ts"
 import { type StopReason, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
+import { resetLabel, timestamp } from "./localTime.ts"
 import { detail, Log, Tag, tagged, usageLimit, usageLimitLifted, usageWarning } from "./log.ts"
 import type { TicketPhase } from "./phase.ts"
-import { clock, countdown, type RunHold, type Usage } from "./runView.ts"
+import { countdown, type RunHold, type Usage } from "./runView.ts"
 
 /** How long after its reset the hold is lifted (§ 4.12). */
 export const liftAfter: Duration.Duration = Duration.minutes(1)
@@ -127,11 +127,19 @@ export const neverHanded = (id: string, mode: HandBackMode, stuck?: string): str
 const waitFor = (n: number): string =>
   n === 0 ? "" : n === 1 ? "1 worker waits for it" : `${n} workers wait for it`
 
-/** The warning line's notice while the hold is on: `usage limit (five-hour) · resets 14:05 · …`. */
-export const holdNotice = (limit: string | null, resetsAt: number | null, waiting: number) =>
+/**
+ * The warning line's notice at `now` while the hold is on: `usage limit (five-hour) · resets 14:05
+ * · …`, the reset with its weekday and date when it isn't today.
+ */
+export const holdNotice = (
+  limit: string | null,
+  resetsAt: number | null,
+  waiting: number,
+  now: number,
+) =>
   [
     `usage limit (${limitName(limit)})`,
-    ...(resetsAt === null ? [] : [`resets ${clock(resetsAt)}`]),
+    ...(resetsAt === null ? [] : [`resets ${resetLabel(resetsAt, now)}`]),
     ...(waiting === 0 ? [] : [waitFor(waiting)]),
   ].join(" · ")
 
@@ -146,7 +154,7 @@ export const limitStop = (s: {
   const reached =
     s.resetsAt === null
       ? `the ${limitName(s.limit)} limit is reached and when it resets is unknown`
-      : `the ${limitName(s.limit)} limit resets at ${clock(s.resetsAt)}, in ${countdown(s.resetsAt, s.now)}, later than --usage-limit-wait (${formatDuration(s.wait)})`
+      : `the ${limitName(s.limit)} limit resets at ${resetLabel(s.resetsAt, s.now)}, in ${countdown(s.resetsAt, s.now)}, later than --usage-limit-wait (${formatDuration(s.wait)})`
   const who = s.waiting === 0 ? "" : `; ${waitFor(s.waiting)}`
   return stopFor(holdWord, `${reached}${who}; run tutti again once it resets`, {
     held: true,
@@ -337,7 +345,7 @@ export const make = (options: {
     // Changes run one at a time, so the hold is put on and lifted once.
     const one = yield* Semaphore.make(1)
 
-    const viewOf = (s: HoldState): UsageView => ({
+    const viewOf = (s: HoldState, now: number): UsageView => ({
       usage: s.usage,
       hold:
         s.hold._tag === "Free"
@@ -350,10 +358,12 @@ export const make = (options: {
       notice:
         s.hold._tag === "Free"
           ? null
-          : holdNotice(s.hold.limit, shownReset(s.hold.reset), s.limited.size),
+          : holdNotice(s.hold.limit, shownReset(s.hold.reset), s.limited.size, now),
     })
     const update = (f: (s: HoldState) => HoldState) =>
-      Effect.flatMap(Ref.updateAndGet(state, f), (s) => options.show(viewOf(s)))
+      Effect.flatMap(Ref.updateAndGet(state, f), (s) =>
+        Effect.flatMap(Clock.currentTimeMillis, (now) => options.show(viewOf(s, now))),
+      )
 
     const resetsAt = (at: number | null) =>
       at === null ? {} : { resets_at: timestamp(new Date(at)) }
@@ -397,7 +407,7 @@ export const make = (options: {
         const at = shownReset(next)
         const text = usageLimit({
           limit: limitName(limit),
-          ...(at === null ? {} : { resets: clock(at) }),
+          ...(at === null ? {} : { resets: resetLabel(at, now) }),
         })
         yield* logs.writeWith(
           [text],
@@ -406,7 +416,7 @@ export const make = (options: {
         yield* notifier.notify(
           at === null
             ? `The ${limitName(limit)} limit is reached; the run holds until it resets`
-            : `The ${limitName(limit)} limit is reached; the run holds until it resets at ${clock(at)}`,
+            : `The ${limitName(limit)} limit is reached; the run holds until it resets at ${resetLabel(at, now)}`,
         )
         yield* liftAt(held)
         yield* options.wakeUp
@@ -532,10 +542,11 @@ export const make = (options: {
             : {}),
         }))
         if (event.status === "allowed_warning") {
+          const now = yield* Clock.currentTimeMillis
           const text = usageWarning({
             percent: Math.round((event.utilization ?? 0) * 100),
             limit: limitName(event.limit),
-            ...(event.resetsAt === null ? {} : { resets: clock(event.resetsAt) }),
+            ...(event.resetsAt === null ? {} : { resets: resetLabel(event.resetsAt, now) }),
           })
           const record = changed
             ? events.emit({
@@ -628,8 +639,8 @@ export const make = (options: {
         }
         const until =
           known === null
-            ? `the ${limitName(limit)} limit was to reset at ${clock(passed ?? at)}; tutti tries again at ${clock(at)}, in ${countdown(at, now)}`
-            : `the ${limitName(limit)} limit resets at ${clock(at)}, in ${countdown(at, now)}`
+            ? `the ${limitName(limit)} limit was to reset at ${resetLabel(passed ?? at, now)}; tutti tries again at ${resetLabel(at, now)}, in ${countdown(at, now)}`
+            : `the ${limitName(limit)} limit resets at ${resetLabel(at, now)}, in ${countdown(at, now)}`
         if (s.waiting === null) {
           yield* update((each) => ({ ...each, waiting: now, said: now }))
           yield* logs.write(
@@ -637,7 +648,7 @@ export const make = (options: {
               ? tagged(Tag.usageLimit)`nothing else runs; ${until}`
               : tagged(
                   Tag.usageLimit,
-                )`nothing else runs; waiting for the ${limitName(limit)} limit to reset at ${clock(at)}, in ${countdown(at, now)}`,
+                )`nothing else runs; waiting for the ${limitName(limit)} limit to reset at ${resetLabel(at, now)}, in ${countdown(at, now)}`,
           )
         } else if (now - s.said >= Duration.toMillis(countdownEvery)) {
           yield* Ref.update(state, (each) => ({ ...each, said: now }))

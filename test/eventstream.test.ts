@@ -19,9 +19,9 @@ import {
   encodeLine,
   type Kind,
   kinds,
-  timestamp,
 } from "../src/run/events.ts"
 import { EventStream, eventsFile, notRecorded } from "../src/run/eventstream.ts"
+import { timestamp } from "../src/run/localTime.ts"
 import { Captured, layer as capturedLayer, testRun } from "../src/testing/EventStream.ts"
 
 const run = "2026-10-02T09:12:03.98+02:00"

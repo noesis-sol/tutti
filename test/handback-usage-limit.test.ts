@@ -9,10 +9,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber } from "effect"
 import { type HandBack, handBackOver, handBackTaken } from "../src/run/handback.ts"
+import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { clock } from "../src/run/runView.ts"
 import { carryOnHandBack, carryOnText } from "../src/run/usageLimit.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
@@ -58,7 +58,7 @@ const defaults = appConfig().settings
 
 // TestClock starts at the epoch, so a limit resetting at 3600 (seconds) resets an hour in.
 const hour = 3600
-const resets = clock(hour * 1000)
+const resets = resetLabel(hour * 1000, 0)
 
 interface Places {
   readonly repo: string

@@ -8,6 +8,7 @@
 // writes it into a SubscriptionRef, at most 30 times a second, so a burst of SDK messages costs one
 // render. Text from tickets is sanitised here, where it enters RunView (§ 7.10).
 import {
+  Clock,
   Data,
   Duration,
   Effect,
@@ -25,6 +26,7 @@ import { sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
+import { resetLabel } from "./localTime.ts"
 import type { CheckAhead } from "./mergetrain.ts"
 import { type Activity, countsUnder, type PhaseTag, TicketPhase } from "./phase.ts"
 
@@ -125,6 +127,11 @@ export interface Inputs {
   readonly status: Status
   /** Each open worker's latest action (§ 4.4), by its ticket; none when left out. */
   readonly actions?: ReadonlyMap<string, LatestAction>
+  /**
+   * The time the view is projected at, which a usage limit's reset is read against: its weekday
+   * and date shown when it isn't that day. Left out, a reset is read on its own day, as `14:05`.
+   */
+  readonly now?: number
 }
 
 /** The streams make() reads its inputs from: each gives its value now, then each change. */
@@ -396,13 +403,6 @@ export const ordinal = (n: number): string => {
   return `${n}th`
 }
 
-/** The local time at `millis` as a banner or card gives it: `14:05`. */
-export const clock = (millis: number): string => {
-  const date = new Date(millis)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
 /** The time from `now` to `at`, rounded up to the minute, as a countdown gives it: `2h5m`, `1m`. */
 export const countdown = (at: number, now: number): string =>
   formatDuration(Duration.minutes(Math.max(1, Math.ceil((at - now) / 60_000))))
@@ -475,11 +475,16 @@ export const asks = (request: AttentionRequest): string => {
 /** What the end-of-run box names for a worker a conflict hand-back waits for (§ 4.3). */
 export const conflictWaits = "a merge conflict waits for you"
 
-/** What a card's status says of a worker in `state` with `requests` open (§ 4.2). */
+/**
+ * What a card's status says of a worker in `state` with `requests` open (§ 4.2), at `now`:
+ * `usage limit · resets 14:05`, or `resets Fri Oct 23 14:05` when the reset isn't that day; read
+ * on its own day without `now`.
+ */
 export const stateStatus = (
   state: WorkerState | undefined,
   requests: ReadonlyArray<AttentionRequest>,
   activity: Activity,
+  now?: number,
 ): string => {
   const first = requests[0]
   if (first !== undefined) {
@@ -500,7 +505,7 @@ export const stateStatus = (
     case "UsageLimited":
       return state.resetsAt === null
         ? "usage limit"
-        : `usage limit · resets ${clock(state.resetsAt)}`
+        : `usage limit · resets ${resetLabel(state.resetsAt, now ?? state.resetsAt)}`
     case "Idle":
       return "done"
     case "Failed":
@@ -516,10 +521,11 @@ const cardStatus = (
   phase: TicketPhase,
   state: WorkerState | undefined,
   requests: ReadonlyArray<AttentionRequest>,
+  now: number | undefined,
 ): string => {
   switch (phase._tag) {
     case "Working":
-      return stateStatus(state, requests, phase.activity)
+      return stateStatus(state, requests, phase.activity, now)
     case "Resolving":
       return "resolving"
     case "Fixing":
@@ -558,6 +564,7 @@ const probeCard = (
   probe: ProbeView,
   state: WorkerState | undefined,
   load: Reading | null,
+  now: number | undefined,
 ): Card => {
   const phase = TicketPhase.Working({ activity: "working" })
   return {
@@ -566,7 +573,7 @@ const probeCard = (
     worker: 0,
     phase,
     state: state ?? null,
-    status: cardStatus(phase, state, []),
+    status: cardStatus(phase, state, [], now),
     motion: motionOf(phase, state, []),
     since: probe.since,
     action: "checking that commands run on this machine",
@@ -775,7 +782,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         worker: entry.worker,
         phase: entry.phase,
         state: atWork.has(entry.phase._tag) ? (state ?? null) : null,
-        status: waits ? handBackStatus : cardStatus(phase, state, open),
+        status: waits ? handBackStatus : cardStatus(phase, state, open, inputs.now),
         motion: waits ? "•" : motionOf(entry.phase, state, open),
         since: entry.since,
         action: actionOf(entry, branch, status.checksAhead.get(entry.ticket)),
@@ -787,7 +794,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     }
   }
   if (status.probe !== null)
-    cards.push(probeCard(status.probe, workers.get(probeWorker), status.load))
+    cards.push(probeCard(status.probe, workers.get(probeWorker), status.load, inputs.now))
   totals.needsYou = needsYou.size
   totals.queueHeld = ledger.windDown !== null || status.holds.length > 0
 
@@ -883,7 +890,7 @@ export const make = (
     yield* Effect.gen(function* () {
       const inputs = yield* Queue.take(latest)
       const previous = yield* SubscriptionRef.get(view)
-      const next = project(inputs, previous)
+      const next = project({ ...inputs, now: yield* Clock.currentTimeMillis }, previous)
       if (next !== previous) yield* SubscriptionRef.set(view, next)
       yield* Effect.sleep(interval)
     }).pipe(Effect.forever, Effect.forkScoped)

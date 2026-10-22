@@ -10,9 +10,9 @@ import { Duration, Effect, Fiber } from "effect"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
 import { probeFile, probeWorker } from "../src/run/environment.ts"
 import { fullCheckLabel } from "../src/run/fullcheck.ts"
+import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { clock } from "../src/run/runView.ts"
 import { carryOnText } from "../src/run/usageLimit.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
@@ -744,7 +744,7 @@ describe("the environment hold", () => {
 describe("the usage-limit hold", () => {
   test("a recorded rejection holds the run, and the reset lifts it: its worker carries on", async () => {
     // The clock starts an hour before rejected.jsonl's limit resets.
-    const resets = clock(fixtureReset)
+    const resets = resetLabel(fixtureReset, fixtureReset - 3_600_000)
     const ran = await runs({
       tickets: ["a", "b"],
       settings: () => ({ concurrent: 1 }),

@@ -4,7 +4,8 @@
 // banners, the usage and the holds. The states come first, so a narrow pane cuts the branch and the
 // time, then drops them.
 import { runTime } from "../print/summary.ts"
-import { type Banner, clock, countdown, type TitleView } from "../run/runView.ts"
+import { resetLabel } from "../run/localTime.ts"
+import { type Banner, countdown, type TitleView } from "../run/runView.ts"
 import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 import { useNow, useRunView, useTheme } from "./useRunView.ts"
@@ -14,10 +15,11 @@ const minWhere = 8
 
 /**
  * A banner's words at `now`: `usage 85% of the five-hour limit · resets 14:05 · overage`,
- * `BLOCKED`, `USAGE_LIMIT · resets 14:05`, and `· in 1h12m` after a hold the run waits for.
+ * `BLOCKED`, `USAGE_LIMIT · resets 14:05`, and `· in 1h12m` after a hold the run waits for; a
+ * reset on another day than `now`'s with its weekday and date, `resets Fri Oct 23 14:05`.
  */
 const bannerText = (banner: Banner, now: number): string => {
-  const resets = banner.resetsAt === null ? "" : ` · resets ${clock(banner.resetsAt)}`
+  const resets = banner.resetsAt === null ? "" : ` · resets ${resetLabel(banner.resetsAt, now)}`
   if (banner._tag === "Usage") {
     const of = banner.limit === undefined ? "" : ` of the ${banner.limit} limit`
     const overage = banner.overage === true ? " · overage" : ""

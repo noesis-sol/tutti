@@ -8,7 +8,8 @@ import { lstatSync, mkdirSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Clock, Context, Effect, Layer, Result } from "effect"
 import { close, O, openUnder } from "../native/libc.ts"
-import { type Event, type EventRecord, encodeLine, timestamp, version } from "./events.ts"
+import { type Event, type EventRecord, encodeLine, version } from "./events.ts"
+import { timestamp } from "./localTime.ts"
 
 /** The event stream's file, relative to the main checkout's top level (§ 9.1). */
 export const eventsFile = ".tutti/run/events.jsonl"

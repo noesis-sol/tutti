@@ -31,6 +31,7 @@ import { Git, type GitError } from "../services/Git.ts"
 import { escapeMarkdown, sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
 import { type Entry, Ledger } from "./ledger.ts"
+import { clock, clockFrom, reportName, span } from "./localTime.ts"
 import * as log from "./log.ts"
 import { type Line, Log, line, Tag, tagged } from "./log.ts"
 import type { PhaseTag, TicketPhase } from "./phase.ts"
@@ -94,26 +95,6 @@ export const reportWritten = (path: string): Line => tagged("REPORT")`written to
 
 /** The report not written, and why. */
 export const reportNotSaved = (why: string): Line => line`report not saved: ${why}`
-
-const pad = (n: number): string => String(n).padStart(2, "0")
-
-/** The local time at `millis` as `09:05`. */
-const clockTime = (millis: number): string => {
-  const t = new Date(millis)
-  return `${pad(t.getHours())}:${pad(t.getMinutes())}`
-}
-
-/** The local date at `millis` as `2026-10-17`. */
-const date = (millis: number): string => {
-  const t = new Date(millis)
-  return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`
-}
-
-/** The report's file name for a run started at `started`: `2026-10-17-090503.md`, local time. */
-export const reportName = (started: number): string => {
-  const t = new Date(started)
-  return `${date(started)}-${pad(t.getHours())}${pad(t.getMinutes())}${pad(t.getSeconds())}.md`
-}
 
 /** What the run's exit code means, for the reviewer (§ 5 item 10). */
 export const exitMeaning = (code: number): string => {
@@ -406,8 +387,8 @@ export const gather = (
       ),
       section("What the run's organs (triage, the predictor and the like) cost", costSaid),
       ...(run.sections ?? []),
-      `${scope}, on branch ${run.base} of ${config.repo}, from ${clockTime(run.started)} to ` +
-        `${clockTime(now)}. Exit code ${run.exitCode} (${meaning}). Write its report.\n`,
+      `${scope}, on branch ${run.base} of ${config.repo}, from ${clock(run.started)} to ` +
+        `${clockFrom(now, run.started)}. Exit code ${run.exitCode} (${meaning}). Write its report.\n`,
     ]
   })
 
@@ -441,9 +422,7 @@ export const compose = (p: {
 }): string => {
   const text = (untrusted: string) => escapeMarkdown(sanitizeLine(untrusted))
   const scope = p.scope === null ? "" : ` · ${text(p.scope)}`
-  const title =
-    `# tutti run · ${date(p.started)} ${clockTime(p.started)}–${clockTime(p.ended)} · ` +
-    `${text(p.base)}${scope}`
+  const title = `# tutti run · ${span(p.started, p.ended)} · ` + `${text(p.base)}${scope}`
   const cost = p.cost.calls === 0 ? "" : `\nOrgans: ${costTotal(p.cost)}.\n`
   return `${title}\n\n${sanitize(p.body).trim()}\n${sanitize(p.after ?? "")}${cost}`
 }

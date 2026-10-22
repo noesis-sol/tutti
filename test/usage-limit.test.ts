@@ -5,9 +5,10 @@ import { join, resolve } from "node:path"
 import { Deferred, Duration, Effect, Exit, Fiber, Layer, SubscriptionRef } from "effect"
 import { rateLimitOf, UsageLimits } from "../src/agent/UsageLimits.ts"
 import { OrganHold } from "../src/organs/Organs.ts"
+import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
-import { clock, countdown, type RunView } from "../src/run/runView.ts"
+import { countdown, type RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
 import { nudgeText } from "../src/run/settle.ts"
 import {
@@ -56,7 +57,7 @@ setDefaultTimeout(30_000)
 // TestClock starts at the epoch, so a limit resetting at 3600 (seconds, as the API says it) resets
 // an hour into the run.
 const hour = 3600
-const resetsIn = (seconds: number) => clock(seconds * 1000)
+const resetsIn = (seconds: number) => resetLabel(seconds * 1000, 0)
 
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-usage-${name}-`)))
 
@@ -356,7 +357,7 @@ describe("the usage-limit hold", () => {
     expectPhases(ran, { "t-1": "Stopped" })
     const stop = ran.log.at(-1) ?? ""
     expect(stop).toMatch(
-      /^USAGE_LIMIT: the five-hour limit resets at \d\d:\d\d, in \S+, later than --usage-limit-wait \(6h\); 1 worker waits for it; run tutti again once it resets$/,
+      /^USAGE_LIMIT: the five-hour limit resets at [A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d\d:\d\d, in \S+, later than --usage-limit-wait \(6h\); 1 worker waits for it; run tutti again once it resets$/,
     )
     const records = ran.events.filter((r) => r.kind === "stop" || r.kind === "suspended")
     expect(records.map((r) => r.kind)).toEqual(["suspended", "stop"])
@@ -446,11 +447,13 @@ describe("what the hold says", () => {
     expect(limitName("five_hour")).toBe("five-hour")
     expect(limitName("seven_day_opus")).toBe("seven-day-opus")
     expect(limitName(null)).toBe("account's usage")
-    expect(holdNotice("five_hour", 3_600_000, 3)).toBe(
-      `usage limit (five-hour) · resets ${clock(3_600_000)} · 3 workers wait for it`,
+    expect(holdNotice("five_hour", 3_600_000, 3, 0)).toBe(
+      `usage limit (five-hour) · resets ${resetLabel(3_600_000, 0)} · 3 workers wait for it`,
     )
-    expect(holdNotice("five_hour", null, 1)).toBe("usage limit (five-hour) · 1 worker waits for it")
-    expect(holdNotice(null, null, 0)).toBe("usage limit (account's usage)")
+    expect(holdNotice("five_hour", null, 1, 0)).toBe(
+      "usage limit (five-hour) · 1 worker waits for it",
+    )
+    expect(holdNotice(null, null, 0, 0)).toBe("usage limit (account's usage)")
     expect(
       String(
         limitStop({ limit: null, resetsAt: null, now: 0, wait: Duration.hours(6), waiting: 0 })
@@ -491,12 +494,12 @@ describe("what the hold says", () => {
         [{ _tag: "Usage", utilization: 0.85, resetsAt: at, limit: "five-hour", overage: true }],
         0,
       ),
-    ).toEndWith(`usage 85% of the five-hour limit · resets ${clock(at)} · overage`)
+    ).toEndWith(`usage 85% of the five-hour limit · resets ${resetLabel(at, 0)} · overage`)
     expect(
       text([{ _tag: "Hold", word: "USAGE_LIMIT", resetsAt: at, waiting: true }], 1_800_000),
-    ).toEndWith(`USAGE_LIMIT · resets ${clock(at)} · in 30m`)
+    ).toEndWith(`USAGE_LIMIT · resets ${resetLabel(at, 1_800_000)} · in 30m`)
     expect(text([{ _tag: "Hold", word: "USAGE_LIMIT", resetsAt: at }], 1_800_000)).toEndWith(
-      `USAGE_LIMIT · resets ${clock(at)}`,
+      `USAGE_LIMIT · resets ${resetLabel(at, 1_800_000)}`,
     )
   })
 })

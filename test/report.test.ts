@@ -17,13 +17,13 @@ import { reviewer } from "../src/organs/reviewer.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
 import { Ending } from "../src/print/summary.ts"
 import { Ledger } from "../src/run/ledger.ts"
+import { reportName } from "../src/run/localTime.ts"
 import * as log from "../src/run/log.ts"
 import { Log } from "../src/run/log.ts"
 import { Cause } from "../src/run/phase.ts"
 import {
   compose,
   type ReportRun,
-  reportName,
   reportsDir,
   runReport,
   steeredInRun,

@@ -17,25 +17,6 @@ const Timestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/u),
 )
 
-const pad = (n: number, width = 2): string => n.toString().padStart(width, "0")
-
-/**
- * `date` in RFC 3339, in local time, as Go's RFC3339Nano gives it: the fraction of a second
- * without trailing zeros (none when it is 0), and `Z` for UTC.
- */
-export const timestamp = (date: Date): string => {
-  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-  const ms = date.getMilliseconds()
-  const fraction = ms === 0 ? "" : `.${pad(ms, 3).replace(/0+$/, "")}`
-  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-  const offset = -date.getTimezoneOffset()
-  const zone =
-    offset === 0
-      ? "Z"
-      : `${offset > 0 ? "+" : "-"}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`
-  return `${day}T${clock}${fraction}${zone}`
-}
-
 const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const optional = Schema.optionalKey
 

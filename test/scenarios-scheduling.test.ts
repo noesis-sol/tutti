@@ -1131,7 +1131,7 @@ describe("nothing to run", () => {
       }).pipe(Effect.provideService(Console.Console, console)),
     )
     if (ran.exit._tag === "Failure") throw new Error(`the check failed: ${ran.exit.cause}`)
-    const time = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d /
+    const time = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d\d:\d\d /
     return {
       ...ran.exit.value,
       log: ran.log,

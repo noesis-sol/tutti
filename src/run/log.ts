@@ -9,6 +9,7 @@
 // the log. In plain mode (§ 7.6) the same lines go to stdout too.
 import { Clock, Console, Context, Effect, FileSystem, Layer, Ref, Semaphore } from "effect"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { stamp } from "./localTime.ts"
 
 /** Where the log is, below the repository. */
 export const logFile = ".tutti/tutti.log"
@@ -318,7 +319,7 @@ export const usageWarning = (u: {
   readonly percent: number
   /** The limit's name: `five-hour`. */
   readonly limit: string
-  /** The local time it resets, as in `14:05`, when known. */
+  /** When it resets, as in `14:05`, or `Fri Oct 23 14:05` on another day, when known. */
   readonly resets?: string
 }): Line => {
   const resets = u.resets === undefined ? "" : line` · resets ${u.resets}`
@@ -343,17 +344,6 @@ export const phaseBug = (p: {
   readonly to: string
   readonly cause: string
 }): Line => ticketLine(Tag.phaseBug)`${p.id} ${p.from} → ${p.to} (${p.cause})`
-
-const pad = (n: number): string => String(n).padStart(2, "0")
-
-/** The local time at `millis` as the log dates its lines: `2026-10-17 09:05:03`. */
-export const stamp = (millis: number): string => {
-  const t = new Date(millis)
-  return (
-    `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())} ` +
-    `${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}`
-  )
-}
 
 /** The lines as written, each dated with the time now from Effect's Clock. */
 export const dated = (lines: ReadonlyArray<Line>): Effect.Effect<ReadonlyArray<string>> =>

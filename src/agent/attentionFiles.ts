@@ -50,7 +50,7 @@ import {
   type PathRefused,
   SymlinkRefused,
 } from "../native/libc.ts"
-import { timestamp } from "../run/events.ts"
+import { timestamp } from "../run/localTime.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
 import { sanitize } from "../ui/sanitize.ts"

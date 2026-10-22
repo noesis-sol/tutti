@@ -6,6 +6,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Console, Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
+import { stamp } from "../src/run/localTime.ts"
 import {
   allowedByRule,
   answered,
@@ -23,7 +24,6 @@ import {
   released,
   resolving,
   type Sink,
-  stamp,
   start,
   steered,
   tagged,
@@ -36,6 +36,7 @@ import { layer as capturedLayer, texts } from "../src/testing/Log.ts"
 
 // 2026-10-17 09:05:03 local time, as the log dates its lines.
 const at = new Date(2026, 9, 17, 9, 5, 3).getTime()
+const dated = stamp(at)
 
 const temp = () => join(mkdtempSync(join(tmpdir(), "tutti-log-")), "tutti.log")
 
@@ -96,8 +97,10 @@ const hostile = fc.string({
 
 describe("a line's format", () => {
   test("the local time as orchestra dates it, then the text", () => {
-    expect(stamp(at)).toBe("2026-10-17 09:05:03")
-    expect(stamp(new Date(2027, 0, 2, 23, 0, 59).getTime())).toBe("2027-01-02 23:00:59")
+    expect(stamp(at)).toMatch(/^2026-10-17 09:05:03 [+-]\d\d:\d\d$/)
+    expect(stamp(new Date(2027, 0, 2, 23, 0, 59).getTime())).toMatch(
+      /^2027-01-02 23:00:59 [+-]\d\d:\d\d$/,
+    )
   })
 
   test("written lines are appended to the file, each dated and on its own line", async () => {
@@ -109,8 +112,8 @@ describe("a line's format", () => {
     )
     expect(readFileSync(file, "utf8")).toBe(
       "2026-10-16 22:41:42 an earlier run's line\n" +
-        "2026-10-17 09:05:03 DRAIN: stopping after the 2 running tickets finish\n" +
-        "2026-10-17 09:05:03   STEERED: tut-9a1\n",
+        `${dated} DRAIN: stopping after the 2 running tickets finish\n` +
+        `${dated}   STEERED: tut-9a1\n`,
     )
   })
 
@@ -125,7 +128,7 @@ describe("a line's format", () => {
         return yield* log.lines
       }),
     )
-    expect(lines).toEqual(["2026-10-17 09:05:03 one", "2026-10-17 09:06:04   two"])
+    expect(lines).toEqual([`${dated} one`, `${stamp(at + 61_000)}   two`])
   })
 
   test("a block written at once stays together while other fibers write", async () => {
@@ -141,7 +144,7 @@ describe("a line's format", () => {
     const lines = readFileSync(file, "utf8").trimEnd().split("\n")
     expect(lines).toHaveLength(23)
     const first = lines.findIndex((l) => l.includes("START"))
-    expect(lines.slice(first, first + 3).map((l) => l.slice(20))).toEqual([
+    expect(lines.slice(first, first + 3).map((l) => l.slice(dated.length + 1))).toEqual([
       "START tutti v0.1.0 in /r on main ()",
       "  second",
       "  third",
@@ -332,7 +335,7 @@ describe("sanitising", () => {
     const title = "evil\x1b]0;owned\x07\nfake 2026-10-17 09:05:03 START"
     await live(file, write(line`tut-1 dispatching: ${title}`))
     expect<unknown>(readFileSync(file, "utf8")).toBe(
-      "2026-10-17 09:05:03 tut-1 dispatching: evil fake 2026-10-17 09:05:03 START\n",
+      `${dated} tut-1 dispatching: evil fake 2026-10-17 09:05:03 START\n`,
     )
   })
 
@@ -399,7 +402,7 @@ describe("sanitising", () => {
         const lines = readFileSync(file, "utf8").split("\n")
         expect<unknown>(lines.pop()).toBe("")
         expect<unknown>(lines).toHaveLength(titles.length)
-        for (const each of lines) expect<unknown>(each).toMatch(/^2026-10-17 09:05:03 title: /)
+        for (const each of lines) expect<unknown>(each).toStartWith(`${dated} title: `)
       }),
       { numRuns: 30 },
     )
@@ -411,7 +414,7 @@ describe("the stdout sink", () => {
     const file = temp()
     const { printed, console } = capturingConsole()
     await live(file, write(line`one`, steered("tut-1")), { sink: "stdout", console })
-    expect(printed).toEqual(["2026-10-17 09:05:03 one", "2026-10-17 09:05:03   STEERED: tut-1"])
+    expect(printed).toEqual([`${dated} one`, `${dated}   STEERED: tut-1`])
     expect(readFileSync(file, "utf8")).toBe(`${printed.join("\n")}\n`)
   })
 
@@ -436,10 +439,7 @@ describe("the test layer", () => {
       ),
     )
     expect(result.texts).toEqual(["one", "  RELEASED: tut-1"])
-    expect(result.lines).toEqual([
-      "2026-10-17 09:05:03 one",
-      "2026-10-17 09:05:03   RELEASED: tut-1",
-    ])
+    expect(result.lines).toEqual([`${dated} one`, `${dated}   RELEASED: tut-1`])
     expect(printed).toEqual([...result.lines])
   })
 })

@@ -58,26 +58,34 @@ export type InterviewOutcome = Data.TaggedEnum<{
 
 export const InterviewOutcome = Data.taggedEnum<InterviewOutcome>()
 
-/** What the interview's card says of its session: `your turn` while it waits for your answer. */
-export const interviewStatus = (state: WorkerState | null, requests: Card["requests"]): string => {
+/**
+ * What the interview's card says of its session at `now`: `your turn` while it waits for your
+ * answer.
+ */
+export const interviewStatus = (
+  state: WorkerState | null,
+  requests: Card["requests"],
+  now?: number,
+): string => {
   if (requests.length === 0 && state === null) return "starting"
   if (requests.length === 0 && state?._tag === "Idle") return "your turn"
-  return stateStatus(state ?? undefined, requests, "working")
+  return stateStatus(state ?? undefined, requests, "working", now)
 }
 
-/** The interview's one card: its session's state and open requests, since `since`. */
+/** The interview's one card at `now`: its session's state and open requests, since `since`. */
 export const interviewCard = (
   description: string,
   since: number,
   state: WorkerState | null,
   requests: Card["requests"],
+  now?: number,
 ): Card => ({
   ticket: interviewWorker,
   title: description.split("\n").find((line) => line.trim() !== "") ?? "",
   worker: 1,
   phase: TicketPhase.Working({ activity: requests.length > 0 ? "answer" : "working" }),
   state,
-  status: interviewStatus(state, requests),
+  status: interviewStatus(state, requests, now),
   motion:
     state === null ||
     state._tag === "Starting" ||
@@ -134,10 +142,10 @@ export const interview = <E>(
         const view = yield* SubscriptionRef.make(
           interviewView(interviewCard(description, since, null, [])),
         )
-        const redraw = Effect.suspend(() =>
+        const redraw = Effect.flatMap(Clock.currentTimeMillis, (at) =>
           SubscriptionRef.set(
             view,
-            interviewView(interviewCard(description, since, now.state, now.requests)),
+            interviewView(interviewCard(description, since, now.state, now.requests, at)),
           ),
         )
         yield* host.state(interviewWorker).pipe(

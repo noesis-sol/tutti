@@ -26,7 +26,7 @@ export const layer = (options: { readonly sink?: Sink } = {}): Layer.Layer<Log> 
   )
 
 /** The time a line starts with, and the space after it. */
-const time = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d /
+const time = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d\d:\d\d /
 
 /** The captured lines without their time. */
 export const texts: Effect.Effect<ReadonlyArray<string>, never, Log> = Effect.gen(function* () {
