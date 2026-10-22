@@ -528,7 +528,7 @@ describe("the START block", () => {
 
   test("names the version, repository, branch and settings, then billing and permission mode", () => {
     expect(block(started(), "0.1.0")).toEqual([
-      "START tutti 0.1.0 in /work/project on main (limit: none, concurrent: 1, ticket limit: none, check timeout: 30m, worktrees: /work/project-tutti)",
+      "START tutti 0.1.0 in /work/project on main (limit: none, concurrent: 1, machine workers: 5 (default: half of 10 cores), ticket limit: none, check timeout: 30m, worktrees: /work/project-tutti)",
       "  billing: subscription",
       "  permission mode: auto",
       `  ${noServersNote}`,
@@ -564,7 +564,7 @@ describe("the START block", () => {
       "0.1.0",
     )
     expect(lines).toEqual([
-      "START tutti 0.1.0 in /work/project on main · ticket tut-7 (limit: none, concurrent: 4, ticket limit: 2h, check timeout: 30m, worktrees: /work/project-tutti, MCP servers: postgres, github)",
+      "START tutti 0.1.0 in /work/project on main · ticket tut-7 (limit: none, concurrent: 4, machine workers: 5 (default: half of 10 cores), ticket limit: 2h, check timeout: 30m, worktrees: /work/project-tutti, MCP servers: postgres, github)",
       "  billing: subscription (ANTHROPIC_API_KEY is set but not used; --billing api uses it)",
       "  permission mode: default (auto mode isn't available here)",
       "  memory: about 4 GiB of memory, about 1 GiB per worker",

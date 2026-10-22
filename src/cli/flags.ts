@@ -137,7 +137,7 @@ export const runFlags = {
   machineWorkers: runFlag("machine-workers", count(0), {
     metavar: "N",
     description:
-      "start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included; 0 for no cap (default: none)",
+      "start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included; 0 for no cap (default: ORCHESTRA_MACHINE_WORKERS, else half the cores, at least 2)",
   }),
   tickets: runFlag("tickets", onOff, {
     onOff: true,

@@ -209,8 +209,9 @@ describe("the cap and the folder of runs", () => {
     return config.success
   }
 
-  test("--machine-workers, else TUTTI_MACHINE_WORKERS, else no cap", () => {
-    expect(resolved({}, {}).machineWorkers).toBe(0)
+  test("--machine-workers, else TUTTI_MACHINE_WORKERS, else a cap", () => {
+    expect(resolved({}, {}).machineWorkers).toBeGreaterThanOrEqual(2)
+    expect(resolved({ machineWorkers: "0" }, {}).machineWorkers).toBe(0)
     expect(resolved({}, { TUTTI_MACHINE_WORKERS: "4" }).machineWorkers).toBe(4)
     expect(resolved({ machineWorkers: "3" }, { TUTTI_MACHINE_WORKERS: "4" }).machineWorkers).toBe(3)
     const bad = resolve({

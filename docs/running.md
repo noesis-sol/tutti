@@ -41,8 +41,8 @@ stale lock to remove; the file says which run holds it. tutti also takes orchest
 runs while the other does ([orchestra beside tutti](#orchestra-beside-tutti)).
 
 The log, `.tutti/tutti.log`, opens with the run's `START` block: the version, the repository, the
-branch, the scope, the limits and the worktrees folder, then the billing, the permission mode in
-effect, the MCP servers, the memory the workers take, and any warning (`README_STALE` where the
+branch, the scope, the limits, the cap on the machine's workers and the worktrees folder, then the
+billing, the permission mode in effect, the MCP servers, the memory the workers take, and any warning (`README_STALE` where the
 README's section on what to install differs from the requires list); then the check of the
 project's [requires list](setup.md#the-requires-list) (`REQUIRES: jq met`), the tickets left unmerged
 and the workers carried over, and the deferred tickets free to run
@@ -102,7 +102,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 | Flag | |
 |---|---|
 | `-c N`, `--concurrent N` | tickets at the same time, 1 to 16 (default: the settings', else 1) |
-| `--machine-workers N` | start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included ([below](#runs-that-share-a-machine)); `0`, the default, for no cap |
+| `--machine-workers N` | start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included ([below](#runs-that-share-a-machine)); `0` for no cap (default: `ORCHESTRA_MACHINE_WORKERS`, else half the cores, at least 2) |
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
 | `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |
@@ -271,8 +271,15 @@ each other down` (`another tutti run` for tutti's), and `the other … run in <r
 as it ends. Meanwhile the dashboard's title line says `· shared with 1 run`, counting the other runs
 going as the run last read them.
 
-`--machine-workers N` (or `TUTTI_MACHINE_WORKERS`) caps the workers across the machine's runs, this
-one's included, merges and checks counted: a free slot waits at the cap, saying once
+`--machine-workers N` (or `TUTTI_MACHINE_WORKERS`, else orchestra's `ORCHESTRA_MACHINE_WORKERS`)
+caps the workers across the machine's runs, this one's included, merges and checks counted: by
+default at half the machine's cores, at least 2 (5 on 10 cores), as workers mostly wait on the model
+but their checks are CPU-heavy, and runs slowed sharply past about 4 checks at once on 10 cores; `0`
+for no cap. As the cap is about the machine rather than a project, set it in your shell's profile,
+and `ORCHESTRA_MACHINE_WORKERS` keeps orchestra's runs to it too. The `START` line says the cap and
+what gave it, `machine workers: 5 (default: half of 10 cores)` (or `--machine-workers`,
+`TUTTI_MACHINE_WORKERS`, `ORCHESTRA_MACHINE_WORKERS`; `none` for no cap), and a run whose own
+`concurrent` is above the cap says so once under it. A free slot waits at the cap, saying once
 `HOLD: MACHINE: the machine's tutti and orchestra runs have 4 workers running, 2 of them this run's,
 at the cap of 4 (--machine-workers); the next ticket starts once one of them finishes`, with
 `MACHINE` on the dashboard's title line while it holds. The run reads the other runs every 2 seconds
@@ -282,7 +289,7 @@ taken by a process started since, after a reboot or a run killed) counts nothing
 
 The other runs' workers count in each worker's share of the cores (`TUTTI_CORES`, see
 [the worker prompt](workers.md)): the cores divided among this run's `concurrent` workers and theirs,
-as the run last read them, no more than `--machine-workers` where it is set. A worker takes its
+as the run last read them, no more than `--machine-workers` unless it is `0`. A worker takes its
 share as it starts and keeps it.
 
 ### Footprints

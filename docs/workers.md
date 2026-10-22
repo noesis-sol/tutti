@@ -74,7 +74,7 @@ The check note's last sentence gives the worker its share of the machine's cores
 run beside its own, so tutti sets `TUTTI_CORES` in its environment, and `ORCHESTRA_CORES` for check
 scripts written for orchestra, to the cores divided among the run's `concurrent` workers and those
 running in the machine's other tutti and orchestra runs ([Runs that share a
-machine](running.md#runs-that-share-a-machine)), no more than `--machine-workers` where it is set
+machine](running.md#runs-that-share-a-machine)), no more than `--machine-workers` unless it is `0`
 (at least one), and adds `-p=<share>` to `GOFLAGS` unless that sets `-p` already. A check script that runs
 things side by side (a test runner's workers, a linter's jobs) keeps to it; Go's commands do
 already. Left alone, each check runs as many at once as there are cores, and several workers' checks

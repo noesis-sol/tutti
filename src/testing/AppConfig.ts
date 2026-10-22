@@ -10,6 +10,9 @@ import {
 } from "../cli/AppConfig.ts"
 import { noFlags } from "../cli/flags.ts"
 
+/** The machine's cores the test configuration has, so that its default --machine-workers is 5. */
+export const testCores = 10
+
 /** A run's configuration in the project at `repo`: its defaults, with `overrides` laid over them. */
 export const appConfig = (
   overrides: Partial<AppConfigValue> = {},
@@ -21,6 +24,7 @@ export const appConfig = (
     env: () => undefined,
     user: defaultUserConfig,
     settings: defaultSettings,
+    cores: testCores,
   })
   if (Result.isFailure(resolved)) throw new Error(resolved.failure.join("\n"))
   return { ...resolved.success, ...overrides }

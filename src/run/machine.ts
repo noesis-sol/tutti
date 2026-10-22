@@ -7,11 +7,12 @@
 // "tutti"`, which orchestra skips.
 //
 // A run reads the others' as it goes: it says once of each other run that it is going
-// (SHARED_MACHINE), and that it has ended. With --machine-workers, a free slot waits while the
-// workers running across all the runs are at that cap (HOLD: MACHINE, run.ts). A file whose PID is
-// gone, or is a process that started after the run did (the PID taken again since), is a run that
-// ended without removing it: it is ignored and removed. A folder that can't be read holds no run,
-// and one removed under the runs (a cache cleaner) is made again as the run next writes.
+// (SHARED_MACHINE), and that it has ended. With --machine-workers, by default half the cores, a free
+// slot waits while the workers running across all the runs are at that cap (HOLD: MACHINE, run.ts).
+// A file whose PID is gone, or is a process that started after the run did (the PID taken again
+// since), is a run that ended without removing it: it is ignored and removed. A folder that can't be
+// read holds no run, and one removed under the runs (a cache cleaner) is made again as the run next
+// writes.
 import { isAbsolute, join } from "node:path"
 import { Context, Duration, Effect, FileSystem, Layer, Ref, type Scope, Semaphore } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
@@ -242,6 +243,38 @@ export const otherWorkers: Layer.Layer<never> = Layer.effect(
     set: (others: number) => Ref.set(count, others),
   })),
 )
+
+/**
+ * orchestra's variable for --machine-workers, read after TUTTI_MACHINE_WORKERS: the cap is the
+ * machine's, set once in the shell's profile for both tools.
+ */
+export const orchestraMachineWorkersVariable = "ORCHESTRA_MACHINE_WORKERS"
+
+/**
+ * The cap on the workers across the machine's runs on a machine of `cores` cores when neither
+ * --machine-workers nor its variables give it: half the cores, at least 2, as orchestra 0.9.3's
+ * DefaultMachineWorkers. Workers mostly wait on the model, but their checks are CPU-heavy, and runs
+ * slowed sharply past about 4 checks at once on 10 cores.
+ */
+export const defaultMachineWorkers = (cores: number): number => Math.max(Math.floor(cores / 2), 2)
+
+/** What gave the default cap, as the START line says it: `default: half of 10 cores`. */
+export const defaultMachineWorkersFrom = (cores: number): string =>
+  `default: half of ${cores} cores`
+
+/**
+ * The cap as the START line says it: the number, or none, and what gave it, as orchestra's
+ * machineWorkersLabel: `5 (default: half of 10 cores)`, `none (--machine-workers)`.
+ */
+export const machineWorkersLabel = (cap: number, from: string): string =>
+  `${cap > 0 ? String(cap) : "none"}${from === "" ? "" : ` (${from})`}`
+
+/**
+ * What the START block says under its line when the run's own `concurrent` is above the cap: it is
+ * held at the cap, as orchestra 0.9.3 says it.
+ */
+export const aboveCapNote = (concurrent: number, cap: number): string =>
+  `concurrent ${concurrent} is above the machine's cap of ${cap} workers: the run holds at it (HOLD: MACHINE), with fewer of its own as the machine's other runs have workers running`
 
 /** The word of the hold at --machine-workers, on the dashboard's title line while it holds. */
 export const holdWord = "MACHINE"

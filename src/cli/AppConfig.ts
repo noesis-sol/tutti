@@ -5,6 +5,7 @@
 //
 // A variable's problem counts only when no flag overrides it, as in orchestra: a flag fixes a bad
 // standing choice for one run. An empty variable is unset.
+import { availableParallelism } from "node:os"
 import {
   basename,
   dirname,
@@ -18,7 +19,13 @@ import { Config, Context, Duration, Effect, Exit, Layer, Option, Result, Schema 
 import { type ConfigFileInvalid, type ConfigProblem, decodeConfig } from "../project/configFile.ts"
 import { readSettings, Settings, settingsFile } from "../project/settings.ts"
 import { readUserConfig, UserConfig } from "../project/userConfig.ts"
-import { runsDir, runsDirVariables } from "../run/machine.ts"
+import {
+  defaultMachineWorkers,
+  defaultMachineWorkersFrom,
+  orchestraMachineWorkersVariable,
+  runsDir,
+  runsDirVariables,
+} from "../run/machine.ts"
 import { type LoadedScheme, loadScheme, orchestraLoaded, schemeFolders } from "../ui/theme.ts"
 import {
   type billings,
@@ -92,8 +99,17 @@ export interface AppConfigValue {
    * orchestra finds it from ORCHESTRA_RUNS_DIR, HOME and XDG_CACHE_HOME; null for none.
    */
   readonly runs: string | null
-  /** The most workers across the machine's runs, this one's included, before a ticket starts; 0 for no cap. */
+  /**
+   * The most workers across the machine's runs, this one's included, before a ticket starts; 0 for
+   * no cap. --machine-workers, TUTTI_MACHINE_WORKERS, ORCHESTRA_MACHINE_WORKERS, else half the
+   * cores, at least 2 (src/run/machine.ts's defaultMachineWorkers).
+   */
   readonly machineWorkers: number
+  /**
+   * What gave `machineWorkers`, as the START line says it: `--machine-workers`, the variable's
+   * name, or `default: half of 10 cores`.
+   */
+  readonly machineWorkersFrom: string
   readonly billing: (typeof billings)[number]
   readonly usageLimitWait: Duration.Duration
   /**
@@ -126,6 +142,8 @@ export interface Sources {
   readonly env: (name: string) => string | undefined
   readonly user: UserConfig
   readonly settings: Settings
+  /** The machine's cores, for the default --machine-workers; availableParallelism() when not given. */
+  readonly cores?: number
 }
 
 /** A config file's problem as a sentence: `<file>: <key path>: <message>`. */
@@ -211,6 +229,28 @@ export const resolve = (sources: Sources): Result.Result<AppConfigValue, Readonl
     )
   }
 
+  // --machine-workers, else TUTTI_MACHINE_WORKERS, else orchestra's ORCHESTRA_MACHINE_WORKERS, as
+  // the cap is the machine's, else half the cores.
+  const machine = runFlags.machineWorkers
+  const cores = sources.cores ?? availableParallelism()
+  const orchestraMachine =
+    flagGiven("machineWorkers") || Option.isSome(variable(machine.variable))
+      ? Option.none<number>()
+      : Option.flatMap(variable(orchestraMachineWorkersVariable), (value) =>
+          readAs(machine.read, value, orchestraMachineWorkersVariable),
+        )
+  const machineWorkersFrom = flagGiven("machineWorkers")
+    ? `--${machine.name}`
+    : Option.isSome(variable(machine.variable))
+      ? machine.variable
+      : Option.isSome(variable(orchestraMachineWorkersVariable))
+        ? orchestraMachineWorkersVariable
+        : defaultMachineWorkersFrom(cores)
+  const machineWorkers = pick(
+    "machineWorkers",
+    Option.getOrElse(orchestraMachine, () => defaultMachineWorkers(cores)),
+  )
+
   const prompt = pick("prompt", workerPromptFile)
   const worktrees = pick("worktrees", null)
   const worktreesPath = worktrees === null ? defaultWorktrees(repo) : resolvePath(repo, worktrees)
@@ -270,7 +310,8 @@ export const resolve = (sources: Sources): Result.Result<AppConfigValue, Readonl
     prompt: resolvePath(repo, prompt),
     worktrees: worktreesPath,
     runs: runsDir(env),
-    machineWorkers: pick("machineWorkers", 0),
+    machineWorkers,
+    machineWorkersFrom,
     billing: pick("billing", user.billing),
     usageLimitWait: pick("usageLimitWait", defaultUsageLimitWait),
     claude: pick("claude", null),
@@ -309,12 +350,13 @@ export const defaultSettings: Settings = defaultsOf(Settings, settingsFile)
 /** The user config as a missing file gives it. */
 export const defaultUserConfig: UserConfig = defaultsOf(UserConfig, "config.json")
 
-/** Every flag's variable, TUTTI_APPEARANCE and NO_COLOR, as the environment has them. */
+/** Every flag's variable, TUTTI_APPEARANCE, NO_COLOR and orchestra's it reads, as they are set. */
 const readVariables = Effect.gen(function* () {
   const names = [
     ...Object.values(runFlags).map((flag) => flag.variable),
     appearanceVariable,
     noColorVariable,
+    orchestraMachineWorkersVariable,
     ...runsDirVariables,
   ]
   const values = new Map<string, string>()
