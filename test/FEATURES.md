@@ -195,14 +195,8 @@ below are the coverage report's uncovered lines at 368899e.
   `check-log-guard.test.ts`, `checkback*.test.ts`, `recheck*.test.ts`, `handback*.test.ts`,
   `unmerged*.test.ts`, `closed-unmerged*.test.ts`, `unchecked-rebase.test.ts`,
   `hand-merged.test.ts`, `hand-merged-run.test.ts`, `cleanup-failed.test.ts`, `aside*.test.ts`,
-  `flaky.test.ts`, `report-evidence.test.ts`.
-- **Untested**:
-  - the merge train when git fails (`src/run/mergetrain.ts`): after a killed run, a branch git
-    can't find, or one killed mid-rebase whose rebase is aborted (183–199, 222–227); a ticket
-    ahead that changed nothing, put back (359–363); the trains behind one whose check failed ahead
-    of its turn, stopped (374–375); boarding when the run quits before
-    its turn (592–595), when git can't tell where the branch is (GIT_FAILED, 599–605), and when
-    the branch can't be put back (rebase failed, 620–627) (tutti-8iz.13).
+  `flaky.test.ts`, `report-evidence.test.ts`, `merge-train-git-failures.test.ts`.
+- **Untested**: nothing found.
 
 ## The full check
 
