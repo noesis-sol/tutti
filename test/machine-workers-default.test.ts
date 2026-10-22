@@ -186,7 +186,7 @@ describe("the START block", () => {
   test("says once under it that a concurrent above the cap holds at it", () => {
     const note =
       "  concurrent 6 is above the machine's cap of 5 workers: the run holds at it (HOLD: MACHINE), with fewer of its own as the machine's other runs have workers running"
-    expect(startBlock(started({}, 6), "0.1.0")).toContain(note)
+    expect(startBlock(started({}, 6), "0.1.0") as ReadonlyArray<string>).toContain(note)
     expect(aboveCapNote(6, 5)).toBe(note.trimStart())
     const below = startBlock(started({}, 5), "0.1.0")
     expect(below.some((l) => l.includes("above the machine's cap"))).toBe(false)
