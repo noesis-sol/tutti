@@ -14,8 +14,8 @@
 // A session lives in a scope of its own, inside the layer's: closing it, on purpose (close, end),
 // because the session went (Gone), or with the layer's scope, ends the prompt, closes the query
 // (the SDK ends Claude Code's stdin, then sends SIGTERM after its grace, docs/spikes/02-sdk-
-// lifecycle.md § 2) and waits for the subprocess to exit, killing its process group if it hasn't
-// within closeLimit. A stream that ends or fails without tutti closing it, or a result with a
+// lifecycle.md § 2) and waits for the subprocess to exit, killing its process group, and its
+// descendants' (killTree), if it hasn't within closeLimit. A stream that ends or fails without tutti closing it, or a result with a
 // startup_failure_reason, makes the worker Gone.
 //
 // An interrupt's control requests, the interrupt and the cancel_async_message requests after it,
@@ -63,6 +63,7 @@ import { readmeName } from "../project/requires.ts"
 import { checkCommands } from "../project/settings.ts"
 import { detail, Log, line } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
+import { killTree } from "../services/processTree.ts"
 import { type AccountProbe, type Billing, permissionModeLine } from "./Account.ts"
 import {
   AgentGone,
@@ -233,16 +234,14 @@ const exited = (child: SpawnedProcess): boolean =>
   child.exitCode !== null ||
   (child.signalCode ?? null) !== null
 
-/** Kills `child`'s process group (it leads one, § 3.2); never a missing or bad PID. */
+/**
+ * Kills `child`'s process group (it leads one, § 3.2), and its descendants' groups, its detached
+ * Bash shells', first (killTree); never a missing or bad PID.
+ */
 const killGroup = (child: SpawnedProcess) =>
   Effect.sync(() => {
     const pid = (child as { pid?: unknown }).pid
-    if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 1) return
-    try {
-      process.kill(-pid, "SIGKILL")
-    } catch {
-      // Already gone.
-    }
+    if (typeof pid === "number") killTree(pid)
   })
 
 /** Waits until `child` exits. */

@@ -20,6 +20,7 @@ import { Cause, Context, Duration, Effect, Layer, Schema } from "effect"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
 import type { permissionModes } from "../project/settings.ts"
+import { killTree } from "../services/processTree.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { apiKeySet, apiKeyVariable, probeEnv } from "./env.ts"
 import { probeOptions } from "./options.ts"
@@ -347,17 +348,8 @@ interface Spawned {
   closed: Promise<void> | undefined
 }
 
-/** Kills `child`'s process group (it leads one); never a missing or bad PID. */
-const killGroup = (child: ChildProcess) =>
-  Effect.sync(() => {
-    const pid = child.pid
-    if (pid === undefined || !Number.isInteger(pid) || pid <= 1) return
-    try {
-      process.kill(-pid, "SIGKILL")
-    } catch {
-      // Already gone.
-    }
-  })
+/** Kills `child`'s process group (it leads one), its descendants' first (killTree). */
+const killGroup = (child: ChildProcess) => Effect.sync(() => killTree(child.pid))
 
 /**
  * The probe over `open`, the SDK's query(): one session, closed once it has answered, its stderr

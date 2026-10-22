@@ -16,6 +16,11 @@
 // outlive a kill -9 of tutti (docs/spikes/02-sdk-lifecycle.md § 4). That kill closes the reaper's
 // pipe too, and the reaper ends Claude Code's whole group: SIGTERM, then SIGKILL after a grace.
 // A worker that ends normally takes its reaper with it. The reaper is src/services/reaper.ts's.
+//
+// Claude Code's Bash shells are detached, each leading a group of its own, and only its own
+// shutdown stops them. So a SIGKILL of Claude Code, the reaper's or the SDK's (5 s after its
+// SIGTERM, which is 2 s after close), kills its descendants' groups first (killTree,
+// src/services/processTree.ts), and its commands don't run on without it.
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { StringDecoder } from "node:string_decoder"
 import type {
@@ -35,7 +40,8 @@ import {
   usageLimitNote,
   type WorkerPrompt,
 } from "../project/prompt.ts"
-import { reap } from "../services/reaper.ts"
+import { killTree } from "../services/processTree.ts"
+import { reap, reapGrace } from "../services/reaper.ts"
 import type { InterviewSetup } from "./AgentHost.ts"
 import { Attention } from "./Attention.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
@@ -88,9 +94,10 @@ export interface WorkerOptionsInput {
 
 /**
  * The SDK's spawn for a worker or the login probe: Claude Code detached into a process group of
- * its own, with a reaper (reap), its stderr decoded and passed to `stderr`. `signal`, the SDK's
- * forwarded one, fires only after its graceful close, so passing it to spawn is safe. It returns
- * the ChildProcess, whose `close` says its stderr has all been read.
+ * its own, with a reaper that ends its descendants' groups too (reap), its stderr decoded and
+ * passed to `stderr`. `signal`, the SDK's forwarded one, fires only after its graceful close, so
+ * passing it to spawn is safe. It returns the ChildProcess, whose `close` says its stderr has all
+ * been read, and whose kill("SIGKILL"), as the SDK sends it, is killTree's.
  */
 export const spawnInOwnProcessGroup =
   (stderr: (data: string) => void) =>
@@ -103,7 +110,12 @@ export const spawnInOwnProcessGroup =
       signal: options.signal,
       windowsHide: true,
     })
-    reap(child)
+    reap(child, reapGrace, true)
+    const kill = child.kill.bind(child)
+    child.kill = (signal) => {
+      if ((signal === "SIGKILL" || signal === 9) && child.exitCode === null) killTree(child.pid)
+      return kill(signal)
+    }
     const decoder = new StringDecoder("utf8")
     const pass = (text: string) => {
       if (text === "") return

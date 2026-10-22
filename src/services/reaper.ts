@@ -11,22 +11,30 @@ import { type ChildProcess, spawn } from "node:child_process"
 /** How long a reaped group has between the reaper's SIGTERM and its SIGKILL, in whole seconds. */
 export const reapGrace = 10
 
-// The reaper's script: $1 is the group, $2 the grace. `read` returns once tutti's end of the pipe
-// closes; the group is then given its SIGTERM, and its SIGKILL if it is still there after the grace.
-const reaperScript =
-  'read _; kill -TERM -"$1" 2>/dev/null; i=0; while [ "$i" -lt "$2" ] && kill -0 -"$1" 2>/dev/null; do sleep 1; i=$((i + 1)); done; kill -KILL -"$1" 2>/dev/null'
+// The reaper's script: $1 is the group, $2 the grace, $3 "tree" when the group's descendants go too.
+// `read` returns once tutti's end of the pipe closes; the group is then given its SIGTERM, and its
+// SIGKILL if it is still there after the grace. With "tree", that SIGKILL is processTree.ts's
+// killTree: the group stopped, then the groups of its members' descendants killed (descendantTree,
+// descendantGroups's), and the group last.
+const descendantTree =
+  'ps -A -o pid=,ppid=,pgid= | awk -v g="$1" -v me="$(ps -o pgid= -p $$)" \'{ pid[NR] = $1; ppid[NR] = $2; pgid[NR] = $3; if ($3 == g) tree[$1] = 1 } END { do { more = 0; for (i = 1; i <= NR; i++) if (!(pid[i] in tree) && (ppid[i] in tree)) { tree[pid[i]] = 1; more = 1 } } while (more); for (i = 1; i <= NR; i++) if ((pid[i] in tree) && pgid[i] > 1 && pgid[i] != g && pgid[i] != me && !(pgid[i] in seen)) { seen[pgid[i]] = 1; print pgid[i] } }\''
+const reaperScript = `read _; kill -TERM -"$1" 2>/dev/null; i=0; while [ "$i" -lt "$2" ] && kill -0 -"$1" 2>/dev/null; do sleep 1; i=$((i + 1)); done; if [ "$3" = tree ] && kill -STOP -"$1" 2>/dev/null; then for d in $(${descendantTree}); do kill -KILL -"$d" 2>/dev/null; done; fi; kill -KILL -"$1" 2>/dev/null`
 
 /**
  * Starts the reaper of the process group whose leader is `group`, with a grace of `grace` whole
- * seconds, and returns it, or undefined when `group` is no PID to reap.
+ * seconds, and returns it, or undefined when `group` is no PID to reap. With `tree`, its SIGKILL
+ * takes the groups of the group's descendants too (killTree): a worker's, whose Claude Code's Bash
+ * shells lead groups of their own.
  */
 export const startReaper = (
   group: number | undefined,
   grace: number = reapGrace,
+  tree = false,
 ): ChildProcess | undefined => {
   if (group === undefined || !Number.isInteger(group) || group <= 1) return undefined
   const seconds = Math.max(0, Math.ceil(grace))
-  const reaper = spawn("/bin/sh", ["-c", reaperScript, "reaper", String(group), String(seconds)], {
+  const args = ["-c", reaperScript, "reaper", String(group), String(seconds)]
+  const reaper = spawn("/bin/sh", tree ? [...args, "tree"] : args, {
     stdio: ["pipe", "ignore", "ignore"],
     detached: true,
     windowsHide: true,
@@ -44,11 +52,16 @@ export const stopReaper = (reaper: ChildProcess | undefined): void => {
 }
 
 /**
- * Starts the reaper of the process group `child` leads, and returns it, or undefined when `child`
- * has no PID to reap. The reaper is killed when `child` exits.
+ * Starts the reaper of the process group `child` leads, its descendants' with it when `tree`
+ * (startReaper), and returns it, or undefined when `child` has no PID to reap. The reaper is killed
+ * when `child` exits.
  */
-export const reap = (child: ChildProcess, grace: number = reapGrace): ChildProcess | undefined => {
-  const reaper = startReaper(child.pid, grace)
+export const reap = (
+  child: ChildProcess,
+  grace: number = reapGrace,
+  tree = false,
+): ChildProcess | undefined => {
+  const reaper = startReaper(child.pid, grace, tree)
   if (reaper === undefined) return undefined
   const done = () => stopReaper(reaper)
   if (child.exitCode !== null || child.signalCode !== null) done()

@@ -188,7 +188,8 @@ below are the coverage report's uncovered lines at 368899e.
   `mcp.test.ts`, `chrome.test.ts`, `unused-tools.test.ts`, `transcripts.test.ts`,
   `usage-limit*.test.ts`, `verifier-foreground.test.ts`, `verifier-rounds.test.ts`,
   `prompt*.test.ts`, `own-check.test.ts`, `worktree-setup.test.ts`, `worktrees.test.ts`,
-  `worker-reaper.test.ts`, `account.test.ts`, `organ-billing.test.ts`, `contract/*.test.ts` (live).
+  `worker-reaper.test.ts`, `process-tree.test.ts`, `account.test.ts`, `organ-billing.test.ts`,
+  `contract/*.test.ts` (live).
 - **Untested**: the live login probe without the real SDK, `startProbe` in
   `src/agent/Account.ts` (365–423): its answer read from a Claude Code, no answer within
   `probeTimeout`, and a Claude Code that won't exit once closed, whose process group is killed
