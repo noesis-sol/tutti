@@ -84,6 +84,11 @@ TUTTI_LIVE=1 scripts/test.sh   # also the contract tests against the real Agent 
   over it, which `@opentui/react/test-utils` needs.
 - `scripts/test.sh` reruns each failed test once by name and prints `FLAKY: <file> <test>` for one
   that passes on its rerun; a flaky test doesn't fail the check.
+- `scripts/test.sh` runs the test files in parallel (`bun test --parallel`), in as many worker
+  processes as the run's share of the cores (`TUTTI_CORES`), or half the machine's cores; no more
+  than the files named. Each file runs in a fresh global, so a test can't rely on another file's
+  leftovers. `TUTTI_TEST_PARALLEL=1` runs them in one process. A test's time limit is 15 s where
+  its file sets none, as the files running side by side load the machine.
 - The contract tests against the real Agent SDK, `test/contract/sdk.test.ts`, run only with
   `TUTTI_LIVE=1` (`TUTTI_LIVE=1 scripts/test.sh test/contract/sdk.test.ts`), with the SDK's embedded
   Claude Code and this machine's Claude login. They spend a few cents of real model turns. Run them

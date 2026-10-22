@@ -2,11 +2,15 @@
 // in, with its exit status unchanged. The script runs in a copy of its own in a temp folder, its
 // steps stubbed: bunx on PATH (tsc, biome), scripts/test.sh and scripts/fetch-shellcheck.sh, each
 // failing with exit 3 when TUTTI_FAKE_FAIL names its step.
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { testEnv } from "./env.ts"
+
+// Each test starts scripts/check.sh and its stubs as processes: well under a second alone, but over
+// bun's 5 s on a loaded machine with the suites running side by side (2026-10-22).
+setDefaultTimeout(30_000)
 
 const script = resolve(import.meta.dir, "../scripts/check.sh")
 

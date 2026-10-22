@@ -411,7 +411,9 @@ slow.describe("Git against a real repository", () => {
     const repo = makeRepo()
     const { worktree, before } = diverged(repo, false)
     writeFileSync(slowRebaseHook(repo), "")
-    const limits = { read: Duration.seconds(30), write: Duration.seconds(1) }
+    // The abort runs within the write limit too: 1 s cut it off on a loaded machine (2026-10-22),
+    // leaving the rebase in progress. 3 s is still far below the hook's 30 s.
+    const limits = { read: Duration.seconds(30), write: Duration.seconds(3) }
     const exit = await run(Effect.exit(withGit((git) => git.rebase(worktree, "main"))), limits)
     const timedOut = failure(exit)
     expect(timedOut).toBeInstanceOf(GitTimedOut)

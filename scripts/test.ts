@@ -19,11 +19,16 @@
 // remove its folder (SIGKILL) leaves it, named with the run's process ID: the next run removes it.
 //
 // A worker's run is given its share of the machine's cores, TUTTI_CORES (or ORCHESTRA_CORES, under
-// orchestra), as other workers' checks run beside it (tutti-kkb.24). bun test runs the files one
-// after another, but its JavaScriptCore starts nearly as many garbage collector markers and FTL
-// compiler threads as the machine has cores (8 and 7 of 10, Bun 1.4.3), and so does each bun the
-// suites start: given a share below the machine's cores, the run keeps them to it
-// (coreThreadVariables).
+// orchestra), as other workers' checks run beside it (tutti-kkb.24). bun test runs the files in
+// that many worker processes at once (--parallel), or in half the machine's cores without a share
+// (testWorkers): one after another, the suites kept one core busy while the machine had ten, and
+// took 139 s where six workers took 89 s on the same loaded machine (2026-10-22). Each worker's
+// JavaScriptCore starts nearly as many garbage collector markers and FTL compiler threads as the
+// machine has cores (8 and 7 of 10, Bun 1.4.3), and so does each bun the suites start: the run keeps
+// them to the workers' part of the share (coreThreadVariables). A failed test's rerun, one test, runs
+// in one process. TUTTI_TEST_PARALLEL gives the workers' number instead (1 for one process). As the
+// files load the machine themselves, a test's time limit is 15 s where its file sets none
+// (testTimeLimit), not bun's 5 s.
 //
 // The suites run in an environment of their own, the same on every machine (testEnvironment): a PATH
 // with none of the tools tutti finds on it (hiddenTools), so no test finds the machine's claude or
@@ -159,22 +164,65 @@ export const jscThreadVariables = [
 ] as const
 
 /**
- * The variables that keep bun test's threads, and those of each bun the suites start, to the
- * share of the machine's `cores` that `env` gives (coreShareOf): JavaScriptCore's threads at the
- * share, but those `env` sets already. None without a share, or with one of all the cores.
+ * The variables that keep the threads of bun test's `processes`, and those of each bun the suites
+ * start, to the share of the machine's `cores` that `env` gives (coreShareOf), or to the cores
+ * without one: JavaScriptCore's threads at each process's part of it, at least one, but those `env`
+ * sets already. None for one process without a share, or with one of all the cores.
  */
 export const coreThreadVariables = (
   env: Readonly<Record<string, string | undefined>>,
   cores: number = availableParallelism(),
+  processes = 1,
 ): Record<string, string> => {
   const share = coreShareOf(env)
-  if (share === undefined || share >= cores) return {}
+  if (processes <= 1 && (share === undefined || share >= cores)) return {}
+  const each = Math.max(1, Math.floor(Math.min(share ?? cores, cores) / Math.max(processes, 1)))
   const result: Record<string, string> = {}
   for (const name of jscThreadVariables) {
-    if ((env[name] ?? "") === "") result[name] = String(share)
+    if ((env[name] ?? "") === "") result[name] = String(each)
   }
   return result
 }
+
+/**
+ * How many worker processes bun test runs the files in (--parallel): TUTTI_TEST_PARALLEL where it
+ * holds a whole number of at least one, else the run's share of the machine's `cores`
+ * (coreShareOf), else half the cores, at least one; no more than the script files `args` name,
+ * where they name some (test/x.test.ts, a fixture's ./test/fixtures/flaky/flaky.fixture.ts). 1 runs
+ * them in one process, as do arguments that choose --parallel themselves (counted as 1 here).
+ *
+ * Half, not all, without a share: a merge check runs with none, beside the workers' own checks, and
+ * with every core taken by the suites the machine is overloaded and timing-sensitive tests fail
+ * (2026-10-22: three FLAKY in one full check at all ten); orchestra's default cap on workers across
+ * the machine is half the cores for the same reason.
+ */
+export const testWorkers = (
+  env: Readonly<Record<string, string | undefined>>,
+  args: ReadonlyArray<string>,
+  cores: number = availableParallelism(),
+): number => {
+  if (args.some((arg) => arg === "--parallel" || arg.startsWith("--parallel="))) return 1
+  const asked = env.TUTTI_TEST_PARALLEL?.trim() ?? ""
+  const wanted =
+    /^\d+$/.test(asked) && Number(asked) >= 1
+      ? Number(asked)
+      : (coreShareOf(env) ?? Math.max(1, Math.floor(cores / 2)))
+  const files = args.filter((arg) => !arg.startsWith("-") && /\.[cm]?[jt]sx?$/.test(arg)).length
+  return Math.max(1, files > 0 ? Math.min(wanted, files) : wanted)
+}
+
+/** A test's time limit where its file sets none (setDefaultTimeout), in place of bun's 5 s. */
+export const testTimeLimit = 15_000
+
+/**
+ * bun test's --timeout for testTimeLimit, unless `args` give one: the suites load the machine
+ * themselves, their files running side by side, and a test that starts git or a script took over 5
+ * s on a loaded machine where it takes under 1 s alone (2026-10-22).
+ */
+export const timeLimitArguments = (args: ReadonlyArray<string>): ReadonlyArray<string> =>
+  args.some((arg) => arg === "--timeout" || arg.startsWith("--timeout="))
+    ? []
+    : [`--timeout=${testTimeLimit}`]
 
 /**
  * The tools tutti looks for on the PATH (Claude Code, Beads, Homebrew) and the terminals it runs in.
@@ -326,12 +374,17 @@ const readReport = (report: string): ReadonlyArray<TestCase> => {
 const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> => {
   const reports = mkdtempSync(join(temp, "tutti-test-reports-"))
   // The share is read from the machine's variables, which the suites' environment leaves out.
-  const environment = {
-    ...testEnvironment(process.env, join(temp, "tutti-test-path")),
-    ...coreThreadVariables(process.env),
-  }
+  const suites = testEnvironment(process.env, join(temp, "tutti-test-path"))
+  const workers = testWorkers(process.env, args)
+  const parallel = workers > 1 ? [`--parallel=${workers}`] : []
+  const limit = timeLimitArguments(args)
   const first = join(reports, "first.xml")
-  const { code, output } = await runBunTest(args, first, temp, environment)
+  const { code, output } = await runBunTest([...parallel, ...limit, ...args], first, temp, {
+    ...suites,
+    ...coreThreadVariables(process.env, undefined, workers),
+  })
+  // A rerun is one test, in one process.
+  const environment = { ...suites, ...coreThreadVariables(process.env) }
   if (code === 0) return 0
   const failed = readReport(first).filter((test) => test.failed)
   // A failure outside any test (a file that doesn't load, an error between tests) isn't in the
@@ -343,7 +396,7 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
     const report = join(reports, `rerun-${index}.xml`)
     console.log(`\nRerunning ${test.file} ${test.name}`)
     const rerun = await runBunTest(
-      [fileArgument(test.file), "--test-name-pattern", exactNamePattern(test.name)],
+      [...limit, fileArgument(test.file), "--test-name-pattern", exactNamePattern(test.name)],
       report,
       temp,
       environment,

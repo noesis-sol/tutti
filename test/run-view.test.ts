@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test"
-import { Effect, Layer, Queue, Ref, Result, type Scope, Stream, SubscriptionRef } from "effect"
+import {
+  Duration,
+  Effect,
+  Layer,
+  Queue,
+  Ref,
+  Result,
+  type Scope,
+  Stream,
+  SubscriptionRef,
+} from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
@@ -294,6 +304,12 @@ describe("a failed turn's card", () => {
 })
 
 describe("the 30 Hz throttle", () => {
+  test("waits a whole number of milliseconds, which keeps TestClock at whole ones", () => {
+    // A sleep of 33.33… ms left whole-run tests' clock at a fraction, and attention_answered's
+    // after_ms, a count, failed its schema: PANIC in the run, on a loaded machine (2026-10-22).
+    expect(Number.isInteger(Duration.toMillis(interval))).toBe(true)
+  })
+
   test("writes the first change at once and the latest of a burst after the interval", async () => {
     const result = await run(
       Effect.gen(function* () {

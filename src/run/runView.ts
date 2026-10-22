@@ -329,8 +329,12 @@ export const emptyView: RunView = {
   warnings: [],
 }
 
-/** At most this often RunView is written: 30 times a second. */
-export const interval = Duration.millis(1000 / 30)
+/**
+ * At most this often RunView is written: about 30 times a second. Whole milliseconds: TestClock
+ * moves to each sleep's end, so a sleep of 33.33… ms left a whole-run test's clock at a fraction,
+ * and the times taken from it then (attention_answered's after_ms) weren't whole.
+ */
+export const interval = Duration.millis(33)
 
 // The phases a ticket is set aside in, whose note the triage organ's verdict replaces.
 const setAside: ReadonlySet<PhaseTag> = new Set(["Deferred", "Review"])

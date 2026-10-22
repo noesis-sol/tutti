@@ -8,7 +8,14 @@ import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Schedule } from "effect"
 import fc from "fast-check"
-import { coreShareOf, coreThreadVariables, jscThreadVariables } from "../scripts/test.ts"
+import {
+  coreShareOf,
+  coreThreadVariables,
+  jscThreadVariables,
+  testTimeLimit,
+  testWorkers,
+  timeLimitArguments,
+} from "../scripts/test.ts"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import {
@@ -264,5 +271,78 @@ describe("the test runner", () => {
     expect(coreThreadVariables({ TUTTI_CORES: "2", BUN_JSC_numberOfGCMarkers: "6" }, 10)).toEqual({
       BUN_JSC_numberOfFTLCompilerThreads: "2",
     })
+  })
+
+  test("divides the threads among bun test's worker processes, at least one each", () => {
+    expect(coreThreadVariables({ TUTTI_CORES: "4" }, 10, 2)).toEqual({
+      BUN_JSC_numberOfGCMarkers: "2",
+      BUN_JSC_numberOfFTLCompilerThreads: "2",
+    })
+    expect(coreThreadVariables({}, 10, 10)).toEqual({
+      BUN_JSC_numberOfGCMarkers: "1",
+      BUN_JSC_numberOfFTLCompilerThreads: "1",
+    })
+    expect(coreThreadVariables({ TUTTI_CORES: "2" }, 10, 4)).toEqual({
+      BUN_JSC_numberOfGCMarkers: "1",
+      BUN_JSC_numberOfFTLCompilerThreads: "1",
+    })
+  })
+
+  test("never gives the worker processes more threads than the share, while each has one", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 64 }),
+        fc.integer({ min: 1, max: 64 }),
+        fc.integer({ min: 2, max: 64 }),
+        (cores, share, processes) => {
+          const each = Number(
+            coreThreadVariables({ TUTTI_CORES: String(share) }, cores, processes)
+              .BUN_JSC_numberOfGCMarkers,
+          )
+          expect(each).toBeGreaterThanOrEqual(1)
+          const budget = Math.min(share, cores)
+          if (budget >= processes) expect(each * processes).toBeLessThanOrEqual(budget)
+        },
+      ),
+    )
+  })
+})
+
+describe("the test runner's worker processes", () => {
+  test("are the run's share of the cores, or half the cores without one", () => {
+    expect(testWorkers({ TUTTI_CORES: "3" }, [], 10)).toBe(3)
+    expect(testWorkers({ ORCHESTRA_CORES: "2" }, [], 10)).toBe(2)
+    expect(testWorkers({}, [], 10)).toBe(5)
+    expect(testWorkers({}, [], 7)).toBe(3)
+    expect(testWorkers({}, [], 1)).toBe(1)
+  })
+
+  test("are no more than the script files named, a fixture's included", () => {
+    expect(testWorkers({}, ["test/a.test.ts", "test/b.test.tsx"], 10)).toBe(2)
+    expect(testWorkers({}, ["./test/fixtures/flaky/flaky.fixture.ts"], 10)).toBe(1)
+    expect(testWorkers({}, ["test/", "--bail"], 10)).toBe(5)
+  })
+
+  test("are TUTTI_TEST_PARALLEL's number where it holds one", () => {
+    expect(testWorkers({ TUTTI_TEST_PARALLEL: "1", TUTTI_CORES: "4" }, [], 10)).toBe(1)
+    expect(testWorkers({ TUTTI_TEST_PARALLEL: "6" }, [], 10)).toBe(6)
+    expect(testWorkers({ TUTTI_TEST_PARALLEL: "lots", TUTTI_CORES: "4" }, [], 10)).toBe(4)
+  })
+
+  test("are one when the arguments choose --parallel themselves", () => {
+    expect(testWorkers({}, ["--parallel=3"], 10)).toBe(1)
+    expect(testWorkers({}, ["--parallel"], 10)).toBe(1)
+  })
+})
+
+describe("the test runner's time limit", () => {
+  test("is testTimeLimit where the arguments give none", () => {
+    expect(timeLimitArguments([])).toEqual([`--timeout=${testTimeLimit}`])
+    expect(timeLimitArguments(["test/a.test.ts"])).toEqual(["--timeout=15000"])
+  })
+
+  test("is the arguments' own where they give one", () => {
+    expect(timeLimitArguments(["--timeout=2000"])).toEqual([])
+    expect(timeLimitArguments(["--timeout", "2000"])).toEqual([])
   })
 })

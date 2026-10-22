@@ -591,7 +591,8 @@ export const make = (
     const answered = (request: AttentionRequest, outcome: Outcome, via: Via | undefined) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
-        const after_ms = Math.max(0, now - request.createdAt)
+        // Whole: the record's field is a count, and a clock at a fraction mustn't fail it.
+        const after_ms = Math.max(0, Math.round(now - request.createdAt))
         const base = {
           kind: "attention_answered" as const,
           ticket: request.ticket,
