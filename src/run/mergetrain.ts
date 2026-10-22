@@ -102,18 +102,14 @@ const setUpOf = (step: Step): boolean =>
   step._tag === "Rebasing" || step._tag === "NotRebased" ? false : step.setUp
 
 /** The commit trains behind it are rebased onto, or undefined when none starts behind it. */
-const aheadOf = (step: Step): string | undefined => {
-  switch (step._tag) {
-    case "Checking":
-    case "Passed":
-      return step.head
-    case "Rebasing":
-    case "NotRebased":
-    case "Failed":
-    case "Stopped":
-      return undefined
-  }
-}
+const aheadOf: (step: Step) => string | undefined = Step.$match({
+  Rebasing: () => undefined,
+  NotRebased: () => undefined,
+  Checking: ({ head }) => head,
+  Passed: ({ head }) => head,
+  Failed: () => undefined,
+  Stopped: () => undefined,
+})
 
 /** A ticket checked ahead of its turn: where it was rebased, and how its check goes. */
 interface Run {

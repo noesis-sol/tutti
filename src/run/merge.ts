@@ -36,6 +36,7 @@
 // handed back is set aside for review, kept to be checked once more once the base moves on
 // (recheck.ts).
 import { Data, Duration, Effect, Result, Schedule } from "effect"
+import { absurd } from "effect/Function"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -940,6 +941,8 @@ export const prepare = (
           return { _tag: "HandBack", stop: result.stop } satisfies Prepared
         case "CheckFailed":
           return { _tag: "FixBack", stop: result.stop } satisfies Prepared
+        default:
+          return absurd(result)
       }
     }
   })
