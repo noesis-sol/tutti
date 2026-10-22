@@ -69,7 +69,7 @@ export const titleSegments = (
   }
   if (title.shared > 0) {
     left.push(
-      seg(`  · shared with ${title.shared} run${title.shared === 1 ? "" : "s"}`, styles.dim),
+      seg(`  · shared with ${title.shared} run${title.shared === 1 ? "" : "s"}`, styles.deferred),
     )
   }
   const scoped = title.scope === null ? "" : ` · ticket ${title.scope}`

@@ -54,6 +54,13 @@ describe("the title line", () => {
     expect(text(solo)).toContain("· solo s running  · shared with 1 run   main")
     expect(text(solo, 56).trimEnd()).toBe(" tutti  0.1.0  · solo s running  · shared with 1 run")
   })
+
+  test("draws the count in notice, as orchestra draws it in its deferred style", () => {
+    const shared = titleSegments({ ...title, shared: 1 }, [], 0, theme, 120).find((segment) =>
+      segment.text.includes("shared with"),
+    )
+    expect(shared?.look).toBe(theme.styles.deferred)
+  })
 })
 
 const folder = (name: string) =>
