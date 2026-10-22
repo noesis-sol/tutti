@@ -31,7 +31,7 @@
 // replaces the cards, and `q` ends the run (EndRun). `Tab` then `Enter` open a worker's view to
 // answer there.
 import { useTerminalDimensions } from "@opentui/react"
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useRef } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { Card, Key } from "../run/runView.ts"
 import { answerBindings } from "./AttentionCard.tsx"
@@ -53,6 +53,7 @@ import {
 import { TitleLine } from "./TitleLine.tsx"
 import { Totals, totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
+import { useKeyState } from "./useKeyState.ts"
 import { useCommand, useNow, useRunView, useSpinner, useTheme } from "./useRunView.ts"
 import { WindDown, windDownSegments } from "./WindDown.tsx"
 
@@ -136,22 +137,17 @@ export const Dashboard = () => {
   const now = useNow()
   const command = useCommand()
   const { width, height } = useTerminalDimensions()
-  // The highlight names a ticket; a card that has gone takes it with it. It is kept in a ref, so
-  // that keys arriving together each see the one before them, and drawn from state.
-  const chosen = useRef<string | null>(null)
-  const [, redraw] = useState<string | null>(null)
-  const [help, setHelp] = useState(false)
+  // The highlight names a ticket; a card that has gone takes it with it. It is key state, so that
+  // keys arriving together each see the one before them.
+  const [, setChosen, chosen] = useKeyState<string | null>(() => null)
+  const [help, setHelp, helpOpen] = useKeyState(() => false)
   const cards = view.cards
   // With none chosen, the card of the oldest open request is the target, and highlighted (§ 4.5).
   const oldest = view.requests[0]
   const target = cards.find((card) => card.ticket === oldest?.ticket)?.ticket ?? null
-  const current = () =>
-    cards.some((card) => card.ticket === chosen.current) ? chosen.current : target
+  const current = () => (cards.some((card) => card.ticket === chosen()) ? chosen() : target)
   const highlighted = current()
-  const choose = (ticket: string | null) => {
-    chosen.current = ticket
-    redraw(ticket)
-  }
+  const choose = (ticket: string | null) => setChosen(() => ticket)
   const spin = useSpinner(cards.length === 0 || cards.some((card) => card.motion === "spinner"))
   const open = useCallback((ticket: string) => command(UiCommand.OpenWorker({ ticket })), [command])
 
@@ -179,13 +175,9 @@ export const Dashboard = () => {
 
   // The view's keys, as bound: a key does nothing while the key help is open, but close it.
   const { box } = useInput()
-  const helpOpen = useRef(false)
-  const showHelp = (shown: boolean) => {
-    helpOpen.current = shown
-    setHelp(shown)
-  }
+  const showHelp = (shown: boolean) => setHelp(() => shown)
   const key = (keys: ReadonlyArray<string>, run: () => void): ReadonlyArray<KeyBinding> =>
-    keys.map((each) => ({ key: each, run: () => (helpOpen.current ? undefined : run()) }))
+    keys.map((each) => ({ key: each, run: () => (helpOpen() ? undefined : run()) }))
   const highlightedCard = () => cards.find((card) => card.ticket === current())
   // The attention card highlighted, with its buttons drawn: the one Tab, Enter and 1–4 work in.
   const inCard = () => {
@@ -217,7 +209,7 @@ export const Dashboard = () => {
     if (card !== undefined && grows(card)) box.set(Box.Answer({ ticket: card.ticket }))
   }
   useLayer("view", [
-    { key: "?", run: () => showHelp(!helpOpen.current) },
+    { key: "?", run: () => showHelp(!helpOpen()) },
     { key: "escape", run: () => showHelp(false) },
     // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
     ...key(["s"], () => box.set(Box.Stop({ windingDown: view.windDown !== null }))),

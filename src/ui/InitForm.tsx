@@ -47,6 +47,7 @@ import { seg, styled, wrap } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Style, Theme } from "./theme.ts"
+import { useKeyState } from "./useKeyState.ts"
 import { external, type Settable, spinnerAt, spinnerTick } from "./useRunView.ts"
 
 /**
@@ -127,23 +128,6 @@ const cancelKeys = (key: { readonly name: string; readonly ctrl: boolean }) =>
   key.name === "escape" || (key.ctrl && key.name === "c")
 
 const isEnter = (name: string) => name === "return" || name === "kpenter"
-
-/**
- * A field's state, drawn as it changes, which its key handler reads as it is now: a key pressed
- * before the last change was drawn still sees it.
- */
-const useKeyState = <A,>(initial: () => A) => {
-  const latest = useRef<{ readonly value: A } | null>(null)
-  if (latest.current === null) latest.current = { value: initial() }
-  const [shown, setShown] = useState(latest.current.value)
-  const now = () => (latest.current as { readonly value: A }).value
-  const change = (next: (value: A) => A) => {
-    const value = next(now())
-    latest.current = { value }
-    setShown(value)
-  }
-  return [shown, change, now] as const
-}
 
 /** The columns a field's text is in from the screen's edges: the form's padding, and the bar's. */
 const fieldInset = 4

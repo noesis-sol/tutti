@@ -653,6 +653,7 @@ A classifier that is down, refusing every command, is the kind of failure the ho
 - **The interview runs in rounds of chat**, as orchestra's instructions say: numbered questions, each with Claude's recommended answer. `AskUserQuestion` (1 to 4 questions, 2 to 4 options each) is used only where a question is a discrete choice. Your answers are typed in the composer.
 - **When `file_feature` has filed the epic** and the turn has ended, tutti closes the session and shows the epic and its tickets with `Start the run on <epic> (N tickets)? [y/N]`, as orchestra does.
 - **Leaving the view** (`Esc` outside the composer, or **← Back**) asks `End the interview? Nothing has been filed.`, unless `file_feature` already filed something.
+- **In a narrow pane** its header wraps the description's first line, and its hint every key, as the worker view's do (§7.5); both views share the transcript, the panel, the selection, the composer and their keys.
 - **`--feature "<request>"`** still plans with the screen and plan organs instead (§6).
 
 ### 4.11 The worker prompt

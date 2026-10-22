@@ -31,6 +31,9 @@
 // dashboard (§ 7.3). While you write in the composer, it takes the printable keys, Enter and
 // the arrows; PgUp/PgDn, Ctrl+X, Ctrl+R and Esc still work.
 //
+// The transcript, the panel, the selection, the composer and the keys are shared with the
+// Interview view (transcriptView.ts), as are the head, the pane, the panel and the hint below.
+//
 // Branding (§ 7.5): tutti's own glyphs and layout, and the scheme's colours; the chrome names
 // neither Claude nor its product.
 import {
@@ -38,27 +41,16 @@ import {
   type MarkdownOptions,
   type MouseEvent,
   RGBA,
-  type ScrollBoxRenderable,
   SyntaxStyle,
-  type TextareaRenderable,
 } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
-import {
-  createContext,
-  memo,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react"
+import { createContext, memo, useContext, useEffect, useMemo, useRef } from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
-import type { Card } from "../run/runView.ts"
-import { AttentionLines, answerBindings, type ButtonSegment } from "./AttentionCard.tsx"
-import { buttonsOf, picksOptions, requestText, useAnswering } from "./attentionKeys.ts"
+import type { Card, Key } from "../run/runView.ts"
+import { AttentionLines, type ButtonSegment } from "./AttentionCard.tsx"
+import { buttonsOf, picksOptions, requestText } from "./attentionKeys.ts"
 import { headOf, statusLook } from "./Card.tsx"
 import {
   Composer,
@@ -68,11 +60,10 @@ import {
   QueuedLines,
   queuedLines,
   SteeredLine,
-  useSends,
 } from "./Composer.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
-import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
+import { Box, useInput, useLayer } from "./keys.ts"
 import {
   boxed,
   cut,
@@ -91,29 +82,22 @@ import { requestInputLines } from "./requestInput.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import { useHintHeight } from "./Toasts.tsx"
 import type { Role, Theme } from "./theme.ts"
+import { type Entry, expansionOf, type Mark, markOf, type ToolEntry } from "./transcriptItems.ts"
 import {
-  bounded,
-  type Entry,
-  emptyTranscript,
-  entriesOf,
-  expansionOf,
-  type Mark,
-  markOf,
-  mounted,
-  type OpenTranscript,
-  type ToolEntry,
-  type TranscriptState,
-} from "./transcriptItems.ts"
-import {
-  external,
-  useCommand,
-  useHandBacks,
-  useNow,
-  useRunView,
-  useSpinner,
-  useTheme,
-  useTranscripts,
-} from "./useRunView.ts"
+  entryId,
+  type Panel,
+  requestKey,
+  type Selection,
+  type TranscriptWindow,
+  useComposer,
+  usePanel,
+  useSelection,
+  useTranscriptKeys,
+  useTranscriptWindow,
+} from "./transcriptView.ts"
+import { useCommand, useHandBacks, useNow, useRunView, useSpinner, useTheme } from "./useRunView.ts"
+
+export { entryId, panelRequests, requestKey, selectable } from "./transcriptView.ts"
 
 /** The most lines of a command's output an expanded item shows. */
 export const outputLines = 400
@@ -121,14 +105,7 @@ export const outputLines = 400
 /** The fewest lines a request's input scrolls in; it gets a quarter of the pane when that's more. */
 export const inputLines = 3
 
-/** The most requests the panel shows whole; the rest are counted under them. */
-export const panelRequests = 2
-
-/** The id of an entry's renderable in the scrollbox, to find it by. */
-export const entryId = (key: string): string => `entry-${key}`
-
-/** The selection key of a request in the panel, and of the hand-back notice. */
-export const requestKey = (request: AttentionRequest): string => `request:${request.id}`
+/** The selection key of the hand-back notice. */
 const handBackKey = "handback"
 
 /** The Markdown and code styles, from the theme's roles (§ 7.11 "Markdown"). */
@@ -558,9 +535,6 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
   }
 })
 
-/** Whether the selection can rest on `entry`: one that expands. */
-export const selectable = (entry: Entry): boolean => entry._tag !== "Text"
-
 /** A request's box in the panel: its lines over its input, its input, and its frame's foot. */
 export interface PanelParts {
   readonly head: ReadonlyArray<Segments>
@@ -717,18 +691,148 @@ export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
   ["?", "these keys"],
 ]
 
-/** The store a view without a transcript reads. */
-const noTranscript = external<TranscriptState>(emptyTranscript)
+/**
+ * The head of a transcript's view: `link`, which a click follows as `leave`, then `head`, wrapped
+ * rather than cut (tutti-rfs). Its lines after the first are under the link, not in the
+ * transcript's scrollbox, so their height doesn't touch #1514.
+ */
+export const ViewHead = ({
+  link,
+  leave,
+  head,
+  width,
+}: {
+  readonly link: string
+  readonly leave: () => void
+  readonly head: Segments
+  readonly width: number
+}) => {
+  const theme = useTheme()
+  const lines = wrap([seg("   "), ...head], width, {
+    indent: 4,
+    long: "line",
+    start: Bun.stringWidth(link),
+  })
+  return (
+    <>
+      <box flexDirection="row" height={1} flexShrink={0}>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: a terminal's text, not the DOM's; Esc is its key */}
+        <text
+          wrapMode="none"
+          height={1}
+          {...styled(theme.styles.key)}
+          onMouseDown={(event: MouseEvent) => {
+            if (event.button !== 0) return
+            event.stopPropagation()
+            leave()
+          }}
+        >
+          {link}
+        </text>
+        <Line segments={lines[0] ?? []} />
+      </box>
+      {lines.length > 1 ? <Lines lines={lines.slice(1)} /> : null}
+    </>
+  )
+}
+
+/** The transcript's items, `width` wide, in a scrollbox that sticks to the bottom. */
+export const TranscriptPane = ({
+  transcript,
+  selection,
+  width,
+}: {
+  readonly transcript: TranscriptWindow
+  readonly selection: Selection
+  readonly width: number
+}) => {
+  const theme = useTheme()
+  return (
+    <scrollbox
+      ref={transcript.scroll}
+      flexGrow={1}
+      stickyScroll
+      stickyStart="bottom"
+      scrollbarOptions={{ visible: false }}
+      onMouseScroll={transcript.wheel}
+    >
+      {transcript.loading ? (
+        <box height={1} flexShrink={0}>
+          <Line segments={[seg("  loading earlier items…", theme.styles.dim)]} />
+        </box>
+      ) : null}
+      <EntryList
+        entries={transcript.shown}
+        width={width}
+        selected={selection.selected}
+        expanded={transcript.expanded}
+        click={selection.click}
+      />
+    </scrollbox>
+  )
+}
+
+/** The panel's requests, each in its box, `width` wide in a pane `height` tall, and how many more. */
+export const RequestPanel = ({
+  panel,
+  selection,
+  width,
+  height,
+}: {
+  readonly panel: Panel
+  readonly selection: Selection
+  readonly width: number
+  readonly height: number
+}) => {
+  const theme = useTheme()
+  const { answering } = panel
+  const inputRoom = Math.max(inputLines, Math.floor(height / 4))
+  return (
+    <>
+      {panel.requests.map((request, i) => {
+        const at = panel.cards[i]
+        return at === undefined ? null : (
+          <PanelBox
+            key={request.id}
+            parts={panelParts(request, theme, {
+              width,
+              selected: selection.selected === requestKey(request),
+              focus: answering.focusOf(at),
+            })}
+            room={inputRoom}
+            press={(index) => answering.press(at, index)}
+          />
+        )
+      })}
+      {panel.more > 0 ? (
+        <Line segments={[seg(`  +${panel.more} more requests`, theme.styles.dim)]} />
+      ) : null}
+    </>
+  )
+}
+
+/** A view's hint, `width` wide: every key, on as many lines as it takes; toasts go above them. */
+export const ViewHint = ({
+  keys,
+  width,
+}: {
+  readonly keys: ReadonlyArray<Key>
+  readonly width: number
+}) => {
+  const theme = useTheme()
+  const input = useInput()
+  const lines = hintLines(keys, theme, width)
+  useHintHeight(input.toasts, lines.length)
+  return <Lines lines={lines} />
+}
 
 /** The view of the ticket's worker, while the run shows it. */
 export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const view = useRunView()
   const theme = useTheme()
   const looks = useSyntaxStyles(theme)
-  const renderer = useRenderer()
   const now = useNow()
   const command = useCommand()
-  const feed = useTranscripts()
   const handBacks = useHandBacks()
   const { width, height } = useTerminalDimensions()
   const found = view.cards.find((each) => each.ticket === viewed)
@@ -739,61 +843,14 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const ticket = card?.ticket
   const spin = useSpinner(card?.motion === "spinner")
 
-  // The transcript, open while the view shows this ticket.
-  const [transcript, setTranscript] = useState<OpenTranscript | null>(null)
-  useEffect(() => {
-    if (feed === undefined || ticket === undefined) return
-    const opened = feed.open(ticket)
-    setTranscript(opened)
-    return () => {
-      opened.close()
-      setTranscript(null)
-    }
-  }, [feed, ticket])
-  const store = transcript?.state ?? noTranscript
-  const state = useSyncExternalStore(store.subscribe, store.get)
-  const window = state.window
-  // Your messages sent while a turn is under way are queued until the transcript says they were
-  // taken; the composer shows them till then, the transcript after.
-  const underWay = found?.state != null && !hasSettled(found.state)
-  const sends = useSends(ticket, window.latest, underWay)
-  const queuedKey = sends.queued.map((send) => send.uuid).join(" ")
-  const queued = useMemo(() => new Set(queuedKey === "" ? [] : queuedKey.split(" ")), [queuedKey])
-  const entries = useMemo(
-    () => entriesOf(window.items, state.live, queued),
-    [window.items, state.live, queued],
-  )
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
-  const shown = bounded(entries, expanded, window.following)
-  const flat = mounted(shown, expanded)
-
-  // The panel: the worker's oldest open requests, each as a card of its own for the card's
-  // answering. Only those drawn can be selected or answered; the rest are counted under them, and
-  // each comes in as one before it is answered.
-  const waiting = card === undefined ? [] : view.requests.filter((r) => r.ticket === card.ticket)
-  const requests = waiting.slice(0, panelRequests)
-  const more = waiting.length - requests.length
-  const requestCards: ReadonlyArray<Card> =
-    card === undefined ? [] : requests.map((request) => ({ ...card, requests: [request] }))
-  const input = useInput()
-  const answering = useAnswering(requestCards, undefined, (request) =>
-    input.box.set(Box.Form({ requestId: request.id, ticket: request.ticket })),
-  )
+  const transcript = useTranscriptWindow(ticket, found?.state != null && !hasSettled(found.state))
+  const { sends } = transcript
+  const panel = usePanel(card)
   const handBack = ticket !== undefined && handBacks.includes(ticket)
+  const selection = useSelection(transcript, panel, handBack ? [handBackKey] : [])
+  const composer = useComposer()
+  const input = useInput()
 
-  // The composer: you write in it while it is chosen and no box is open over the view. It takes
-  // the focus, or gives it up, as the key is pressed, so that the keys after it go where it says.
-  const box = useSyncExternalStore(input.box.subscribe, input.box.get)
-  const field = useRef<TextareaRenderable>(null)
-  const composingNow = useRef(false)
-  const [composing, setComposingState] = useState(false)
-  const setComposing = (on: boolean) => {
-    composingNow.current = on
-    setComposingState(on)
-    if (!on) field.current?.blur()
-    else if (input.box.get() === null) field.current?.focus()
-  }
-  const typing = composing && box === null
   // Once the worker has finished, its card gone, nothing is sent: what you typed stays, and a toast
   // says why (tutti-ceo).
   const finished = found === undefined
@@ -810,14 +867,14 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   // Ctrl+X asks first; `y` interrupts the turn the question names, and its queued messages go.
   const interrupt = () => {
     if (found === undefined) return
-    field.current?.blur()
+    composer.blur()
     input.box.set(Box.Interrupt({ ticket: found.ticket }))
   }
   const answerInterrupt = (yes: boolean) => {
     const asked = input.box.get()
     if (asked?._tag !== "Interrupt") return
     input.box.set(null)
-    if (composingNow.current) field.current?.focus()
+    composer.refocus()
     if (!yes) return
     sends.cancelled(asked.ticket)
     command(UiCommand.Interrupt({ ticket: asked.ticket }))
@@ -842,179 +899,24 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const release = () => {
     if (found?.steered === true) command(UiCommand.Release({ ticket: found.ticket }))
   }
-
-  // The selection names an entry, a request or the hand-back; with none chosen, the oldest request
-  // is the target. Kept in a ref, so that keys arriving together each see the one before them.
-  const chosen = useRef<string | null>(null)
-  const [, redraw] = useState(0)
-  const selectables = [
-    ...flat.filter(selectable).map((entry) => entry.key),
-    ...(handBack ? [handBackKey] : []),
-    ...requests.map(requestKey),
-  ]
-  const current = (): string | null => {
-    if (chosen.current !== null && selectables.includes(chosen.current)) return chosen.current
-    const oldest = requests[0]
-    return oldest !== undefined ? requestKey(oldest) : null
-  }
-  const selected = current()
-  const scroll = useRef<ScrollBoxRenderable>(null)
-  const choose = (key: string | null) => {
-    chosen.current = key
-    redraw((n) => n + 1)
-    if (key !== null && !key.startsWith("request:") && key !== handBackKey) {
-      scroll.current?.scrollChildIntoView(entryId(key))
-    }
-  }
-  const toggle = (key: string) =>
-    setExpanded((open) => {
-      const next = new Set(open)
-      if (!next.delete(key)) next.add(key)
-      return next
-    })
-  const click = (key: string) => {
-    choose(key)
-    toggle(key)
-  }
-  const selectedCard = (): Card | undefined => {
-    const key = current()
-    return requestCards.find((each) => each.requests[0] && requestKey(each.requests[0]) === key)
-  }
-
-  // Scrolling: past the top loads older items, keeping your place; the bottom follows the worker.
-  const anchor = useRef<string | null>(null)
-  const atTop = () => (scroll.current?.scrollTop ?? 0) <= 0
-  const atEnd = () => {
-    const box = scroll.current
-    return box === null || box.scrollTop >= box.scrollHeight - box.viewport.height - 1
-  }
-  const older = () => {
-    if (transcript === null || state.loading || window.start) return
-    anchor.current = shown[0]?.key ?? null
-    transcript.older()
-  }
-  const settled = () => {
-    if (transcript === null) return
-    if (atEnd()) transcript.follow()
-    else transcript.scrolledBack()
-  }
-  const firstSeq = window.items[0]?.seq
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the place is kept once the older items are in
-  useEffect(() => {
-    const key = anchor.current
-    if (key === null) return
-    anchor.current = null
-    let tries = 0
-    const keep = () => {
-      const box = scroll.current
-      if (box === null || box.isDestroyed) return
-      const child = box.content.getChildren().find((each) => each.id === entryId(key))
-      const offset = child === undefined ? 0 : child.y - box.content.y
-      if (offset > 0) box.scrollTop = offset
-      else if (tries++ < 10) renderer.requestAnimationFrame(keep)
-    }
-    renderer.requestAnimationFrame(keep)
-  }, [firstSeq])
-  const page = (step: 1 | -1) => {
-    const box = scroll.current
-    if (box === null) return
-    if (step === -1 && atTop()) older()
-    box.scrollBy(step * Math.max(box.viewport.height - 1, 1))
-    settled()
-  }
-
-  const move = (step: 1 | -1) => {
-    if (selectables.length === 0) return
-    // From none, the newest item: you're at the bottom.
-    const at = selectables.indexOf(current() ?? "")
-    const next =
-      at === -1 ? selectables.length - 1 : Math.min(Math.max(at + step, 0), selectables.length - 1)
-    answering.reset()
-    choose(selectables[next] ?? null)
-  }
-  const stepOrMove = (step: 1 | -1) => {
-    const target = selectedCard()
-    if (target !== undefined && answering.step(target, step)) return
-    move(step)
-  }
   const handBackNow = () => {
     if (ticket !== undefined) command(UiCommand.HandBackNow({ ticket }))
   }
-  const enter = () => {
-    const key = current()
-    if (key === null) return
-    if (key === handBackKey) return handBackNow()
-    const target = selectedCard()
-    if (target !== undefined) {
-      answering.pressFocused(target)
-      return
-    }
-    toggle(key)
-  }
-  const pick = (n: number) => () => {
-    const target = selectedCard()
-    if (target !== undefined) answering.pick(target, n)
-  }
-  const targetCard = () => selectedCard() ?? requestCards[0]
   const close = () => command(UiCommand.CloseWorker())
-  // With the key help open, `?` and `Esc` close it and the other keys do nothing.
-  const [help, setHelp] = useState(false)
-  const helpOpen = useRef(false)
-  const showHelp = (shown: boolean) => {
-    helpOpen.current = shown
-    setHelp(shown)
-  }
-  // While you write, the composer takes the printable keys, Enter, Tab and the arrows (keys.ts).
-  const keys: ReadonlyArray<KeyBinding> = [
-    { key: "pageup", run: () => page(-1) },
-    { key: "pagedown", run: () => page(1) },
-    { key: "ctrl+x", run: interrupt },
-    { key: "ctrl+r", run: release },
-    { key: "i", run: () => setComposing(true) },
-    { key: "down", run: () => move(1) },
-    { key: "up", run: () => move(-1) },
-    ...["tab", "right"].map((key) => ({ key, run: () => stepOrMove(1) })),
-    ...["shift+tab", "left"].map((key) => ({ key, run: () => stepOrMove(-1) })),
-    ...["return", "enter"].map((key) => ({ key, run: enter })),
-    ...answerBindings(answering, targetCard),
-    ...[1, 2, 3, 4].map((n) => ({ key: String(n), run: pick(n) })),
-    {
-      key: "g",
-      run: () => {
-        if (atTop()) older()
-        scroll.current?.scrollTo(0)
-        settled()
-      },
-    },
-    {
-      key: "shift+g",
-      run: () => {
-        transcript?.follow()
-        const box = scroll.current
-        box?.scrollTo(box.scrollHeight)
-      },
-    },
-  ]
-  useLayer("view", [
-    { key: "?", run: () => showHelp(!helpOpen.current) },
-    {
-      key: "escape",
-      run: () =>
-        helpOpen.current ? showHelp(false) : composingNow.current ? setComposing(false) : close(),
-    },
-    ...keys.map((binding) => ({
-      key: binding.key,
-      run: () => (helpOpen.current ? undefined : binding.run()),
-    })),
-  ])
+  const help = useTranscriptKeys({
+    transcript,
+    panel,
+    selection,
+    composer,
+    back: close,
+    enter: () => (selection.current() === handBackKey ? handBackNow() : selection.enter()),
+    own: [
+      { key: "ctrl+x", run: interrupt },
+      { key: "ctrl+r", run: release },
+    ],
+  })
 
   const inner = Math.max(width, 1)
-  const hint = hintLines(
-    hintKeys(requests.length > 0, typing, card?.steered === true),
-    theme,
-    inner,
-  )
-  useHintHeight(input.toasts, hint.length)
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
   const head: Segments =
     card === undefined
@@ -1024,83 +926,24 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           seg("   "),
           seg(sanitizeLine(card.title)),
         ]
-  const dashboardLink = " ← Dashboard"
-  // The header wraps rather than cut the title (tutti-rfs): its lines after the first are under the
-  // head, not in the transcript's scrollbox, so their height doesn't touch #1514.
-  const headLines = wrap([seg("   "), ...head], inner, {
-    indent: 4,
-    long: "line",
-    start: Bun.stringWidth(dashboardLink),
-  })
   const panelWidth = Math.max(inner - 2, 8)
-  const inputRoom = Math.max(inputLines, Math.floor(height / 4))
+  const { box } = composer
   return (
     <LooksContext.Provider value={looks}>
       <box flexDirection="column" width={width} height={height}>
-        <box flexDirection="row" height={1} flexShrink={0}>
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: a terminal's text, not the DOM's; Esc is its key */}
-          <text
-            wrapMode="none"
-            height={1}
-            {...styled(theme.styles.key)}
-            onMouseDown={(event: MouseEvent) => {
-              if (event.button !== 0) return
-              event.stopPropagation()
-              close()
-            }}
-          >
-            {dashboardLink}
-          </text>
-          <Line segments={headLines[0] ?? []} />
-        </box>
-        {headLines.length > 1 ? <Lines lines={headLines.slice(1)} /> : null}
+        <ViewHead link=" ← Dashboard" leave={close} head={head} width={inner} />
         <Line segments={rule} />
-        <scrollbox
-          ref={scroll}
-          flexGrow={1}
-          stickyScroll
-          stickyStart="bottom"
-          scrollbarOptions={{ visible: false }}
-          onMouseScroll={(event: MouseEvent) => {
-            if (event.scroll?.direction === "up" && atTop()) older()
-            queueMicrotask(settled)
-          }}
-        >
-          {state.loading ? (
-            <box height={1} flexShrink={0}>
-              <Line segments={[seg("  loading earlier items…", theme.styles.dim)]} />
-            </box>
-          ) : null}
-          <EntryList
-            entries={shown}
-            width={inner}
-            selected={selected}
-            expanded={expanded}
-            click={click}
-          />
-        </scrollbox>
+        <TranscriptPane transcript={transcript} selection={selection} width={inner} />
         {handBack ? (
           <AttentionLines
-            lines={handBackLines(theme, { width: panelWidth, selected: selected === handBackKey })}
+            lines={handBackLines(theme, {
+              width: panelWidth,
+              selected: selection.selected === handBackKey,
+            })}
             press={handBackNow}
           />
         ) : null}
-        {requests.map((request, i) => {
-          const at = requestCards[i]
-          return at === undefined ? null : (
-            <PanelBox
-              key={request.id}
-              parts={panelParts(request, theme, {
-                width: panelWidth,
-                selected: selected === requestKey(request),
-                focus: answering.focusOf(at),
-              })}
-              room={inputRoom}
-              press={(index) => answering.press(at, index)}
-            />
-          )
-        })}
-        {more > 0 ? <Line segments={[seg(`  +${more} more requests`, theme.styles.dim)]} /> : null}
+        <RequestPanel panel={panel} selection={selection} width={panelWidth} height={height} />
         <Line segments={rule} />
         {finished ? (
           <Line segments={finishedLine(theme, viewed, inner)} />
@@ -1112,13 +955,16 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
         ) : null}
         <Composer
           theme={theme}
-          field={field}
-          focused={typing}
-          focus={() => setComposing(true)}
+          field={composer.field}
+          focused={composer.typing}
+          focus={() => composer.setComposing(true)}
           send={send}
           {...(finished ? { placeholder: () => finishedWords(viewed).placeholder } : {})}
         />
-        <Lines lines={hint} />
+        <ViewHint
+          keys={hintKeys(panel.requests.length > 0, composer.typing, card?.steered === true)}
+          width={inner}
+        />
         {help ? (
           <KeyHelp theme={theme} width={width} height={height} keys={workerViewKeys} />
         ) : null}
