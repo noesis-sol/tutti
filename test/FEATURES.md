@@ -290,9 +290,10 @@ below are the coverage report's uncovered lines at 368899e.
   `install-script-cpu.test.ts`, `npm-package.test.ts` (slow), `npm-musl.test.ts` (slow),
   `npm-license.test.ts`, `react-build.test.ts` (slow), `claude-binary.test.ts`,
   `claude-extract.test.ts`, `release-*.test.ts`, `sign-checksums.test.ts`.
-- **Untested**: a compiled build's own start: `src/entries/<target>.ts` embedding its Claude Code,
-  and `src/agent/claudeBinary.ts`'s `extract` and `tidy` of the embedded copy (203–223). CI's
-  build job runs the host build's `--version`; no test does (tutti-8iz.19).
+- **Untested**: a compiled build starts: `build-script.test.ts` (slow) builds the host binary and
+  runs its `--version`, and `npm-package.test.ts` runs `tutti --version` through the launcher. No
+  test makes a compiled build use its embedded Claude Code: `src/agent/claudeBinary.ts`'s
+  `extract` and `tidy` of the embedded copy (203–223) run only there (tutti-8iz.19).
 
 ## The project's own scripts and docs
 
