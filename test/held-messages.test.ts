@@ -16,7 +16,14 @@ import { Beads } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
-import { init, result, type SessionScript, sessionState, turn } from "../src/testing/AgentHost.ts"
+import {
+  init,
+  result,
+  run,
+  type SessionScript,
+  sessionState,
+  turn,
+} from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { passed, type Scripted } from "../src/testing/Checks.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
@@ -214,6 +221,80 @@ describe("a message to the worker of a ticket that merges", () => {
     ])
     expect(ran.log.filter((each) => each === `  ${Tag.steered}: a`)).toHaveLength(1)
     expect(ended.a?.tallies.messages).toBe(2)
+  })
+})
+
+describe("a message held for a worker you released meanwhile", () => {
+  test("is sent as its merge hands its conflict back, before the hand-back", async () => {
+    const gate = Deferred.makeUnsafe<void>()
+    const gated: Scripted = Effect.as(Deferred.await(gate), passed("fast"))
+    const worktrees = new Map<string, string>()
+    const ran = await scenario(
+      {
+        backlog: backlog().ticket("a").ticket("b").seeds,
+        ...withCheck,
+        checks: { fast: [gated, passed("fast"), passed("fast")] },
+        scripts: (world) => ({
+          a: [
+            finishedSession([
+              // The hand-back's turn: it resolves the conflict.
+              ...turn([
+                run(
+                  Effect.suspend(() =>
+                    Effect.asVoid(
+                      world.repository.continueRebase(worktrees.get("a") ?? "", {
+                        "a.txt": "both\n",
+                      }),
+                    ),
+                  ),
+                ),
+              ]),
+              // Your message's.
+              ...turn([]),
+            ]),
+          ],
+        }),
+      },
+      provided(
+        Effect.gen(function* () {
+          const ledger = yield* Ledger
+          const queue = yield* makeQueue(options)
+          const a = yield* finished("a", { "a.txt": "a\n" }, true)
+          worktrees.set("a", a.worktree)
+          const b = yield* finished("b", { "b.txt": "b\n" }, false)
+          const repository = yield* Repository
+          yield* repository.commit(repository.dir, "Land something else", {
+            "a.txt": "main's a\n",
+          })
+          yield* queue.offer(b)
+          yield* until(checking("b"))
+          yield* queue.offer(a, undefined, false)
+          expect(yield* queue.held.hold("a", words, yours)).toBe(true)
+          // Released, its worker takes the conflict its merge stops on.
+          yield* ledger.release("a")
+          yield* Deferred.succeed(gate, undefined)
+          yield* queue.settled
+          return {
+            a: (yield* ledger.current).tickets.get("a")?.phase,
+            held: yield* queue.held.messages,
+          }
+        }),
+      ),
+    )
+    const ended = resultOf(ran)
+    expect(ended.held.size).toBe(0)
+    expect(ended.a?._tag).toBe("Done")
+    const toA = ran.sent.flatMap((sent) =>
+      sent._tag === "Message" && sent.ticket === "a" ? [sent.message] : [],
+    )
+    // Yours first, written before its merge stopped, then the hand-back, tutti's.
+    expect(toA.map((message) => message.client_composed === true)).toEqual([false, true])
+    expect(toA[0]).toMatchObject({ uuid: yours, message: { content: words } })
+    expectLog(ran, [
+      heldLine("a", words, TicketPhase.ToMerge({ place: 1 })),
+      /^ {2}RESOLVING: /,
+      `  ${Tag.message}: you → a (27 characters)`,
+    ])
   })
 })
 

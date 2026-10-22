@@ -9,8 +9,9 @@
 // - Once the merge is over (mergequeue.ts calls `over` before it fits the ticket's session), the
 //   held messages are sent in the order you wrote them, each as steer.ts sends one, when the ticket
 //   keeps its card: blocked with its hand-back waiting for its steered worker, or handed back
-//   (Resolving, Fixing) to a worker you released meanwhile. A ticket merged, closed, set aside or
-//   blocked has a worker that has finished: its held messages aren't sent, and the log says so.
+//   (Resolving, Fixing) to a worker you released meanwhile, before the hand-back's message. A
+//   ticket merged, closed, set aside or blocked has a worker that has finished: its held messages
+//   aren't sent, and the log says so.
 // - An interrupt (Ctrl+X) cancels them, as it cancels the messages queued behind a turn: the log
 //   says so, and none of them is sent.
 // - A merge that goes back in line (a quit before the fast-forward) is not over: they stay held, and
