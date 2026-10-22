@@ -203,9 +203,6 @@ below are the coverage report's uncovered lines at 368899e.
     of its turn, stopped (374–375); boarding when the run quits before
     its turn (592–595), when git can't tell where the branch is (GIT_FAILED, 599–605), and when
     the branch can't be put back (rebase failed, 620–627) (tutti-8iz.13).
-  - undoing a hand-back's resolution (`undoResolution` in `src/run/handback.ts`, 881–904): the
-    rebase that can't be aborted, a dirty worktree, a worktree off its branch or that git can't
-    read, and a reset that fails (tutti-8iz.14).
 
 ## The full check
 
