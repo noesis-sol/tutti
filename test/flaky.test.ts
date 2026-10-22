@@ -43,10 +43,15 @@ const report = `<?xml version="1.0" encoding="UTF-8"?>
 describe("parseJUnit", () => {
   test("reads every test case with its file, full name and outcome", () => {
     expect(parseJUnit(report)).toEqual([
-      { file: "test/a.test.ts", name: "passes", failed: false },
-      { file: "test/a.test.ts", name: "fails > sometimes", failed: true },
-      { file: "test/b.test.ts", name: 'outer <a&b> inner x "q" (y)', failed: true },
-      { file: "test/b.test.ts", name: "outer <a&b> skipped", failed: false },
+      { file: "test/a.test.ts", name: "passes", failed: false, timedOut: false },
+      { file: "test/a.test.ts", name: "fails > sometimes", failed: true, timedOut: false },
+      {
+        file: "test/b.test.ts",
+        name: 'outer <a&b> inner x "q" (y)',
+        failed: true,
+        timedOut: false,
+      },
+      { file: "test/b.test.ts", name: "outer <a&b> skipped", failed: false, timedOut: false },
     ])
   })
 
@@ -71,9 +76,9 @@ describe("exactNamePattern", () => {
 })
 
 test("flakyLine names the file and the test", () => {
-  expect(flakyLine({ file: "test/a.test.ts", name: "outer inner", failed: true })).toBe(
-    "FLAKY: test/a.test.ts outer inner",
-  )
+  expect(
+    flakyLine({ file: "test/a.test.ts", name: "outer inner", failed: true, timedOut: false }),
+  ).toBe("FLAKY: test/a.test.ts outer inner")
 })
 
 describe("summaryCounts", () => {

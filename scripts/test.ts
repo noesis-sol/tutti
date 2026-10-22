@@ -42,6 +42,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
 } from "node:fs"
@@ -55,6 +56,8 @@ export interface TestCase {
   /** The full name bun test's -t matches: the describe blocks and the test, joined by spaces. */
   readonly name: string
   readonly failed: boolean
+  /** Whether it failed by running past its time limit (the report's TimeoutError). */
+  readonly timedOut: boolean
 }
 
 const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }
@@ -78,7 +81,7 @@ const attribute = (attrs: string, key: string): string | undefined => {
 export const parseJUnit = (xml: string): ReadonlyArray<TestCase> => {
   const cases: Array<TestCase> = []
   const suites: Array<{ readonly name: string; readonly file: string }> = []
-  let open: { file: string; name: string; failed: boolean } | undefined
+  let open: { file: string; name: string; failed: boolean; timedOut: boolean } | undefined
   const tags = /<(\/?)(testsuites|testsuite|testcase|failure|error)\b((?:[^>"]|"[^"]*")*?)(\/?)>/g
   for (const [, closing, tag, attrs = "", selfClosing] of xml.matchAll(tags)) {
     if (tag === "testsuite") {
@@ -97,11 +100,13 @@ export const parseJUnit = (xml: string): ReadonlyArray<TestCase> => {
         file: attribute(attrs, "file") ?? suites[0]?.file ?? "",
         name: [...describes, attribute(attrs, "name") ?? ""].join(" "),
         failed: false,
+        timedOut: false,
       }
       if (selfClosing) cases.push(test)
       else open = test
     } else if ((tag === "failure" || tag === "error") && !closing && open) {
       open.failed = true
+      if (tag === "failure" && attribute(attrs, "type") === "TimeoutError") open.timedOut = true
     }
   }
   return cases
@@ -116,17 +121,81 @@ export const flakyLine = (test: TestCase): string => `FLAKY: ${test.file} ${test
 const fileArgument = (file: string): string =>
   file.startsWith("/") || file.startsWith("./") ? file : `./${file}`
 
+// bun test's output without its colour codes.
+const plainText = (output: string): string =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: strips colour codes, ESC included
+  output.replace(/\u001b\[[0-9;]*m/g, "")
+
 /** The fail and error counts in bun test's closing summary (" 2 fail", " 1 error"). */
 export const summaryCounts = (
   output: string,
 ): { readonly fail: number; readonly error: number } => {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: strips colour codes, ESC included
-  const plain = output.replace(/\u001b\[[0-9;]*m/g, "")
+  const plain = plainText(output)
   const count = (word: string): number => {
     const matches = [...plain.matchAll(new RegExp(`^\\s*(\\d+) ${word}s?\\s*$`, "gm"))]
     return Number(matches.at(-1)?.[1] ?? 0)
   }
   return { fail: count("fail"), error: count("error") }
+}
+
+/**
+ * The errors bun test printed as "# Unhandled error between tests", each the text from that heading
+ * to the dashed line that closes it (Bun 1.4.3).
+ */
+export const betweenTestErrors = (output: string): ReadonlyArray<string> => {
+  const blocks: Array<string> = []
+  let block: Array<string> | undefined
+  for (const line of plainText(output).split("\n")) {
+    if (block === undefined) {
+      if (line.trim() === "# Unhandled error between tests") block = []
+    } else if (/^-+\s*$/.test(line)) {
+      if (block.length > 0) {
+        blocks.push(block.join("\n"))
+        block = undefined
+      }
+    } else {
+      block.push(line)
+    }
+  }
+  if (block !== undefined) blocks.push(block.join("\n"))
+  return blocks
+}
+
+/** The files of a stack trace's frames: "at f (/a/b.ts:1:2)", "at /a/b.ts:1:2". */
+export const stackFiles = (text: string): ReadonlyArray<string> =>
+  [...text.matchAll(/^\s*at (?:.*? \()?(.+?):\d+:\d+\)?\s*$/gm)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  )
+
+const realPath = (path: string): string => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
+/**
+ * Whether bun test's `errors` outside any test are all left over from the tests in `failed` that
+ * timed out, so that rerunning those may clear them: each was printed as an error between tests
+ * (betweenTestErrors) with a frame in a timed-out test's file, its path relative to `cwd`. A test
+ * that runs past its time limit carries on after bun moves on, killing the processes it started,
+ * and an expect it fails then is an error between tests (tutti-06a).
+ */
+export const timeoutLeftovers = (
+  output: string,
+  errors: number,
+  failed: ReadonlyArray<TestCase>,
+  cwd: string,
+): boolean => {
+  const blocks = betweenTestErrors(output)
+  if (blocks.length !== errors) return false
+  const timedOut = new Set(
+    failed.filter((test) => test.timedOut).map((test) => realPath(resolve(cwd, test.file))),
+  )
+  return blocks.every((block) =>
+    stackFiles(block).some((file) => timedOut.has(realPath(resolve(cwd, file)))),
+  )
 }
 
 // Copies a stream of bun test's output through to ours, as it comes, and returns all of it.
@@ -386,9 +455,11 @@ const main = async (args: ReadonlyArray<string>, temp: string): Promise<number> 
   if (code === 0) return 0
   const failed = readReport(first).filter((test) => test.failed)
   // A failure outside any test (a file that doesn't load, an error between tests) isn't in the
-  // report and has no name to rerun: when bun counted one, the run fails as bun test did.
+  // report and has no name to rerun: when bun counted one, the run fails as bun test did, but for
+  // errors left over from tests that timed out, which their reruns stand for.
   const counts = summaryCounts(output)
-  if (failed.length === 0 || counts.error > 0 || counts.fail !== failed.length) return code
+  if (failed.length === 0 || counts.fail !== failed.length) return code
+  if (!timeoutLeftovers(output, counts.error, failed, process.cwd())) return code
   let stillFailing = 0
   for (const [index, test] of failed.entries()) {
     const report = join(reports, `rerun-${index}.xml`)
