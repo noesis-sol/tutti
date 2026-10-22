@@ -13,12 +13,25 @@
 // (`◆ environment · high · …`, in place of its note), logged (`  triage <id>: …`) and recorded as a
 // `triage` event, then counted toward the environment hold (environment.ts's blamed), with the
 // hold's generation as the ticket was queued. A triage that fails is TRIAGE_FAILED, in the log and a
-// `warn` record; one skipped for the usage limit is logged by Organs already.
+// `warn` record; one skipped for the usage limit is logged by Organs already. A defect while
+// gathering or triaging one ticket is TRIAGE_FAILED too: it loses that ticket's verdict, and the
+// queue goes on, so the run still ends.
 //
 // Off with --triage=false or the settings' organs.triage false: nothing is gathered or asked. The
 // run doesn't end while a ticket waits for triage (pending), so a verdict can still hold it. A quit
 // interrupts the run's scope, and with it the triage under way and those queued: they are skipped.
-import { Effect, FiberSet, Queue, Ref, Result, type Scope, Stream, SubscriptionRef } from "effect"
+import {
+  Cause,
+  Effect,
+  Exit,
+  FiberSet,
+  Queue,
+  Ref,
+  Result,
+  type Scope,
+  Stream,
+  SubscriptionRef,
+} from "effect"
 import { Attention } from "../agent/Attention.ts"
 import { type Item, Transcripts } from "../agent/Transcripts.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -39,7 +52,7 @@ import { Git } from "../services/Git.ts"
 import type { EnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
-import { detail, type Line, Log, line, Tag } from "./log.ts"
+import { causeWhy, detail, type Line, Log, line, Tag } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { attentionLines, attentionSaid } from "./report.ts"
 import { changes } from "./settle.ts"
@@ -219,6 +232,13 @@ export const make = (options: {
         } satisfies Evidence
       })
 
+    // A defect in one ticket's triage, TRIAGE_FAILED; an interruption (a quit) goes on up.
+    const survived = (id: string, cause: Cause.Cause<never>) => {
+      if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
+      const text = triageFailedLine(id, causeWhy(cause))
+      return logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
+    }
+
     const triageOne = (q: Queued) =>
       Effect.gen(function* () {
         const id = q.evidence.ticket
@@ -255,6 +275,7 @@ export const make = (options: {
           generation: q.generation,
         })
       }).pipe(
+        Effect.catchCause((cause) => survived(q.evidence.ticket, cause)),
         Effect.ensuring(
           Effect.andThen(
             Ref.update(pending, (n) => n - 1),
@@ -272,8 +293,17 @@ export const make = (options: {
           const generation = yield* options.hold.generation
           yield* Ref.update(pending, (n) => n + 1)
           const evidence = yield* gather(d).pipe(
-            Effect.onInterrupt(() => Ref.update(pending, (n) => n - 1)),
+            Effect.onExit((exit) =>
+              Exit.isSuccess(exit) ? Effect.void : Ref.update(pending, (n) => n - 1),
+            ),
+            Effect.catchCause((cause) =>
+              Effect.as(
+                Effect.andThen(survived(d.ticket, cause), options.done ?? Effect.void),
+                undefined,
+              ),
+            ),
           )
+          if (evidence === undefined) return
           yield* Queue.offer(queued, { evidence, generation })
         }),
       pending: Ref.get(pending),

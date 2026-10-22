@@ -70,7 +70,9 @@ totals count it (`↷ 2 ◆ 1`: two set aside, one triaged), the log says
 Two tickets in a row that triage blames on the environment with high confidence hold the run, as
 two workers failing at once do (see [The environment hold](running.md#the-environment-hold)).
 
-A call that fails is logged as `TRIAGE_FAILED for <id>: <why>` and changes nothing.
+A call that fails is logged as `TRIAGE_FAILED for <id>: <why>` and changes nothing. So is a fault in
+tutti while it gathers or triages one ticket: that ticket goes without a verdict, and triage goes on
+to the next.
 `--triage=false`, `TUTTI_TRIAGE=0` or `"organs": { "triage": false }` turns triage off; then nothing
 is gathered either.
 
@@ -84,8 +86,9 @@ A run starts it when the queue's `footprint` is on and `concurrent` is more than
 ticket naming nothing, unless it is `solo`, is guessed once a run, one ticket at a time in the
 background: the run never waits for a guess, so until one is in, the ticket keeps its
 empty footprint and may run beside anything. The log says `<id> footprint predicted: a.ts, b.ts`,
-or `<id> footprint not predicted: <why>`. Footprints also read `predicted_files` a ticket already
-has, such as those orchestra's predictor left.
+or `<id> footprint not predicted: <why>`; a fault in tutti while it guesses one ticket's files is
+`PREDICT_FAILED for <id>: <why>`, and the predictor goes on to the next. Footprints also read
+`predicted_files` a ticket already has, such as those orchestra's predictor left.
 
 ## The reviewer and the run report
 

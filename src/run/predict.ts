@@ -6,8 +6,10 @@
 // ticket, as `predicted_files` metadata (a JSON list, which reads back whole: a path may hold a comma
 // or a space), and from then on the ticket's footprint is those files, marked (predicted). The
 // scheduler never waits for a guess: until one is in, the ticket keeps its empty footprint, and a
-// running ticket naming nothing gets its guess as the next fill reads its footprint.
-import { Effect, FiberSet, Queue, Ref, Result, type Scope } from "effect"
+// running ticket naming nothing gets its guess as the next fill reads its footprint. A defect while
+// predicting one ticket is PREDICT_FAILED in the log: that ticket keeps its empty footprint, and the
+// queue goes on.
+import { Cause, Effect, FiberSet, Queue, Ref, Result, type Scope } from "effect"
 import { type OrganError, Organs } from "../organs/Organs.ts"
 import { predictFiles } from "../organs/predictor.ts"
 import { Beads, type Issue, MetadataKey } from "../services/Beads.ts"
@@ -21,7 +23,7 @@ import {
   ticketFootprint,
 } from "./footprint.ts"
 import { isSolo } from "./holds.ts"
-import { detail, type Line, Log } from "./log.ts"
+import { causeWhy, detail, type Line, Log, line, Tag } from "./log.ts"
 
 export interface Predictor {
   /**
@@ -61,6 +63,10 @@ export const predictedLine = (id: string, files: ReadonlyArray<string>): Line =>
 /** `  <id> footprint not predicted: <why>`. */
 export const notPredictedLine = (id: string, why: string): Line =>
   detail`${id} footprint not predicted: ${why}`
+
+/** `  PREDICT_FAILED for <id>: <why>`. */
+export const predictFailedLine = (id: string, why: string): Line =>
+  `  ${Tag.predictFailed} for ${line`${id}: ${why}`}` as Line
 
 /** Why the predictor gave no answer, on one line. */
 const failure = (error: Exclude<OrganError, { _tag: "OrganSkipped" }>): string => {
@@ -122,7 +128,14 @@ export const make = (options: {
           )
         }
         yield* logs.write(predictedLine(issue.id, files))
-      })
+      }).pipe(
+        // A defect loses this ticket's guess, not the queue; an interruption (a quit) goes on up.
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.failCause(cause)
+            : logs.write(predictFailedLine(queuedIssue.id, causeWhy(cause))),
+        ),
+      )
 
     const fibers = yield* (yield* RunFibers).make<never, never>("predictor")
     yield* FiberSet.run(fibers, Effect.forever(Effect.flatMap(Queue.take(queued), predict)))

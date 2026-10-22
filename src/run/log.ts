@@ -7,7 +7,18 @@
 // template's literal parts are tutti's own words, and every argument goes through sanitizeLine
 // (§ 7.10), so a ticket title or a model's words can't put an escape sequence or a line break in
 // the log. In plain mode (§ 7.6) the same lines go to stdout too.
-import { Clock, Console, Context, Effect, FileSystem, Layer, Ref, Semaphore } from "effect"
+import {
+  Cause,
+  Clock,
+  Console,
+  Context,
+  Effect,
+  FileSystem,
+  Layer,
+  Ref,
+  Result,
+  Semaphore,
+} from "effect"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { stamp } from "./localTime.ts"
 
@@ -98,10 +109,22 @@ export const Tag = {
   organ: "ORGAN",
   feature: "FEATURE",
   triageFailed: "TRIAGE_FAILED",
+  predictFailed: "PREDICT_FAILED",
   usage: "USAGE",
   usageLimit: "USAGE_LIMIT",
   phaseBug: "PHASE_BUG",
 } as const
+
+/** Why a fiber died with `cause`, on one line: its defect's message, or the cause told. */
+export const causeWhy = (cause: Cause.Cause<unknown>): string => {
+  const defect = Cause.findDefect(cause)
+  const said = Result.isSuccess(defect)
+    ? defect.success instanceof Error
+      ? defect.success.message || defect.success.name
+      : String(defect.success)
+    : Cause.pretty(cause)
+  return said.trim().split("\n")[0] || "an unknown defect"
+}
 
 /** A run-level line starting with `tag`: `HOLD: …`. */
 export const tagged =
