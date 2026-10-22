@@ -6,21 +6,29 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Duration, Effect, Fiber, Layer } from "effect"
+import { Duration, Effect, Fiber, Layer, Queue, Ref } from "effect"
 import { TestClock } from "effect/testing"
 import type { EventRecord } from "../src/run/events.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import { Cause } from "../src/run/phase.ts"
+import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { run } from "../src/run/run.ts"
 import { Spending } from "../src/run/spending.ts"
 import { Git } from "../src/services/Git.ts"
-import { bash, result, type SessionScript, turn } from "../src/testing/AgentHost.ts"
+import {
+  bash,
+  Recording,
+  result,
+  type SessionScript,
+  sleep,
+  turn,
+} from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as spendingLayer } from "../src/testing/Spending.ts"
-import { backlog, expectExitCode, expectPhases, scenario, type World } from "./harness.ts"
+import { advance, backlog, expectExitCode, expectPhases, scenario, type World } from "./harness.ts"
 
 const model = "claude-opus-5-5"
 
@@ -193,5 +201,84 @@ describe("a run that ends with tickets waiting", () => {
     for (const id of tickets) expect(ends.findLast((r) => r.ticket === id)?.outcome).toBe("queued")
     const kinds = ran.events.map((r) => r.kind)
     expect(kinds.lastIndexOf("ticket_end")).toBeLessThan(kinds.indexOf("end"))
+  })
+})
+
+/** Waits, in real time, until `ready` holds: for what a script does outside the TestClock. */
+const until = <E, R>(ready: Effect.Effect<boolean, E, R>) =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 5000; i++) {
+      if (yield* ready) return
+      yield* Effect.promise(() => Bun.sleep(1))
+    }
+    return yield* Effect.die(new Error("waited too long"))
+  })
+
+describe("quitting at once with a ticket waiting", () => {
+  test("ends its part with a queued ticket_end before the end record", async () => {
+    // t-2 waits for t-1, whose worker is at work as Ctrl+C is pressed three times.
+    const repo = folder("repo")
+    const root = folder("worktrees")
+    const settings = { ...appConfig().settings, concurrent: 2 }
+    const tickets = ["t-1", "t-2"]
+    const quits = Effect.runSync(Queue.unbounded<QuitRequest>())
+    const ctrlC = quitBy("SIGINT")
+    const ran = await scenario(
+      {
+        config: { repo, settings },
+        backlog: tickets.reduce((b, id) => b.ticket(id), backlog()).seeds,
+        git: { dir: repo },
+        worktrees: { root },
+        scripts: (world) => ({
+          "t-1": [
+            turn([
+              ...bash(`bd update t-1 --claim`, orDie(world.beads.update("t-1", { claim: true }))),
+              sleep("1 hour"),
+            ]),
+          ],
+          "t-2": [needs(world, "t-2", "t-1")],
+        }),
+      },
+      Effect.gen(function* () {
+        const git = yield* Git
+        for (const id of tickets) {
+          yield* git.addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
+        }
+        const exits = yield* Ref.make(0)
+        const fiber = yield* Effect.forkChild(
+          run({
+            version: "0.1.0-test",
+            base: "main",
+            start: [line`START tutti 0.1.0-test`],
+            quits,
+            exitNow: () => Ref.update(exits, (n) => n + 1),
+          }),
+        )
+        const captured = yield* Captured
+        yield* until(
+          Effect.map(captured.records, (all) =>
+            all.some((r) => r.kind === "waits" && r.ticket === "t-2"),
+          ),
+        )
+        yield* Queue.offer(quits, ctrlC)
+        const recording = yield* Recording
+        yield* until(
+          Effect.map(recording.all, (all) =>
+            all.some((sent) => sent._tag === "Interrupted" && sent.ticket === "t-1"),
+          ),
+        )
+        yield* Queue.offerAll(quits, [ctrlC, ctrlC])
+        yield* until(Effect.map(Ref.get(exits), (n) => n > 0))
+        yield* advance("10 seconds")
+        return yield* Fiber.join(fiber)
+      }),
+    )
+    expect(ran.exit._tag).toBe("Success")
+    const kinds = ran.events.map((r) => r.kind)
+    const queued = ran.events.findIndex((r) => r.kind === "ticket_end" && r.outcome === "queued")
+    expect(ran.events[queued]).toMatchObject({ ticket: "t-2", phase: "Waiting", why: "t-1" })
+    // The at-once end record is the first, with code 130.
+    expect(queued).toBeLessThan(kinds.indexOf("end"))
+    expect(ran.events[kinds.indexOf("end")]).toMatchObject({ code: 130 })
   })
 })
