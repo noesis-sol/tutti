@@ -33,6 +33,9 @@
     "formSelectedMark": { "light": "#02CF92", "dark": "#02A877" },
     "formError": { "light": "#FF4672", "dark": "#ED567A" },
     "formMuted": { "light": "default", "dark": "ansi:243" },
+    "formHelpKey": { "light": "#909090", "dark": "#626262" },
+    "formHelpDesc": { "light": "#B2B2B2", "dark": "#4A4A4A" },
+    "formHelpSeparator": { "light": "#DDDADA", "dark": "#3C3C3C" },
     "formButton": { "light": "ansi:252", "dark": "ansi:237" },
     "formPlaceholder": { "light": "ansi:248", "dark": "ansi:238" },
     "formFrame": "ansi:238"

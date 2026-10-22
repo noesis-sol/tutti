@@ -54,7 +54,15 @@ export const PlanConfirmation = ({
             <span {...styled(form.description)}>{` ${confirmHint}`}</span>
           </text>
         </Field>
-        <Hint theme={theme} keys="y yes · n or Enter no · ↑↓ scroll · Esc cancel" />
+        <Hint
+          theme={theme}
+          keys={[
+            { keys: "y", does: "yes" },
+            { keys: "n or Enter", does: "no" },
+            { keys: "↑↓", does: "scroll" },
+            { keys: "Esc", does: "cancel" },
+          ]}
+        />
       </box>
     </box>
   )

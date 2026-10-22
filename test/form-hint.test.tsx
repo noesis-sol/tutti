@@ -1,0 +1,89 @@
+// The keys under a form (§ 7.11's form roles): as bubbles' help draws them for huh, each key in
+// formHelpKey, its words in formHelpDesc, ` · ` in formHelpSeparator, in both variants.
+import { describe, expect, test } from "bun:test"
+import type { RGBA } from "@opentui/core"
+import { formHintSegments } from "../src/ui/Form.tsx"
+import { hintOf } from "../src/ui/InitForm.tsx"
+import { PlanConfirmation } from "../src/ui/PlanConfirmation.tsx"
+import { startOnQuestion } from "../src/ui/questions.ts"
+import { type Appearance, makeTheme, orchestra, type Role } from "../src/ui/theme.ts"
+import { withRender } from "./render.ts"
+
+const themeOf = (appearance: Appearance) =>
+  makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
+
+const variants: ReadonlyArray<Appearance> = ["light", "dark"]
+
+const ints = (colour: RGBA | undefined) => colour?.toInts().slice(0, 3)
+
+/** bubbles v1.0.0's help styles, as huh's Charm theme keeps them: keys, their words, separator. */
+const bubbles: {
+  readonly [A in Appearance]: Readonly<Record<Role & `formHelp${string}`, string>>
+} = {
+  light: { formHelpKey: "#909090", formHelpDesc: "#B2B2B2", formHelpSeparator: "#DDDADA" },
+  dark: { formHelpKey: "#626262", formHelpDesc: "#4A4A4A", formHelpSeparator: "#3C3C3C" },
+}
+
+const rgbOf = (hex: string) => [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16))
+
+describe("a form's hint", () => {
+  test.each(variants)(
+    "draws keys, words and separators in bubbles' help greys, %s",
+    (appearance) => {
+      const theme = themeOf(appearance)
+      const keys = [
+        { keys: "↑↓", does: "choose" },
+        { keys: "Enter", does: "confirm" },
+        { keys: "Esc", does: "cancel" },
+      ]
+      const segments = formHintSegments(keys, theme)
+      expect(segments.map((each) => each.text).join("")).toBe(
+        "↑↓ choose · Enter confirm · Esc cancel",
+      )
+      const roleOf = (text: string): Role | undefined => {
+        const look = segments.find((each) => each.text === text)?.look
+        const fg = ints(look?.fg ?? undefined)
+        const found = Object.entries(bubbles[appearance]).find(
+          ([, hex]) => JSON.stringify(rgbOf(hex)) === JSON.stringify(fg),
+        )
+        return found?.[0] as Role | undefined
+      }
+      for (const key of keys) {
+        expect(roleOf(key.keys)).toBe("formHelpKey")
+        expect(roleOf(` ${key.does}`)).toBe("formHelpDesc")
+      }
+      expect(roleOf(" · ")).toBe("formHelpSeparator")
+    },
+  )
+
+  test("of the init form's scout names its keys and their words apart", () => {
+    const hint = hintOf({ _tag: "Scout", id: 1, since: 0, skip: () => {}, cancel: () => {} })
+    expect(hint).toEqual([
+      { keys: "Esc", does: "skip" },
+      { keys: "Ctrl+C", does: "cancel" },
+    ])
+    expect(hintOf(null)).toBeNull()
+  })
+
+  test.each(variants)("under the plan confirmation, %s", async (appearance) => {
+    const theme = themeOf(appearance)
+    const node = (
+      <PlanConfirmation
+        theme={theme}
+        plan={{ epic: { title: "Undo stack", description: "" }, tickets: [], notes: [] }}
+        question={startOnQuestion("tut-1", 0)}
+        answer={() => {}}
+        cancel={() => {}}
+      />
+    )
+    await withRender(node, { width: 100, height: 16 }, async (rendered) => {
+      const frame = await rendered.capture()
+      expect(frame.chars).toContain("y yes · n or Enter no · ↑↓ scroll · Esc cancel")
+      const spans = frame.spans.lines.flatMap((line) => line.spans)
+      const colourOf = (text: string) => ints(spans.find((span) => span.text === text)?.fg)
+      expect(colourOf("n or Enter")).toEqual(rgbOf(bubbles[appearance].formHelpKey))
+      expect(colourOf(" scroll")).toEqual(rgbOf(bubbles[appearance].formHelpDesc))
+      expect(colourOf(" · ")).toEqual(rgbOf(bubbles[appearance].formHelpSeparator))
+    })
+  })
+})

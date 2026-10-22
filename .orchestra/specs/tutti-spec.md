@@ -1236,6 +1236,9 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `formSelectedMark` | `#02CF92` | `#02A877` | a selected option's `✓ ` prefix |
 | `formError` | `#FF4672` | `#ED567A` | a field's error |
 | `formMuted` | `default` | `ansi:243` | descriptions; the `• ` prefix of an unselected option |
+| `formHelpKey` | `#909090` | `#626262` | the keys in a form's hint (bubbles' help styles) |
+| `formHelpDesc` | `#B2B2B2` | `#4A4A4A` | what each key in a form's hint does |
+| `formHelpSeparator` | `#DDDADA` | `#3C3C3C` | the ` · ` between the keys in a form's hint |
 | `formButton` | `ansi:252` | `ansi:237` | an unfocused button's background |
 | `formPlaceholder` | `ansi:248` | `ansi:238` | placeholders |
 | `formFrame` | `ansi:238` | `ansi:238` | the focused field's left bar |

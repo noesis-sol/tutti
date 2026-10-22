@@ -33,6 +33,7 @@ import {
 import type { InitForm } from "../init/init.ts"
 import { serverLabel } from "../init/workers.ts"
 import { initAbout, initTitle, scoutClock } from "../print/initSummary.ts"
+import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
 import { Field, Hint, Themed } from "./Form.tsx"
 import { styled } from "./line.tsx"
@@ -349,19 +350,40 @@ const ScoutView = ({
 }
 
 /** The keys there are under each field. */
-export const hintOf = (asking: Asking | null): string | null => {
+export const hintOf = (asking: Asking | null): ReadonlyArray<Key> | null => {
   if (asking === null) return null
   switch (asking._tag) {
     case "Confirm":
-      return "←→ choose · y yes · n no · Enter confirm · Esc cancel"
+      return [
+        { keys: "←→", does: "choose" },
+        { keys: "y", does: "yes" },
+        { keys: "n", does: "no" },
+        { keys: "Enter", does: "confirm" },
+        { keys: "Esc", does: "cancel" },
+      ]
     case "Select":
-      return "↑↓ choose · Enter confirm · Esc cancel"
+      return [
+        { keys: "↑↓", does: "choose" },
+        { keys: "Enter", does: "confirm" },
+        { keys: "Esc", does: "cancel" },
+      ]
     case "Text":
-      return "Enter confirm · Esc cancel"
+      return [
+        { keys: "Enter", does: "confirm" },
+        { keys: "Esc", does: "cancel" },
+      ]
     case "Checklist":
-      return "↑↓ move · Space tick · Enter confirm · Esc cancel"
+      return [
+        { keys: "↑↓", does: "move" },
+        { keys: "Space", does: "tick" },
+        { keys: "Enter", does: "confirm" },
+        { keys: "Esc", does: "cancel" },
+      ]
     case "Scout":
-      return "Esc skip · Ctrl+C cancel"
+      return [
+        { keys: "Esc", does: "skip" },
+        { keys: "Ctrl+C", does: "cancel" },
+      ]
   }
 }
 

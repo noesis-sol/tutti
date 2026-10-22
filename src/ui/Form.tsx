@@ -7,7 +7,8 @@
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import { type ReactNode, useMemo, useSyncExternalStore } from "react"
-import { styled } from "./line.tsx"
+import type { Key } from "../run/runView.ts"
+import { plainFg, type Segments, seg, styled } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -39,9 +40,33 @@ export const Field = ({
     </box>
   )
 
-/** The keys there are, under a form: each key and its words in the description style. */
-export const Hint = ({ theme, keys }: { readonly theme: Theme; readonly keys: string }) => (
-  <text {...styled(theme.form.description)}>{keys}</text>
+/**
+ * The keys there are, under a form, as bubbles' help draws them for huh: each key in helpKey, its
+ * words in helpDesc, ` · ` in helpSeparator between them.
+ */
+export const formHintSegments = (keys: ReadonlyArray<Key>, theme: Theme): Segments =>
+  keys.flatMap((key, i) => [
+    ...(i === 0 ? [] : [seg(" · ", theme.form.helpSeparator)]),
+    seg(key.keys, theme.form.helpKey),
+    seg(` ${key.does}`, theme.form.helpDesc),
+  ])
+
+/** The keys there are, under a form, as formHintSegments draws them, wrapped as the form is. */
+export const Hint = ({
+  theme,
+  keys,
+}: {
+  readonly theme: Theme
+  readonly keys: ReadonlyArray<Key>
+}) => (
+  <text fg={plainFg}>
+    {formHintSegments(keys, theme).map((each, i) => (
+      // biome-ignore lint/suspicious/noArrayIndexKey: a hint's segments are drawn anew in order
+      <span key={i} {...(each.look === null ? {} : styled(each.look))}>
+        {each.text}
+      </span>
+    ))}
+  </text>
 )
 
 /** `children` in the theme the appearance now gives, re-rendered when it changes. */

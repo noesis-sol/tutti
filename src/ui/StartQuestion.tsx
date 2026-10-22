@@ -125,8 +125,17 @@ export const StartQuestion = ({
           theme={theme}
           keys={
             step === "choose"
-              ? "↑↓ choose · Enter confirm · Esc cancel"
-              : "Enter submit · Alt+Enter or Ctrl+J new line · Shift+Tab back · Esc cancel"
+              ? [
+                  { keys: "↑↓", does: "choose" },
+                  { keys: "Enter", does: "confirm" },
+                  { keys: "Esc", does: "cancel" },
+                ]
+              : [
+                  { keys: "Enter", does: "submit" },
+                  { keys: "Alt+Enter or Ctrl+J", does: "new line" },
+                  { keys: "Shift+Tab", does: "back" },
+                  { keys: "Esc", does: "cancel" },
+                ]
           }
         />
       </box>
