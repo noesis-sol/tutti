@@ -20,8 +20,11 @@ import { EventStream } from "./eventstream.ts"
 import { type Footprint, type Mentions, shared } from "./footprint.ts"
 import type { State } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
+import { holdWord as machineWord } from "./machine.ts"
 import type { Hold, PhaseTag } from "./phase.ts"
+import type { RunHold, Usage } from "./runView.ts"
 import { ledgerView } from "./scope.ts"
+import type { UsageView } from "./usageLimit.ts"
 
 /** The label of a ticket that runs alone (§ 2 Solo). */
 export const soloLabel = "solo"
@@ -406,6 +409,102 @@ export const stopsLine = (stops: Stops): Line =>
 
 /** The exit code the stops end the run with: the first's, or 0 with none. */
 export const exitCodeOf = (stops: Stops): number => stops.first?.code ?? exitCodes.ok
+
+/** `stops` with `stop` first, before those it had, as quitting's or a panic's stop goes. */
+export const putFirst = (stops: Stops, stop: StopReason): Stops => ({
+  first: stop,
+  others: [stops.first, ...stops.others].flatMap((other) => (other === null ? [] : [other])),
+})
+
+/** `stops` with `parts` added to the first's line, each after `; `; unchanged with no stop. */
+export const extendFirst = (stops: Stops, parts: ReadonlyArray<string>): Stops =>
+  stops.first === null || parts.length === 0
+    ? stops
+    : {
+        ...stops,
+        first: { ...stops.first, text: `${stops.first.text}; ${parts.join("; ")}` as Line },
+      }
+
+// Everything that holds the whole run is one value, Holds, which run.ts keeps in a SubscriptionRef
+// and changes only through the functions below: its stops, BLOCKED among them once per ticket, the
+// tickets past --ticket-limit, the hold at --machine-workers and the usage limit's view. The title
+// line's `· stopping`, its banners and the usage line are what it shows (shownHolds), as orchestra
+// keeps its stops and holds in one gate.
+
+/** What holds the whole run. */
+export interface Holds {
+  readonly stops: Stops
+  /** The tickets whose workers went on past --ticket-limit: the run doesn't wait for them. */
+  readonly overLimit: ReadonlySet<string>
+  /** The run holds a free slot while the machine is at --machine-workers. */
+  readonly machine: boolean
+  /** What the usage limit's hold shows: the usage line, its banner and its notice. */
+  readonly usage: UsageView
+}
+
+export const noHolds: Holds = {
+  stops: noStops,
+  overLimit: new Set(),
+  machine: false,
+  usage: { usage: null, hold: null, notice: null },
+}
+
+/** `holds` with its stops changed by `change`. */
+export const changeStops = (holds: Holds, change: (stops: Stops) => Stops): Holds => {
+  const stops = change(holds.stops)
+  return stops === holds.stops ? holds : { ...holds, stops }
+}
+
+/** `holds` with `stop` raised after the others. */
+export const raiseStop = (holds: Holds, stop: StopReason): Holds =>
+  changeStops(holds, (stops) => addStop(stops, stop))
+
+/** `holds` with `ticket`'s worker past its ticket limit: its TICKET_LIMIT `stop` raised. */
+export const pastTicketLimit = (holds: Holds, ticket: string, stop: StopReason): Holds => ({
+  ...raiseStop(holds, stop),
+  overLimit: new Set([...holds.overLimit, ticket]),
+})
+
+/** The tickets the run holds with BLOCKED, each its stop's. */
+export const blockedTickets = (holds: Holds): ReadonlySet<string> =>
+  new Set(
+    [holds.stops.first, ...holds.stops.others].flatMap((stop) =>
+      stop?.why === "BLOCKED" && stop.ticket !== undefined ? [stop.ticket] : [],
+    ),
+  )
+
+/** `holds` with the BLOCKED stop of `ticket` lifted, its requests answered. */
+export const liftBlocked = (holds: Holds, ticket: string): Holds =>
+  changeStops(holds, (stops) => liftStops(stops, (stop) => isBlockedOn(stop, ticket)))
+
+/** `holds` with the machine's hold on (`full`) or off. */
+export const withMachineHold = (holds: Holds, full: boolean): Holds =>
+  holds.machine === full ? holds : { ...holds, machine: full }
+
+/** `holds` showing the usage limit's `view`. */
+export const showUsage = (holds: Holds, view: UsageView): Holds => ({ ...holds, usage: view })
+
+/** What the dashboard shows of the holds: `· stopping`, the banners and the usage line. */
+export interface ShownHolds {
+  /** A stop holds the run, and the running tickets are finishing. */
+  readonly stopping: boolean
+  /** The banners, BLOCKED first, then the usage limit's and the machine's. */
+  readonly holds: ReadonlyArray<RunHold>
+  readonly usage: Usage | null
+  /** The usage limit's notice, if it holds the run. */
+  readonly notice: string | null
+}
+
+export const shownHolds = (holds: Holds): ShownHolds => ({
+  stopping: holds.stops.first !== null,
+  holds: [
+    ...(blockedTickets(holds).size > 0 ? [{ word: Tag.blocked, resetsAt: null }] : []),
+    ...(holds.usage.hold === null ? [] : [holds.usage.hold]),
+    ...(holds.machine ? [{ word: machineWord, resetsAt: null }] : []),
+  ],
+  usage: holds.usage.usage,
+  notice: holds.usage.notice,
+})
 
 // The holds that come with time (§ 4.3, § 4.5). A worker still going --ticket-limit after its
 // dispatch holds the run with TICKET_LIMIT: it isn't interrupted and goes on, the run doesn't wait

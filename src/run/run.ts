@@ -109,30 +109,36 @@ import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
 import {
-  addStop,
   blockedAt,
   blockedLifted,
   blockedStop,
+  blockedTickets,
+  changeStops,
   exitCodeOf,
   exitCodes,
-  isBlockedOn,
-  liftStops,
+  extendFirst,
+  type Holds,
+  liftBlocked,
+  noHolds,
   noMoreWork,
-  noStops,
+  pastTicketLimit,
+  putFirst,
+  raiseStop,
   type StopReason,
-  type Stops,
+  shownHolds,
+  showUsage,
   stopFor,
   stopOfLine,
   stopsLine,
   swapStop,
+  withMachineHold,
 } from "./holds.ts"
 import { type Entry, handBackWaits, Ledger, type State } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
-import { detail, hold, type Line, Log, line, Tag, tagged } from "./log.ts"
+import { detail, hold, type Line, Log, line, tagged } from "./log.ts"
 import {
   holdLine as machineHoldLine,
   machinePoll,
-  holdWord as machineWord,
   make as makeMachine,
   OtherWorkers,
 } from "./machine.ts"
@@ -169,7 +175,7 @@ import { makeSetUps, retrySetups, setupWaiting, setupWaitsPart } from "./setup.t
 import { handBackNow, interrupt, releaseAndHandOver, sendMessage } from "./steer.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
-import { make as makeUsageHold, neverHanded, holdWord as usageHoldWord } from "./usageLimit.ts"
+import { make as makeUsageHold, neverHanded } from "./usageLimit.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -409,16 +415,29 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // Set by the end-of-run box's `q`, taken by the run's next look.
     const endAsked = yield* Ref.make(false)
 
-    const stops = yield* Ref.make<Stops>(noStops)
-    // Changes the stops, the title line saying `· stopping` while one holds the run.
-    const updateStops = (change: (all: Stops) => Stops) =>
-      Effect.gen(function* () {
-        const stopping = (yield* Ref.updateAndGet(stops, change)).first !== null
-        if ((yield* SubscriptionRef.get(status)).stopping === stopping) return
-        yield* SubscriptionRef.update(status, (now) => ({ ...now, stopping }))
-      })
-    // The tickets whose workers went on past --ticket-limit: the run doesn't wait for them.
-    const overLimit = yield* Ref.make<ReadonlySet<string>>(new Set())
+    // What holds the run (holds.ts): its stops, the tickets past --ticket-limit, the machine's hold
+    // and the usage limit's view, changed one change at a time, each shown on the dashboard as it
+    // comes: `· stopping` while a stop holds the run, the banners, the usage line and its notice.
+    // A change gives the holds it found.
+    const holds = yield* SubscriptionRef.make<Holds>(noHolds)
+    const oneChange = yield* Semaphore.make(1)
+    const changeHolds = (change: (now: Holds) => Holds) =>
+      oneChange.withPermits(1)(
+        Effect.gen(function* () {
+          const before = yield* SubscriptionRef.get(holds)
+          const after = change(before)
+          if (after === before) return before
+          yield* SubscriptionRef.set(holds, after)
+          const { notice, ...shown } = shownHolds(after)
+          const next = { ...shown, warnings: [...notices, ...(notice === null ? [] : [notice])] }
+          const { stopping, holds: banners, usage, warnings } = yield* SubscriptionRef.get(status)
+          if (!same({ stopping, holds: banners, usage, warnings }, next)) {
+            yield* SubscriptionRef.update(status, (now) => ({ ...now, ...next }))
+          }
+          return before
+        }),
+      )
+    const currentStops = Effect.map(SubscriptionRef.get(holds), (now) => now.stops)
     // Set once the run ends, so that nothing starts after it.
     const ending = yield* Ref.make(false)
     // The screen's commands that act on the run act one at a time under `acting`, each counted in
@@ -449,11 +468,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     )
 
     // A stop holds the run: said as it comes while tickets still run, unless its line was. A worker
-    // past its ticket limit goes on, so its hold is said even with nothing else running.
-    const stopped = (stop: StopReason) =>
+    // past its ticket limit goes on, so its hold is said even with nothing else running. `raise`
+    // puts the stop among the holds.
+    const stopped = (
+      stop: StopReason,
+      raise: (now: Holds) => Holds = (now) => raiseStop(now, stop),
+    ) =>
       Effect.gen(function* () {
-        yield* updateStops((all) => addStop(all, stop))
-        const now = runningIn(yield* ledger.current, yield* Ref.get(overLimit))
+        yield* changeHolds(raise)
+        const now = runningIn(yield* ledger.current, (yield* SubscriptionRef.get(holds)).overLimit)
         if (!stop.held && (now > 0 || stop.why === "TICKET_LIMIT")) {
           const text = hold(stop.text, now)
           yield* logs.writeWith(
@@ -483,16 +506,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const usage = yield* makeUsageHold({
       base,
       wakeUp,
-      show: (view) =>
-        SubscriptionRef.update(status, (now) => ({
-          ...now,
-          usage: view.usage,
-          holds: [
-            ...now.holds.filter((each) => each.word !== usageHoldWord),
-            ...(view.hold === null ? [] : [view.hold]),
-          ],
-          warnings: [...notices, ...(view.notice === null ? [] : [view.notice])],
-        })),
+      show: (view) => changeHolds((now) => showUsage(now, view)),
     })
 
     // Triage in the background, when the run has organs: each verdict wakes the run, which doesn't
@@ -506,7 +520,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // Why the run takes on no more work, for the merges: no failed check is handed back then.
     const noMore = Effect.map(
-      Effect.all([Ref.get(stops), usage.held, ledger.current]),
+      Effect.all([currentStops, usage.held, ledger.current]),
       ([all, held, state]) => noMoreWork(all, held, state.windDown !== null),
     )
     // A ticket checked once more takes a slot from the scheduler, made after the queue it starts
@@ -518,7 +532,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       )
     // Whether the run holds at --machine-workers (below): no ticket is checked ahead of its turn to
     // merge then (mergetrain.ts).
-    const machineFull = yield* Ref.make(false)
+    const machineFull = Effect.map(SubscriptionRef.get(holds), (now) => now.machine)
     // Whether the machine's last load reading has it pressed (load.ts's pressing), read with the
     // dashboard alone: with machineFull, the time a hand-back's limit leaves out (handback.ts).
     const pressed = yield* Ref.make(false)
@@ -530,9 +544,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         atReset: usage.atReset,
         recheckSlot,
         setUps,
-        machineFull: Ref.get(machineFull),
+        machineFull,
         loaded: Effect.map(
-          Effect.all([Ref.get(machineFull), Ref.get(pressed)]),
+          Effect.all([machineFull, Ref.get(pressed)]),
           ([full, hard]) => full || hard,
         ),
       },
@@ -560,10 +574,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // A ticket's fiber, dispatched or carried over: its work, and the stop it ended with, if any.
     const onTicketLimit = (ticket: string) => (stop: StopReason) =>
-      Effect.andThen(
-        Ref.update(overLimit, (over) => new Set([...over, ticket])),
-        stopped(stop),
-      )
+      stopped(stop, (now) => pastTicketLimit(now, ticket, stop))
     const outcomeOf = <R>(ticket: string, worked: Effect.Effect<Worked, WorkError, R>) =>
       worked.pipe(
         Effect.matchCauseEffect({
@@ -597,7 +608,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       ).pipe(Effect.provideContext(context))
 
     const taking = Effect.map(
-      Effect.all([Ref.get(stops), Ref.get(ending), usage.held]),
+      Effect.all([currentStops, Ref.get(ending), usage.held]),
       ([all, ended, held]) => all.first === null && !ended && !held,
     )
 
@@ -630,13 +641,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // says whether the hold began.
     const holdMachine = (full: boolean) =>
       Effect.gen(function* () {
-        if ((yield* Ref.getAndSet(machineFull, full)) === full) return false
-        yield* SubscriptionRef.update(status, (now) => ({
-          ...now,
-          holds: full
-            ? [...now.holds, { word: machineWord, resetsAt: null }]
-            : now.holds.filter((each) => each.word !== machineWord),
-        }))
+        if ((yield* changeHolds((now) => withMachineHold(now, full))).machine === full) return false
         if (!full) yield* Effect.flatten(Ref.get(queueRecord))
         return full
       })
@@ -707,7 +712,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       excludeTypes: config.settings.queue.exclude_types,
       start: { start: ticketFiber },
       taking: Effect.flatMap(taking, (yes) => (yes ? machineRoom : Effect.succeed(false))),
-      machineFull: Ref.get(machineFull),
+      machineFull,
       ...(footprints === undefined ? {} : { footprints }),
       ...(predictor === undefined ? {} : { predictor }),
       closedBranches: branches,
@@ -804,9 +809,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         Effect.forever(
           Effect.gen(function* () {
             yield* Effect.sleep(machinePoll)
-            if (!(yield* Ref.get(machineFull))) return
+            if (!(yield* machineFull)) return
             yield* lookAround
-            if (!(yield* Ref.get(machineFull))) yield* wakeUp
+            if (!(yield* machineFull)) yield* wakeUp
           }),
         ),
       )
@@ -1023,32 +1028,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // ticket has none open, the hold is lifted (holds.ts). Each request is looked at again as it
     // reaches its time, and every request open at each change, which wakes the run too: a worker
     // that asks, or is answered, may end it or keep it open (D19).
-    const blocked = yield* Ref.make<ReadonlySet<string>>(new Set())
     const oneLook = yield* Semaphore.make(1)
     const lookBlocked = oneLook.withPermits(1)(
       Effect.gen(function* () {
         if (yield* Ref.get(ending)) return
-        const held = yield* Ref.get(blocked)
+        const held = blockedTickets(yield* SubscriptionRef.get(holds))
         const now = yield* Clock.currentTimeMillis
         const { trips, lifts } = blockedAt(yield* attention.current, held, now, blockedAfter)
         if (trips.length === 0 && lifts.length === 0) return
-        yield* Ref.set(
-          blocked,
-          new Set([
-            ...[...held].filter((ticket) => !lifts.includes(ticket)),
-            ...trips.map((trip) => trip.ticket),
-          ]),
-        )
-        const holding = (yield* Ref.get(blocked)).size > 0
-        yield* SubscriptionRef.update(status, (was) => ({
-          ...was,
-          holds: [
-            ...was.holds.filter((each) => each.word !== Tag.blocked),
-            ...(holding ? [{ word: Tag.blocked, resetsAt: null }] : []),
-          ],
-        }))
         for (const ticket of lifts) {
-          yield* updateStops((all) => liftStops(all, (stop) => isBlockedOn(stop, ticket)))
+          yield* changeHolds((now) => liftBlocked(now, ticket))
           const text = blockedLifted(ticket)
           yield* logs.writeWith([text], events.emit({ kind: "hold", ticket, lifted: true, text }))
         }
@@ -1129,7 +1118,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // For the other runs to count before this one next looks around.
       yield* machine.running(yield* ownWorkers)
       const now = yield* ledger.current
-      const over = yield* Ref.get(overLimit)
+      const over = (yield* SubscriptionRef.get(holds)).overLimit
       const requests = yield* attention.current
       const asking = new Set(requests.map((request) => request.ticket))
       const aside = new Set<string>()
@@ -1177,7 +1166,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const limitedOnly = Effect.gen(function* () {
       const limited = yield* usage.limited
       const handBacks = yield* usage.handBacks
-      const over = yield* Ref.get(overLimit)
+      const over = (yield* SubscriptionRef.get(holds)).overLimit
       const waits = (entry: Entry) =>
         limited.has(entry.ticket) &&
         (entry.phase._tag === "Working" ||
@@ -1211,7 +1200,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           yield* stopped(limit)
           return { limited: true, asked: false, seen }
         }
-        const held = (yield* Ref.get(stops)).first !== null
+        const held = (yield* currentStops).first !== null
         const boxed = done && waiting.length > 0 && screen !== null
         yield* showEndOfRun(boxed ? waiting : null)
         const endNow = yield* Ref.getAndSet(endAsked, false)
@@ -1246,15 +1235,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         }
         // The probe runs only with its hold's stop alone, the first; it lifts or replaces only
         // that one, those raised while it waited (BLOCKED, TICKET_LIMIT, PAUSED) kept.
-        const before = yield* Ref.get(stops)
+        const before = yield* currentStops
         const probed = yield* environment.probe(before)
         const held = before.first
         if (probed._tag === "Resumed" && held !== null) {
-          yield* updateStops((all) => swapStop(all, held, null))
+          yield* changeHolds((now) => changeStops(now, (all) => swapStop(all, held, null)))
           continue
         }
         if (probed._tag === "Failed" && held !== null) {
-          yield* updateStops((all) => swapStop(all, held, probed.stop))
+          yield* changeHolds((now) => changeStops(now, (all) => swapStop(all, held, probed.stop)))
         }
         if (yield* endAfter(seen)) break
         if (asked) yield* Ref.set(endAsked, true)
@@ -1327,13 +1316,13 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // a worker past its ticket limit, or waiting on you, is still at it, its fiber stopped first.
     // Quitting's steps 5 and 6 are any end's: the sessions are closed, every open one when
     // quitting, then state.json says why each was suspended.
-    const over = yield* Ref.get(overLimit)
+    const over = (yield* SubscriptionRef.get(holds)).overLimit
     const asking =
       quit === null
         ? new Set((yield* attention.current).map((request) => request.ticket))
         : new Set<string>()
     if (over.size > 0 || asking.size > 0) yield* scheduler.interrupt
-    const before = yield* Ref.get(stops)
+    const before = yield* currentStops
     const ended = quit === null ? null : "panic" in quit ? quit.panic.why : "quit"
     const whyOf = (entry: { readonly ticket: string; readonly phase: TicketPhase }) =>
       entry.phase._tag === "Working" && over.has(entry.ticket)
@@ -1399,22 +1388,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         "panic" in quit
           ? quit.panic
           : stopFor("INTERRUPTED", interruptedText(quit.request.how, saved, handedBack))
-      yield* updateStops((now) => ({
-        first: stop,
-        others: [now.first, ...now.others].flatMap((other) => (other === null ? [] : [other])),
-      }))
+      yield* changeHolds((now) => changeStops(now, (all) => putFirst(all, stop)))
     }
-    if (neverSent.length > 0) {
-      yield* updateStops((now) =>
-        now.first === null
-          ? now
-          : {
-              ...now,
-              first: { ...now.first, text: `${now.first.text}; ${neverSent.join("; ")}` as Line },
-            },
-      )
-    }
-    const all = yield* Ref.get(stops)
+    yield* changeHolds((now) => changeStops(now, (all) => extendFirst(all, neverSent)))
+    const all = yield* currentStops
     // A stopped run names the tickets it leaves without the check once more it promised them.
     if (quit === null && all.first !== null) yield* dropRechecks(queue.rechecks, "the run stopped")
 
