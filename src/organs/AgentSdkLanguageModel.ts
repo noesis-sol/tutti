@@ -224,6 +224,7 @@ export const costOf = (organ: string, result: SDKResultMessage, ticket?: string)
   turns: result.num_turns ?? 0,
   durationMs: result.duration_ms ?? 0,
   sessionId: result.session_id,
+  ...(result.subtype === "success" ? {} : { subtype: result.subtype }),
 })
 
 const finishReason = (stopReason: string | null): Response.FinishReason => {

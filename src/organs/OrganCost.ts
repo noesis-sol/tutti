@@ -23,6 +23,8 @@ export interface Cost {
   readonly durationMs: number
   /** The call's SDK session. */
   readonly sessionId: string
+  /** The result's subtype where it isn't a success: `error_max_turns`. */
+  readonly subtype?: string
 }
 
 /** One organ call that ended without a result, or whose provider reports no price. */
@@ -46,9 +48,18 @@ export interface Total {
   readonly durationMs: number
   /** The calls that ended without a result, whose cost the total leaves out. */
   readonly unknown: number
+  /** The calls whose result wasn't a success. */
+  readonly failed: number
 }
 
-export const noCost: Total = { calls: 0, costUsd: 0, turns: 0, durationMs: 0, unknown: 0 }
+export const noCost: Total = {
+  calls: 0,
+  costUsd: 0,
+  turns: 0,
+  durationMs: 0,
+  unknown: 0,
+  failed: 0,
+}
 
 /** A cost in dollars, to the hundredth of a cent: `$0.0123`. */
 export const dollars = (usd: number): string => `$${usd.toFixed(4)}`
@@ -76,6 +87,7 @@ export const add = (total: Total, cost: Cost): Total => ({
   costUsd: total.costUsd + cost.costUsd,
   turns: total.turns + cost.turns,
   durationMs: total.durationMs + cost.durationMs,
+  failed: total.failed + (cost.subtype === undefined ? 0 : 1),
 })
 
 /** A call of unknown cost added to `total`: a call, its time, and nothing else. */

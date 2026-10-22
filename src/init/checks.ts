@@ -14,6 +14,7 @@
 // test-work tickets, labelled tutti-tests as orchestra labels its own orchestra-tests.
 import { join } from "node:path"
 import { Duration, Effect, FileSystem, Option } from "effect"
+import { dollars, type Total } from "../organs/OrganCost.ts"
 import type { OrganError, Organs } from "../organs/Organs.ts"
 import { type Scouting, type Suite as ScoutSuite, scoutChecks } from "../organs/scout.ts"
 import skillTemplate from "../project/templates/create-check-suite.md" with { type: "text" }
@@ -145,6 +146,22 @@ export const scoutWhy = (error: OrganError): string => {
 /** The scout's search in the repository at `repo`: what it found, or why it found nothing. */
 export const scoutSearch = (repo: string): Effect.Effect<Scouting, string, Organs> =>
   Effect.mapError(scoutChecks(repo), scoutWhy)
+
+/**
+ * The summary's step for what the scout's calls cost, from their total in OrganCost: init keeps no
+ * log for their ORGAN lines. A call whose result wasn't a success is to watch. None where the scout
+ * made no call.
+ */
+export const scoutCostSteps = (total: Total): ReadonlyArray<Step> => {
+  if (total.calls === 0) return []
+  const known = total.calls - total.unknown
+  const unknown = `${total.unknown} ${total.unknown === 1 ? "call" : "calls"} of unknown cost`
+  const detail =
+    known === 0
+      ? "cost unknown"
+      : `cost ${dollars(total.costUsd)}${total.unknown === 0 ? "" : `, and ${unknown}`}`
+  return [step(total.failed > 0 ? "caution" : "done", "scout", detail)]
+}
 
 /** Why there are no suites when Esc skipped the scout. */
 export const scoutSkipped = "the search was skipped with Esc"

@@ -98,7 +98,14 @@ describe("an organ call that ends without a result", () => {
     const [outcome, lines, sum] = value(exit)
     expect(outcome).toBe("answered")
     expect(lines).toEqual(["ORGAN triage: $0.0123 in 1 turn, 4.2s"])
-    expect(sum).toEqual({ calls: 1, costUsd: 0.0123, turns: 1, durationMs: 4200, unknown: 0 })
+    expect(sum).toEqual({
+      calls: 1,
+      costUsd: 0.0123,
+      turns: 1,
+      durationMs: 4200,
+      unknown: 0,
+      failed: 0,
+    })
   })
 })
 
@@ -123,6 +130,7 @@ describe("unknown costs in the total", () => {
       turns: 2,
       durationMs: 121_000,
       unknown: 1,
+      failed: 0,
     })
   })
 

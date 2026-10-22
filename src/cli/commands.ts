@@ -11,10 +11,23 @@ import { answerWords } from "../agent/attentionFiles.ts"
 import { buildTarget, resolveClaude } from "../agent/claudeBinary.ts"
 import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
-import { scoutSearch } from "../init/checks.ts"
-import { cancelledLine, type InitFlags, type InitForm, init, summaryLines } from "../init/init.ts"
+import { scoutCostSteps, scoutSearch } from "../init/checks.ts"
+import {
+  cancelledLine,
+  type InitFlags,
+  type InitForm,
+  type InitSummary,
+  init,
+  summaryLines,
+} from "../init/init.ts"
 import { lineForm } from "../init/lineForm.ts"
-import { type InitFailed, type InitStopped, liveMachine, stepLine } from "../init/steps.ts"
+import {
+  type InitFailed,
+  type InitStopped,
+  liveMachine,
+  type Step,
+  stepLine,
+} from "../init/steps.ts"
 import { initUpdate, updateLines } from "../init/update.ts"
 import { parseMcpNames } from "../init/workers.ts"
 import { layer as languageModelLayer } from "../organs/AgentSdkLanguageModel.ts"
@@ -567,27 +580,63 @@ const initStopped = (lines: ReadonlyArray<string>) =>
     }),
   )
 
+/** init's steps as it prints them: in `theme`'s styles where it has one, `width` columns wide. */
+const printedSteps = (steps: ReadonlyArray<Step>, theme: Theme | null, width: number) =>
+  theme === null ? steps.map(stepLine) : initSteps(steps, theme, width)
+
 /**
- * What init says when a stop stopped it, and its exit code: the steps it took, on stdout, in
- * `theme`'s styles where it has one, `width` columns wide; then on stderr that it stopped, and
- * where; 130, as an interrupted run's.
+ * What init says when a stop stopped it, and its exit code: the scout's step (scoutCostSteps) and
+ * the steps it took, on stdout, in `theme`'s styles where it has one, `width` columns wide; then on
+ * stderr that it stopped, and where; 130, as an interrupted run's.
  */
-export const stoppedEnding = (stopped: InitStopped, theme: Theme | null, width: number) => ({
-  stdout: theme === null ? stopped.steps.map(stepLine) : initSteps(stopped.steps, theme, width),
+export const stoppedEnding = (
+  stopped: InitStopped,
+  theme: Theme | null,
+  width: number,
+  scout: ReadonlyArray<Step> = [],
+) => ({
+  stdout: printedSteps([...scout, ...stopped.steps], theme, width),
   stderr: theme === null ? `tutti init: ${stopped.message}` : initStoppedLine(theme, stopped.words),
   code: exitCodes.interrupted,
 })
 
 /**
- * What init says when one of its steps failed, and its exit code: the steps it took before it, on
- * stdout, in `theme`'s styles where it has one, `width` columns wide; then on stderr why it failed;
- * 2, as a setup problem's.
+ * What init says when one of its steps failed, and its exit code: the scout's step and the steps it
+ * took before it, on stdout, in `theme`'s styles where it has one, `width` columns wide; then on
+ * stderr why it failed; 2, as a setup problem's.
  */
-export const failedEnding = (failed: InitFailed, theme: Theme | null, width: number) => ({
-  stdout: theme === null ? failed.steps.map(stepLine) : initSteps(failed.steps, theme, width),
+export const failedEnding = (
+  failed: InitFailed,
+  theme: Theme | null,
+  width: number,
+  scout: ReadonlyArray<Step> = [],
+) => ({
+  stdout: printedSteps([...scout, ...failed.steps], theme, width),
   stderr: `tutti init: ${failed.message}`,
   code: exitCodes.setup,
 })
+
+/**
+ * What init says when its form was cancelled, and its exit code: the scout's step, where it ran, on
+ * stdout, in `theme`'s styles where it has one, `width` columns wide, as the scout spent what it
+ * cost though init changed nothing; then on stderr that it was cancelled; 2, as a setup problem's.
+ */
+export const cancelledEnding = (
+  scout: ReadonlyArray<Step>,
+  theme: Theme | null,
+  width: number,
+) => ({
+  stdout: printedSteps(scout, theme, width),
+  stderr: theme === null ? cancelledLine : initCancelled(theme),
+  code: exitCodes.setup,
+})
+
+/**
+ * init's summary with the scout's step first, as the scout ran before the steps it took: what its
+ * calls cost (scoutCostSteps).
+ */
+export const withScout = (summary: InitSummary, scout: ReadonlyArray<Step>): InitSummary =>
+  scout.length === 0 ? summary : { ...summary, steps: [...scout, ...summary.steps] }
 
 /**
  * tutti init in the folder `cwd`: from the main checkout, asking in its own renderer where stdin and
@@ -634,7 +683,8 @@ const runInit = (cwd: string, flags: InitFlags) =>
       return { ...config, claude: claude.path }
     })
     // The scout, under the project's configuration as it is, over the Agent SDK with the login the
-    // probe finds. init keeps no log, so its organ cost lines go nowhere.
+    // probe finds. init keeps no log, so its organ cost lines go nowhere: its summary says what the
+    // scout cost, from the total of the OrganCost below, read once init ends.
     const quietLog = Layer.succeed(
       Log,
       Log.of({
@@ -643,6 +693,12 @@ const runInit = (cwd: string, flags: InitFlags) =>
         lines: Effect.succeed([]),
         startBlockEnd: Effect.succeed(0),
       }),
+    )
+    const organCost = yield* Effect.provide(
+      Effect.gen(function* () {
+        return yield* OrganCost
+      }),
+      Layer.provide(OrganCost.layer, quietLog),
     )
     const scout = Effect.gen(function* () {
       const config = yield* configure.pipe(Effect.mapError((problem) => problem.message))
@@ -655,7 +711,7 @@ const runInit = (cwd: string, flags: InitFlags) =>
         Effect.provide(
           Organs.layer.pipe(
             Layer.provideMerge(languageModelLayer({ account: probed })),
-            Layer.provideMerge(OrganCost.layer),
+            Layer.provideMerge(Layer.succeed(OrganCost, organCost)),
             Layer.provideMerge(Layer.mergeAll(withConfig, quietLog)),
           ),
         ),
@@ -746,37 +802,40 @@ const runInit = (cwd: string, flags: InitFlags) =>
       }),
     )
     const { theme } = printed
+    const width = Math.min(process.stdout.columns ?? 80, 100)
+    // What the scout cost, where it ran: said however init ends, a cancelled form's included.
+    const scouted = scoutCostSteps(yield* organCost.total)
     if (Result.isFailure(ran)) {
       const error = ran.failure
-      if (error._tag === "InitStopped" || error._tag === "InitFailed") {
-        if (theme !== null && kind === "renderer") yield* Console.log(initHeader(theme, repo))
-        const width = Math.min(process.stdout.columns ?? 80, 100)
-        const ending =
-          error._tag === "InitStopped"
-            ? stoppedEnding(error, theme, width)
-            : failedEnding(error, theme, width)
+      const ending =
+        error._tag === "InitStopped"
+          ? stoppedEnding(error, theme, width, scouted)
+          : error._tag === "InitFailed"
+            ? failedEnding(error, theme, width, scouted)
+            : error._tag === "FormCancelled"
+              ? cancelledEnding(scouted, theme, width)
+              : null
+      if (ending !== null) {
+        const said = error._tag !== "FormCancelled" || ending.stdout.length > 0
+        if (theme !== null && kind === "renderer" && said) {
+          yield* Console.log(initHeader(theme, repo))
+        }
         if (ending.stdout.length > 0) yield* Console.log(ending.stdout.join("\n"))
         yield* Console.error(ending.stderr)
         process.exitCode = ending.code
         return
       }
-      if (error._tag === "FormCancelled" && theme !== null) {
-        yield* Console.error(initCancelled(theme))
-        process.exitCode = exitCodes.setup
-        return
-      }
-      return yield* initStopped([
-        error._tag === "FormCancelled" ? cancelledLine : `tutti init: ${error.message}`,
-      ])
+      if (scouted.length > 0) yield* Console.log(printedSteps(scouted, theme, width).join("\n"))
+      return yield* initStopped([`tutti init: ${error.message}`])
     }
+    const summary = withScout(ran.success, scouted)
     if (theme === null) {
-      yield* Console.log(summaryLines(ran.success).join("\n"))
+      yield* Console.log(summaryLines(summary).join("\n"))
       return
     }
     // After the renderer's form, on the main screen: the title the alternate screen took with it.
     if (kind === "renderer") yield* Console.log(initHeader(theme, repo))
-    const width = Math.min(process.stdout.columns ?? 80, 100)
-    yield* Console.log(`${initSummary(ran.success, theme, width)}\n`)
+    yield* Console.log(`${initSummary(summary, theme, width)}\n`)
   }).pipe(Effect.provide(Git.layer()), Effect.provide(GitWriter.layer))
 
 /** `tutti init`, in the folder tutti was started in. */
