@@ -129,9 +129,11 @@ rows. A row changes as the ticket moves through its phases:
 | `■ blocked` | its work is done, but it can't merge until you act |
 | `■ stopped` | it stopped the run, or its worker was still at it when the run ended |
 
-The table takes about a third of the pane, room for 3 to 10 tickets, and keeps its height: once the
-run has more, the oldest give way to a `+N earlier tickets, see the log` row. A pane too short for
-it and the cards leaves it out. The summary after the run lists every ticket.
+The table takes what Current leaves of the pane, room for 3 to 10 tickets, and keeps its height:
+once the run has more, the oldest give way to a `+N earlier tickets, see the log` row. Current is
+kept room for a whole card for each of up to 6 workers, as many as the run may have, so a taller
+pane gives the cards room before the table. A pane too short for the table and a line a worker
+leaves it out. The summary after the run lists every ticket.
 
 ### The cards
 

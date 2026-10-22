@@ -6,9 +6,9 @@
 // state's style; the rest of a finished ticket's row is faint, and a ticket set aside shows the
 // triage organ's verdict, `◆ …`, once it is in.
 //
-// The table is as tall as the pane makes it, not as its tickets do: about a third of the pane, room
-// for 3 to 10 tickets, blank rows filling it until the run has that many, after which the oldest
-// give way to a `+N earlier tickets` row. Only a resize changes it.
+// The table is as tall as the pane makes it, not as its tickets do: what the lines Current is kept
+// leave it (Dashboard.tsx), room for 3 to 10 tickets, blank rows filling it until the run has that
+// many, after which the oldest give way to a `+N earlier tickets` row. Only a resize changes it.
 import { fit, rowLooks } from "../print/summary.ts"
 import type { Card, Row } from "../run/runView.ts"
 import { framed, frameLook, Lines, type Segments, seg } from "./line.tsx"
@@ -21,9 +21,12 @@ export const sectionChrome = 3
 const minRows = 3
 const maxRows = 10
 
-/** The lines the table takes in a pane `height` lines tall, its label and frame included. */
-export const tableLines = (height: number): number =>
-  Math.min(Math.max(Math.floor(height / 3) - 1 - sectionChrome, minRows), maxRows) + sectionChrome
+/**
+ * The lines the table takes, its label and frame included, of `room` lines for it and Current: what
+ * Current's `kept` lines leave, room for 3 to 10 tickets.
+ */
+export const tableLines = (room: number, kept: number): number =>
+  Math.min(Math.max(room - kept - sectionChrome, minRows), maxRows) + sectionChrome
 
 /** The state column's width: its glyph and its longest word, `⟳ resolving`. */
 const stateWidth = 11

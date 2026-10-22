@@ -1041,9 +1041,10 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
 - **Needs you** counts open attention requests, plus orchestra's questions and tickets blocked from merging.
 - **Banners on the title line**: usage (§4.12), and holds (`BLOCKED`, `USAGE_LIMIT · resets 14:05`).
 - **The end-of-run box** (D19, §5 item 14) replaces the Current cards when only workers waiting on you remain.
+- **A taller pane gives Current room, not the tickets table.** Current is kept room for a full card for each of up to 6 of the workers the run may have, two to a row from 120 columns, and a line for each of the rest; the tickets table takes what is left, 3 to 10 rows. orchestra's table takes about a third of the pane, which put six workers' cards on compact lines in an 80×50 pane that holds them whole. A departure on purpose (maintainer, 2026-10-22). As orchestra's, the table's height comes from the pane and the workers the run may have alone, not the cards there are, so it stays put while workers come and go.
 - **The hint** names the keys there are. `?` opens a key-help overlay.
 - **Unchanged from orchestra:**
-  - the tickets table's stable height (about a third of the pane), its `+N earlier tickets` row, and leaving it out in short panes
+  - the tickets table's stable height, its `+N earlier tickets` row, and leaving it out in short panes
   - cards two to a row from 120 columns, all as tall as the tallest (attention cards excepted); the one-line compact mode when the pane can't hold a card each, its numbers, IDs, statuses and times lined up as columns, each as wide as the widest on screen, the numbers and times right-aligned, so that the titles start at one column; spaces only, no lines (orchestra-1dvh)
   - the wind-down line (`■ ■ ■ ■  Winding down · 3 running, no new tickets`) and the queue marked `held`
   - a 3-second tick for elapsed times

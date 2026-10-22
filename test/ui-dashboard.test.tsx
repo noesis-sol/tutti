@@ -12,9 +12,9 @@ import { type Activity, Outcome, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
-import { warningLines } from "../src/ui/Dashboard.tsx"
+import { tableHeight, warningLines } from "../src/ui/Dashboard.tsx"
 import { widthOf } from "../src/ui/line.tsx"
-import { tableLines, ticketsLines } from "../src/ui/TicketsTable.tsx"
+import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { totalsLines } from "../src/ui/Totals.tsx"
 import { type Appearance, makeTheme, orchestra, type StyleName } from "../src/ui/theme.ts"
@@ -146,8 +146,7 @@ describe("frames", () => {
       ╰────────────────┴────────────────┴────────────────┴───────────────────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
-      │             │ +2      │ earlier tickets, see the log                         │
-      │ ▶ testing   │ tut-zq4 │ Add an undo stack for property edits                 │
+      │             │ +3      │ earlier tickets, see the log                         │
       │ ■ allow?    │ tut-9a1 │ Remove the build cache                               │
       │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted        │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
@@ -155,6 +154,7 @@ describe("frames", () => {
       ╭──────────────────────────────────────────────────────────────────────────────╮
       │ ⣾ picking the next ticket…                                                   │
       ╰──────────────────────────────────────────────────────────────────────────────╯
+
 
 
 
@@ -454,14 +454,18 @@ describe("the tickets table", () => {
     })
   })
 
-  test("its height comes from the pane's, and the oldest give way to +N earlier tickets", async () => {
-    expect([16, 24, 30, 45, 60].map(tableLines)).toEqual([6, 7, 9, 13, 13])
+  test("its height is what Current is kept leaves, and the oldest give way to +N earlier tickets", async () => {
+    // At 80 columns, the title, the strip and the foot take 10 lines, and Current is kept 16 for 3
+    // workers' cards.
+    expect([16, 24, 30, 35, 45, 60].map((height) => tableHeight(height, 80, 4, 3, 2))).toEqual([
+      6, 6, 6, 9, 13, 13,
+    ])
     const many = viewOf(
       Array.from({ length: 9 }, (_, i) =>
         entry(`tut-${i + 1}`, `Ticket ${i + 1}`, merged(`c0ffee${i}abcdef`), i),
       ),
     )
-    const { text } = await draw(many, { width: 80, height: 30 })
+    const { text } = await draw(many, { width: 80, height: 35 })
     const lines = text.split("\n")
     const top = lines.findIndex((line) => line.startsWith("╭─────────────┬"))
     // 9 lines in all: the label, the frame, and 6 rows.
@@ -477,7 +481,7 @@ describe("the tickets table", () => {
     expect(lines[top + 7]).toStartWith("╰")
     const few = await draw(viewOf([entry("tut-1", "One", working("editing"), 0)]), {
       width: 80,
-      height: 30,
+      height: 35,
     })
     const blank = few.text.split("\n").filter((line) => /^│ +│ +│ +│$/.test(line))
     expect(blank).toHaveLength(5)
@@ -527,7 +531,7 @@ describe("untrusted text", () => {
           const lines = [
             titleSegments(view.title, view.banners, now, theme, width),
             ...totalsLines(view.totals, theme, width, false),
-            ...ticketsLines(view.rows, theme, width, tableLines(24)),
+            ...ticketsLines(view.rows, theme, width, tableHeight(24, width, 4, 3, 2)),
             ...warningLines(view.warnings, theme, width),
           ]
           for (const line of lines) {

@@ -18,7 +18,15 @@ import { actionPoll, latestActions, Screen } from "../src/run/screen.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { Root } from "../src/ui/App.tsx"
-import { cardLines, compactLines, elapsed, idleBox, layoutOf, statusLook } from "../src/ui/Card.tsx"
+import {
+  cardLines,
+  compactLines,
+  elapsed,
+  idleBox,
+  keptLines,
+  layoutOf,
+  statusLook,
+} from "../src/ui/Card.tsx"
 import { moveHighlight } from "../src/ui/Dashboard.tsx"
 import { hintSegments } from "../src/ui/Hint.tsx"
 import { keyHelpLines } from "../src/ui/KeyHelp.tsx"
@@ -59,7 +67,10 @@ const entryOf = (t: Ticket, row: number): Entry => ({
 
 const working = TicketPhase.Working({ activity: "working" })
 
-/** RunView for `tickets`, with their workers' states, open requests and latest actions. */
+/**
+ * RunView for `tickets`, with their workers' states, open requests and latest actions, the run
+ * having room for 3 workers, or `concurrency`.
+ */
 const viewOf = (
   tickets: ReadonlyArray<Ticket>,
   over: {
@@ -68,6 +79,7 @@ const viewOf = (
     readonly actions?: ReadonlyMap<string, { readonly text: string; readonly denied: boolean }>
     readonly windDown?: WindDown | null
     readonly stopping?: boolean
+    readonly concurrency?: number
   } = {},
 ): RunView =>
   project({
@@ -84,7 +96,7 @@ const viewOf = (
       version: "0.1.0",
       branch: "batch/2026-10-20",
       began,
-      concurrency: 3,
+      concurrency: over.concurrency ?? 3,
       stopping: over.stopping ?? false,
     },
     actions: over.actions ?? new Map(),
@@ -464,6 +476,39 @@ describe("the Current section", () => {
     const lines = compactLines(view.cards, theme, { now, spin, width: 80, highlighted: 2 })
     sameLook(lookOf(lines, `╭${"─".repeat(78)}╮`), roleLook(theme, "needsYou"))
     expect(lines[2]?.[0]?.text).toBe("┃")
+  })
+
+  test("the dashboard keeps it a full card for each of up to 6 workers, a line each for more", () => {
+    // Its label, and 5 lines a card: a row a card, or two to a row from 120 columns.
+    expect([0, 1, 3, 6, 8, 16].map((slots) => keptLines(80, slots))).toEqual([6, 6, 16, 31, 31, 31])
+    // 16 workers want a line each, its label and its frame: 19.
+    expect([0, 1, 3, 6, 8, 16].map((slots) => keptLines(120, slots))).toEqual([
+      6, 6, 11, 16, 16, 19,
+    ])
+  })
+
+  test("six workers keep their full cards in a pane that holds them; the table takes the rest", async () => {
+    const six: ReadonlyArray<Ticket> = [1, 2, 3, 4, 5, 6].map((worker) => ({
+      ticket: `tut-${worker}`,
+      phase: working,
+      worker,
+    }))
+    const actions = new Map(
+      six.map((t) => [t.ticket, { text: "Bash(scripts/check-fast.sh)", denied: false }]),
+    )
+    const view = viewOf(six, { actions, concurrency: 6 })
+    for (const size of [
+      { width: 80, height: 50 },
+      { width: 120, height: 32 },
+    ]) {
+      const lines = linesOf(await draw(view, size))
+      // A card's title has a line of its own, where the compact box has it on the card's line.
+      expect(lines.flatMap((line) => line.match(/│ {3}Title of tut-/g) ?? [])).toHaveLength(6)
+      const tickets = lines.findIndex((line) => line === "  Tickets")
+      const current = lines.findIndex((line) => line === "  Current")
+      // The label, the frame and 6 blank rows, the tickets Current shows left out; 3 at 120×32.
+      expect(current - tickets).toBe(size.width === 80 ? 9 : 6)
+    }
   })
 
   test("numbers stay as workers finish; a new worker takes the lowest free one", async () => {

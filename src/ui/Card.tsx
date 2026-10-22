@@ -41,6 +41,15 @@ export const labelLines = 1
 /** The lines of the box with no worker in it: its frame and its line. */
 export const idleLines = 3
 
+/** The workers the dashboard keeps Current room for a full card each, as many as the run may have. */
+export const keptCards = 6
+
+/** A full card's lines, but an attention card's: its frame, head, title and action line. */
+const fullCardLines = 5
+
+/** Cards a row in a pane `width` wide: 1, or 2 from 120 columns. */
+const acrossOf = (width: number): number => (width >= twoUpWidth ? 2 : 1)
+
 /** How long a card has been in its phase: `42s`, `6m31s`, `1h05m`. */
 export const elapsed = (millis: number): string => {
   const seconds = Math.floor(Math.max(0, millis) / 1000)
@@ -365,7 +374,7 @@ export const grows = (card: Card): boolean => card.requests.length > 0
  */
 export const layoutOf = (cards: ReadonlyArray<Card>, width: number, room: number): CardsLayout => {
   if (cards.length === 0) return { _tag: "Idle" }
-  const across = width >= twoUpWidth ? 2 : 1
+  const across = acrossOf(width)
   const inside = Math.max(
     2,
     ...cards
@@ -397,6 +406,17 @@ export const sectionLines = (layout: CardsLayout, count: number): number => {
     case "Cards":
       return labelLines + layout.rows.reduce((sum, lines) => sum + lines, 0)
   }
+}
+
+/**
+ * The lines the dashboard keeps for the Current section in a pane `width` wide, from the `slots`
+ * workers the run may have, not the cards there are: its label and a full card for each of up to
+ * `keptCards` workers, two to a row from 120 columns, and no fewer than a compact line each.
+ */
+export const keptLines = (width: number, slots: number): number => {
+  const workers = Math.max(slots, 1)
+  const rows = Math.ceil(Math.min(workers, keptCards) / acrossOf(width))
+  return Math.max(labelLines + rows * fullCardLines, sectionLines({ _tag: "Compact" }, workers))
 }
 
 /** The Current section: its label, then the cards as `layout` lays them out. */

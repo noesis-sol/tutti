@@ -662,7 +662,7 @@ const scenes: ReadonlyArray<Scene> = [
     view: rowsOf(Array.from({ length: 9 }, (_, i) => merged(`c0ffee${i}abcdef`))),
     ready: "earlier tickets",
     checks: [
-      ["+6", look("text", "faint")],
+      ["+5", look("text", "faint")],
       ["earlier tickets, see the log", look("text", "faint")],
     ],
   },
@@ -1146,9 +1146,6 @@ describe("layouts", () => {
       │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                 │
       │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted        │
       │             │         │                                                      │
-      │             │         │                                                      │
-      │             │         │                                                      │
-      │             │         │                                                      │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
@@ -1156,6 +1153,9 @@ describe("layouts", () => {
       │ 2 ◆  tut-kco  merging   18m40s  Open the property model                      │
       ┃ 3 •  tut-9a1  ■ allow?  18m40s  Remove the build cache                       │
       ╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+
 
 
 
@@ -1195,6 +1195,7 @@ describe("layouts", () => {
       │             │         │                                                                                              │
       │             │         │                                                                                              │
       │             │         │                                                                                              │
+      │             │         │                                                                                              │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────╮
@@ -1210,7 +1211,6 @@ describe("layouts", () => {
       ┃   outside the working directories                        ┃
       ┃   [ Deny ]  [ Allow ]                                    ┃
       ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
 
 
 
@@ -1305,13 +1305,13 @@ describe("layouts", () => {
       │             │         │                                                      │
       │             │         │                                                      │
       │             │         │                                                      │
-      │             │         │                                                      │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
       ┃ 1 •  t-1  ■ allow?  18m40s  Title of t-1                                     │
       │ 2 •  t-2  ■ allow?  18m40s  Title of t-2                                     │
       ╰──────────────────────────────────────────────────────────────────────────────╯
+
 
 
 
@@ -1348,9 +1348,6 @@ describe("layouts", () => {
       │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                 │
       │ ■ allow?    │ tut-9a1 │ Title of tut-9a1                                     │
       │ ■ answer?   │ tut-7k2 │ Title of tut-7k2                                     │
-      │             │         │                                                      │
-      │             │         │                                                      │
-      │             │         │                                                      │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
       ╭──────────────────────────────────────────────────────────────────────────────╮
       │ Everything else is done. 2 workers wait for you: tut-9a1 (Allow Bash(rm -rf  │
@@ -1358,6 +1355,9 @@ describe("layouts", () => {
       │ Answering lets them carry on. q ends the run, suspending them: the next run  │
       │ resumes them.                                                                │
       ╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+
 
 
 
@@ -1419,13 +1419,13 @@ describe("layouts", () => {
       │ ✓ done      │ b       │ abc1234 merged into batch/2026-10-20                 │
       │ ! review    │ c       │ Title of c                                           │
       │ ◷ waiting   │ d       │ Title of d                                           │
-      │             │         │                                                      │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
       ╭──────────────────────────────────────────────────────────────────────────────╮
       │ 1 ⣾  a  editing  18m40s                                                      │
       │   Title of a                                                                 │
       ╰──────────────────────────────────────────────────────────────────────────────╯
+
 
 
         ■ ■ ■ ■  Winding down · 1 running, no new tickets

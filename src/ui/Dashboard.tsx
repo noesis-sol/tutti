@@ -2,9 +2,12 @@
 // blank line between, the totals strip, the tickets table (without the tickets Current shows), the workers' cards (Current) and at the foot the
 // wind-down line, the warning line and the hint; `?` opens the key help over it.
 //
-// As orchestra lays it out, the tickets table's height comes from the pane's alone, and the table is
-// left out of a pane too short for it and a line for each worker the run may have, so it stays put
-// while workers come and go. The cards take what is left, one line each when they don't fit. A pane
+// The tickets table's height comes from the pane's and the workers the run may have alone, so it
+// stays put while workers come and go: Current is kept room for a full card for each of up to 6 of
+// them and a line for each of the rest (Card.tsx's keptLines), and the table takes what is left,
+// 3 to 10 rows, where orchestra's takes a third of the pane (§ 7.2). The table is left out of a pane
+// too short for it and a line for each worker. The cards take what is left, one line each when they
+// don't fit. A pane
 // too short for a line each drops the blank line above the load line first, before any line with
 // something on it. Below the minimum size, 60×16 (§ 7.7), only the totals, on one line, and the hint
 // are drawn.
@@ -30,7 +33,7 @@ import { UiCommand } from "../run/commands.ts"
 import type { Card } from "../run/runView.ts"
 import { answerBindings } from "./AttentionCard.tsx"
 import { optionKeys, useAnswering } from "./attentionKeys.ts"
-import { Cards, type CardsLayout, grows, layoutOf, sectionLines } from "./Card.tsx"
+import { Cards, type CardsLayout, grows, keptLines, layoutOf, sectionLines } from "./Card.tsx"
 import { EndOfRunBox, endOfRunLines } from "./EndOfRunBox.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
@@ -68,9 +71,30 @@ export const warningLines = (
 ): ReadonlyArray<Segments> =>
   warnings.map((warning) => cut([seg(` ! ${warning}`, theme.styles.deferred)], width))
 
-/** Whether a pane `height` tall has room for the tickets table, besides what it always shows. */
-export const showsTable = (height: number, totals: number, slots: number, foot: number): boolean =>
-  titleLines + totals + Math.max(slots, 1) + sectionChrome + foot + tableLines(height) <= height
+/**
+ * The lines the tickets table takes in a pane `height` tall and `width` wide: what the title line,
+ * the blank line under it, `totals` lines of totals, `foot` lines at the foot and the lines Current
+ * is kept for `slots` workers leave it.
+ */
+export const tableHeight = (
+  height: number,
+  width: number,
+  totals: number,
+  slots: number,
+  foot: number,
+): number => tableLines(height - titleLines - 1 - totals - foot, keptLines(width, slots))
+
+/**
+ * Whether a pane `height` tall has room for `table` lines of tickets table, besides what it always
+ * shows.
+ */
+export const showsTable = (
+  height: number,
+  totals: number,
+  slots: number,
+  foot: number,
+  table: number,
+): boolean => titleLines + totals + Math.max(slots, 1) + sectionChrome + foot + table <= height
 
 /**
  * Whether a pane `height` tall has room for the blank line between the title line and the load
@@ -126,10 +150,11 @@ export const Dashboard = () => {
   const totals = totalsLines(view.totals, theme, width, small)
   const warnings = warningLines(view.warnings, theme, width)
   const foot = footLines + warnings.length
-  const table = showsTable(height, totals.length, view.totals.slots, foot)
-  const tableHeight = table ? tableLines(height) : 0
-  const gap = showsGap(height, totals.length, tableHeight, view.totals.slots, foot)
-  const room = height - titleLines - (gap ? 1 : 0) - totals.length - tableHeight - foot
+  const tall = tableHeight(height, width, totals.length, view.totals.slots, foot)
+  const table = showsTable(height, totals.length, view.totals.slots, foot, tall)
+  const tableRows = table ? tall : 0
+  const gap = showsGap(height, totals.length, tableRows, view.totals.slots, foot)
+  const room = height - titleLines - (gap ? 1 : 0) - totals.length - tableRows - foot
   const ending = view.endOfRun === null ? null : endOfRunLines(view.endOfRun, theme, width)
   // Behind the end-of-run box no card's buttons are drawn: Enter opens the Answer box, as on a
   // compact line.
@@ -211,7 +236,7 @@ export const Dashboard = () => {
       {gap ? <Line segments={[]} /> : null}
       <LoadLine segments={loadSegments(view.totals, view.load, theme, width)} />
       <Totals lines={totals} />
-      {table ? <TicketsTable lines={ticketsLines(rows, theme, width, tableLines(height))} /> : null}
+      {table ? <TicketsTable lines={ticketsLines(rows, theme, width, tall)} /> : null}
       {ending !== null ? (
         <box height={Math.min(ending.length, Math.max(room, 0))} flexShrink={0}>
           <EndOfRunBox lines={ending} />
