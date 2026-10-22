@@ -52,10 +52,11 @@ export interface SettingsImport {
   /** orchestra's settings don't choose the MCP servers, which there means every one defined. */
   readonly mcpUnset: boolean
   /**
-   * No worker_permission_mode tutti takes: orchestra's workers then ran in the mode the user's Claude
-   * Code settings choose, tutti's run in auto.
+   * Whether worker_permission_mode was imported, unset (orchestra's workers then ran in the mode the
+   * user's Claude Code settings choose) or left out (a mode orchestra refuses too, or settings that
+   * can't be read); tutti's workers run in auto without it.
    */
-  readonly permissionModeUnset: boolean
+  readonly permissionMode: "imported" | "unset" | "leftOut"
 }
 
 /** A key and its value as the summary shows them: `terminal ("tmux")`. */
@@ -172,7 +173,7 @@ export const importSettings = (orchestra: unknown): SettingsImport => {
       imported: [],
       leftOut: [{ key: orchestraSettingsFile, why: "isn't a JSON object" }],
       mcpUnset: false,
-      permissionModeUnset: false,
+      permissionMode: "leftOut",
     }
   }
   const json: Json = {}
@@ -242,7 +243,11 @@ export const importSettings = (orchestra: unknown): SettingsImport => {
     imported,
     leftOut,
     mcpUnset: unset("mcp_servers", own(orchestra, "mcp_servers") ?? null),
-    permissionModeUnset: !imported.some((each) => each.key === "worker_permission_mode"),
+    permissionMode: imported.some((each) => each.key === "worker_permission_mode")
+      ? "imported"
+      : unset("worker_permission_mode", own(orchestra, "worker_permission_mode") ?? null)
+        ? "unset"
+        : "leftOut",
   }
 }
 
@@ -356,7 +361,7 @@ export const findOrchestra = (repo: string) =>
             },
           ],
           mcpUnset: false,
-          permissionModeUnset: false,
+          permissionMode: "leftOut",
         } satisfies SettingsImport
       }
     })
@@ -438,12 +443,15 @@ export const importSteps = (
         ),
       )
     }
-    if (settings.permissionModeUnset) {
+    if (settings.permissionMode !== "imported") {
+      const choose = `choose another with workers.permission_mode (${permissionModes.join(", ")}) in ${settingsFile}`
       steps.push(
         step(
           "caution",
           label,
-          `worker_permission_mode isn't imported: orchestra's workers ran in your Claude Code settings' mode (defaultMode, else default), tutti's run in auto; choose another with workers.permission_mode (${permissionModes.join(", ")}) in ${settingsFile}`,
+          settings.permissionMode === "unset"
+            ? `worker_permission_mode isn't set: orchestra's workers ran in your Claude Code settings' mode (defaultMode, else default), tutti's run in auto; ${choose}`
+            : `worker_permission_mode isn't imported: tutti's workers run in auto; ${choose}`,
         ),
       )
     }
