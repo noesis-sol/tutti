@@ -147,20 +147,17 @@ below are the coverage report's uncovered lines at 368899e.
   `dispatch-footprint-line.test.ts`, `carry-footprint-line.test.ts`, `scope-open-followup.test.ts`,
   `run-predictor.test.ts`, `state-records.test.ts`, `store.test.ts`, `run-finish.test.ts`,
   `end-of-run.test.ts`, `epic-close.test.ts`, `epic-close-failures.test.ts`, `asked.test.ts`,
-  `run-end.test.ts`.
-- **Untested**: bd failing part-way through a run: the deferred tickets whose blockers merged
-  can't be listed (`src/run/deferredFree.ts` 183–245), a scope's subtickets can't be read
-  (`src/run/scope.ts` 234–278), and the environment hold's reopen refused by bd
-  (`src/run/environment.ts` 252). The test `Beads` layer can't be made to fail a call, as the
-  test `Git` layer can (`fail(op)`) (tutti-8iz.11).
+  `run-end.test.ts`, `beads-failures.test.ts`.
+- **Untested**: nothing found.
 
 ## The environment probe and its hold
 
 - **Reached by**: tickets failing at once like the ones before them (HOLD: ENVIRONMENT).
 - **Tests**: `environment.test.ts`, `environment-second-hold.test.ts`,
-  `waits-for-merge-uncounted.test.ts`, `fix-setup.test.ts`.
-- **Untested**: the probe's worker ending without running its command, as Idle, Closed, Failed or
-  Gone (`src/run/environment.ts` 328–336, 375) (tutti-8iz.11).
+  `waits-for-merge-uncounted.test.ts`, `fix-setup.test.ts`, `environment-probe-ends.test.ts`.
+- **Untested**: the probe's state stream failing AgentGone as it subscribes
+  (`src/run/environment.ts`'s `runProbe`), which needs the probe's worker forgotten between its
+  start and that subscription; no scenario reaches it.
 
 ## Workers: sessions, state, steering, attention, MCP, transcripts, usage limits
 
