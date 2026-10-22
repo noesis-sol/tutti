@@ -16,10 +16,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect } from "effect"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
+import { PathRefused } from "../src/native/libc.ts"
 import { type FullChecked, fullCheck, fullCheckLabel } from "../src/run/fullcheck.ts"
 import { logFile } from "../src/run/log.ts"
 import { Beads, BeadsFailed, BeadsTimedOut, type Issue } from "../src/services/Beads.ts"
-import { CheckFailed } from "../src/services/Checks.ts"
+import { CheckFailed, CheckNotRun } from "../src/services/Checks.ts"
 import { GitFailed } from "../src/services/Git.ts"
 import { runFolder, Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -225,6 +226,57 @@ describe("its whole output that can't be kept", () => {
     expect(() => readFileSync(join(elsewhere, "taken.log"))).toThrow()
     const [filed] = checkFullTickets(ran)
     expect(filed?.description).toContain(`Its whole output is in ${fallback}`)
+  })
+})
+
+describe("its output in its own worktree that can't be opened", () => {
+  test("the check writes to /dev/null, the log says why, and the run's log has its end", async () => {
+    const repo = folder("repo")
+    const ran = await checks({
+      repo,
+      full: failsInE2e,
+      worktrees: (live) => ({
+        ...live,
+        openRunFile: (worktree, name, flags, mode) =>
+          worktree === repo
+            ? live.openRunFile(worktree, name, flags, mode)
+            : Effect.fail(new PathRefused({ directory: worktree, path: name })),
+      }),
+    })
+    const [full] = ran.checkRuns
+    if (full === undefined) throw new Error("the full check didn't run")
+    expect(full.outputFile).toBe("/dev/null")
+    expect(full.outputFd).toBeUndefined()
+    const inWorktree = join(full.cwd, runFolder, "check-full.log")
+    const fallback = join(repo, logFile)
+    expect(checked(ran)).toEqual(expect.objectContaining({ outcome: "failed", output: fallback }))
+    expectLog(ran, [
+      `  the full check's whole output can't be kept in ${inWorktree}: "check-full.log" is not a plain path below ${full.cwd}`,
+      new RegExp(
+        `^ {2}the full check's whole output can't be kept in ${join(repo, runFolder, "check-full.log").replaceAll(".", "\\.")}: ${inWorktree.replaceAll(".", "\\.")} can't be read: `,
+      ),
+      /^ {2}FULL_CHECK_FAILED: /,
+    ])
+  })
+})
+
+describe("a full check that could not be run", () => {
+  test("says it could not be run, and why, and files its ticket under its command", async () => {
+    const ran = await checks({
+      full: Effect.fail(
+        new CheckNotRun({ check: "full", command: fullCommand, reason: "sh: not found" }),
+      ),
+    })
+    const result = checked(ran)
+    expect(result).toEqual(
+      expect.objectContaining({ outcome: "failed", suite: fullCommand, end: [] }),
+    )
+    expectLog(ran, [
+      /^ {2}FULL_CHECK_FAILED: 'scripts\/check-full\.sh' could not be run \(sh: not found\) on main at [0-9a-f]{7}, in the suite scripts\/check-full\.sh; /,
+    ])
+    expect(checkFullTickets(ran).map((issue) => issue.title)).toEqual([
+      `Full check fails: ${fullCommand}`,
+    ])
   })
 })
 
