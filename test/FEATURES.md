@@ -254,12 +254,9 @@ below are the coverage report's uncovered lines at 368899e.
 - **Tests**: `run.test.ts`, `print.test.ts`, `log.test.ts`, `report.test.ts`,
   `report-tallies.test.ts`, `report-out-lazy.test.ts`, `plain-report-unstyled.test.ts`,
   `notices.test.ts`, `notifier.test.ts`, `run-notifications.test.ts`, `eventstream.test.ts`,
-  `happening-order.test.ts`, `nothing.test.ts`.
-- **Untested**: the live notifier layer, which runs the platform's notifier on this process's PATH
-  (`src/services/Notifier.ts` 253–270), and the live sources that read the machine: the load from
-  `ps`, `sysctl` and `vm_stat` or `/proc` (`liveLoad`, `src/run/load.ts` 370–411), the clipboard
-  (`liveClipboard`, `src/ui/clipboard.ts` 147) and the URL opener (`liveUrlOpener`,
-  `src/ui/openUrl.ts` 129–137) (tutti-8iz.18).
+  `happening-order.test.ts`, `nothing.test.ts`, `live-layers.test.ts` (unit: the live notifier,
+  load, clipboard and URL opener against fake commands on the test's PATH, and a fake `/proc`).
+- **Untested**: nothing found.
 
 ## Quitting, signals and processes
 
