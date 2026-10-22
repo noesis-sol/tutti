@@ -513,7 +513,7 @@ tutti keeps those rules (tool name and rule content) for the run. A later reques
 
 **MCP elicitations** (an MCP server asking for input or a URL login) come through `onElicitation`. tutti shows them as requests with **Open URL** or the form's fields, or **Decline**. Without the callback, the SDK would decline them silently.
 
-**The time limit.** At 4 minutes the run holds (`BLOCKED`, §4.3). The request stays answerable for the rest of the run. With a dashboard, the run doesn't end while requests are open (D19, §5).
+**The time limit.** At 4 minutes the run holds (`BLOCKED`, §4.3). The request stays answerable for the rest of the run. Once the run's end has stopped the tickets' fibers (§4.8), an answer is refused as one to a request no longer open, `request <id> is no longer open: the run is ending, and its ticket has stopped`, which `tutti answer` reports, exiting non-zero: no fiber would watch the worker it ran on. The request stays open until the worker's session closes, so that the end still counts its ticket waiting on you (tutti-t7z7). With a dashboard, the run doesn't end while requests are open (D19, §5).
 
 **Answering without a dashboard (D20).** Each open request is also written to `.tutti/run/attention/<request-id>.json`.
 

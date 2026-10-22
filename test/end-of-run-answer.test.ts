@@ -1,14 +1,15 @@
 // An answer given in a run's last moments (tutti-5ko): plain, the run ends held while a worker
 // waits on you, and you answer it after the loop's last look, while the end asks git whether a
-// ticket was merged by hand. The run's end interrupts every ticket's fiber before that, so the
-// answer changes nothing of it: no PHASE_BUG line, no merge, the worker suspended waiting on you,
-// and the run's exit code its stop's.
+// ticket was merged by hand. The run's end interrupts every ticket's fiber before that, and refuses
+// the answers to their requests from then on (tutti-t7z7), so the answer changes nothing of it: it
+// fails NotOpen, the worker doesn't run on to commit and close its ticket, no PHASE_BUG line, no
+// merge, the worker suspended waiting on you, and the run's exit code its stop's.
 import { expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Duration, Effect, Fiber } from "effect"
-import { Attention } from "../src/agent/Attention.ts"
+import { Duration, Effect, Exit, Fiber } from "effect"
+import { Attention, NotOpen, runEnding } from "../src/agent/Attention.ts"
 import { type Log, line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
@@ -46,6 +47,7 @@ test("an answer after the last look reaches no ticket fiber and changes nothing 
   const repo = folder("repo")
   const root = folder("worktrees")
   const answered: Array<string> = []
+  const refusals: Array<unknown> = []
   const ran = await scenario(
     {
       config: { repo, settings: { ...appConfig().settings, concurrent: 1 } },
@@ -72,7 +74,13 @@ test("an answer after the last look reaches no ticket fiber and changes nothing 
         const open = (yield* attention.current).find((request) => request.ticket === "a")
         answered.push(open === undefined ? "none open" : open.id)
         if (open === undefined) return
-        yield* Effect.orDie(attention.answer(open.id, { _tag: "Allow" }, "answer_command"))
+        const exit = yield* Effect.exit(
+          attention.answer(open.id, { _tag: "Allow" }, "answer_command"),
+        )
+        if (Exit.isFailure(exit))
+          refusals.push(
+            exit.cause.reasons[0]?._tag === "Fail" ? exit.cause.reasons[0].error : exit.cause,
+          )
         yield* Effect.promise(() => Bun.sleep(50))
       })
       const watchedAttention = Attention.of({
@@ -101,6 +109,12 @@ test("an answer after the last look reaches no ticket fiber and changes nothing 
     }),
   )
   expect(answered).toEqual(["r1"])
+  // The answer is refused, so the worker never runs on unwatched: it neither commits nor closes a.
+  expect(refusals).toHaveLength(1)
+  expect(refusals[0]).toBeInstanceOf(NotOpen)
+  expect((refusals[0] as NotOpen).message).toBe(`request r1 is no longer open: ${runEnding}`)
+  expect(ran.log.filter((text) => text.includes("via tutti answer"))).toEqual([])
+  expect(ran.issues.find((issue) => issue.id === "a")?.status).not.toBe("closed")
   // The ticket's fiber stopped before the answer: it neither settles nor merges the ticket.
   expect(ran.log.filter((text) => /a settled|; merged into main/.test(text))).toEqual([])
   expect(ran.log.filter((text) => text.includes("PHASE_BUG"))).toEqual([])

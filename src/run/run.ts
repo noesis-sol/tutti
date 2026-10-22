@@ -1249,6 +1249,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }
       return open.sort()
     })
+    // Once the tickets' fibers have stopped, an answer to a worker's open request would run it on
+    // with no fiber watching it, until its session closes: every answer is refused from then on,
+    // NotOpen, which `tutti answer` reports.
+    const refuseAnswers = Effect.gen(function* () {
+      const tickets = new Set((yield* ledger.current).tickets.keys())
+      for (const request of yield* attention.current) tickets.add(request.ticket)
+      yield* Effect.forEach(tickets, attention.refuse, { discard: true })
+    })
     const quitNow = (quit: Quitting) =>
       Effect.gen(function* () {
         const workers = yield* openWorkers
@@ -1258,6 +1266,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
         }
         yield* scheduler.interrupt
+        yield* refuseAnswers
         yield* queue.hold
         const unanswered = yield* interruptWorkers(workers)
         if (unanswered.length > 0) yield* logs.write(unansweredLine(unanswered))
@@ -1286,14 +1295,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     if (predictor !== undefined) yield* predictor.interrupt
     // A worker past its ticket limit, or waiting on you, is still at it: every ticket's fiber is
     // stopped now, before anything else of the end, so that an answer through `tutti answer`, which
-    // the loop's end doesn't wait for, can't run a worker on into the end's steps. Quitting stops
-    // them in its own order (quitNow).
+    // the loop's end doesn't wait for, can't run a worker on into the end's steps; the answers are
+    // refused from then on. Quitting stops them in its own order (quitNow).
     const over = (yield* SubscriptionRef.get(holds)).overLimit
     const asking =
       quit === null
         ? new Set((yield* attention.current).map((request) => request.ticket))
         : new Set<string>()
-    if (quit === null) yield* scheduler.interrupt
+    if (quit === null) yield* Effect.andThen(scheduler.interrupt, refuseAnswers)
     yield* showEndOfRun(null)
     if (quit !== null) yield* quitNow(quit)
     yield* mergeStop(yield* queue.state)

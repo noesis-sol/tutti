@@ -3,7 +3,8 @@
 // AttentionRequest in its worker's queue, oldest first, and the callback awaits a Deferred that an
 // answer, from the screen or `tutti answer`, resolves. Answers map to the SDK's results exactly as
 // § 4.5's table says; a request whose signal aborts is removed, and an answer to a request that is
-// no longer open is refused with NotOpen, for the caller's toast.
+// no longer open is refused with NotOpen, for the caller's toast. So is one to a request of a session
+// whose ticket the run's end has stopped (`refuse`): its fiber no longer watches its worker.
 //
 // Allow for this run passes the request's `addRules` suggestions with their destination rewritten
 // to `session`, and keeps their rules for the run: a later request from any worker whose suggested
@@ -136,14 +137,21 @@ export type Answer =
 /** Where an answer came from (§ 10's `via`). */
 export type Via = "screen" | "answer_command"
 
-/** The answer was for a request that is no longer open: answered, or withdrawn by the SDK. */
+/**
+ * The answer was for a request that is no longer open: answered, withdrawn by the SDK, or of a
+ * ticket the run's end has stopped (`why` says so).
+ */
 export class NotOpen extends Schema.TaggedError<NotOpen>()("NotOpen", {
   request: Schema.String,
+  why: Schema.optionalKey(Schema.String),
 }) {
   override get message(): string {
-    return `request ${this.request} is no longer open`
+    return `request ${this.request} is no longer open${this.why === undefined ? "" : `: ${this.why}`}`
   }
 }
+
+/** Why an answer to a request of a ticket the run's end has stopped is refused. */
+export const runEnding = "the run is ending, and its ticket has stopped"
 
 /** The answer doesn't fit the request: an Allow for this run without rules to keep, say. */
 export class DoesNotFit extends Schema.TaggedError<DoesNotFit>()("DoesNotFit", {
@@ -418,6 +426,8 @@ type Outcome = Answer | typeof Cancelled
 interface Open {
   readonly request: AttentionRequest
   readonly done: Deferred.Deferred<Outcome>
+  /** The number of the callback it came through, in the order they were made. */
+  readonly callback: number
 }
 
 export class Attention extends Context.Service<
@@ -446,6 +456,13 @@ export class Attention extends Context.Service<
     ): Effect.Effect<void>
     /** The ticket's requests and answers so far. */
     tally(ticket: string): Effect.Effect<Tally>
+    /**
+     * Refuses every answer from now on to the requests of the ticket's sessions so far, open or yet
+     * to open, with NotOpen: the run's end has stopped its fiber, and an answer would run its worker
+     * on unwatched. Their requests stay open until the session closes, for the end to read. A
+     * session made afterwards, the next run's, is answered as before.
+     */
+    refuse(ticket: string): Effect.Effect<void>
   }
 >()("tutti/agent/Attention") {
   /** The live service: requests wait for a person. */
@@ -494,6 +511,10 @@ export const make = (
     const opened = yield* SubscriptionRef.make<ReadonlyArray<Open>>([])
     const rules = yield* Ref.make<ReadonlySet<string>>(new Set())
     const tallies = yield* Ref.make<ReadonlyMap<string, Tally>>(new Map())
+    // The callbacks made so far, and for each ticket the run's end stopped, how many there were
+    // then: the requests of those callbacks are refused.
+    const made = yield* Ref.make(0)
+    const refusedBelow = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
     // Opening a request and announcing it, answering one and withdrawing one each hold the permit,
     // so a request's answer is never recorded before the request itself.
     const one = yield* Semaphore.make(1)
@@ -674,8 +695,12 @@ export const make = (
 
     const answer = (id: string, given: Answer, via: Via) =>
       Effect.gen(function* () {
-        const found = requests(yield* SubscriptionRef.get(opened)).find((r) => r.id === id)
-        if (found === undefined) return yield* new NotOpen({ request: id })
+        const entry = (yield* SubscriptionRef.get(opened)).find((o) => o.request.id === id)
+        if (entry === undefined) return yield* new NotOpen({ request: id })
+        const found = entry.request
+        if (entry.callback < ((yield* Ref.get(refusedBelow)).get(found.ticket) ?? 0)) {
+          return yield* new NotOpen({ request: id, why: runEnding })
+        }
         if (!fits(found, given)) {
           return yield* new DoesNotFit({ request: id, answer: answerName[given._tag] })
         }
@@ -706,11 +731,11 @@ export const make = (
 
     // Opens the request, answers it by the policy if it has one, and waits for its outcome; an
     // abort withdraws it.
-    const wait = (request: AttentionRequest, signal: AbortSignal) =>
+    const wait = (request: AttentionRequest, callback: number, signal: AbortSignal) =>
       Effect.gen(function* () {
         const done = yield* Deferred.make<Outcome>()
         yield* Effect.andThen(
-          SubscriptionRef.update(opened, (all) => [...all, { request, done }]),
+          SubscriptionRef.update(opened, (all) => [...all, { request, done, callback }]),
           asked(request),
         ).pipe(one.withPermit)
         const policy = options.policy?.(request)
@@ -754,6 +779,7 @@ export const make = (
 
     const canUseTool = (
       ticket: string,
+      callback: number,
       toolName: string,
       input: Record<string, unknown>,
       sdk: Parameters<CanUseTool>[2],
@@ -786,7 +812,7 @@ export const make = (
           yield* logs.write(log.allowedByRule(ticket, describe(request)))
           return permissionResult(request, { _tag: "AllowForRun" })
         }
-        const outcome = yield* wait(request, sdk.signal)
+        const outcome = yield* wait(request, callback, sdk.signal)
         return outcome._tag === "Cancelled" ? withdrawn : permissionResult(request, outcome)
       })
 
@@ -815,6 +841,7 @@ export const make = (
 
     const onElicitation = (
       ticket: string,
+      callback: number,
       sdk: ElicitationRequest,
       signal: AbortSignal,
     ): Effect.Effect<ElicitationResult> =>
@@ -837,23 +864,25 @@ export const make = (
           suppressAlwaysAllowRule: true,
           createdAt: yield* Clock.currentTimeMillis,
         }
-        const outcome = yield* wait(request, signal)
+        const outcome = yield* wait(request, callback, signal)
         return outcome._tag === "Cancelled" ? { action: "cancel" } : elicitationResult(outcome)
       })
 
     return Attention.of({
       request: (ticket) =>
-        Effect.map(
-          Effect.context<never>(),
-          (context) => (toolName, input, sdk) =>
-            Effect.runPromiseWith(context)(canUseTool(ticket, toolName, input, sdk)),
-        ),
+        Effect.gen(function* () {
+          const context = yield* Effect.context<never>()
+          const callback = yield* Ref.getAndUpdate(made, (n) => n + 1)
+          return (toolName, input, sdk) =>
+            Effect.runPromiseWith(context)(canUseTool(ticket, callback, toolName, input, sdk))
+        }),
       elicitation: (ticket) =>
-        Effect.map(
-          Effect.context<never>(),
-          (context) => (request, sdk) =>
-            Effect.runPromiseWith(context)(onElicitation(ticket, request, sdk.signal)),
-        ),
+        Effect.gen(function* () {
+          const context = yield* Effect.context<never>()
+          const callback = yield* Ref.getAndUpdate(made, (n) => n + 1)
+          return (request, sdk) =>
+            Effect.runPromiseWith(context)(onElicitation(ticket, callback, request, sdk.signal))
+        }),
       answer,
       current: Effect.map(SubscriptionRef.get(opened), requests),
       open: Stream.map(SubscriptionRef.changes(opened), requests),
@@ -866,5 +895,11 @@ export const make = (
         ),
       denial,
       tally: (ticket) => Effect.map(Ref.get(tallies), (all) => all.get(ticket) ?? emptyTally),
+      // Under the permit, so that an answer under way is recorded before it, and none after it.
+      refuse: (ticket) =>
+        Effect.gen(function* () {
+          const below = yield* Ref.get(made)
+          yield* Ref.update(refusedBelow, (all) => new Map(all).set(ticket, below))
+        }).pipe(one.withPermit),
     })
   })
