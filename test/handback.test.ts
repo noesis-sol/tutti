@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Fiber, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
+import { handedBackOf, uncheckedKey } from "../src/run/check.ts"
 import { maxHandBacks, type RebaseStop, resolvePrompt } from "../src/run/handback.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
@@ -363,6 +364,12 @@ describe("a resolution rejected", () => {
       {
         before: Effect.gen(function* () {
           tip = yield* (yield* Repository).head("tutti/a")
+        }),
+        // Handed back, the rebase is its worker's: its mark says so, for a run killed meanwhile.
+        during: Effect.gen(function* () {
+          yield* until("a", "Resolving")
+          const metadata = yield* (yield* Store).metadata("a")
+          expect(handedBackOf(metadata[uncheckedKey])).toBe(true)
         }),
         after: (ticket) =>
           Effect.gen(function* () {

@@ -196,6 +196,33 @@ export const markUnchecked = (
     yield* Effect.ignore(store.setMetadata(id, uncheckedKey, { ...unchecked }))
   })
 
+/** The field of the mark saying its rebase's conflicts were handed back to its worker. */
+const handedBackField = "handed_back"
+
+/**
+ * Whether the mark `value` says its rebase's conflicts were handed back to the ticket's worker: a
+ * rebase in progress in its worktree is then its worker's resolution, not one a killed run left.
+ */
+export const handedBackOf = (value: Schema.Json | undefined): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.hasOwn(value, handedBackField) &&
+  (value as Readonly<Record<string, Schema.Json>>)[handedBackField] === true
+
+/**
+ * Notes on the ticket's mark that its rebase's conflicts are handed back to its worker, the rebase
+ * left in progress for it to resolve; the next rebase's mark drops it. Nothing without a mark.
+ */
+export const markHandedBack = (id: string): Effect.Effect<void, never, Store> =>
+  Effect.gen(function* () {
+    const store = yield* Store
+    const metadata = yield* store.metadata(id)
+    const value = Object.hasOwn(metadata, uncheckedKey) ? metadata[uncheckedKey] : undefined
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return
+    yield* Effect.ignore(store.setMetadata(id, uncheckedKey, { ...value, [handedBackField]: true }))
+  })
+
 /** The ticket's mark, if its branch was rebased and hasn't been checked since. */
 export const uncheckedMark = (id: string): Effect.Effect<Unchecked | undefined, never, Store> =>
   Effect.gen(function* () {

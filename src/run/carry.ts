@@ -6,7 +6,8 @@
 //
 // - one whose ticket bd has no trace of, deleted from Beads, is dropped;
 // - one whose worktree is gone is dropped, found before anything resumes it (§ 4.8's Resume limits);
-// - one whose ticket is closed is merged: in line, ToMerge (§ 5.1's Unmerged), or dropped when its
+// - one whose ticket is closed is merged, a rebase its merge left in progress aborted first
+//   (abortLeftRebase): in line, ToMerge (§ 5.1's Unmerged), or dropped when its
 //   branch is on the base already, merged by hand (unmerged.ts's mergedSince), its worktree and
 //   branch removed as after a merge, unless the worktree has uncommitted changes
 //   (handMerged.ts's removeMerged);
@@ -36,14 +37,16 @@
 import { Clock, Effect, FileSystem, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
+import { Git } from "../services/Git.ts"
 import { type PhaseName, type State, Store, type TicketRecord } from "../services/Store.ts"
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
+import { handedBackOf, uncheckedKey, uncheckedOf } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { removeMerged } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
-import { beadsWhy } from "./merge.ts"
+import { beadsWhy, gitWhy } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { readAgainAfter, readTries } from "./schedule.ts"
 import { descendants } from "./scope.ts"
@@ -202,6 +205,28 @@ const savedQuestion = (record: TicketRecord): string | undefined => {
 }
 
 /**
+ * Aborts the rebase of the ticket's branch a merge left in progress in its worktree, its run killed
+ * while git rebased it: one its rebased-and-unchecked mark (check.ts) shows tutti began, not one
+ * whose conflicts were handed back to its worker to resolve. The branch is back as its worker left
+ * it, for this run's merge to rebase again, rather than set aside OFF_BRANCH mid-rebase. git that
+ * can't say or can't abort it leaves it as it is, saying so of an abort that failed.
+ */
+const abortLeftRebase = (id: string, record: TicketRecord, worktree: string, branch: string) =>
+  Effect.gen(function* () {
+    const mark = Object.hasOwn(record.metadata, uncheckedKey)
+      ? record.metadata[uncheckedKey]
+      : undefined
+    if (uncheckedOf(mark) === undefined || handedBackOf(mark)) return undefined
+    const git = yield* Git
+    const rebasing = yield* Effect.result(git.rebaseInProgress(worktree))
+    if (Result.isFailure(rebasing) || !rebasing.success) return undefined
+    const aborted = yield* Effect.result(git.abortRebase(worktree))
+    return Result.isSuccess(aborted)
+      ? line`was left mid-rebase as the last run ended: the rebase is aborted, ${branch} back as its worker left it`
+      : line`was left mid-rebase as the last run ended, and git could not abort it: ${gitWhy(aborted.failure)}`
+  })
+
+/**
  * Takes up the workers the last run left in state.json, as the run starts (see above): what
  * became of each, by ticket.
  */
@@ -317,6 +342,8 @@ export const carryOver = (
       const branch = record.branch ?? branchOf(id)
 
       if (issue.status === "closed") {
+        const undone = yield* abortLeftRebase(id, record, worktree, branch)
+        if (undone !== undefined) yield* logs.write(carriedLine(id, undone))
         const found = yield* mergedSince(issue, { repo: config.repo, base })
         if (found.merged !== undefined) {
           const commit = found.merged

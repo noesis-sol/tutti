@@ -628,6 +628,7 @@ During this, a second signal abandons the merge, as orchestra's does: `<id>'s me
 - a ticket that can't be checked: kept for the next run
 - a ticket merged, closed with no change, deferred, or dropped (`WORKER_GONE`, or by one of the cases above): forgotten in `state.json`. One left for review keeps its record, its phase saved as it is left
 - a run that crashed (`kill -9`, a power cut) suspended nothing. A run that ends saves the phase each of its other tickets left it in, so a record with neither is one a crash left with the ticket still in its run. Once the process `state.json` names is gone, the next run takes up such a ticket as a suspended one, told the last run crashed, when bd has it in progress or closed; one in any other state is forgotten
+- a rebase a killed run's merge left in progress in a closed ticket's worktree, its branch still marked rebased and unchecked: aborted before the ticket waits to merge, the branch back as its worker left it, so its merge rebases it again rather than set it aside `OFF_BRANCH`. A conflict hand-back notes on the mark that the rebase is its worker's, and that one is left as it is. orchestra has no such recovery: tutti departs from it on purpose
 
 **The quit box's `s`** is orchestra's drain: no new tickets, the running ones finish and merge, and the run ends `DRAINED` (exit 0).
 

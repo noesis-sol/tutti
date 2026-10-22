@@ -47,7 +47,7 @@ import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
-import { failedHow, runMergeCheck } from "./check.ts"
+import { failedHow, markHandedBack, runMergeCheck } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { loadEvery } from "./load.ts"
@@ -338,8 +338,9 @@ export const notHandedBack = (
   })
 
 /**
- * Hands `stop`'s conflicts back: the ticket Merging → Resolving, its attempt counted, and the
- * RESOLVING line. False when the ledger refused (PHASE_BUG): the rebase is then aborted.
+ * Hands `stop`'s conflicts back: the ticket Merging → Resolving, its attempt counted, its
+ * rebased-and-unchecked mark noting the hand-back (check.ts), and the RESOLVING line. False when
+ * the ledger refused (PHASE_BUG): the rebase is then aborted.
  */
 export const handOver = (
   stop: RebaseStop,
@@ -354,6 +355,8 @@ export const handOver = (
     const events = yield* EventStream
     const { id } = stop.ticket
     const attempt = (yield* handBacks.count(id)) + 1
+    // The rebase left in progress is its worker's now: a run killed meanwhile doesn't abort it.
+    yield* markHandedBack(id)
     const moved = yield* ledger.transition(id, Cause.ConflictsHandedBack({ attempt }))
     if (Result.isFailure(moved)) {
       yield* abandonRebase(stop.ticket.worktree)
