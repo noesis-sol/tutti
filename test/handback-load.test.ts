@@ -23,6 +23,7 @@ import {
   type SessionScript,
   type Step,
   sessionState,
+  sleep,
   run as step,
   turn,
   wait,
@@ -150,8 +151,8 @@ const untilOnMain = (world: World, files: Files) =>
 
 /**
  * a and b conflicting in shared.txt: b's rebase onto a's merge stops, and is handed back to b's
- * worker, which works on it until tutti stops it. a does `then` once b is claimed; c, when there is
- * one, works on a file of its own.
+ * worker, which works on it until tutti stops it. a does `then` once b is claimed; c and d, when
+ * there are, work on a file of their own, c for 30 minutes.
  */
 const conflicting = (world: World, places: Places, then: Effect.Effect<void>): Scripts => ({
   a: [
@@ -160,7 +161,8 @@ const conflicting = (world: World, places: Places, then: Effect.Effect<void>): S
       step(then),
     ]),
   ],
-  c: [works(world, places, "c", { "c.txt": "c\n" })],
+  c: [works(world, places, "c", { "c.txt": "c\n" }, [sleep("30 minutes")])],
+  d: [works(world, places, "d", { "d.txt": "d\n" })],
   b: [
     [
       ...works(world, places, "b", { "shared.txt": "b\n" }, [
@@ -196,8 +198,10 @@ interface Machine {
     readonly cap: number
     readonly onceBClaimed: Effect.Effect<void>
   }
-  /** The tickets: a and b, and c after them. */
+  /** The tickets: a and b, and c and d after them. */
   readonly tickets?: ReadonlyArray<string>
+  /** The run's slots: 2 unless said. */
+  readonly concurrent?: number
 }
 
 /**
@@ -218,7 +222,7 @@ const runsOn = (
         ...(runs === undefined ? {} : { runs: runs.dir, machineWorkers: runs.cap }),
         settings: {
           ...defaults,
-          concurrent: 2,
+          concurrent: machine.concurrent ?? 2,
           checks: { ...defaults.checks, fast: { ...defaults.checks.fast, command: check } },
         },
       },
@@ -347,15 +351,18 @@ describe("a hand-back on a loaded machine", () => {
   })
 
   test("is given the time the run holds at --machine-workers, with plain output", async () => {
-    // A cap of 3, the other run with 1 worker: a and b start. Once b is claimed, the other run has
-    // 2, so that once a merges, c waits for the cap (HOLD: MACHINE) all through b's hand-back.
+    // A cap of 3, three slots, the other run with no worker: a, b and c start. Once b is claimed,
+    // the other run has 2, so that d waits for the cap (HOLD: MACHINE) all through b's hand-back:
+    // b's ticket, handed back, takes no slot (schedule.ts's slotsTaken), but c, working for 30
+    // minutes, does.
     const dir = folder("runs")
-    writeFileSync(join(dir, "run-4242-1.json"), other(1))
+    writeFileSync(join(dir, "run-4242-1.json"), other(0))
     let stoppedAt20 = true
     let stoppedAt39 = true
     const ran = await runsOn(
       {
-        tickets: ["a", "b", "c"],
+        tickets: ["a", "b", "c", "d"],
+        concurrent: 3,
         runs: {
           dir,
           cap: 3,
@@ -375,7 +382,7 @@ describe("a hand-back on a loaded machine", () => {
     expect(stoppedAt20).toBe(false)
     expect(stoppedAt39).toBe(false)
     expectClean(ran)
-    expectPhases(ran, { a: "Done", b: "Blocked", c: "Done" })
+    expectPhases(ran, { a: "Done", b: "Blocked", c: "Done", d: "Done" })
     expectLog(ran, [
       resolvingLine,
       "  b's worker was stopped and told its hand-back is over",

@@ -251,6 +251,11 @@ export interface Scheduler {
   /** The tickets holding a slot now. */
   readonly running: Effect.Effect<ReadonlySet<string>>
   /**
+   * The slots taken now, as the scheduler counts them (slotsTaken): the running tickets', and one
+   * for each ticket past its work beyond `concurrent`. The machine's cap counts these.
+   */
+  readonly slots: Effect.Effect<number>
+  /**
    * Interrupts every ticket's fiber, freeing its slot: for a run that ends while its workers wait,
    * as for the usage limit's reset (§ 4.12).
    */
@@ -380,9 +385,13 @@ const prune = (s: Slots, state: State): Slots => {
   }
 }
 
+/** The slots taken, the running tickets and those past their work as `state` has them. */
+const taken = (s: Slots, state: State, concurrent: number): number =>
+  slotsTaken(s.running.size, mergingIn(state, s.running).length, concurrent)
+
 /** Whether a slot is free, the running tickets and those past their work as `state` has them. */
 const slotFree = (s: Slots, state: State, concurrent: number): boolean =>
-  slotsTaken(s.running.size, mergingIn(state, s.running).length, concurrent) < concurrent
+  taken(s, state, concurrent) < concurrent
 
 /** The scheduler over the run's Beads, Ledger (which writes the records), Log and RunFibers. */
 export const make = (
@@ -936,6 +945,9 @@ export const make = (
         ),
       started: Effect.map(Ref.get(slots), (s) => s.started),
       running: Effect.map(Ref.get(slots), (s) => s.running),
+      slots: Effect.map(Effect.all([Ref.get(slots), ledger.current]), ([s, state]) =>
+        taken(s, state, options.concurrent),
+      ),
       interrupt: FiberSet.clear(tickets),
       limitReached: Effect.map(Ref.get(slots), (s) => reached(s.started, options.limit)),
       recordQueue: Effect.gen(function* () {

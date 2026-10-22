@@ -613,12 +613,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     })
     // The other runs' workers, as each look reads them: a worker's share of the cores counts them.
     const otherWorkers = yield* OtherWorkers
-    // The run's workers the others count: its tickets running, those merging and checked included.
-    const ownWorkers = Effect.map(
-      ledger.current,
-      (state) =>
-        [...state.tickets.values()].filter((entry) => running.has(entry.phase._tag)).length,
-    )
+    // The run's workers the others count, and the cap: the slots the scheduler, made after the
+    // cap's hold it asks, counts taken (slotsTaken). Tickets merging or waiting to merge take none
+    // up to concurrent of them, so they hold the run at no cap; none is taken before it is made.
+    const schedulerSlots = yield* Ref.make<Effect.Effect<number>>(Effect.succeed(0))
+    const ownWorkers = Effect.flatten(Ref.get(schedulerSlots))
     // The scheduler's queue record, once it is made: the hold's start and end each write one.
     const queueRecord = yield* Ref.make<Effect.Effect<void>>(Effect.void)
     const atCap = Effect.gen(function* () {
@@ -716,6 +715,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     })
     yield* Ref.set(slots, scheduler.recheckSlot)
     yield* Ref.set(queueRecord, scheduler.recordQueue)
+    yield* Ref.set(schedulerSlots, scheduler.slots)
 
     // The project's requirements, checked before the first dispatch and before any worker is
     // carried over (requires.ts): what is still missing stops the run, REQUIREMENTS_MISSING, exit 2,

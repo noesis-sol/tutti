@@ -272,7 +272,7 @@ as it ends. Meanwhile the dashboard's title line says `· shared with 1 run`, co
 going as the run last read them.
 
 `--machine-workers N` (or `TUTTI_MACHINE_WORKERS`, else orchestra's `ORCHESTRA_MACHINE_WORKERS`)
-caps the workers across the machine's runs, this one's included, merges and checks counted: by
+caps the workers across the machine's runs, this one's included: by
 default at half the machine's cores, at least 2 (5 on 10 cores), as workers mostly wait on the model
 but their checks are CPU-heavy, and runs slowed sharply past about 4 checks at once on 10 cores; `0`
 for no cap. As the cap is about the machine rather than a project, set it in your shell's profile,
@@ -286,6 +286,9 @@ at the cap of 4 (--machine-workers); the next ticket starts once one of them fin
 while it holds, so the slot is filled within seconds of a worker finishing. A run with none of its
 own workers running never waits. A registration whose run is gone (its process ended, or its PID
 taken by a process started since, after a reboot or a run killed) counts nothing and is removed.
+A run's workers, for the cap and for the other runs, are the slots it has taken: its tickets
+working and its checks run once more, and a ticket waiting to merge or merging only beyond
+`concurrent` of them, as such tickets take no slot up to that many.
 
 The other runs' workers count in each worker's share of the cores (`TUTTI_CORES`, see
 [the worker prompt](workers.md)): the cores divided among this run's `concurrent` workers and theirs,
