@@ -9,7 +9,10 @@
 // Each session's first system/init is checked (§ 4.1): the permission mode in effect, logged once
 // and kept for the START block when it isn't the one asked for; the MCP servers, where any the
 // worker wasn't given ends it as a setup problem (§ 4.6); and the API key source, where a key
-// billed beside the subscription login ends it likewise (§ 4.13).
+// billed beside the subscription login ends it likewise (§ 4.13). Those fields are decoded with a
+// Schema, not trusted to the SDK's types: a first system/init from a CLI of another version without
+// readable MCP servers ends the worker as a setup problem (checkInit), since tutti can't tell what
+// it got; one without the permission mode or the API key source skips that check, logged once.
 //
 // A session lives in a scope of its own, inside the layer's: closing it, on purpose (close, end),
 // because the session went (Gone), or with the layer's scope, ends the prompt, closes the query
@@ -55,6 +58,8 @@ import {
   Option,
   Queue,
   Ref,
+  Result,
+  Schema,
   Scope,
   Stream,
 } from "effect"
@@ -131,6 +136,19 @@ export const queuedControls = (query: Query): QueuedControls => query as unknown
 
 /** The API key source system/init gives a session billed to the subscription login. */
 const noKey = "none"
+
+// The fields checkFirst reads of a session's first system/init beside its MCP servers (checkInit),
+// each decoded on its own, so that one missing skips only its own check.
+const decodePermissionMode = Schema.decodeUnknownResult(
+  Schema.Struct({ permissionMode: Schema.String }),
+)
+const decodeApiKeySource = Schema.decodeUnknownResult(
+  Schema.Struct({ apiKeySource: Schema.String }),
+)
+
+/** The log line when the first system/init lacks `field`, so tutti doesn't check `what`. */
+export const uncheckedLine = (field: string, what: string): string =>
+  `system/init gives no ${field} tutti can read, so it doesn't check ${what}`
 
 /** The problem when a worker would bill an API key while billing is the subscription login. */
 export const apiKeyProblem = (source: string): string =>
@@ -340,6 +358,8 @@ export const layer = (
         config.settings.requires.map((r) => r.name),
       )
       const findings = yield* Ref.make<SetupFindings>(noFindings)
+      // The fields of the first system/init whose check was skipped, logged once each (unchecked).
+      const uncheckedFields = yield* Ref.make<ReadonlySet<string>>(new Set())
       const sessions = new Map<string, Lifecycle>()
       const interruptWithin = options.interruptLimit ?? interruptLimit
 
@@ -404,25 +424,30 @@ export const layer = (
           yield* gone(session, problem)
         })
 
+      /** Logs, once in the run, that the first system/init lacks `field`, so `what` isn't checked. */
+      const unchecked = (field: string, what: string) =>
+        Effect.gen(function* () {
+          const first = yield* Ref.modify(uncheckedFields, (fields) =>
+            fields.has(field) ? [false, fields] : [true, new Set([...fields, field])],
+          )
+          if (first) yield* log.write(line`${uncheckedLine(field, what)}`)
+        })
+
       /** Checks the session's first system/init (§ 4.1): the setup problem it shows, if any. */
       const checkFirst = (session: Live, init: SDKSystemMessage) =>
         Effect.gen(function* () {
-          if (init.permissionMode !== requestedMode) {
+          const mode = decodePermissionMode(init)
+          if (Result.isFailure(mode)) {
+            yield* unchecked("permissionMode", `the permission mode in effect is ${requestedMode}`)
+          } else if (mode.success.permissionMode !== requestedMode) {
+            const inEffect = mode.success.permissionMode
             const first = yield* Ref.modify(findings, (found) =>
               found.permissionMode === null
-                ? [
-                    true,
-                    {
-                      ...found,
-                      permissionMode: { requested: requestedMode, inEffect: init.permissionMode },
-                    },
-                  ]
+                ? [true, { ...found, permissionMode: { requested: requestedMode, inEffect } }]
                 : [false, found],
             )
             if (first) {
-              yield* log.write(
-                line`${permissionModeLine({ requested: requestedMode, inEffect: init.permissionMode })}`,
-              )
+              yield* log.write(line`${permissionModeLine({ requested: requestedMode, inEffect })}`)
             }
           }
           const mcp = yield* Effect.exit(checkInit(init, session.servers))
@@ -432,8 +457,17 @@ export const layer = (
             )
             return problems.join("; ")
           }
-          if (billedKey(options.account.billing, init.apiKeySource)) {
-            return apiKeyProblem(init.apiKeySource)
+          if (options.account.billing._tag !== "Subscription") return undefined
+          const key = decodeApiKeySource(init)
+          if (Result.isFailure(key)) {
+            yield* unchecked(
+              "apiKeySource",
+              "that workers bill the subscription login, not an API key",
+            )
+            return undefined
+          }
+          if (billedKey(options.account.billing, key.success.apiKeySource)) {
+            return apiKeyProblem(key.success.apiKeySource)
           }
           return undefined
         })

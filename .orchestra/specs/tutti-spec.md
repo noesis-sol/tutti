@@ -310,6 +310,8 @@ It leaves out the variables that aren't the user's but belong to where tutti was
 - **The MCP servers loaded.** These must be exactly the chosen names, each with source `dynamic` (a definition passed in `mcpServers`) or `sdk` (an in-process server), as §4.6 says. Names and sources are compared, not statuses. Any other server stops that worker and is a setup problem.
 - **The API key source** (§4.13).
 
+tutti decodes these fields with a Schema rather than trusting the SDK's types, since a CLI of another version may send a first `system/init` without one. Without `mcp_servers` it can't tell which servers the worker got, so the worker ends before it does anything, as a setup problem: `Claude Code's system/init doesn't list workers' MCP servers in a shape tutti reads (mcp_servers), so it can't check they got only the ones they were given`. Without `permissionMode` or `apiKeySource`, that check alone is skipped, and the log says so once in the run: `system/init gives no <field> tutti can read, so it doesn't check <what>`.
+
 **Messages.**
 
 - **The standing rules** (the worker prompt, §4.11) go in `systemPrompt.append` and hold only what doesn't change during a ticket's life. With `snapshot: true` (the default), Claude Code records the system prompt with the session, and on resume "a different `append` … is ignored until compaction". Recording is still rolling out across accounts, so tutti must behave correctly with or without it.

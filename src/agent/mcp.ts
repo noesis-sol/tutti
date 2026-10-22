@@ -8,7 +8,9 @@
 // checkInit checks a session's first system/init: with strictMcpConfig, it lists exactly the chosen
 // servers. A passed definition shows source "dynamic" there, not the scope it was resolved from
 // (docs/spikes/03-sdk-mcp-subagents.md), and an in-process server "sdk"; both are accepted, and so
-// is the scope, as § 4.1 has it.
+// is the scope, as § 4.1 has it. Its mcp_servers are decoded with a Schema, not trusted to the
+// SDK's types: a CLI of another version may send none, and a session whose servers tutti can't read
+// is a setup problem, as one with a server it wasn't given is.
 //
 // Claude in Chrome, claude-in-chrome, is built into Claude Code rather than defined in a config
 // file: choosing it gives sessions --chrome, and leaving it out --no-chrome (chromeArgs), as
@@ -17,8 +19,8 @@
 // orchestra does, once the user's .claude.json records it set up (chromeSetUp).
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
-import type { McpServerConfig, SDKSystemMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Config, Effect, FileSystem, Option } from "effect"
+import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
+import { Config, Effect, FileSystem, Option, Result, Schema } from "effect"
 import { SetupProblem } from "../cli/AppConfig.ts"
 
 /** The config scopes a name is resolved from, in Claude Code's order. */
@@ -313,21 +315,38 @@ export const notGivenProblem = (names: ReadonlyArray<string>): string =>
 export const missingProblem = (names: ReadonlyArray<string>): string =>
   `workers didn't get MCP servers they were given: ${names.map((name) => JSON.stringify(name)).join(", ")}`
 
+/** The problem when a session's system/init lists its MCP servers in no shape tutti can read. */
+export const unlistedProblem =
+  "Claude Code's system/init doesn't list workers' MCP servers in a shape tutti reads (mcp_servers), so it can't check they got only the ones they were given"
+
+// The fields checkInit reads of system/init: each server's name, and its source where it has one.
+const InitServers = Schema.Struct({
+  mcp_servers: Schema.Array(
+    Schema.Struct({ name: Schema.String, source: Schema.optional(Schema.String) }),
+  ),
+})
+
+const decodeInitServers = Schema.decodeUnknownResult(InitServers)
+
 /**
  * Checks a session's first system/init: its mcp_servers must be exactly the chosen servers, each
  * with source sdk, dynamic or the scope it was resolved from. Statuses aren't compared: a server
  * can still be pending. A server listed but not chosen, or chosen but listed with another source,
  * is one workers weren't given; a chosen server not listed is missing. Either is a setup problem.
  * Chrome, when chosen, may be listed with source dynamic, and needn't be: --chrome on a machine
- * where it isn't set up gives none.
+ * where it isn't set up gives none. A system/init without mcp_servers, or with a server without a
+ * name, is a setup problem too: tutti can't tell what workers got.
  */
 export const checkInit = (
-  init: Pick<SDKSystemMessage, "mcp_servers">,
+  init: unknown,
   chosen: ChosenServers,
 ): Effect.Effect<void, SetupProblem> => {
+  const read = decodeInitServers(init)
+  if (Result.isFailure(read)) return Effect.fail(new SetupProblem({ problems: [unlistedProblem] }))
+  const servers = read.success.mcp_servers
   const scopes = new Map(chosen.servers.map((server) => [server.name, server.scope]))
-  const listed = new Set(init.mcp_servers.map((server) => server.name))
-  const notGiven = init.mcp_servers
+  const listed = new Set(servers.map((server) => server.name))
+  const notGiven = servers
     .filter((server) => {
       const scope = scopes.get(server.name)
       const source = server.source
