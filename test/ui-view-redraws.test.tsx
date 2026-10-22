@@ -5,14 +5,14 @@ import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
-import { WorkerState as WS } from "../src/agent/WorkerState.ts"
+import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
   editOf,
   emptyTranscript,
@@ -20,7 +20,14 @@ import {
   type TranscriptState,
   windowOf,
 } from "../src/ui/transcriptItems.ts"
-import { external, type Settable, spinnerFrames, spinnerTick } from "../src/ui/useRunView.ts"
+import { usePanel, useSelection, useTranscriptWindow } from "../src/ui/transcriptView.ts"
+import {
+  external,
+  type Settable,
+  type ShellValue,
+  spinnerTick,
+  useRunView,
+} from "../src/ui/useRunView.ts"
 import { withRender } from "./render.ts"
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
@@ -58,35 +65,40 @@ const items: ReadonlyArray<Item> = [
   message,
 }))
 
-/** Worker 1 at work on t-1, so that its view's head spins. */
-const working: RunView = project({
-  ledger: {
-    tickets: new Map([
-      [
-        "t-1",
-        {
-          ticket: "t-1",
-          title: "Title of t-1",
-          phase: TicketPhase.Working({ activity: "working" }),
-          since: began,
-          worker: 1,
-          row: 0,
-          rechecking: false,
-          steered: false,
-          lastMessage: null,
-          tallies: emptyTallies,
-        },
-      ],
-    ]),
-    rows: 1,
-    windDown: null,
-    bugs: [],
-  },
-  workers: new Map([["t-1", WS.Working({ doing: "editing" })]]),
-  requests: [],
-  status: { ...emptyStatus, version: "0.1.0", branch: "batch", began, concurrency: 1 },
-  actions: new Map(),
-})
+/** Worker 1 on t-1 in `state`. */
+const viewOf = (state: WorkerState): RunView =>
+  project({
+    ledger: {
+      tickets: new Map([
+        [
+          "t-1",
+          {
+            ticket: "t-1",
+            title: "Title of t-1",
+            phase: TicketPhase.Working({ activity: "working" }),
+            since: began,
+            worker: 1,
+            row: 0,
+            rechecking: false,
+            steered: false,
+            lastMessage: null,
+            tallies: emptyTallies,
+          },
+        ],
+      ]),
+      rows: 1,
+      windDown: null,
+      bugs: [],
+    },
+    workers: new Map([["t-1", state]]),
+    requests: [],
+    status: { ...emptyStatus, version: "0.1.0", branch: "batch", began, concurrency: 1 },
+    actions: new Map(),
+  })
+
+/** Worker 1 at work, so that its view's head spins, and after a turn, its head still. */
+const working = viewOf(WS.Working({ doing: "editing" }))
+const idle = viewOf(WS.Idle({ at: began }))
 
 /** The run view, counting its reads: the worker view reads it each time it is drawn. */
 const counted = (view: RunView) => {
@@ -102,10 +114,27 @@ const counted = (view: RunView) => {
   return { view: counting, reads: () => reads }
 }
 
-describe("the worker view while its worker works", () => {
-  test("the head's spinner turns, and the view under it isn't drawn anew each turn", async () => {
-    const { view, reads } = counted(working)
-    const feed = {
+/**
+ * The shell over `view` and worker 1's transcript `items`, its clock a spinner's frame on at each
+ * read while it `turns`, counting those reads, and still otherwise.
+ */
+const shellOf = (view: Settable<RunView>, clock = { turns: false, reads: 0 }): ShellValue => {
+  let at = began
+  return {
+    view,
+    screen: external<Screen>(Screen.Worker({ ticket: "t-1" })),
+    commands: Effect.runSync(makeCommands),
+    appearance: external<Appearance>("dark"),
+    themeOf: (appearance) =>
+      makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false }),
+    now: () => {
+      if (clock.turns) {
+        clock.reads++
+        at += spinnerTick
+      }
+      return at
+    },
+    transcripts: {
       open: (): OpenTranscript => ({
         state: external<TranscriptState>({ ...emptyTranscript, window: windowOf(items) }),
         older: () => {},
@@ -113,38 +142,72 @@ describe("the worker view while its worker works", () => {
         follow: () => {},
         close: () => {},
       }),
-    }
-    // The shell's clock moves a spinner's frame each time it is read.
-    let at = began
-    const now = () => (at += spinnerTick)
+    },
+  }
+}
+
+const actEnvironment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+
+describe("the worker view while its worker works", () => {
+  test("the head's spinner turns, and the view under it isn't drawn anew each turn", async () => {
+    const { view, reads } = counted(idle)
+    const clock = { turns: false, reads: 0 }
     await withRender(
-      <Root
-        value={{
-          view,
-          screen: external(Screen.Worker({ ticket: "t-1" })),
-          commands: Effect.runSync(makeCommands),
-          appearance: external("dark" as const),
-          themeOf: (appearance) =>
-            makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false }),
-          now,
-          transcripts: feed,
-        }}
-      />,
+      <Root value={shellOf(view, clock)} />,
       { width: 80, height: 20 },
       async (rendered) => {
-        const first = await rendered.capture()
-        expect(first.chars).toContain("+2 −1")
-        const head = () => (first.chars.split("\n")[0] ?? "").trim()
-        expect(spinnerFrames.some((frame) => head().includes(frame))).toBe(true)
+        expect((await rendered.capture()).chars).toContain("• t-1")
+        await rendered.input(() => view.set(working))
         const before = reads()
-        // Inside act(), so that each turn is drawn.
-        await rendered.input(() => Bun.sleep(spinnerTick * 10))
-        const later = await rendered.capture()
-        const turned = (later.chars.split("\n")[0] ?? "").trim()
-        // The spinner turned some ten times; the view read the run view only as often as the
-        // rest of the screen does.
-        expect(turned).not.toBe(head())
-        expect(reads() - before).toBeLessThan(5)
+        // Ten turns outside act(), as the terminal draws them: act() would draw them once.
+        actEnvironment.IS_REACT_ACT_ENVIRONMENT = false
+        clock.turns = true
+        try {
+          await Bun.sleep(spinnerTick * 10)
+        } finally {
+          clock.turns = false
+          actEnvironment.IS_REACT_ACT_ENVIRONMENT = true
+        }
+        // The spinner turned, reading the clock at each turn; the view, drawn at each turn, would
+        // have read the run view as often.
+        expect(clock.reads).toBeGreaterThan(3)
+        expect(reads() - before).toBeLessThan(3)
+        await rendered.input(() => view.set(idle))
+        expect((await rendered.capture()).chars).toContain("+2 −1")
+      },
+    )
+  })
+})
+
+describe("a click on an entry", () => {
+  test("is the same function from one drawing to the next, and selects and expands as it did", async () => {
+    const view = external(working)
+    const clicks: Array<(key: string) => void> = []
+    const drawn: Array<{ readonly selected: string | null; readonly open: boolean }> = []
+    const Probe = () => {
+      const card = useRunView().cards.find((each) => each.ticket === "t-1")
+      const transcript = useTranscriptWindow("t-1", true)
+      const selection = useSelection(transcript, usePanel(card))
+      clicks.push(selection.click)
+      drawn.push({ selected: selection.selected, open: transcript.expanded.has("e-1") })
+      return null
+    }
+    await withRender(
+      <Root value={shellOf(view)}>
+        <Probe />
+      </Root>,
+      { width: 80, height: 20 },
+      async (rendered) => {
+        await rendered.input(() => {
+          // A new run view: the view is drawn anew with the same entries.
+          view.set({ ...working, cards: [...working.cards] })
+        })
+        await rendered.input(() => clicks.at(-1)?.("e-1"))
+        await rendered.input(() => clicks.at(-1)?.("e-1"))
+        expect(new Set(clicks).size).toBe(1)
+        expect(clicks.length).toBeGreaterThan(3)
+        expect(drawn.at(-2)).toEqual({ selected: "e-1", open: true })
+        expect(drawn.at(-1)).toEqual({ selected: "e-1", open: false })
       },
     )
   })
