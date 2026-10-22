@@ -164,6 +164,18 @@ const within = (path: string, dir: string): boolean => {
  * nothing itself, so each layer's precedence can be tested on its own.
  */
 export const resolve = (sources: Sources): Result.Result<AppConfigValue, ReadonlyArray<string>> => {
+  const { value, problems } = resolveAll(sources)
+  return problems.length === 0 ? Result.succeed(value) : Result.fail(problems)
+}
+
+/**
+ * The configuration `resolve` gives, beside every problem with its sources: where a source has
+ * one, the next in the order stands in for it. A command that only reads part of the
+ * configuration (tutti login, tutti colours) runs on it.
+ */
+export const resolveAll = (
+  sources: Sources,
+): { readonly value: AppConfigValue; readonly problems: ReadonlyArray<string> } => {
   const { repo, flags, env, user, settings } = sources
   const problems: Array<string> = []
 
@@ -322,7 +334,7 @@ export const resolve = (sources: Sources): Result.Result<AppConfigValue, Readonl
     appearance,
     noColor: Option.isSome(variable(noColorVariable)),
   }
-  return problems.length === 0 ? Result.succeed(value) : Result.fail(problems)
+  return { value, problems }
 }
 
 /** A config file's value, or its defaults beside its problems. */
@@ -374,22 +386,49 @@ const readVariables = Effect.gen(function* () {
  */
 export const load = (flags: RunFlags, repo: string) =>
   Effect.gen(function* () {
-    const fileProblems: Array<string> = []
+    const read = yield* loadLenient(flags, repo)
+    const problems = [...read.problems, ...read.userProblems, ...read.settingsProblems]
+    if (problems.length === 0) return yield* withScheme(read.value)
+    return yield* new SetupProblem({ problems })
+  })
+
+/**
+ * The configuration `load` reads, without failing, beside its problems: the flags' and variables'
+ * (`problems`), the user config's (`userProblems`) and the settings' (`settingsProblems`), a
+ * file with problems giving its defaults. With `only`, it reads only those variables, as though
+ * the others were unset. It leaves the colour scheme orchestra; `withScheme` loads it.
+ */
+export const loadLenient = (flags: RunFlags, repo: string, only?: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const userProblems: Array<string> = []
+    const settingsProblems: Array<string> = []
     const variables = yield* readVariables
-    const user = orDefaults(yield* Effect.exit(readUserConfig), defaultUserConfig, fileProblems)
+    const user = orDefaults(yield* Effect.exit(readUserConfig), defaultUserConfig, userProblems)
     const settings = orDefaults(
       yield* Effect.exit(readSettings(repo)),
       defaultSettings,
-      fileProblems,
+      settingsProblems,
     )
-    const resolved = resolve({ repo, flags, env: (name) => variables.get(name), user, settings })
-    const problems = [...(Result.isFailure(resolved) ? resolved.failure : []), ...fileProblems]
-    if (Result.isSuccess(resolved) && problems.length === 0) {
-      const folders = yield* schemeFolders(repo)
-      const scheme = yield* loadScheme(resolved.success.colourScheme, folders)
-      return { ...resolved.success, scheme }
+    const env = (name: string) =>
+      only === undefined || only.includes(name) ? variables.get(name) : undefined
+    const { value, problems } = resolveAll({ repo, flags, env, user, settings })
+    return {
+      value,
+      problems,
+      userProblems: userProblems as ReadonlyArray<string>,
+      settingsProblems: settingsProblems as ReadonlyArray<string>,
     }
-    return yield* new SetupProblem({ problems })
+  })
+
+/**
+ * `config` with its colour scheme loaded, which never fails: one that can't be used gives
+ * orchestra and says why.
+ */
+export const withScheme = (config: AppConfigValue) =>
+  Effect.gen(function* () {
+    const folders = yield* schemeFolders(config.repo)
+    const scheme = yield* loadScheme(config.colourScheme, folders)
+    return { ...config, scheme }
   })
 
 /** The live layer: the configuration of the run `flags` start in the project at `repo`. */

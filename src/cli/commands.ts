@@ -50,7 +50,7 @@ import {
 } from "../ui/theme.ts"
 import { releaseKeys } from "../update/keys.ts"
 import { type Build, githubReleases, update } from "../update/update.ts"
-import { AppConfig, layer as appConfigLayer, load, SetupProblem } from "./AppConfig.ts"
+import { AppConfig, load, loadLenient, SetupProblem, withScheme } from "./AppConfig.ts"
 import { colours } from "./colours.ts"
 import {
   cliFlags,
@@ -223,6 +223,9 @@ export const planCommand = <E extends { readonly message: string } | string, R, 
     ),
   )
 
+/** The variables tutti login reads: the rest of the configuration is left at its defaults. */
+const loginVariables = [runFlags.claude.variable, runFlags.billing.variable]
+
 /**
  * `tutti login`, its probe run in the main checkout `repo` finds, or in the folder it was started
  * in outside a repository: the login is the user's, not the project's.
@@ -240,10 +243,19 @@ export const loginCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
     (given) =>
       Effect.gen(function* () {
         const top = yield* Effect.orElseSucceed(repo, () => process.cwd())
-        yield* login(runInTerminal, Account.layer, (claude) =>
-          resolveClaude(claude, process.cwd()),
-        ).pipe(
-          Effect.provide(appConfigLayer({ ...noFlags, claude: given.claude }, top)),
+        // The login reads --claude (TUTTI_CLAUDE) and the billing: no other variable, and the
+        // settings' problems only leave their defaults, so a project's setup never stops it.
+        const read = yield* loadLenient({ ...noFlags, claude: given.claude }, top, loginVariables)
+        for (const problem of read.userProblems) yield* Console.error(`tutti login: ${problem}`)
+        const configured =
+          read.problems.length === 0
+            ? Effect.void
+            : Effect.fail(new SetupProblem({ problems: read.problems }))
+        yield* configured.pipe(
+          Effect.andThen(
+            login(runInTerminal, Account.layer, (claude) => resolveClaude(claude, process.cwd())),
+          ),
+          Effect.provideService(AppConfig, read.value),
           Effect.catch((error) =>
             Effect.andThen(
               Effect.forEach(error.message.split("\n"), (problem) =>
@@ -276,19 +288,25 @@ export const coloursCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
     (given) =>
       Effect.gen(function* () {
         const top = yield* Effect.orElseSucceed(repo, () => process.cwd())
-        yield* colours.pipe(
-          Effect.provide(appConfigLayer({ ...noFlags, colourScheme: given.name }, top)),
+        // The setup's problems don't stop the preview: what has one gives the next in § 7.11's
+        // order, and they are said with the scheme's own.
+        const read = yield* loadLenient({ ...noFlags, colourScheme: given.name }, top)
+        const config = yield* withScheme(read.value)
+        const unusable = yield* colours.pipe(
+          Effect.provideService(AppConfig, config),
           Effect.provide(Tty.layer),
-          Effect.catch((error) =>
-            Effect.andThen(
-              Effect.forEach(
-                (typeof error === "string" ? error : error.message).split("\n"),
-                (problem) => Console.error(`tutti colours: ${problem}`),
-              ),
-              Effect.fail(new CommandFailed({ command: "colours" })),
-            ),
-          ),
+          Effect.match({ onSuccess: () => [], onFailure: (error) => error.split("\n") }),
         )
+        const problems = [
+          ...read.problems,
+          ...read.userProblems,
+          ...read.settingsProblems,
+          ...unusable,
+        ]
+        if (problems.length > 0) {
+          yield* Effect.forEach(problems, (problem) => Console.error(`tutti colours: ${problem}`))
+          return yield* new CommandFailed({ command: "colours" })
+        }
       }),
   ).pipe(
     Command.withDescription(
