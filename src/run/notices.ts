@@ -9,7 +9,7 @@ import { Clock, Duration, Effect, Layer } from "effect"
 import { Notifier } from "../services/Notifier.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
-import type { PhaseTag } from "./phase.ts"
+import { counting, type PhaseTag } from "./phase.ts"
 
 /** How many characters of a title or reason a notice gives, cut with `…`: the log has the rest. */
 export const noticeWidth = 60
@@ -36,22 +36,22 @@ export const about = (what: string, over: string | undefined): string => {
 const closedCount = (n: number): string =>
   n === 0 ? "no tickets closed" : n === 1 ? "1 ticket closed" : `${n} tickets closed`
 
-/** The phases a ticket is set aside in as the run ends, as orchestra counts it: Blocked too. */
-const asideAtEnd: ReadonlySet<PhaseTag> = new Set(["Deferred", "Review", "Blocked"])
-
 /**
  * The notice of a run that finished by itself, from its tickets' phases as it ends: `Finished the
- * run · 12 tickets closed · 2 set aside`, counting the tickets still set aside, those blocked from
- * merging among them; not those reopened or merged since, nor those waiting on a question.
+ * run · 12 tickets closed · 2 set aside · 1 needs you`, counting each ticket as the dashboard's
+ * totals do (phase.ts counting): set aside if deferred or left for review, needing you if blocked
+ * from merging or waiting on a question; not those reopened or merged since.
  */
 export const finished = (phases: Iterable<{ readonly _tag: PhaseTag }>): string => {
-  let closed = 0
-  let aside = 0
+  const counts = { closed: 0, setAside: 0, needsYou: 0 }
   for (const phase of phases) {
-    if (phase._tag === "Done") closed++
-    else if (asideAtEnd.has(phase._tag)) aside++
+    const notice = counting[phase._tag].notice
+    if (notice !== null) counts[notice]++
   }
-  return `Finished the run · ${closedCount(closed)}${aside > 0 ? ` · ${aside} set aside` : ""}`
+  const aside = counts.setAside > 0 ? ` · ${counts.setAside} set aside` : ""
+  const needs =
+    counts.needsYou === 0 ? "" : ` · ${counts.needsYou} need${counts.needsYou === 1 ? "s" : ""} you`
+  return `Finished the run · ${closedCount(counts.closed)}${aside}${needs}`
 }
 
 /** What a worker's request asks, for its notice: `Allow Bash(rm -rf build)?`. */

@@ -28,7 +28,14 @@ import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
 import { resetLabel } from "./localTime.ts"
 import type { CheckAhead } from "./mergetrain.ts"
-import { type Activity, countsUnder, type PhaseTag, TicketPhase } from "./phase.ts"
+import {
+  type Activity,
+  counting,
+  countsUnder,
+  type PhaseTag,
+  TicketPhase,
+  type WindDownMark,
+} from "./phase.ts"
 
 /** A hold on the run, for its banner: `BLOCKED`, `USAGE_LIMIT` with its reset, … */
 export interface RunHold {
@@ -222,9 +229,6 @@ export type Banner = Data.TaggedEnum<{
 }>
 
 export const Banner = Data.taggedEnum<Banner>()
-
-/** A ticket's `■` on the wind-down line (§ 5.1). */
-export type WindDownMark = "windingDown" | "done" | "needsYou" | "faint"
 
 /** A worker the end-of-run box names, what each of its open requests asks, and its hand-back. */
 export interface Waiting {
@@ -629,26 +633,6 @@ const noteOf = (entry: Entry, title: string, branch: string): string => {
 const latestOf = (action: LatestAction | undefined): LatestAction | null =>
   action === undefined ? null : { text: sanitizeLine(action.text), denied: action.denied }
 
-const windDownMark = (phase: TicketPhase): WindDownMark => {
-  switch (phase._tag) {
-    case "Working":
-    case "ToMerge":
-    case "Merging":
-    case "Resolving":
-    case "Fixing":
-      return "windingDown"
-    case "Done":
-      return "done"
-    case "Deferred":
-    case "Review":
-    case "Blocked":
-    case "Asked":
-    case "Stopped":
-      return "needsYou"
-  }
-  return "faint"
-}
-
 const hintOf = (
   cards: ReadonlyArray<Card>,
   requests: ReadonlyArray<AttentionRequest>,
@@ -804,7 +788,10 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       : ((): WindDownView => {
           const marks = ledger.windDown.tickets.map((ticket) => {
             const entry = ledger.tickets.get(ticket)
-            return { ticket, mark: entry === undefined ? "faint" : windDownMark(entry.phase) }
+            return {
+              ticket,
+              mark: entry === undefined ? "faint" : counting[entry.phase._tag].windDown,
+            }
           })
           return { marks, running: marks.filter((m) => m.mark === "windingDown").length }
         })()

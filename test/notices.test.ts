@@ -103,15 +103,20 @@ describe("notice", () => {
     expect(notice(permission("t-1", "Bash", "ls"), false)).toBeNull()
   })
 
-  test("finished counts the tickets closed and those still set aside, blocked ones too", () => {
+  test("finished counts the tickets closed, set aside and needing you, as the totals do", () => {
     const tags = (...all: ReadonlyArray<PhaseTag>) => all.map((_tag) => ({ _tag }))
     expect(
       finished([
         ...tags(...Array<PhaseTag>(12).fill("Done")),
-        ...tags("Deferred", "Review", "Blocked", "Asked", "Queued"),
+        ...tags("Deferred", "Review", "Blocked", "Asked", "Queued", "Waiting", "Stopped"),
       ]),
-    ).toBe("Finished the run · 12 tickets closed · 3 set aside")
-    expect(finished(tags("Done", "Asked"))).toBe("Finished the run · 1 ticket closed")
+    ).toBe("Finished the run · 12 tickets closed · 2 set aside · 2 need you")
+    expect(finished(tags("Done", "Blocked"))).toBe(
+      "Finished the run · 1 ticket closed · 1 needs you",
+    )
+    expect(finished(tags("Done", "Review"))).toBe(
+      "Finished the run · 1 ticket closed · 1 set aside",
+    )
     expect(finished([])).toBe("Finished the run · no tickets closed")
   })
 

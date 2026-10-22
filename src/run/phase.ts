@@ -662,38 +662,103 @@ export type Total =
   | "heldBack"
   | "setupFailed"
 
-/**
- * The totals a ticket in `phase` counts under: none, one, or for a Working ticket whose worker
- * waits on you, both Workers and Needs you.
- */
-export const countsUnder = (phase: TicketPhase): ReadonlyArray<Total> => {
-  switch (phase._tag) {
-    case "Queued":
-      return ["inQueue"]
-    case "HeldBack":
-      return ["heldBack"]
-    case "Working":
-      return phase.activity === "allow" || phase.activity === "answer"
-        ? ["workers", "needsYou"]
-        : ["workers"]
-    case "Resolving":
-    case "Fixing":
-      return ["workers"]
-    case "Done":
-      return ["completed"]
-    case "Asked":
-    case "Blocked":
-      return ["needsYou"]
-    case "Deferred":
-    case "Review":
-      return ["setAside"]
-    case "Waiting":
-      // In queue counts one whose setup failed apart, as it waits for a merge or a probe.
-      return phase.for === setupWait ? ["setupFailed"] : []
-  }
-  // ToMerge and Merging until they reach Done; any other Waiting, and Stopped, nowhere.
-  return []
+/** What the notice of a run that finished by itself counts a ticket as (§ 7.9). */
+export type EndNotice = "closed" | "setAside" | "needsYou"
+
+/** The reviewer's sections of tickets (§ 6.2): closed, set aside, in progress as the run stopped. */
+export type ReportSection = "closed" | "setAside" | "inProgress"
+
+/** A ticket's `■` on the wind-down line (§ 5.1). */
+export type WindDownMark = "windingDown" | "done" | "needsYou" | "faint"
+
+/** What a ticket in a phase counts as, wherever the run counts its tickets. */
+export interface Counting<T extends PhaseTag> {
+  /**
+   * The dashboard's totals it counts under (§ 5.1's Counts under): none, one, or for a Working
+   * ticket whose worker waits on you, both Workers and Needs you.
+   */
+  readonly totals: (phase: TicketPhase & { readonly _tag: T }) => ReadonlyArray<Total>
+  /** What the run's end notice counts it as, as the dashboard does, or nothing. */
+  readonly notice: EndNotice | null
+  /** The reviewer's section it is in, or none. */
+  readonly report: ReportSection | null
+  /** Its mark on the wind-down line. */
+  readonly windDown: WindDownMark
 }
+
+const uncounted = (): ReadonlyArray<Total> => []
+
+/**
+ * What each phase counts as: the dashboard's totals, the run's end notice, the reviewer's sections
+ * and the wind-down line all read this table, so that they say the same of a ticket. A phase
+ * without an entry doesn't compile.
+ */
+export const counting: { readonly [T in PhaseTag]: Counting<T> } = {
+  // Ready but not taken up: the reviewer counts these from bd ready, not in a section.
+  Queued: { totals: () => ["inQueue"], notice: null, report: null, windDown: "faint" },
+  HeldBack: { totals: () => ["heldBack"], notice: null, report: null, windDown: "faint" },
+  Working: {
+    totals: (phase) =>
+      phase.activity === "allow" || phase.activity === "answer"
+        ? ["workers", "needsYou"]
+        : ["workers"],
+    notice: null,
+    report: "inProgress",
+    windDown: "windingDown",
+  },
+  // ToMerge and Merging count nowhere until they reach Done.
+  ToMerge: { totals: uncounted, notice: null, report: "inProgress", windDown: "windingDown" },
+  Merging: { totals: uncounted, notice: null, report: "inProgress", windDown: "windingDown" },
+  Resolving: {
+    totals: () => ["workers"],
+    notice: null,
+    report: "inProgress",
+    windDown: "windingDown",
+  },
+  Fixing: {
+    totals: () => ["workers"],
+    notice: null,
+    report: "inProgress",
+    windDown: "windingDown",
+  },
+  Done: { totals: () => ["completed"], notice: "closed", report: "closed", windDown: "done" },
+  Asked: {
+    totals: () => ["needsYou"],
+    notice: "needsYou",
+    report: "setAside",
+    windDown: "needsYou",
+  },
+  Waiting: {
+    // Only one whose setup failed counts, apart in In queue, as it waits for a merge or a probe.
+    totals: (phase) => (phase.for === setupWait ? ["setupFailed"] : []),
+    notice: null,
+    report: "setAside",
+    windDown: "faint",
+  },
+  Deferred: {
+    totals: () => ["setAside"],
+    notice: "setAside",
+    report: "setAside",
+    windDown: "needsYou",
+  },
+  Review: {
+    totals: () => ["setAside"],
+    notice: "setAside",
+    report: "setAside",
+    windDown: "needsYou",
+  },
+  Blocked: {
+    totals: () => ["needsYou"],
+    notice: "needsYou",
+    report: "setAside",
+    windDown: "needsYou",
+  },
+  Stopped: { totals: uncounted, notice: null, report: "inProgress", windDown: "needsYou" },
+}
+
+/** The totals a ticket in `phase` counts under, from the table. */
+export const countsUnder = (phase: TicketPhase): ReadonlyArray<Total> =>
+  (counting[phase._tag] as Counting<PhaseTag>).totals(phase)
 
 /** Whether `phase` is final: only Done is. */
 export const isFinal = (phase: TicketPhase): boolean => phase._tag === "Done"

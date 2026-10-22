@@ -34,7 +34,7 @@ import { type Entry, Ledger } from "./ledger.ts"
 import { clock, clockFrom, reportName, span } from "./localTime.ts"
 import * as log from "./log.ts"
 import { type Line, Log, line, Tag, tagged } from "./log.ts"
-import type { PhaseTag, TicketPhase } from "./phase.ts"
+import { counting, type ReportSection, type TicketPhase } from "./phase.ts"
 
 /** Where the reports go, below the repository. */
 export const reportsDir = ".tutti/reports"
@@ -233,27 +233,11 @@ const attentionTags = [Tag.permission, Tag.question, Tag.allowed, Tag.denied]
 export const attentionLines = (logLines: ReadonlyArray<string>): ReadonlyArray<string> =>
   logLines.filter((each) => attentionTags.some((tag) => each.includes(`  ${tag}: `)))
 
-/** The phases of a ticket closed in this run. */
-const closed: ReadonlySet<PhaseTag> = new Set(["Done"])
-
-/** The phases of a ticket set aside in this run. */
-const setAside: ReadonlySet<PhaseTag> = new Set([
-  "Deferred",
-  "Review",
-  "Blocked",
-  "Asked",
-  "Waiting",
-])
-
-/** The phases of a ticket still in progress when the run stopped. */
-const inProgress: ReadonlySet<PhaseTag> = new Set([
-  "Working",
-  "ToMerge",
-  "Merging",
-  "Resolving",
-  "Fixing",
-  "Stopped",
-])
+/** Whether `entry` is in the reviewer's `section` (phase.ts counting). */
+const inSection =
+  (section: ReportSection) =>
+  (entry: Entry): boolean =>
+    counting[entry.phase._tag].report === section
 
 /** What a failed bd or git call said, in a few words. */
 const failure = (error: BeadsError | GitError): string =>
@@ -311,32 +295,28 @@ export const gather = (
         ),
       )
 
-    const closedText = yield* Effect.forEach(
-      entries.filter((entry) => closed.has(entry.phase._tag)),
-      (entry) =>
-        shown(entry, (issue) => {
-          const reason = cut(issue.closeReason, closeReasonWidth)
-          return (
-            `${entry.ticket}: ${issue.title}\n${phaseSaid(entry.phase)}\n` +
-            `Close reason: ${reason === "" ? "(none given)" : reason}`
-          )
-        }),
+    const closedText = yield* Effect.forEach(entries.filter(inSection("closed")), (entry) =>
+      shown(entry, (issue) => {
+        const reason = cut(issue.closeReason, closeReasonWidth)
+        return (
+          `${entry.ticket}: ${issue.title}\n${phaseSaid(entry.phase)}\n` +
+          `Close reason: ${reason === "" ? "(none given)" : reason}`
+        )
+      }),
     )
 
-    const asideText = yield* Effect.forEach(
-      entries.filter((entry) => setAside.has(entry.phase._tag)),
-      (entry) =>
-        shown(entry, (issue) =>
-          [
-            `${entry.ticket}: ${issue.title}`,
-            `${phaseSaid(entry.phase)}; bd status ${issue.status}`,
-            ...(issue.notes.trim() === "" ? [] : [`Notes:\n${issue.notes.trim()}`]),
-          ].join("\n"),
-        ),
+    const asideText = yield* Effect.forEach(entries.filter(inSection("setAside")), (entry) =>
+      shown(entry, (issue) =>
+        [
+          `${entry.ticket}: ${issue.title}`,
+          `${phaseSaid(entry.phase)}; bd status ${issue.status}`,
+          ...(issue.notes.trim() === "" ? [] : [`Notes:\n${issue.notes.trim()}`]),
+        ].join("\n"),
+      ),
     )
 
     const runningText = entries
-      .filter((entry) => inProgress.has(entry.phase._tag))
+      .filter(inSection("inProgress"))
       .map((entry) => `${entry.ticket}: ${entry.title}\n${phaseSaid(entry.phase)}`)
 
     const ready = yield* beads.ready(config.ticket === null ? {} : { parent: config.ticket }).pipe(

@@ -819,6 +819,8 @@ A ticket is finished when its phase is `Done`: closed in Beads, merged into the 
 
 **Needs you** counts each ticket once: those `Asked` or `Blocked`, and the `Working` ones whose worker waits on you (`■ allow?`, `■ answer?`).
 
+**One table counts the phases.** What each phase counts as, its total above, what the run's end notice counts it as (§7.9), the reviewer's section it is in and its mark on the wind-down line, is one table, `counting` in `src/run/phase.ts`, which every place that counts tickets reads, so the dashboard and the notification say the same of a ticket. A phase without an entry doesn't compile. The reviewer's sections are closed (`Done`), set aside (`Asked`, `Waiting`, `Deferred`, `Review`, `Blocked`) and in progress as the run stopped (`Working`, `ToMerge`, `Merging`, `Resolving`, `Fixing`, `Stopped`); `Queued` and `HeldBack` are in none, as the reviewer counts the tickets still ready from `bd ready`.
+
 **Final or not.** Only `Done` is final. A ticket can leave a run in any phase except `Working`, `Resolving`, `Fixing` and `Merging`. At the end of a run those become `Stopped`, except that a merge under way finishes its protected step first (§3.4).
 
 **The next run** picks a ticket up again where its phase left it. Through `bd ready` it comes back in `Queued`. Through carry-over it comes back in one of three phases:
@@ -1190,6 +1192,8 @@ As orchestra's table (merged, set aside, needs your answer, stopped, finished), 
 - macOS: `osascript`, with Notification Center's title the repository's folder name.
 - Linux: `notify-send` when it is installed.
 - Also, where the terminal supports it, OSC 9 or OSC 777 (iTerm2, kitty, Ghostty, WezTerm and others), so that notifications work over ssh.
+
+A run that finished by itself notifies `Finished the run · 12 tickets closed · 2 set aside · 1 needs you`, counting each ticket as the dashboard's totals do (§5.1): set aside if `Deferred` or `Review`, needing you if `Blocked` or `Asked`. This differs from orchestra on purpose, whose end line counts a ticket blocked from merging as set aside and leaves out one waiting on a question: a run ending with one `MERGE_CONFLICT` showed `Needs you 1` on the dashboard while its notification said `1 set aside`.
 
 `--notify=false`, `TUTTI_NOTIFY=0` or `"notify": false` in the user config turns them off.
 

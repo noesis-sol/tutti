@@ -194,14 +194,14 @@ describe("a whole run notifies", () => {
     expect(ran.notices).toEqual(["Stopped: INTERRUPTED"])
   })
 
-  test("a question a worker filed, by its title", async () => {
+  test("a question a worker filed, by its title, and at the end as needing you", async () => {
     const ran = await runs({
       backlog: backlog().ticket("t-1").seeds,
       workers: { "t-1": "asks" },
     })
     expect(ran.notices).toEqual([
       "t-1 needs your answer · Which name should the flag have?",
-      "Finished the run · no tickets closed",
+      "Finished the run · no tickets closed · 1 needs you",
     ])
   })
 
