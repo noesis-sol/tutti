@@ -51,24 +51,16 @@ below are the coverage report's uncovered lines at 368899e.
 - **Reached by**: `tutti init [flags]`, in a terminal (the renderer's form), with `TERM=dumb` (line
   forms) or without a terminal (flags only); `tutti init --update`.
 - **Tests**: `init.test.ts`, `init-checks.test.ts`, `init-beads-install.test.ts`,
-  `init-chrome-offer.test.ts`, `init-skill-copy.test.ts`, `init-stop.test.ts` (unit, and e2e slow:
-  SIGINT while it writes), `import.test.ts`, `checks-runners.test.ts`, `checks-typescript.test.ts`,
-  `template-versions.test.ts`, `scout.test.ts`, `line-forms.test.ts`, `ui-init-form.test.tsx`,
-  `ui-init-stop.test.tsx`, `form-hint.test.tsx`, `run-lock-init-refusal.test.ts`.
+  `init-workers-steps.test.ts`, `init-chrome-offer.test.ts`, `init-skill-copy.test.ts`,
+  `init-stop.test.ts` (unit, and e2e slow: SIGINT while it writes), `import.test.ts`,
+  `checks-runners.test.ts`, `checks-typescript.test.ts`, `template-versions.test.ts`,
+  `scout.test.ts`, `line-forms.test.ts`, `ui-init-form.test.tsx`, `ui-init-stop.test.tsx`,
+  `form-hint.test.tsx`, `run-lock-init-refusal.test.ts`.
 - **Untested**:
   - the command's own wiring, `runInit` in `src/cli/commands.ts` (lines 533–706): no test runs
     `tutti init` through `bun src/main.ts` but the slow SIGINT one. Its refusals (outside a
     repository, in a linked worktree, flag problems: exit 2), `--update`'s lines, and the summary it
     prints without a terminal are untested end to end (tutti-8iz.3).
-  - bd's install and bd init in `src/init/workers.ts`: no install method on this machine (283),
-    bd installed but off the PATH, or its command ran and no bd came (308–312), and bd init that
-    commits, whose step lists the files it committed (326–336) (tutti-8iz.4).
-  - the prefix rename refused while tickets have branches, the last run left workers, or tickets
-    are closed but unmerged (`prefixRefusal`, 507–530; `applyPrefix`, 617–629), and `bd
-    rename-prefix` failing (tutti-8iz.4).
-  - `CHANGELOG.md` already merging by union (669); marking the checkout trusted when
-    `.claude.json` can't be read or isn't a JSON object (`markTrusted`, 786–799); a probe that
-    failed with no failure it names (743) (tutti-8iz.4).
   - the form's questions for installing bd, replacing differing runners and trusting the checkout
     (`src/init/form.ts` 118–124, 235–244, 298–301), and the requires steps when README.md or the
     settings can't be read (`src/init/requires.ts` 30, 78–84) (tutti-8iz.5).
