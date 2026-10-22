@@ -65,6 +65,7 @@ import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "./log.
 import {
   abandonRebase,
   baseSince,
+  branchHead,
   type FinishedTicket,
   gitWhy,
   type MergeEnv,
@@ -915,7 +916,13 @@ export type Resolved =
   | { readonly _tag: "Verified" }
   | { readonly _tag: "Unchanged"; readonly unchanged: Unchanged }
   | { readonly _tag: "Blocked" }
-  | { readonly _tag: "CheckFailed"; readonly error: CheckError; readonly output: string }
+  | {
+      readonly _tag: "CheckFailed"
+      readonly error: CheckError
+      readonly output: string
+      /** The commit checked, its branch's as the setup started; "" when git couldn't say. */
+      readonly at: string
+    }
 
 /** Why a resolution whose check fails is rejected, for its lines and notes. */
 export const failedResolved = (stop: RebaseStop, error: CheckError, output: string): string => {
@@ -1014,19 +1021,22 @@ export const resolve = (
         return { _tag: "Verified" } satisfies Resolved
       }
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
+      // The commit checked: one its worker makes while it runs is checked before it merges.
+      const at = yield* branchHead(stop.ticket, options)
       const setup = yield* setUp(stop.ticket, options, memory.setUps, stop.fork, stop.onto, {
         what: "resolution",
         from: stop.head,
       })
       const checked = setup._tag === "Failed" ? setup : yield* runMergeCheck(stop.ticket)
       if (checked._tag !== "Failed") {
-        yield* notePass(stop.ticket, options, memory.passes)
+        yield* notePass(stop.ticket, memory.passes, at)
         return { _tag: "Verified" } satisfies Resolved
       }
       return {
         _tag: "CheckFailed",
         error: checked.error,
         output: checked.output,
+        at,
       } satisfies Resolved
     }
     yield* rejectResolution(stop, options, why)

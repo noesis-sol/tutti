@@ -51,6 +51,7 @@ import { Ledger } from "./ledger.ts"
 import { branchOn, detail, fixing, Log, line } from "./log.ts"
 import {
   baseSince,
+  branchHead,
   checksFailed,
   type FinishedTicket,
   gitWhy,
@@ -453,7 +454,8 @@ export const fixPassed = (
  * was handed back, `left`, `tries` saying what came of the hand-backs before it: "verified" when it
  * passes; "aside" when its worker committed nothing and it fails again, or it fails with no
  * hand-back left, the ticket set aside; else the failure on the fix, to be handed back again, its
- * `tried` saying what came of each hand-back so far.
+ * `tried` saying what came of each hand-back so far. `at`: the commit checked, its branch's as the
+ * setup started ("" when git couldn't say), where a failure stops.
  */
 export const afterFix = (
   stop: CheckStop,
@@ -462,10 +464,10 @@ export const afterFix = (
   tries: ReadonlyArray<string>,
   options: MergeOptions,
   memory: MergeMemory,
+  at: string,
 ): Effect.Effect<"verified" | "aside" | CheckStop, never, MergeEnv> =>
   Effect.gen(function* () {
-    const git = yield* Git
-    const { id, branch } = stop.ticket
+    const { id } = stop.ticket
     if (checked._tag !== "Failed") {
       yield* fixPassed(stop.ticket, left)
       return "verified"
@@ -485,10 +487,9 @@ export const afterFix = (
       ...tries,
       line`its worker committed ${left.commits}, but ${how} still (output is in ${where})`,
     ]
-    const at = yield* Effect.result(git.revParse(options.repo, branch))
     const next: CheckStop = {
       ...stop,
-      at: Result.isSuccess(at) ? at.success : "",
+      at,
       error: checked.error,
       output: checked.output,
       tried,
@@ -581,9 +582,11 @@ export const fixCheck = (
         })
         return "verified"
       }
+      // The commit checked: one its worker makes while it runs is checked before it merges.
+      const at = yield* branchHead(stop.ticket, options)
       const checked = yield* checkFix(stop, options, memory)
-      if (checked._tag !== "Failed") yield* notePass(stop.ticket, options, memory.passes)
-      const after = yield* afterFix(stop, verified, checked, tries, options, memory)
+      if (checked._tag !== "Failed") yield* notePass(stop.ticket, memory.passes, at)
+      const after = yield* afterFix(stop, verified, checked, tries, options, memory, at)
       if (after === "verified" || after === "aside") return after
       if (!(yield* handOverFix(after, options, memory.fixes))) return "aside"
       stop = after
@@ -601,12 +604,11 @@ export const fixResolution = (
   rebase: RebaseStop,
   error: CheckError,
   output: string,
+  at: string,
   options: MergeOptions,
   memory: MergeMemory,
 ): Effect.Effect<Fixed, never, MergeEnv> =>
   Effect.gen(function* () {
-    const git = yield* Git
-    const at = yield* Effect.result(git.revParse(options.repo, rebase.ticket.branch))
     // A fix whose rebase onto the moved base stopped on the conflicts resolved here.
     const tries = (yield* memory.fixes.carried(rebase.ticket.id))?.tries ?? []
     const stop: CheckStop = {
@@ -614,7 +616,7 @@ export const fixResolution = (
       onto: rebase.onto,
       fork: rebase.fork,
       head: rebase.head,
-      at: Result.isSuccess(at) ? at.success : "",
+      at,
       error,
       output,
       resolved: rebase,

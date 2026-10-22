@@ -10,10 +10,12 @@
 //   changed since its last setup; a worktree with uncommitted changes set aside, DIRTY_WORKTREE, as
 //   they would be checked but not merged), so that no ticket reaches the base unchecked, as
 //   orchestra 0.8.5 has it; one whose commits change nothing needs none. A rebase interrupted is aborted, putting
-//   the branch back; a setup or check interrupted is killed.
+//   the branch back; a setup or check interrupted is killed. The commit checked is the branch's as
+//   its setup starts: one made meanwhile, as its worker's, is checked too before the merge goes on.
 // - fastForward, the step from the fast-forward to the end of its notes, which the merge queue runs
 //   protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE, GIT_FAILED), the base
-//   fast-forwarded (MERGE_FAILED), the worktree and branch removed, the epics the ticket was the last
+//   fast-forwarded to the commit checked, the branch still at it (MERGE_FAILED; Moved, prepared
+//   and checked again, when it is not), the worktree and branch removed, the epics the ticket was the last
 //   to merge under closed, up the tree. exec's time limits kill a command themselves, without
 //   interrupting its fiber, so each git command's limit holds in there too.
 // - closeUnchanged, its stand-in when the branch has no change of its own left to merge: git's
@@ -142,7 +144,7 @@ export interface MergeStop {
  */
 export type Prepared =
   | { readonly _tag: "Over"; readonly stop?: MergeStop }
-  | { readonly _tag: "Ready"; readonly onto: string }
+  | { readonly _tag: "Ready"; readonly onto: string; readonly at: string }
   | Unchanged
   | { readonly _tag: "HandBack"; readonly stop: RebaseStop }
   | { readonly _tag: "FixBack"; readonly stop: CheckStop }
@@ -155,6 +157,15 @@ export interface Unchanged {
   readonly _tag: "Unchanged"
   readonly why: string
   readonly own: boolean
+}
+
+/**
+ * What the fast-forward found instead of merging: the branch moved on to `to` from the commit its
+ * check passed on, as when its worker committed while it ran, so it is checked again first.
+ */
+export interface Moved {
+  readonly _tag: "Moved"
+  readonly to: string
 }
 
 /**
@@ -384,16 +395,29 @@ export interface MergeMemory {
   readonly train?: CheckWatch
 }
 
-/** Keeps the commit the ticket's branch is at as one its merge check passed on, if git can say. */
-export const notePass = (
+/**
+ * The commit the ticket's branch is at, git asked up to gitTries times while it fails, read before
+ * its setup and check: the one a check that passes passed on, a commit made while it runs not
+ * checked. "" when git can't say.
+ */
+export const branchHead = (
   ticket: FinishedTicket,
   options: MergeOptions,
-  passes: Passes,
-): Effect.Effect<void, never, Git> =>
+): Effect.Effect<string, never, Git> =>
   Effect.gen(function* () {
-    const at = yield* Effect.result((yield* Git).revParse(options.repo, ticket.branch))
-    if (Result.isSuccess(at)) yield* passes.set(ticket.id, at.success)
+    const at = yield* Effect.result(steering((yield* Git).revParse(options.repo, ticket.branch)))
+    return Result.isSuccess(at) ? at.success : ""
   })
+
+/**
+ * Keeps `at`, the commit the ticket's branch was at as its setup and check started (branchHead), as
+ * one its merge check passed on; nothing when git couldn't say what it was.
+ */
+export const notePass = (
+  ticket: FinishedTicket,
+  passes: Passes,
+  at: string,
+): Effect.Effect<void> => (at === "" ? Effect.void : passes.set(ticket.id, at))
 
 /** Whether the base has moved on from a commit, or git can't tell. */
 export type BaseSince = Data.TaggedEnum<{
@@ -455,7 +479,8 @@ const setAsideDirty = (ticket: FinishedTicket, text: (files: ReadonlyArray<strin
 
 /**
  * Rebases the ticket, its branch off the base at `fork`, onto the base, which moved on to `onto`,
- * sets it up if need be and checks it: true when it is on top of the base, checked; false when any
+ * sets it up if need be and checks it: the commit its check passed on when it is on top of the base,
+ * checked; false when any
  * of them set it aside; Unchanged when the rebase left it changing nothing, as when git dropped its
  * commits, the base having their changes already; the rebase stopped, when its conflicts are to be
  * handed back to its worker; the check stopped, when its failure is. An interrupted rebase is
@@ -556,8 +581,9 @@ const rebaseAndCheck = (
 /**
  * Sets up the ticket, its branch rebased from `fork` (its commit `head` then; "" when git couldn't
  * say) onto the base at `onto`, or `onTop` of it already (`fork` is then `onto`, and `head` the
- * branch's own commit), if need be, and checks it: true when the check passed, the commit it passed
- * on kept in the memory's passes; false when either set it aside; the check stopped, when its
+ * branch's own commit), if need be, and checks it: the commit the check passed on when it passed,
+ * the branch's as the setup started, kept in the memory's passes too; false when either set it
+ * aside, or git couldn't say where the branch is; the check stopped, when its
  * failure is to be handed back to its worker. `carried`: what a hand-back left for this check, its
  * worker's fix or resolution made while the base moved on: the check says whether the fix fixed it,
  * as checkback.ts's fixCheck would have, and the setup counts its worker's own changes.
@@ -576,15 +602,28 @@ const setUpAndCheck = (
     const { git, ledger, log } = yield* services
     const { id, branch } = ticket
     const tries = carried?.tries ?? []
+    // The commit checked: one made while the setup and check run is checked before it merges.
+    const read = yield* Effect.result(steering(git.revParse(options.repo, branch)))
+    if (Result.isFailure(read)) {
+      yield* aside(
+        ticket,
+        Tag.gitFailed,
+        "git could not read its branch",
+        ticketLine(
+          Tag.gitFailed,
+        )`${id} closed, but git could not tell where ${branch} is (${gitTries} tries): ${gitWhy(read.failure)}, so it can't be checked as it would merge; worktree ${ticket.worktree} left for review`,
+      )
+      return false
+    }
+    const at = read.success
     const failed = (error: CheckError, output: string) =>
       Effect.gen(function* () {
-        const at = yield* Effect.result(git.revParse(options.repo, branch))
         const stop: CheckStop = {
           ticket,
           onto,
           fork,
           head,
-          at: Result.isSuccess(at) ? at.success : "",
+          at,
           error,
           output,
           onTop,
@@ -598,6 +637,7 @@ const setUpAndCheck = (
             tries,
             options,
             memory,
+            at,
           )
           return after === "aside" || after === "verified" ? false : after
         }
@@ -613,8 +653,7 @@ const setUpAndCheck = (
       })
     // The tickets behind it may be checked ahead of their turn meanwhile, on top of its branch.
     const train = memory.train
-    const at = yield* Effect.result(git.revParse(options.repo, branch))
-    if (train !== undefined && Result.isSuccess(at)) yield* train.starts(ticket, at.success)
+    if (train !== undefined) yield* train.starts(ticket, at)
     const ends = (passed: boolean) => (train === undefined ? Effect.void : train.ends(passed))
     const setup = yield* setUp(ticket, options, memory.setUps, fork, onto, carried?.fix)
     if (setup._tag === "Failed") {
@@ -629,8 +668,8 @@ const setUpAndCheck = (
         yield* log.write(
           detail`no check command in .tutti/settings.json: merging ${branch} without checking the rebased code`,
         )
-        yield* notePass(ticket, options, memory.passes)
-        return true
+        yield* notePass(ticket, memory.passes, at)
+        return at
       case "Passed":
         if (carried?.fixed !== undefined) yield* fixPassed(ticket, carried.fixed)
         else {
@@ -640,8 +679,8 @@ const setUpAndCheck = (
               : detail`'${checked.command}' passes on the rebased ${branch}`,
           )
         }
-        yield* notePass(ticket, options, memory.passes)
-        return true
+        yield* notePass(ticket, memory.passes, at)
+        return at
       case "Failed":
         return yield* failed(checked.error, checked.output)
     }
@@ -685,6 +724,31 @@ export const checksFailed = (
     const said = saidOf(error)
     if (said.length > 0) yield* log.write(...said.map((each) => detail`  ${each}`))
     yield* noteFailedCheck(ticket, options, rechecks, onto, error, output, onTop)
+  })
+
+/**
+ * Blocks the ticket, MERGE_CONFLICT, as `what` (its base, or its branch) kept changing while its
+ * checks ran, each check overtaken by a commit.
+ */
+const keptChanging = (ticket: FinishedTicket, what: string) =>
+  Effect.gen(function* () {
+    const text = ticketLine(
+      Tag.mergeConflict,
+    )`${ticket.id} closed, but ${what} while its checks ran (commits made by hand?); worktree ${ticket.worktree} left for review`
+    yield* block(
+      ticket,
+      Tag.mergeConflict,
+      {
+        kind: "warn",
+        ticket: ticket.id,
+        aside: true,
+        detail: what,
+        blocked: what,
+        text,
+      },
+      text,
+    )
+    return { _tag: "Over" } satisfies Prepared
   })
 
 /**
@@ -742,9 +806,22 @@ export const prepare = (
       )
       return { _tag: "Over" } satisfies Prepared
     }
-    // Checked in this merge, on top of the base: a mark found isn't checked again, even when the
-    // Store kept it.
-    let checked = false
+    // Where its branch is, git can't tell: the merges hold.
+    const lost = (error: GitError) =>
+      Effect.map(
+        stopOver(
+          ticket,
+          "GIT_FAILED",
+          "git failed",
+          line`could not tell where ${branch} is (${gitTries} tries): ${gitWhy(error)}; ${branch} is not merged, its worktree ${worktree} left for review`,
+        ),
+        (stop) => ({ _tag: "Over", stop }) satisfies Prepared,
+      )
+    // The commit checked in this merge, on top of the base: a mark found isn't checked again, even
+    // when the Store kept it.
+    let checked: string | undefined
+    // How many times its branch moved on while its check ran, as its worker committed meanwhile.
+    let moved = 0
     for (let pass = 0; ; pass++) {
       const where = yield* Effect.result(
         Effect.all({
@@ -770,7 +847,19 @@ export const prepare = (
       )
       if (nothing !== undefined) return nothing
       if (fork === onto) {
-        if (checked) return { _tag: "Ready", onto } satisfies Prepared
+        if (checked !== undefined) {
+          const now = yield* Effect.result(steering(git.revParse(repo, branch)))
+          if (Result.isFailure(now)) return yield* lost(now.failure)
+          if (now.success === checked)
+            return { _tag: "Ready", onto, at: checked } satisfies Prepared
+          // Only the commit checked merges: one made while it ran is checked first.
+          if (moved === maxPasses) return yield* keptChanging(ticket, `${branch} kept changing`)
+          moved++
+          yield* log.write(
+            detail`${branch} moved on to ${now.success.slice(0, 7)} while its check ran on ${checked.slice(0, 7)}: checking it again`,
+          )
+          checked = undefined
+        }
         const unchecked = yield* uncheckedMark(id)
         const command = config.settings.checks.fast.command
         // The check runs in its worktree, but only its commits merge: changes left uncommitted
@@ -779,7 +868,7 @@ export const prepare = (
           ticketLine(
             Tag.dirtyWorktree,
           )`${id} closed, but ${worktree} has uncommitted changes to ${files}, so ${branch}, on top of ${base}, can't be checked as it would merge; worktree left for review (commit or undo them, check, merge)`
-        let result: boolean | CheckStop
+        let result: string | false | CheckStop
         if (unchecked !== undefined) {
           if (yield* setAsideDirty(ticket, dirty)) return { _tag: "Over" } satisfies Prepared
           yield* log.write(
@@ -798,11 +887,11 @@ export const prepare = (
         } else {
           // Every merge is checked, a branch on top of the base already too, unless the check
           // passed on it as it is in this run: as its worker fixed it, or resolved its rebase.
-          if (command === null) return { _tag: "Ready", onto } satisfies Prepared
-          const at = yield* Effect.result(git.revParse(repo, branch))
-          const head = Result.isSuccess(at) ? at.success : ""
-          if (head !== "" && (yield* memory.passes.at(id)) === head) {
-            return { _tag: "Ready", onto } satisfies Prepared
+          const at = yield* Effect.result(steering(git.revParse(repo, branch)))
+          if (Result.isFailure(at)) return yield* lost(at.failure)
+          const head = at.success
+          if (command === null || (yield* memory.passes.at(id)) === head) {
+            return { _tag: "Ready", onto, at: head } satisfies Prepared
           }
           if (yield* setAsideDirty(ticket, dirty)) return { _tag: "Over" } satisfies Prepared
           yield* log.write(
@@ -811,33 +900,15 @@ export const prepare = (
           result = yield* setUpAndCheck(ticket, options, memory, onto, onto, head, true, taken())
         }
         if (result === false) return { _tag: "Over" } satisfies Prepared
-        if (result !== true) return { _tag: "FixBack", stop: result } satisfies Prepared
-        checked = true
+        if (typeof result !== "string") return { _tag: "FixBack", stop: result } satisfies Prepared
+        checked = result
         continue
       }
-      if (pass === maxPasses) {
-        const text = ticketLine(
-          Tag.mergeConflict,
-        )`${id} closed, but ${base} kept changing while its checks ran (commits made by hand?); worktree ${worktree} left for review`
-        yield* block(
-          ticket,
-          Tag.mergeConflict,
-          {
-            kind: "warn",
-            ticket: id,
-            aside: true,
-            detail: `${base} kept changing`,
-            blocked: `${base} kept changing`,
-            text,
-          },
-          text,
-        )
-        return { _tag: "Over" } satisfies Prepared
-      }
+      if (pass === maxPasses) return yield* keptChanging(ticket, `${base} kept changing`)
       const rebased = yield* rebaseAndCheck(ticket, options, memory, fork, onto, waived, taken())
       if (rebased === false) return { _tag: "Over" } satisfies Prepared
-      if (rebased === true) {
-        checked = true
+      if (typeof rebased === "string") {
+        checked = rebased
         continue
       }
       if ("_tag" in rebased) return rebased
@@ -926,17 +997,21 @@ export const closeEpics = (id: string) =>
   })
 
 /**
- * The protected step: the base fast-forwarded to the ticket's branch, on top of it at `onto`, in
- * the main checkout, then the worktree and branch removed, the ticket Done and forgotten in
- * state.json, the `unmerged` label an earlier run gave it removed, and the epics above it closed. Undefined when it merged; the stop when the main checkout or git kept it from merging.
+ * The protected step: the base fast-forwarded to `at`, the commit the ticket's merge check passed
+ * on, its branch on top of the base at `onto`, in the main checkout, then the worktree and branch
+ * removed, the ticket Done and forgotten in state.json, the `unmerged` label an earlier run gave it
+ * removed, and the epics above it closed. Undefined when it merged; the stop when the main checkout
+ * or git kept it from merging; Moved, nothing merged, when its branch is no longer at `at`, as
+ * when its worker committed after its check passed: the merge checks it again.
  */
 export const fastForward = (
   ticket: FinishedTicket,
   options: MergeOptions,
   onto: string,
-): Effect.Effect<MergeStop | undefined, never, MergeEnv> =>
+  at: string,
+): Effect.Effect<MergeStop | Moved | undefined, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, worktrees, beads, ledger } = yield* services
+    const { git, worktrees, beads, ledger, log } = yield* services
     const { id, title, branch, worktree } = ticket
     const { repo, base } = options
     yield* ledger.refine(id, Detail.Step({ step: "fast-forward" }))
@@ -972,11 +1047,27 @@ export const fastForward = (
         line`${repo} is no longer on ${base}; ${left}. Check it out again to continue`,
       )
     }
-    const merged = yield* Effect.result(git.fastForward(repo, branch))
+    // Read last, just before the merge: only the commit checked merges.
+    const head = yield* Effect.result(steering(git.revParse(repo, branch)))
+    if (Result.isFailure(head)) {
+      return yield* stopOver(
+        ticket,
+        "GIT_FAILED",
+        "git failed",
+        line`could not tell where ${branch} is (${gitTries} tries): ${gitWhy(head.failure)}; ${left}`,
+      )
+    }
+    if (head.success !== at) {
+      yield* log.write(
+        detail`${branch} moved on to ${head.success.slice(0, 7)} after its check passed on ${at.slice(0, 7)}: checking it again before it merges`,
+      )
+      return { _tag: "Moved", to: head.success } satisfies Moved
+    }
+    const merged = yield* Effect.result(git.fastForward(repo, at))
     if (Result.isFailure(merged)) {
       // Changes git leaves out of a clean tree (.beads/, .tutti/run/) can be in the way too.
       const local = new Set(checkout.success.status.map((entry) => entry.path))
-      const changed = yield* Effect.result(steering(git.changedFiles(repo, base, branch)))
+      const changed = yield* Effect.result(steering(git.changedFiles(repo, base, at)))
       const inTheWay = Result.isSuccess(changed)
         ? changed.success.filter((path) => local.has(path)).sort()
         : []
@@ -1000,8 +1091,8 @@ export const fastForward = (
     const commit = own.find((each) => each.message.includes(id)) ?? own[0]
     let hash = commit?.hash
     if (hash === undefined) {
-      const head = yield* Effect.result(git.revParse(repo, base))
-      hash = Result.isSuccess(head) ? head.success : onto
+      const now = yield* Effect.result(git.revParse(repo, base))
+      hash = Result.isSuccess(now) ? now.success : onto
     }
     const short = hash.slice(0, 7)
     const named = commit === undefined ? short : line`${short} ${commit.subject}`

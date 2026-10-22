@@ -338,6 +338,7 @@ export const make = (
               stop,
               resolved.error,
               resolved.output,
+              resolved.at,
               options,
               memory,
             )
@@ -367,22 +368,31 @@ export const make = (
           const boarded = yield* restore(train.board(ticket)).pipe(
             Effect.onError(() => backInLine(ticket)),
           )
-          const prepared =
-            boarded ??
-            (yield* restore(prepare(ticket, options, memory)).pipe(
-              Effect.onError(() => backInLine(ticket)),
-            ))
-          const handingBack = prepared._tag === "HandBack" || prepared._tag === "FixBack"
-          if (handingBack && (yield* Ref.get(held))) return yield* backInLine(ticket)
-          if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
-          if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
-          if (prepared._tag === "Unchanged") yield* closeUnchanged(ticket, options, prepared)
-          const stop =
-            prepared._tag === "Over"
-              ? prepared.stop
-              : prepared._tag === "Ready"
-                ? yield* fastForward(ticket, options, prepared.onto)
-                : undefined
+          const prepareIt = restore(prepare(ticket, options, memory)).pipe(
+            Effect.onError(() => backInLine(ticket)),
+          )
+          let prepared = boarded ?? (yield* prepareIt)
+          let stop: MergeStop | undefined
+          for (;;) {
+            const handingBack = prepared._tag === "HandBack" || prepared._tag === "FixBack"
+            if (handingBack && (yield* Ref.get(held))) return yield* backInLine(ticket)
+            if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
+            if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
+            if (prepared._tag === "Unchanged") yield* closeUnchanged(ticket, options, prepared)
+            const ended =
+              prepared._tag === "Over"
+                ? prepared.stop
+                : prepared._tag === "Ready"
+                  ? yield* fastForward(ticket, options, prepared.onto, prepared.at)
+                  : undefined
+            // Its branch moved on after its check passed: the commit it is at now is checked first.
+            if (ended !== undefined && "_tag" in ended) {
+              prepared = yield* prepareIt
+              continue
+            }
+            stop = ended
+            break
+          }
           // A merge that changed .tutti/settings.json may set the setup the run uses from now on.
           if (stop === undefined && prepared._tag === "Ready") {
             yield* takeSettings(ticket.id, options, setUps, prepared.onto)
