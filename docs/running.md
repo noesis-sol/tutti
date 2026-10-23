@@ -260,7 +260,7 @@ at 1, and raise it once the checks run cleanly side by side; each worker takes a
   <new-id>`.
 - **A ticket set aside can come back in the same run.** One deferred, by its worker or by tutti,
   that you bring back with `bd undefer <id>` while the run goes is queued again at the next ready
-  poll once `bd ready` lists it, `<id>: undeferred; back in the queue`, and starts as a new
+  poll once `bd ready` lists it and the run isn't holding, `<id>: undeferred; back in the queue`, and starts as a new
   dispatch, counting toward `--limit` again. One bd couldn't defer (`DEFER_FAILED`) stays out of the
   run.
 

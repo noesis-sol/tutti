@@ -37,19 +37,22 @@ const poll = Effect.andThen(TestClock.adjust("30 seconds"), flush)
 
 /**
  * A scheduler whose first start of a ticket sets it aside, deferring it in bd unless `deferFails`,
- * and whose later starts run until the test ends. `starts` lists the tickets handed to their fibers.
+ * and whose later starts run until the test ends. `starts` lists the tickets handed to their fibers;
+ * `hold` sets whether the run holds, taking no tickets.
  */
 const scheduler = (options: { readonly deferFails?: boolean } = {}) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const beads = yield* Beads
     const starts = yield* Ref.make<ReadonlyArray<string>>([])
+    const held = yield* Ref.make(false)
     const forever = yield* Deferred.make<void>()
     const schedule = yield* make({
       concurrent: 2,
       limit: null,
       scope: null,
       excludeTypes: ["epic"],
+      taking: Effect.map(Ref.get(held), (yes) => !yes),
       start: {
         start: (issue: Issue) =>
           Effect.gen(function* () {
@@ -62,7 +65,7 @@ const scheduler = (options: { readonly deferFails?: boolean } = {}) =>
           }),
       },
     })
-    return { schedule, starts: Ref.get(starts) }
+    return { schedule, starts: Ref.get(starts), hold: (yes: boolean) => Ref.set(held, yes) }
   })
 
 const phaseOf = (id: string) =>
@@ -134,5 +137,60 @@ describe("a ticket set aside, then undeferred during the run", () => {
     )
     // bd couldn't defer it: still listed by bd ready, it is kept out of this run.
     expect(seen).toEqual({ phase: "Deferred", starts: ["t-1"] })
+  })
+
+  test("is left to an environment hold that reopens it, as the run holds", async () => {
+    const seen = await run(
+      [{ id: "t-1" }],
+      Effect.gen(function* () {
+        const { schedule, starts, hold } = yield* scheduler()
+        const beads = yield* Beads
+        const ledger = yield* Ledger
+        const fiber = yield* Effect.forkChild(schedule.run)
+        yield* flush
+        yield* poll
+        // The hold reopens it in bd, and a poll comes before its Reopened.
+        yield* hold(true)
+        yield* beads.update("t-1", { status: "open" })
+        yield* poll
+        const mid = yield* phaseOf("t-1")
+        yield* ledger.transition("t-1", Cause.Reopened())
+        const after = { phase: yield* phaseOf("t-1"), starts: yield* starts }
+        const bugs = (yield* texts).filter((text) => text.includes("PHASE_BUG"))
+        yield* Fiber.interrupt(fiber)
+        return { mid, after, bugs }
+      }),
+    )
+    expect(seen).toEqual({
+      mid: "Deferred",
+      after: { phase: "Waiting", starts: ["t-1"] },
+      bugs: [],
+    })
+  })
+
+  test("waits for the run to take tickets again", async () => {
+    const seen = await run(
+      [{ id: "t-1" }],
+      Effect.gen(function* () {
+        const { schedule, starts, hold } = yield* scheduler()
+        const beads = yield* Beads
+        const fiber = yield* Effect.forkChild(schedule.run)
+        yield* flush
+        yield* poll
+        yield* hold(true)
+        yield* beads.update("t-1", { status: "open" })
+        yield* poll
+        const holding = yield* phaseOf("t-1")
+        yield* hold(false)
+        yield* poll
+        const after = { phase: yield* phaseOf("t-1"), starts: yield* starts }
+        yield* Fiber.interrupt(fiber)
+        return { holding, after }
+      }),
+    )
+    expect(seen).toEqual({
+      holding: "Deferred",
+      after: { phase: "Working", starts: ["t-1", "t-1"] },
+    })
   })
 })

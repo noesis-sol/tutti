@@ -485,8 +485,9 @@ export const make = (
     // The candidates the last fill read, which a queue record counts.
     let lastIds: ReadonlyArray<string> = []
     // The tickets set aside (Deferred) that a fill found gone from bd ready, their fibers ended: one
-    // bd ready lists again was undeferred outside the run, and is queued again. One bd couldn't
-    // defer, which bd ready still lists, is kept out of the run.
+    // bd ready lists again was undeferred outside the run, and is queued again while the run takes
+    // tickets. One bd couldn't defer, which bd ready still lists, is kept out of the run. So is one
+    // an environment hold reopens itself (Deferred → Waiting), which it does once the run holds.
     const leftReady = new Set<string>()
 
     const soloState = (s: Slots): SoloState | null =>
@@ -680,7 +681,8 @@ export const make = (
             leftReady.add(entry.ticket)
           }
         }
-        const back = (id: string) => deferred(before, id) && leftReady.has(id)
+        const takingNow = yield* taking
+        const back = (id: string) => takingNow && deferred(before, id) && leftReady.has(id)
         const candidates = listed.filter((issue) => candidate(before, issue.id) || back(issue.id))
         // The queue's counts take in the tickets whose setup failed, held back apart.
         const ids = listed
