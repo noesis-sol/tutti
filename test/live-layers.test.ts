@@ -12,12 +12,12 @@ import type { CliRenderer } from "@opentui/core"
 import { Effect, FileSystem, Layer, PlatformError } from "effect"
 import { liveLoad, parseDarwin, parseLinux, parseProcesses, psArgs } from "../src/run/load.ts"
 import {
-  installedOnPath,
   layer as liveNotifier,
   Notifier,
   notifySendArgs,
   osascriptArgs,
 } from "../src/services/Notifier.ts"
+import { installedOnPath } from "../src/services/onPath.ts"
 import { appConfig, layer as appConfigLayer } from "../src/testing/AppConfig.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as ttyLayer } from "../src/testing/Tty.ts"

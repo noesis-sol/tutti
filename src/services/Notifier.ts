@@ -26,6 +26,7 @@ import {
   type CommandTimedOut,
   run,
 } from "./exec.ts"
+import { installedOnPath } from "./onPath.ts"
 import { Tty, type TtyValue } from "./Tty.ts"
 
 export class Notifier extends Context.Service<
@@ -72,13 +73,6 @@ const set = (env: Where["env"], name: string): boolean => {
 /** Whether the session is over ssh: sshd sets these for the session's processes. */
 export const overSsh = (env: Where["env"]): boolean =>
   set(env, "SSH_CONNECTION") || set(env, "SSH_CLIENT") || set(env, "SSH_TTY")
-
-/**
- * Whether `command` is on process.env's PATH, the one a command is run with. Bun.which alone reads
- * the PATH the process started with, and doesn't see process.env.PATH changed since (tutti-xj3t).
- */
-export const installedOnPath = (command: string): boolean =>
-  Bun.which(command, { PATH: process.env.PATH ?? "" }) !== null
 
 /**
  * The notification sequence the terminal shows, read from the environment: undefined for one not

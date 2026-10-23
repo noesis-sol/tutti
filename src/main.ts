@@ -76,6 +76,7 @@ import { Beads } from "./services/Beads.ts"
 import { Checks } from "./services/Checks.ts"
 import { Git, GitWriter } from "./services/Git.ts"
 import { layer as notifierLayer } from "./services/Notifier.ts"
+import { whichOnPath } from "./services/onPath.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
@@ -236,7 +237,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       on: checked.success.config.settings.keep_awake,
       platform: process.platform,
       pid: process.pid,
-      which: (command) => Bun.which(command),
+      which: whichOnPath,
     })
     const started: Started =
       awake._tag === "Missing"

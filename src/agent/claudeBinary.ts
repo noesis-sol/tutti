@@ -25,6 +25,7 @@ import { extractFromBunfs } from "@anthropic-ai/claude-agent-sdk/extract"
 import sdk from "@anthropic-ai/claude-agent-sdk/package.json" with { type: "json" }
 import { Effect, Option } from "effect"
 import { exec } from "../services/exec.ts"
+import { whichOnPath } from "../services/onPath.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { extractedCopy, extractionBase, knownFor, tidyExtracted } from "./claudeExtract.ts"
 
@@ -250,6 +251,6 @@ export const resolveClaude = (given: string | null, cwd: string) =>
     embedded: embeddedFile,
     extract,
     tidy,
-    which: (command) => Bun.which(command),
+    which: whichOnPath,
     version: claudeVersion,
   })

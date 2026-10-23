@@ -11,7 +11,8 @@
 // open has passed: `xdg-open` may wait on the browser it started, which would go with its group.
 import { Duration, Effect } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { installedOnPath, overSsh } from "../services/Notifier.ts"
+import { overSsh } from "../services/Notifier.ts"
+import { installedOnPath } from "../services/onPath.ts"
 import type { Clipboard, Where } from "./clipboard.ts"
 
 /** What opening the URL in the browser toasts. */

@@ -6,6 +6,7 @@ import { statSync } from "node:fs"
 import { Deferred, Duration, Effect, type FileSystem, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { exec, showCommand } from "../services/exec.ts"
+import { whichOnPath } from "../services/onPath.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 
 /**
@@ -206,7 +207,7 @@ export const liveMachine = Effect.gen(function* () {
         ),
       )
     },
-    which: (command) => Bun.which(command),
+    which: whichOnPath,
     env: (name) => process.env[name],
     platform: process.platform,
     executable: (path) => {
