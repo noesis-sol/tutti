@@ -6,9 +6,10 @@
 // Every answer names the request drawn on the card when the key was pressed or the button clicked,
 // never one opened since. One no longer open by then (answered elsewhere, by `tutti answer`, or
 // withdrawn) is dropped with a toast. Open URL opens an elicitation's URL before it answers Accept
-// (openUrl.ts). Input to a card is ignored for `settle` ms after its request
-// appears or changes, so a key meant for the request before can't answer the next. Allow is never
-// focused first: a permission opens on Deny, and one with `defaultToNo` has no one-key allow.
+// (openUrl.ts). Input to a card is ignored for `settle` ms after its request appears or changes,
+// or becomes the target the keys answer, so a key meant for the request before can't answer the
+// next. Allow is never focused first: a permission opens on Deny, and one with `defaultToNo` has
+// no one-key allow.
 import { useContext, useRef } from "react"
 import { type Answer, type AttentionRequest, allowsForRun } from "../agent/Attention.ts"
 import { UiCommand } from "../run/commands.ts"
@@ -19,7 +20,10 @@ import { sanitizeLine } from "./sanitize.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { ShellContext, useClock, useCommand, useLatestRunView } from "./useRunView.ts"
 
-/** How long input to a card is ignored after its request appears or changes, in ms (§ 4.5). */
+/**
+ * How long input to a card is ignored after its request appears or changes, or becomes the target,
+ * in ms (§ 4.5).
+ */
 export const settle = 500
 
 /** What pressing a button does: answer the request, or open the worker view for what won't fit. */
@@ -243,13 +247,20 @@ export interface Answering {
   readonly key: (card: Card, key: AnswerKey) => void
   /** Opens the reason box to deny the card's request with a reason you type (Shift+D). */
   readonly denyWithReason: (card: Card) => void
+  /**
+   * Names the card the keys answer as drawn, its request the target (§ 4.5): when the target's
+   * request changes, its guard starts again, so a key meant for the request before (answered, its
+   * card gone) can't answer the one the target moves on to. Called as the cards are drawn.
+   */
+  readonly target: (card: Card | undefined) => void
   /** Focuses the question's option `n`, 1 to 4; false when the card has no such option. */
   readonly pick: (card: Card, n: number) => boolean
 }
 
 /**
  * The answering of the cards drawn in this render. Each card's oldest request is the one it shows;
- * the time it first showed it starts its guard. `sent` is called once a button or key has answered
+ * the time it first showed it starts its guard, and the time it became the target (`target`) starts
+ * it again. `sent` is called once a button or key has answered
  * (or the answer was dropped) or pressed Answer in view. Answer in view opens the card's worker
  * view, or does `inView` when given: the worker view's panel opens the answer form.
  */
@@ -271,6 +282,8 @@ export const useAnswering = (
     if (request !== undefined) drawn.set(request.id, shown.current.get(request.id) ?? clock())
   }
   shown.current = drawn
+  // The target's request, and when it became the target.
+  const aimed = useRef<{ readonly request: string; readonly since: number } | null>(null)
   // The focus moved by Tab, the arrows or a pick, for the request it was moved on.
   const [, setMoved, moved] = useKeyState<{
     readonly request: string
@@ -280,8 +293,13 @@ export const useAnswering = (
     setMoved(() => to)
 
   const requestOf = (card: Card) => card.requests[0]
-  const settled = (request: AttentionRequest) =>
-    clock() - (shown.current.get(request.id) ?? clock()) >= settle
+  const settled = (request: AttentionRequest) => {
+    const now = clock()
+    const first = shown.current.get(request.id) ?? now
+    const aim = aimed.current
+    const since = aim?.request === request.id ? Math.max(first, aim.since) : first
+    return now - since >= settle
+  }
   const focusOf = (card: Card) => {
     const request = requestOf(card)
     if (request === undefined) return null
@@ -332,6 +350,13 @@ export const useAnswering = (
       if (request.kind._tag === "Elicitation") send(request, { _tag: "Decline" })
       else
         box.set(Box.Reason({ requestId: request.id, ticket: request.ticket, label: request.label }))
+    },
+    target: (card) => {
+      const request = card === undefined ? undefined : requestOf(card)
+      if (request === undefined) aimed.current = null
+      else if (aimed.current?.request !== request.id) {
+        aimed.current = { request: request.id, since: clock() }
+      }
     },
     pick: (card, n) => {
       const request = requestOf(card)

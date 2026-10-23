@@ -500,7 +500,7 @@ tutti keeps those rules (tool name and rule content) for the run. A later reques
 **Answering the request you read.** Every answer carries the ID of the request shown when the key was pressed or the button clicked.
 
 - An answer to a request that is no longer open is dropped, with a toast.
-- Input to a card is ignored for 500 ms after its request appears or changes. Allow is never the focused default.
+- Input to a card is ignored for 500 ms after its request appears or changes, or becomes the target (the highlighted or selected request, or the oldest): once a request is answered and the target moves on to another that has been on screen a while, a key meant for the one before (a second press, a key held down) can't answer it. Allow is never the focused default.
 - On the dashboard, `d`, `Shift+D`, `a` and `r` answer only a request drawn with its buttons, on a full attention card. Where its buttons aren't drawn (below the minimum size, §7.7, on a compact line, behind the end-of-run box) they open the Answer box on the highlighted request instead, and the hint offers neither `d` nor `a`; the 500 ms starts once the buttons are drawn. orchestra's `a` opens an answer talk, so it has no such case (tutti-d0d).
 
 **The answer** resolves the `Deferred`:

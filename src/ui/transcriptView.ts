@@ -222,6 +222,9 @@ export const useSelection = (
     const key = current()
     return panel.cards.find((each) => each.requests[0] && requestKey(each.requests[0]) === key)
   }
+  const targetCard = () => selectedCard() ?? panel.cards[0]
+  // Its guard starts again as the target moves: on to the next request once one is answered.
+  panel.answering.target(targetCard())
   const move = (step: 1 | -1) => {
     if (selectables.length === 0) return
     // From none, the newest item: you're at the bottom.
@@ -248,7 +251,7 @@ export const useSelection = (
     current,
     selectedCard,
     /** The request the answer keys answer: the one selected, or the oldest. */
-    targetCard: () => selectedCard() ?? panel.cards[0],
+    targetCard,
     move,
     /** Between the selected request's buttons, then on to the next selectable. */
     stepOrMove: (step: 1 | -1) => {

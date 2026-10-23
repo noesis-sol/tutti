@@ -179,6 +179,8 @@ export const Dashboard = () => {
   const key = (keys: ReadonlyArray<string>, run: () => void): ReadonlyArray<KeyBinding> =>
     keys.map((each) => ({ key: each, run: () => (helpOpen() ? undefined : run()) }))
   const highlightedCard = () => cards.find((card) => card.ticket === current())
+  // The highlighted card's request is the target: its guard starts again as the highlight moves.
+  answering.target(buttons ? highlightedCard() : undefined)
   // The attention card highlighted, with its buttons drawn: the one Tab, Enter and 1–4 work in.
   const inCard = () => {
     const card = highlightedCard()
