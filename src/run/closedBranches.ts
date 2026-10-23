@@ -45,20 +45,6 @@ export const closedUnmergedLine = (id: string, base: string): Line => {
   )`${id} is closed, but ${branch} is not on ${base}: the tickets it blocks wait until it merges; merge it into ${base}, or delete the branch if its work isn't wanted (git branch -D ${branch})`
 }
 
-/** Whether the branch is there, as rev-parse --verify --quiet says: it exits 1, silent, if not. */
-export const branchThere = (repo: string, branch: string): Effect.Effect<boolean, GitError, Git> =>
-  Effect.gen(function* () {
-    const git = yield* Git
-    return yield* git.revParse(repo, `refs/heads/${branch}`).pipe(
-      Effect.as(true),
-      Effect.catch((error) =>
-        error._tag === "GitFailed" && error.exitCode === 1 && error.stderr.trim() === ""
-          ? Effect.succeed(false)
-          : Effect.fail(error),
-      ),
-    )
-  })
-
 /**
  * Why closed ticket `id`'s work is only on its branch, as git finds it: `<branch> is not on
  * <base>` when the branch is there, has commits the base doesn't and the base doesn't hold its
@@ -71,7 +57,7 @@ export const branchOff = (
   Effect.gen(function* () {
     const git = yield* Git
     const branch = branchOf(id)
-    if (!(yield* branchThere(where.repo, branch))) return undefined
+    if (!(yield* git.branchExists(where.repo, branch))) return undefined
     if ((yield* git.log(where.repo, where.base, branch)).length === 0) return undefined
     if (yield* git.holds(where.repo, where.base, branch)) return undefined
     return `${branch} is not on ${where.base}`

@@ -323,6 +323,11 @@ export class Git extends Context.Service<
     ): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git rev-parse --verify: the full hash `rev` names; GitFailed when it names none. */
     revParse(dir: string, rev: string): Effect.Effect<string, GitError>
+    /**
+     * git show-ref --verify --quiet refs/heads/<branch>: whether the branch is there. Its exit 1 is
+     * a missing branch, whatever git said; any other failure is git's.
+     */
+    branchExists(repo: string, branch: string): Effect.Effect<boolean, GitError>
     /** git rev-parse --git-common-dir: the absolute path of the git folder every worktree shares. */
     commonDir(dir: string): Effect.Effect<string, GitError>
     /** git rev-parse --show-toplevel: the top of the checkout dir is in, a linked worktree's own. */
@@ -433,6 +438,15 @@ export class Git extends Context.Service<
           Effect.map(
             read("rev-parse", dir, ["rev-parse", "--verify", "--quiet", ...revisions([rev])]),
             (out) => out.trim(),
+          )
+
+        const branchExists = (repo: string, branch: string) =>
+          Effect.flatMap(
+            gitRead("show-ref", repo, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]),
+            ({ shown, output }) =>
+              output.exitCode === 0 || output.exitCode === 1
+                ? Effect.succeed(output.exitCode === 0)
+                : Effect.fail(failed("show-ref", shown, output)),
           )
 
         // git reset before 2.44 keeps --end-of-options among its arguments and takes it for a
@@ -649,6 +663,7 @@ export class Git extends Context.Service<
                   parseUnion,
                 ),
           revParse,
+          branchExists,
           commonDir: (dir) =>
             Effect.map(
               read("rev-parse --git-common-dir", dir, [

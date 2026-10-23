@@ -42,7 +42,7 @@ import {
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
-import { branchThere, type ClosedBranches } from "./closedBranches.ts"
+import type { ClosedBranches } from "./closedBranches.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
@@ -176,7 +176,7 @@ export const footprintsOf = (options: {
       branch: (ticket) =>
         Effect.gen(function* () {
           const branch = branchOf(ticket)
-          if (!(yield* branchThere(options.repo, branch))) return []
+          if (!(yield* git.branchExists(options.repo, branch))) return []
           const files = yield* git.changedFiles(options.repo, options.base, branch)
           return yield* withoutUnion(options.repo, files)
         }).pipe(

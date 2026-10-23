@@ -26,7 +26,7 @@ import {
   SymlinkRefused,
 } from "../native/libc.ts"
 import { writeFileAtomic } from "./atomicFile.ts"
-import { type Commit, Git, type GitError, GitFailed, GitWriter, type StatusEntry } from "./Git.ts"
+import { type Commit, Git, type GitError, GitWriter, type StatusEntry } from "./Git.ts"
 
 /** A ticket ID that can't name a worktree folder and a branch; `why` says what is wrong with it. */
 export class BadTicketId extends Schema.TaggedError<BadTicketId>()("BadTicketId", {
@@ -324,16 +324,6 @@ export class Worktrees extends Context.Service<
         const fs = yield* FileSystem.FileSystem
         const { repo, root, base } = options
 
-        // Whether the branch exists: rev-parse --verify --quiet says nothing and exits 1 when not.
-        const hasBranch = (branch: string) =>
-          git.revParse(repo, `refs/heads/${branch}`).pipe(
-            Effect.as(true),
-            Effect.catchIf(
-              (error) => error instanceof GitFailed && error.exitCode === 1 && error.stderr === "",
-              () => Effect.succeed(false),
-            ),
-          )
-
         // The worktree that has the branch checked out, if one does; a prunable one doesn't count.
         const worktreeOf = (branch: string) =>
           Effect.map(git.worktrees(repo), (worktrees) =>
@@ -361,7 +351,7 @@ export class Worktrees extends Context.Service<
                   return { id, branch, path: existing.path, reused: true, fresh: false, earlier }
                 }
                 const path = join(root, id)
-                const branchLeft = yield* hasBranch(branch)
+                const branchLeft = yield* git.branchExists(repo, branch)
                 yield* git.addWorktree(repo, path, branchLeft ? { branch } : { branch, base })
                 const earlier = branchLeft ? yield* earlierIn(path) : nothingEarlier
                 return { id, branch, path, reused: branchLeft, fresh: true, earlier }
@@ -380,7 +370,8 @@ export class Worktrees extends Context.Service<
                 if (existing !== undefined)
                   yield* git.removeWorktree(repo, existing.path, { force })
                 yield* git.pruneWorktrees(repo)
-                if (yield* hasBranch(branch)) yield* git.deleteBranch(repo, branch, { force })
+                if (yield* git.branchExists(repo, branch))
+                  yield* git.deleteBranch(repo, branch, { force })
               }),
             )
           })

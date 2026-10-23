@@ -12,7 +12,6 @@
 import { Console, Effect, type FileSystem } from "effect"
 import type { ConfigFileInvalid } from "../project/configFile.ts"
 import { checkCommands, readSettings } from "../project/settings.ts"
-import { branchThere } from "../run/closedBranches.ts"
 import {
   branchFootprint,
   emptyFootprint,
@@ -250,7 +249,7 @@ const branchChanges = (
     for (const issue of open) {
       const branch = branchOf(issue.id)
       const read = yield* Effect.gen(function* () {
-        if (!(yield* branchThere(repo, branch))) return []
+        if (!(yield* git.branchExists(repo, branch))) return []
         const files = yield* git.changedFiles(repo, "HEAD", branch)
         const union = yield* git.mergedByUnion(repo, files)
         return files.filter((f) => !union.includes(f))

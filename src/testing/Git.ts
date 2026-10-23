@@ -1001,6 +1001,14 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
                 return hash === undefined ? yield* refuse(1, "") : hash
               }),
           ),
+        branchExists: (repo, branch) =>
+          operation(
+            "read",
+            "show-ref",
+            repo,
+            ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
+            (refuse) => Effect.map(inRepo(refuse, repo), () => branches.has(branch)),
+          ),
         commonDir: (dir) =>
           operation(
             "read",

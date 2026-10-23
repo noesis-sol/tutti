@@ -79,19 +79,6 @@ export interface Found {
   readonly branch?: string
 }
 
-/** Whether the branch is there: undefined when git can't say. */
-const hasBranch = (repo: string, branch: string) =>
-  Effect.gen(function* () {
-    const git = yield* Git
-    const found = yield* Effect.result(git.revParse(repo, `refs/heads/${branch}`))
-    if (Result.isSuccess(found)) return true
-    // rev-parse --verify --quiet exits 1, saying nothing, for a ref that isn't there.
-    const error = found.failure
-    return error._tag === "GitFailed" && error.exitCode === 1 && error.stderr.trim() === ""
-      ? false
-      : undefined
-  })
-
 /**
  * The commit naming the ticket that its branch, there in the repository, added: when the branch is
  * on the base, one of its own commits (since its fork, or else its tip alone), so that an older
@@ -126,9 +113,9 @@ export const mergedSince = (
     const git = yield* Git
     if (ticketIdProblem(issue.id) !== undefined) return {}
     for (const branch of [branchOf(issue.id), orchestraBranchOf(issue.id)]) {
-      const there = yield* hasBranch(options.repo, branch)
-      if (there === undefined) return {}
-      if (there) {
+      const there = yield* Effect.result(git.branchExists(options.repo, branch))
+      if (Result.isFailure(there)) return {}
+      if (there.success) {
         const merged = yield* branchMerged(issue, branch, options)
         return merged === undefined ? { branch } : { merged, branch }
       }
