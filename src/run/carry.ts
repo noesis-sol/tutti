@@ -31,14 +31,16 @@
 // its phase saved as it is (aside.ts). So a record with neither why it was suspended nor a phase is
 // one whose run never reached its end with it: it crashed
 // (kill -9, a power cut), leaving its workers' sessions unsuspended, since a crash can't lose a
-// session ID (§ 4.8). Once that run's process is gone, the next run takes up such a ticket as a
-// suspended one (`crashed`) when bd has it in progress or closed; one in any other state, back in
-// the queue or set aside, is forgotten.
+// session ID (§ 4.8). The next run takes up such a ticket as a suspended one (`crashed`) when bd
+// has it in progress or closed; one in any other state, back in the queue or set aside, is
+// forgotten. That run is the one state.json named as the Store read it (its previousRun), not the
+// state's own stamp, which is this run's once it has written; and it has ended, whatever runs
+// under its PID now, as this run holds the run lock (§ 9.2).
 import { Clock, Effect, FileSystem, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
-import { type PhaseName, type State, Store, type TicketRecord } from "../services/Store.ts"
+import { type PhaseName, Store, type TicketRecord } from "../services/Store.ts"
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
 import { handedBackOf, uncheckedKey, uncheckedOf } from "./check.ts"
@@ -64,17 +66,6 @@ export const askedWhy = "asked"
 
 /** Why a ticket a crashed run left in state.json is carried over, as its carry-on message says. */
 export const crashedWhy = "crashed"
-
-/** Whether the process `pid` is running: one this user may not signal is too. */
-export const processRunning = (pid: number): boolean => {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM"
-  }
-}
 
 /** What a suspended worker is told as the next run resumes its session. */
 export const carryOnText = (id: string, why: string, facts: ReadonlyArray<string> = []): string =>
@@ -177,23 +168,22 @@ export const saveLeft: Effect.Effect<void, never, Ledger | Store> = Effect.gen(f
 const leftByCrash = (record: TicketRecord): boolean =>
   record.suspended === undefined && record.phase === undefined && record.session !== undefined
 
-/** The records of the workers the last run left in state.json: suspended, or left by a crash. */
-const toCarry = (state: State) =>
-  Effect.gen(function* () {
-    // A run whose process is gone, and that didn't save its tickets as it ended, crashed.
-    const last = state.run
-    const crashed = last !== undefined && !(yield* Effect.sync(() => processRunning(last.pid)))
-    return Object.entries(state.tickets).filter(
-      ([, record]) => record.suspended !== undefined || (crashed && leftByCrash(record)),
-    )
-  })
+/**
+ * The records of the workers the last run left in state.json: suspended, or left by a crash, when
+ * state.json named the run that wrote it as the Store read it.
+ */
+const toCarry = Effect.gen(function* () {
+  const store = yield* Store
+  const crashed = store.previousRun !== undefined
+  return Object.entries((yield* store.state).tickets).filter(
+    ([, record]) => record.suspended !== undefined || (crashed && leftByCrash(record)),
+  )
+})
 
 /** The tickets whose workers the last run left in state.json, for this one to carry on with. */
-export const carriedTickets: Effect.Effect<ReadonlySet<string>, never, Store> = Effect.gen(
-  function* () {
-    const saved = yield* toCarry(yield* (yield* Store).state)
-    return new Set(saved.map(([id]) => id))
-  },
+export const carriedTickets: Effect.Effect<ReadonlySet<string>, never, Store> = Effect.map(
+  toCarry,
+  (saved) => new Set(saved.map(([id]) => id)),
 )
 
 /** The question the saved ticket waited on, if state.json has one. */
@@ -280,9 +270,7 @@ export const carryOver = (
     const context = yield* Effect.context<WorkEnv>()
     const { base } = options
     const carried = new Map<string, Carried>()
-    const saved = [...(yield* toCarry(yield* store.state))].sort(([a], [b]) =>
-      a < b ? -1 : a > b ? 1 : 0,
-    )
+    const saved = [...(yield* toCarry)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     if (saved.length === 0) return carried
 
     // A scoped run takes up its ticket and its descendants; bd failing to list them, its ticket.

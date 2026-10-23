@@ -8,6 +8,6 @@ export const layer = (initial: State = emptyState) =>
   Layer.effect(
     Store,
     Effect.map(Ref.make(initial), (state) =>
-      makeStore(Ref.get(state), (change) => Ref.updateAndGet(state, change)),
+      makeStore(Ref.get(state), (change) => Ref.updateAndGet(state, change), initial.run),
     ),
   )

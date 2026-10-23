@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber } from "effect"
-import { carryOnText, crashedWhy, processRunning } from "../src/run/carry.ts"
+import { carryOnText, crashedWhy } from "../src/run/carry.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
 import { type RunStamp, type State, Store, type TicketRecord } from "../src/services/Store.ts"
@@ -302,17 +302,18 @@ describe("state.json: what a crashed run left", () => {
     expect(state.tickets["t-1"]).toBeUndefined()
   })
 
-  test("is left alone while the run that wrote it is still running", async () => {
-    const { ran, state } = await plainRun({
+  test("is resumed though a live process has the PID of the run that wrote it now", async () => {
+    // The run lock is held, so the run state.json names has ended, whatever has its PID.
+    const { ran } = await plainRun({
       backlog: backlog().ticket("t-1", { status: "in_progress" }).seeds,
       saved: (root) => ({ "t-1": crashRecord(root, "t-1") }),
       last: lastRun(process.pid),
       worktrees: ["t-1"],
+      scripts: (world, root) => ({ "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))] }),
     })
-    expectPhases(ran, {})
-    expect(sessionsOf(ran, "t-1")).toEqual([])
-    expect(carriedOver(ran)).toBe(false)
-    expect(state.tickets["t-1"]?.session).toBe("session-t-1")
+    expectPhases(ran, { "t-1": "Done" })
+    expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
+    expect(textsOf(ran, "t-1")).toEqual([carryOnText("t-1", crashedWhy)])
   })
 
   test("a record a run that ended left, with its phase, isn't taken for a crash's", async () => {
@@ -325,15 +326,5 @@ describe("state.json: what a crashed run left", () => {
     expectPhases(ran, {})
     expect(sessionsOf(ran, "t-1")).toEqual([])
     expect(carriedOver(ran)).toBe(false)
-  })
-})
-
-describe("processRunning", () => {
-  test("this process is running; one that has ended, or no pid at all, isn't", () => {
-    expect(processRunning(process.pid)).toBe(true)
-    expect(processRunning(endedPid())).toBe(false)
-    expect(processRunning(0)).toBe(false)
-    expect(processRunning(-1)).toBe(false)
-    expect(processRunning(1.5)).toBe(false)
   })
 })

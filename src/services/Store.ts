@@ -149,6 +149,12 @@ export class Store extends Context.Service<
   {
     /** The last committed state. */
     readonly state: Effect.Effect<State>
+    /**
+     * The run that wrote state.json before this one, as the Store read it when built; absent when
+     * none had. Every commit stamps this run on the state, so the state's own `run` is this one's
+     * once it has written.
+     */
+    readonly previousRun: RunStamp | undefined
     /** What the last committed state has on the ticket, if anything. */
     ticket(id: string): Effect.Effect<TicketRecord | undefined>
     /** Applies `change` to the state and commits it, returning once the result is on disk. */
@@ -186,7 +192,8 @@ export class Store extends Context.Service<
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const file = statePath(options.repo)
-        const committed = yield* Ref.make(yield* readState(file))
+        const read = yield* readState(file)
+        const committed = yield* Ref.make(read)
         const writes = yield* Queue.unbounded<Write>()
         const commit = commitWrites(fs, file, options.run, committed)
 
@@ -206,12 +213,15 @@ export class Store extends Context.Service<
           }),
         )
 
-        return makeStore(Ref.get(committed), (change) =>
-          Effect.gen(function* () {
-            const done = yield* Deferred.make<State, StoreWriteFailed>()
-            yield* Queue.offer(writes, { change, done })
-            return yield* Deferred.await(done)
-          }),
+        return makeStore(
+          Ref.get(committed),
+          (change) =>
+            Effect.gen(function* () {
+              const done = yield* Deferred.make<State, StoreWriteFailed>()
+              yield* Queue.offer(writes, { change, done })
+              return yield* Deferred.await(done)
+            }),
+          read.run,
         )
       }),
     )
@@ -321,10 +331,14 @@ const withTicket =
     return { ...state, tickets: next === undefined ? others : { ...others, [id]: next } }
   }
 
-/** The Store's operations over a way to read the committed state and one to commit a change. */
+/**
+ * The Store's operations over a way to read the committed state and one to commit a change, the
+ * run that wrote the state before this one being `previousRun`.
+ */
 export const makeStore = (
   state: Effect.Effect<State>,
   update: (change: (state: State) => State) => Effect.Effect<State, StoreWriteFailed>,
+  previousRun: RunStamp | undefined,
 ): Store["Service"] => {
   const updateTicket = (id: string, change: (ticket: TicketRecord) => TicketRecord | undefined) =>
     Effect.asVoid(update(withTicket(id, change)))
@@ -334,6 +348,7 @@ export const makeStore = (
     )
   return Store.of({
     state,
+    previousRun,
     ticket,
     update,
     updateTicket,
