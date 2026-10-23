@@ -10,6 +10,7 @@
 import { Effect, Schema } from "effect"
 import type { Item } from "../agent/Transcripts.ts"
 import { denier, unknownDenier } from "../run/log.ts"
+import { oneLine } from "../ui/oneLine.ts"
 import { type InputPart, section } from "./evidence.ts"
 import { make, type OrganError, Organs } from "./Organs.ts"
 import prompt from "./prompts/triage.md" with { type: "text" }
@@ -67,16 +68,6 @@ const asRecord = (value: unknown): Fields | undefined =>
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined
-
-/** `text` on one line, its runs of white space one space, cut to `limit` characters with `…`. */
-export const oneLine = (text: string, limit: number): string => {
-  const one = text
-    .split(/\s+/u)
-    .filter((word) => word !== "")
-    .join(" ")
-  const chars = Array.from(one)
-  return chars.length <= limit ? one : `${chars.slice(0, limit - 1).join("")}…`
-}
 
 // The input field that says what a call is about, in the order they are looked for.
 const inputKeys = ["command", "file_path", "notebook_path", "pattern", "url", "query", "prompt"]

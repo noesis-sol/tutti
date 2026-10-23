@@ -7,6 +7,7 @@
 // nothing to run don't notify: they are in the log, the event stream and the dashboard.
 import { Clock, Duration, Effect, Layer } from "effect"
 import { Notifier } from "../services/Notifier.ts"
+import { oneLine } from "../ui/oneLine.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { counting, type PhaseTag } from "./phase.ts"
@@ -19,17 +20,8 @@ export const needsYouEvery: Duration.Duration = Duration.seconds(30)
 
 /** What happened, then what it happened over (a title, a reason), shortened to noticeWidth. */
 export const about = (what: string, over: string | undefined): string => {
-  const words = (over ?? "").split(/\s+/u).filter((word) => word !== "")
-  if (words.length === 0) return what
-  const chars = [...words.join(" ")]
-  const said =
-    chars.length > noticeWidth
-      ? `${chars
-          .slice(0, noticeWidth - 1)
-          .join("")
-          .trimEnd()}…`
-      : chars.join("")
-  return `${what} · ${said}`
+  const said = oneLine(over ?? "", noticeWidth)
+  return said === "" ? what : `${what} · ${said}`
 }
 
 /** `no tickets closed`, `1 ticket closed`, `12 tickets closed`. */

@@ -9,6 +9,7 @@ import { type Section, section } from "../organs/evidence.ts"
 import { type Beads, type BeadsError, HumanLabel, type Issue } from "../services/Beads.ts"
 import { type CheckError, OutputBounds } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
+import { oneLine } from "../ui/oneLine.ts"
 import { failedHow } from "./check.ts"
 import type { Entry } from "./ledger.ts"
 import { branchOn } from "./log.ts"
@@ -157,23 +158,13 @@ export const filedOutside = (
   })
 }
 
-/** `text` on one line, cut to `width` characters with `…`. */
-const cut = (text: string, width: number): string => {
-  const one = text
-    .split(/\s+/)
-    .filter((word) => word !== "")
-    .join(" ")
-  const chars = [...one]
-  return chars.length > width ? `${chars.slice(0, width - 1).join("")}…` : one
-}
-
 /**
  * A follow-up, as the reviewer reads it: its ID and title, its type and status, the tickets it
  * links to, and its description, cut short.
  */
 export const followUpSaid = (issue: Issue): string => {
   const links = issue.dependencies.map((link) => `${link.type} ${link.id}`)
-  const description = cut(issue.description, followUpWidth)
+  const description = oneLine(issue.description, followUpWidth)
   return [
     `${issue.id}: ${issue.title}`,
     `${issue.type}, ${issue.status}${links.length === 0 ? "" : `; links: ${links.join(", ")}`}`,

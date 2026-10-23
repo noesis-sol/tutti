@@ -30,6 +30,7 @@ import type { Printer } from "../print/organLine.ts"
 import type { Ending } from "../print/summary.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git, type GitError } from "../services/Git.ts"
+import { oneLine } from "../ui/oneLine.ts"
 import { escapeMarkdown, sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
 import { exitCodes, exitMeanings } from "./holds.ts"
@@ -399,16 +400,6 @@ const failure = (error: BeadsError | GitError): string =>
     ? (error.stderr.trim().split("\n")[0] ?? error._tag)
     : error._tag
 
-/** `text` on one line, cut to `width` characters with `…`. */
-const cut = (text: string, width: number): string => {
-  const one = text
-    .split(/\s+/)
-    .filter((word) => word !== "")
-    .join(" ")
-  const chars = [...one]
-  return chars.length > width ? `${chars.slice(0, width - 1).join("")}…` : one
-}
-
 /**
  * When the run went, as the reviewer's closing line says it: `from 09:05 to 10:30`, the end's date
  * given when it is on another day, `from 23:10 to 2026-10-18 01:40`.
@@ -462,7 +453,7 @@ export const gather = (
       entries.filter(inSection("closed")),
       (entry) =>
         shown(entry, (issue) => {
-          const reason = cut(issue.closeReason, closeReasonWidth)
+          const reason = oneLine(issue.closeReason, closeReasonWidth)
           return (
             `${entry.ticket}: ${issue.title}\n${phaseSaid(entry.phase)}\n` +
             `Close reason: ${reason === "" ? "(none given)" : reason}`

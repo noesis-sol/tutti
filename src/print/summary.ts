@@ -9,7 +9,7 @@
 import { Data, Duration, type Effect } from "effect"
 import { formatDuration } from "../project/configFile.ts"
 import type { Row, Totals } from "../run/runView.ts"
-import { cut } from "../ui/line.tsx"
+import { oneLine } from "../ui/oneLine.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Style, Theme } from "../ui/theme.ts"
 import type { Printer } from "./organLine.ts"
@@ -58,14 +58,9 @@ export const runTime = (millis: number): string => {
   return seconds === 0 ? "0s" : formatDuration(Duration.seconds(seconds))
 }
 
-/** `text` on one line, cut to `width` columns with `…` when it is wider, between graphemes. */
-export const fit = (text: string, width: number): string => {
-  const line = sanitizeLine(text)
-  if (Bun.stringWidth(line) <= width) return line
-  return cut([{ text: line, look: null }], Math.max(width, 1))
-    .map((each) => each.text)
-    .join("")
-}
+/** `text` sanitised, on one line, cut to `width` columns with `…` when it is wider (`oneLine`). */
+export const fit = (text: string, width: number): string =>
+  oneLine(sanitizeLine(text), Math.max(width, 1))
 
 /** `text` padded with spaces to `width` columns. */
 const pad = (text: string, width: number): string =>
