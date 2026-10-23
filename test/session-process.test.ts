@@ -219,10 +219,20 @@ describe("what Claude Code last wrote to stderr, in the reason its session faile
 describe("an organ's or the usage probe's turn cut short", () => {
   test("an interrupted organ call returns once its Claude Code is gone", async () => {
     const { log, env, config } = fakeWith({ turns: [[{ hang: true }]], eofAfterTurn: true })
+    let interruptedAt = Number.POSITIVE_INFINITY
     const exit = await Effect.runPromiseExit(
       LanguageModel.generateText({ prompt: "Hang." }).pipe(
         Effect.as("answered"),
-        Effect.raceFirst(fakeStarted(log).pipe(Effect.as("interrupted"))),
+        Effect.raceFirst(
+          fakeStarted(log).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                interruptedAt = Date.now()
+              }),
+            ),
+            Effect.as("interrupted"),
+          ),
+        ),
         Effect.provide(
           organLayer({ account: { subscription: true }, env }).pipe(
             Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
@@ -233,17 +243,26 @@ describe("an organ's or the usage probe's turn cut short", () => {
     expect(exit).toEqual(Exit.succeed("interrupted"))
     const pid = firstPid(log)
     expect(pid === undefined ? "never started" : processAlive(pid)).toBe(false)
-    // Killed at once, before its stdin closed: not left to read its end and wait out the SDK's
-    // grace before its SIGTERM.
-    expect(readFileSync(log, "utf8")).not.toContain('"closed":true')
+    // Killed at once: not left to wait out the SDK's 2 s grace before its SIGTERM.
+    expect(Date.now() - interruptedAt).toBeLessThan(1500)
   })
 
   test("an interrupted usage probe returns once its Claude Code is gone", async () => {
     const { log, env, config } = fakeWith({ turns: [[{ hang: true }]], eofAfterTurn: true })
+    let interruptedAt = Number.POSITIVE_INFINITY
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(Effect.service(UsageProbe), (usage) => usage.probe(null)).pipe(
         Effect.as("answered"),
-        Effect.raceFirst(fakeStarted(log).pipe(Effect.as("interrupted"))),
+        Effect.raceFirst(
+          fakeStarted(log).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                interruptedAt = Date.now()
+              }),
+            ),
+            Effect.as("interrupted"),
+          ),
+        ),
         Effect.provide(
           UsageProbe.layer({ account: { subscription: true }, env }).pipe(
             Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
@@ -254,8 +273,7 @@ describe("an organ's or the usage probe's turn cut short", () => {
     expect(exit).toEqual(Exit.succeed("interrupted"))
     const pid = firstPid(log)
     expect(pid === undefined ? "never started" : processAlive(pid)).toBe(false)
-    // Killed at once, before its stdin closed: not left to read its end and wait out the SDK's
-    // grace before its SIGTERM.
-    expect(readFileSync(log, "utf8")).not.toContain('"closed":true')
+    // Killed at once: not left to wait out the SDK's 2 s grace before its SIGTERM.
+    expect(Date.now() - interruptedAt).toBeLessThan(1500)
   })
 })
