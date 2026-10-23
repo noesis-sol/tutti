@@ -3,22 +3,28 @@
 // session is closed, its group killed when the exit doesn't come in time or at once when asked.
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import type { Options, SpawnOptions } from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
-import { Duration, Effect, Layer, Option, Stream } from "effect"
+import { Duration, Effect, Exit, Layer, Option, Schedule, Stream } from "effect"
+import { LanguageModel } from "effect/ai"
+import { startProbe } from "../src/agent/Account.ts"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { endedWhy, layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { probeEnv } from "../src/agent/env.ts"
 import { noServers } from "../src/agent/mcp.ts"
 import { withSessionProcess, withStderr } from "../src/agent/sessionProcess.ts"
+import { UsageProbe } from "../src/agent/UsageProbe.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
+import { layer as organLayer } from "../src/organs/AgentSdkLanguageModel.ts"
 import { processAlive } from "../src/services/processTree.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
+import { layer as costLayer } from "../src/testing/OrganCost.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
 
@@ -106,47 +112,144 @@ describe("withStderr", () => {
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
-describe("a worker whose Claude Code exits", () => {
-  test("is Gone with what Claude Code last wrote to stderr", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "tutti-session-process-"))
-    const scenario = {
-      turns: [[{ stderr: "Error: the transcript is missing\n" }, { exit: 1 }]],
-      log: join(dir, "fake.jsonl"),
-    }
-    const config = appConfig({ claude: fake, settings: defaultSettings }, dir)
-    const host = liveLayer({
-      prompt: { text: "Work on TICKET_ID.", file: null },
-      servers: noServers,
-      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
-    })
-    const state = await Effect.runPromise(
-      Effect.gen(function* () {
-        const agents = yield* AgentHost
-        yield* agents.start("t-1", {
-          sessionId: "11111111-1111-4111-8111-111111111111",
-          cwd: dir,
-        })
-        yield* agents.send("t-1", "go", "clientComposed")
-        const found = yield* agents.state("t-1").pipe(
-          Stream.filter((each) => each._tag === "Gone"),
-          Stream.runHead,
-          Effect.timeout(Duration.seconds(10)),
-        )
-        return Option.getOrThrow(found)
-      }).pipe(
+/** A fresh folder, and the fake Claude Code's environment playing `scenario`, logging there. */
+const fakeWith = (scenario: Record<string, unknown>) => {
+  const dir = mkdtempSync(join(tmpdir(), "tutti-session-process-"))
+  const log = join(dir, "fake.jsonl")
+  const env = { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log }) }
+  return { dir, log, env, config: appConfig({ claude: fake, settings: defaultSettings }, dir) }
+}
+
+/** The PID of the first Claude Code the fake's log says started. */
+const firstPid = (log: string): number | undefined => {
+  if (!existsSync(log)) return undefined
+  const started = readFileSync(log, "utf8")
+    .split("\n")
+    .filter((l) => l !== "")
+    .map((l) => JSON.parse(l) as { args?: unknown; pid?: number })
+    .find((e) => e.args !== undefined)
+  return started?.pid
+}
+
+/** Succeeds once the fake's log says it started. */
+const fakeStarted = (log: string) =>
+  Effect.suspend(() => (firstPid(log) === undefined ? Effect.fail("not yet") : Effect.void)).pipe(
+    Effect.retry(Schedule.spaced(Duration.millis(20))),
+  )
+
+/** Runs `effect` with the live AgentHost over the fake playing `scenario`. */
+const withHost = <A, E>(
+  scenario: Record<string, unknown>,
+  effect: (dir: string) => Effect.Effect<A, E, AgentHost>,
+) => {
+  const { dir, env, config } = fakeWith(scenario)
+  const host = liveLayer({
+    prompt: { text: "Work on TICKET_ID.", file: null },
+    servers: noServers,
+    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
+    env,
+  })
+  return Effect.runPromiseExit(
+    effect(dir).pipe(
+      Effect.provide(
+        host.pipe(
+          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+const sessionIn = (dir: string) => ({ sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
+
+/** The typed failure `exit` must be. */
+const failureOf = <A, E>(exit: Exit.Exit<A, E>): E => {
+  if (Exit.isSuccess(exit)) throw new Error(`expected a failure, got ${JSON.stringify(exit.value)}`)
+  const error = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+  if (error === undefined) throw new Error(`expected a typed failure, got ${exit.cause}`)
+  return error.error
+}
+
+describe("what Claude Code last wrote to stderr, in the reason its session failed", () => {
+  test("a worker whose Claude Code exits mid-turn is Gone saying it", async () => {
+    const exit = await withHost(
+      { turns: [[{ stderr: "Error: the transcript is missing\n" }, { exit: 1 }]] },
+      (dir) =>
+        Effect.gen(function* () {
+          const agents = yield* AgentHost
+          yield* agents.start("t-1", sessionIn(dir))
+          yield* agents.send("t-1", "go", "clientComposed")
+          const found = yield* agents.state("t-1").pipe(
+            Stream.filter((each) => each._tag === "Gone"),
+            Stream.runHead,
+            Effect.timeout(Duration.seconds(10)),
+          )
+          return Option.getOrThrow(found)
+        }),
+    )
+    if (Exit.isFailure(exit)) throw new Error(String(exit.cause))
+    const why = (exit.value as { why: string }).why
+    expect(why.startsWith(endedWhy)).toBe(true)
+    expect(why).toContain("Error: the transcript is missing")
+  })
+
+  test("a worker whose Claude Code exits as it starts fails its start saying it", async () => {
+    const exit = await withHost(
+      { stderrAtStart: "No conversation found with session ID 1111\n", exitAtStart: 1 },
+      (dir) =>
+        Effect.flatMap(Effect.service(AgentHost), (agents) => agents.start("t-1", sessionIn(dir))),
+    )
+    const error = failureOf(exit) as { _tag: string; reason: string }
+    expect(error._tag).toBe("AgentStartFailed")
+    expect(error.reason).toContain("No conversation found with session ID 1111")
+  })
+
+  test("a login probe whose Claude Code exits as it starts fails saying it", async () => {
+    const { config, env } = fakeWith({ stderrAtStart: "Error: bad binary\n", exitAtStart: 1 })
+    const exit = await Effect.runPromiseExit(startProbe({ config, env: probeEnv({ env }) }))
+    const { reason } = failureOf(exit)
+    expect(reason).toContain("exited with code 1")
+    expect(reason).toContain("Error: bad binary")
+  })
+})
+
+describe("an organ's or the usage probe's turn cut short", () => {
+  test("an interrupted organ call returns once its Claude Code is gone", async () => {
+    const { log, env, config } = fakeWith({ turns: [[{ hang: true }]], eofAfterTurn: true })
+    const exit = await Effect.runPromiseExit(
+      LanguageModel.generateText({ prompt: "Hang." }).pipe(
+        Effect.as("answered"),
+        Effect.raceFirst(fakeStarted(log).pipe(Effect.as("interrupted"))),
         Effect.provide(
-          host.pipe(
-            Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
-            Layer.provideMerge(
-              Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
-            ),
+          organLayer({ account: { subscription: true }, env }).pipe(
+            Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
           ),
         ),
       ),
     )
-    const why = (state as { why: string }).why
-    expect(why.startsWith(endedWhy)).toBe(true)
-    expect(why).toContain("Error: the transcript is missing")
+    expect(exit).toEqual(Exit.succeed("interrupted"))
+    const pid = firstPid(log)
+    expect(pid === undefined ? "never started" : processAlive(pid)).toBe(false)
+  })
+
+  test("an interrupted usage probe returns once its Claude Code is gone", async () => {
+    const { log, env, config } = fakeWith({ turns: [[{ hang: true }]], eofAfterTurn: true })
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(Effect.service(UsageProbe), (usage) => usage.probe(null)).pipe(
+        Effect.as("answered"),
+        Effect.raceFirst(fakeStarted(log).pipe(Effect.as("interrupted"))),
+        Effect.provide(
+          UsageProbe.layer({ account: { subscription: true }, env }).pipe(
+            Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
+          ),
+        ),
+      ),
+    )
+    expect(exit).toEqual(Exit.succeed("interrupted"))
+    const pid = firstPid(log)
+    expect(pid === undefined ? "never started" : processAlive(pid)).toBe(false)
   })
 })

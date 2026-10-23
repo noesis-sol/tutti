@@ -142,8 +142,8 @@ log({
   cwd: process.cwd(),
   env: Object.fromEntries((scenario.env ?? []).map((name) => [name, process.env[name] ?? null])),
 })
-if (scenario.exitAtStart !== undefined) await exit(scenario.exitAtStart)
 if (scenario.stderrAtStart !== undefined) process.stderr.write(scenario.stderrAtStart)
+if (scenario.exitAtStart !== undefined) await exit(scenario.exitAtStart)
 if (scenario.descendant === true) {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], {
     stdio: "ignore",
