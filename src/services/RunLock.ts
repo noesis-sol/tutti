@@ -11,9 +11,15 @@
 // would wipe the holder's JSON from a file someone else holds. Once held, tutti.lock can be
 // rewritten, for a feature chosen at the start question after the lock was taken.
 //
+// The git folder is writable from every worktree, so a worker could put a symbolic link at a lock
+// file's name, or a hard link to a file of its user's: tutti would then write its JSON over that
+// file and empty it on release. Each file is opened with openUnder (§ 9.1's guard: O_NOFOLLOW, a
+// regular file only), one with more than one link is refused, and the holder is read from the
+// descriptor the lock is on, never again by name.
+//
 // `tutti plan --apply` probes the locks without taking them, to warn that a run is under way: a
 // shared flock for a moment, as orchestra's plan takes, which a run's retries get past.
-import { ftruncateSync, readFileSync, writeSync } from "node:fs"
+import { fstatSync, ftruncateSync, readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Context, Effect, Exit, Layer, Schema, Scope } from "effect"
 import {
@@ -22,7 +28,7 @@ import {
   flockSharedNonBlocking,
   LibcError,
   O,
-  openCloexec,
+  openUnder,
   unlock,
 } from "../native/libc.ts"
 import { clock } from "../run/localTime.ts"
@@ -176,6 +182,34 @@ const lockRetryDelay = "25 millis"
 const failed = (file: string) => (error: unknown) =>
   new LockFailed({ file, reason: error instanceof Error ? error.message : String(error) })
 
+/** What the file open at `fd` says, from its start; nothing where it can't be read. */
+const readHolder = (fd: number): SeenHolder => {
+  try {
+    const buffer = Buffer.alloc(fstatSync(fd).size)
+    let read = 0
+    while (read < buffer.length) {
+      const n = readSync(fd, buffer, read, buffer.length - read, read)
+      if (n === 0) break
+      read += n
+    }
+    return parseHolder(buffer.subarray(0, read).toString("utf8"))
+  } catch {
+    return {}
+  }
+}
+
+/** Fails when the file open at `fd` has another name too: a hard link to some other file. */
+const singleLinked = (fd: number, file: string): Effect.Effect<void, LockFailed> =>
+  Effect.try({ try: () => fstatSync(fd).nlink, catch: failed(file) }).pipe(
+    Effect.flatMap((links) =>
+      links > 1
+        ? Effect.fail(
+            new LockFailed({ file, reason: `it has ${links} links, so it may be another file` }),
+          )
+        : Effect.void,
+    ),
+  )
+
 /**
  * Takes the flock on `<commonDir>/<program's file>` and writes `text` to it, for the scope. On
  * release the file is emptied before its descriptor closes, so it never names a run that ended.
@@ -193,9 +227,12 @@ const take = (
   const file = join(request.commonDir, lockFiles[program])
   return Effect.gen(function* () {
     const fd = yield* Effect.acquireRelease(
-      openCloexec(file, O.RDWR | O.CREAT, 0o644).pipe(Effect.mapError(failed(file))),
+      openUnder(request.commonDir, lockFiles[program], O.RDWR | O.CREAT, 0o644).pipe(
+        Effect.mapError(failed(file)),
+      ),
       (fd) => Effect.ignore(close(fd)),
     )
+    yield* singleLinked(fd, file)
     // orchestra takes a shared lock on its file for a moment (plan, init) and retries its own
     // exclusive one five times over about 100 ms to get past that; tutti does the same.
     let locked = false
@@ -204,14 +241,8 @@ const take = (
       locked = yield* flockExclusiveNonBlocking(fd).pipe(Effect.mapError(failed(file)))
     }
     if (!locked) {
-      const said = yield* Effect.sync(() => {
-        try {
-          return readFileSync(file, "utf8")
-        } catch {
-          return ""
-        }
-      })
-      return yield* new AlreadyRunning({ program, repo: request.repo, holder: parseHolder(said) })
+      const said = yield* Effect.sync(() => readHolder(fd))
+      return yield* new AlreadyRunning({ program, repo: request.repo, holder: said })
     }
     yield* Effect.addFinalizer(() => Effect.ignore(Effect.try(() => ftruncateSync(fd, 0))))
     const write = (text: string) =>
@@ -241,7 +272,7 @@ const probeOne = (
 ): Effect.Effect<AlreadyRunning | undefined, LockFailed> => {
   const file = join(request.commonDir, lockFiles[program])
   return Effect.acquireUseRelease(
-    openCloexec(file, O.RDONLY).pipe(
+    openUnder(request.commonDir, lockFiles[program], O.RDONLY).pipe(
       Effect.catchIf(
         (error) => error instanceof LibcError && error.code === "ENOENT",
         () => Effect.succeed(undefined),
@@ -257,14 +288,8 @@ const probeOne = (
               yield* Effect.ignore(unlock(fd))
               return undefined
             }
-            const said = yield* Effect.sync(() => {
-              try {
-                return readFileSync(file, "utf8")
-              } catch {
-                return ""
-              }
-            })
-            return new AlreadyRunning({ program, repo: request.repo, holder: parseHolder(said) })
+            const said = yield* Effect.sync(() => readHolder(fd))
+            return new AlreadyRunning({ program, repo: request.repo, holder: said })
           }),
     (fd) => (fd === undefined ? Effect.void : Effect.ignore(close(fd))),
   )
