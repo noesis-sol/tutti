@@ -69,7 +69,7 @@ const said = (answer: { content: ReadonlyArray<unknown>; isError?: boolean | und
 describe("requires_check", () => {
   test("installs what is missing in the worktree, each entry's state a line", async () => {
     const dir = worktree([{ name: "met", check: "true", install: "false" }, marker("made")])
-    const answer = said(await run(checkIn(dir, {})))
+    const answer = said(await run(checkIn(dir, dir, {})))
     expect(answer).toEqual({ text: "met: met\nmade: installed with 'touch made'", error: false })
     expect(existsSync(join(dir, "made"))).toBe(true)
     expect(existsSync(join(dir, ".tutti", "run", "requires-made.log"))).toBe(true)
@@ -77,7 +77,7 @@ describe("requires_check", () => {
 
   test("checks only the entries named, and only checks with no_install", async () => {
     const dir = worktree([marker("one"), marker("two")])
-    const answer = said(await run(checkIn(dir, { names: ["two"], no_install: true })))
+    const answer = said(await run(checkIn(dir, dir, { names: ["two"], no_install: true })))
     expect(answer.text).toBe(
       "two: missing: 'test -f two' fails; install it with 'touch two'\n" +
         "Still missing: two. Fix its entry in .tutti/settings.json and call requires_check again, or ask the maintainer for a manual step.",
@@ -89,14 +89,14 @@ describe("requires_check", () => {
 
   test("a name not in the list is refused, nothing checked", async () => {
     const dir = worktree([marker("one")])
-    expect(said(await run(checkIn(dir, { names: ["one", "jq"] })))).toEqual({
+    expect(said(await run(checkIn(dir, dir, { names: ["one", "jq"] })))).toEqual({
       text: "Not in the requires list in .tutti/settings.json: jq; it has one. Add an entry for it there first.",
       error: true,
     })
     expect(existsSync(join(dir, "one"))).toBe(false)
     const empty = worktree([])
-    expect(said(await run(checkIn(empty, { names: ["jq"] }))).text).toContain("it has no entries")
-    expect(said(await run(checkIn(empty, {})))).toEqual({
+    expect(said(await run(checkIn(empty, empty, { names: ["jq"] }))).text).toContain("it has no entries")
+    expect(said(await run(checkIn(empty, empty, {})))).toEqual({
       text: "No requirements: .tutti/settings.json has no 'requires' list.",
       error: false,
     })
@@ -104,7 +104,7 @@ describe("requires_check", () => {
 
   test("a list the settings refuse is refused, saying why", async () => {
     const dir = worktree([{ name: "a", check: "x" } as Requirement])
-    expect(said(await run(checkIn(dir, {})))).toEqual({
+    expect(said(await run(checkIn(dir, dir, {})))).toEqual({
       text: ".tutti/settings.json: requires[0]: needs an install (a command that meets it) or manual (what a person must do)",
       error: true,
     })
@@ -135,7 +135,7 @@ describe("requires_readme", () => {
 describe("the worker's server", () => {
   test("is tutti's in-process server, its tools called through it", async () => {
     const dir = worktree([marker("made")], "# P\n")
-    const tools = await run(makeRequiresTools(dir))
+    const tools = await run(makeRequiresTools(dir, dir))
     expect(tools.server.type).toBe("sdk")
     expect(tools.server.name).toBe(requiresServerName)
     expect(tools.tools.map((t) => t.name)).toEqual(["requires_check", "requires_readme"])
@@ -147,7 +147,7 @@ describe("the worker's server", () => {
 
   test("a call aborted stops its install", async () => {
     const dir = worktree([{ name: "slow", check: "test -f done", install: "sleep 30; touch done" }])
-    const tools = await run(makeRequiresTools(dir))
+    const tools = await run(makeRequiresTools(dir, dir))
     const abort = new AbortController()
     const call = tools.tools[0]?.handler({}, { signal: abort.signal })
     setTimeout(() => abort.abort(), 200)
@@ -159,7 +159,7 @@ describe("the worker's server", () => {
 
   test("main's maker gives each session a server of its own", async () => {
     const dir = worktree([])
-    const make = await run(requiresServerFor)
+    const make = await run(requiresServerFor(dir))
     const first = await Effect.runPromise(make(dir))
     const second = await Effect.runPromise(make(dir))
     expect(first.name).toBe(requiresServerName)
@@ -264,7 +264,7 @@ describe("the requires note with the tools", () => {
   test("names requires_check, and requires_readme where there is a README", () => {
     const short = requiresNote(["jq"], builtInWorkerPrompt, true, true)
     expect(short).toBe(
-      `\n\nThe project's requires list is "requires" in .tutti/settings.json, which has jq now. tutti's requires_check tool checks the list in your worktree, and installs what is missing with each entry's own install command. A ticket that changes the list calls tutti's requires_readme tool, which writes README.md's section on what to install from it, and commits that with the list.\n`,
+      `\n\nThe project's requires list is "requires" in .tutti/settings.json, which has jq now. tutti's requires_check tool checks the list in your worktree, and installs what is missing with each entry's own install command; an entry your branch adds or changes, it gives you to run with Bash. A ticket that changes the list calls tutti's requires_readme tool, which writes README.md's section on what to install from it, and commits that with the list.\n`,
     )
     const own = requiresNote([], "You work on TICKET_ID.", false, true)
     expect(own).toContain("requires_check")

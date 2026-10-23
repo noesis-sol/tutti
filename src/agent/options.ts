@@ -187,7 +187,8 @@ const sharedOptions = (input: SharedInput) => {
 /**
  * A worker's PreToolUse hook that allows tutti's requires_readme without asking: it writes only
  * the README's section generated from the list, in the worker's own worktree. requires_check runs
- * the list's commands, so the permission mode decides it, as it would a Bash command.
+ * the commands of the main checkout's list, so the permission mode decides it; those the branch adds
+ * or changes it gives back for the worker to run with Bash, where the permission mode sees them.
  */
 export const allowRequiresReadme: HookCallbackMatcher = {
   matcher: qualifiedRequiresTool("requires_readme"),

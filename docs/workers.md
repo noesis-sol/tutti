@@ -70,7 +70,8 @@ without the template's rule on it, the rule itself; where the main checkout has 
 asks a worker that changes the list to write the README's section again and commit it with the
 list. Each worker has two tools of tutti's own for this, on an MCP server named `tutti`:
 `requires_check` checks the list in its worktree and installs what is missing with each entry's own
-install, as `tutti requires` does there, and `requires_readme` writes the README's section from the
+install, as `tutti requires` does (an entry the branch adds or changes it doesn't run, but gives back
+for the worker to run with Bash, so the permission mode sees its commands), and `requires_readme` writes the README's section from the
 worktree's list, as `tutti requires --readme` does. A worker needn't have tutti on its PATH.
 
 The check note's last sentence gives the worker its share of the machine's cores: other workers' checks

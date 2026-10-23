@@ -372,7 +372,9 @@ Workers are told of the list, with the entries it has: a ticket that needs somet
 adds an entry for it and installs it with that entry's own install, never by hand outside the list,
 so the next machine has it too; a manual step is asked of you as a question. Each worker has
 tutti's `requires_check` tool, which checks and installs the list in its worktree, and
-`requires_readme`, which writes that README's section on what to install.
+`requires_readme`, which writes that README's section on what to install. `requires_check` runs only
+the entries your main checkout's list has, there; an entry the worker's branch adds or changes it
+gives back to the worker to run with Bash, where your permission mode sees the commands.
 
 **The README's section.** People read the README to set a machine up; written apart from the list, it
 drifts. So the README's section on what to install is generated from the list, between

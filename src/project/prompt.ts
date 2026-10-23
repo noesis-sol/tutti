@@ -120,7 +120,8 @@ export const requiresRule = "never by hand outside the list"
  * told only what the list has. Where the main checkout has a README.md (`readme`), a worker that
  * changes the list is asked to write the README's section on what to install from it again, in the
  * same commit. A worker given tutti's requires tools (`tools`, src/agent/requiresTools.ts) is told
- * to check and install with requires_check, and to write the README's section with
+ * to check and install with requires_check, which gives back an entry the branch adds or changes
+ * for it to run with Bash, and to write the README's section with
  * requires_readme; one without them, to run tutti requires --readme.
  */
 export const requiresNote = (
@@ -133,7 +134,8 @@ export const requiresNote = (
   const has = names.length === 0 ? "which has no entries yet" : `which has ${names.join(", ")} now`
   const toolsNote = tools
     ? " tutti's requires_check tool checks the list in your worktree, and installs what is " +
-      "missing with each entry's own install command."
+      "missing with each entry's own install command; an entry your branch adds or changes, it " +
+      "gives you to run with Bash."
     : ""
   const readmeNote = !readme
     ? ""

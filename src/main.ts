@@ -141,7 +141,7 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
   )
   // Each worker gets tutti's own MCP server with its requires tools (§ 4.11).
   const host = Layer.unwrap(
-    Effect.map(requiresServerFor, (ownServer) =>
+    Effect.map(requiresServerFor(repo), (ownServer) =>
       agentHostLayer({
         prompt: started.prompt,
         servers: started.mcp,
