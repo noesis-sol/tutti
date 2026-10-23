@@ -479,9 +479,11 @@ describe("the Current section", () => {
 
   test("the dashboard keeps it a full card for each of up to 6 workers, a line each for more", () => {
     // Its label, and 5 lines a card: a row a card, or two to a row from 120 columns.
-    expect([0, 1, 3, 6, 8, 16].map((slots) => keptLines(80, slots))).toEqual([6, 6, 16, 31, 31, 31])
+    expect([0, 1, 3, 6, 8, 16].map((slots) => keptLines(80, slots, 0))).toEqual([
+      6, 6, 16, 31, 31, 31,
+    ])
     // 16 workers want a line each, its label and its frame: 19.
-    expect([0, 1, 3, 6, 8, 16].map((slots) => keptLines(120, slots))).toEqual([
+    expect([0, 1, 3, 6, 8, 16].map((slots) => keptLines(120, slots, 0))).toEqual([
       6, 6, 11, 16, 16, 19,
     ])
   })

@@ -457,7 +457,7 @@ describe("the tickets table", () => {
   test("its height is what Current is kept leaves, and the oldest give way to +N earlier tickets", async () => {
     // At 80 columns, the title, the strip and the foot take 10 lines, and Current is kept 16 for 3
     // workers' cards.
-    expect([16, 24, 30, 35, 45, 60].map((height) => tableHeight(height, 80, 4, 3, 2))).toEqual([
+    expect([16, 24, 30, 35, 45, 60].map((height) => tableHeight(height, 80, 4, 3, 2, 0))).toEqual([
       6, 6, 6, 9, 13, 13,
     ])
     const many = viewOf(
@@ -531,7 +531,7 @@ describe("untrusted text", () => {
           const lines = [
             titleSegments(view.title, view.banners, now, theme, width),
             ...totalsLines(view.totals, theme, width, false),
-            ...ticketsLines(view.rows, theme, width, tableHeight(24, width, 4, 3, 2)),
+            ...ticketsLines(view.rows, theme, width, tableHeight(24, width, 4, 3, 2, 0)),
             ...warningLines(view.warnings, theme, width),
           ]
           for (const line of lines) {

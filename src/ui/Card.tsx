@@ -285,9 +285,28 @@ const heavyBar = (frame: Look) =>
   seg("┃", { ...frame, attributes: frame.attributes | TextAttributes.BOLD })
 
 /**
+ * The cards the compact box has a line for in `lines` lines, its frame included: all of them when
+ * they fit, else as many as fit beside a `+N more` line, the highlighted card first, then those
+ * waiting for you, then the rest, in their order.
+ */
+export const compactShown = (
+  cards: ReadonlyArray<Card>,
+  highlighted: string | null,
+  lines: number,
+): ReadonlyArray<Card> => {
+  if (cards.length + 2 <= lines) return cards
+  const rank = (card: Card) => (card.ticket === highlighted ? 0 : waitsForYou(card) ? 1 : 2)
+  const kept = new Set(
+    [...cards].sort((a, b) => rank(a) - rank(b)).slice(0, Math.max(lines - 3, 0)),
+  )
+  return cards.filter((card) => kept.has(card))
+}
+
+/**
  * The compact box's lines `width` wide, a line a card, its ticket, status and time in
  * columns: framed `needsYou` when any of them waits for you, `live` while any works, `frame`
- * otherwise. The highlighted card's line has a heavy left bar.
+ * otherwise. The highlighted card's line has a heavy left bar. In fewer `lines` than a line each,
+ * the cards compactShown leaves out are a `+N more` line at the box's foot.
  */
 export const compactLines = (
   cards: ReadonlyArray<Card>,
@@ -298,6 +317,8 @@ export const compactLines = (
     readonly width: number
     /** The highlighted card's ticket. */
     readonly highlighted: string | null
+    /** The most lines the box takes, its frame included; as many as it needs when left out. */
+    readonly lines?: number
   },
 ): ReadonlyArray<Segments> => {
   const frame = cards.some(waitsForYou)
@@ -305,18 +326,23 @@ export const compactLines = (
     : cards.some((card) => card.motion === "spinner")
       ? roleLook(theme, "live")
       : frameLook(theme)
+  const shown = compactShown(cards, options.highlighted, options.lines ?? cards.length + 2)
+  const more = cards.length - shown.length
   // The tickets, statuses and times line up as columns, each as wide as the widest.
-  const cols = cards.reduce(
+  const cols = shown.reduce(
     (widths, card) => fit(widths, cellsOf(card, theme, options.now, compactStatus(card, theme))),
     noColumns,
   )
   const lines = boxed(
-    cards.map((card) => compactLine(card, theme, options.now, options.spin, cols)),
+    [
+      ...shown.map((card) => compactLine(card, theme, options.now, options.spin, cols)),
+      ...(more > 0 ? [[seg(`+${more} more`, theme.styles.dim)]] : []),
+    ],
     options.width,
     frame,
   )
   return lines.map((line, i) => {
-    const card = cards[i - 1]
+    const card = shown[i - 1]
     if (card === undefined || card.ticket !== options.highlighted) return line
     return [heavyBar(frame), ...line.slice(1)]
   })
@@ -401,12 +427,16 @@ export const sectionLines = (layout: CardsLayout, count: number): number => {
 /**
  * The lines the dashboard keeps for the Current section in a pane `width` wide, from the `slots`
  * workers the run may have, not the cards there are: its label and a full card for each of up to
- * `keptCards` workers, two to a row from 120 columns, and no fewer than a compact line each.
+ * `keptCards` workers, two to a row from 120 columns, and no fewer than a compact line each, a
+ * line each for all `cards` too where tickets merging without a worker's slot make them more.
  */
-export const keptLines = (width: number, slots: number): number => {
+export const keptLines = (width: number, slots: number, cards: number): number => {
   const workers = Math.max(slots, 1)
   const rows = Math.ceil(Math.min(workers, keptCards) / acrossOf(width))
-  return Math.max(labelLines + rows * fullCardLines, sectionLines({ _tag: "Compact" }, workers))
+  return Math.max(
+    labelLines + rows * fullCardLines,
+    sectionLines({ _tag: "Compact" }, Math.max(workers, cards)),
+  )
 }
 
 /** The Current section: its label, then the cards as `layout` lays them out. */
@@ -415,6 +445,7 @@ export const Cards = ({
   theme,
   layout,
   width,
+  room,
   now,
   spin,
   stopping,
@@ -427,6 +458,8 @@ export const Cards = ({
   readonly theme: Theme
   readonly layout: CardsLayout
   readonly width: number
+  /** The section's lines, its label included: the compact box keeps within them. */
+  readonly room: number
   readonly now: number
   readonly spin: string
   readonly stopping: boolean
@@ -449,12 +482,14 @@ export const Cards = ({
         </box>
       )
     case "Compact": {
-      const lines = compactLines(cards, theme, { now, spin, width, highlighted })
+      const box = room - labelLines
+      const lines = compactLines(cards, theme, { now, spin, width, highlighted, lines: box })
+      const shown = compactShown(cards, highlighted, box)
       return (
         <box flexDirection="column" flexShrink={0}>
           {label}
           {lines.map((line, i) => {
-            const card = cards[i - 1]
+            const card = shown[i - 1]
             return (
               <box
                 // biome-ignore lint/suspicious/noArrayIndexKey: the box's lines are drawn anew in order
