@@ -13,6 +13,7 @@ import { readyPoll } from "../src/run/schedule.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
+import { Backlog } from "../src/testing/Beads.ts"
 import { passed } from "../src/testing/Checks.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -67,6 +68,26 @@ const caughtUp = Effect.gen(function* () {
     yield* Effect.promise(() => Bun.sleep(5))
   }
 })
+
+/**
+ * Waits, in real time, until `ids` are claimed, their workers at work, before the clock moves on:
+ * the run's start, and a settle, can write nothing for longer than `caughtUp`'s 30 ms on a loaded
+ * machine, and a dispatch is due at the moment the clock stands at.
+ */
+const started = (ids: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const backlog = yield* Backlog
+    for (let i = 0; i < 2000; i++) {
+      const claimed = new Set(
+        (yield* backlog.issues).flatMap((issue) =>
+          issue.status === "in_progress" ? [issue.id] : [],
+        ),
+      )
+      if (ids.every((id) => claimed.has(id))) return
+      yield* Effect.promise(() => Bun.sleep(5))
+    }
+    return yield* Effect.die(new Error(`the run didn't start ${ids.join(", ")}`))
+  })
 
 /** Moves TestClock on by `total`, a ready poll at a time, once the run has caught up each time. */
 const passes = (total: Duration.Input) =>
@@ -147,7 +168,12 @@ describe("the machine's cap", () => {
             Effect.provideService(Processes, everyoneAlive),
           ),
         )
-        yield* passes("3 minutes")
+        yield* started(["m1", "m2", "w1", "w2"])
+        yield* passes("1 minute")
+        yield* started(["w3"])
+        yield* passes("1 minute")
+        yield* started(["w4"])
+        yield* passes("1 minute")
         yield* caughtUp
         atThree = registeredRunning(runs)
         yield* passes("11 minutes")

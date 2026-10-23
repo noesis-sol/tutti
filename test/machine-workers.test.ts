@@ -23,6 +23,7 @@ import { run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
+import { Backlog } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { texts } from "../src/testing/Log.ts"
 import {
@@ -72,6 +73,54 @@ const caughtUp = Effect.gen(function* () {
   }
 })
 
+/**
+ * Waits, in real time, until `ids` are claimed, their workers at work, and the run has recorded
+ * `kinds`: the run's start writes nothing for longer than `caughtUp`'s 30 ms on a loaded machine,
+ * and its first dispatch is due at the clock's start.
+ */
+const started = (ids: ReadonlyArray<string>, kinds: ReadonlyArray<string> = []) =>
+  Effect.gen(function* () {
+    const backlog = yield* Backlog
+    const captured = yield* Captured
+    for (let i = 0; i < 2000; i++) {
+      const claimed = new Set(
+        (yield* backlog.issues).flatMap((issue) =>
+          issue.status === "in_progress" ? [issue.id] : [],
+        ),
+      )
+      const recorded = new Set((yield* captured.records).map((record) => record.kind))
+      if (ids.every((id) => claimed.has(id)) && kinds.every((kind) => recorded.has(kind))) return
+      yield* Effect.promise(() => Bun.sleep(5))
+    }
+    return yield* Effect.die(new Error(`the run didn't start ${ids.join(", ")}`))
+  })
+
+/**
+ * Moves TestClock on a second at a time, once the run has caught up each time, until `ticket` is
+ * dispatched, for at most `total`. The run looks at the other runs 2 seconds after its last look
+ * ended: on a loaded machine one can outlast `caughtUp`, and a second more would make the dispatch
+ * late. So once a look has asked after PID 4242 since `since` looks, the clock waits for up to 2
+ * seconds of real time for the dispatch; a look under way as the registration changed may have read
+ * it before, and dispatch nothing.
+ */
+const untilDispatched = (ticket: string, since: number, total: Duration.Input) =>
+  Effect.gen(function* () {
+    const captured = yield* Captured
+    const dispatched = Effect.map(captured.records, (records) =>
+      records.some((record) => record.kind === "dispatch" && record.ticket === ticket),
+    )
+    let seen = since
+    for (let i = 0; i < Duration.toSeconds(Duration.fromInputUnsafe(total)); i++) {
+      yield* caughtUp
+      for (let j = 0; looks > seen && j < 400 && !(yield* dispatched); j++) {
+        yield* Effect.promise(() => Bun.sleep(5))
+      }
+      seen = looks
+      if (yield* dispatched) return
+      yield* advance("1 second")
+    }
+  })
+
 /** Moves TestClock on by `total`, `step` at a time, once the run has caught up each time. */
 const passes = (total: Duration.Input, step: Duration.Input = "1 second") =>
   Effect.gen(function* () {
@@ -97,9 +146,15 @@ const other = (running: number) =>
 /** Every process runs, its start unknown: the two runs in this process are both going. */
 const everyoneAlive: ProcessCheck = { alive: () => true, start: () => Effect.succeed(null) }
 
-/** PID 4242 runs, 4343 is gone: neither's start can be read. */
+/** The looks at the other runs that have read PID 4242's registration so far. */
+let looks = 0
+
+/** PID 4242 runs, 4343 is gone: neither's start can be read. Each look asks after 4242. */
 const processes: ProcessCheck = {
-  alive: (pid) => pid !== 4343,
+  alive: (pid) => {
+    if (pid === 4242) looks++
+    return pid !== 4343
+  },
   start: () => Effect.succeed(null),
 }
 
@@ -279,9 +334,11 @@ describe("--machine-workers", () => {
             Effect.provideService(Processes, processes),
           ),
         )
+        yield* started(["a"], ["machine_hold"])
         yield* passes("45 seconds")
+        const since = looks
         writeFileSync(join(runs, "run-4242-1.json"), other(1))
-        yield* passes("15 seconds")
+        yield* untilDispatched("b", since, "15 seconds")
         yield* passes("11 minutes", "30 seconds")
         return yield* Fiber.join(fiber)
       }),
