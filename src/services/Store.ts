@@ -11,6 +11,7 @@
 // state.
 import { dirname, join } from "node:path"
 import {
+  type Cause,
   Context,
   Deferred,
   Effect,
@@ -20,6 +21,7 @@ import {
   Layer,
   Queue,
   Ref,
+  Result,
   Schema,
 } from "effect"
 import { makeFoldersUnder, type Refusal, writeFileUnder } from "../native/libc.ts"
@@ -231,12 +233,20 @@ interface Write {
   readonly done: Deferred.Deferred<State, StoreWriteFailed>
 }
 
-const encodeState = Schema.encodeSync(State)
+const encodeState = Schema.encodeExit(State)
 const decodeState = Schema.decodeUnknownExit(State)
 
+/** The text state.json holds for the encoded state `json`. */
+const jsonText = (json: unknown): string => `${JSON.stringify(json, null, 2)}\n`
+
 /** The text state.json holds for `state`. */
-export const stateText = (state: State): string =>
-  `${JSON.stringify(encodeState(state), null, 2)}\n`
+export const stateText = (state: State): string => jsonText(Schema.encodeSync(State)(state))
+
+/** What a schema's failure says is wrong, issue by issue. */
+const issues = (cause: Cause.Cause<Schema.SchemaError>): string =>
+  cause.reasons
+    .flatMap((reason) => (reason._tag === "Fail" ? [reason.error.message] : []))
+    .join("; ")
 
 /** Reads the state from the text of a state.json, or says why it can't be. */
 export const parseState = (file: string, text: string): Effect.Effect<State, StoreUnreadable> =>
@@ -251,10 +261,7 @@ export const parseState = (file: string, text: string): Effect.Effect<State, Sto
     })
     const exit = decodeState(json, { errors: "all" })
     if (Exit.isSuccess(exit)) return exit.value
-    const reasons = exit.cause.reasons.flatMap((reason) =>
-      reason._tag === "Fail" ? [String(reason.error.issue)] : [],
-    )
-    return yield* new StoreUnreadable({ file, reason: reasons.join("; ") || "it doesn't decode" })
+    return yield* new StoreUnreadable({ file, reason: issues(exit.cause) || "it doesn't decode" })
   })
 
 /** Reads the state.json at `file`: `emptyState` when there is none. */
@@ -274,50 +281,103 @@ export const readState = (file: string) =>
   })
 
 /**
- * Writes `state` to state.json below `repo` atomically and through the symlink guard
- * (writeFileUnder, § 9.1): to a temporary file in the same folder, fsynced, then renamed over it,
- * and the folder fsynced so the rename itself lasts. A symbolic link at .tutti, .tutti/run or
- * state.json, which a merged ticket can leave there, is refused rather than written through.
+ * Writes `text`, a state's (stateText), to state.json below `repo` atomically and through the
+ * symlink guard (writeFileUnder, § 9.1): to a temporary file in the same folder, fsynced, then
+ * renamed over it, and the folder fsynced so the rename itself lasts. A symbolic link at .tutti,
+ * .tutti/run or state.json, which a merged ticket can leave there, is refused rather than written
+ * through.
  */
-export const writeStateUnder = (repo: string, state: State): Effect.Effect<void, Refusal> =>
+const writeStateUnder = (repo: string, text: string): Effect.Effect<void, Refusal> =>
   Effect.andThen(
     Effect.sync(() => makeFoldersUnder(repo, dirname(stateFile))),
-    writeFileUnder(repo, stateFile, stateText(state)),
+    writeFileUnder(repo, stateFile, text),
   )
 
+/** A state as committed: as reading state.json back gives it, and the text state.json holds. */
+export interface Committed {
+  readonly state: State
+  readonly text: string
+}
+
+/** What a batch of changes commits. */
+export interface Commit {
+  /** Each change's outcome, in order: a defect for one that threw, which the batch goes on without. */
+  readonly changes: ReadonlyArray<Exit.Exit<void>>
+  /**
+   * The state the batch commits; absent when no change applied, and why not when the state can't
+   * be written as state.json.
+   */
+  readonly result: Result.Result<Committed, string> | undefined
+}
+
 /**
- * Commits a batch of writes as one: applies each change in turn, writes the result once, and then
- * completes each write with it. A change that throws dies alone, and the batch goes on without it.
- * A batch whose file can't be written fails every write in it, and leaves the state as it was.
+ * Commits a batch of changes to `state` as the run `run`, all but the writing (§ 3.3): applies each
+ * change in turn, stamps the run, encodes the result to state.json's text and decodes that text
+ * back, so the state committed is the one a later read gives and one that can't be encoded fails
+ * here. Both the live layer and the test layer commit through it.
+ */
+export const commit = (
+  state: State,
+  changes: ReadonlyArray<(state: State) => State>,
+  run: RunStamp,
+): Commit => {
+  let next = state
+  let applied = false
+  const outcomes = changes.map((change): Exit.Exit<void> => {
+    try {
+      next = change(next)
+      applied = true
+      return Exit.void
+    } catch (error) {
+      return Exit.die(error)
+    }
+  })
+  return { changes: outcomes, result: applied ? roundTrip({ ...next, run }) : undefined }
+}
+
+/** `state` as state.json's text and as that text reads back, or why it can't be written. */
+const roundTrip = (state: State): Result.Result<Committed, string> => {
+  const encoded = encodeState(state, { errors: "all" })
+  if (Exit.isFailure(encoded)) return Result.fail(`it doesn't encode: ${issues(encoded.cause)}`)
+  const text = jsonText(encoded.value)
+  const decoded = decodeState(JSON.parse(text), { errors: "all" })
+  if (Exit.isFailure(decoded)) return Result.fail(`it doesn't read back: ${issues(decoded.cause)}`)
+  return Result.succeed({ state: decoded.value, text })
+}
+
+/**
+ * Commits a batch of writes as one (commit): writes the result once, and then completes each write
+ * with it. A change that throws dies alone, and the batch goes on without it. A batch whose state
+ * can't be written fails every write in it, and leaves the state as it was.
  */
 const commitWrites =
   (repo: string, run: RunStamp, committed: Ref.Ref<State>) =>
   (writes: ReadonlyArray<Write>): Effect.Effect<void> =>
     Effect.uninterruptible(
       Effect.gen(function* () {
-        let state = yield* Ref.get(committed)
-        const applied: Array<Write> = []
-        for (const write of writes) {
-          const next = yield* Effect.exit(Effect.sync(() => write.change(state)))
-          if (Exit.isSuccess(next)) {
-            state = next.value
-            applied.push(write)
-          } else {
-            yield* Deferred.done(write.done, next)
-          }
-        }
-        if (applied.length === 0) return
-        const stamped: State = { ...state, run }
-        const written = yield* Effect.exit(
-          writeStateUnder(repo, stamped).pipe(
-            Effect.mapError(
-              (error) => new StoreWriteFailed({ file: statePath(repo), reason: error.message }),
-            ),
-          ),
+        const batch = commit(
+          yield* Ref.get(committed),
+          writes.map((write) => write.change),
+          run,
         )
-        if (Exit.isSuccess(written)) yield* Ref.set(committed, stamped)
-        const result = Exit.map(written, () => stamped)
-        for (const write of applied) yield* Deferred.done(write.done, result)
+        const applied: Array<Write> = []
+        for (const [index, write] of writes.entries()) {
+          const outcome = batch.changes[index] ?? Exit.void
+          if (Exit.isSuccess(outcome)) applied.push(write)
+          else yield* Deferred.failCause(write.done, outcome.cause)
+        }
+        if (batch.result === undefined) return
+        const failed = (reason: string) => new StoreWriteFailed({ file: statePath(repo), reason })
+        const written = yield* Effect.exit(
+          Result.isSuccess(batch.result)
+            ? writeStateUnder(repo, batch.result.success.text).pipe(
+                Effect.mapError((error) => failed(error.message)),
+                Effect.as(batch.result.success.state),
+              )
+            : Effect.fail(failed(batch.result.failure)),
+        )
+        if (Exit.isSuccess(written)) yield* Ref.set(committed, written.value)
+        for (const write of applied) yield* Deferred.done(write.done, written)
       }),
     )
 
