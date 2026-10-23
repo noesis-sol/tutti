@@ -28,6 +28,7 @@ import {
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { withoutGitLocal } from "./gitEnv.ts"
+import { processAlive } from "./processTree.ts"
 import { startReaper, stopReaper } from "./reaper.ts"
 
 /** orchestra's limits: 30 s for a read, 2 min for a git write or a `bd` update. Checks pass their own. */
@@ -66,23 +67,10 @@ export const leftoverOutputNote = (grace: Duration.Duration): string =>
 /** How often exec looks for a command's process group while it waits for the command's exit. */
 const groupPoll = Duration.millis(200)
 
-/**
- * Some process of the group whose leader is `group` is still there. Only ESRCH says it has gone:
- * EPERM is a group tutti can't signal, or on macOS one whose only member is a zombie not yet reaped.
- */
-const groupAlive = (group: number): boolean => {
-  try {
-    process.kill(-group, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH"
-  }
-}
-
 /** Ends once the group has been gone for `grace`, in which its exit is lost (see LostExitGrace). */
 const groupGoneFor = (group: number, grace: Duration.Duration): Effect.Effect<void> =>
   Effect.repeat(
-    Effect.sync(() => groupAlive(group)),
+    Effect.sync(() => processAlive(-group)),
     {
       while: (alive) => alive,
       schedule: Schedule.spaced(groupPoll),
@@ -306,7 +294,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       yield* Effect.interruptible(Effect.sleep(timeLimit)).pipe(
         Effect.andThen(handle.isRunning),
         Effect.flatMap((running) => {
-          timedOut = running && groupAlive(leader)
+          timedOut = running && processAlive(-leader)
           return running ? kill : Effect.void
         }),
         Effect.ignore,

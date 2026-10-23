@@ -49,6 +49,7 @@ import {
 import { availableParallelism, tmpdir } from "node:os"
 import { delimiter, join, resolve } from "node:path"
 import { paneVariable, sessionVariable } from "../src/agent/env.ts"
+import { processAlive } from "../src/services/processTree.ts"
 
 export interface TestCase {
   /** The test file, relative to the folder bun test ran in. */
@@ -494,23 +495,13 @@ export const runTempPid = (name: string): number | undefined => {
   return match?.[1] === undefined ? undefined : Number(match[1])
 }
 
-const isAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    // EPERM: the process is there, another user's.
-    return (error as NodeJS.ErrnoException).code === "EPERM"
-  }
-}
-
 /**
  * Removes the temp folders that earlier runs left in base, those named with the ID of a process
  * that has ended, and returns their paths. A link, or a folder another user owns, is left alone.
  */
 export const removeStaleRuns = (
   base: string,
-  alive: (pid: number) => boolean = isAlive,
+  alive: (pid: number) => boolean = processAlive,
 ): ReadonlyArray<string> => {
   let names: ReadonlyArray<string>
   try {

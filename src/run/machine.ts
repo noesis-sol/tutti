@@ -18,6 +18,7 @@ import { Context, Duration, Effect, FileSystem, Layer, Ref, type Scope, Semaphor
 import type { ChildProcessSpawner } from "effect/process"
 import { writeFileAtomic } from "../services/atomicFile.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
+import { processAlive } from "../services/processTree.ts"
 import { detail, type Line, Tag, tagged } from "./log.ts"
 
 /** The variable naming the folder the machine's runs register in; `off` registers the run nowhere. */
@@ -168,19 +169,6 @@ const psStart = (pid: number) =>
     }),
     Effect.orElseSucceed(() => null),
   )
-
-/**
- * Whether process `pid` runs: one this user may not signal does too, as another user's. (carry.ts
- * has its own, which AppConfig, importing this module, can't reach without a cycle.)
- */
-const processAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM"
-  }
-}
 
 /** The live check: kill -0 for whether it runs, ps for when it started. */
 export const liveProcesses: ProcessCheck = { alive: processAlive, start: psStart }

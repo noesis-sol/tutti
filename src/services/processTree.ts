@@ -57,6 +57,20 @@ export const descendantGroups = (
   return groups
 }
 
+/**
+ * Whether process `pid` is there, or, for a negative `pid`, some process of the group `-pid` leads.
+ * Only ESRCH says it has gone: EPERM is one tutti may not signal, as another user's, or on macOS a
+ * group whose only member is a zombie not yet reaped.
+ */
+export const processAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM"
+  }
+}
+
 /** Sends `signal` to the process group `group`; false when there is none to signal. */
 const signalGroup = (group: number, signal: NodeJS.Signals): boolean => {
   try {
