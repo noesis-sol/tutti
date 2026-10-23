@@ -7,7 +7,8 @@
 // denied without asking, by type, your messages and its compactions, and whether a person
 // steered it, with the requests and denials as the log has them (the last of them, past a cap),
 // from which its Needs you section recommends rules for the calls that kept being asked about or
-// denied.
+// denied. Each list and section is capped to the last of it that fits, and a set-aside ticket's
+// notes to their end, so that an overnight run's evidence keeps within the reviewer's context.
 //
 // The report is titled with the run's date, times, base and scope (escaped for Markdown, § 7.10),
 // ends with the run's organ cost total, the report's own call included (§ 6.1), and is written to
@@ -43,6 +44,15 @@ export const reportsDir = ".tutti/reports"
 
 /** How many characters of a closed ticket's close reason the reviewer is given, as orchestra's. */
 export const closeReasonWidth = 400
+
+/**
+ * How many characters of a set-aside ticket's notes the reviewer is given: their end, where the
+ * latest notes are, a triage's or a worker's last word among them.
+ */
+export const notesWidth = 1500
+
+/** How many bd show calls the report runs at once, for the tickets closed and set aside. */
+export const showConcurrency = 4
 
 /** What the run tells the report of itself as it ends. */
 export interface ReportRun {
@@ -225,37 +235,74 @@ export const logCap = { lines: 1500, characters: 150_000 }
  */
 export const attentionCap = { lines: 500, characters: 50_000 }
 
-/** How many lines and characters a capped section keeps of its end. */
+/**
+ * How many of the run's last commits, closed tickets, set-aside tickets, tickets in progress and
+ * tickets' tallies the reviewer is given, and no more than so many characters of each list: an
+ * overnight run with hundreds of tickets keeps within the reviewer's context (`reviewerBudget`).
+ */
+export const listCaps = {
+  commits: { lines: 1000, characters: 30_000 },
+  closed: { lines: 300, characters: 80_000 },
+  setAside: { lines: 200, characters: 60_000 },
+  inProgress: { lines: 100, characters: 15_000 },
+  tallies: { lines: 1000, characters: 40_000 },
+}
+
+/**
+ * How much of the end of each section the run gathers itself (ReportRun.sections: the failed
+ * checks, the full check, the feature request, the follow-ups) the reviewer is given.
+ */
+export const evidenceCap = { lines: 1000, characters: 15_000 }
+
+/** The most sections the run gathers itself (ReportRun.sections). */
+export const runSections = 4
+
+/**
+ * About how many characters of evidence the reviewer is given at most: every section's cap, and
+ * room for their titles and tutti's own line. Its context holds this with room for its prompt and
+ * its answer.
+ */
+export const reviewerBudget =
+  logCap.characters +
+  attentionCap.characters +
+  Object.values(listCaps).reduce((sum, cap) => sum + cap.characters, 0) +
+  runSections * evidenceCap.characters +
+  5_000
+
+/** How many lines (or a list's items) and characters a capped section keeps of its end. */
 type Cap = { readonly lines: number; readonly characters: number }
 
 /**
- * `lines` whole when they fit `cap`, else their first `kept` lines, the line `said(cut, last)`
- * makes of how many were cut and of the lines that follow, and the last lines that fit.
+ * `items` whole when they fit `cap`, else their first `kept` items, the line `said(cut, last)`
+ * makes of how many were cut and of the items that follow, and the last items that fit, each
+ * after `separator`; the items are lines unless `noun` says what else they are.
  */
 const cappedTail = (
-  lines: ReadonlyArray<string>,
+  items: ReadonlyArray<string>,
   kept: number,
   cap: Cap,
   said: (cut: number, last: string) => string,
+  separator = "\n",
+  noun: { readonly one: string; readonly many: string } = { one: "line", many: "lines" },
 ): string => {
-  const headEnd = Math.min(Math.max(kept, 0), lines.length)
-  let tailStart = lines.length
+  const headEnd = Math.min(Math.max(kept, 0), items.length)
+  let tailStart = items.length
   let characters = 0
-  while (tailStart > headEnd && lines.length - tailStart < cap.lines) {
-    characters += (lines[tailStart - 1] ?? "").length + 1
+  while (tailStart > headEnd && items.length - tailStart < cap.lines) {
+    characters += (items[tailStart - 1] ?? "").length + separator.length
     if (characters > cap.characters) break
     tailStart -= 1
   }
   const cut = tailStart - headEnd
-  if (cut === 0) return lines.join("\n")
-  const left = lines.length - tailStart
+  if (cut === 0) return items.join(separator)
+  const left = items.length - tailStart
   const last =
     left === 0
-      ? "its last line is too long to give"
+      ? `its last ${noun.one} is too long to give`
       : left === 1
-        ? "the last line follows"
+        ? `the last ${noun.one} follows`
         : `the last ${left} follow`
-  return [...lines.slice(0, headEnd), said(cut, last), ...lines.slice(tailStart)].join("\n")
+  return [...items.slice(0, headEnd), said(cut, last), ...items.slice(tailStart)].join(separator)
 }
 
 /**
@@ -287,6 +334,58 @@ export const cappedAttention = (lines: ReadonlyArray<string>, cap: Cap = attenti
       `[${counted(cut, "earlier attention line")} cut here, still counted in each ticket's ` +
       `tallies; ${last}]`,
   )
+
+/**
+ * A list of the run's, its `items` one or more lines each (`separator` between them), as the
+ * reviewer reads it: whole when it fits `cap`, else a line saying how many of the earliest `noun`
+ * were cut, and the last items that fit.
+ */
+export const cappedList = (
+  items: ReadonlyArray<string>,
+  cap: Cap,
+  noun: { readonly one: string; readonly many: string },
+  separator = "\n\n",
+): string =>
+  cappedTail(
+    items,
+    0,
+    cap,
+    (cut, last) =>
+      `[${cut === 1 ? `1 earlier ${noun.one}` : `${cut} earlier ${noun.many}`} cut here; ${last}]`,
+    separator,
+    noun,
+  )
+
+/**
+ * A section the run gathered itself (ReportRun.sections) as the reviewer reads it: its body whole
+ * when it fits `cap`, else a line saying how many of its first lines were cut, and its last lines
+ * that fit.
+ */
+export const cappedEvidence = (s: Section, cap: Cap = evidenceCap): Section =>
+  section(
+    s.title,
+    cappedTail(
+      s.body.split("\n"),
+      0,
+      cap,
+      (cut, last) => `[${counted(cut, "earlier line")} of this section cut here; ${last}]`,
+    ),
+  )
+
+/**
+ * A set-aside ticket's notes as the reviewer reads them: whole when they fit `width` characters,
+ * else a line saying how many of their first characters were cut, and their end, from the start of
+ * a line where the end holds a line break.
+ */
+export const notesTail = (notes: string, width: number = notesWidth): string => {
+  const chars = [...notes]
+  if (chars.length <= width) return notes
+  const tail = chars.slice(chars.length - width).join("")
+  const lineStart = tail.indexOf("\n")
+  const end = lineStart === -1 ? tail : tail.slice(lineStart + 1)
+  const cut = chars.length - [...end].length
+  return `[the notes' first ${counted(cut, "character")} cut here; their end follows]\n${end}`
+}
 
 /** Whether `entry` is in the reviewer's `section` (phase.ts counting). */
 const inSection =
@@ -340,7 +439,14 @@ export const gather = (
     const now = yield* Clock.currentTimeMillis
 
     const commits = yield* git.log(config.repo, run.startHead, run.base).pipe(
-      Effect.map((list) => list.map((c) => `${c.hash} ${c.subject}`).join("\n")),
+      Effect.map((list) =>
+        cappedList(
+          list.map((c) => `${c.hash} ${c.subject}`),
+          listCaps.commits,
+          { one: "commit", many: "commits" },
+          "\n",
+        ),
+      ),
       Effect.catch((error) => Effect.succeed(`(git log failed: ${failure(error)})`)),
     )
 
@@ -352,24 +458,30 @@ export const gather = (
         ),
       )
 
-    const closedText = yield* Effect.forEach(entries.filter(inSection("closed")), (entry) =>
-      shown(entry, (issue) => {
-        const reason = cut(issue.closeReason, closeReasonWidth)
-        return (
-          `${entry.ticket}: ${issue.title}\n${phaseSaid(entry.phase)}\n` +
-          `Close reason: ${reason === "" ? "(none given)" : reason}`
-        )
-      }),
+    const closedText = yield* Effect.forEach(
+      entries.filter(inSection("closed")),
+      (entry) =>
+        shown(entry, (issue) => {
+          const reason = cut(issue.closeReason, closeReasonWidth)
+          return (
+            `${entry.ticket}: ${issue.title}\n${phaseSaid(entry.phase)}\n` +
+            `Close reason: ${reason === "" ? "(none given)" : reason}`
+          )
+        }),
+      { concurrency: showConcurrency },
     )
 
-    const asideText = yield* Effect.forEach(entries.filter(inSection("setAside")), (entry) =>
-      shown(entry, (issue) =>
-        [
-          `${entry.ticket}: ${issue.title}`,
-          `${phaseSaid(entry.phase)}; bd status ${issue.status}`,
-          ...(issue.notes.trim() === "" ? [] : [`Notes:\n${issue.notes.trim()}`]),
-        ].join("\n"),
-      ),
+    const asideText = yield* Effect.forEach(
+      entries.filter(inSection("setAside")),
+      (entry) =>
+        shown(entry, (issue) =>
+          [
+            `${entry.ticket}: ${issue.title}`,
+            `${phaseSaid(entry.phase)}; bd status ${issue.status}`,
+            ...(issue.notes.trim() === "" ? [] : [`Notes:\n${notesTail(issue.notes.trim())}`]),
+          ].join("\n"),
+        ),
+      { concurrency: showConcurrency },
     )
 
     const runningText = entries
@@ -384,11 +496,16 @@ export const gather = (
     const tallies =
       entries.length === 0
         ? "None: the run took up no tickets."
-        : (yield* Effect.forEach(entries, (entry) =>
-            Effect.map(attention.tally(entry.ticket), (tally) =>
-              talliesLine(entry, tally, steeredInRun(entry, logLines)),
+        : cappedList(
+            yield* Effect.forEach(entries, (entry) =>
+              Effect.map(attention.tally(entry.ticket), (tally) =>
+                talliesLine(entry, tally, steeredInRun(entry, logLines)),
+              ),
             ),
-          )).join("\n")
+            listCaps.tallies,
+            { one: "ticket's line", many: "tickets' lines" },
+            "\n",
+          )
 
     const cost = yield* (yield* OrganCost).total
     const costSaid =
@@ -411,13 +528,22 @@ export const gather = (
       section(`Commits merged into ${run.base} in this run`, commits),
       section(
         "Tickets closed in this run, merged or with no change to merge (ID, title, phase, close reason)",
-        closedText.join("\n\n"),
+        cappedList(closedText, listCaps.closed, { one: "closed ticket", many: "closed tickets" }),
       ),
       section(
         "Tickets set aside in this run (ID, title, phase, bd status, notes including triage notes)",
-        asideText.join("\n\n"),
+        cappedList(asideText, listCaps.setAside, {
+          one: "set-aside ticket",
+          many: "set-aside tickets",
+        }),
       ),
-      section("Tickets in progress when the run stopped", runningText.join("\n\n")),
+      section(
+        "Tickets in progress when the run stopped",
+        cappedList(runningText, listCaps.inProgress, {
+          one: "ticket in progress",
+          many: "tickets in progress",
+        }),
+      ),
       section("Tickets still ready", ready),
       section(
         "Each ticket's attention requests and their answers, the calls Claude Code denied its " +
@@ -430,7 +556,7 @@ export const gather = (
         cappedAttention(attentionLines(logLines).map(filed)),
       ),
       section("What the run's organs (triage, the predictor and the like) cost", costSaid),
-      ...(run.sections ?? []),
+      ...(run.sections ?? []).map((each) => cappedEvidence(each)),
       `${scope}, on branch ${run.base} of ${config.repo}, ${ranFrom(run.started, now)}. ` +
         `Exit code ${run.exitCode} (${meaning}). Write its report.\n`,
     ]
