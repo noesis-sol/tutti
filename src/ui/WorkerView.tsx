@@ -569,8 +569,9 @@ export interface PanelParts {
 
 /**
  * A request's box in the panel, `width` wide, framed `needsYou`, heavy when it is selected: the
- * request's line, its description and reason faint, its buttons (`focus` the focused one), then
- * its whole input faint, under the buttons so that a long one never hides them.
+ * request's line, a URL elicitation's URL, its description and reason faint, its buttons (`focus`
+ * the focused one), then its whole input faint, under the buttons so that a long one never hides
+ * them.
  */
 export const panelParts = (
   request: AttentionRequest,
@@ -589,6 +590,11 @@ export const panelParts = (
       : sanitize(request.description).split("\n")
   const reason =
     request.decisionReason === undefined ? [] : sanitize(request.decisionReason).split("\n")
+  // The URL Open URL opens, whole, so that you see where it goes before you press it.
+  const url =
+    request.kind._tag === "Elicitation" && request.kind.url !== undefined
+      ? [sanitizeLine(request.kind.url)]
+      : []
   const input = requestInputLines(request, theme, inner)
   const button = (label: string, index: number): ButtonSegment => ({
     text: `[ ${label} ]`,
@@ -601,6 +607,7 @@ export const panelParts = (
     : [buttons.flatMap((each, i) => (i === 0 ? [each] : [seg("  "), each]))]
   const above = [
     ...wrap([seg(text.line)], inner, { indent: 2 }),
+    ...faint(url),
     ...faint(description),
     ...faint(reason),
     ...rows,
