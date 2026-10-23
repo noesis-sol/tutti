@@ -643,7 +643,7 @@ During this, a second signal abandons the merge, as orchestra's does: `<id>'s me
 
 As orchestra: after an environment hold, one session in the main checkout, with no MCP servers, is asked to run one command. Success is `PROBE_OK`. Failure, or no result within 5 minutes, ends the run `ENVIRONMENT` (exit 7). The probe shows as a card labelled `probe`.
 
-A classifier that is down, refusing every command, is the kind of failure the hold exists for. A usage limit is not: it never counts toward the environment hold (§4.12).
+A classifier that is down, refusing every command, is the kind of failure the hold exists for, as is a Claude Code that can't start sessions: a session that doesn't start or begin (`START_FAILED`) counts toward the hold as a worker failing at once does, rather than defer the queue a ticket at a time. A usage limit is not: it never counts toward the environment hold (§4.12).
 
 ### 4.10 The feature interview
 
@@ -774,7 +774,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
     - the stop reasons `PAUSED`, `BLOCKED` (lifted when its requests are answered, §4.3), `TICKET_LIMIT`, `DIRTY_TREE`, `GIT_FAILED`, `BEADS_FAILED`, `SETUP_PROBLEM` (a worker's first `system/init`, §4.1, exit 2), …
     - `USAGE_LIMIT` (§4.12) holds until the reset and doesn't end the run
     - exit codes as orchestra's, except: 4 covers Beads, git and the Agent SDK (`AGENT_FAILED` replaces `TERMINAL_FAILED`); 8 is new, `USAGE_LIMIT` (§4.12)
-11. **Environment hold**: 2 tickets in a row settled within 2 minutes with nothing done, or whose setup failed before their worker could start, or blamed on the environment by triage. Reopen those whose workers failed (those whose setup failed are back in the queue already), probe once, exit 7; a probe that passes takes both again. `UsageLimited` workers never count.
+11. **Environment hold**: 2 tickets in a row settled within 2 minutes with nothing done, or whose setup failed before their worker could start, or whose session didn't start (`START_FAILED` from the Agent SDK: a Claude Code that can't be launched, a session that never begins), or blamed on the environment by triage. Reopen those whose workers failed or didn't start (those whose setup failed are back in the queue already), probe once, exit 7; a probe that passes takes both again. `UsageLimited` workers never count.
 12. **The full check** after a run that ended by itself and merged something: its own worktree, the setup first, `FULL_CHECK_FAILED` files a P2 ticket per suite.
 13. **Organs**: triage in the background per deferred ticket; the predictor in the background; the reviewer at the end; the screen and the plan for `--feature`; the scout for `init`.
 14. **The end** (D19). Nothing left to start or merge ends the run, except while workers wait on you.

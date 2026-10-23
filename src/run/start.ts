@@ -16,7 +16,9 @@
 //
 // A ticket whose ID can't name a worktree (BAD_TICKET_ID), whose worktree's run folder is a
 // symbolic link (RUN_FILES_OUTSIDE), or whose worker didn't start (START_FAILED) is set aside:
-// Working → Deferred. git failing to make the worktree, and a state.json that can't be written, are
+// Working → Deferred. A session that didn't start or begin counts toward the environment hold
+// (environment.ts), so that Claude Code failing to start sessions holds the run rather than defer
+// the queue a ticket at a time. git failing to make the worktree, and a state.json that can't be written, are
 // errors for the run to stop on.
 import { join } from "node:path"
 import { Data, Duration, Effect, Exit, Option, Stream } from "effect"
@@ -66,8 +68,12 @@ export interface StartedWorker {
 /** How a start went: the worker started, or the ticket set aside without one. */
 export type Start = Data.TaggedEnum<{
   Started: { readonly worker: StartedWorker }
-  /** Deferred, or kept out of this run when bd couldn't defer it; `why` in a few words. */
-  SetAside: { readonly why: string; readonly deferred: boolean }
+  /**
+   * Deferred, or kept out of this run when bd couldn't defer it; `why` in a few words. `session`:
+   * its session didn't start or begin (START_FAILED from the Agent SDK), which counts toward the
+   * environment hold as a worker failing at once does.
+   */
+  SetAside: { readonly why: string; readonly deferred: boolean; readonly session: boolean }
   /** The setup failed in its worktree, so no worker started: back in the queue, Waiting{setup}. */
   SetupFailed: { readonly output: string }
 }>
@@ -270,8 +276,11 @@ class NotBegun extends Data.TaggedError("NotBegun")<{ readonly reason: string }>
  */
 export const initLimit: Duration.Duration = Duration.minutes(1)
 
-/** The start set the ticket aside, as `aside` says. */
-class SetAsideBy extends Data.TaggedError("SetAsideBy")<{ readonly aside: Aside }> {}
+/** The start set the ticket aside, as `aside` says; `session` when its session didn't begin. */
+class SetAsideBy extends Data.TaggedError("SetAsideBy")<{
+  readonly aside: Aside
+  readonly session?: boolean
+}> {}
 
 /** A run folder that can't be checked for another reason than a link: the start failed. */
 const runFolderFailed = (id: string, worktree: string, error: RunFilesError): SetAsideBy =>
@@ -407,14 +416,14 @@ export const start = (
           Effect.fail(new NotBegun({ reason: `its session ended at once: ${error.why}` })),
       }),
       Effect.catchTag("NotBegun", ({ reason }) =>
-        Effect.fail(new SetAsideBy({ aside: startFailed(id, path, reason) })),
+        Effect.fail(new SetAsideBy({ aside: startFailed(id, path, reason), session: true })),
       ),
     )
     return Start.Started({ worker: { ticket: id, worktree, session, message: sent } })
   }).pipe(
-    Effect.catchTag("SetAsideBy", ({ aside }) =>
+    Effect.catchTag("SetAsideBy", ({ aside, session }) =>
       Effect.map(putAside(ticket, aside), (deferred) =>
-        Start.SetAside({ why: aside.detail, deferred }),
+        Start.SetAside({ why: aside.detail, deferred, session: session === true }),
       ),
     ),
   )

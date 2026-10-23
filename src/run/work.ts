@@ -404,9 +404,14 @@ export const work = (
     const ledger = yield* Ledger
     const started = yield* start(ticket, options.base, options.setUps)
     let stop: RunStop | null = null
-    // A setup that failed before its worker could start counts toward the environment hold as a
-    // worker failing at once does.
-    let settling: Settling = started._tag === "SetupFailed" ? "setup" : "uncounted"
+    // A setup that failed before its worker could start, and a session that didn't start, count
+    // toward the environment hold as a worker failing at once does.
+    let settling: Settling =
+      started._tag === "SetupFailed"
+        ? "setup"
+        : started._tag === "SetAside" && started.session
+          ? "start"
+          : "uncounted"
     if (started._tag === "Started") {
       const { worker } = started
       // Its clocks, the hold's window and its time limit, start with its worker, once the setup

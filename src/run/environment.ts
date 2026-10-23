@@ -15,7 +15,11 @@
 // A ticket failing at once while the run holds is reopened too. A setup that failed in a ticket's
 // worktree before its worker could start (setup.ts) adds to the row as a worker failing at once
 // does, so that setups failing ticket after ticket hold the run rather than leave the queue to
-// them; its ticket is back in the queue already, Waiting{setup}, and isn't reopened.
+// them; its ticket is back in the queue already, Waiting{setup}, and isn't reopened. So does a
+// worker whose session didn't start or begin (START_FAILED from the Agent SDK: a Claude Code that
+// can't be launched, a session that never sends its system/init), set aside as it started: else a
+// machine where no session starts would defer the queue a ticket at a time. Its ticket is reopened
+// as one whose worker failed at once is.
 //
 // Once nothing runs or waits to merge, and environment_hold.probe after, one session without a
 // ticket is started in the main checkout, with no MCP servers and no worker prompt, and asked to
@@ -54,16 +58,16 @@ import { Cause, probeWait, setupWait } from "./phase.ts"
 import type { Settled } from "./settle.ts"
 
 /**
- * How a ticket's worker settled, as the hold counts it: failed at once (`atOnce`), or no worker
- * started as the setup failed in its worktree (`setup`), adding to the row; any other way
- * (`other`), ending it; or counting for nothing (`uncounted`).
+ * How a ticket's worker settled, as the hold counts it: failed at once (`atOnce`), no worker
+ * started as the setup failed in its worktree (`setup`), or its session didn't start (`start`),
+ * adding to the row; any other way (`other`), ending it; or counting for nothing (`uncounted`).
  */
-export type Settling = "atOnce" | "setup" | "other" | "uncounted"
+export type Settling = "atOnce" | "setup" | "start" | "other" | "uncounted"
 
-/** A ticket in the row failing at once, and whether that was its worktree's setup failing. */
+/** A ticket in the row failing at once, and how it failed. */
 export interface FastFail {
   readonly ticket: string
-  readonly setup: boolean
+  readonly how: Exclude<Settling, "other" | "uncounted">
 }
 
 /** Triage's verdict on a deferred ticket, as the hold counts it (§ 6.2). */
@@ -120,7 +124,7 @@ export const atOnceWhy = (tickets: ReadonlyArray<string>, window: Duration.Durat
 
 /**
  * Why the row of tickets failing at once holds the run: their workers settled at once, the setup
- * (`command`) failed in their worktrees, or some of each.
+ * (`command`) failed in their worktrees, their sessions didn't start, or some of each.
  */
 export const fastFailsWhy = (
   row: ReadonlyArray<FastFail>,
@@ -128,13 +132,24 @@ export const fastFailsWhy = (
   command: string | null,
 ): string => {
   const tickets = row.map((each) => each.ticket)
-  const setups = row.filter((each) => each.setup).length
+  const last = `the last ${tickets.length} tickets (${tickets.join(", ")})`
   const setup = command === null ? "" : ` '${command}'`
-  if (setups === 0) return atOnceWhy(tickets, window)
-  if (setups === row.length) {
+  const hows = new Set(row.map((each) => each.how))
+  if (hows.size === 1 && hows.has("atOnce")) return atOnceWhy(tickets, window)
+  if (hows.size === 1 && hows.has("setup")) {
     return `the setup${setup} failed in the worktrees of the last ${tickets.length} tickets (${tickets.join(", ")})`
   }
-  return `the last ${tickets.length} tickets (${tickets.join(", ")}) each failed at once: the setup${setup} failed in their worktree, or their worker settled within ${formatDuration(window)} of starting without being claimed or changed`
+  if (hows.size === 1) return `the sessions of ${last} didn't start`
+  const ways = [
+    ...(hows.has("setup") ? [`the setup${setup} failed in their worktree`] : []),
+    ...(hows.has("start") ? ["their session didn't start"] : []),
+    ...(hows.has("atOnce")
+      ? [
+          `their worker settled within ${formatDuration(window)} of starting without being claimed or changed`,
+        ]
+      : []),
+  ]
+  return `${last} each failed at once: ${ways.join(", or ")}`
 }
 
 /** Why the row of tickets triage blamed on the environment holds the run. */
@@ -281,7 +296,7 @@ export const make = (options: {
         yield* Ref.set(state, { ...now, stop, why })
         yield* options.onHold(stop)
         // A ticket whose setup failed is back in the queue already.
-        const failed = now.atOnce.filter((each) => !each.setup).map((each) => each.ticket)
+        const failed = now.atOnce.filter((each) => each.how !== "setup").map((each) => each.ticket)
         yield* Effect.forEach(failed, reopen, { discard: true })
       })
 
@@ -292,13 +307,12 @@ export const make = (options: {
           yield* Ref.update(state, (now) => ({ ...now, atOnce: [] }))
           return
         }
-        const setup = how === "setup"
         const now = yield* Ref.updateAndGet(state, (s) => ({
           ...s,
-          atOnce: [...s.atOnce, { ticket, setup }],
+          atOnce: [...s.atOnce, { ticket, how }],
         }))
         if (now.stop !== null) {
-          if (!setup) yield* reopen(ticket)
+          if (how !== "setup") yield* reopen(ticket)
         } else if (now.atOnce.length >= count) {
           const command = yield* options.setup ??
             Effect.succeed(config.settings.checks.setup.command)
