@@ -48,7 +48,7 @@ const logOfCarry = (
         start: { start: () => Effect.never },
       })
       const issue = withIssue ? yield* (yield* Beads).show(seed.id) : undefined
-      yield* schedule.carry(seed.id, Effect.never, issue)
+      yield* schedule.carry(seed.id, Effect.succeed(Effect.never), issue)
       return yield* texts
     }).pipe(Effect.scoped, Effect.provide(layers([{ status: "in_progress", ...seed }]))),
   )

@@ -147,9 +147,11 @@ const answered = (waited: number): Promise<Ran<Seen>> => {
       const fibers: Array<Fiber.Fiber<Worked, unknown>> = []
       yield* takeAnswers({
         ...options,
-        carry: (_, fiber) =>
-          Effect.map(Effect.forkChild(fiber), (running) => {
-            fibers.push(running)
+        carry: (_, start) =>
+          Effect.gen(function* () {
+            const fiber = yield* start
+            if (fiber !== undefined) fibers.push(yield* Effect.forkChild(fiber))
+            return true
           }),
       })
       yield* minutes(59)

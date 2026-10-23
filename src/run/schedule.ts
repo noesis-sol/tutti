@@ -205,6 +205,11 @@ export interface Options {
    * dispatch records say with `machine_full`; never without it.
    */
   readonly machineFull?: Effect.Effect<boolean>
+  /**
+   * The tickets the last run left whose workers wait for a slot to be resumed (carry.ts): none of
+   * them is dispatched afresh meanwhile. None without it.
+   */
+  readonly carrying?: Effect.Effect<ReadonlySet<string>>
   /** Where tickets work, with the queue's `footprint` on; without it, no ticket overlaps another. */
   readonly footprints?: Footprints
   /**
@@ -254,11 +259,19 @@ export interface Scheduler {
   /** Waits until a ticket's fiber has ended and freed its slot, for a caller that doesn't use `run`. */
   readonly freed: Effect.Effect<void>
   /**
-   * Runs a resumed or carried-over worker's `work` in a slot, counting toward no limit. With its
+   * Runs a resumed or carried-over worker in a slot, counting toward no limit: only with a slot
+   * free, the run taking tickets (no hold, the machine under --machine-workers) and not winding
+   * down, no solo ticket running or past its work, and, for a solo one, no other ticket either.
+   * There, `start` readies the worker, giving its `work`, or undefined for none started. With its
    * issue, its footprint, its parent and its solo label count as a dispatched ticket's do, and,
    * with footprints on, its `<id> footprint: …` line is logged as a dispatched ticket's is.
+   * Whether there was a slot for it.
    */
-  carry(ticket: string, work: Effect.Effect<void>, issue?: Issue): Effect.Effect<void>
+  carry(
+    ticket: string,
+    start: Effect.Effect<Effect.Effect<void> | undefined>,
+    issue?: Issue,
+  ): Effect.Effect<boolean>
   /**
    * Runs `work` in a slot for a ticket checked once more (recheck.ts), as a running ticket's,
    * counting toward no limit: only with a slot free, no solo ticket running or first in line at
@@ -433,6 +446,7 @@ export const make = (
     const oneFill = yield* Semaphore.make(1)
     const taking = options.taking ?? Effect.succeed(true)
     const machineFull = options.machineFull ?? Effect.succeed(false)
+    const carrying = options.carrying ?? Effect.succeed(new Set<string>())
     // The queue's counts for a record, `machine_full` with them while the run holds at the cap.
     const recorded = (...args: Parameters<typeof counts>) =>
       Effect.map(machineFull, (full) => ({
@@ -642,9 +656,11 @@ export const make = (
       Effect.gen(function* () {
         const found = yield* ready(beads, options.scope, filter)
         const before = yield* ledger.current
-        const candidates = found.filter((issue) => candidate(before, issue.id))
+        const kept = yield* carrying
+        const listed = found.filter((issue) => !kept.has(issue.id))
+        const candidates = listed.filter((issue) => candidate(before, issue.id))
         // The queue's counts take in the tickets whose setup failed, held back apart.
-        const ids = found
+        const ids = listed
           .filter((issue) => candidate(before, issue.id) || setupFailed(before, issue.id))
           .map((issue) => issue.id)
         lastIds = ids
@@ -957,8 +973,26 @@ export const make = (
       run,
       fillTrying: fillTries(1),
       freed: Queue.take(freed),
-      carry: (ticket, work, issue) =>
-        Effect.andThen(carriedFootprint(issue), occupy(ticket, work, issue)),
+      carry: (ticket, start, issue) =>
+        oneFill.withPermit(
+          Effect.gen(function* () {
+            const { s, state } = yield* current
+            const others = s.running.size + mergingIn(state, s.running).length
+            const room =
+              slotFree(s, state, options.concurrent) &&
+              state.windDown === null &&
+              s.solo === null &&
+              !s.running.has(ticket) &&
+              (issue === undefined || !isSolo(issue) || others === 0) &&
+              (yield* taking)
+            if (!room) return false
+            const work = yield* start
+            if (work !== undefined) {
+              yield* Effect.andThen(carriedFootprint(issue), occupy(ticket, work, issue))
+            }
+            return true
+          }),
+        ),
       recheckSlot: (ticket, work) =>
         oneFill.withPermit(
           Effect.gen(function* () {

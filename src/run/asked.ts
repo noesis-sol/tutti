@@ -9,7 +9,9 @@
 // record, the ANSWERED line) and resumes its session, keeping its ID, with a client_composed "your
 // question is answered" message (the `resumed` record, the RESUMED line). The resumed worker takes
 // a slot, counting toward no limit (the scheduler's carry), and its ticket goes on as a dispatched
-// one does: settled, read, and moved as its worker leaves it. A session that can't be resumed (its
+// one does: settled, read, and moved as its worker leaves it. With no slot for it (every slot
+// taken, a solo ticket running, the machine at --machine-workers, a hold), it stays Asked, and a
+// later poll brings it back. A session that can't be resumed (its
 // worktree or transcript gone, the spawn failing) drops its ticket: WORKER_GONE, left for review,
 // its record in state.json forgotten, as sessions.ts's workerGone does. Only bd ready brings it back
 // then, so its line says a later run takes it up when it is open, and to reopen it when it is in
@@ -34,10 +36,16 @@ export const answeredText = (id: string, question: string, title: string): strin
 
 export interface AnswerOptions extends WorkOptions {
   /**
-   * Runs the resumed worker's fiber, `work`, in a slot, counting toward no limit: the scheduler's
-   * carry. With its issue, its footprint, parent and solo label count as a dispatched ticket's do.
+   * Runs the resumed worker's fiber in a slot, counting toward no limit: the scheduler's carry.
+   * Only with a slot for it, `start` resumes the worker, giving its fiber, or undefined for none.
+   * With its issue, its footprint, parent and solo label count as a dispatched ticket's do.
+   * Whether there was a slot for it.
    */
-  carry(ticket: string, work: Effect.Effect<Worked, WorkError>, issue?: Issue): Effect.Effect<void>
+  carry(
+    ticket: string,
+    start: Effect.Effect<Effect.Effect<Worked, WorkError> | undefined>,
+    issue?: Issue,
+  ): Effect.Effect<boolean>
 }
 
 /**
@@ -49,7 +57,8 @@ const titleOf = (issue: Issue, question: string): string =>
 
 /**
  * Resumes each Asked ticket whose question is answered (§ 5.1's Asked → Working): its session
- * told so and its fiber carried on in a slot. The tickets it resumed.
+ * told so and its fiber carried on in a slot; one with no slot for it stays Asked. The tickets it
+ * resumed.
  */
 export const takeAnswers = (
   options: AnswerOptions,
@@ -67,65 +76,68 @@ export const takeAnswers = (
       if (Result.isFailure(issue) || openQuestion(issue.success) !== undefined) continue
       const { question } = phase
       const asked = titleOf(issue.success, question)
-      const text = ticketLine(Tag.answered)`${question} (${asked}) is answered, so ${id} comes back`
-      const moved = yield* ledger.transition(id, Cause.Answered(), {
-        beside: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
-        lines: [text],
-      })
-      if (Result.isFailure(moved)) continue
-      const saved = yield* store.ticket(id)
-      const resumed = yield* Effect.result(
-        resume(
-          id,
-          "answered",
-          answeredText(id, question, asked),
-          line`${id}'s question ${question} is answered`,
-        ),
-      )
-      if (Result.isFailure(resumed)) {
-        // Its record is forgotten, so only bd ready brings it back: open, a later run starts it
-        // afresh; in progress, nothing does until it is reopened.
-        const next =
-          issue.success.status === "open"
-            ? "it is in bd ready, so a later run takes it up again"
-            : `reopen it to run it again (bd update ${id} --status open)`
-        yield* leaveForReview(id, {
-          why: Tag.workerGone,
-          detail: "answered, its session not resumed",
-          text: ticketLine(
-            Tag.workerGone,
-          )`${id}'s question ${question} is answered, but its session could not be resumed (${resumed.failure.reason}); worktree ${saved?.worktree ?? ""} left for review, no longer followed; ${next}, or finish it by hand`,
+      let resumed = false
+      const start = Effect.gen(function* () {
+        const text = ticketLine(
+          Tag.answered,
+        )`${question} (${asked}) is answered, so ${id} comes back`
+        const moved = yield* ledger.transition(id, Cause.Answered(), {
+          beside: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
+          lines: [text],
         })
-        yield* fit(id)
-        yield* Effect.ignore(store.remove(id))
-        continue
-      }
-      const worker: StartedWorker = {
-        ticket: id,
-        worktree: {
-          id,
-          branch: saved?.branch ?? "",
-          path: saved?.worktree ?? "",
-          reused: true,
-          fresh: false,
-          earlier: nothingEarlier,
-        },
-        session: saved?.session ?? "",
-        message: resumed.success,
-      }
-      const ticket = { id, title, metadata: issue.success.metadata }
-      // Its ticket limit is counted afresh from its resume, as a carried worker's is: the time
-      // it waited on the answer is no time of the worker's.
-      const since = yield* Clock.currentTimeMillis
-      yield* options.carry(
-        id,
-        Effect.gen(function* () {
+        if (Result.isFailure(moved)) return undefined
+        const saved = yield* store.ticket(id)
+        const session = yield* Effect.result(
+          resume(
+            id,
+            "answered",
+            answeredText(id, question, asked),
+            line`${id}'s question ${question} is answered`,
+          ),
+        )
+        if (Result.isFailure(session)) {
+          // Its record is forgotten, so only bd ready brings it back: open, a later run starts it
+          // afresh; in progress, nothing does until it is reopened.
+          const next =
+            issue.success.status === "open"
+              ? "it is in bd ready, so a later run takes it up again"
+              : `reopen it to run it again (bd update ${id} --status open)`
+          yield* leaveForReview(id, {
+            why: Tag.workerGone,
+            detail: "answered, its session not resumed",
+            text: ticketLine(
+              Tag.workerGone,
+            )`${id}'s question ${question} is answered, but its session could not be resumed (${session.failure.reason}); worktree ${saved?.worktree ?? ""} left for review, no longer followed; ${next}, or finish it by hand`,
+          })
+          yield* fit(id)
+          yield* Effect.ignore(store.remove(id))
+          return undefined
+        }
+        const worker: StartedWorker = {
+          ticket: id,
+          worktree: {
+            id,
+            branch: saved?.branch ?? "",
+            path: saved?.worktree ?? "",
+            reused: true,
+            fresh: false,
+            earlier: nothingEarlier,
+          },
+          session: saved?.session ?? "",
+          message: session.success,
+        }
+        const ticket = { id, title, metadata: issue.success.metadata }
+        // Its ticket limit is counted afresh from its resume, as a carried worker's is: the time
+        // it waited on the answer is no time of the worker's.
+        const since = yield* Clock.currentTimeMillis
+        resumed = true
+        return Effect.gen(function* () {
           const followed = yield* follow(ticket, worker, options, since)
           return { phase: (yield* ledger.current).tickets.get(id)?.phase, stop: followed.stop }
-        }).pipe(Effect.provideContext(context)),
-        issue.success,
-      )
-      back.push(id)
+        }).pipe(Effect.provideContext(context))
+      })
+      yield* options.carry(id, start.pipe(Effect.provideContext(context)), issue.success)
+      if (resumed) back.push(id)
     }
     return back
   })

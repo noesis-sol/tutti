@@ -99,7 +99,14 @@ import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
-import { type Carried, carryOver, saveAsked, saveLeft } from "./carry.ts"
+import {
+  type Carried,
+  type CarryOptions,
+  carryOver,
+  carryWaiting,
+  saveAsked,
+  saveLeft,
+} from "./carry.ts"
 import { closedBranches } from "./closedBranches.ts"
 import { resolve, type UiCommand } from "./commands.ts"
 import { noteCompactions } from "./compactions.ts"
@@ -713,6 +720,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
             Effect.provideService(Organs, organs.value),
           )
         : undefined
+    // The tickets the last run left whose workers wait for a slot to be resumed (carry.ts): the
+    // scheduler dispatches none of them afresh.
+    const carrying = yield* Ref.make<ReadonlySet<string>>(new Set())
     const scheduler = yield* makeScheduler({
       concurrent: config.settings.concurrent,
       limit: config.limit,
@@ -721,6 +731,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       start: { start: ticketFiber },
       taking: Effect.flatMap(taking, (yes) => (yes ? machineRoom : Effect.succeed(false))),
       machineFull,
+      carrying: Ref.get(carrying),
       ...(footprints === undefined ? {} : { footprints }),
       ...(predictor === undefined ? {} : { predictor }),
       closedBranches: branches,
@@ -841,23 +852,31 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* untilQuit(putBackLeft(config.repo, setUps), undefined)
 
     // The workers the last run left (carry.ts), taken up before the first dispatch: each resumed
-    // takes a slot, counting toward no limit, its ticket limit counted afresh. A quit takes up no
-    // more of them: those not yet taken stay in state.json as they were, for the next run.
+    // takes a slot, counting toward no limit, its ticket limit counted afresh; one with no slot
+    // for it waits for a later look. A quit takes up no more of them: those not yet taken stay in
+    // state.json as they were, for the next run.
+    const carryOptions: CarryOptions = {
+      base,
+      queue,
+      triage,
+      closedBranches: branches,
+      onTicketLimit: onResumedLimit,
+      carry: (ticket, start, issue) =>
+        scheduler.carry(
+          ticket,
+          Effect.map(start, (worked) =>
+            worked === undefined ? undefined : outcomeOf(ticket, worked),
+          ),
+          issue,
+        ),
+    }
+    const waitingOf = (carried: ReadonlyMap<string, Carried>) =>
+      new Set([...carried].flatMap(([id, what]) => (what === "waiting" ? [id] : [])))
     const carried: ReadonlyMap<string, Carried> =
       missing !== ""
         ? new Map()
-        : yield* untilQuit(
-            carryOver({
-              base,
-              queue,
-              triage,
-              closedBranches: branches,
-              onTicketLimit: onResumedLimit,
-              carry: (ticket, worked, issue) =>
-                scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
-            }).pipe(Effect.provideContext(context)),
-            new Map(),
-          )
+        : yield* untilQuit(carryOver(carryOptions).pipe(Effect.provideContext(context)), new Map())
+    yield* Ref.set(carrying, waitingOf(carried))
 
     // The deferred tickets in the run's scope whose blockers have all merged, each a DEFERRED_FREE
     // line of the START block (deferredFree.ts); not when bd can't list those left unmerged.
@@ -1120,18 +1139,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         })
         if (missing !== "") yield* stopped(stopFor("REQUIREMENTS_MISSING", missing))
       }
-      // The answered tickets come back before new ones start, each in a slot of its own and
-      // counting toward no limit (asked.ts); not while the run holds or winds down, which takes up
-      // only what is running: the next run resumes them.
+      // The workers carried over that waited for a slot, then the answered tickets, come back
+      // before new ones start, each in a slot of its own and counting toward no limit (carry.ts,
+      // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
+      // winds down, which takes up only what is running: the next run resumes them.
       if ((yield* taking) && (yield* ledger.current).windDown === null) {
-        yield* takeAnswers({
-          base,
-          queue,
-          triage,
-          closedBranches: branches,
-          onTicketLimit: onResumedLimit,
-          carry: (ticket, fiber, issue) => scheduler.carry(ticket, outcomeOf(ticket, fiber), issue),
-        })
+        const left = yield* carryWaiting(carryOptions, yield* Ref.get(carrying)).pipe(
+          Effect.provideContext(context),
+        )
+        yield* Ref.set(carrying, waitingOf(left))
+        yield* takeAnswers(carryOptions)
       }
       if (yield* canTake) {
         const filled = yield* Effect.result(scheduler.fillTrying)

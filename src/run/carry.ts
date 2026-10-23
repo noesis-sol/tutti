@@ -20,7 +20,11 @@
 //   and to carry on, with this run's facts (§ 4.1), as its session starts. Its fiber takes a slot,
 //   counting toward no limit (the scheduler's carry), its ticket limit counted afresh, and goes on
 //   as a dispatched ticket's does. A session that can't be resumed drops its ticket: WORKER_GONE,
-//   left for review (sessions.ts).
+//   left for review (sessions.ts). One with no slot for it (every slot taken by those resumed
+//   before it, a solo ticket among them, the machine at --machine-workers, a hold) waits, its
+//   record left as it was, and is taken up as a slot frees, each look checking it again
+//   (carryWaiting); none of these is dispatched afresh meanwhile. A run that ends first leaves it
+//   for the next.
 //
 // One that can't be checked (bd can't show its ticket, the worktree can't be looked for) is kept
 // for the next run, as is one outside this run's --ticket scope. A dropped ticket is forgotten in
@@ -56,7 +60,7 @@ import { resume, workerGone } from "./sessions.ts"
 import { openQuestion } from "./settle.ts"
 import { runFacts, type StartedWorker } from "./start.ts"
 import { mergedSince } from "./unmerged.ts"
-import { follow, type WorkEnv, type WorkError, type Worked } from "./work.ts"
+import { follow, type WorkEnv } from "./work.ts"
 
 /** The metadata key holding the question an asked ticket waited on as the run ended. */
 export const questionKey = "asked_question"
@@ -76,13 +80,7 @@ export const carryOnText = (id: string, why: string, facts: ReadonlyArray<string
     ...facts,
   ].join("\n\n")
 
-export interface CarryOptions extends AnswerOptions {
-  /**
-   * Runs a resumed worker's fiber, `work`, in a slot, counting toward no limit: the scheduler's
-   * carry. With its issue, its footprint, parent and solo label count as a dispatched ticket's do.
-   */
-  carry(ticket: string, work: Effect.Effect<Worked, WorkError>, issue?: Issue): Effect.Effect<void>
-}
+export type CarryOptions = AnswerOptions
 
 /** What became of a saved worker. */
 export type Carried =
@@ -95,6 +93,7 @@ export type Carried =
   | "worktreeGone"
   | "workerGone"
   | "kept"
+  | "waiting"
 
 /** Every service carry-over uses. */
 export type CarryEnv = WorkEnv | FileSystem.FileSystem
@@ -258,6 +257,22 @@ const abortLeftRebase = (
  */
 export const carryOver = (
   options: CarryOptions,
+): Effect.Effect<ReadonlyMap<string, Carried>, never, CarryEnv> => takeUp(options, undefined)
+
+/**
+ * Takes up the workers of `waiting`, those carryOver left waiting for a slot, checking each again
+ * as at the start: what became of each still saved, by ticket, `waiting` for one with no slot yet.
+ */
+export const carryWaiting = (
+  options: CarryOptions,
+  waiting: ReadonlySet<string>,
+): Effect.Effect<ReadonlyMap<string, Carried>, never, CarryEnv> =>
+  waiting.size === 0 ? Effect.succeed(new Map()) : takeUp(options, waiting)
+
+/** Takes up the saved workers, or those of `only` alone: carryOver's and carryWaiting's. */
+const takeUp = (
+  options: CarryOptions,
+  only: ReadonlySet<string> | undefined,
 ): Effect.Effect<ReadonlyMap<string, Carried>, never, CarryEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
@@ -270,7 +285,9 @@ export const carryOver = (
     const context = yield* Effect.context<WorkEnv>()
     const { base } = options
     const carried = new Map<string, Carried>()
-    const saved = [...(yield* toCarry)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    const saved = [...(yield* toCarry)]
+      .filter(([id]) => only === undefined || only.has(id))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     if (saved.length === 0) return carried
 
     // A scoped run takes up its ticket and its descendants; bd failing to list them, its ticket.
@@ -427,56 +444,61 @@ export const carryOver = (
         continue
       }
 
-      // Resumed, Working: told it was interrupted, with this run's facts, as its session starts.
-      const moved = yield* ledger.transition(id, Cause.Resumed(), { title: issue.title })
-      if (Result.isFailure(moved)) continue
-      const facts = runFacts({
-        id,
-        ticketLimit: config.settings.workers.ticket_limit,
-        scope: config.ticket,
-      })
-      const resumed = yield* Effect.result(
-        resume(
+      // Resumed, Working: told it was interrupted, with this run's facts, as its session starts,
+      // once there is a slot for it.
+      const start = Effect.gen(function* () {
+        const moved = yield* ledger.transition(id, Cause.Resumed(), { title: issue.title })
+        if (Result.isFailure(moved)) return undefined
+        const facts = runFacts({
           id,
-          "suspended",
-          carryOnText(id, why, facts),
-          record.suspended === undefined
-            ? line`${id} was in progress as the last run crashed`
-            : line`${id} was suspended as the last run ended (${why})`,
-        ),
-      )
-      if (Result.isFailure(resumed)) {
-        carried.set(id, "workerGone")
-        yield* workerGone(id, worktree, resumed.failure.reason)
-        continue
-      }
-      carried.set(id, "resumed")
-      const since = yield* Clock.currentTimeMillis
-      const worker: StartedWorker = {
-        ticket: id,
-        worktree: {
-          id,
-          branch,
-          path: worktree,
-          reused: true,
-          fresh: false,
-          earlier: nothingEarlier,
-        },
-        session: record.session ?? "",
-        message: resumed.success,
-      }
-      const ticket = { id, title: issue.title, metadata: issue.metadata }
-      yield* options.carry(
-        id,
-        Effect.gen(function* () {
+          ticketLimit: config.settings.workers.ticket_limit,
+          scope: config.ticket,
+        })
+        const resumed = yield* Effect.result(
+          resume(
+            id,
+            "suspended",
+            carryOnText(id, why, facts),
+            record.suspended === undefined
+              ? line`${id} was in progress as the last run crashed`
+              : line`${id} was suspended as the last run ended (${why})`,
+          ),
+        )
+        if (Result.isFailure(resumed)) {
+          carried.set(id, "workerGone")
+          yield* workerGone(id, worktree, resumed.failure.reason)
+          return undefined
+        }
+        carried.set(id, "resumed")
+        const since = yield* Clock.currentTimeMillis
+        const worker: StartedWorker = {
+          ticket: id,
+          worktree: {
+            id,
+            branch,
+            path: worktree,
+            reused: true,
+            fresh: false,
+            earlier: nothingEarlier,
+          },
+          session: record.session ?? "",
+          message: resumed.success,
+        }
+        const ticket = { id, title: issue.title, metadata: issue.metadata }
+        return Effect.gen(function* () {
           const followed = yield* follow(ticket, worker, options, since)
           return { phase: (yield* ledger.current).tickets.get(id)?.phase, stop: followed.stop }
-        }).pipe(Effect.provideContext(context)),
-        issue,
-      )
+        }).pipe(Effect.provideContext(context))
+      })
+      if (yield* options.carry(id, start.pipe(Effect.provideContext(context)), issue)) continue
+      // Said once, as the run starts: a later look finds it waiting still.
+      if (only === undefined) {
+        yield* said(id, "waiting", carriedLine(id, line`waits for a free slot to be resumed`))
+      } else carried.set(id, "waiting")
     }
 
-    // An asked ticket whose question was answered between runs is resumed now, and told so.
-    yield* takeAnswers(options)
+    // An asked ticket whose question was answered between runs is resumed now, and told so; each
+    // look after the start takes up those answered since.
+    if (only === undefined) yield* takeAnswers(options)
     return carried
   })

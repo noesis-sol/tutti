@@ -218,7 +218,13 @@ export const say = (
  * What became of a saved worker that leaves its ticket's work not yet merged: under way in the run,
  * or kept for a later one, as the box of a run with nothing to run counts every carried ticket.
  */
-const underWay: ReadonlySet<Carried> = new Set<Carried>(["resumed", "asked", "toMerge", "kept"])
+const underWay: ReadonlySet<Carried> = new Set<Carried>([
+  "resumed",
+  "asked",
+  "toMerge",
+  "kept",
+  "waiting",
+])
 
 /**
  * Says, in the START block of a run scoped to `root` (--ticket, or null for all of bd ready), the

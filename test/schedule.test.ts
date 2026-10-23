@@ -245,7 +245,7 @@ describe("the slots", () => {
       [{ id: "t-1" }, { id: "t-2" }],
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 2, limit: 1 })
-        yield* schedule.carry("c-1", Effect.never)
+        yield* schedule.carry("c-1", Effect.succeed(Effect.never))
         yield* schedule.fill
         yield* flush
         return [yield* started, yield* schedule.started] as const

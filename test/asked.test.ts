@@ -185,9 +185,11 @@ const asked = (
         polls.push(
           yield* takeAnswers({
             ...options,
-            carry: (_, fiber) =>
-              Effect.map(Effect.forkChild(fiber), (running) => {
-                fibers.push(running)
+            carry: (_, start) =>
+              Effect.gen(function* () {
+                const fiber = yield* start
+                if (fiber !== undefined) fibers.push(yield* Effect.forkChild(fiber))
+                return true
               }),
           }),
         )
