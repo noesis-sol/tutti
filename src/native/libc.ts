@@ -453,25 +453,47 @@ export const openUnder = (
   })
 
 /**
- * Makes the folders of `folder` (a path below `directory`) that are missing, one at a time,
- * stopping at anything that isn't a folder, a symbolic link included, which openUnder then
- * refuses: nothing is made through a link. A folder that can't be made is left for openUnder to
- * fail on, saying why.
+ * Makes the folders of `folder` (a path below `directory`) that are missing, one at a time, and
+ * gives why they aren't all there, or undefined when they are. It stops at anything that isn't a
+ * folder, a symbolic link included, which openUnder then refuses too: nothing is made through a
+ * link. A folder made meanwhile by another (EEXIST) counts as made. `mode` is the last folder's,
+ * where it is made, past the umask; the others' is 0o755.
  */
-export const makeFoldersUnder = (directory: string, folder: string): void => {
+export const makeFoldersUnder = (
+  directory: string,
+  folder: string,
+  options: { readonly mode?: number } = {},
+): string | undefined => {
+  const parts = folder.split("/")
   let at = directory
-  for (const part of folder.split("/")) {
+  for (const [index, part] of parts.entries()) {
     at = join(at, part)
+    const shown = parts.slice(0, index + 1).join("/")
+    const kind = (): string | undefined => {
+      const stat = lstatSync(at)
+      if (stat.isSymbolicLink()) return `${shown} is a symbolic link`
+      return stat.isDirectory() ? undefined : `${shown} isn't a folder`
+    }
     try {
-      if (!lstatSync(at).isDirectory()) return
-    } catch {
+      const wrong = kind()
+      if (wrong !== undefined) return wrong
+      continue
+    } catch {}
+    try {
+      mkdirSync(at, { mode: index === parts.length - 1 ? (options.mode ?? 0o755) : 0o755 })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        return `${shown} can't be made: ${error instanceof Error ? error.message : String(error)}`
+      }
       try {
-        mkdirSync(at)
-      } catch {
-        return
+        const wrong = kind()
+        if (wrong !== undefined) return wrong
+      } catch (again) {
+        return `${shown} can't be read: ${again instanceof Error ? again.message : String(again)}`
       }
     }
   }
+  return undefined
 }
 
 // replace writes `data` whole to `name` in the folder open at `dir` (`folder` below `directory`):

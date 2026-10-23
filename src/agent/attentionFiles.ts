@@ -19,8 +19,6 @@ import {
   fstatSync,
   watch as fsWatch,
   linkSync,
-  lstatSync,
-  mkdirSync,
   readdirSync,
   readSync,
   unlinkSync,
@@ -44,6 +42,7 @@ import {
 import {
   close,
   LibcError,
+  makeFoldersUnder,
   NotAFileRefused,
   O,
   openUnder,
@@ -427,20 +426,9 @@ export const removeUnder = (repo: string, relativePath: string): boolean => {
  * made, listed or removed through one.
  */
 export const makeAttentionFolder = (repo: string): string => {
-  let folder = repo
-  for (const part of attentionFolder.split("/")) {
-    folder = join(folder, part)
-    let stat: ReturnType<typeof lstatSync> | undefined
-    try {
-      stat = lstatSync(folder)
-    } catch {
-      mkdirSync(folder, { mode: part === "attention" ? 0o700 : 0o755 })
-      continue
-    }
-    if (stat.isSymbolicLink()) throw new Error(`${folder} is a symbolic link`)
-    if (!stat.isDirectory()) throw new Error(`${folder} isn't a folder`)
-  }
-  return folder
+  const why = makeFoldersUnder(repo, attentionFolder, { mode: 0o700 })
+  if (why !== undefined) throw new Error(why)
+  return join(repo, attentionFolder)
 }
 
 /** What `serve` takes. */

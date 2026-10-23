@@ -12,15 +12,14 @@
 //
 // Nothing here fails: a file that can't be opened or written is warned about once per worker, and
 // the worker's transcript goes on in memory.
-import { fstatSync, lstatSync, mkdirSync, readSync, writeSync } from "node:fs"
-import { join } from "node:path"
+import { fstatSync, readSync, writeSync } from "node:fs"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Clock, Context, Effect, Layer, PubSub, Result, Schema, type Scope, Stream } from "effect"
-import { close, LibcError, O, openUnder } from "../native/libc.ts"
+import { close, LibcError, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { terminalSafe } from "../run/events.ts"
 import { timestamp } from "../run/localTime.ts"
 import { denier, unknownDenier } from "../run/log.ts"
-import { ticketIdProblem } from "../services/Worktrees.ts"
+import { runFolder, ticketIdProblem } from "../services/Worktrees.ts"
 
 /** The folder of the workers' transcripts, relative to the main checkout's top level (§ 9.1). */
 export const workersFolder = ".tutti/run/workers"
@@ -570,24 +569,6 @@ export const notRecorded = (worker: string, file: string, reason: string): strin
 const reasonOf = (error: unknown): string =>
   error instanceof Error ? error.message : typeof error === "string" ? error : String(error)
 
-// makeFolders makes .tutti/run/workers/<id> in repo where it is missing, stopping at anything that
-// isn't a folder, which openUnder then refuses: nothing is made through a link.
-const makeFolders = (repo: string, worker: string): void => {
-  let folder = repo
-  for (const part of [".tutti", "run", "workers", worker]) {
-    folder = join(folder, part)
-    try {
-      if (!lstatSync(folder).isDirectory()) return
-    } catch {
-      try {
-        mkdirSync(folder)
-      } catch {
-        return
-      }
-    }
-  }
-}
-
 const chunkSize = 256 * 1024
 
 // linesFrom yields the lines of the file open at `fd`, the last first, reading it backwards a chunk
@@ -648,7 +629,8 @@ export const fileStorage = (repo: string, failed: (message: string) => void): Fi
       fail(worker, file, problem)
       return undefined
     }
-    makeFolders(repo, worker)
+    // Stops at a link, which openUnder then refuses, naming it.
+    makeFoldersUnder(repo, `${runFolder}/workers/${worker}`)
     const result = Effect.runSync(
       Effect.result(openUnder(repo, file, O.RDWR | O.APPEND | O.CREAT, 0o644)),
     )

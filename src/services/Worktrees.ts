@@ -12,13 +12,14 @@
 // would write wherever that led, and git's ignore rule for the folder (/.tutti/run/, which matches a
 // folder and not a link) wouldn't cover files written through it, for a worker's git add -A to
 // commit. So every link on the way is refused, wherever it points, with RunFilesOutside.
-import { lstatSync, mkdirSync, readSync, writeSync } from "node:fs"
+import { readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Schema, type Scope } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import {
   close,
   type LibcError,
+  makeFoldersUnder,
   type NotAFileRefused,
   O,
   openUnder,
@@ -169,23 +170,6 @@ export const ensureExcluded = (
       .pipe(Effect.andThen(writeFileAtomic(file, updated)), Effect.mapError(unwritable))
   })
 
-// makeRunFolder makes .tutti and .tutti/run in the worktree where they are missing, stopping at
-// anything that isn't a folder, which openUnder then refuses: nothing is made through a link. A
-// folder that can't be made is left for openUnder to fail on, saying why.
-const makeRunFolder = (worktree: string): void => {
-  for (const folder of [join(worktree, ".tutti"), join(worktree, runFolder)]) {
-    try {
-      if (!lstatSync(folder).isDirectory()) return
-    } catch {
-      try {
-        mkdirSync(folder)
-      } catch {
-        return
-      }
-    }
-  }
-}
-
 /**
  * Opens `name` (a path below the worktree's .tutti/run/) with `flags`, through openUnder, making the
  * folder first when it is missing. A symbolic link anywhere from the worktree down is refused with
@@ -199,7 +183,8 @@ export const openRunFile = (
 ): Effect.Effect<number, RunFilesError, Scope.Scope> =>
   Effect.acquireRelease(
     Effect.suspend(() => {
-      makeRunFolder(worktree)
+      // Stops at a link, which openUnder then refuses, naming it.
+      makeFoldersUnder(worktree, runFolder)
       return openUnder(worktree, `${runFolder}/${name}`, flags, mode)
     }).pipe(
       Effect.catchIf(
@@ -217,7 +202,7 @@ export const openRunFile = (
  */
 export const checkRunFolder = (worktree: string): Effect.Effect<void, RunFilesError> =>
   Effect.suspend(() => {
-    makeRunFolder(worktree)
+    makeFoldersUnder(worktree, runFolder)
     return openUnder(worktree, runFolder, O.RDONLY | O.DIRECTORY)
   }).pipe(
     Effect.flatMap((fd) => Effect.ignore(close(fd))),
