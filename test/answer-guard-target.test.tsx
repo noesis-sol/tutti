@@ -180,3 +180,29 @@ describe("the worker view's panel", () => {
     )
   })
 })
+
+describe("a move and a key that arrive together", () => {
+  test("on the dashboard, ↓ and a in one read answer nothing", async () => {
+    await scene(Screen.Dashboard(), [r1, r2], async ({ commands, pass, rendered }) => {
+      pass(10 * settle)
+      await press(rendered, "down", "a")
+      expect(taken(commands)).toEqual([])
+      pass(settle)
+      await press(rendered, "a")
+      expect(taken(commands)).toEqual([allowed("r2")])
+    })
+  })
+
+  test("in the worker view's panel, ↓ and a in one read answer nothing", async () => {
+    const second = { ...r2, ticket: "t-1" }
+    await scene(Screen.Worker({ ticket: "t-1" }), [r1, second], async (at) => {
+      const { commands, pass, rendered } = at
+      pass(10 * settle)
+      await press(rendered, "down", "a")
+      expect(taken(commands)).toEqual([])
+      pass(settle)
+      await press(rendered, "a")
+      expect(taken(commands)).toEqual([allowed("r2")])
+    })
+  })
+})

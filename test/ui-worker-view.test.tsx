@@ -802,8 +802,11 @@ describe("the attention panel", () => {
         expect(frame.chars).toContain("+1 more requests")
         expect(frame.chars).not.toContain("Hidden third request")
         clock.pass(settle)
-        // ↓ from the oldest goes to the second and no further: the third isn't drawn.
-        await press(rendered, "down", "down", "down", "a")
+        // ↓ from the oldest goes to the second and no further: the third isn't drawn. The second,
+        // as it becomes the target, is guarded again (tutti-14o5).
+        await press(rendered, "down", "down", "down")
+        clock.pass(settle)
+        await press(rendered, "a")
         expect(taken(commands)).toEqual([
           UiCommand.Answer({ requestId: "r2", answer: { _tag: "Allow" } }),
         ])

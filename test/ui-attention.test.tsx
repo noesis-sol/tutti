@@ -635,9 +635,14 @@ describe("several requests", () => {
     await scene(requests, async ({ commands, clock, rendered }) => {
       clock.pass(settle)
       // Card 1's Deny (the target), its Allow, then card 2 on its Deny; Shift+Tab back to card 1,
-      // which a card is entered on its Deny, and → to its Allow.
-      await press(rendered, "tab", "tab", "enter")
-      await press(rendered, "shift+tab", "right", "enter")
+      // which a card is entered on its Deny, and → to its Allow. Each card, as it becomes the
+      // target, is guarded again (tutti-14o5).
+      await press(rendered, "tab", "tab")
+      clock.pass(settle)
+      await press(rendered, "enter")
+      await press(rendered, "shift+tab", "right")
+      clock.pass(settle)
+      await press(rendered, "enter")
       expect(taken(commands)).toEqual([
         answerOf("r2", { _tag: "Deny" }),
         answerOf("r1", { _tag: "Allow" }),

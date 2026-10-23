@@ -233,7 +233,10 @@ describe("the Interview view's selection", () => {
 
   test("↓ moves from the oldest request to the next, and no further", async () => {
     await asking([shape, flag], async (rendered, commands) => {
-      await press(rendered, "down", "down", "1", "enter")
+      // The next request, as it becomes the target, is guarded again (tutti-14o5).
+      await press(rendered, "down", "down")
+      clock.pass(settle)
+      await press(rendered, "1", "enter")
       expect(taken(commands)).toEqual([chose("q2", "--json")])
     })
   })
@@ -299,7 +302,9 @@ describe("the Interview view's request card", () => {
 
   test("Tab past the card's last option moves on to the next request", async () => {
     await asking([shape, flag], async (rendered, commands) => {
-      await press(rendered, "tab", "tab", "tab", "tab", "enter")
+      await press(rendered, "tab", "tab", "tab", "tab")
+      clock.pass(settle)
+      await press(rendered, "enter")
       expect(taken(commands)).toEqual([chose("q2", "--json")])
     })
   })

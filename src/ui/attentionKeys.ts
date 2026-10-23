@@ -250,7 +250,8 @@ export interface Answering {
   /**
    * Names the card the keys answer as drawn, its request the target (§ 4.5): when the target's
    * request changes, its guard starts again, so a key meant for the request before (answered, its
-   * card gone) can't answer the one the target moves on to. Called as the cards are drawn.
+   * card gone) can't answer the one the target moves on to. Called as the cards are drawn; the
+   * keys (Enter, `d`, `Shift+D`, `a`, `r`, `1`–`4`) name their card the target too.
    */
   readonly target: (card: Card | undefined) => void
   /** Focuses the question's option `n`, 1 to 4; false when the card has no such option. */
@@ -293,6 +294,19 @@ export const useAnswering = (
     setMoved(() => to)
 
   const requestOf = (card: Card) => card.requests[0]
+  const aim = (request: AttentionRequest | undefined) => {
+    if (request === undefined) aimed.current = null
+    else if (aimed.current?.request !== request.id) {
+      aimed.current = { request: request.id, since: clock() }
+    }
+  }
+  // A key answers the target, which it names too: a move that came with it, before the cards were
+  // drawn again, starts the new target's guard as drawing would. A click names none.
+  const aimedAt = (card: Card) => {
+    const request = requestOf(card)
+    aim(request)
+    return request
+  }
   const settled = (request: AttentionRequest) => {
     const now = clock()
     const first = shown.current.get(request.id) ?? now
@@ -334,32 +348,27 @@ export const useAnswering = (
     reset: () => move(null),
     press,
     pressFocused: (card) => {
+      aimedAt(card)
       const focus = focusOf(card)
       if (focus === null) return false
       press(card, focus)
       return true
     },
     key: (card, key) => {
-      const request = requestOf(card)
+      const request = aimedAt(card)
       const answer = request === undefined ? null : keyAnswer(request, key)
       if (request !== undefined && answer !== null && settled(request)) send(request, answer)
     },
     denyWithReason: (card) => {
-      const request = requestOf(card)
+      const request = aimedAt(card)
       if (request === undefined || !settled(request)) return
       if (request.kind._tag === "Elicitation") send(request, { _tag: "Decline" })
       else
         box.set(Box.Reason({ requestId: request.id, ticket: request.ticket, label: request.label }))
     },
-    target: (card) => {
-      const request = card === undefined ? undefined : requestOf(card)
-      if (request === undefined) aimed.current = null
-      else if (aimed.current?.request !== request.id) {
-        aimed.current = { request: request.id, since: clock() }
-      }
-    },
+    target: (card) => aim(card === undefined ? undefined : requestOf(card)),
     pick: (card, n) => {
-      const request = requestOf(card)
+      const request = aimedAt(card)
       if (request === undefined || !picksOptions(request)) return false
       if (n > buttonsOf(request).length) return false
       if (settled(request)) move({ request: request.id, focus: n - 1 })

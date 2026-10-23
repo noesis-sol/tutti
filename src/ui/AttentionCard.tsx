@@ -190,6 +190,7 @@ export const AnswerBox = () => {
     if (box.get()?._tag === "Answer") box.set(null)
   }
   const answering = useAnswering(card === undefined ? [] : [card], close)
+  answering.target(card)
   const gone = ticket !== null && card === undefined
   // biome-ignore lint/correctness/useExhaustiveDependencies: close reads the box as it is then
   useEffect(() => {
