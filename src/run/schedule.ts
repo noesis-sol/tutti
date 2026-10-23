@@ -204,6 +204,11 @@ export interface Options {
   /** Whether the run takes new tickets now (holds say no); the ledger's wind-down says no too. */
   readonly taking?: Effect.Effect<boolean>
   /**
+   * Whether the run holds now (a stop, the environment hold, the usage limit), read without
+   * `taking`'s machine cap or its records: a ticket set aside is taken back only while it doesn't.
+   */
+  readonly holding?: Effect.Effect<boolean>
+  /**
    * Whether the run holds a free slot at --machine-workers (machine.ts), which the queue and
    * dispatch records say with `machine_full`; never without it.
    */
@@ -455,6 +460,7 @@ export const make = (
     const freed = yield* Queue.sliding<void>(1)
     const oneFill = yield* Semaphore.make(1)
     const taking = options.taking ?? Effect.succeed(true)
+    const holding = options.holding ?? Effect.succeed(false)
     const machineFull = options.machineFull ?? Effect.succeed(false)
     const carrying = options.carrying ?? Effect.succeed(new Set<string>())
     // The queue's counts for a record, `machine_full` with them while the run holds at the cap.
@@ -485,8 +491,8 @@ export const make = (
     // The candidates the last fill read, which a queue record counts.
     let lastIds: ReadonlyArray<string> = []
     // The tickets set aside (Deferred) that a fill found gone from bd ready, their fibers ended: one
-    // bd ready lists again was undeferred outside the run, and is queued again while the run takes
-    // tickets. One bd couldn't defer, which bd ready still lists, is kept out of the run. So is one
+    // bd ready lists again was undeferred outside the run, and is queued again while the run doesn't
+    // hold. One bd couldn't defer, which bd ready still lists, is kept out of the run. So is one
     // an environment hold reopens itself (Deferred → Waiting), which it does once the run holds.
     const leftReady = new Set<string>()
 
@@ -681,8 +687,8 @@ export const make = (
             leftReady.add(entry.ticket)
           }
         }
-        const takingNow = yield* taking
-        const back = (id: string) => takingNow && deferred(before, id) && leftReady.has(id)
+        const holdsNow = yield* holding
+        const back = (id: string) => !holdsNow && deferred(before, id) && leftReady.has(id)
         const candidates = listed.filter((issue) => candidate(before, issue.id) || back(issue.id))
         // The queue's counts take in the tickets whose setup failed, held back apart.
         const ids = listed

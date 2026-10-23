@@ -53,6 +53,7 @@ const scheduler = (options: { readonly deferFails?: boolean } = {}) =>
       scope: null,
       excludeTypes: ["epic"],
       taking: Effect.map(Ref.get(held), (yes) => !yes),
+      holding: Ref.get(held),
       start: {
         start: (issue: Issue) =>
           Effect.gen(function* () {

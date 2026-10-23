@@ -738,6 +738,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       excludeTypes: config.settings.queue.exclude_types,
       start: { start: ticketFiber },
       taking: Effect.flatMap(taking, (yes) => (yes ? machineRoom : Effect.succeed(false))),
+      holding: Effect.map(taking, (yes) => !yes),
       machineFull,
       carrying: Ref.get(carrying),
       ...(footprints === undefined ? {} : { footprints }),
