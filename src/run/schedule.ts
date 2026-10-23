@@ -144,16 +144,28 @@ export const footprintsOf = (options: {
         Effect.map((union) => files.filter((f) => !union.includes(f))),
         Effect.orElseSucceed(() => files),
       )
-    return {
-      repo: git.trackedFiles(options.repo).pipe(
-        Effect.flatMap((files) =>
-          git.mergedByUnion(options.repo, files).pipe(
-            Effect.orElseSucceed((): ReadonlyArray<string> => []),
-            Effect.map((union) => repoFiles(files, options.checkCommands, union)),
-          ),
+    // The files git lists, read again only once the checkout's commit moves, as a merge moves it:
+    // a fill comes on almost every wake. What git failing gives is read again the next time.
+    const listed = yield* Ref.make<{ readonly at: string; readonly files: RepoFiles } | undefined>(
+      undefined,
+    )
+    const read = git.trackedFiles(options.repo).pipe(
+      Effect.flatMap((files) =>
+        git.mergedByUnion(options.repo, files).pipe(
+          Effect.orElseSucceed((): ReadonlyArray<string> => []),
+          Effect.map((union) => repoFiles(files, options.checkCommands, union)),
         ),
-        Effect.orElseSucceed(() => repoFiles(undefined, options.checkCommands)),
       ),
+    )
+    return {
+      repo: Effect.gen(function* () {
+        const at = yield* git.revParse(options.repo, "HEAD").pipe(Effect.orElseSucceed(() => ""))
+        const known = yield* Ref.get(listed)
+        if (at !== "" && known?.at === at) return known.files
+        const files = yield* read
+        if (at !== "") yield* Ref.set(listed, { at, files })
+        return files
+      }).pipe(Effect.orElseSucceed(() => repoFiles(undefined, options.checkCommands))),
       changed: (ticket) =>
         Effect.flatMap(options.worktree(ticket), (path) =>
           Effect.flatMap(worktreeChanges(path, options.base), (files) => withoutUnion(path, files)),
@@ -772,20 +784,22 @@ export const make = (
             return found
           })
 
-        // What holds a waiting ticket back for a parent or a ticket not merged, saying why once. With
+        // What holds a waiting ticket back for a parent or a ticket not merged, saying why once. bd
+        // ready gives a ticket's links, so one linking to none it waits on has no bd show. With
         // nothing of the run's pending, only a closed blocker's branch could hold one back: a ticket
         // whose links bd can't show then goes ahead, as orchestra's does.
         const heldFor = (issue: Issue, state: State) =>
           Effect.gen(function* () {
             let held: Held | undefined
+            const waits = waitsOnLinks(issue)
             if (parents.has(issue.id)) held = parentHold
-            else if (left.length > 0 || pending(state)) {
+            else if (waits && (left.length > 0 || pending(state))) {
               const links = yield* linksOf(issue.id)
               held =
                 links === null
                   ? unreadableHold
                   : mergeHold(state, links, yield* branchesOf(state, links))
-            } else if (closed !== undefined && waitsOnLinks(issue)) {
+            } else if (waits && closed !== undefined) {
               const links = yield* linksOf(issue.id)
               if (links !== null) held = mergeHold(state, links, yield* branchesOf(state, links))
             }
