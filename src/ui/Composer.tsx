@@ -263,6 +263,8 @@ export const QueuedLines = ({ lines }: { readonly lines: ReadonlyArray<Segments>
 export const Composer = ({
   theme,
   field,
+  lines,
+  setLines,
   focused,
   focus,
   send,
@@ -271,6 +273,9 @@ export const Composer = ({
   readonly theme: Theme
   /** The field, which the view focuses and blurs as keys come. */
   readonly field: RefObject<TextareaRenderable | null>
+  /** Its height, as many lines as what you typed takes, `composerLines` at most; the view's to keep. */
+  readonly lines: number
+  readonly setLines: (lines: number) => void
   readonly focused: boolean
   /** Focuses it, as a click does. */
   readonly focus: () => void
@@ -283,7 +288,6 @@ export const Composer = ({
   readonly placeholder?: (focused: boolean) => string
 }) => {
   const { form } = theme
-  const [lines, setLines] = useState(1)
   const fit = () => {
     const box = field.current
     const count = box === null ? 1 : Math.max(box.lineCount, box.virtualLineCount)

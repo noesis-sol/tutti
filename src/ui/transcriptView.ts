@@ -303,6 +303,8 @@ export const useComposer = () => {
   const input = useInput()
   const box = useSyncExternalStore(input.box.subscribe, input.box.get)
   const field = useRef<TextareaRenderable>(null)
+  // Its height, which the view's request panel leaves room for (tutti-7nzv).
+  const [lines, setLines] = useState(1)
   const [composing, setComposingState, composingNow] = useKeyState(() => false)
   const setComposing = (on: boolean) => {
     setComposingState(() => on)
@@ -326,6 +328,9 @@ export const useComposer = () => {
     /** The box open over the view, if any. */
     box,
     field,
+    /** The composer's height, in lines, and its setter, which the composer calls as it fits. */
+    lines,
+    setLines,
     /** Whether you write in the composer now. */
     typing: composing && box === null,
     composing: composingNow,

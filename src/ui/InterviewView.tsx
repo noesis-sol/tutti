@@ -19,7 +19,7 @@
 // (transcriptView.ts); the hint wraps as its does.
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
-import { createContext, useContext, useEffect } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 import { interviewWorker } from "../agent/interview.ts"
 import { type Filing, filedSomething } from "../agent/interviewTools.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
@@ -152,10 +152,15 @@ export const InterviewView = () => {
   const inner = Math.max(width, 1)
   const queued = queuedLines(sends.queued, theme, inner)
   // The panel has the height the view's other rows leave it, and a few of the transcript's
-  // (tutti-7nzv): the head's first line, the rules, the queued lines, the composer's first line and
-  // the hint as it is with a question.
+  // (tutti-7nzv): the head, the rules, the queued lines, the composer and the hint as it is with a
+  // question.
+  const [headLines, setHeadLines] = useState(1)
   const others =
-    3 + queued.length + 1 + hintLines(hintKeys(true, composer.typing), theme, inner).length
+    headLines +
+    2 +
+    queued.length +
+    composer.lines +
+    hintLines(hintKeys(true, composer.typing), theme, inner).length
   const rooms = usePanelRooms(
     theme,
     Math.max(inner - 2, 8),
@@ -235,6 +240,7 @@ export const InterviewView = () => {
           head={head}
           spinning={card?.motion === "spinner"}
           width={inner}
+          counted={setHeadLines}
         />
         <Line segments={rule} />
         <TranscriptPane transcript={transcript} selection={selection} width={inner} />
@@ -249,6 +255,8 @@ export const InterviewView = () => {
         <Composer
           theme={theme}
           field={composer.field}
+          lines={composer.lines}
+          setLines={composer.setLines}
           focused={composer.typing}
           focus={() => composer.setComposing(true)}
           send={send}

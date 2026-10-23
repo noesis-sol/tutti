@@ -47,7 +47,7 @@ import {
   type TreeSitterClient,
 } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
-import { createContext, memo, useContext, useEffect, useMemo, useRef } from "react"
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
@@ -741,7 +741,8 @@ export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
  * shell's clock and the spinner's frame, wrapped rather than cut (tutti-rfs). Its lines after the
  * first are under the link, not in the transcript's scrollbox, so their height doesn't touch #1514.
  * The clock and the spinner tick here, in a leaf, so that the view over it isn't drawn anew ten
- * times a second while `spinning` (tutti-k2n1).
+ * times a second while `spinning` (tutti-k2n1); `counted` hears how many lines it takes, as that
+ * changes, for the view's request panel (tutti-7nzv).
  */
 export const ViewHead = ({
   link,
@@ -749,12 +750,14 @@ export const ViewHead = ({
   head,
   spinning,
   width,
+  counted,
 }: {
   readonly link: string
   readonly leave: () => void
   readonly head: (now: number, spin: string) => Segments
   readonly spinning: boolean
   readonly width: number
+  readonly counted?: (lines: number) => void
 }) => {
   const theme = useTheme()
   const now = useNow()
@@ -764,6 +767,7 @@ export const ViewHead = ({
     long: "line",
     start: Bun.stringWidth(link),
   })
+  useEffect(() => counted?.(lines.length), [counted, lines.length])
   return (
     <>
       <box flexDirection="row" height={1} flexShrink={0}>
@@ -1000,16 +1004,18 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const panelWidth = Math.max(inner - 2, 8)
   const queued = queuedLines(sends.queued, theme, inner, sends.mark)
   // The panel has the height the view's other rows leave it, and a few of the transcript's
-  // (tutti-7nzv): the head's first line, the rules, the hand-back, the lines over the composer, the
-  // composer's first line and the hint as it is with requests.
+  // (tutti-7nzv): the head, the rules, the hand-back, the lines over the composer, the composer and
+  // the hint as it is with requests.
+  const [headLines, setHeadLines] = useState(1)
   const steered = card?.steered === true
   const others =
-    3 +
+    headLines +
+    2 +
     (handBack ? handBackLines(theme, { width: panelWidth, selected: false }).length : 0) +
     (holding ? 1 : 0) +
     (finished || steered ? 1 : 0) +
     queued.length +
-    1 +
+    composer.lines +
     hintLines(hintKeys(true, composer.typing, steered, finished), theme, inner).length
   const rooms = usePanelRooms(theme, panelWidth, height - others - transcriptRows, height)
   const panel = usePanel(
@@ -1134,6 +1140,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           head={head}
           spinning={!finished && card?.motion === "spinner"}
           width={inner}
+          counted={setHeadLines}
         />
         <Line segments={rule} />
         <TranscriptPane transcript={transcript} selection={selection} width={inner} />
@@ -1165,6 +1172,8 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
         <Composer
           theme={theme}
           field={composer.field}
+          lines={composer.lines}
+          setLines={composer.setLines}
           focused={composer.typing}
           focus={() => composer.setComposing(true)}
           send={send}

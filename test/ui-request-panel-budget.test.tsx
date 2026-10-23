@@ -215,6 +215,89 @@ describe("the request panel's height", () => {
     })
   })
 
+  test("80x30, a 6-line message typed: the panel gives the composer its rows", async () => {
+    await scene([bash("r1", 7), bash("r2", 7)], { width: 80, height: 30 }, async (rendered) => {
+      await rendered.input((setup) => setup.mockInput.typeText("i"))
+      await rendered.input(async (setup) => {
+        for (let i = 1; i <= 6; i++) {
+          await setup.mockInput.typeText(`line ${i}`)
+          if (i < 6) setup.mockInput.pressKey("j", { ctrl: true })
+        }
+      })
+      const frame = await rendered.capture()
+      expect(shownOf(frame)).toMatchInlineSnapshot(`
+        "
+         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s   Title of t-1
+        ────────────────────────────────────────────────────────────────────────────────
+          Two commands to run.
+
+
+        ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+        ┃ Bash: Run the r1 steps                                                     ┃
+        ┃ Path is outside allowed working directories                                ┃
+        ┃ [ Deny ]  [ Allow ]                                                        ┃
+        ┃ echo r1 step 1                                                             ┃
+        ┃ echo r1 step 2                                                             ┃
+        ┃ echo r1 step 3                                                             ┃
+        ┃ echo r1 step 4                                                             ┃
+        ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+        ╭────────────────────────────────────────────────────────────────────────────╮
+        │ Bash: Run the r2 steps                                                     │
+        │ Path is outside allowed working directories                                │
+        │ [ Deny ]  [ Allow ]                                                        │
+        │ echo r2 step 1                                                             │
+        │ echo r2 step 2                                                             │
+        │ echo r2 step 3                                                             │
+        ╰────────────────────────────────────────────────────────────────────────────╯
+        ────────────────────────────────────────────────────────────────────────────────
+         > line 1
+           line 2
+           line 3
+           line 4
+           line 5
+           line 6
+          Enter send · Alt+Enter/Ctrl+J new line · Esc leave · Ctrl+X interrupt
+
+        "
+      `)
+    })
+  })
+
+  test("40x24, the head wrapped: the transcript keeps its rows", async () => {
+    await scene([bash("r1", 7), bash("r2", 7)], { width: 40, height: 24 }, async (rendered) => {
+      const frame = await rendered.capture()
+      expect(shownOf(frame)).toMatchInlineSnapshot(`
+        "
+         ← Dashboard   • t-1  permission —
+            waiting for you (2)  1m07s   Title
+            of t-1
+        ────────────────────────────────────────
+          Two commands to run.
+
+
+        ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+        ┃ Bash: Run the r1 steps             ┃
+        ┃ Path is outside allowed working    ┃
+        ┃   directories                      ┃
+        ┃ [ Deny ]  [ Allow ]                ┃
+        ┃ echo r1 step 1                     ┃
+        ┃ echo r1 step 2                     ┃
+        ┃ echo r1 step 3                     ┃
+        ┃ echo r1 step 4                     ┃
+        ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+          +1 more requests
+        ────────────────────────────────────────
+         > i to write to the worker
+          Esc dashboard · i write · d deny
+          Ctrl+X interrupt · ↑↓ select
+          Enter expand · ? keys
+          PgUp/PgDn scroll · g/G top/end
+
+        "
+      `)
+    })
+  })
+
   test("the request not drawn can't be selected or answered", async () => {
     await scene(
       [bash("r1", 7), bash("r2", 7)],
