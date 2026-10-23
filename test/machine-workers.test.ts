@@ -88,7 +88,9 @@ const started = (ids: ReadonlyArray<string>, kinds: ReadonlyArray<string> = []) 
           issue.status === "in_progress" ? [issue.id] : [],
         ),
       )
-      const recorded = new Set((yield* captured.records).map((record) => record.kind))
+      const recorded: ReadonlySet<string> = new Set(
+        (yield* captured.records).map((record) => record.kind),
+      )
       if (ids.every((id) => claimed.has(id)) && kinds.every((kind) => recorded.has(kind))) return
       yield* Effect.promise(() => Bun.sleep(5))
     }
