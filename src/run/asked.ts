@@ -14,7 +14,7 @@
 // its record in state.json forgotten, as sessions.ts's workerGone does. Only bd ready brings it back
 // then, so its line says a later run takes it up when it is open, and to reopen it when it is in
 // progress, or else to finish it by hand. A ticket bd can't show waits for the next poll.
-import { Effect, Ref, Result } from "effect"
+import { Clock, Effect, Result } from "effect"
 import { Beads, type Issue } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
@@ -23,17 +23,9 @@ import { Ledger } from "./ledger.ts"
 import { line, Tag, ticketLine } from "./log.ts"
 import { Cause } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"
-import { openQuestion, settle } from "./settle.ts"
+import { openQuestion } from "./settle.ts"
 import type { StartedWorker } from "./start.ts"
-import {
-  conclude,
-  leaveAside,
-  type WorkEnv,
-  type WorkError,
-  type Worked,
-  type WorkOptions,
-  watchLimit,
-} from "./work.ts"
+import { follow, type WorkEnv, type WorkError, type Worked, type WorkOptions } from "./work.ts"
 
 /** What a worker whose question is answered is told as its session is resumed. */
 export const answeredText = (id: string, question: string, title: string): string =>
@@ -122,21 +114,14 @@ export const takeAnswers = (
         message: resumed.success,
       }
       const ticket = { id, title, metadata: issue.success.metadata }
+      // Its ticket limit is counted afresh from its resume, as a carried worker's is: the time
+      // it waited on the answer is no time of the worker's.
+      const since = yield* Clock.currentTimeMillis
       yield* options.carry(
         id,
         Effect.gen(function* () {
-          const [settled, limited] = yield* Effect.scoped(
-            Effect.gen(function* () {
-              const limited = yield* watchLimit(id)
-              return [
-                yield* settle(worker, options.base, options.closedBranches),
-                yield* Ref.get(limited),
-              ] as const
-            }),
-          )
-          const stop = yield* conclude(ticket, worker, settled, options.queue)
-          yield* leaveAside(worker, settled, limited, options.triage)
-          return { phase: (yield* ledger.current).tickets.get(id)?.phase, stop }
+          const followed = yield* follow(ticket, worker, options, since)
+          return { phase: (yield* ledger.current).tickets.get(id)?.phase, stop: followed.stop }
         }).pipe(Effect.provideContext(context)),
         issue.success,
       )
