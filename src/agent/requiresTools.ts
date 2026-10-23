@@ -35,7 +35,13 @@ import {
   writeReadmeRequires,
 } from "../project/requires.ts"
 import { type Requirement, readSettings, settingsFile } from "../project/settings.ts"
-import { checkRequires, type RequireResult, missingOf, sameRequires, says } from "../run/requires.ts"
+import {
+  checkRequires,
+  missingOf,
+  type RequireResult,
+  sameRequires,
+  says,
+} from "../run/requires.ts"
 import { serverName } from "./interviewTools.ts"
 
 /** The worker's server's name, the interview's: its tools are `mcp__tutti__<name>` to Claude Code. */
@@ -109,7 +115,11 @@ const checkShape = {
  * where that fails, its install and the check again, or its manual step; only the check with
  * `noInstall`.
  */
-export const yoursToRun = (r: Requirement, change: "new" | "changed", noInstall: boolean): string => {
+export const yoursToRun = (
+  r: Requirement,
+  change: "new" | "changed",
+  noInstall: boolean,
+): string => {
   const check = `${change} on your branch, so tutti doesn't run it: run its check with Bash, '${r.check}'`
   if (noInstall) return check
   if (r.install !== undefined && r.install !== "") {

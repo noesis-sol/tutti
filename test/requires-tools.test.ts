@@ -95,7 +95,9 @@ describe("requires_check", () => {
     })
     expect(existsSync(join(dir, "one"))).toBe(false)
     const empty = worktree([])
-    expect(said(await run(checkIn(empty, empty, { names: ["jq"] }))).text).toContain("it has no entries")
+    expect(said(await run(checkIn(empty, empty, { names: ["jq"] }))).text).toContain(
+      "it has no entries",
+    )
     expect(said(await run(checkIn(empty, empty, {})))).toEqual({
       text: "No requirements: .tutti/settings.json has no 'requires' list.",
       error: false,
