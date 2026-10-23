@@ -26,6 +26,7 @@ import {
 } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
+import { useKeyState } from "./useKeyState.ts"
 
 /** The description's keys: Enter submits; Alt+Enter, Ctrl+J (legacy and Kitty) a new line. */
 export const descriptionKeys: KeyBinding[] = [
@@ -46,8 +47,9 @@ export const StartQuestion = ({
   answer,
   cancel,
 }: { readonly theme: Theme; readonly count: TicketCount } & Answers<Work>) => {
-  const [step, setStep] = useState<"choose" | "describe">("choose")
-  const [highlighted, setHighlighted] = useState(0)
+  // The keys of one read each see the ones before them: Down and Enter together choose New feature.
+  const [step, setStep, stepNow] = useKeyState<"choose" | "describe">(() => "choose")
+  const [highlighted, setHighlighted, highlightedNow] = useKeyState(() => 0)
   const [error, setError] = useState<string | null>(null)
   const description = useRef<TextareaRenderable>(null)
   const options = startOptions(count)
@@ -58,22 +60,22 @@ export const StartQuestion = ({
       cancel()
       return
     }
-    if (step === "describe") {
-      if (key.name === "tab" && key.shift) setStep("choose")
+    if (stepNow() === "describe") {
+      if (key.name === "tab" && key.shift) setStep(() => "choose")
       return
     }
     if (key.name === "up" || key.name === "k") setHighlighted((at) => Math.max(0, at - 1))
     else if (key.name === "down" || key.name === "j") {
       setHighlighted((at) => Math.min(options.length - 1, at + 1))
-    } else if (key.name === "return" || key.name === "kpenter") choose(highlighted)
+    } else if (key.name === "return" || key.name === "kpenter") choose(highlightedNow())
   })
 
   // Option `at` chosen: the current tickets answer; a new feature asks for its description.
   const choose = (at: number) => {
     if (at === 0) answer(Work.Tickets())
-    else if (step === "choose") {
+    else if (stepNow() === "choose") {
       setError(null)
-      setStep("describe")
+      setStep(() => "describe")
     }
   }
 
@@ -93,7 +95,7 @@ export const StartQuestion = ({
             key={option}
             fg={plainFg}
             {...clickable(() => {
-              setHighlighted(at)
+              setHighlighted(() => at)
               choose(at)
             })}
           >
