@@ -837,8 +837,13 @@ const initWork = <R>(options: InitOptions<R>) =>
           : ""
     const setupWas = current.checks.setup.command
     const setupFound = yield* findSetup(repo)
-    const promptNow = flags.force ? null : yield* readThere(workerPromptPath)
-    const verifierThere = yield* fs.exists(join(repo, verifierPath))
+    // The verifier is in use where it is there and the worker prompt on disk runs it, --force or
+    // not: --force replaces the prompt with the template, which has no Verify section.
+    const promptThere = yield* readThere(workerPromptPath)
+    const verifierInUse =
+      (yield* fs.exists(join(repo, verifierPath))) &&
+      promptThere !== null &&
+      usesVerifier(promptThere)
     const checksQuestions: ChecksQuestions = {
       checks:
         flags.checkFast === undefined && flags.checkFull === undefined
@@ -862,9 +867,7 @@ const initWork = <R>(options: InitOptions<R>) =>
         (located.onPath || questions.installBeads !== null)
           ? yield* prefixQuestion(machine, repo, located.onPath)
           : null,
-      verifier:
-        flags.verifier === undefined &&
-        (!verifierThere || promptNow === null || !usesVerifier(promptNow)),
+      verifier: flags.verifier === undefined && !verifierInUse,
     }
     const checked: ChecksAnswers =
       form !== null && asksChecks(checksQuestions) ? yield* form.checks(checksQuestions) : {}
@@ -920,7 +923,11 @@ const initWork = <R>(options: InitOptions<R>) =>
         ? suiteLines(choice.fast, choice.full)
         : ""
     const setup = flags.setup ?? checked.setup
-    const verifierConsent = consent(flags.verifier, checksQuestions.verifier, checked.verifier)
+    // One in use is kept unasked: with --force, the template's prompt gets the section again.
+    const verifierConsent =
+      flags.verifier === undefined && verifierInUse
+        ? flags.force
+        : consent(flags.verifier, checksQuestions.verifier, checked.verifier)
 
     /**
      * The setup, planned as one group: the worker prompt, the runners, the skill and the verifier,
