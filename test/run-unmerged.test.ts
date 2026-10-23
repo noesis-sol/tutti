@@ -197,6 +197,25 @@ describe("the run and the unmerged label", () => {
       scripts: (world, root) => ({
         "t-1": [claimsAndCloses("t-1", commands(world, root, "t-1"))],
       }),
+      // Read after the refusal, the branch has left the base where it is: it doesn't fast-forward.
+      around: (running) =>
+        Effect.gen(function* () {
+          const git = yield* Git
+          let refused = false
+          return yield* running.pipe(
+            Effect.provideService(Git, {
+              ...git,
+              fastForward: (repo, branch) =>
+                Effect.tapError(git.fastForward(repo, branch), () =>
+                  Effect.sync(() => {
+                    refused = true
+                  }),
+                ),
+              mergeBase: (repo, a, b) =>
+                refused ? Effect.succeed("0".repeat(40)) : git.mergeBase(repo, a, b),
+            }),
+          )
+        }),
     })
     expectExitCode(ran, 6)
     expectPhases(ran, { "t-1": "Blocked" })
