@@ -202,9 +202,13 @@ export const make = (
           Effect.uninterruptible(
             Effect.gen(function* () {
               const place = (yield* SubscriptionRef.get(ref)).waiting.length + 1
-              const moved = yield* ledger.transition(ticket.id, cause(place), {
-                title: ticket.title,
-              })
+              // A message to its worker goes before it, or is held from now on (held.ts).
+              const moved = yield* heldMessages
+                .entering(
+                  ticket.id,
+                  ledger.transition(ticket.id, cause(place), { title: ticket.title }),
+                )
+                .pipe(Effect.provideContext(context))
               if (Result.isFailure(moved)) return moved
               if (ahead) yield* train.mayCheckAhead(ticket)
               yield* SubscriptionRef.update(ref, (now) => ({

@@ -18,7 +18,11 @@
 //   the run's end, stopping the ticket ToMerge, drops them with its session suspended.
 //
 // Holding and the end of a merge read the ticket's phase under one permit, so a message is never
-// held after the merge's `over` has run: the queue moves the phase on before it calls `over`.
+// held after the merge's `over` has run: the queue moves the phase on before it calls `over`. A
+// message not held is sent under that permit too, and a ticket the queue moves into its line is
+// marked going under it until its phase has moved (`entering`), its messages held meanwhile: so a
+// message is never sent to a ticket that went to merge after its phase was read. The mark, not the
+// permit, spans the move, so a merge's `over` doesn't wait on an offer that waits on the ledger.
 import { Effect, Ref, Semaphore } from "effect"
 import { EventStream } from "./eventstream.ts"
 import { Ledger, showsCard } from "./ledger.ts"
@@ -56,6 +60,20 @@ export interface Held {
    */
   hold(ticket: string, text: string, uuid: string): Effect.Effect<boolean, never, SteerEnv>
   /**
+   * Holds your message as `hold` does, or sends it to the ticket's worker as steer.ts does, its
+   * ticket's phase read and the message sent under one permit: no ticket goes to merge between.
+   */
+  holdOrSend(ticket: string, text: string, uuid: string): Effect.Effect<void, never, SteerEnv>
+  /**
+   * Runs `effect`, which moves the ticket into the merge queue, the ticket marked going meanwhile:
+   * a message `holdOrSend` decided to send is sent before it, and one after it is held. A move the
+   * ledger refused leaves the ticket where it was: what was held meanwhile goes as at `over`.
+   */
+  entering<A, E, R>(
+    ticket: string,
+    effect: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, R | SteerEnv>
+  /**
    * The ticket's merge is over: its held messages are sent if it keeps its card, and dropped with a
    * line saying so if it doesn't. A ticket still waiting to merge or merging keeps them held.
    */
@@ -70,22 +88,32 @@ export interface Held {
 export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
   const ref = yield* Ref.make<ReadonlyMap<string, ReadonlyArray<HeldMessage>>>(new Map())
   const permit = yield* Semaphore.make(1)
-  const hold: Held["hold"] = (ticket, text, uuid) =>
+  // The tickets going into the merge queue, their phases not moved yet (`entering`).
+  const going = yield* Ref.make<ReadonlySet<string>>(new Set())
+  // Holds the message when its ticket's phase does, or it is going, under the permit its caller took.
+  const holding = (ticket: string, text: string, uuid: string) =>
+    Effect.gen(function* () {
+      const entry = (yield* (yield* Ledger).current).tickets.get(ticket)
+      if (entry === undefined) return false
+      if (!holdsMessages(entry.phase) && !(yield* Ref.get(going)).has(ticket)) return false
+      yield* steer(ticket, "message")
+      yield* Ref.update(
+        ref,
+        (all) => new Map([...all, [ticket, [...(all.get(ticket) ?? []), { text, uuid }]]]),
+      )
+      const said = heldLine(ticket, text, entry.phase)
+      yield* (yield* Log).writeWith(
+        [said],
+        (yield* EventStream).emit({ kind: "info", ticket, text: said }),
+      )
+      return true
+    })
+  const hold: Held["hold"] = (ticket, text, uuid) => permit.withPermit(holding(ticket, text, uuid))
+  const holdOrSend: Held["holdOrSend"] = (ticket, text, uuid) =>
     permit.withPermit(
       Effect.gen(function* () {
-        const entry = (yield* (yield* Ledger).current).tickets.get(ticket)
-        if (entry === undefined || !holdsMessages(entry.phase)) return false
-        yield* steer(ticket, "message")
-        yield* Ref.update(
-          ref,
-          (all) => new Map([...all, [ticket, [...(all.get(ticket) ?? []), { text, uuid }]]]),
-        )
-        const said = heldLine(ticket, text, entry.phase)
-        yield* (yield* Log).writeWith(
-          [said],
-          (yield* EventStream).emit({ kind: "info", ticket, text: said }),
-        )
-        return true
+        if (yield* holding(ticket, text, uuid)) return
+        yield* sendMessage(ticket, text, uuid)
       }),
     )
   const over: Held["over"] = (ticket) =>
@@ -93,6 +121,7 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
       Effect.gen(function* () {
         const entry = (yield* (yield* Ledger).current).tickets.get(ticket)
         if (entry !== undefined && holdsMessages(entry.phase)) return
+        if ((yield* Ref.get(going)).has(ticket)) return
         const held = (yield* Ref.get(ref)).get(ticket) ?? []
         if (held.length === 0) return
         yield* Ref.update(ref, (all) => new Map([...all].filter(([id]) => id !== ticket)))
@@ -120,5 +149,24 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
         )
       }),
     )
-  return { hold, over, cancel, messages: Ref.get(ref) }
+  const entering: Held["entering"] = (ticket, effect) =>
+    Effect.acquireUseRelease(
+      permit.withPermit(Ref.update(going, (all) => new Set([...all, ticket]))),
+      () => effect,
+      () =>
+        Effect.andThen(
+          permit.withPermit(
+            Ref.update(going, (all) => new Set([...all].filter((id) => id !== ticket))),
+          ),
+          over(ticket),
+        ),
+    )
+  return {
+    hold,
+    holdOrSend,
+    entering,
+    over,
+    cancel,
+    messages: Ref.get(ref),
+  }
 })

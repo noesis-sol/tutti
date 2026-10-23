@@ -183,7 +183,7 @@ import * as scope from "./scope.ts"
 import { type Dashboard, Screen, show } from "./screen.ts"
 import { makeSetUps, retrySetups, setupWaiting, setupWaitsPart } from "./setup.ts"
 import { endRecord } from "./spending.ts"
-import { handBackNow, interrupt, releaseAndHandOver, sendMessage } from "./steer.ts"
+import { handBackNow, interrupt, releaseAndHandOver } from "./steer.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold, neverHanded } from "./usageLimit.ts"
@@ -1030,8 +1030,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
               return yield* wakeUp
             case "SendMessage":
               // Held while its ticket waits to merge or merges, so its branch stays as checked.
-              if (yield* queue.held.hold(command.ticket, command.text, command.uuid)) return
-              return yield* sendMessage(command.ticket, command.text, command.uuid)
+              return yield* queue.held.holdOrSend(command.ticket, command.text, command.uuid)
             case "Interrupt":
               // It cancels the messages held for the worker too, as the view says (held.ts).
               yield* queue.held.cancel(command.ticket)
