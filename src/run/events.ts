@@ -28,6 +28,12 @@ const Usd = Amount
 const Seconds = Amount
 
 /**
+ * `ms` milliseconds elapsed as a record's seconds, to a tenth: never below 0, as a wall clock that
+ * steps back between two readings gives no time, and never -0, which `Seconds` refuses.
+ */
+export const tenths = (ms: number): number => Math.max(0, Math.round(ms / 100) / 10) || 0
+
+/**
  * What a model's calls used, in tokens, as orchestra's `tokens` gives them: `input` neither written
  * to the prompt cache nor read from it, `cache_write` written to it, `cache_read` read from it, and
  * `output`, thinking included.

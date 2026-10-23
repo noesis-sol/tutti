@@ -21,14 +21,15 @@ import {
   type Stream,
   SubscriptionRef,
 } from "effect"
-import type {
-  Event,
-  endingPhases,
-  Phases,
-  phaseSeconds,
-  queuePhases,
-  TokensByModel,
-  ticketOutcomes,
+import {
+  type Event,
+  type endingPhases,
+  type Phases,
+  type phaseSeconds,
+  type queuePhases,
+  type TokensByModel,
+  tenths,
+  type ticketOutcomes,
 } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import * as log from "./log.ts"
@@ -170,9 +171,6 @@ const inQueue: ReadonlySet<PhaseTag> = new Set<QueuePhase>(["Waiting", "Queued",
 
 /** The causes that bring a ticket carried over from an earlier run into this one. */
 const carriedIn: ReadonlySet<Cause["_tag"]> = new Set(["Resumed", "StillAsked", "Unmerged"])
-
-/** Milliseconds as seconds, to a tenth. */
-const tenths = (ms: number): number => Math.round(ms / 100) / 10
 
 /**
  * What the record that ends `entry`'s part in the run says of what it spent, `spent` its workers'

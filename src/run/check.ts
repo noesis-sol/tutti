@@ -29,7 +29,7 @@ import {
 } from "../services/Checks.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
-import type { checkSuites } from "./events.ts"
+import { type checkSuites, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { Log, line, Tag, ticketLine } from "./log.ts"
 
@@ -60,7 +60,7 @@ export const recorded = <R>(
     const events = yield* EventStream
     const start = yield* Clock.currentTimeMillis
     const ran = yield* Effect.result(check)
-    const seconds = Math.round(((yield* Clock.currentTimeMillis) - start) / 100) / 10
+    const seconds = tenths((yield* Clock.currentTimeMillis) - start)
     const base = {
       kind: "check" as const,
       suite,
