@@ -21,10 +21,11 @@ import type { AgentHost } from "../agent/AgentHost.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
+import { trackedChanges } from "../services/gitStatus.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
-import { beadsWhy, type FinishedTicket, type MergeOptions, uncommitted } from "./merge.ts"
+import { beadsWhy, type FinishedTicket, type MergeOptions } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause } from "./phase.ts"
 import { fit } from "./sessions.ts"
@@ -215,7 +216,7 @@ const whyNot = (recheck: Recheck, options: MergeOptions) =>
     }
     if (issue.success.status !== "closed") return line`it is ${issue.success.status} now`
     const status = yield* Effect.result(git.status(worktree))
-    if (Result.isFailure(status) || uncommitted(status.success).length > 0) {
+    if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
       return line`${worktree} has uncommitted changes`
     }
     const head = yield* Effect.result(git.revParse(options.repo, branch))

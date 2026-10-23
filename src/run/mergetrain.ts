@@ -43,6 +43,7 @@ import {
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Git } from "../services/Git.ts"
+import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
@@ -62,7 +63,6 @@ import {
   type Restored,
   restoreBranch,
   stopOver,
-  uncommitted,
 } from "./merge.ts"
 import { type SetUps, setUp } from "./setup.ts"
 
@@ -387,7 +387,7 @@ export const make = (
         // Asked once: its turn asks again, and this step can't be interrupted.
         if ((yield* onBranch(run.ticket, 1))._tag !== "OnBranch") return notRebased()
         const status = yield* Effect.result(git.status(worktree))
-        if (Result.isFailure(status) || uncommitted(status.success).length > 0) {
+        if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
           return notRebased()
         }
         const before = yield* Effect.result(

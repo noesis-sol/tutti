@@ -49,13 +49,13 @@ import {
 } from "../organs/triage.ts"
 import { Beads } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
+import { allChangeEntries } from "../services/gitStatus.ts"
 import type { EnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { causeWhy, detail, filed, type Line, Log, line, Tag } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { attentionLines, attentionSaid } from "./report.ts"
-import { changes } from "./settle.ts"
 
 /** A ticket set aside as its worker settled, for triage. */
 export interface Deferral {
@@ -189,12 +189,9 @@ export const make = (options: {
     const worktreeText = (path: string) =>
       Effect.gen(function* () {
         const status = yield* git.status(path).pipe(
-          Effect.map((entries) => {
-            const changed = new Set(changes(entries))
-            return orNone(
-              entries.filter((e) => changed.has(e.path)).map((e) => `${e.code} ${e.path}`),
-            )
-          }),
+          Effect.map((entries) =>
+            orNone(allChangeEntries(entries).map((e) => `${e.code} ${e.path}`)),
+          ),
           Effect.catch((error) => Effect.succeed(`(git status failed: ${gitWhy(error)})`)),
         )
         const commits = yield* git.log(path, options.base).pipe(

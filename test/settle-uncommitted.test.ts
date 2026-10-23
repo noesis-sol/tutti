@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { changeEntries, listChanges, shownChanges } from "../src/run/settle.ts"
+import { listChanges, shownChanges } from "../src/run/settle.ts"
 import type { StatusEntry } from "../src/services/Git.ts"
+import { allChangeEntries } from "../src/services/gitStatus.ts"
 
 describe("the files CLOSED_UNCOMMITTED names", () => {
   test("each with its git status code, a changed and an untracked file alike", () => {
@@ -10,7 +11,7 @@ describe("the files CLOSED_UNCOMMITTED names", () => {
       { code: " M", path: "src/a.ts" },
       { code: "M ", path: "src/b.ts" },
     ]
-    expect(listChanges(changeEntries(status))).toEqual({
+    expect(listChanges(allChangeEntries(status))).toEqual({
       shown: ["?? out/build.bin", "M src/a.ts", "M src/b.ts"],
       more: 0,
     })
@@ -23,7 +24,7 @@ describe("the files CLOSED_UNCOMMITTED names", () => {
       { code: "!!", path: "node_modules/x.js" },
       { code: "A ", path: "a.txt" },
     ]
-    expect(listChanges(changeEntries(status)).shown).toEqual(["A a.txt", "?? z.txt"])
+    expect(listChanges(allChangeEntries(status)).shown).toEqual(["A a.txt", "?? z.txt"])
   })
 
   test("the first five, then how many more", () => {

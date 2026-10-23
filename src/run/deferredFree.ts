@@ -8,6 +8,7 @@ import { Clock, Effect, Result } from "effect"
 import { Beads, type BeadsError, HumanLabel, type Issue } from "../services/Beads.ts"
 import { shellWord } from "../services/exec.ts"
 import { Git } from "../services/Git.ts"
+import { allChanges } from "../services/gitStatus.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import type { Carried } from "./carry.ts"
 import { asking, type Branches, type ClosedBranches } from "./closedBranches.ts"
@@ -142,7 +143,7 @@ const leftWorktree = (
     const commits = yield* Effect.result(git.log(freeing.repo, freeing.base, branch))
     if (Result.isFailure(commits) || commits.success.length > 0) return {}
     const status = yield* Effect.result(git.status(found.path))
-    return Result.isSuccess(status) && status.success.length === 0
+    return Result.isSuccess(status) && allChanges(status.success).length === 0
       ? { worktree: found.path }
       : { uncommitted: found.path }
   })

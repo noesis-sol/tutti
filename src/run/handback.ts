@@ -46,6 +46,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
+import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { failedHow, markHandedBack, runMergeCheck } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
@@ -67,8 +68,6 @@ import {
   someFiles,
   type Unchanged,
   unchanged,
-  uncommitted,
-  untracked,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
@@ -831,10 +830,10 @@ export const verifyResolved = (
         if (yield* git.rebaseInProgress(worktree))
           return line`its worker left the rebase unfinished`
         const status = yield* git.status(worktree)
-        if (uncommitted(status).length > 0) {
+        if (trackedChanges(status).length > 0) {
           return line`its worker left uncommitted changes in ${worktree}`
         }
-        const loose = untracked(status)
+        const loose = untrackedFiles(status)
         if (loose.length > 0) {
           return line`its worker left untracked files in ${worktree}: ${someFiles(loose)}`
         }

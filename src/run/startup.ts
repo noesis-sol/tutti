@@ -36,6 +36,7 @@ import { readmeStaleLine } from "../project/requires.ts"
 import { settingsFile } from "../project/settings.ts"
 import { Beads, type BeadsError, HumanLabel } from "../services/Beads.ts"
 import { Git, gitTooOld } from "../services/Git.ts"
+import { checkoutChanges } from "../services/gitStatus.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { type Line, start, Tag } from "./log.ts"
@@ -49,16 +50,6 @@ export const notSetUpMessage =
   "tutti isn't set up in this repository yet. Run this first:\n" +
   "  tutti init\n" +
   "It writes .tutti/ (the worker prompt and settings) and sets up Beads if needed."
-
-/**
- * The folders a clean tree may have changes in: the run state of tutti and orchestra, and bd's,
- * which bd writes as it goes. The rest of .tutti/ and .orchestra/ is the project's, committed.
- */
-export const ignoredFolders: ReadonlyArray<string> = [
-  join(".tutti", "run"),
-  join(".orchestra", "run"),
-  ".beads",
-]
 
 /** orchestra's run state in the main checkout, naming the workers it left behind (§ 11). */
 export const orchestraStateFile = join(".orchestra", "run", "state.json")
@@ -252,7 +243,7 @@ const checkBranch = (repo: string) =>
 /** The most changed files a clean-tree problem names. */
 const shownFiles = 5
 
-/** The problem with uncommitted changes in the main checkout, outside the tools' folders. */
+/** The problem with uncommitted changes in the main checkout (`checkoutChanges`). */
 const checkCleanTree = (repo: string) =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -263,9 +254,7 @@ const checkCleanTree = (repo: string) =>
         `Could not read the main checkout's changes: ${error._tag === "GitFailed" ? error.stderr.trim() : `git took longer than ${formatDuration(error.timeLimit)}`}.`,
       ]
     }
-    const changed = status.success
-      .map((entry) => entry.path)
-      .filter((path) => !ignoredFolders.some((folder) => within(path, folder)))
+    const changed = checkoutChanges(status.success)
     if (changed.length === 0) return []
     const named = changed.slice(0, shownFiles).map(sanitizeLine).join(", ")
     const more = changed.length > shownFiles ? ` and ${changed.length - shownFiles} more` : ""

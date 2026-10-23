@@ -7,7 +7,7 @@ import { Effect, Exit } from "effect"
 import { type CheckStop, verifyFixed } from "../src/run/checkback.ts"
 import { type RebaseStop, verifyResolved } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { type FinishedTicket, someFiles, untracked } from "../src/run/merge.ts"
+import { type FinishedTicket, someFiles } from "../src/run/merge.ts"
 import { Cause } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
@@ -131,21 +131,6 @@ describe("a resolution whose worker left a file untracked", () => {
       verifyResolved(rebaseStop(a, main), options),
     )
     expect(resultOf(ran)).toBeUndefined()
-  })
-})
-
-describe("untracked", () => {
-  test("names the untracked files outside .tutti/run/, sorted, and nothing else", () => {
-    expect(
-      untracked([
-        { code: "??", path: "z.ts" },
-        { code: " M", path: "a.txt" },
-        { code: "!!", path: "node_modules/x" },
-        { code: "??", path: ".tutti/run/state.json" },
-        { code: "??", path: ".tutti/runner.txt" },
-        { code: "??", path: "b.ts" },
-      ]),
-    ).toEqual([".tutti/runner.txt", "b.ts", "z.ts"])
   })
 })
 

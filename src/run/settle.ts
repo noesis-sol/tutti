@@ -23,7 +23,7 @@ import { AgentHost } from "../agent/AgentHost.ts"
 import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type Status } from "../services/Beads.ts"
 import { type Commit, Git, type GitError, type StatusEntry } from "../services/Git.ts"
-import { runFolder } from "../services/Worktrees.ts"
+import { allChangeEntries, allChanges } from "../services/gitStatus.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
@@ -69,19 +69,6 @@ export const namesTicket = (message: string, id: string): boolean => {
   }
   return false
 }
-
-/** The changes in a worktree, untracked files included, outside its .tutti/run/, by path. */
-export const changeEntries = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<StatusEntry> =>
-  status
-    .filter(
-      (entry) =>
-        entry.code !== "!!" && entry.path !== runFolder && !entry.path.startsWith(`${runFolder}/`),
-    )
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-
-/** The files with changes in a worktree, untracked ones included, outside its .tutti/run/. */
-export const changes = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
-  changeEntries(status).map((entry) => entry.path)
 
 /** The most files a line about a worktree's uncommitted changes names. */
 export const shownChanges = 5
@@ -288,7 +275,7 @@ const readClosed = (worker: StartedWorker, base: string) =>
     if (on._tag === "OffBranch") return Reading.OffBranch({ on: on.on })
     if (on._tag === "Unknown") return yield* Effect.fail(on.error)
     const commits = yield* git.log(path, base)
-    const files = changeEntries(yield* git.status(path))
+    const files = allChangeEntries(yield* git.status(path))
     const named = commits.find((commit) => namesTicket(commit.message, id))
     if (files.length === 0 && commits.length === 0) {
       return Reading.NoChange({
@@ -355,7 +342,7 @@ export const nothingDone = (path: string, base: string): Effect.Effect<boolean, 
   Effect.gen(function* () {
     const git = yield* Git
     return (
-      (yield* git.log(path, base)).length === 0 && changes(yield* git.status(path)).length === 0
+      (yield* git.log(path, base)).length === 0 && allChanges(yield* git.status(path)).length === 0
     )
   })
 

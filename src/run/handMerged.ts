@@ -14,9 +14,10 @@
 import { Effect, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
-import { type Commit, Git, type StatusEntry } from "../services/Git.ts"
+import { type Commit, Git } from "../services/Git.ts"
+import { allChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
-import { branchOf, runFolder, Worktrees } from "../services/Worktrees.ts"
+import { branchOf, Worktrees } from "../services/Worktrees.ts"
 import { EventStream } from "./eventstream.ts"
 import type { HandBacks } from "./handback.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
@@ -29,16 +30,6 @@ import { mergedSince, unlabel } from "./unmerged.ts"
 
 /** `<hash> <subject>`, the hash cut to 7, as the log names a commit. */
 const named = (commit: Commit) => line`${commit.hash.slice(0, 7)} ${commit.subject}`
-
-/** The files changed or untracked in a worktree, outside .tutti/run/: what removing it would lose. */
-const changes = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
-  status
-    .filter(
-      (entry) =>
-        entry.code !== "!!" && entry.path !== runFolder && !entry.path.startsWith(`${runFolder}/`),
-    )
-    .map((entry) => entry.path)
-    .sort()
 
 /** What removeMerged did with a ticket's worktree and branch, as its line goes on to say. */
 export interface Removed {
@@ -72,7 +63,7 @@ export const removeMerged = (
           text: line`; worktree ${worktree} and ${branch} left as they are, as git can't say whether ${worktree} has uncommitted changes: ${gitWhy(status.failure)}`,
         }
       }
-      const dirty = changes(status.success)
+      const dirty = allChanges(status.success)
       if (dirty.length > 0) {
         return {
           removed: false,

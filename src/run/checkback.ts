@@ -43,6 +43,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { type Commit, Git } from "../services/Git.ts"
+import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { type Checked, failedHow, runMergeCheck, saidOf } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { failedResolved, give, type RebaseStop, rejectResolution, workerAway } from "./handback.ts"
@@ -62,8 +63,6 @@ import {
   onBranch,
   restoreBranch,
   someFiles,
-  uncommitted,
-  untracked,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { namesTicket } from "./settle.ts"
@@ -310,10 +309,10 @@ export const verifyFixed = (
           return reject(line`its worker left a rebase in progress in ${worktree}`)
         }
         const status = yield* git.status(worktree)
-        if (uncommitted(status).length > 0) {
+        if (trackedChanges(status).length > 0) {
           return reject(line`its worker left uncommitted changes in ${worktree}`)
         }
-        const loose = untracked(status)
+        const loose = untrackedFiles(status)
         if (loose.length > 0) {
           return reject(line`its worker left untracked files in ${worktree}: ${someFiles(loose)}`)
         }

@@ -43,9 +43,10 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
 import type { CheckError, Checks } from "../services/Checks.ts"
-import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
+import { Git, type GitError } from "../services/Git.ts"
+import { checkoutChanges, trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
-import { runFolder, Worktrees } from "../services/Worktrees.ts"
+import { Worktrees } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
 import {
   failedHow,
@@ -82,7 +83,6 @@ import { noteFailedCheck } from "./reportEvidence.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
 import { shownChanges } from "./settle.ts"
 import { type SetUps, setUp } from "./setup.ts"
-import { ignoredFolders } from "./startup.ts"
 import { unlabel } from "./unmerged.ts"
 
 /** A ticket its worker finished: closed, committed, its worktree clean and on its branch. */
@@ -196,39 +196,11 @@ export const gitWhy = (error: GitError): string =>
 // run's modules; it is said from here too, as the run's other failures are.
 export { beadsWhy }
 
-/** Whether `path` is `folder` or inside it. */
-const under = (path: string, folder: string): boolean =>
-  path === folder || path.startsWith(`${folder}/`)
-
-/** The tracked files with uncommitted changes, outside .tutti/run/: git won't rebase over them. */
-export const uncommitted = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
-  status
-    .filter((entry) => entry.code !== "??" && entry.code !== "!!" && !under(entry.path, runFolder))
-    .map((entry) => entry.path)
-    .sort()
-
-/**
- * The untracked files outside .tutti/run/: a check in the worktree sees them, but a merge of its
- * branch doesn't bring them in.
- */
-export const untracked = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
-  status
-    .filter((entry) => entry.code === "??" && !under(entry.path, runFolder))
-    .map((entry) => entry.path)
-    .sort()
-
 /** The first `shownChanges` of `files`, and how many more there are, as a line names them. */
 export const someFiles = (files: ReadonlyArray<string>): string => {
   const more = files.length - shownChanges
   return `${files.slice(0, shownChanges).join(", ")}${more > 0 ? ` and ${more} more` : ""}`
 }
-
-/** The changed files in the main checkout outside the tools' folders, as the startup checks see them. */
-export const changedOutsideTools = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
-  status
-    .map((entry) => entry.path)
-    .filter((path) => !ignoredFolders.some((folder) => under(path, folder)))
-    .sort()
 
 /** `n` subtickets are merged, as the epic's line says. */
 export const allMerged = (n: number): string =>
@@ -346,7 +318,7 @@ export const onBranch = (
     })
   })
 
-/** Whether a worktree has uncommitted changes to tracked files (`uncommitted`), or git can't tell. */
+/** Whether a worktree has uncommitted changes to tracked files (`trackedChanges`), or git can't tell. */
 export type WorktreeStatus = Data.TaggedEnum<{
   Clean: Record<never, never>
   Dirty: { readonly files: ReadonlyArray<string> }
@@ -360,7 +332,7 @@ export const worktreeStatus = (worktree: string): Effect.Effect<WorktreeStatus, 
   Effect.gen(function* () {
     const status = yield* Effect.result(steering((yield* Git).status(worktree)))
     if (Result.isFailure(status)) return WorktreeStatus.Unknown({ error: status.failure })
-    const files = uncommitted(status.success)
+    const files = trackedChanges(status.success)
     return files.length === 0 ? WorktreeStatus.Clean() : WorktreeStatus.Dirty({ files })
   })
 
@@ -384,7 +356,7 @@ export const unchanged = (
       }),
     )
     if (Result.isFailure(read)) return undefined
-    if (read.success.changed.length > 0 || uncommitted(read.success.status).length > 0) {
+    if (read.success.changed.length > 0 || trackedChanges(read.success.status).length > 0) {
       return undefined
     }
     const commits = yield* Effect.result(git.log(repo, base, ticket.branch))
@@ -448,7 +420,7 @@ export const restoreBranch = (
     const head = yield* Effect.result(git.revParse(worktree, branch))
     const at = Result.isSuccess(head) ? head.success : ""
     if (at === to) return Restored.AlreadyThere({ aborted })
-    if (Result.isFailure(status) || uncommitted(status.success).length > 0) {
+    if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
       return Restored.Dirty({ at })
     }
     const on = yield* onBranch(ticket, tries)
@@ -1151,7 +1123,7 @@ export const fastForward = (
         line`could not read the state of ${repo} (${gitTries} tries): ${gitWhy(checkout.failure)}; ${left}`,
       )
     }
-    if (changedOutsideTools(checkout.success.status).length > 0) {
+    if (checkoutChanges(checkout.success.status).length > 0) {
       return yield* stopOver(
         ticket,
         "DIRTY_TREE",
