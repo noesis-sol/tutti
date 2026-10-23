@@ -8,8 +8,8 @@
 // Each ticket is checked again at most once a run, set up first if its setup failed (setup.ts). One
 // whose check failed in a folder its own commits change isn't kept: another ticket's change won't
 // fix that. Nor is one that something has touched since, as when you have taken it up: reopened, its
-// worktree changed, its branch moved, or its worker steered, nor one merged by hand meanwhile
-// (handMerged.ts). None is checked again while the run winds down or holds (a stop, or the usage
+// worktree changed (a file left untracked there too), its branch moved, or its worker steered, nor
+// one merged by hand meanwhile (handMerged.ts). None is checked again while the run winds down or holds (a stop, or the usage
 // limit), or the merges have stopped; nor while a solo ticket runs or is next. A drain, or a run that
 // ends stopped, gives up the tickets waiting and names each (dropRechecks); one set aside while the
 // run winds down isn't kept. Each takes a slot as a running ticket does, until its merge is over, and
@@ -21,11 +21,11 @@ import type { AgentHost } from "../agent/AgentHost.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
-import { trackedChanges } from "../services/gitStatus.ts"
+import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
-import { beadsWhy, type FinishedTicket, type MergeOptions } from "./merge.ts"
+import { beadsWhy, type FinishedTicket, type MergeOptions, someFiles } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause } from "./phase.ts"
 import { fit } from "./sessions.ts"
@@ -219,6 +219,9 @@ const whyNot = (recheck: Recheck, options: MergeOptions) =>
     if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
       return line`${worktree} has uncommitted changes`
     }
+    // The check runs in the worktree and would see them, but the merge of its branch wouldn't.
+    const loose = untrackedFiles(status.success)
+    if (loose.length > 0) return line`${worktree} has untracked files: ${someFiles(loose)}`
     const head = yield* Effect.result(git.revParse(options.repo, branch))
     if (Result.isFailure(head) || head.success !== recheck.head) {
       return line`${branch} has moved since its check failed`
