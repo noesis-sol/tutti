@@ -55,7 +55,9 @@ const scheduler = (options: { readonly deferFails?: boolean } = {}) =>
           Effect.gen(function* () {
             const before = yield* Ref.getAndUpdate(starts, (all) => [...all, issue.id])
             if (before.includes(issue.id)) return yield* Deferred.await(forever)
-            if (options.deferFails !== true) yield* beads.defer(issue.id, { reason: "set aside" })
+            if (options.deferFails !== true) {
+              yield* Effect.orDie(beads.defer(issue.id, { reason: "set aside" }))
+            }
             yield* ledger.transition(issue.id, Cause.Defer({ why: "START_FAILED" }))
           }),
       },
