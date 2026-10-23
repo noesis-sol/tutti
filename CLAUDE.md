@@ -125,3 +125,12 @@ _Add a brief overview of your project architecture_
   TypeScript is `strict` with `exactOptionalPropertyTypes`.
 - **Changelog.** Add entries to `CHANGELOG.md` under Unreleased as new lines; don't reword or move
   others (`CHANGELOG.md merge=union`).
+
+## Effect
+
+Effect's guide and source for the installed version are in `node_modules/effect`: `AGENTS.md`
+(its links are relative to that folder), `ai-docs/` and `src/`. `node_modules/@effect/platform-bun`
+and `node_modules/@effect/ai-anthropic` have the same. Read them before using an Effect API this
+code doesn't use yet, not the web or another copy of Effect, whose version may differ. Where the
+guide and this project differ, the project wins: tests use `bun:test`, not `@effect/vitest`, and
+code reads like the code around it.

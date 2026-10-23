@@ -125,3 +125,12 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Effect
+
+Effect's guide and source for the installed version are in `node_modules/effect`: `AGENTS.md`
+(its links are relative to that folder), `ai-docs/` and `src/`. `node_modules/@effect/platform-bun`
+and `node_modules/@effect/ai-anthropic` have the same. Read them before using an Effect API this
+code doesn't use yet, not the web or another copy of Effect, whose version may differ. Where the
+guide and this project differ, the project wins: tests use `bun:test`, not `@effect/vitest`, and
+code reads like the code around it.
