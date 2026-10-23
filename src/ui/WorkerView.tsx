@@ -41,7 +41,6 @@
 import {
   BoxRenderable,
   type MarkdownOptions,
-  type MouseEvent,
   RGBA,
   SyntaxStyle,
   type TreeSitterClient,
@@ -67,6 +66,7 @@ import {
   queuedLines,
   SteeredLine,
 } from "./Composer.tsx"
+import { clickable } from "./click.ts"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, useInput, useLayer } from "./keys.ts"
@@ -353,17 +353,7 @@ const ClickLines = ({
   readonly lines: ReadonlyArray<Segments>
   readonly onClick: () => void
 }) => (
-  // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's; Enter is its key
-  <box
-    flexDirection="column"
-    height={lines.length}
-    flexShrink={0}
-    onMouseDown={(event: MouseEvent) => {
-      if (event.button !== 0) return
-      event.stopPropagation()
-      onClick()
-    }}
-  >
+  <box flexDirection="column" height={lines.length} flexShrink={0} {...clickable(onClick)}>
     {lines.map((segments, i) => (
       // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
       <Line key={i} segments={segments} />
@@ -771,17 +761,7 @@ export const ViewHead = ({
   return (
     <>
       <box flexDirection="row" height={1} flexShrink={0}>
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: a terminal's text, not the DOM's; Esc is its key */}
-        <text
-          wrapMode="none"
-          height={1}
-          {...styled(theme.styles.key)}
-          onMouseDown={(event: MouseEvent) => {
-            if (event.button !== 0) return
-            event.stopPropagation()
-            leave()
-          }}
-        >
+        <text wrapMode="none" height={1} {...styled(theme.styles.key)} {...clickable(leave)}>
           {link}
         </text>
         <Line segments={lines[0] ?? []} />

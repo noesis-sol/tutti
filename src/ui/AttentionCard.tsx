@@ -9,7 +9,7 @@
 // A card in the compact one-line layout can't show its request: Enter on it opens the Answer box,
 // the same card over the middle of the pane, with the same keys. Shift+D opens the reason box, a
 // small field for the reason a denial gives the worker. The keys are attentionKeys.ts's.
-import { type InputRenderable, type MouseEvent, RGBA, TextAttributes } from "@opentui/core"
+import { type InputRenderable, RGBA, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useSyncExternalStore } from "react"
 import type { Card } from "../run/runView.ts"
@@ -22,6 +22,7 @@ import {
   useAnswering,
   useSendAnswer,
 } from "./attentionKeys.ts"
+import { clickable } from "./click.ts"
 import { useInput, useLayer } from "./keys.ts"
 import {
   type Border,
@@ -122,15 +123,7 @@ const ButtonLine = ({
           wrapMode="none"
           height={1}
           fg={plainFg}
-          {...(isButton(each)
-            ? {
-                onMouseDown: (event: MouseEvent) => {
-                  if (event.button !== 0) return
-                  event.stopPropagation()
-                  press(each.button)
-                },
-              }
-            : {})}
+          {...(isButton(each) ? clickable(() => press(each.button)) : {})}
         >
           <span {...(each.look === null ? {} : styled(each.look))}>{each.text}</span>
         </text>

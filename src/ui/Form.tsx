@@ -6,7 +6,6 @@
 // the renderer to the screen after it: the dashboard, or the interview. Taking the mouse, the form
 // has the run's guards in front of its keys (InputGuards): a mouse report split between two reads
 // neither cancels it as a lone Esc nor types its rest into a field.
-import type { MouseEvent } from "@opentui/core"
 import { createRoot } from "@opentui/react"
 import { Effect } from "effect"
 import { type ReactNode, useMemo, useSyncExternalStore } from "react"
@@ -17,6 +16,8 @@ import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
 import type { External } from "./useRunView.ts"
+
+export { clickable } from "./click.ts"
 
 /** A field: `children` behind the focused bar, or behind blank space of its width. */
 export const Field = ({
@@ -43,18 +44,6 @@ export const Field = ({
       {children}
     </box>
   )
-
-/**
- * A click target's props: a click with the left button runs `run`, as the target's key does (D9,
- * § 7.3). A renderer that leaves the mouse to the terminal (--no-mouse) sends it none.
- */
-export const clickable = (run: () => void) => ({
-  onMouseDown: (event: MouseEvent) => {
-    if (event.button !== 0) return
-    event.stopPropagation()
-    run()
-  },
-})
 
 /**
  * The keys there are, under a form, as bubbles' help draws them for huh: each key in helpKey, its

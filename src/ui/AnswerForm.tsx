@@ -12,12 +12,7 @@
 //
 // The answer names the request the form was opened for; one no longer open closes the form, with
 // the toast for an answer that came too late.
-import {
-  type InputRenderable,
-  type MouseEvent,
-  RGBA,
-  type ScrollBoxRenderable,
-} from "@opentui/core"
+import { type InputRenderable, RGBA, type ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ShownRequest } from "../run/runView.ts"
@@ -37,6 +32,7 @@ import {
   type Value,
 } from "./answerForm.ts"
 import { staleToast, useSendAnswer } from "./attentionKeys.ts"
+import { clickable } from "./click.ts"
 import { hintSegments } from "./Hint.tsx"
 import { useInput, useLayer } from "./keys.ts"
 import { cut, Line, plainFg, roleLook, type Segments, seg, styled } from "./line.tsx"
@@ -217,16 +213,13 @@ const FormBody = ({
   const boxHeight = bodyHeight + 6
   const [sendLabel, refuseLabel] = buttonLabels(form)
   const button = (label: string, index: number) => (
-    // biome-ignore lint/a11y/noStaticElementInteractions: a terminal's text, not the DOM's; Enter is its key
     <text
       wrapMode="none"
       height={1}
-      onMouseDown={(event: MouseEvent) => {
-        if (event.button !== 0) return
-        event.stopPropagation()
+      {...clickable(() => {
         setFocus(index)
         press(index)
-      }}
+      })}
       {...styled(focus === index ? looks.focusedButton : looks.button)}
     >
       {`[ ${label} ]`}
@@ -290,19 +283,16 @@ const FormBody = ({
                       ...rowText(field, value, row.option, theme),
                     ]
                     return (
-                      // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's; Enter is its key
                       <box
                         key={row.option}
                         id={rowId(n)}
                         flexDirection="row"
                         height={1}
                         flexShrink={0}
-                        onMouseDown={(event: MouseEvent) => {
-                          if (event.button !== 0) return
-                          event.stopPropagation()
+                        {...clickable(() => {
                           setFocus(n)
                           if (!typing) pickRow(row)
-                        }}
+                        })}
                       >
                         <Line segments={cut(before, inner)} />
                         {typing ? (

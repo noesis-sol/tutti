@@ -14,10 +14,11 @@
 // their tickets, statuses, times and memory lined up as columns, each as wide as the widest.
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
-import { type MouseEvent, TextAttributes } from "@opentui/core"
+import { TextAttributes } from "@opentui/core"
 import { pad } from "../run/localTime.ts"
 import type { Card } from "../run/runView.ts"
 import { AttentionLines, attentionInside, attentionLines } from "./AttentionCard.tsx"
+import { clickable } from "./click.ts"
 import { workerMemory } from "./LoadLine.tsx"
 import {
   type Border,
@@ -407,11 +408,6 @@ export const layoutOf = (cards: ReadonlyArray<Card>, width: number, room: number
     : { _tag: "Compact" }
 }
 
-/** A click with the left button on a card opens its worker's view. */
-const clicked = (open: () => void) => (event: MouseEvent) => {
-  if (event.button === 0) open()
-}
-
 /** The lines the Current section takes in `layout`, its label included. */
 export const sectionLines = (layout: CardsLayout, count: number): number => {
   switch (layout._tag) {
@@ -495,7 +491,7 @@ export const Cards = ({
                 // biome-ignore lint/suspicious/noArrayIndexKey: the box's lines are drawn anew in order
                 key={i}
                 height={1}
-                {...(card === undefined ? {} : { onMouseDown: clicked(() => open(card.ticket)) })}
+                {...(card === undefined ? {} : clickable(() => open(card.ticket)))}
               >
                 <Lines lines={[line]} />
               </box>
@@ -521,12 +517,11 @@ export const Cards = ({
                   const w = i === 0 ? first : width - first
                   const lit = card.ticket === highlighted
                   return (
-                    // biome-ignore lint/a11y/noStaticElementInteractions: a terminal box, not the DOM's
                     <box
                       key={card.ticket}
                       width={w}
                       height={tall}
-                      onMouseDown={clicked(() => open(card.ticket))}
+                      {...clickable(() => open(card.ticket))}
                     >
                       {grows(card) ? (
                         <AttentionLines

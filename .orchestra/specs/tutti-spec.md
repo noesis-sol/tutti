@@ -1109,6 +1109,7 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 
 - Single clicks only. OpenTUI reports no click count, and no double-click meaning is defined.
 - Every click target has a key.
+- A click acts on the left button's release, on the cell it was pressed on, with no text selected (`src/ui/click.ts`'s `clickable`). OpenTUI starts a selection on the press over text and hands that same press to the targets under it, so a drag that selects a card's ID or title, a command on an attention card or a tool line, to copy it, opens no worker's view, presses no button and toggles no line. The composer, a field to type in, is focused on the press, as a terminal's text field is.
 - A box open over the view takes the mouse as it takes the keys: under it, a backdrop over the whole screen stops every click, drag and scroll, so that the view under the box takes none until it closes (`← Dashboard` included). A box a view draws and binds itself (the worker view's interrupt question, the Interview view's leave question) closes when the view goes, so that the view after it takes its keys.
 - The wheel scrolls the scrollbox under the pointer and never types into a focused input. Guard against OpenTUI #1661 by filtering mouse sequences (`<64;…M`) out of input events.
 - Mouse capture can be turned off with `--no-mouse` or `"mouse": false` in the user config (§8.5). The terminal's own selection then works, and every action stays available from the keys.

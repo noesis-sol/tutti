@@ -6,6 +6,7 @@
 // the view under it (tutti-por).
 import { type MouseEvent, RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
+import { clickable } from "./click.ts"
 import {
   cut,
   Line,
@@ -105,15 +106,12 @@ export const Modal = ({
         <box flexDirection="row" height={1}>
           <Line segments={[bar, seg(" ")]} />
           {choices.map((choice, i) => (
-            // biome-ignore lint/a11y/noStaticElementInteractions: a terminal's text, not the DOM's; its key is bound in the box layer
             <text
               key={choice.name}
               wrapMode="none"
               height={1}
               fg={plainFg}
-              onMouseDown={(event: MouseEvent) => {
-                if (event.button === 0) choice.run()
-              }}
+              {...clickable(choice.run)}
             >
               {(keys[i] ?? []).map((each, j) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: a key's segments are drawn anew in order
