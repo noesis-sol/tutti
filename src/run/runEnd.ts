@@ -19,6 +19,11 @@ export interface Look {
   readonly asking: ReadonlyArray<string>
   /** Whether the run would take a ticket now, given a free slot. */
   readonly canTake: boolean
+  /**
+   * Whether a worker to be resumed found no slot in the look, carried over from the last run or
+   * its question answered: it is still to start, once a slot frees (§ 5's Scheduling).
+   */
+  readonly resuming: boolean
   /** Whether the merge queue is settled now: nothing merging, queued or resolving. */
   readonly settled: boolean
   /** The triage calls under way. */
@@ -78,6 +83,7 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<s
     look.canTake
   const done =
     !overlapped &&
+    !look.resuming &&
     busy.length === 0 &&
     !toStart &&
     look.mergedBefore &&

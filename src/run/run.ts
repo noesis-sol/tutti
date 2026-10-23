@@ -855,6 +855,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // takes a slot, counting toward no limit, its ticket limit counted afresh; one with no slot
     // for it waits for a later look. A quit takes up no more of them: those not yet taken stay in
     // state.json as they were, for the next run.
+    // The workers to be resumed that found no slot since the look began, for its end (runEnd.ts).
+    const unslotted = yield* Ref.make<ReadonlySet<string>>(new Set())
     const carryOptions: CarryOptions = {
       base,
       queue,
@@ -862,12 +864,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       closedBranches: branches,
       onTicketLimit: onResumedLimit,
       carry: (ticket, start, issue) =>
-        scheduler.carry(
-          ticket,
-          Effect.map(start, (worked) =>
-            worked === undefined ? undefined : outcomeOf(ticket, worked),
+        Effect.tap(
+          scheduler.carry(
+            ticket,
+            Effect.map(start, (worked) =>
+              worked === undefined ? undefined : outcomeOf(ticket, worked),
+            ),
+            issue,
           ),
-          issue,
+          (took) =>
+            took ? Effect.void : Ref.update(unslotted, (all) => new Set([...all, ticket])),
         ),
     }
     const waitingOf = (carried: ReadonlyMap<string, Carried>) =>
@@ -1143,6 +1149,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // before new ones start, each in a slot of its own and counting toward no limit (carry.ts,
       // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
       // winds down, which takes up only what is running: the next run resumes them.
+      yield* Ref.set(unslotted, new Set())
       if ((yield* taking) && (yield* ledger.current).windDown === null) {
         const left = yield* carryWaiting(carryOptions, yield* Ref.get(carrying)).pipe(
           Effect.provideContext(context),
@@ -1167,6 +1174,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         asking: (yield* attention.current).map((request) => request.ticket),
         running: yield* scheduler.running,
         canTake: yield* canTake,
+        resuming: (yield* Ref.get(unslotted)).size > 0,
         settled: isSettled(yield* queue.state),
         triagePending: yield* triage.pending,
         dashboard: screen !== null,
