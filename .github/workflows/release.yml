@@ -6,8 +6,10 @@
 # (workflow_dispatch) with a tag to release an existing tag again: its notes and assets are replaced.
 #
 # Releasing: in CHANGELOG.md, rename "## Unreleased" to "## [X.Y.Z] - YYYY-MM-DD" (its section
-# becomes the notes, scripts/release-notes.sh), set package.json's version to X.Y.Z, commit on main,
-# then tag the commit (git tag -a vX.Y.Z -m "tutti X.Y.Z") and push both.
+# becomes the notes, scripts/release-notes.sh), set package.json's version to X.Y.Z, commit on main
+# as "Release X.Y.Z", then tag the commit (git tag -a vX.Y.Z -m "tutti X.Y.Z") and push both. Push
+# the commits under it first: pushed alone, the release commit is checked here only, and CI leaves
+# it (scripts/release-commit.sh).
 #
 # The release key: the repository secret TUTTI_RELEASE_KEY holds a PKCS#8 PEM ed25519 private key
 # (scripts/sign-checksums.ts says how to make one), whose public half is in src/update/keys.ts.

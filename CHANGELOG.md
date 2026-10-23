@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- CI leaves a release commit pushed alone to the Release workflow's check (§ 12 Releases; `.github/workflows/ci.yml`'s `release-commit` job, `scripts/release-commit.sh`; tutti-ac2x): pushing a release, its commit to main and then its tag, checked the same commit twice, CI on Linux and macOS beside the Release workflow's check at the tag (0.2.0's CI #16 beside Release #5). A commit whose subject is `Release X.Y.Z` (or a pre-release's), which changes only `CHANGELOG.md` and `package.json`'s version, to the subject's, and is the only commit in its push, its parent checked by CI when it was pushed, now has CI's check and build jobs skipped. Anything else is checked as before. Not `[skip ci]`, which GitHub would apply to the tag's push too, so nothing would be released. `release.yml`'s Releasing says to push the commits under a release first. `test/release-commit.test.ts` covers the script.
+
 ## [0.2.0] - 2026-10-23
 
 - The notifier, the clipboard and the URL opener look for their commands on the PATH they run them with (§ 7.9; `src/services/Notifier.ts`'s `installedOnPath`, which `src/ui/clipboard.ts`'s and `src/ui/openUrl.ts`'s live layers use too; tutti-xj3t): `Bun.which` alone reads the PATH the process started with, not `process.env.PATH` changed since. `test/live-layers.test.ts` makes a folder of fakes the whole PATH, so on Linux CI, which has `xdg-open` but no `xclip` or `notify-send`, the clipboard fell back to OSC 52 and the notifier to nothing, and three of its tests failed; on macOS they passed by the machine's own `osascript`, `pbcopy` and `open`. A test of `installedOnPath` uses a command only the changed PATH has.

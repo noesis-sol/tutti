@@ -1,7 +1,9 @@
 # Runs the check (scripts/check.sh, § 13) with its slow suites, scripts/check-full.sh, on Linux and
 # macOS for each push to main and each pull request, and builds the runner's own binary with
 # scripts/build.sh and runs it, so a change that breaks the compiled build fails here rather than in
-# a release (release.yml).
+# a release (release.yml). A release commit pushed alone (scripts/release-commit.sh) is left to
+# release.yml's check at its tag, rather than checked twice: it changes only CHANGELOG.md and
+# package.json's version, and its parent was checked here when it was pushed.
 name: CI
 
 on:
@@ -23,7 +25,32 @@ env:
   BUN_VERSION: 1.4.3
 
 jobs:
+  # Whether this push is a release commit alone, which the other jobs leave to release.yml. Not
+  # `[skip ci]` in its message: GitHub skips the tag's push for it too, and nothing is released.
+  release-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      alone: ${{ steps.commit.outputs.alone }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2 # the commit's parent, which the script compares with the push's before
+
+      - id: commit
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = push ] && scripts/release-commit.sh "$BEFORE"; then
+            echo "alone=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "alone=false" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
+    needs: release-commit
+    if: needs.release-commit.outputs.alone != 'true'
     strategy:
       fail-fast: false # a failure on one system says nothing about the other
       matrix:
@@ -46,6 +73,8 @@ jobs:
   # The host's build, as a release builds it (§ 12 Builds), less --release: its --version carries
   # the commit.
   build:
+    needs: release-commit
+    if: needs.release-commit.outputs.alone != 'true'
     strategy:
       fail-fast: false
       matrix:
