@@ -18,7 +18,7 @@ import { useRenderer } from "@opentui/react"
 import { Duration, Effect, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { useContext, useEffect } from "react"
-import { type Where as NotifierWhere, overSsh } from "../services/Notifier.ts"
+import { installedOnPath, type Where as NotifierWhere, overSsh } from "../services/Notifier.ts"
 import type { ToastStore } from "./Toasts.tsx"
 import { ShellContext } from "./useRunView.ts"
 
@@ -151,7 +151,7 @@ export const liveClipboard = (
     copierOf({
       platform: process.platform,
       env: (name) => process.env[name],
-      installed: (command) => Bun.which(command) !== null,
+      installed: installedOnPath,
     }),
     rendererOsc52(renderer),
   )

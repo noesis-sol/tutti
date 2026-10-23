@@ -12,6 +12,7 @@ import type { CliRenderer } from "@opentui/core"
 import { Effect, FileSystem, Layer, PlatformError } from "effect"
 import { liveLoad, parseDarwin, parseLinux, parseProcesses, psArgs } from "../src/run/load.ts"
 import {
+  installedOnPath,
   layer as liveNotifier,
   Notifier,
   notifySendArgs,
@@ -197,6 +198,18 @@ describe("the live load", () => {
     fake(dir, "sysctl", { stdout: sysctl })
     expect(await onPath(dir, () => run(liveLoad("win32").kernel))).toBeUndefined()
     expect(argsOf(dir, "sysctl")).toBeNull()
+  })
+})
+
+// Bun.which alone reads the PATH the process started with: there these tests found the machine's
+// own osascript, pbcopy and open, and on Linux missed xclip and notify-send (tutti-xj3t).
+describe("installedOnPath", () => {
+  test("looks on process.env's PATH as it is now, the one a command is run with", async () => {
+    const dir = fakes()
+    fake(dir, "tutti-only-here")
+    expect(await onPath(dir, async () => installedOnPath("tutti-only-here"))).toBe(true)
+    expect(installedOnPath("tutti-only-here")).toBe(false)
+    expect(await onPath(fakes(), async () => installedOnPath("tutti-only-here"))).toBe(false)
   })
 })
 

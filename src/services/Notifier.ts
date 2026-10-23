@@ -74,6 +74,13 @@ export const overSsh = (env: Where["env"]): boolean =>
   set(env, "SSH_CONNECTION") || set(env, "SSH_CLIENT") || set(env, "SSH_TTY")
 
 /**
+ * Whether `command` is on process.env's PATH, the one a command is run with. Bun.which alone reads
+ * the PATH the process started with, and doesn't see process.env.PATH changed since (tutti-xj3t).
+ */
+export const installedOnPath = (command: string): boolean =>
+  Bun.which(command, { PATH: process.env.PATH ?? "" }) !== null
+
+/**
  * The notification sequence the terminal shows, read from the environment: undefined for one not
  * known to show either. TERM and LC_TERMINAL reach an ssh session (iTerm2 sets LC_TERMINAL, which
  * ssh sends with the other LC_ variables); TERM_PROGRAM and the terminals' own variables tell a
@@ -258,7 +265,7 @@ export const layer: Layer.Layer<
     return yield* make({
       platform: process.platform,
       env: (name) => process.env[name],
-      installed: (command) => Bun.which(command) !== null,
+      installed: installedOnPath,
       tty,
       run: (command) => run(command).pipe(Effect.provideContext(context)),
       write: (text) =>

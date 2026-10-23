@@ -11,7 +11,7 @@
 // open has passed: `xdg-open` may wait on the browser it started, which would go with its group.
 import { Duration, Effect } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { overSsh } from "../services/Notifier.ts"
+import { installedOnPath, overSsh } from "../services/Notifier.ts"
 import type { Clipboard, Where } from "./clipboard.ts"
 
 /** What opening the URL in the browser toasts. */
@@ -133,7 +133,7 @@ export const liveUrlOpener = (
     openerOf({
       platform: process.platform,
       env: (name) => process.env[name],
-      installed: (command) => Bun.which(command) !== null,
+      installed: installedOnPath,
     }),
     clipboard,
   )
