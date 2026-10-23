@@ -7,7 +7,7 @@
 //
 // The live layer keeps them in memory, as the test layer (src/testing/UsageLimits.ts) does; a test
 // reports scripted events through it.
-import type { SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk"
+import type { SDKMessage, SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk"
 import {
   Context,
   Effect,
@@ -71,6 +71,60 @@ export const rateLimitOf = (info: unknown): RateLimit | undefined => {
     overage: read.isUsingOverage === true,
   }
 }
+
+/**
+ * What a turn's messages say of the account's usage limit so far, read one way for a worker's turn
+ * (WorkerState), the usage probe's and an organ's.
+ */
+export interface TurnLimit {
+  /** Whether a `rate_limit_event` was read, and whether the last one read was rejected. */
+  readonly seen: boolean
+  readonly rejected: boolean
+  /** The limit the events named and when it resets, in epoch milliseconds: the last said wins. */
+  readonly limit: string | null
+  readonly resetsAt: number | null
+  /** Whether an assistant message carried the `rate_limit` error. */
+  readonly rateLimited: boolean
+}
+
+/** A turn's limit before any of its messages. */
+export const noTurnLimit: TurnLimit = {
+  seen: false,
+  rejected: false,
+  limit: null,
+  resetsAt: null,
+  rateLimited: false,
+}
+
+/** `limit` with `message` read: `limit` itself when the message says nothing of the limit. */
+export const turnLimitStep = (limit: TurnLimit, message: SDKMessage): TurnLimit => {
+  if (message.type === "rate_limit_event") {
+    const info = rateLimitOf(message.rate_limit_info)
+    if (info === undefined) return limit
+    return {
+      ...limit,
+      seen: true,
+      rejected: info.status === "rejected",
+      limit: info.limit ?? limit.limit,
+      resetsAt: info.resetsAt ?? limit.resetsAt,
+    }
+  }
+  if (message.type === "assistant" && message.error === "rate_limit" && !limit.rateLimited) {
+    return { ...limit, rateLimited: true }
+  }
+  return limit
+}
+
+/** What a turn's `messages` say of the usage limit (`turnLimitStep`, in order). */
+export const turnLimit = (messages: ReadonlyArray<SDKMessage>): TurnLimit =>
+  messages.reduce(turnLimitStep, noTurnLimit)
+
+/**
+ * Whether a turn ended on the usage limit: its result's API error status (`apiStatus`) is 429, its
+ * last `rate_limit_event` was rejected, or an assistant message carried the `rate_limit` error.
+ */
+export const endedOnLimit = (limit: TurnLimit, apiStatus: number | null | undefined): boolean =>
+  apiStatus === 429 || limit.rejected || limit.rateLimited
 
 /** An organ call refused for the limit: which limit and when it resets, null when unknown. */
 export interface Refusal {

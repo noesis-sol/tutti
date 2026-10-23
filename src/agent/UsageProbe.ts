@@ -24,7 +24,7 @@ import { OrganCost } from "../organs/OrganCost.ts"
 import type { AccountProbe } from "./Account.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { workerEnv } from "./env.ts"
-import { rateLimitOf } from "./UsageLimits.ts"
+import { endedOnLimit, turnLimit } from "./UsageLimits.ts"
 
 /** What the account answered the probe. Times are epoch milliseconds. */
 export type ProbeAnswer = Data.TaggedEnum<{
@@ -58,30 +58,14 @@ export const probeModel = (limit: string | null): string =>
 
 /** The probe's answer from its turn's messages, read as WorkerState reads a worker's turn. */
 export const answerOf = (messages: ReadonlyArray<SDKMessage>): ProbeAnswer => {
-  let rejected = false
-  let allowed = false
-  let limit: string | null = null
-  let resetsAt: number | null = null
-  let rateLimited = false
-  for (const m of messages) {
-    if (m.type === "rate_limit_event") {
-      const info = rateLimitOf(m.rate_limit_info)
-      if (info === undefined) continue
-      rejected = info.status === "rejected"
-      allowed = !rejected
-      if (rejected) {
-        limit = info.limit ?? limit
-        resetsAt = info.resetsAt ?? resetsAt
-      }
-    } else if (m.type === "assistant" && m.error === "rate_limit") {
-      rateLimited = true
-    }
-  }
+  const seen = turnLimit(messages)
   const result = messages.findLast((m): m is SDKResultMessage => m.type === "result")
   const status =
     result?.is_error === true && result.subtype === "success" ? result.api_error_status : undefined
-  if (rejected || rateLimited || status === 429) return ProbeAnswer.Refused({ limit, resetsAt })
-  if ((result !== undefined && !result.is_error) || allowed) return ProbeAnswer.Allowed()
+  if (endedOnLimit(seen, status)) {
+    return ProbeAnswer.Refused({ limit: seen.limit, resetsAt: seen.resetsAt })
+  }
+  if ((result !== undefined && !result.is_error) || seen.seen) return ProbeAnswer.Allowed()
   if (result === undefined)
     return ProbeAnswer.Unanswered({ reason: "the session ended with no result" })
   const said = result.subtype === "success" ? result.result.trim() : result.subtype

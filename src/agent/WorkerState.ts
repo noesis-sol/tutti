@@ -12,7 +12,13 @@
 // (unreadable says why, for the host to log).
 import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Data, type Duration, Result, Schema } from "effect"
-import { RateLimitInfo, rateLimitOf } from "./UsageLimits.ts"
+import {
+  endedOnLimit,
+  noTurnLimit,
+  RateLimitInfo,
+  type TurnLimit,
+  turnLimitStep,
+} from "./UsageLimits.ts"
 
 /** What a working worker is doing, from its hook callbacks, as orchestra classifies it. */
 export type Doing = "testing" | "editing" | "reading" | "subagent" | "working"
@@ -201,13 +207,8 @@ export interface Worker {
   readonly tool: Doing | null
   /** Subagents started and not stopped in this turn, by agent ID. */
   readonly subagents: ReadonlyArray<string>
-  /**
-   * The usage limit's latest `rate_limit_event` in this turn: whether it is rejected, and when it
-   * resets.
-   */
-  readonly limit: { readonly rejected: boolean; readonly resetsAt: number | null }
-  /** Whether an assistant message of this turn carried the `rate_limit` error. */
-  readonly rateLimited: boolean
+  /** What this turn's messages said of the usage limit. */
+  readonly limit: TurnLimit
 }
 
 /** A worker whose session has just been spawned; `checks` are the project's check commands. */
@@ -226,8 +227,7 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   retry: null,
   tool: null,
   subagents: [],
-  limit: { rejected: false, resetsAt: null },
-  rateLimited: false,
+  limit: noTurnLimit,
 })
 
 // The fields the reducer reads of each message it reads any of. Those it can do without are
@@ -303,8 +303,7 @@ const newTurn = (worker: Worker): Worker => ({
   idle: false,
   report: null,
   retry: null,
-  limit: { rejected: false, resetsAt: null },
-  rateLimited: false,
+  limit: noTurnLimit,
 })
 
 /** `worker` with the sends `uuids` no longer outstanding. */
@@ -388,18 +387,13 @@ const onMessage = (worker: Worker, message: SDKMessage, now: number): Worker => 
       }
       return next
     case "rate_limit_event": {
-      const info = rateLimitOf(message.rate_limit_info)
-      if (info === undefined) return worker
-      return {
-        ...next,
-        limit: {
-          rejected: info.status === "rejected",
-          resetsAt: info.resetsAt ?? next.limit.resetsAt,
-        },
-      }
+      const limit = turnLimitStep(next.limit, message)
+      return limit === next.limit ? worker : { ...next, limit }
     }
-    case "assistant":
-      return message.error === "rate_limit" ? { ...next, rateLimited: true } : next
+    case "assistant": {
+      const limit = turnLimitStep(next.limit, message)
+      return limit === next.limit ? next : { ...next, limit }
+    }
     case "result": {
       const read = decodeResult(message)
       if (Result.isFailure(read)) return worker
@@ -420,7 +414,7 @@ const onMessage = (worker: Worker, message: SDKMessage, now: number): Worker => 
         return { ...ended, turn: Turn.Ended() }
       }
       const status = result.subtype === "success" ? result.api_error_status : undefined
-      if (status === 429 || next.limit.rejected || next.rateLimited) {
+      if (endedOnLimit(next.limit, status)) {
         return { ...ended, turn: Turn.Limited() }
       }
       const error =
