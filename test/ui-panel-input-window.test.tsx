@@ -3,10 +3,11 @@
 // wheel moving that window.
 import { describe, expect, test } from "bun:test"
 import type { BaseRenderable } from "@opentui/core"
+import { useState } from "react"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import type { Segments } from "../src/ui/line.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
-import { PanelBox, panelInput, panelParts } from "../src/ui/WorkerView.tsx"
+import { PanelBox, panelInput, panelParts, usePanelParts } from "../src/ui/WorkerView.tsx"
 import { withRender } from "./render.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
@@ -113,5 +114,52 @@ describe("a request's long input in the panel", () => {
       expect(Bun.stringWidth(line)).toBe(width)
     }
     expect(textOf(plain.sides(input.slice(0, 1)))[0]?.startsWith("│")).toBe(true)
+  })
+
+  test("a Tab or a moved selection draws the box anew without wrapping its input again", async () => {
+    let reads = 0
+    const content = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n")
+    const base = write(0)
+    const request: AttentionRequest = {
+      ...base,
+      kind: {
+        _tag: "Permission",
+        tool: "Write",
+        input: {
+          file_path: "/tmp/long.txt",
+          get content() {
+            reads++
+            return content
+          },
+        },
+        suggestions: [],
+        summary: "",
+      },
+    }
+    type Shown = { readonly width: number; readonly selected: boolean; readonly focus: number }
+    let show: (shown: Shown) => void = () => {}
+    /** The request's box as the panel draws it, with what `show` gives it. */
+    const Probe = () => {
+      const [shown, setShown] = useState<Shown>({ width, selected: false, focus: 0 })
+      show = setShown
+      const parts = usePanelParts(request, theme, shown)
+      return <PanelBox parts={parts} room={5} press={() => {}} />
+    }
+    await withRender(<Probe />, { width: 80, height: 12 }, async (rendered) => {
+      const first = await rendered.capture()
+      expect(first.chars).toContain("╭")
+      const wrapped = reads
+      expect(wrapped).toBeGreaterThan(0)
+      await rendered.input(() => show({ width, selected: true, focus: 1 }))
+      expect((await rendered.capture()).chars).toContain("┏")
+      await rendered.input(() => show({ width, selected: false, focus: 0 }))
+      await rendered.input(() => show({ width, selected: true, focus: 0 }))
+      await rendered.capture()
+      expect(reads).toBe(wrapped)
+      // A new width wraps it again.
+      await rendered.input(() => show({ width: width - 10, selected: true, focus: 0 }))
+      await rendered.capture()
+      expect(reads).toBeGreaterThan(wrapped)
+    })
   })
 })

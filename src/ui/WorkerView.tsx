@@ -850,10 +850,24 @@ export const TranscriptPane = ({
 }
 
 /**
- * A request's box in the panel, its parts worked out again only when what they show changes: its
- * input is put as JSON and sanitized (tutti-k2n1), once a request and width, not again as the
+ * A request's parts in the panel, worked out again only when what they show changes: its input is
+ * put as JSON and sanitized (tutti-k2n1), once a request, theme and width, not again as the
  * selection or the focused button moves (tutti-x4wu).
  */
+export const usePanelParts = (
+  request: AttentionRequest,
+  theme: Theme,
+  options: { readonly width: number; readonly selected: boolean; readonly focus: number | null },
+): PanelParts => {
+  const { width, selected, focus } = options
+  const input = useMemo(() => panelInput(request, theme, width), [request, theme, width])
+  return useMemo(
+    () => panelParts(request, theme, { width, selected, focus, input }),
+    [request, theme, width, selected, focus, input],
+  )
+}
+
+/** A request's box in the panel, its parts worked out again only when what they show changes. */
 const PanelRequest = ({
   request,
   width,
@@ -869,12 +883,7 @@ const PanelRequest = ({
   readonly room: number
   readonly press: (index: number) => void
 }) => {
-  const theme = useTheme()
-  const input = useMemo(() => panelInput(request, theme, width), [request, theme, width])
-  const parts = useMemo(
-    () => panelParts(request, theme, { width, selected, focus, input }),
-    [request, theme, width, selected, focus, input],
-  )
+  const parts = usePanelParts(request, useTheme(), { width, selected, focus })
   return <PanelBox parts={parts} room={room} press={press} />
 }
 
