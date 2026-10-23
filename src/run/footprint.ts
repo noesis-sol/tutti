@@ -513,6 +513,13 @@ export interface RepoFiles {
   }
   /** The file a name is, as git lists it; for one git doesn't track, the name in NFC. */
   file(name: string): string
+  /**
+   * Whether word, a path token without an extension, names a file git tracks: as its path, with a /
+   * (scripts/release, bin/tutti), or, `marked` (written in backticks) or capitalised, as its base
+   * name (`tutti`, Makefile, Dockerfile). Never when the files aren't known: a word without an
+   * extension is no path by its look.
+   */
+  bare(word: string, marked: boolean): boolean
   /** Whether a check command names the file. */
   checks(file: string): boolean
   /**
@@ -636,14 +643,25 @@ export const repoFiles = (
     return explicit || (name.includes("/") && dirs.has(dirname(name))) ? [name] : []
   }
 
+  const bare = (word: string, marked: boolean): boolean => {
+    if (!known) return false
+    const { name } = cleanName(word)
+    if (name.includes("/")) return files.has(name)
+    return (marked || /^\p{Lu}/u.test(name)) && byBase.has(name)
+  }
+
   const unions = new Set(union)
   const check = new Set<string>()
   for (const command of checkCommands) {
-    eachPathToken(command, (token) => {
-      const found = resolve(token, false)
-      for (const f of found) check.add(f)
-      return found.length > 0
-    })
+    eachPathToken(
+      command,
+      (token) => {
+        const found = resolve(token, false)
+        for (const f of found) check.add(f)
+        return found.length > 0
+      },
+      bare,
+    )
   }
 
   return {
@@ -656,13 +674,16 @@ export const repoFiles = (
       return forms.includes(name) ? name : (forms[0] ?? nfc(name))
     },
     checks: (f) => check.has(f),
+    bare,
     unioned: (f) => !f.endsWith("/") && unions.has(f),
   }
 }
 
 /**
- * Calls take with each word of text that may be a path: with an extension, and neither an absolute
- * path nor a URL, which aren't in the repository. take says whether the word names something. A +
+ * Calls take with each word of text that may be a path: with an extension, or without one one bare
+ * says names a tracked file (Makefile, scripts/release), told whether the word is written in
+ * backticks; and neither an absolute path nor a URL, which aren't in the repository. take says
+ * whether the word names something. A +
  * starts a word only after a space or punctuation that isn't a closing bracket: after a letter,
  * digit, mark, _ . - + or a closing bracket it joins two words of an expression (a+b.go, x[0]+y.go,
  * C++), and is left off. A word with brackets or a + that names nothing is tried in its parts
@@ -671,10 +692,16 @@ export const repoFiles = (
  * its ASCII parts: a path run into words of a script written without spaces (修改loop.go,
  * loop.goを直す) is one of them.
  */
-const eachPathToken = (text: string, take: (token: string) => boolean): void => {
+const eachPathToken = (
+  text: string,
+  take: (token: string) => boolean,
+  bare: (word: string, marked: boolean) => boolean,
+): void => {
   for (const match of text.matchAll(pathToken)) {
     const before = [...text.slice(0, match.index)].at(-1) ?? ""
-    takePath(joinsWords(before) ? match[0].replace(/^\+/, "") : match[0], take)
+    const marked = before === "`" && text[match.index + match[0].length] === "`"
+    const token = joinsWords(before) ? match[0].replace(/^\+/, "") : match[0]
+    takePath(token, take, (word) => bare(word, marked))
   }
 }
 
@@ -685,18 +712,22 @@ const eachPathToken = (text: string, take: (token: string) => boolean): void => 
 const joinsWords = (c: string): boolean => /^[\p{L}\p{M}\p{N}_.\-+)\]}]$/u.test(c)
 
 /** Calls take with word, a path token, or with its parts, as eachPathToken says. */
-const takePath = (token: string, take: (token: string) => boolean): void => {
+const takePath = (
+  token: string,
+  take: (token: string) => boolean,
+  bare: (word: string) => boolean,
+): void => {
   const word = trimRight(token)
   if (word.startsWith("/")) return // an absolute path or a URL, no part of which is in the repository
-  if (extension.test(word) && take(word)) return
+  if ((extension.test(word) || bare(word)) && take(word)) return
   if (/[[\]+]/.test(word)) {
-    for (const [part] of word.matchAll(plainPathToken)) takePath(part, take)
+    for (const [part] of word.matchAll(plainPathToken)) takePath(part, take, bare)
     return
   }
   if (![...word].some(nonASCII)) return
   for (const [ascii] of word.matchAll(asciiPathToken)) {
     const part = trimRight(ascii)
-    if (!part.startsWith("/") && extension.test(part)) take(part)
+    if (!part.startsWith("/") && (extension.test(part) || bare(part))) take(part)
   }
 }
 
@@ -799,21 +830,25 @@ const pathsIn = (
     // A path token holds no space, so each is in one word, and starts it as it would the text.
     const words = sentence.split(/\s+/).filter(Boolean)
     words.forEach((word, i) => {
-      eachPathToken(word, (token) => {
-        const found = repo.resolve(token, false)
-        if (found.length > 0) {
-          for (const f of found) {
-            if (inPassing(f)) continue // "scripts/check.sh passes" says nothing of where a ticket works
-            files.set(f, files.get(f) === true || !isDocument(f) || asksChange(words, i))
+      eachPathToken(
+        word,
+        (token) => {
+          const found = repo.resolve(token, false)
+          if (found.length > 0) {
+            for (const f of found) {
+              if (inPassing(f)) continue // "scripts/check.sh passes" says nothing of where a ticket works
+              files.set(f, files.get(f) === true || !isDocument(f) || asksChange(words, i))
+            }
+            return true
           }
-          return true
-        }
-        if (typeMethod.test(token) && !sourceExtensions.has(extensionOf(token))) {
-          funcs.add(token)
-          return true
-        }
-        return false
-      })
+          if (typeMethod.test(token) && !sourceExtensions.has(extensionOf(token))) {
+            funcs.add(token)
+            return true
+          }
+          return false
+        },
+        repo.bare,
+      )
     })
   }
   return { files, funcs }
@@ -830,6 +865,8 @@ const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string>
  * - **Text** is the title, description, design and acceptance criteria, not the notes. It names a
  *   file by its path (`src/run/ledger.ts:120`), its base name (`ledger.ts`, every file of that
  *   name) or a partial path (`run/ledger.ts`), and a new file by its path in a folder that exists.
+ *   A file without an extension it names by its path (`scripts/release`), or by its base name in
+ *   backticks or capitalised (`` `tutti` ``, `Makefile`), only when the repository's files are known.
  *   A path keeps its brackets and a + starting a name (`src/routes/[slug]/+page.svelte`).
  *   Functions are `Type.method`, a call (`refreshBranch()`, not `len(x)`, `os.Exit()` or
  *   `t.Run()`), or a camel-case name in backticks (`waitSettled`, not `GitHub`). Text names no
