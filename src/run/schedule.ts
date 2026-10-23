@@ -797,8 +797,8 @@ export const make = (
 
         // With a slot free, what overlaps the footprint of a ticket running or past its work, saying
         // why once. A solo ticket waits for every one of them anyway, so it is never skipped for one.
-        // One past its work that took no slot with its issue (carried over closed, checked once more,
-        // handed over again) has its issue read from bd once, kept until it merges.
+        // One running or past its work that took no slot with its issue (carried over closed, checked
+        // once more, handed over again) has its issue read from bd once, kept until it merges.
         const overlapping = (issues: ReadonlyArray<Issue>, s: Slots, past: ReadonlyArray<string>) =>
           Effect.gen(function* () {
             const skipped = new Map<string, Held>()
@@ -812,7 +812,7 @@ export const make = (
               return skipped
             }
             const read = new Map<string, Issue>()
-            for (const id of past) {
+            for (const id of [...s.running, ...past]) {
               if (s.issues.has(id)) continue
               const issue = yield* linksOf(id)
               if (issue !== null) read.set(id, issue)
