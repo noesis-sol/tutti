@@ -47,10 +47,8 @@ import {
   AgentStartFailed,
   type Message,
   makeWorkers,
-  noFindings,
   type Receipt,
   type Session,
-  type SetupFindings,
   userMessage,
   type WorkerEntry,
 } from "../agent/AgentHost.ts"
@@ -91,8 +89,11 @@ export type Step = Data.TaggedEnum<{
   Sleep: { readonly duration: Duration.Input }
   /** Runs `effect`: what the worker does outside the session, to an in-memory Beads or Git. */
   Do: { readonly effect: Effect.Effect<void> }
-  /** The session's stream ends without tutti closing it. */
-  Gone: { readonly why: string }
+  /**
+   * The session's stream ends without tutti closing it; `setup` when tutti ended it over a setup
+   * problem its first system/init showed, as the live layer's check does (§ 4.1).
+   */
+  Gone: { readonly why: string; readonly setup?: true }
   /** As the first step: the session doesn't start, and start or resume fails. */
   FailStart: { readonly reason: string; readonly startupFailureReason?: string }
 }>
@@ -181,8 +182,6 @@ const uuidOf = (n: number): SDKUserMessage["uuid"] & string =>
 export interface Options {
   /** The project's check commands: tool calls running them are `testing`. */
   readonly checks?: ReadonlyArray<string>
-  /** What the sessions' first system/init said of the setup: nothing by default. */
-  readonly setup?: SetupFindings
   /**
    * Whether an interrupt cancels the queued messages, as `interrupt({ cancelQueued: true })` does
    * where the CLI advertises `interrupt_cancel_queued_v1` (§ 4.8): the receipt lists them under
@@ -224,12 +223,19 @@ export const layer = (
       const record = (item: Sent) => Effect.sync(() => void sent.push(item))
 
       // The session's end, without tutti: its requests are withdrawn and its state is Gone.
-      const gone = (ticket: string, session: Running, why: string) =>
+      const gone = (ticket: string, session: Running, why: string, setup?: true) =>
         Effect.gen(function* () {
           if (running.get(ticket) !== session) return
           running.delete(ticket)
           ;(yield* Ref.get(session.controller)).abort()
-          yield* workers.fold(session.entry, WorkerEvent.Ended({ session: session.sessionId, why }))
+          yield* workers.fold(
+            session.entry,
+            WorkerEvent.Ended({
+              session: session.sessionId,
+              why,
+              ...(setup === undefined ? {} : { setup }),
+            }),
+          )
         }).pipe(one.withPermit)
 
       const emitIn = (session: Running, message: object) =>
@@ -356,7 +362,7 @@ export const layer = (
           AwaitInterrupt: () => Queue.take(session.interrupts),
           Sleep: ({ duration }) => Effect.sleep(duration),
           Do: ({ effect }) => effect,
-          Gone: ({ why }) => gone(ticket, session, why),
+          Gone: ({ why, setup }) => gone(ticket, session, why, setup),
           // Only a session's first step can fail its start; later, it does nothing.
           FailStart: () => Effect.void,
         })
@@ -505,7 +511,6 @@ export const layer = (
         subscribe: workers.subscribe,
         workers: workers.workers,
         compactions: workers.compactions,
-        setup: Effect.succeed(options.setup ?? noFindings),
         processes: Effect.sync(
           () =>
             new Map(
@@ -546,6 +551,8 @@ export const awaitInterrupt: Step = Step.AwaitInterrupt()
 export const sleep = (duration: Duration.Input): Step => Step.Sleep({ duration })
 export const run = (effect: Effect.Effect<void>): Step => Step.Do({ effect })
 export const gone = (why: string): Step => Step.Gone({ why })
+/** The session ends over a setup problem its first system/init showed, as the live layer ends it. */
+export const setupProblem = (why: string): Step => Step.Gone({ why, setup: true })
 export const failStart = (reason: string, startupFailureReason?: string): Step =>
   Step.FailStart({
     reason,

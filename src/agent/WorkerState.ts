@@ -47,8 +47,11 @@ export type WorkerState = Data.TaggedEnum<{
   Failed: { readonly at: number; readonly error: string; readonly interrupted: boolean }
   /** tutti closed the session on purpose, keeping its ID (§ 4.8). */
   Closed: Empty
-  /** The session's stream ended or failed without tutti closing it. */
-  Gone: { readonly why: string }
+  /**
+   * The session's stream ended or failed without tutti closing it; `setup` when tutti ended it over
+   * a setup problem its first system/init showed (§ 4.1), before it did anything.
+   */
+  Gone: { readonly why: string; readonly setup?: true }
 }>
 
 export const WorkerState = Data.taggedEnum<WorkerState>()
@@ -83,8 +86,11 @@ export type WorkerEvent = Data.TaggedEnum<{
   Requests: { readonly session: string; readonly pending: number }
   /** tutti closed the session on purpose. */
   Closed: { readonly session: string }
-  /** The session's stream ended or failed without tutti closing it. */
-  Ended: { readonly session: string; readonly why: string }
+  /**
+   * The session's stream ended or failed without tutti closing it; `setup` when tutti ended it over
+   * a setup problem.
+   */
+  Ended: { readonly session: string; readonly why: string; readonly setup?: true }
 }>
 
 export const WorkerEvent = Data.taggedEnum<WorkerEvent>()
@@ -170,7 +176,10 @@ export interface Worker {
    */
   readonly outstanding: ReadonlyArray<string>
   /** Why the session ended, when it did: Closed by tutti, or Gone. */
-  readonly end: { readonly closed: true } | { readonly closed: false; readonly why: string } | null
+  readonly end:
+    | { readonly closed: true }
+    | { readonly closed: false; readonly why: string; readonly setup?: true }
+    | null
   /** The live background tasks that count: `background_tasks_changed`'s, but for ambient ones. */
   readonly tasks: ReadonlyArray<string>
   /**
@@ -443,7 +452,9 @@ const onHook = (worker: Worker, input: HookInput): Worker => {
 /** The state `worker`'s facts give, `now` being the time of the step that brought them. */
 const derive = (worker: Worker, now: number): WorkerState => {
   if (worker.end !== null) {
-    return worker.end.closed ? WorkerState.Closed() : WorkerState.Gone({ why: worker.end.why })
+    if (worker.end.closed) return WorkerState.Closed()
+    const { why, setup } = worker.end
+    return WorkerState.Gone({ why, ...(setup === true ? { setup } : {}) })
   }
   const requests = Math.max(worker.pending, worker.requiresAction ? 1 : 0)
   if (requests > 0) {
@@ -502,7 +513,10 @@ export const step = (worker: Worker, event: WorkerEvent, now: number): Worker =>
     ReportLate: ({ since }) => (worker.report === since ? { ...worker, report: null } : worker),
     Requests: ({ pending }) => ({ ...worker, pending: Math.max(0, pending) }),
     Closed: () => ({ ...worker, end: { closed: true as const } }),
-    Ended: ({ why }) => ({ ...worker, end: { closed: false as const, why } }),
+    Ended: ({ why, setup }) => ({
+      ...worker,
+      end: { closed: false as const, why, ...(setup === true ? { setup } : {}) },
+    }),
   })
   return { ...next, state: derive(next, now) }
 }

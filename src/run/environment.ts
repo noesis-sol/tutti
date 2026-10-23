@@ -169,6 +169,8 @@ export const settlingOf = (input: {
   Effect.gen(function* () {
     const { settled } = input
     if (input.limited) return "uncounted"
+    // A setup problem stops the run itself (SETUP_PROBLEM): it isn't the environment failing.
+    if (settled._tag === "Setup") return "uncounted"
     if (settled._tag !== "Read") return "other"
     const { reading, state } = settled
     if (reading._tag === "WaitsForMerge") return "uncounted"

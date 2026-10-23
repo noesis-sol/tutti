@@ -7,9 +7,9 @@
 // goes to the transcript's stderr.log (workerOptions).
 //
 // Each session's first system/init is checked (§ 4.1): the permission mode in effect, logged once
-// and kept for the START block when it isn't the one asked for; the MCP servers, where any the
-// worker wasn't given ends it as a setup problem (§ 4.6); and the API key source, where a key
-// billed beside the subscription login ends it likewise (§ 4.13). Those fields are decoded with a
+// when it isn't the one asked for; the MCP servers, where any the worker wasn't given ends it as a
+// setup problem (§ 4.6); and the API key source, where a key billed beside the subscription login
+// ends it likewise (§ 4.13). A worker ended so is Gone with `setup`, which stops the run (work.ts). Those fields are decoded with a
 // Schema, not trusted to the SDK's types: a first system/init from a CLI of another version without
 // readable MCP servers ends the worker as a setup problem (checkInit), since tutti can't tell what
 // it got; one without the permission mode or the API key source skips that check, logged once.
@@ -78,10 +78,8 @@ import {
   AgentStartFailed,
   type Message,
   makeWorkers,
-  noFindings,
   type Receipt,
   type Session,
-  type SetupFindings,
   userMessage,
   type WorkerEntry,
 } from "./AgentHost.ts"
@@ -357,7 +355,8 @@ export const layer = (
       const requires = yield* Ref.make<ReadonlyArray<string>>(
         config.settings.requires.map((r) => r.name),
       )
-      const findings = yield* Ref.make<SetupFindings>(noFindings)
+      // Whether a session's permission mode in effect, not the one asked for, has been logged.
+      const modeSaid = yield* Ref.make(false)
       // The fields of the first system/init whose check was skipped, logged once each (unchecked).
       const uncheckedFields = yield* Ref.make<ReadonlySet<string>>(new Set())
       const sessions = new Map<string, Lifecycle>()
@@ -365,11 +364,16 @@ export const layer = (
 
       /**
        * Moves the ticket's session, if `of` is still its scope, to Closing: closed on purpose when
-       * `why` is undefined, else gone for `why`, as its worker's state says from now on. The effect
-       * that then closes it, its scope and with it Claude Code, and ends it: undefined when the
-       * ticket's session is another or is Closing already.
+       * `why` is undefined, else gone for `why` (over a setup problem when `setup`), as its worker's
+       * state says from now on. The effect that then closes it, its scope and with it Claude Code,
+       * and ends it: undefined when the ticket's session is another or is Closing already.
        */
-      const closing = (ticket: string, of: Scope.Closeable, why: string | undefined) =>
+      const closing = (
+        ticket: string,
+        of: Scope.Closeable,
+        why: string | undefined,
+        setup = false,
+      ) =>
         Effect.gen(function* () {
           const done = yield* Deferred.make<void>()
           const moved = yield* Effect.sync(() => {
@@ -389,7 +393,7 @@ export const layer = (
               entry.value,
               why === undefined
                 ? WorkerEvent.Closed({ session })
-                : WorkerEvent.Ended({ session, why }),
+                : WorkerEvent.Ended({ session, why, ...(setup ? { setup: true as const } : {}) }),
             )
           }
           // The ticket has no session before a start waiting for this one's end goes on.
@@ -404,24 +408,21 @@ export const layer = (
 
       /**
        * The session's end, without tutti closing it on purpose: the worker is Gone and the
-       * session closes, in a fiber of its own, since the caller may be its reader.
+       * session closes, in a fiber of its own, since the caller may be its reader. `setup` when it
+       * ended over a setup problem.
        */
-      const gone = (session: Live, why: string) =>
+      const gone = (session: Live, why: string, setup = false) =>
         Effect.gen(function* () {
-          const close = yield* closing(session.ticket, session.scope, why)
+          const close = yield* closing(session.ticket, session.scope, why, setup)
           if (close !== undefined) yield* Effect.forkIn(close, scope)
         })
 
-      /** Ends the worker over a setup problem, before it does anything. */
+      /** Ends the worker over a setup problem, before it does anything: Gone with `setup`. */
       const setupProblem = (session: Live, problem: string) =>
         Effect.gen(function* () {
-          yield* Ref.update(findings, (found) => ({
-            ...found,
-            problems: [...found.problems, problem],
-          }))
           yield* log.write(detail`${session.ticket}: ${problem}`)
           session.abort.abort()
-          yield* gone(session, problem)
+          yield* gone(session, problem, true)
         })
 
       /** Logs, once in the run, that the first system/init lacks `field`, so `what` isn't checked. */
@@ -441,12 +442,7 @@ export const layer = (
             yield* unchecked("permissionMode", `the permission mode in effect is ${requestedMode}`)
           } else if (mode.success.permissionMode !== requestedMode) {
             const inEffect = mode.success.permissionMode
-            const first = yield* Ref.modify(findings, (found) =>
-              found.permissionMode === null
-                ? [true, { ...found, permissionMode: { requested: requestedMode, inEffect } }]
-                : [false, found],
-            )
-            if (first) {
+            if (!(yield* Ref.getAndSet(modeSaid, true))) {
               yield* log.write(line`${permissionModeLine({ requested: requestedMode, inEffect })}`)
             }
           }
@@ -858,7 +854,6 @@ export const layer = (
         subscribe: workers.subscribe,
         workers: workers.workers,
         compactions: workers.compactions,
-        setup: Ref.get(findings),
         processes: Effect.sync(() => {
           const pids = new Map<string, number>()
           for (const [ticket, lifecycle] of sessions) {

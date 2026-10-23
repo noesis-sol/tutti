@@ -483,6 +483,9 @@ and then the run ends with that reason. The log says
 - **`DIRTY_TREE`**, **`GIT_FAILED`**, **`MERGE_FAILED`**: the merges stop.
 - **`BEADS_FAILED`**, **`AGENT_FAILED`**: `bd` or a worker's session failing.
 - **`ENVIRONMENT`** and **`USAGE_LIMIT`**, below.
+- **`SETUP_PROBLEM`**: a worker's first `system/init` showed a setup problem: MCP servers it
+  wasn't given, or an API key it would bill beside your subscription. The worker is stopped before
+  it does anything and its ticket reopened for the next run; exit 2.
 - **`REQUIREMENTS_MISSING`**: what the project's requires list names is missing as the run starts,
   or once a merge has changed the list; the run ends at once, or once the running tickets finish,
   exit 2 ([above](#starting-a-run)).
@@ -612,7 +615,7 @@ finds its work merged by hand, as it starts or as the base moves on.
 | Code | Meaning |
 |---|---|
 | 0 | the run ended by itself: nothing left (`READY_EMPTY`), the limit reached (`LIMIT_REACHED`), or wound down as asked (`DRAINED`); also nothing to run, a feature plan declined, or an interview that filed nothing or wasn't run |
-| 2 | a setup problem (all are listed), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
+| 2 | a setup problem (all are listed), one a worker's first `system/init` showed (`SETUP_PROBLEM`), a requirement missing as the run starts (`REQUIREMENTS_MISSING`), or another run in the repository; with `--feature`, a request the screen turned down, a plan that failed or has questions, or no terminal to confirm on |
 | 3 | a worker idle with its ticket in progress (`PAUSED`), a request unanswered (`BLOCKED`), or a worker past its ticket limit (`TICKET_LIMIT`) |
 | 4 | Beads, git or a worker's session failing (`BEADS_FAILED`, `GIT_FAILED`, `AGENT_FAILED`, …), or tutti failing itself (`PANIC`) |
 | 5 | uncommitted changes in the main checkout, or it left its branch (`DIRTY_TREE`) |

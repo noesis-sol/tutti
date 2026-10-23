@@ -43,7 +43,6 @@ import {
 } from "effect"
 import { detail, Log } from "../run/log.ts"
 import { Spending } from "../run/spending.ts"
-import type { PermissionModeInEffect } from "./Account.ts"
 import { Attention } from "./Attention.ts"
 import { Transcripts } from "./Transcripts.ts"
 import { UsageLimits } from "./UsageLimits.ts"
@@ -104,20 +103,6 @@ export interface Receipt {
   readonly stillQueued: ReadonlyArray<string>
   readonly cancelled: ReadonlyArray<string>
 }
-
-/**
- * What workers' sessions said of the setup on their first system/init (§ 4.1): the permission mode
- * in effect, when it isn't the one asked for, and the setup problems that ended workers (MCP servers
- * they weren't given, an API key they would bill).
- */
-export interface SetupFindings {
-  /** null until a session's mode in effect differs from the one asked for. */
-  readonly permissionMode: PermissionModeInEffect | null
-  readonly problems: ReadonlyArray<string>
-}
-
-/** Nothing found yet. */
-export const noFindings: SetupFindings = { permissionMode: null, problems: [] }
 
 /** A message of a worker's session, as Transcripts records it. */
 export interface SessionMessage {
@@ -244,8 +229,6 @@ export class AgentHost extends Context.Service<
     readonly workers: Stream.Stream<ReadonlySet<string>>
     /** Every worker's compactions, from now on, as their PreCompact hooks report them (§ 4.2). */
     readonly compactions: Stream.Stream<Compaction>
-    /** What the sessions' first system/init said of the setup, so far. */
-    readonly setup: Effect.Effect<SetupFindings>
     /**
      * The process of each open session's Claude Code, by ticket: the leader of a process group of
      * its own (§ 3.2), for its memory on the dashboard's load line (src/run/load.ts).

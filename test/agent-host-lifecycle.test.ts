@@ -117,7 +117,9 @@ describe("AgentHost live: a session's lifecycle", () => {
           return { state, pids: started(log), log }
         }),
     )
-    expect(state).toEqual(WorkerState.Gone({ why: notGivenProblem(["claude.ai Gmail"]) }))
+    expect(state).toEqual(
+      WorkerState.Gone({ why: notGivenProblem(["claude.ai Gmail"]), setup: true }),
+    )
     expect(pids).toHaveLength(2)
     expect(exitedBefore(log, pids[0] ?? 0, pids[1] ?? 0)).toBe(true)
   })

@@ -14,6 +14,8 @@
 // - still in progress after the nudges and the idle grace: Stopped, and the run holds with PAUSED
 // - left in any other status: set aside, deferred for review
 // - its worker gone and its session not resumed: Review (WORKER_GONE), dropped (sessions.ts)
+// - its worker ended over a setup problem its first system/init showed (§ 4.1): reopened, Waiting
+//   for the next run, and the run holds with SETUP_PROBLEM, exit 2
 //
 // The session is closed once the ticket no longer needs it (§ 4.8, sessions.ts): kept open while it
 // waits to merge, and when it stopped the run (it is suspended as the run ends); closed once asked,
@@ -29,12 +31,12 @@ import { dropNothingDone, leaveForReview, nothingLeft, putAside } from "./aside.
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
-import { type StopReason, timeLimit } from "./holds.ts"
+import { exitCodes, type StopReason, timeLimit } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
-import { Cause, probeWait, setupWait, type TicketPhase } from "./phase.ts"
+import { Cause, probeWait, setupProblemWait, setupWait, type TicketPhase } from "./phase.ts"
 import { fit, workerGone } from "./sessions.ts"
 import {
   idleGrace,
@@ -50,7 +52,7 @@ import type { Deferral, Triage } from "./triage.ts"
 
 /** A ticket that stopped the run, and the exit code the run ends with for it (§ 5 item 10). */
 export interface RunStop {
-  readonly why: "PAUSED"
+  readonly why: "PAUSED" | "SETUP_PROBLEM"
   readonly code: number
   readonly ticket: string
   /** The line the run ends with for it, `PAUSED: …`; its HOLD line is the run's to say. */
@@ -196,6 +198,44 @@ const paused = (worker: StartedWorker, gone: string | null) =>
   })
 
 /**
+ * Its worker ended over a setup problem its first system/init showed (§ 4.1), before it did
+ * anything: the ticket is reopened, as no worker took it on, and Waiting for the next run, its
+ * worktree kept; the run holds with SETUP_PROBLEM, exit 2, as for a setup problem found at startup.
+ */
+const setupProblem = (worker: StartedWorker, problem: string) =>
+  Effect.gen(function* () {
+    const beads = yield* Beads
+    const ledger = yield* Ledger
+    const logs = yield* Log
+    const events = yield* EventStream
+    const { id, path } = worker.worktree
+    const reopened = yield* Effect.result(
+      beads.update(id, {
+        status: "open",
+        appendNotes: `tutti: reopened; its worker was stopped before it did anything, over a setup problem: ${problem}.`,
+      }),
+    )
+    if (Result.isFailure(reopened)) {
+      const text = ticketLine(
+        Tag.reopenFailed,
+      )`${id}'s worker was stopped over a setup problem, and bd could not reopen it: ${beadsWhy(reopened.failure)}; reopen it with: bd update ${id} --status open`
+      yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
+    }
+    const reason = line`${id}'s worker was stopped before it did anything: ${problem}; ${id} is reopened (worktree ${path}); fix the setup, then run again`
+    const text = tagged(Tag.setupProblem)`${reason}`
+    // The run says the HOLD line, with the tickets still running, as it takes the stop.
+    yield* ledger.transition(id, Cause.SetupProblem(), {
+      beside: [{ kind: "stop", detail: Tag.setupProblem, ticket: id, text }],
+    })
+    return {
+      why: "SETUP_PROBLEM",
+      code: exitCodes.setup,
+      ticket: id,
+      line: text,
+    } satisfies RunStop
+  })
+
+/**
  * Moves the ticket as its worker left it, `settled` saying how; the stop when it stopped the run.
  */
 export const conclude = (
@@ -209,6 +249,7 @@ export const conclude = (
     const { id, title } = ticket
     const { path, branch } = worker.worktree
     if (settled._tag === "Paused") return yield* paused(worker, settled.gone)
+    if (settled._tag === "Setup") return yield* setupProblem(worker, settled.problem)
     if (settled._tag === "Dropped") {
       yield* workerGone(id, path, settled.why)
       yield* fit(id)
@@ -473,7 +514,14 @@ export const requeueWaiting = (
     const back: Array<string> = []
     for (const entry of (yield* ledger.current).tickets.values()) {
       const { phase } = entry
-      if (phase._tag !== "Waiting" || phase.for === probeWait || phase.for === setupWait) continue
+      if (
+        phase._tag !== "Waiting" ||
+        phase.for === probeWait ||
+        phase.for === setupWait ||
+        phase.for === setupProblemWait
+      ) {
+        continue
+      }
       const issue = yield* Effect.result(beads.show(entry.ticket))
       if (Result.isFailure(issue)) continue
       const state = yield* ledger.current

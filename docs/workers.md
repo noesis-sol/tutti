@@ -384,7 +384,8 @@ and have no definition on the machine to give a worker).
 
 A name that isn't defined on this machine, or names a claude.ai connector, stops the run:
 `MCP server "redis" in workers.mcp_servers isn't defined here: …`. A worker that comes up with a
-server it wasn't given is stopped before it does anything. The run's `START` line says what workers
+server it wasn't given is stopped before it does anything, and the run stops with `SETUP_PROBLEM`
+(exit 2), its ticket reopened for the next run. The run's `START` line says what workers
 get: `MCP servers: postgres` or `workers get no MCP servers: workers.mcp_servers is empty`.
 
 Claude in Chrome, which Claude Code turns on by itself once it is set up on your machine, is

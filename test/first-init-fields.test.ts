@@ -10,7 +10,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Layer, Option, Stream } from "effect"
 import fc from "fast-check"
 import type { Billing } from "../src/agent/Account.ts"
-import { AgentHost, noFindings } from "../src/agent/AgentHost.ts"
+import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer, uncheckedLine } from "../src/agent/AgentHostLive.ts"
 import { type ChosenServers, checkInit, noServersNote, unlistedProblem } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
@@ -118,8 +118,8 @@ const sessionIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-
 
 /**
  * The live host over the fake Claude Code, each system/init without `fields`: starts a worker for
- * each of `tickets` in turn, sends it a message and waits for it to settle. Their states then, the
- * run's setup findings, and the log's lines.
+ * each of `tickets` in turn, sends it a message and waits for it to settle. Their states then, and
+ * the log's lines.
  */
 const settle = async (
   fields: ReadonlyArray<string>,
@@ -155,7 +155,7 @@ const settle = async (
         )
         states.push(Option.getOrThrow(state))
       }
-      return { states, setup: yield* agents.setup, lines: yield* texts }
+      return { states, lines: yield* texts }
     }).pipe(
       Effect.provide(
         host.pipe(
@@ -171,24 +171,23 @@ const settle = async (
 
 describe("AgentHost live: a first system/init without a field the setup check reads", () => {
   test("without mcp_servers, the worker ends as a setup problem", async () => {
-    const { states, setup, lines } = await settle(["mcp_servers"])
-    expect(states).toEqual([expect.objectContaining({ _tag: "Gone", why: unlistedProblem })])
-    expect(setup.problems).toEqual([unlistedProblem])
+    const { states, lines } = await settle(["mcp_servers"])
+    expect(states).toEqual([
+      expect.objectContaining({ _tag: "Gone", why: unlistedProblem, setup: true }),
+    ])
     expect(lines).toContain(`  t-1: ${unlistedProblem}`)
   })
 
   test("without permissionMode, the mode isn't checked, logged once in the run", async () => {
-    const { states, setup, lines } = await settle(["permissionMode"], ["t-1", "t-2"])
+    const { states, lines } = await settle(["permissionMode"], ["t-1", "t-2"])
     expect(states.map((s) => s._tag)).toEqual(["Idle", "Idle"])
-    expect(setup).toEqual(noFindings)
     const skipped = uncheckedLine("permissionMode", "the permission mode in effect is auto")
     expect(lines.filter((l) => l.includes("system/init gives no"))).toEqual([skipped])
   })
 
   test("without apiKeySource, the key isn't checked, logged once in the run", async () => {
-    const { states, setup, lines } = await settle(["apiKeySource"], ["t-1", "t-2"])
+    const { states, lines } = await settle(["apiKeySource"], ["t-1", "t-2"])
     expect(states.map((s) => s._tag)).toEqual(["Idle", "Idle"])
-    expect(setup).toEqual(noFindings)
     expect(lines.filter((l) => l.includes("system/init gives no"))).toEqual([
       uncheckedLine("apiKeySource", "that workers bill the subscription login, not an API key"),
     ])

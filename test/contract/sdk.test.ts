@@ -1317,7 +1317,7 @@ live.describe("Agent SDK contract: MCP servers", () => {
         join(dir, ".claude", "settings.local.json"),
         JSON.stringify({ enableAllProjectMcpServers: true }),
       )
-      const { all, setup, state } = await run(
+      const { all, state } = await run(
         dir,
         Effect.gen(function* () {
           const host = yield* AgentHost
@@ -1326,7 +1326,6 @@ live.describe("Agent SDK contract: MCP servers", () => {
           yield* messagesUntil("the turn answered", answered(uuid))
           return {
             all: yield* messages,
-            setup: yield* host.setup,
             state: yield* stateUntil((s) => s._tag === "Idle"),
           }
         }),
@@ -1341,7 +1340,6 @@ live.describe("Agent SDK contract: MCP servers", () => {
       expect(init?.mcp_servers.map((s) => [s.name, s.source])).toEqual([
         ["tutti-contract", "dynamic"],
       ])
-      expect(setup.problems).toEqual([])
       expect(state._tag).toBe("Idle")
     },
     testLimit,

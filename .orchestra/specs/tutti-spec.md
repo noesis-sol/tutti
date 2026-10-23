@@ -312,6 +312,8 @@ It leaves out the variables that aren't the user's but belong to where tutti was
 
 tutti decodes these fields with a Schema rather than trusting the SDK's types, since a CLI of another version may send a first `system/init` without one. Without `mcp_servers` it can't tell which servers the worker got, so the worker ends before it does anything, as a setup problem: `Claude Code's system/init doesn't list workers' MCP servers in a shape tutti reads (mcp_servers), so it can't check they got only the ones they were given`. Without `permissionMode` or `apiKeySource`, that check alone is skipped, and the log says so once in the run: `system/init gives no <field> tutti can read, so it doesn't check <what>`.
 
+**A setup problem found there stops the run**, as one found at startup does (§5 item 1), since every worker would meet it. The host ends the worker `Gone` with `setup` (`WorkerState.Gone{setup}`); its ticket is neither resumed (§4.8) nor deferred, as its worker did nothing: it is reopened, keeps its worktree, and is `Waiting{setup problem}` until the next run, which starts it afresh. The run holds with `SETUP_PROBLEM: <id>'s worker was stopped before it did anything: <problem>; <id> is reopened (worktree <path>); fix the setup, then run again`, the running tickets finishing first, and ends with exit 2. It counts toward no environment hold (§5 item 11).
+
 **Messages.**
 
 - **The standing rules** (the worker prompt, §4.11) go in `systemPrompt.append` and hold only what doesn't change during a ticket's life. With `snapshot: true` (the default), Claude Code records the system prompt with the session, and on resume "a different `append` … is ignored until compaction". Recording is still rolling out across accounts, so tutti must behave correctly with or without it.
@@ -769,7 +771,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
 9. **Waits for merge**: a worker that stops with nothing done, having linked a blocker that hasn't merged, puts its ticket back in the queue. A ticket set aside as its worker settled (deferred by its worker, or by tutti for one left unfinished) with nothing done, no commits beyond the base and a clean worktree, has its worktree and branch removed once triage has its evidence, as orchestra 0.8.1's: its line says `<id> deferred by its worker; nothing done, so its worktree and branch are removed` (`<id> still open -> noted and deferred; nothing done, …`) in place of `worktree <path> left open`, and a removal git refuses is `CLEANUP_FAILED`. In both, a worktree git can't read (an error, a time-out) counts as one with work in it: the ticket is set aside, its worktree kept, and the log says `<id>: git can't tell whether its worker left anything in <path>: <why>; read as work left in it`, rather than the ticket's fiber failing and the run holding with `GIT_FAILED`.
 10. **Holds and stops**:
     - `HOLD` drains: no new tickets, the running ones finish
-    - the stop reasons `PAUSED`, `BLOCKED` (lifted when its requests are answered, §4.3), `TICKET_LIMIT`, `DIRTY_TREE`, `GIT_FAILED`, `BEADS_FAILED`, …
+    - the stop reasons `PAUSED`, `BLOCKED` (lifted when its requests are answered, §4.3), `TICKET_LIMIT`, `DIRTY_TREE`, `GIT_FAILED`, `BEADS_FAILED`, `SETUP_PROBLEM` (a worker's first `system/init`, §4.1, exit 2), …
     - `USAGE_LIMIT` (§4.12) holds until the reset and doesn't end the run
     - exit codes as orchestra's, except: 4 covers Beads, git and the Agent SDK (`AGENT_FAILED` replaces `TERMINAL_FAILED`); 8 is new, `USAGE_LIMIT` (§4.12)
 11. **Environment hold**: 2 tickets in a row settled within 2 minutes with nothing done, or whose setup failed before their worker could start, or blamed on the environment by triage. Reopen those whose workers failed (those whose setup failed are back in the queue already), probe once, exit 7; a probe that passes takes both again. `UsageLimited` workers never count.
@@ -852,7 +854,7 @@ stateDiagram-v2
     Working --> ToMerge: closed, committed, verified
     Working --> Done: closed with nothing to merge
     Working --> Asked: filed a question
-    Working --> Waiting: stopped for an unmerged blocker · setup failed
+    Working --> Waiting: stopped for an unmerged blocker · setup failed · setup problem
     Working --> Deferred: deferred
     Working --> Review: closed without a commit · off its branch
     Working --> Stopped: PAUSED · TICKET_LIMIT · run ended
@@ -895,6 +897,7 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `Working` | `Asked` | its worker filed a question ticket that blocks it, then settled | `asked` |
 | `Working` | `Waiting` | its worker stopped with nothing done, having linked a blocker that hasn't merged | `waits` |
 | `Working` | `Waiting{setup}` | the setup failed in its worktree before its worker could start (`SETUP_FAILED`) | `warn` |
+| `Working` | `Waiting{setup problem}` | its worker's first `system/init` showed a setup problem (§4.1): reopened, out of the run, which stops (`SETUP_PROBLEM`) | `stop` |
 | `Working` | `Deferred` | its worker deferred it, or tutti set it aside as it started (`BAD_TICKET_ID`, `RUN_FILES_OUTSIDE`, a start that failed) | `deferred` |
 | `Working` | `Review` | closed without a commit naming it while it has changes, left off its branch, … | `warn` with `aside` |
 | `Working` | `Stopped` | it stopped the run (`PAUSED` after the nudges and the idle grace; `TICKET_LIMIT`), or the run ended with its worker at it | `hold`, `stop`, `suspended` |

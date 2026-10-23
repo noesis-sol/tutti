@@ -96,6 +96,12 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
     Waiting({ for: "setup" }),
   ],
   [
+    "Working → Waiting{setup problem}",
+    Working({ activity: "starting" }),
+    Cause.SetupProblem(),
+    Waiting({ for: "setup problem" }),
+  ],
+  [
     "Working → Deferred",
     Working({ activity: "working" }),
     Cause.Defer({ why: "BAD_TICKET_ID" }),
@@ -299,6 +305,7 @@ const phases: ReadonlyArray<TicketPhase | null> = [
   Waiting({ for: "tut-b1" }),
   Waiting({ for: "probe" }),
   Waiting({ for: "setup" }),
+  Waiting({ for: "setup problem" }),
   Deferred({ why: "x" }),
   Review({ why: "CHECKS_FAILED" }),
   Review({ why: "DIRTY_WORKTREE" }),
@@ -318,6 +325,7 @@ const causeOf: { readonly [C in CauseTag]: Extract<Cause, { readonly _tag: C }> 
   FiledQuestion: Cause.FiledQuestion({ question: "tut-q1" }),
   WaitsForMerge: Cause.WaitsForMerge({ for: "tut-b1" }),
   SetupFailed: Cause.SetupFailed(),
+  SetupProblem: Cause.SetupProblem(),
   Defer: Cause.Defer({ why: "x" }),
   Aside: Cause.Aside({ why: "CHECKS_FAILED" }),
   StopRun: Cause.StopRun({ why: "TICKET_LIMIT" }),

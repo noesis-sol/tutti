@@ -313,6 +313,7 @@ describe("stops and exit codes", () => {
   test("each stop reason's exit code is orchestra's: 4 for AGENT_FAILED, 8 for USAGE_LIMIT", () => {
     expect(stopCodes).toEqual({
       REQUIREMENTS_MISSING: 2,
+      SETUP_PROBLEM: 2,
       PAUSED: 3,
       BLOCKED: 3,
       TICKET_LIMIT: 3,

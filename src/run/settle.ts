@@ -11,7 +11,8 @@
 // message; released during its grace, it gets the nudges it has left. One that has been closed can't
 // be nudged: it pauses at once. One whose session went is resumed once in this run and told to carry
 // on (sessions.ts); gone again, or steered, it pauses, and one whose session can't be resumed is
-// dropped (WORKER_GONE).
+// dropped (WORKER_GONE). One the host ended over a setup problem its first system/init showed (§ 4.1)
+// is neither read nor resumed: it stopped before it did anything, and the run stops (work.ts).
 //
 // A worker that stops at the account's usage limit with its ticket deferred, as orchestra 0.8.1 has
 // it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
@@ -181,6 +182,11 @@ export type Settled = Data.TaggedEnum<{
    * it is dropped (WORKER_GONE).
    */
   Dropped: { readonly why: string }
+  /**
+   * Its worker was ended over a setup problem its first system/init showed (`problem`), before it
+   * did anything: the run stops (SETUP_PROBLEM).
+   */
+  Setup: { readonly problem: string }
 }>
 
 export const Settled = Data.taggedEnum<Settled>()
@@ -467,6 +473,9 @@ export const settle = (
       let told = 0
       for (;;) {
         const state = yield* untilSettled(id)
+        if (state._tag === "Gone" && state.setup === true) {
+          return Settled.Setup({ problem: state.why })
+        }
         const reading = yield* read(worker, base, closed)
         if (reading._tag !== "InProgress") {
           yield* logs.write(detail`${id} settled: ${how(state)}`)

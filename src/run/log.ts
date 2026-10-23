@@ -85,6 +85,7 @@ export const Tag = {
   setup: "SETUP",
   setupFailed: "SETUP_FAILED",
   setupWaits: "SETUP_WAITS",
+  setupProblem: "SETUP_PROBLEM",
   settingsUnread: "SETTINGS_UNREAD",
   requires: "REQUIRES",
   readmeStale: "README_STALE",

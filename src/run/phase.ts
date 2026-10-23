@@ -65,7 +65,7 @@ export type TicketPhase = Data.TaggedEnum<{
   /**
    * Back in the queue until `for` merges, until the environment probe passes (`probe`), or, its
    * worktree's setup failed before its worker started (`setup`), until a ticket merges or a probe
-   * passes.
+   * passes; or, its worker stopped by a setup problem (`setup problem`), until the next run.
    */
   Waiting: { readonly for: string }
   /** Set aside: deferred by its worker or by tutti. */
@@ -134,6 +134,8 @@ export type Cause = Data.TaggedEnum<{
   WaitsForMerge: { readonly for: string }
   /** The setup failed in its worktree before its worker could start (SETUP_FAILED). */
   SetupFailed: Empty
+  /** Its worker's first system/init showed a setup problem, which stopped the run (SETUP_PROBLEM). */
+  SetupProblem: Empty
   /** Its worker deferred it, or tutti set it aside as it started. */
   Defer: { readonly why: string }
   /** Left for review; after a resolution, blocked instead. */
@@ -227,6 +229,12 @@ export const setupWait = "setup"
 
 /** What a Waiting ticket an environment hold reopened waits for: the probe. */
 export const probeWait = "probe"
+
+/**
+ * What a Waiting ticket whose worker a setup problem stopped (SETUP_PROBLEM) waits for: the next
+ * run, the setup fixed. It stays out of this run, which the problem stops.
+ */
+export const setupProblemWait = "setup problem"
 const aside = { kinds: ["warn"], detail: "aside" } as const
 const blocked = { kinds: ["warn"], detail: "blocked" } as const
 
@@ -312,6 +320,13 @@ export const transitions: ReadonlyArray<Transition> = [
     to: "Waiting",
     recorded: { kinds: ["warn"], log: "SETUP_FAILED" },
     next: () => TicketPhase.Waiting({ for: setupWait }),
+  }),
+  row({
+    from: "Working",
+    when: "SetupProblem",
+    to: "Waiting",
+    recorded: { kinds: ["stop"], log: "SETUP_PROBLEM" },
+    next: () => TicketPhase.Waiting({ for: setupProblemWait }),
   }),
   row({
     from: "Working",

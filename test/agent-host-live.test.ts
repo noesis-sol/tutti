@@ -5,7 +5,7 @@ import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Fiber, Layer, Option, Schedule, Stream } from "effect"
 import type { Billing } from "../src/agent/Account.ts"
-import { AgentHost, noFindings } from "../src/agent/AgentHost.ts"
+import { AgentHost } from "../src/agent/AgentHost.ts"
 import { apiKeyProblem, endedWhy, layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
 import { type ChosenServers, noServersNote, notGivenProblem } from "../src/agent/mcp.ts"
@@ -368,8 +368,8 @@ describe("AgentHost live: state, hooks and stderr", () => {
 })
 
 describe("AgentHost live: the first system/init", () => {
-  test("a permission mode other than the one asked for is logged once and kept for START", async () => {
-    const { setup, lines } = await run({ init: { permissionMode: "default" } }, ({ dir }) =>
+  test("a permission mode other than the one asked for is logged once", async () => {
+    const { states, lines } = await run({ init: { permissionMode: "default" } }, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", session(dir))
@@ -379,35 +379,33 @@ describe("AgentHost live: the first system/init", () => {
         yield* host.close("t-1")
         yield* host.start("t-2", session(dir, "22222222-2222-4222-8222-222222222222"))
         yield* host.send("t-2", "three", "clientComposed")
-        yield* until("t-2", idle)
-        return { setup: yield* host.setup, lines: yield* texts }
+        const second = yield* until("t-2", idle)
+        return { states: [second], lines: yield* texts }
       }),
     )
-    expect(setup).toEqual({
-      permissionMode: { requested: "auto", inEffect: "default" },
-      problems: [],
-    })
+    // Not a setup problem: the worker goes on.
+    expect(states.map((state) => state._tag)).toEqual(["Idle"])
     expect(lines.filter((l) => l.includes("permission mode"))).toEqual([
       "permission mode: default (auto mode isn't available here)",
     ])
   })
 
   test("the mode asked for, no servers and no key: nothing is found", async () => {
-    const setup = await run({}, ({ dir }) =>
+    const { state, lines } = await run({}, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", session(dir))
         yield* host.send("t-1", "go", "clientComposed")
-        yield* until("t-1", idle)
-        return yield* host.setup
+        return { state: yield* until("t-1", idle), lines: yield* texts }
       }),
     )
-    expect(setup).toEqual(noFindings)
+    expect(state._tag).toBe("Idle")
+    expect(lines.filter((l) => l.includes("t-1:") || l.includes("permission mode"))).toEqual([])
   })
 
   test("an MCP server the worker wasn't given ends it as a setup problem", async () => {
     const extra = [{ name: "claude.ai Gmail", status: "connected", source: "claudeai" }]
-    const { state, setup, sent, logged, lines } = await run(
+    const { state, sent, logged, lines } = await run(
       { init: { mcp_servers: extra } },
       ({ dir, log }) =>
         Effect.gen(function* () {
@@ -418,7 +416,6 @@ describe("AgentHost live: the first system/init", () => {
           const sent = yield* Effect.exit(host.send("t-1", "more", "clientComposed"))
           return {
             state,
-            setup: yield* host.setup,
             sent,
             logged: readLog(log),
             lines: yield* texts,
@@ -426,8 +423,7 @@ describe("AgentHost live: the first system/init", () => {
         }),
     )
     const problem = notGivenProblem(["claude.ai Gmail"])
-    expect(state).toEqual(WorkerState.Gone({ why: problem }))
-    expect(setup.problems).toEqual([problem])
+    expect(state).toEqual(WorkerState.Gone({ why: problem, setup: true }))
     expect(lines).toContain(`  t-1: ${problem}`)
     expect(Exit.isFailure(sent)).toBe(true)
     expect(usersIn(logged)).toHaveLength(1)
@@ -454,16 +450,17 @@ describe("AgentHost live: the first system/init", () => {
   })
 
   test("an API key billed beside the subscription login ends the worker", async () => {
-    const { state, setup } = await run({ init: { apiKeySource: "ANTHROPIC_API_KEY" } }, ({ dir }) =>
+    const state = await run({ init: { apiKeySource: "ANTHROPIC_API_KEY" } }, ({ dir }) =>
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", session(dir))
         yield* host.send("t-1", "go", "clientComposed")
-        return { state: yield* until("t-1", gone), setup: yield* host.setup }
+        return yield* until("t-1", gone)
       }),
     )
-    expect(state).toEqual(WorkerState.Gone({ why: apiKeyProblem("ANTHROPIC_API_KEY") }))
-    expect(setup.problems).toEqual([apiKeyProblem("ANTHROPIC_API_KEY")])
+    expect(state).toEqual(
+      WorkerState.Gone({ why: apiKeyProblem("ANTHROPIC_API_KEY"), setup: true }),
+    )
   })
 
   test("the API key is fine when billing is the API key", async () => {
