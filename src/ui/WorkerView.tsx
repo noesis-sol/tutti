@@ -116,8 +116,14 @@ export { entryId, panelRequests, requestKey, selectable } from "./transcriptView
 /** The most lines of a command's output an expanded item shows. */
 export const outputLines = 400
 
-/** The fewest lines a request's input scrolls in; it gets a quarter of the pane when that's more. */
+/**
+ * The fewest lines a request's input scrolls in while the panel shows more than one; it gets a
+ * quarter of the pane when that's more, and the panel has room.
+ */
 export const inputLines = 3
+
+/** The rows the transcript keeps over the request panel, however tall the panel's requests. */
+export const transcriptRows = 3
 
 /** The selection key of the hand-back notice. */
 const handBackKey = "handback"
@@ -848,21 +854,77 @@ const PanelRequest = ({
   return <PanelBox parts={parts} room={room} press={press} />
 }
 
-/** The panel's requests, each in its box, `width` wide in a pane `height` tall, and how many more. */
+/**
+ * The input rooms, in lines, of the panel's oldest requests whose `parts` fit in `budget` lines, in a
+ * pane `height` tall, `more` others waiting after them: one room a request drawn. Each input scrolls
+ * in a quarter of the pane (`inputLines` at least); where the requests don't fit, their rooms shrink
+ * first, the longest first (the newer of two as long), down to `inputLines`; then the panel draws
+ * fewer, down to one, whose room is what is left, a line at least, and counts the rest under it.
+ */
+export const panelRooms = (
+  parts: ReadonlyArray<PanelParts>,
+  budget: number,
+  height: number,
+  more: number,
+): ReadonlyArray<number> => {
+  const most = Math.max(inputLines, Math.floor(height / 4))
+  for (let shown = parts.length; shown > 0; shown--) {
+    const drawn = parts.slice(0, shown)
+    const counted = more + parts.length - shown > 0 ? 1 : 0
+    const rooms = drawn.map((each) => Math.min(each.input.length, most))
+    const floors = drawn.map((each) => Math.min(each.input.length, shown === 1 ? 1 : inputLines))
+    const used = (lines: ReadonlyArray<number>) =>
+      drawn.reduce((sum, each, i) => sum + each.head.length + (lines[i] ?? 0) + each.foot.length, 0)
+    let over = used(rooms) + counted - budget
+    while (over > 0) {
+      let longest = -1
+      rooms.forEach((room, i) => {
+        if (room > (floors[i] ?? 0) && (longest < 0 || room >= (rooms[longest] ?? 0))) longest = i
+      })
+      if (longest < 0) break
+      rooms[longest] = (rooms[longest] ?? 0) - 1
+      over--
+    }
+    if (over <= 0 || shown === 1) return rooms
+  }
+  return []
+}
+
+/**
+ * The panel's fit, its requests `width` wide in `budget` lines of a pane `height` tall: the input
+ * rooms of the requests it draws (panelRooms), for its oldest `requests`, `more` waiting after them.
+ * A request's parts are worked out once a theme and width (tutti-k2n1); its lines don't change with
+ * its selection or its focused button.
+ */
+export const usePanelRooms = (theme: Theme, width: number, budget: number, height: number) => {
+  const known = useRef({ theme, width, parts: new WeakMap<AttentionRequest, PanelParts>() })
+  if (known.current.theme !== theme || known.current.width !== width)
+    known.current = { theme, width, parts: new WeakMap() }
+  const partsOf = (request: AttentionRequest) => {
+    const found = known.current.parts.get(request)
+    if (found !== undefined) return found
+    const parts = panelParts(request, theme, { width, selected: false, focus: null })
+    known.current.parts.set(request, parts)
+    return parts
+  }
+  return (requests: ReadonlyArray<AttentionRequest>, more: number): ReadonlyArray<number> =>
+    panelRooms(requests.map(partsOf), budget, height, more)
+}
+
+/** The panel's requests, each in its box `width` wide, its input in its room, and how many more. */
 export const RequestPanel = ({
   panel,
   selection,
   width,
-  height,
+  rooms,
 }: {
   readonly panel: Panel
   readonly selection: Selection
   readonly width: number
-  readonly height: number
+  readonly rooms: ReadonlyArray<number>
 }) => {
   const theme = useTheme()
   const { answering } = panel
-  const inputRoom = Math.max(inputLines, Math.floor(height / 4))
   return (
     <>
       {panel.requests.map((request, i) => {
@@ -874,7 +936,7 @@ export const RequestPanel = ({
             width={width}
             selected={selection.selected === requestKey(request)}
             focus={answering.focusOf(at)}
-            room={inputRoom}
+            room={rooms[i] ?? inputLines}
             press={(index) => answering.press(at, index)}
           />
         )
@@ -928,15 +990,34 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     found === undefined,
   )
   const { sends } = transcript
-  const panel = usePanel(card)
   const handBack = ticket !== undefined && handBacks.includes(ticket)
-  const selection = useSelection(transcript, panel, handBack ? [handBackKey] : [])
   const composer = useComposer()
   const input = useInput()
-
   // Once the worker has finished, its card gone, nothing is sent: what you typed stays, and a toast
   // says why (tutti-ceo).
   const finished = found === undefined
+  const inner = Math.max(width, 1)
+  const panelWidth = Math.max(inner - 2, 8)
+  const queued = queuedLines(sends.queued, theme, inner, sends.mark)
+  // The panel has the height the view's other rows leave it, and a few of the transcript's
+  // (tutti-7nzv): the head's first line, the rules, the hand-back, the lines over the composer, the
+  // composer's first line and the hint as it is with requests.
+  const steered = card?.steered === true
+  const others =
+    3 +
+    (handBack ? handBackLines(theme, { width: panelWidth, selected: false }).length : 0) +
+    (holding ? 1 : 0) +
+    (finished || steered ? 1 : 0) +
+    queued.length +
+    1 +
+    hintLines(hintKeys(true, composer.typing, steered, finished), theme, inner).length
+  const rooms = usePanelRooms(theme, panelWidth, height - others - transcriptRows, height)
+  const panel = usePanel(
+    card,
+    (requests, waiting) => rooms(requests, waiting - requests.length).length,
+  )
+  const selection = useSelection(transcript, panel, handBack ? [handBackKey] : [])
+
   const send = (text: string) => {
     if (found === undefined) {
       input.toasts.show(finishedWords(viewed).toast)
@@ -1027,7 +1108,6 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     ],
   })
 
-  const inner = Math.max(width, 1)
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
   const head = (now: number, spin: string): Segments => {
     if (card === undefined) return [seg(`${sanitizeLine(viewed)} has no worker`, theme.styles.dim)]
@@ -1044,7 +1124,6 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
       seg(sanitizeLine(card.title)),
     ]
   }
-  const panelWidth = Math.max(inner - 2, 8)
   const { box } = composer
   return (
     <LooksContext.Provider value={looks}>
@@ -1067,19 +1146,22 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
             press={handBackNow}
           />
         ) : null}
-        <RequestPanel panel={panel} selection={selection} width={panelWidth} height={height} />
+        <RequestPanel
+          panel={panel}
+          selection={selection}
+          width={panelWidth}
+          rooms={rooms(panel.requests, panel.more)}
+        />
         <Line segments={rule} />
         {holding ? (
           <Line segments={heldLine(theme, viewed, found?.phase._tag === "Merging", inner)} />
         ) : null}
         {finished ? (
           <FinishedLine theme={theme} ticket={viewed} width={inner} file={fileAsTicket} />
-        ) : card?.steered === true ? (
+        ) : steered ? (
           <SteeredLine theme={theme} width={inner} release={release} />
         ) : null}
-        {sends.queued.length > 0 ? (
-          <QueuedLines lines={queuedLines(sends.queued, theme, inner, sends.mark)} />
-        ) : null}
+        {queued.length > 0 ? <QueuedLines lines={queued} /> : null}
         <Composer
           theme={theme}
           field={composer.field}
@@ -1089,12 +1171,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           {...(finished ? { placeholder: () => finishedWords(viewed).placeholder } : {})}
         />
         <ViewHint
-          keys={hintKeys(
-            panel.requests.length > 0,
-            composer.typing,
-            card?.steered === true,
-            finished,
-          )}
+          keys={hintKeys(panel.requests.length > 0, composer.typing, steered, finished)}
           width={inner}
         />
         {help ? (

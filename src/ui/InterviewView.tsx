@@ -26,6 +26,7 @@ import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
 import { elapsed, statusLook } from "./Card.tsx"
 import { Composer, QueuedLines, queuedLines } from "./Composer.tsx"
+import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, useInput, useLayer } from "./keys.ts"
 import { Line, roleLook, type Segments, seg } from "./line.tsx"
@@ -43,6 +44,8 @@ import {
   LooksContext,
   RequestPanel,
   TranscriptPane,
+  transcriptRows,
+  usePanelRooms,
   useSyntaxStyles,
   ViewHead,
   ViewHint,
@@ -144,10 +147,26 @@ export const InterviewView = () => {
     card?.state != null && !hasSettled(card.state),
   )
   const { sends } = transcript
-  const panel = usePanel(card)
-  const selection = useSelection(transcript, panel)
   const composer = useComposer()
   const input = useInput()
+  const inner = Math.max(width, 1)
+  const queued = queuedLines(sends.queued, theme, inner)
+  // The panel has the height the view's other rows leave it, and a few of the transcript's
+  // (tutti-7nzv): the head's first line, the rules, the queued lines, the composer's first line and
+  // the hint as it is with a question.
+  const others =
+    3 + queued.length + 1 + hintLines(hintKeys(true, composer.typing), theme, inner).length
+  const rooms = usePanelRooms(
+    theme,
+    Math.max(inner - 2, 8),
+    height - others - transcriptRows,
+    height,
+  )
+  const panel = usePanel(
+    card,
+    (requests, waiting) => rooms(requests, waiting - requests.length).length,
+  )
+  const selection = useSelection(transcript, panel)
   const send = (text: string) => {
     const uuid = crypto.randomUUID()
     sends.sent({ uuid, ticket: interviewWorker, text })
@@ -189,7 +208,6 @@ export const InterviewView = () => {
   )
   const help = useTranscriptKeys({ transcript, panel, selection, composer, back: leave })
 
-  const inner = Math.max(width, 1)
   const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
   const { styles } = theme
   const head = (now: number, spin: string): Segments =>
@@ -224,12 +242,10 @@ export const InterviewView = () => {
           panel={panel}
           selection={selection}
           width={Math.max(inner - 2, 8)}
-          height={height}
+          rooms={rooms(panel.requests, panel.more)}
         />
         <Line segments={rule} />
-        {sends.queued.length > 0 ? (
-          <QueuedLines lines={queuedLines(sends.queued, theme, inner)} />
-        ) : null}
+        {queued.length > 0 ? <QueuedLines lines={queued} /> : null}
         <Composer
           theme={theme}
           field={composer.field}

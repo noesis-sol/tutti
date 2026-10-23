@@ -175,12 +175,25 @@ export interface Panel {
   readonly answering: Answering
 }
 
-/** The panel of `card`'s requests; Answer in view opens the answer form over the view. */
-export const usePanel = (card: Card | undefined): Panel => {
+/**
+ * How many of the panel's oldest `requests` (at most `panelRequests`) the view has room for, `waiting`
+ * open in all; one at least.
+ */
+export type PanelFit = (requests: ReadonlyArray<AttentionRequest>, waiting: number) => number
+
+/**
+ * The panel of `card`'s requests, as many as `fit` has room for; Answer in view opens the answer form
+ * over the view.
+ */
+export const usePanel = (
+  card: Card | undefined,
+  fit: PanelFit = (requests) => requests.length,
+): Panel => {
   const view = useRunView()
   const input = useInput()
   const waiting = card === undefined ? [] : view.requests.filter((r) => r.ticket === card.ticket)
-  const requests = waiting.slice(0, panelRequests)
+  const oldest = waiting.slice(0, panelRequests)
+  const requests = oldest.slice(0, Math.max(fit(oldest, waiting.length), 1))
   const cards: ReadonlyArray<Card> =
     card === undefined ? [] : requests.map((request) => ({ ...card, requests: [request] }))
   const answering = useAnswering(cards, undefined, (request) =>
