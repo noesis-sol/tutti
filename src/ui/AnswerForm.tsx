@@ -261,6 +261,7 @@ const FormBody = ({
           ref={scroll}
           height={bodyHeight}
           flexShrink={0}
+          focusable={false}
           scrollbarOptions={{ visible: false }}
         >
           {form.fields.map((field, f) => {

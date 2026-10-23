@@ -622,7 +622,10 @@ export const panelParts = (
   }
 }
 
-/** A request's box in the panel: its input scrolls in at most `room` lines; buttons are pressed. */
+/**
+ * A request's box in the panel: its input scrolls in at most `room` lines, in a scrollbox that takes
+ * no focus; buttons are pressed.
+ */
 export const PanelBox = ({
   parts,
   room,
@@ -638,6 +641,7 @@ export const PanelBox = ({
       <scrollbox
         height={Math.min(parts.input.length, room)}
         flexShrink={0}
+        focusable={false}
         scrollbarOptions={{ visible: false }}
       >
         <Lines lines={parts.input} />
@@ -777,7 +781,10 @@ export const ViewHead = ({
   )
 }
 
-/** The transcript's items, `width` wide, in a scrollbox that sticks to the bottom. */
+/**
+ * The transcript's items, `width` wide, in a scrollbox that sticks to the bottom. It takes no focus,
+ * so a click on it leaves the composer's where it is (tutti-yzkg).
+ */
 export const TranscriptPane = ({
   transcript,
   selection,
@@ -794,6 +801,7 @@ export const TranscriptPane = ({
       flexGrow={1}
       stickyScroll
       stickyStart="bottom"
+      focusable={false}
       scrollbarOptions={{ visible: false }}
       onMouseScroll={transcript.wheel}
     >

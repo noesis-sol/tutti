@@ -4,7 +4,7 @@
 // the panel (useSelection); the composer (useComposer); and the keys of both (useTranscriptKeys).
 // Each view adds its own: the worker view the hand-back, Ctrl+X and Ctrl+R; the Interview view its
 // leave question.
-import type { MouseEvent, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
+import type { MouseEvent, Renderable, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import { useRenderer } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
@@ -278,9 +278,12 @@ export type Selection = ReturnType<typeof useSelection>
 
 /**
  * The composer: you write in it while it is chosen and no box is open over the view. It takes the
- * focus, or gives it up, as the key is pressed, so that the keys after it go where it says.
+ * focus, or gives it up, as the key is pressed, so that the keys after it go where it says. With no
+ * box open it follows the renderer's focus too: a click that moves the focus elsewhere leaves it, as
+ * the keys go there then (tutti-yzkg), and one on the field chooses it.
  */
 export const useComposer = () => {
+  const renderer = useRenderer()
   const input = useInput()
   const box = useSyncExternalStore(input.box.subscribe, input.box.get)
   const field = useRef<TextareaRenderable>(null)
@@ -290,6 +293,19 @@ export const useComposer = () => {
     if (!on) field.current?.blur()
     else if (input.box.get() === null) field.current?.focus()
   }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: composingNow and setComposingState read and change the value as it is then
+  useEffect(() => {
+    // A blur moves the focus to none, and a box takes it once it is open: neither leaves it.
+    const moved = (next: Renderable | null) => {
+      if (next === null || input.box.get() !== null) return
+      const mine = next === field.current
+      if (mine !== composingNow()) setComposingState(() => mine)
+    }
+    renderer.on("focused_renderable", moved)
+    return () => {
+      renderer.off("focused_renderable", moved)
+    }
+  }, [renderer, input.box])
   return {
     /** The box open over the view, if any. */
     box,
