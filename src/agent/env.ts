@@ -3,10 +3,12 @@
 // whole of tutti's own, adds tutti's variables, and then keeps or removes ANTHROPIC_API_KEY: the
 // key outranks a subscription login and would bill the API without a word. It leaves out the
 // variables naming the terminal pane tutti runs in, and those of a Claude Code session tutti was
-// started from, which its sessions don't own.
+// started from, which its sessions don't own, and git's local variables (src/services/gitEnv.ts),
+// which would have a worker's git act on another repository than its worktree's.
 import { Duration } from "effect"
 import pkg from "../../package.json" with { type: "json" }
 import type { billings } from "../cli/flags.ts"
+import { gitLocalVariable } from "../services/gitEnv.ts"
 
 /** The variable that holds an Anthropic API key. */
 export const apiKeyVariable = "ANTHROPIC_API_KEY"
@@ -152,12 +154,19 @@ export interface WorkerEnvOptions {
  * A worker's (or an organ's) environment: `env` with tutti's variables laid over it, without
  * ANTHROPIC_API_KEY when there is a subscription login and billing isn't api, and given its share
  * of the cores, coreVariables (after the environment's GOFLAGS). Unset variables, the terminal
- * pane's (paneVariable) and a parent Claude Code session's (sessionVariable) are left out.
+ * pane's (paneVariable), a parent Claude Code session's (sessionVariable) and git's local ones
+ * (gitLocalVariable) are left out.
  */
 export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => {
   const result: Record<string, string> = {}
   for (const [name, value] of Object.entries(options.env ?? process.env)) {
-    if (value !== undefined && !paneVariable(name) && !sessionVariable(name)) result[name] = value
+    if (
+      value !== undefined &&
+      !paneVariable(name) &&
+      !sessionVariable(name) &&
+      !gitLocalVariable(name)
+    )
+      result[name] = value
   }
   Object.assign(result, workerVariables(options.version, options.checkTimeout))
   if (options.cores !== undefined)

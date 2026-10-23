@@ -27,6 +27,7 @@ import {
 } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { withoutGitLocal } from "./gitEnv.ts"
 import { startReaper, stopReaper } from "./reaper.ts"
 
 /** orchestra's limits: 30 s for a read, 2 min for a git write or a `bd` update. Checks pass their own. */
@@ -96,7 +97,7 @@ export interface Command {
   readonly args: ReadonlyArray<string>
   readonly timeLimit: Duration.Input
   readonly cwd?: string
-  /** Set over tutti's own environment. */
+  /** Set over tutti's own environment, which goes without git's local variables (gitEnv.ts). */
   readonly env?: Readonly<Record<string, string>>
   /** Written to the command's stdin, which is otherwise closed. */
   readonly stdin?: string
@@ -264,8 +265,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         .spawn(
           ChildProcess.make(command.command, command.args, {
             cwd: command.cwd,
-            env: command.env,
-            extendEnv: true,
+            env: withoutGitLocal(process.env, command.env),
             detached: true,
             killSignal: "SIGTERM",
             forceKillAfter: grace,
