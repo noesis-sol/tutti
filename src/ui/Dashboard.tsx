@@ -12,7 +12,10 @@
 // `+N more` line for those that don't fit even so; nothing of Current draws over the foot. A pane
 // too short for a line each drops the blank line above the load line first, before any line with
 // something on it. Below the minimum size, 60×16 (§ 7.7), only the totals, on one line, and the hint
-// are drawn.
+// are drawn. One function, dashboardLayout, hands out every section's lines in priority order, so
+// that they add up to the pane's height; each section is drawn in its lines and no more (Section).
+// The cards and the idle box run their own clock and spinner, so a tick draws them alone, and
+// none ticks below the minimum size or behind the end-of-run box.
 //
 // The keys (§ 7.3), in the view's input layer (keys.ts): `Tab`, `Shift+Tab` and the arrows move the
 // highlight between cards, `Enter` opens the highlighted card, and a click opens the card under it,
@@ -34,22 +37,29 @@
 // answer there. The box is placed before the tickets table: the table gives up rows for it, down
 // to its fewest, and is left out below them; the box then keeps to the room left (EndOfRunBox.tsx).
 import { useTerminalDimensions } from "@opentui/react"
-import { useCallback, useRef } from "react"
+import { useCallback, useMemo, useRef } from "react"
 import { UiCommand } from "../run/commands.ts"
-import type { Card, Key } from "../run/runView.ts"
+import type { Card, Key, RunView } from "../run/runView.ts"
 import { answerBindings } from "./AttentionCard.tsx"
 import { useAnswering } from "./attentionKeys.ts"
-import { Cards, type CardsLayout, grows, keptLines, layoutOf, sectionLines } from "./Card.tsx"
+import {
+  Cards,
+  type CardsLayout,
+  fewestCurrentLines,
+  grows,
+  keptLines,
+  layoutOf,
+  sectionLines,
+} from "./Card.tsx"
 import { EndOfRunBox, endOfRunLines } from "./EndOfRunBox.tsx"
 import { Hint, hintSegments } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
 import { LoadLine, loadSegments } from "./LoadLine.tsx"
-import { cut, Line, Lines, type Segments, seg } from "./line.tsx"
+import { cut, Lines, Section, type Segments, seg } from "./line.tsx"
 import {
   fewestTableLines,
   rowsBesideCurrent,
-  sectionChrome,
   TicketsTable,
   tableLines,
   ticketsLines,
@@ -58,18 +68,15 @@ import { TitleLine } from "./TitleLine.tsx"
 import { Totals, totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { useCommand, useNow, useRunView, useSpinner, useTheme } from "./useRunView.ts"
+import { useCommand, useRunView, useTheme } from "./useRunView.ts"
 import { WindDown, windDownSegments } from "./WindDown.tsx"
 
 /** The smallest pane the whole dashboard is drawn in (§ 7.7). */
 export const minWidth = 60
 export const minHeight = 16
 
-/** The title line and the blank line above it, and the load line under it. */
-const titleLines = 3
-
-/** The foot's lines besides the warnings: the wind-down line, there or not, and the hint. */
-const footLines = 2
+/** The title line and the blank line above it. */
+const titleLines = 2
 
 /** The warning line's lines, ` ! …` `notice`, one a warning. */
 export const warningLines = (
@@ -79,59 +86,99 @@ export const warningLines = (
 ): ReadonlyArray<Segments> =>
   warnings.map((warning) => cut([seg(` ! ${warning}`, theme.styles.deferred)], width))
 
+/** How the dashboard's lines are handed out (dashboardLayout): each section's, adding up to the pane's. */
+export interface DashboardLayout {
+  /** Below the minimum size (§ 7.7): only the totals, on one line, and the hint are drawn. */
+  readonly small: boolean
+  /** The title line and the blank line above it; none when small. */
+  readonly title: number
+  /** The load line; none when small. */
+  readonly load: number
+  /** The blank line between the title line and the load line: 1, or 0 where the pane is short. */
+  readonly gap: number
+  /** The totals' lines that fit. */
+  readonly totals: ReadonlyArray<Segments>
+  /** The tickets table's lines, its label and frame included; 0 where it is left out. */
+  readonly table: number
+  /** The lines of Current, its label included, or of the end-of-run box in its place. */
+  readonly current: number
+  /** How Current is laid out in them: Compact behind the end-of-run box and when small. */
+  readonly cards: CardsLayout
+  /** The end-of-run box's lines, kept to `current`; null with no box. */
+  readonly ending: ReadonlyArray<Segments> | null
+  /** The blank lines between the sections and the foot. */
+  readonly spare: number
+  /** The wind-down line's: 1, there or not, so the table stays put as it comes; none when small. */
+  readonly windDown: number
+  /** The warning lines that fit. */
+  readonly warnings: ReadonlyArray<Segments>
+  /** The hint's line. */
+  readonly hint: number
+}
+
 /**
- * The lines the tickets table takes in a pane `height` tall and `width` wide: what the title line,
- * the blank line under it, `totals` lines of totals, `foot` lines at the foot and the lines Current
- * is kept for `slots` workers and `cards` cards leave it.
+ * The dashboard's lines in a pane `width` × `height`, handed out in priority order, each section
+ * as many as it needs of what is left, so that they add up to `height` (§ 7.2, § 7.7): the hint,
+ * the title and load lines, the totals, the wind-down line, Current at its fewest (a line in its
+ * box) or the end-of-run box's, the warnings, then Current kept a line for each worker or card, or
+ * the box whole; then the tickets table, as tall as what Current is kept leaves it (keptLines,
+ * tableLines), or left out where that doesn't fit (beside the box, where its fewest don't); then
+ * the blank line over the load line, the first to go, before any line with something on it; and
+ * Current, or the box, takes the rest. Below the minimum size, the hint and the totals on one line.
  */
-export const tableHeight = (
-  height: number,
+export const dashboardLayout = (
+  view: RunView,
+  theme: Theme,
   width: number,
-  totals: number,
-  slots: number,
-  foot: number,
-  cards: number,
-): number => tableLines(height - titleLines - 1 - totals - foot, keptLines(width, slots, cards))
-
-/**
- * Whether a pane `height` tall has room for `table` lines of tickets table, besides what it always
- * shows and a line for each of `lines` workers or cards.
- */
-export const showsTable = (
   height: number,
-  totals: number,
-  lines: number,
-  foot: number,
-  table: number,
-): boolean => titleLines + totals + Math.max(lines, 1) + sectionChrome + foot + table <= height
-
-/**
- * Whether a pane `height` tall has room for the blank line between the title line and the load
- * line, besides the rest, `table` lines of tickets table among them, and a line for each of `lines`
- * workers or cards.
- */
-export const showsGap = (
-  height: number,
-  totals: number,
-  table: number,
-  lines: number,
-  foot: number,
-): boolean => titleLines + 1 + totals + table + Math.max(lines, 1) + sectionChrome + foot <= height
-
-/**
- * The lines the tickets table keeps beside the end-of-run box, `box` lines of it, in a pane
- * `height` tall: what the box leaves of the table's `tall` lines, none when that is fewer than the
- * table's fewest.
- */
-export const tableBesideBox = (
-  height: number,
-  totals: number,
-  foot: number,
-  tall: number,
-  box: number,
-): number => {
-  const lines = Math.min(tall, height - titleLines - totals - foot - box)
-  return lines >= fewestTableLines ? lines : 0
+): DashboardLayout => {
+  let rest = Math.max(height, 0)
+  // A section's lines: as many as it needs of those left.
+  const take = (lines: number): number => {
+    const got = Math.min(Math.max(lines, 0), rest)
+    rest -= got
+    return got
+  }
+  const small = width < minWidth || height < minHeight
+  const hint = take(1)
+  const allTotals = totalsLines(view.totals, theme, width, small)
+  if (small) {
+    const totals = allTotals.slice(0, take(allTotals.length))
+    const cards: CardsLayout = { _tag: "Compact" }
+    const none = { title: 0, load: 0, gap: 0, table: 0, current: 0, windDown: 0 }
+    return { ...none, small, totals, cards, ending: null, spare: rest, warnings: [], hint }
+  }
+  const title = take(titleLines)
+  const load = take(1)
+  const totals = allTotals.slice(0, take(allTotals.length))
+  const windDown = take(1)
+  const { cards } = view
+  const slots = view.totals.slots
+  const whole = view.endOfRun === null ? null : endOfRunLines(view.endOfRun, theme, width)
+  // Current is kept a line for each worker, or each card where tickets merging without a slot
+  // make them more; the end-of-run box in its place, its lines whole.
+  const least = whole?.length ?? sectionLines({ _tag: "Compact" }, Math.max(slots, cards.length, 1))
+  const fewest = take(Math.min(least, fewestCurrentLines))
+  const allWarnings = warningLines(view.warnings, theme, width)
+  const warnings = allWarnings.slice(0, take(allWarnings.length))
+  const kept = fewest + take(least - fewest)
+  // The table is as tall as Current's kept lines leave it, the blank line over the load line
+  // counted out, so that it stays put as workers come and go.
+  const tall = tableLines(rest + kept - 1, keptLines(width, slots, cards.length))
+  const fits = whole === null ? tall <= rest : Math.min(tall, rest) >= fewestTableLines
+  const table = fits ? take(tall) : 0
+  const gap = take(1)
+  const room = kept + take(rest)
+  const drawn = { small, title, load, gap, totals, table, windDown, warnings, hint }
+  if (view.endOfRun !== null && whole !== null) {
+    // The box keeps to the room left, naming fewer workers, but always saying what q does.
+    const ending = whole.length <= room ? whole : endOfRunLines(view.endOfRun, theme, width, room)
+    const compact: CardsLayout = { _tag: "Compact" }
+    return { ...drawn, current: ending.length, cards: compact, ending, spare: room - ending.length }
+  }
+  const layout = layoutOf(cards, width, room)
+  const current = Math.min(sectionLines(layout, cards.length), room)
+  return { ...drawn, current, cards: layout, ending: null, spare: room - current }
 }
 
 /**
@@ -156,7 +203,6 @@ export const moveHighlight = (
 export const Dashboard = () => {
   const view = useRunView()
   const theme = useTheme()
-  const now = useNow()
   const command = useCommand()
   const { width, height } = useTerminalDimensions()
   // The highlight names a ticket; a card that has gone takes it with it. It is key state, so that
@@ -170,39 +216,16 @@ export const Dashboard = () => {
   const current = () => (cards.some((card) => card.ticket === chosen()) ? chosen() : target)
   const highlighted = current()
   const choose = (ticket: string | null) => setChosen(() => ticket)
-  const spin = useSpinner(cards.length === 0 || cards.some((card) => card.motion === "spinner"))
   const open = useCallback((ticket: string) => command(UiCommand.OpenWorker({ ticket })), [command])
 
-  const small = width < minWidth || height < minHeight
-  const totals = totalsLines(view.totals, theme, width, small)
-  const warnings = warningLines(view.warnings, theme, width)
-  const foot = footLines + warnings.length
-  const slots = view.totals.slots
-  const tall = tableHeight(height, width, totals.length, slots, foot, cards.length)
-  // A line for each worker, or each card where tickets merging without a slot make them more.
-  const lines = Math.max(slots, cards.length)
-  // The end-of-run box, whole: the tickets table gives up rows for it.
-  const whole = view.endOfRun === null ? null : endOfRunLines(view.endOfRun, theme, width)
-  const shown = showsTable(height, totals.length, lines, foot, tall) ? tall : 0
-  const tableRows =
-    whole === null ? shown : tableBesideBox(height, totals.length, foot, shown, whole.length)
-  const table = tableRows > 0
-  const gap =
-    whole === null
-      ? showsGap(height, totals.length, tableRows, lines, foot)
-      : titleLines + 1 + totals.length + tableRows + whole.length + foot <= height
-  const room = height - titleLines - (gap ? 1 : 0) - totals.length - tableRows - foot
-  // The box keeps to the room left, naming fewer workers, but always saying what q does.
-  const ending =
-    view.endOfRun === null || whole === null
-      ? null
-      : whole.length <= room
-        ? whole
-        : endOfRunLines(view.endOfRun, theme, width, Math.max(room, 0))
+  const laid = useMemo(
+    () => dashboardLayout(view, theme, width, height),
+    [view, theme, width, height],
+  )
+  const { small, ending } = laid
   // Behind the end-of-run box no card's buttons are drawn: Enter opens the Answer box, as on a
   // compact line.
-  const layout: CardsLayout =
-    small || ending !== null ? { _tag: "Compact" } : layoutOf(cards, width, room)
+  const layout = laid.cards
   // Only the full cards draw a request's buttons: the answer keys and the guard are theirs alone.
   const buttons = layout._tag === "Cards"
   const answering = useAnswering(buttons ? cards : [])
@@ -272,52 +295,62 @@ export const Dashboard = () => {
   if (small) {
     return (
       <box flexDirection="column" width={width} height={height}>
-        <Totals lines={totals} />
-        <box flexGrow={1} />
-        <Hint segments={hint} />
+        <Section lines={laid.totals.length}>
+          <Totals lines={laid.totals} />
+        </Section>
+        <Section lines={laid.spare} />
+        <Section lines={laid.hint}>
+          <Hint segments={hint} />
+        </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} /> : null}
       </box>
     )
   }
   return (
     <box flexDirection="column" width={width} height={height}>
-      <TitleLine width={width} />
-      {gap ? <Line segments={[]} /> : null}
-      <LoadLine segments={loadSegments(view.totals, view.load, theme, width)} />
-      <Totals lines={totals} />
-      {table ? <TicketsTable lines={ticketsLines(rows, theme, width, tableRows)} /> : null}
-      {ending !== null ? (
-        <box height={ending.length} flexShrink={0}>
+      <Section lines={laid.title}>
+        <TitleLine width={width} />
+      </Section>
+      <Section lines={laid.gap} />
+      <Section lines={laid.load}>
+        <LoadLine segments={loadSegments(view.totals, view.load, theme, width)} />
+      </Section>
+      <Section lines={laid.totals.length}>
+        <Totals lines={laid.totals} />
+      </Section>
+      <Section lines={laid.table}>
+        <TicketsTable lines={ticketsLines(rows, theme, width, laid.table)} />
+      </Section>
+      <Section lines={laid.current}>
+        {ending !== null ? (
           <EndOfRunBox lines={ending} />
-        </box>
-      ) : (
-        <box
-          height={Math.min(sectionLines(layout, cards.length), Math.max(room, 0))}
-          flexShrink={0}
-          overflow="hidden"
-        >
+        ) : (
           <Cards
             cards={cards}
             theme={theme}
             layout={layout}
             width={width}
-            room={Math.max(room, 0)}
-            now={now}
-            spin={spin}
+            room={laid.current}
             stopping={view.title.stopping || view.windDown !== null}
             highlighted={highlighted}
             open={open}
             focusOf={answering.focusOf}
             press={answering.press}
           />
-        </box>
-      )}
-      <box flexGrow={1} />
-      {view.windDown === null ? null : (
-        <WindDown segments={windDownSegments(view.windDown, theme, width)} />
-      )}
-      <Lines lines={warnings} />
-      <Hint segments={hint} />
+        )}
+      </Section>
+      <Section lines={laid.spare} />
+      <Section lines={laid.windDown}>
+        {view.windDown === null ? null : (
+          <WindDown segments={windDownSegments(view.windDown, theme, width)} />
+        )}
+      </Section>
+      <Section lines={laid.warnings.length}>
+        <Lines lines={laid.warnings} />
+      </Section>
+      <Section lines={laid.hint}>
+        <Hint segments={hint} />
+      </Section>
       {help ? <KeyHelp theme={theme} width={width} height={height} /> : null}
     </box>
   )

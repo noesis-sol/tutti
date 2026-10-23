@@ -47,7 +47,16 @@ import {
   type TreeSitterClient,
 } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from "react"
+import {
+  createContext,
+  memo,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
@@ -80,6 +89,7 @@ import {
   padded,
   plainFg,
   roleLook,
+  Section,
   type Segments,
   seg,
   styled,
@@ -126,6 +136,82 @@ export const inputLines = 3
 
 /** The rows the transcript keeps over the request panel, however tall the panel's requests. */
 export const transcriptRows = 3
+
+/**
+ * The lines of a transcript view's parts but the transcript and the request panel: the head, the
+ * hand-back notice, the held line, the finished or steered line, the queued messages, the composer
+ * and the hint. The Interview view has no hand-back, held or steered line.
+ */
+export interface ViewChrome {
+  readonly head: number
+  readonly handBack: number
+  readonly held: number
+  readonly line: number
+  readonly queued: number
+  readonly composer: number
+  readonly hint: number
+}
+
+/** A transcript view's lines, part by part, adding up to the pane's (viewLayout). */
+export interface ViewLayout extends ViewChrome {
+  /** The rules under the head and over the composer's lines: a line each. */
+  readonly rules: readonly [number, number]
+  readonly transcript: number
+  readonly panel: number
+}
+
+/** The rules' lines, under the head and over the composer's. */
+const ruleLines = 2
+
+/**
+ * The lines the request panel may take in a pane `height` tall: what `chrome`, the rules and the
+ * transcript's `transcriptRows` leave it (tutti-7nzv).
+ */
+export const panelBudget = (height: number, chrome: ViewChrome): number =>
+  height -
+  ruleLines -
+  transcriptRows -
+  Object.values(chrome).reduce((sum: number, lines: number) => sum + lines, 0)
+
+/**
+ * A transcript view's lines in a pane `height` tall, handed out in priority order, each part as
+ * many as it needs of what is left, so that they add up to `height`: the hint, the head, the
+ * rules, the composer, the finished or steered line, the held line, the queued messages and the
+ * hand-back notice, then the transcript's `transcriptRows`, then the `panel` lines the request
+ * panel takes (panelBudget's at most, but for one request too tall for it), and the transcript the
+ * rest.
+ */
+export const viewLayout = (height: number, chrome: ViewChrome, panel: number): ViewLayout => {
+  let rest = Math.max(height, 0)
+  const take = (lines: number): number => {
+    const got = Math.min(Math.max(lines, 0), rest)
+    rest -= got
+    return got
+  }
+  const hint = take(chrome.hint)
+  const head = take(chrome.head)
+  const rules = [take(1), take(1)] as const
+  const composer = take(chrome.composer)
+  const line = take(chrome.line)
+  const held = take(chrome.held)
+  const queued = take(chrome.queued)
+  const handBack = take(chrome.handBack)
+  const kept = take(transcriptRows)
+  const panelLines = take(panel)
+  const transcript = kept + take(rest)
+  return {
+    head,
+    handBack,
+    held,
+    line,
+    queued,
+    composer,
+    hint,
+    rules,
+    transcript,
+    panel: panelLines,
+  }
+}
 
 /** The selection key of the hand-back notice. */
 const handBackKey = "handback"
@@ -810,6 +896,22 @@ export const ViewHead = ({
 }
 
 /**
+ * The transcript's part of a view, `lines` tall: mounted even with none, so that its scrollbox keeps
+ * its place while a short pane leaves it no lines.
+ */
+export const TranscriptSection = ({
+  lines,
+  children,
+}: {
+  readonly lines: number
+  readonly children: ReactNode
+}) => (
+  <box flexDirection="column" height={Math.max(lines, 0)} flexShrink={0} overflow="hidden">
+    {children}
+  </box>
+)
+
+/**
  * The transcript's items, `width` wide, in a scrollbox that sticks to the bottom. It takes no focus,
  * so a click on it leaves the composer's where it is (tutti-yzkg).
  */
@@ -925,7 +1027,8 @@ export const panelRooms = (
 
 /**
  * The panel's fit, its requests `width` wide in `budget` lines of a pane `height` tall: the input
- * rooms of the requests it draws (panelRooms), for its oldest `requests`, `more` waiting after them.
+ * rooms of the requests it draws (panelRooms), for its oldest `requests`, `more` waiting after them,
+ * and the lines it takes with them drawn.
  * A request's parts are worked out once a theme and width (tutti-k2n1); its lines don't change with
  * its selection or its focused button.
  */
@@ -940,8 +1043,20 @@ export const usePanelRooms = (theme: Theme, width: number, budget: number, heigh
     known.current.parts.set(request, parts)
     return parts
   }
-  return (requests: ReadonlyArray<AttentionRequest>, more: number): ReadonlyArray<number> =>
+  const rooms = (requests: ReadonlyArray<AttentionRequest>, more: number): ReadonlyArray<number> =>
     panelRooms(requests.map(partsOf), budget, height, more)
+  /** The lines the panel takes with `requests` drawn, `more` counted under them. */
+  const lines = (requests: ReadonlyArray<AttentionRequest>, more: number): number => {
+    const roomed = rooms(requests, more)
+    return (
+      requests.reduce((sum, request, i) => {
+        const parts = partsOf(request)
+        const input = Math.max(Math.min(parts.input.length, roomed[i] ?? inputLines), 0)
+        return sum + parts.head.length + input + parts.foot.length
+      }, 0) + (more > 0 ? 1 : 0)
+    )
+  }
+  return { rooms, lines }
 }
 
 /** The panel's requests, each in its box `width` wide, its input in its room, and how many more. */
@@ -1032,24 +1147,28 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const inner = Math.max(width, 1)
   const panelWidth = Math.max(inner - 2, 8)
   const queued = queuedLines(sends.queued, theme, inner, sends.mark)
-  // The panel has the height the view's other rows leave it, and a few of the transcript's
-  // (tutti-7nzv): the head, the rules, the hand-back, the lines over the composer, the composer and
-  // the hint as it is with requests.
+  // The panel has the height the view's other parts leave it, and a few of the transcript's
+  // (tutti-7nzv), the hint as it is with requests.
   const [headLines, setHeadLines] = useState(1)
   const steered = card?.steered === true
-  const others =
-    headLines +
-    2 +
-    (handBack ? handBackLines(theme, { width: panelWidth, selected: false }).length : 0) +
-    (holding ? 1 : 0) +
-    (finished || steered ? 1 : 0) +
-    queued.length +
-    composer.lines +
-    hintLines(hintKeys(true, composer.typing, steered, finished), theme, inner).length
-  const rooms = usePanelRooms(theme, panelWidth, height - others - transcriptRows, height)
+  const chrome = (requests: boolean): ViewChrome => ({
+    head: headLines,
+    handBack: handBack ? handBackLines(theme, { width: panelWidth, selected: false }).length : 0,
+    held: holding ? 1 : 0,
+    line: finished || steered ? 1 : 0,
+    queued: queued.length,
+    composer: composer.lines,
+    hint: hintLines(hintKeys(requests, composer.typing, steered, finished), theme, inner).length,
+  })
+  const fit = usePanelRooms(theme, panelWidth, panelBudget(height, chrome(true)), height)
   const panel = usePanel(
     card,
-    (requests, waiting) => rooms(requests, waiting - requests.length).length,
+    (requests, waiting) => fit.rooms(requests, waiting - requests.length).length,
+  )
+  const laid = viewLayout(
+    height,
+    chrome(panel.requests.length > 0),
+    fit.lines(panel.requests, panel.more),
   )
   const selection = useSelection(transcript, panel, handBack ? [handBackKey] : [])
 
@@ -1163,17 +1282,23 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   return (
     <LooksContext.Provider value={looks}>
       <box flexDirection="column" width={width} height={height}>
-        <ViewHead
-          link=" ← Dashboard"
-          leave={close}
-          head={head}
-          spinning={!finished && card?.motion === "spinner"}
-          width={inner}
-          counted={setHeadLines}
-        />
-        <Line segments={rule} />
-        <TranscriptPane transcript={transcript} selection={selection} width={inner} />
-        {handBack ? (
+        <Section lines={laid.head}>
+          <ViewHead
+            link=" ← Dashboard"
+            leave={close}
+            head={head}
+            spinning={!finished && card?.motion === "spinner"}
+            width={inner}
+            counted={setHeadLines}
+          />
+        </Section>
+        <Section lines={laid.rules[0]}>
+          <Line segments={rule} />
+        </Section>
+        <TranscriptSection lines={laid.transcript}>
+          <TranscriptPane transcript={transcript} selection={selection} width={inner} />
+        </TranscriptSection>
+        <Section lines={laid.handBack}>
           <AttentionLines
             lines={handBackLines(theme, {
               width: panelWidth,
@@ -1181,37 +1306,49 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
             })}
             press={handBackNow}
           />
-        ) : null}
-        <RequestPanel
-          panel={panel}
-          selection={selection}
-          width={panelWidth}
-          rooms={rooms(panel.requests, panel.more)}
-        />
-        <Line segments={rule} />
-        {holding ? (
+        </Section>
+        <Section lines={laid.panel}>
+          <RequestPanel
+            panel={panel}
+            selection={selection}
+            width={panelWidth}
+            rooms={fit.rooms(panel.requests, panel.more)}
+          />
+        </Section>
+        <Section lines={laid.rules[1]}>
+          <Line segments={rule} />
+        </Section>
+        <Section lines={laid.held}>
           <Line segments={heldLine(theme, viewed, found?.phase._tag === "Merging", inner)} />
-        ) : null}
-        {finished ? (
-          <FinishedLine theme={theme} ticket={viewed} width={inner} file={fileAsTicket} />
-        ) : steered ? (
-          <SteeredLine theme={theme} width={inner} release={release} />
-        ) : null}
-        {queued.length > 0 ? <QueuedLines lines={queued} /> : null}
-        <Composer
-          theme={theme}
-          field={composer.field}
-          lines={composer.lines}
-          setLines={composer.setLines}
-          focused={composer.typing}
-          focus={() => composer.setComposing(true)}
-          send={send}
-          {...(finished ? { placeholder: () => finishedWords(viewed).placeholder } : {})}
-        />
-        <ViewHint
-          keys={hintKeys(panel.requests.length > 0, composer.typing, steered, finished)}
-          width={inner}
-        />
+        </Section>
+        <Section lines={laid.line}>
+          {finished ? (
+            <FinishedLine theme={theme} ticket={viewed} width={inner} file={fileAsTicket} />
+          ) : (
+            <SteeredLine theme={theme} width={inner} release={release} />
+          )}
+        </Section>
+        <Section lines={laid.queued}>
+          <QueuedLines lines={queued} />
+        </Section>
+        <Section lines={laid.composer}>
+          <Composer
+            theme={theme}
+            field={composer.field}
+            lines={composer.lines}
+            setLines={composer.setLines}
+            focused={composer.typing}
+            focus={() => composer.setComposing(true)}
+            send={send}
+            {...(finished ? { placeholder: () => finishedWords(viewed).placeholder } : {})}
+          />
+        </Section>
+        <Section lines={laid.hint}>
+          <ViewHint
+            keys={hintKeys(panel.requests.length > 0, composer.typing, steered, finished)}
+            width={inner}
+          />
+        </Section>
         {help ? (
           <KeyHelp theme={theme} width={width} height={height} keys={workerViewKeys} />
         ) : null}

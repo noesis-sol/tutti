@@ -29,7 +29,7 @@ import { Composer, QueuedLines, queuedLines } from "./Composer.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, useInput, useLayer } from "./keys.ts"
-import { Line, roleLook, type Segments, seg } from "./line.tsx"
+import { Line, roleLook, Section, type Segments, seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { sanitizeLine } from "./sanitize.ts"
 import {
@@ -42,13 +42,16 @@ import {
 import { type External, useCommand, useRunView, useTheme } from "./useRunView.ts"
 import {
   LooksContext,
+  panelBudget,
   RequestPanel,
   TranscriptPane,
-  transcriptRows,
+  TranscriptSection,
   usePanelRooms,
   useSyntaxStyles,
+  type ViewChrome,
   ViewHead,
   ViewHint,
+  viewLayout,
 } from "./WorkerView.tsx"
 
 /** What the Interview view reads besides the shell: the description, and what has been filed. */
@@ -151,25 +154,27 @@ export const InterviewView = () => {
   const input = useInput()
   const inner = Math.max(width, 1)
   const queued = queuedLines(sends.queued, theme, inner)
-  // The panel has the height the view's other rows leave it, and a few of the transcript's
-  // (tutti-7nzv): the head, the rules, the queued lines, the composer and the hint as it is with a
-  // question.
+  // The panel has the height the view's other parts leave it, and a few of the transcript's
+  // (tutti-7nzv), the hint as it is with a question.
   const [headLines, setHeadLines] = useState(1)
-  const others =
-    headLines +
-    2 +
-    queued.length +
-    composer.lines +
-    hintLines(hintKeys(true, composer.typing), theme, inner).length
-  const rooms = usePanelRooms(
+  const chrome = (question: boolean): ViewChrome => ({
+    head: headLines,
+    handBack: 0,
+    held: 0,
+    line: 0,
+    queued: queued.length,
+    composer: composer.lines,
+    hint: hintLines(hintKeys(question, composer.typing), theme, inner).length,
+  })
+  const fit = usePanelRooms(
     theme,
     Math.max(inner - 2, 8),
-    height - others - transcriptRows,
+    panelBudget(height, chrome(true)),
     height,
   )
   const panel = usePanel(
     card,
-    (requests, waiting) => rooms(requests, waiting - requests.length).length,
+    (requests, waiting) => fit.rooms(requests, waiting - requests.length).length,
   )
   const selection = useSelection(transcript, panel)
   const send = (text: string) => {
@@ -230,39 +235,56 @@ export const InterviewView = () => {
           seg(sanitizeLine(card.title)),
         ]
   const question = panel.requests.some((request) => request.kind._tag === "Question")
+  const laid = viewLayout(height, chrome(question), fit.lines(panel.requests, panel.more))
   const { box } = composer
   return (
     <LooksContext.Provider value={looks}>
       <box flexDirection="column" width={width} height={height}>
-        <ViewHead
-          link={backLink}
-          leave={leave}
-          head={head}
-          spinning={card?.motion === "spinner"}
-          width={inner}
-          counted={setHeadLines}
-        />
-        <Line segments={rule} />
-        <TranscriptPane transcript={transcript} selection={selection} width={inner} />
-        <RequestPanel
-          panel={panel}
-          selection={selection}
-          width={Math.max(inner - 2, 8)}
-          rooms={rooms(panel.requests, panel.more)}
-        />
-        <Line segments={rule} />
-        {queued.length > 0 ? <QueuedLines lines={queued} /> : null}
-        <Composer
-          theme={theme}
-          field={composer.field}
-          lines={composer.lines}
-          setLines={composer.setLines}
-          focused={composer.typing}
-          focus={() => composer.setComposing(true)}
-          send={send}
-          placeholder={answerPlaceholder}
-        />
-        <ViewHint keys={hintKeys(question, composer.typing)} width={inner} />
+        <Section lines={laid.head}>
+          <ViewHead
+            link={backLink}
+            leave={leave}
+            head={head}
+            spinning={card?.motion === "spinner"}
+            width={inner}
+            counted={setHeadLines}
+          />
+        </Section>
+        <Section lines={laid.rules[0]}>
+          <Line segments={rule} />
+        </Section>
+        <TranscriptSection lines={laid.transcript}>
+          <TranscriptPane transcript={transcript} selection={selection} width={inner} />
+        </TranscriptSection>
+        <Section lines={laid.panel}>
+          <RequestPanel
+            panel={panel}
+            selection={selection}
+            width={Math.max(inner - 2, 8)}
+            rooms={fit.rooms(panel.requests, panel.more)}
+          />
+        </Section>
+        <Section lines={laid.rules[1]}>
+          <Line segments={rule} />
+        </Section>
+        <Section lines={laid.queued}>
+          <QueuedLines lines={queued} />
+        </Section>
+        <Section lines={laid.composer}>
+          <Composer
+            theme={theme}
+            field={composer.field}
+            lines={composer.lines}
+            setLines={composer.setLines}
+            focused={composer.typing}
+            focus={() => composer.setComposing(true)}
+            send={send}
+            placeholder={answerPlaceholder}
+          />
+        </Section>
+        <Section lines={laid.hint}>
+          <ViewHint keys={hintKeys(question, composer.typing)} width={inner} />
+        </Section>
         {help ? (
           <KeyHelp theme={theme} width={width} height={height} keys={interviewViewKeys} />
         ) : null}

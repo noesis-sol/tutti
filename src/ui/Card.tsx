@@ -33,6 +33,7 @@ import {
   widthOf,
 } from "./line.tsx"
 import type { Theme } from "./theme.ts"
+import { useNow, useSpinner } from "./useRunView.ts"
 
 /** From this many columns the cards go two to a row (§ 7.2). */
 export const twoUpWidth = 120
@@ -42,6 +43,12 @@ export const labelLines = 1
 
 /** The lines of the box with no worker in it: its frame and its line. */
 export const idleLines = 3
+
+/**
+ * The fewest lines the Current section is drawn in: its label and a box with a line in it, the idle
+ * box or the compact box with only its `+N more` line.
+ */
+export const fewestCurrentLines = labelLines + 3
 
 /** The workers the dashboard keeps Current room for a full card each, as many as the run may have. */
 export const keptCards = 6
@@ -435,15 +442,105 @@ export const keptLines = (width: number, slots: number, cards: number): number =
   )
 }
 
-/** The Current section: its label, then the cards as `layout` lays them out. */
+/**
+ * The box with no worker in it, its spinner turning: it runs the spinner itself, so that nothing
+ * over it is drawn anew ten times a second (tutti-axpo.5).
+ */
+const IdleBox = ({
+  stopping,
+  theme,
+  width,
+}: {
+  readonly stopping: boolean
+  readonly theme: Theme
+  readonly width: number
+}) => <Lines lines={idleBox(stopping, theme, useSpinner(true), width)} />
+
+/**
+ * The compact box in `lines` lines, its frame included, a click on a card's line opening its worker;
+ * its clock and spinner run here, the spinner while any of its cards works.
+ */
+const CompactBox = ({
+  cards,
+  theme,
+  width,
+  lines,
+  highlighted,
+  open,
+}: {
+  readonly cards: ReadonlyArray<Card>
+  readonly theme: Theme
+  readonly width: number
+  readonly lines: number
+  readonly highlighted: string | null
+  readonly open: (ticket: string) => void
+}) => {
+  const now = useNow()
+  const spin = useSpinner(cards.some((card) => card.motion === "spinner"))
+  const drawn = compactLines(cards, theme, { now, spin, width, highlighted, lines })
+  const shown = compactShown(cards, highlighted, lines)
+  return drawn.map((line, i) => {
+    const card = shown[i - 1]
+    return (
+      <box
+        // biome-ignore lint/suspicious/noArrayIndexKey: the box's lines are drawn anew in order
+        key={i}
+        height={1}
+        {...(card === undefined ? {} : clickable(() => open(card.ticket)))}
+      >
+        <Lines lines={[line]} />
+      </box>
+    )
+  })
+}
+
+/**
+ * A full card `width` wide, an attention card with its request's buttons: its clock and spinner run
+ * here, the spinner while its worker works, so that a tick draws this card anew and nothing else.
+ */
+const CardBox = ({
+  card,
+  theme,
+  width,
+  inside,
+  highlighted,
+  focus,
+  press,
+}: {
+  readonly card: Card
+  readonly theme: Theme
+  readonly width: number
+  readonly inside: number
+  readonly highlighted: boolean
+  readonly focus: number | null
+  readonly press: (index: number) => void
+}) => {
+  const now = useNow()
+  const spin = useSpinner(card.motion === "spinner")
+  return grows(card) ? (
+    <AttentionLines
+      lines={attentionLines(card, theme, contentOf(card, theme, now, spin).slice(0, 2), {
+        width,
+        highlighted,
+        focus,
+      })}
+      press={press}
+    />
+  ) : (
+    <Lines lines={cardLines(card, theme, { now, spin, width, inside, highlighted })} />
+  )
+}
+
+/**
+ * The Current section: its label, then the cards as `layout` lays them out. Each card, the compact
+ * box and the idle box run their own clock and spinner (tutti-axpo.5).
+ */
 export const Cards = ({
   cards,
   theme,
   layout,
   width,
   room,
-  now,
-  spin,
   stopping,
   highlighted,
   open,
@@ -456,8 +553,6 @@ export const Cards = ({
   readonly width: number
   /** The section's lines, its label included: the compact box keeps within them. */
   readonly room: number
-  readonly now: number
-  readonly spin: string
   readonly stopping: boolean
   /** The highlighted card's ticket. */
   readonly highlighted: string | null
@@ -474,32 +569,23 @@ export const Cards = ({
       return (
         <box flexDirection="column" flexShrink={0}>
           {label}
-          <Lines lines={idleBox(stopping, theme, spin, width)} />
+          <IdleBox stopping={stopping} theme={theme} width={width} />
         </box>
       )
-    case "Compact": {
-      const box = room - labelLines
-      const lines = compactLines(cards, theme, { now, spin, width, highlighted, lines: box })
-      const shown = compactShown(cards, highlighted, box)
+    case "Compact":
       return (
         <box flexDirection="column" flexShrink={0}>
           {label}
-          {lines.map((line, i) => {
-            const card = shown[i - 1]
-            return (
-              <box
-                // biome-ignore lint/suspicious/noArrayIndexKey: the box's lines are drawn anew in order
-                key={i}
-                height={1}
-                {...(card === undefined ? {} : clickable(() => open(card.ticket)))}
-              >
-                <Lines lines={[line]} />
-              </box>
-            )
-          })}
+          <CompactBox
+            cards={cards}
+            theme={theme}
+            width={width}
+            lines={room - labelLines}
+            highlighted={highlighted}
+            open={open}
+          />
         </box>
       )
-    }
     case "Cards": {
       const rows: Array<ReadonlyArray<Card>> = []
       for (let i = 0; i < cards.length; i += layout.across) {
@@ -515,7 +601,6 @@ export const Cards = ({
               <box key={row[0]?.ticket ?? ""} flexDirection="row" height={tall}>
                 {row.map((card, i) => {
                   const w = i === 0 ? first : width - first
-                  const lit = card.ticket === highlighted
                   return (
                     <box
                       key={card.ticket}
@@ -523,27 +608,15 @@ export const Cards = ({
                       height={tall}
                       {...clickable(() => open(card.ticket))}
                     >
-                      {grows(card) ? (
-                        <AttentionLines
-                          lines={attentionLines(
-                            card,
-                            theme,
-                            contentOf(card, theme, now, spin).slice(0, 2),
-                            { width: w, highlighted: lit, focus: focusOf(card) },
-                          )}
-                          press={(index) => press(card, index)}
-                        />
-                      ) : (
-                        <Lines
-                          lines={cardLines(card, theme, {
-                            now,
-                            spin,
-                            width: w,
-                            inside: layout.inside,
-                            highlighted: lit,
-                          })}
-                        />
-                      )}
+                      <CardBox
+                        card={card}
+                        theme={theme}
+                        width={w}
+                        inside={layout.inside}
+                        highlighted={card.ticket === highlighted}
+                        focus={focusOf(card)}
+                        press={(index) => press(card, index)}
+                      />
                     </box>
                   )
                 })}

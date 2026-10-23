@@ -12,9 +12,9 @@ import { type Activity, Outcome, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
-import { tableHeight, warningLines } from "../src/ui/Dashboard.tsx"
+import { dashboardLayout, warningLines } from "../src/ui/Dashboard.tsx"
 import { widthOf } from "../src/ui/line.tsx"
-import { ticketsLines } from "../src/ui/TicketsTable.tsx"
+import { fewestTableLines, ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { totalsLines } from "../src/ui/Totals.tsx"
 import { type Appearance, makeTheme, orchestra, type StyleName } from "../src/ui/theme.ts"
@@ -456,10 +456,11 @@ describe("the tickets table", () => {
 
   test("its height is what Current is kept leaves, and the oldest give way to +N earlier tickets", async () => {
     // At 80 columns, the title, the strip and the foot take 10 lines, and Current is kept 16 for 3
-    // workers' cards.
-    expect([16, 24, 30, 35, 45, 60].map((height) => tableHeight(height, 80, 4, 3, 2, 0))).toEqual([
-      6, 6, 6, 9, 13, 13,
-    ])
+    // workers' cards; at 16 lines the table's fewest don't fit beside a line for each worker.
+    const tables = [16, 24, 30, 35, 45, 60].map(
+      (height) => dashboardLayout(viewOf([]), theme, 80, height).table,
+    )
+    expect(tables).toEqual([0, 6, 6, 9, 13, 13])
     const many = viewOf(
       Array.from({ length: 9 }, (_, i) =>
         entry(`tut-${i + 1}`, `Ticket ${i + 1}`, merged(`c0ffee${i}abcdef`), i),
@@ -531,7 +532,7 @@ describe("untrusted text", () => {
           const lines = [
             titleSegments(view.title, view.banners, now, theme, width),
             ...totalsLines(view.totals, theme, width, false),
-            ...ticketsLines(view.rows, theme, width, tableHeight(24, width, 4, 3, 2, 0)),
+            ...ticketsLines(view.rows, theme, width, fewestTableLines),
             ...warningLines(view.warnings, theme, width),
           ]
           for (const line of lines) {

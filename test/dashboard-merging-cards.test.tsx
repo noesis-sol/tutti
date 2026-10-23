@@ -12,7 +12,7 @@ import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { compactLines, compactShown, keptLines } from "../src/ui/Card.tsx"
-import { tableHeight } from "../src/ui/Dashboard.tsx"
+import { dashboardLayout } from "../src/ui/Dashboard.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, renderFrame, type Size } from "./render.ts"
@@ -165,7 +165,8 @@ describe("Current's budget", () => {
     expect(keptLines(80, 16, 32)).toBe(35)
     // Cards within the slots move nothing: the table stays put as workers come and go.
     expect(keptLines(80, 4, 8)).toBe(keptLines(80, 4, 0))
-    expect(tableHeight(50, 80, 4, 16, 2, 32)).toBeLessThan(tableHeight(50, 80, 4, 16, 2, 0))
+    const table = (view: RunView) => dashboardLayout(view, theme, 80, 50).table
+    expect(table(viewOf(16, 16, 16))).toBeLessThan(table(viewOf(0, 0, 16)))
   })
 })
 

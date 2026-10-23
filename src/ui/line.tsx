@@ -2,7 +2,7 @@
 // the pane's width before it is drawn, so that no line wraps (§ 7.2). Frames are drawn as text too,
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
 import { RGBA, TextAttributes } from "@opentui/core"
-import { createContext, useContext } from "react"
+import { createContext, type ReactNode, useContext } from "react"
 import { orchestra, type Role, rgbaOf, type Style, type Theme } from "./theme.ts"
 
 /** What a segment is drawn in: a style's colours and attributes. */
@@ -338,6 +338,24 @@ export const Lines = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) =>
     ))}
   </box>
 )
+
+/**
+ * A part of a screen `lines` tall, as its layout hands them out (Dashboard.tsx's dashboardLayout,
+ * WorkerView.tsx's viewLayout): what it draws is kept within them, never over the part below; none
+ * where it has no lines.
+ */
+export const Section = ({
+  lines,
+  children,
+}: {
+  readonly lines: number
+  readonly children?: ReactNode
+}) =>
+  lines <= 0 ? null : (
+    <box flexDirection="column" height={lines} flexShrink={0} overflow="hidden">
+      {children}
+    </box>
+  )
 
 /**
  * A rounded frame around `rows`, each of cells in columns `widths` wide (a space each side besides),

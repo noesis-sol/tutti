@@ -2,13 +2,16 @@
 // cell it was pressed on with no text selected, so a drag that selects text to copy, over a card's
 // title or a tool line, neither opens the worker's view nor toggles the line (tutti-bh51).
 import { describe, expect, test } from "bun:test"
+import { Effect } from "effect"
+import { makeCommands } from "../src/run/commands.ts"
 import { TicketPhase } from "../src/run/phase.ts"
-import type { Card } from "../src/run/runView.ts"
+import { type Card, emptyView } from "../src/run/runView.ts"
+import { Screen } from "../src/run/screen.ts"
 import { Cards, layoutOf } from "../src/ui/Card.tsx"
 import { clickable } from "../src/ui/click.ts"
 import { Line, seg } from "../src/ui/line.tsx"
-import { makeTheme, orchestra } from "../src/ui/theme.ts"
-import { spinnerFrames } from "../src/ui/useRunView.ts"
+import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { external, ShellContext, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Rendered, withRender } from "./render.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
@@ -126,23 +129,33 @@ describe("a card", () => {
     requests: [],
   }
 
+  // The cards run their own clock: the shell's, at 0.
+  const shell: ShellValue = {
+    view: external(emptyView),
+    screen: external<Screen>(Screen.Dashboard()),
+    commands: Effect.runSync(makeCommands),
+    appearance: external<Appearance>("dark"),
+    themeOf: () => theme,
+    now: () => 0,
+  }
+
   const onCard = (body: (rendered: Rendered, opened: ReadonlyArray<string>) => Promise<void>) => {
     const opened: Array<string> = []
     return withRender(
-      <Cards
-        cards={[card]}
-        theme={theme}
-        layout={layoutOf([card], 80, 20)}
-        width={80}
-        room={20}
-        now={0}
-        spin={spinnerFrames[0]}
-        stopping={false}
-        highlighted={null}
-        open={(ticket) => opened.push(ticket)}
-        focusOf={() => null}
-        press={() => {}}
-      />,
+      <ShellContext.Provider value={shell}>
+        <Cards
+          cards={[card]}
+          theme={theme}
+          layout={layoutOf([card], 80, 20)}
+          width={80}
+          room={20}
+          stopping={false}
+          highlighted={null}
+          open={(ticket) => opened.push(ticket)}
+          focusOf={() => null}
+          press={() => {}}
+        />
+      </ShellContext.Provider>,
       { width: 80, height: 20 },
       (rendered) => body(rendered, opened),
     )
