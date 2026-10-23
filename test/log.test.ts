@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { BunServices } from "@effect/platform-bun"
+import { basename, dirname, join } from "node:path"
 import { Console, Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
@@ -58,9 +57,11 @@ const live = <A>(
   effect: Effect.Effect<A, never, Log>,
   options: { readonly sink?: Sink; readonly console?: Console.Console } = {},
 ): Promise<A> => {
-  const logLayer = Log.layer({ file, ...(options.sink ? { sink: options.sink } : {}) }).pipe(
-    Layer.provide(BunServices.layer),
-  )
+  const logLayer = Log.layer({
+    repo: dirname(file),
+    file: basename(file),
+    ...(options.sink ? { sink: options.sink } : {}),
+  })
   const program = Effect.andThen(TestClock.setTime(at), effect).pipe(
     Effect.provide(Layer.merge(logLayer, TestClock.layer())),
   )

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
@@ -189,10 +188,10 @@ describe("the run's log as kept for the reviewer", () => {
   })
 
   test("knows where its START block ends, in the live layer", async () => {
-    const file = join(mkdtempSync(join(tmpdir(), "tutti-log-cap-")), "tutti.log")
+    const repo = mkdtempSync(join(tmpdir(), "tutti-log-cap-"))
     const ends = await Effect.runPromise(
       startEnds.pipe(
-        Effect.provide(Log.layer({ file }).pipe(Layer.provide(BunServices.layer))),
+        Effect.provide(Log.layer({ repo, file: "tutti.log" })),
         Effect.provide(TestClock.layer()),
       ),
     )

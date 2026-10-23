@@ -18,7 +18,6 @@
 // renderer is gone, exit 4.
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`; the npm bundle from src/npm.ts, which detects musl first.
-import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Clock, Console, Effect, Layer, ManagedRuntime, Option, Queue, Result, Scope } from "effect"
 import { Command } from "effect/cli"
@@ -55,7 +54,7 @@ import { exitCodes } from "./run/holds.ts"
 import { interview, interviewEnding } from "./run/interview.ts"
 import { keepAwake, keepAwakePlan } from "./run/keepAwake.ts"
 import { Load, liveLoad } from "./run/load.ts"
-import { detail, type Line, Log, logFile, type Sink } from "./run/log.ts"
+import { detail, type Line, Log, type Sink } from "./run/log.ts"
 import { otherWorkers } from "./run/machine.ts"
 import {
   check as checkNothing,
@@ -121,7 +120,7 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Layer.succeed(AppConfig, config),
     gitLayer,
     Beads.layer({ cwd: repo }),
-    Log.layer({ file: join(repo, logFile), sink }),
+    Log.layer({ repo, sink }),
     EventStream.layer({ repo, run: at }),
     Store.layer({ repo, run: { pid: process.pid, started: at, version } }),
     Transcripts.layer({ repo }),

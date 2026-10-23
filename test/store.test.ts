@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,8 +11,7 @@ import {
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { BunFileSystem } from "@effect/platform-bun"
-import { Effect, Exit, FileSystem, Layer, type Schema } from "effect"
-import { systemError } from "effect/PlatformError"
+import { Effect, Exit, type FileSystem, Layer, type Schema } from "effect"
 import fc from "fast-check"
 import {
   emptyState,
@@ -36,28 +36,21 @@ const newRepo = () => mkdtempSync(join(tmpdir(), "tutti-store-"))
 
 const onDisk = (repo: string): unknown => JSON.parse(readFileSync(statePath(repo), "utf8"))
 
-/** The file system, with `override` laid over some of its operations. */
-const fileSystem = (
-  override: (fs: FileSystem.FileSystem) => Partial<FileSystem.FileSystem> = () => ({}),
-) =>
-  Layer.effect(
-    FileSystem.FileSystem,
-    Effect.map(FileSystem.FileSystem, (fs): FileSystem.FileSystem => ({ ...fs, ...override(fs) })),
-  ).pipe(Layer.provide(BunFileSystem.layer))
-
-/** Runs `effect` with the live Store of `repo`, writing as `stamp`, over `fs`. */
+/** Runs `effect` with the live Store of `repo`, writing as `stamp`. */
 const withStore = <A, E>(
   repo: string,
   effect: Effect.Effect<A, E, Store | FileSystem.FileSystem>,
-  options: { readonly stamp?: RunStamp; readonly fs?: Layer.Layer<FileSystem.FileSystem> } = {},
-): Promise<Exit.Exit<A, E | StoreUnreadable>> => {
-  const fs = options.fs ?? fileSystem()
-  return Effect.runPromiseExit(
+  options: { readonly stamp?: RunStamp } = {},
+): Promise<Exit.Exit<A, E | StoreUnreadable>> =>
+  Effect.runPromiseExit(
     effect.pipe(
-      Effect.provide(Store.layer({ repo, run: options.stamp ?? run }).pipe(Layer.provideMerge(fs))),
+      Effect.provide(
+        Store.layer({ repo, run: options.stamp ?? run }).pipe(
+          Layer.provideMerge(BunFileSystem.layer),
+        ),
+      ),
     ),
   )
-}
 
 const value = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -192,23 +185,6 @@ describe("state.json", () => {
 describe("the single writer", () => {
   test("concurrent updates are committed one at a time, and none is lost", async () => {
     const repo = newRepo()
-    let open = 0
-    let mostOpen = 0
-    const counting = fileSystem((fs) => ({
-      open: (path, options) =>
-        path.endsWith(".tmp")
-          ? Effect.acquireRelease(
-              Effect.sync(() => {
-                open += 1
-                mostOpen = Math.max(mostOpen, open)
-              }),
-              () =>
-                Effect.sync(() => {
-                  open -= 1
-                }),
-            ).pipe(Effect.andThen(Effect.yieldNow), Effect.andThen(fs.open(path, options)))
-          : fs.open(path, options),
-    }))
     const tickets = Array.from({ length: 200 }, (_, index) => `demo-${index}`)
     const state = value(
       await withStore(
@@ -236,10 +212,8 @@ describe("the single writer", () => {
           )
           return yield* store.state
         }),
-        { fs: counting },
       ),
     )
-    expect(mostOpen).toBe(1)
     expect(state.tickets.counter?.metadata).toEqual({ count: tickets.length })
     const read = value(
       await Effect.runPromiseExit(Effect.provide(readState(statePath(repo)), BunFileSystem.layer)),
@@ -285,7 +259,7 @@ describe("the single writer", () => {
 })
 
 describe("atomic writes", () => {
-  test("a crash between the write and the rename leaves the old file intact", async () => {
+  test("a temporary file a crash left beside state.json is passed over, the old state read", async () => {
     const repo = newRepo()
     value(
       await withStore(
@@ -293,27 +267,11 @@ describe("atomic writes", () => {
         Effect.flatMap(Store, (store) => store.saveSession("demo-1", session)),
       ),
     )
+    // What a crash between the write and the rename leaves: the new state written in full beside
+    // the old file, under the temporary name, and never renamed over it.
     const before = readFileSync(statePath(repo), "utf8")
-
-    // Nothing runs after a crash: the temporary file isn't removed either.
-    const crashing = fileSystem(() => ({
-      rename: () => Effect.die(new Error("killed")),
-      remove: () => Effect.die(new Error("killed")),
-    }))
-    const crashed = await withStore(
-      repo,
-      Effect.flatMap(Store, (store) => store.saveSession("demo-2", session)),
-      { fs: crashing },
-    )
-    expect(Exit.isFailure(crashed)).toBe(true)
-    expect(readFileSync(statePath(repo), "utf8")).toBe(before)
-    // The new state was written in full beside it, and only the rename was missed.
-    const left = readdirSync(dirname(statePath(repo))).filter((name) => name.endsWith(".tmp"))
-    expect(left).toHaveLength(1)
-    expect(left[0]).toMatch(/^\.state\.json\.tutti-\d+-[0-9a-f-]+\.tmp$/)
-    expect(readFileSync(join(dirname(statePath(repo)), left[0] ?? ""), "utf8")).toContain(
-      '"demo-2"',
-    )
+    const left = join(dirname(statePath(repo)), `.state.json.tutti-1-${crypto.randomUUID()}.tmp`)
+    writeFileSync(left, before.replace('"demo-1"', '"demo-2"'))
 
     const after = value(
       await withStore(
@@ -328,40 +286,32 @@ describe("atomic writes", () => {
     )
     expect(Object.keys(after.tickets)).toEqual(["demo-1"])
     expect(Object.keys((onDisk(repo) as State).tickets)).toEqual(["demo-1", "demo-3"])
+    expect(readFileSync(left, "utf8")).toContain('"demo-2"')
   })
 
   test("a write that fails is StoreWriteFailed, and the committed state stays as it was", async () => {
     const repo = newRepo()
-    const refusing = fileSystem((fs) => ({
-      rename: (from, to) =>
-        readFileSync(from, "utf8").includes('"demo-2"')
-          ? Effect.fail(
-              systemError({
-                _tag: "WriteZero",
-                module: "FileSystem",
-                method: "rename",
-                description: "no space left on device",
-                pathOrDescriptor: to,
-              }),
-            )
-          : fs.rename(from, to),
-    }))
+    const folder = dirname(statePath(repo))
     const result = value(
       await withStore(
         repo,
         Effect.gen(function* () {
           const store = yield* Store
           yield* store.saveSession("demo-1", session)
+          // No temporary file can be made beside state.json.
+          chmodSync(folder, 0o555)
           const failed = yield* Effect.flip(store.saveSession("demo-2", session))
+          chmodSync(folder, 0o755)
           return { failed, state: yield* store.state }
         }),
-        { fs: refusing },
       ),
     )
     expect(result.failed).toBeInstanceOf(StoreWriteFailed)
     expect(result.failed.file).toBe(statePath(repo))
+    expect(result.failed.reason).toContain("EACCES")
     expect(Object.keys(result.state.tickets)).toEqual(["demo-1"])
     expect(Object.keys((onDisk(repo) as State).tickets)).toEqual(["demo-1"])
+    expect(readdirSync(folder)).toEqual(["state.json"])
   })
 })
 

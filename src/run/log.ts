@@ -7,19 +7,12 @@
 // template's literal parts are tutti's own words, and every argument goes through sanitizeLine
 // (§ 7.10), so a ticket title or a model's words can't put an escape sequence or a line break in
 // the log. In plain mode (§ 7.6) the same lines go to stdout too.
-import {
-  Cause,
-  Clock,
-  Console,
-  Context,
-  Effect,
-  FileSystem,
-  Layer,
-  Result,
-  Semaphore,
-} from "effect"
+import { writeSync } from "node:fs"
+import { dirname } from "node:path"
+import { Cause, Clock, Console, Context, Effect, Layer, Result, Semaphore } from "effect"
 import type { AnswerWord } from "../agent/attentionFiles.ts"
 import { answerWith } from "../answer/answerWith.ts"
+import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { stamp } from "./localTime.ts"
 
@@ -514,39 +507,73 @@ export class Log extends Context.Service<
   }
 >()("tutti/run/Log") {
   /**
-   * The log at `file` (`.tutti/tutti.log` below the repository), opened for appending. A line that
-   * can't be written is dropped, as orchestra drops it: the run goes on. With `sink: "stdout"`,
-   * each line is printed as well.
+   * The log at `file` below the repository `repo` (`.tutti/tutti.log` unless given), opened for
+   * appending through the symlink guard (§ 9.1): a symbolic link in its path or at its name, which
+   * a merged ticket can leave where the ignored log was, is refused, and the run doesn't start,
+   * rather than have its lines appended to the file the link points at. A line that can't be
+   * written is dropped, as orchestra drops it: the run goes on. With `sink: "stdout"`, each line is
+   * printed as well.
    */
-  static readonly layer = (options: { readonly file: string; readonly sink?: Sink }) =>
+  static readonly layer = (options: {
+    readonly repo: string
+    readonly file?: string
+    readonly sink?: Sink
+  }) =>
     Layer.effect(
       Log,
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const file = yield* fs.open(options.file, { flag: "a" })
-        const encoder = new TextEncoder()
-        const kept = keptLines()
-        const one = yield* Semaphore.make(1)
-        const append = (lines: ReadonlyArray<Written>) =>
-          Effect.gen(function* () {
-            const these = yield* keep(lines)
-            const text = these.map(filed)
-            yield* file
-              .writeAll(encoder.encode(text.map((l) => `${l}\n`).join("")))
-              .pipe(Effect.ignore)
-            yield* kept.add(these)
-            yield* toSink(options.sink ?? "none", text)
-          })
-        // A fiber interrupted once it holds the permit (on quit) still writes its lines to the file,
-        // the kept lines and the sink together, and writeWith's record with them; one interrupted
-        // waiting for it writes them nowhere.
-        return Log.of({
-          write: (...lines) => one.withPermit(Effect.uninterruptible(append(lines))),
-          writeWith: (lines, record) =>
-            one.withPermit(Effect.uninterruptible(Effect.andThen(append(lines), record))),
-          lines: kept.lines,
-          startBlockEnd: kept.startBlockEnd,
-        })
-      }),
+      Effect.flatMap(openLog(options.repo, options.file ?? logFile), (file) =>
+        makeLog(file, options.sink ?? "none"),
+      ),
     )
+
+  /** The log appending to `file`, opened already: a test's stand-in for the file. */
+  static readonly layerOn = (options: { readonly file: LogFile; readonly sink?: Sink }) =>
+    Layer.effect(Log, makeLog(options.file, options.sink ?? "none"))
 }
+
+/** Where the log's lines are appended, as FileSystem's File appends. */
+export interface LogFile {
+  writeAll(bytes: Uint8Array): Effect.Effect<void, unknown>
+}
+
+// openLog opens `file` below `repo` for appending, through openUnder, for the scope, making its
+// folders where they are missing without following a link.
+const openLog = (repo: string, file: string) =>
+  Effect.gen(function* () {
+    yield* Effect.sync(() => makeFoldersUnder(repo, dirname(file)))
+    const fd = yield* Effect.acquireRelease(
+      openUnder(repo, file, O.WRONLY | O.APPEND | O.CREAT, 0o644),
+      (fd) => Effect.ignore(close(fd)),
+    )
+    return {
+      writeAll: (bytes: Uint8Array) =>
+        Effect.try(() => {
+          for (let at = 0; at < bytes.length; ) at += writeSync(fd, bytes, at)
+        }),
+    } satisfies LogFile
+  })
+
+const makeLog = (file: LogFile, sink: Sink) =>
+  Effect.gen(function* () {
+    const encoder = new TextEncoder()
+    const kept = keptLines()
+    const one = yield* Semaphore.make(1)
+    const append = (lines: ReadonlyArray<Written>) =>
+      Effect.gen(function* () {
+        const these = yield* keep(lines)
+        const text = these.map(filed)
+        yield* file.writeAll(encoder.encode(text.map((l) => `${l}\n`).join(""))).pipe(Effect.ignore)
+        yield* kept.add(these)
+        yield* toSink(sink, text)
+      })
+    // A fiber interrupted once it holds the permit (on quit) still writes its lines to the file,
+    // the kept lines and the sink together, and writeWith's record with them; one interrupted
+    // waiting for it writes them nowhere.
+    return Log.of({
+      write: (...lines) => one.withPermit(Effect.uninterruptible(append(lines))),
+      writeWith: (lines, record) =>
+        one.withPermit(Effect.uninterruptible(Effect.andThen(append(lines), record))),
+      lines: kept.lines,
+      startBlockEnd: kept.startBlockEnd,
+    })
+  })

@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test"
-import { Deferred, Effect, Fiber, FileSystem, Layer } from "effect"
-import { type Line, Log } from "../src/run/log.ts"
+import { Deferred, Effect, Fiber, type Layer } from "effect"
+import { type Line, Log, type LogFile } from "../src/run/log.ts"
 import * as TestLog from "../src/testing/Log.ts"
 
 /** A log file that keeps each write. */
-const keepingFileSystem = () => {
+const keepingFile = () => {
   const written: Array<string> = []
   const decoder = new TextDecoder()
   const file = {
     writeAll: (buffer: Uint8Array) => Effect.sync(() => written.push(decoder.decode(buffer))),
-  } as unknown as FileSystem.File
-  return { written, layer: FileSystem.layerNoop({ open: () => Effect.succeed(file) }) }
+  } satisfies LogFile
+  return { written, file }
 }
 
 /**
@@ -36,9 +36,9 @@ const layers: ReadonlyArray<
   [
     "the live log",
     () => {
-      const fs = keepingFileSystem()
+      const fs = keepingFile()
       return {
-        log: Log.layer({ file: "tutti.log" }).pipe(Layer.provide(fs.layer)),
+        log: Log.layerOn({ file: fs.file }),
         file: fs.written,
       }
     },

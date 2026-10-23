@@ -16,9 +16,10 @@
 // hold is on it can't run (§ 4.12): a hold lifted before the end lets it run, and one that held the
 // run to its end skips it. Ctrl+C, which interrupts it, skips it too.
 import { join } from "node:path"
-import { Clock, Effect, FileSystem } from "effect"
+import { Clock, Effect } from "effect"
 import { Attention, type Tally } from "../agent/Attention.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
+import { makeFoldersUnder, writeFileUnder } from "../native/libc.ts"
 import { type InputPart, type Section, section } from "../organs/evidence.ts"
 import { dollars, OrganCost, type Total } from "../organs/OrganCost.ts"
 import { type OrganError, OrganHold, type Organs, skippedLine } from "../organs/Organs.ts"
@@ -26,7 +27,6 @@ import { review } from "../organs/reviewer.ts"
 import { printReport } from "../print/markdown.ts"
 import type { Printer } from "../print/organLine.ts"
 import type { Ending } from "../print/summary.ts"
-import { writeFileAtomic } from "../services/atomicFile.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git, type GitError } from "../services/Git.ts"
 import { escapeMarkdown, sanitize, sanitizeLine } from "../ui/sanitize.ts"
@@ -83,16 +83,7 @@ export interface ReportOut {
 }
 
 /** Every service the report uses. */
-export type ReportEnv =
-  | AppConfig
-  | Organs
-  | OrganCost
-  | Ledger
-  | Attention
-  | Log
-  | Beads
-  | Git
-  | FileSystem.FileSystem
+export type ReportEnv = AppConfig | Organs | OrganCost | Ledger | Attention | Log | Beads | Git
 
 /** REVIEW_FAILED: the reviewer gave no report. */
 export const reviewFailed = tagged("REVIEW_FAILED")
@@ -548,11 +539,12 @@ export const runReport = (
     })
     yield* printReport(out.printer, report, out.theme, out.width)
     const name = join(reportsDir, reportName(run.started))
-    const fs = yield* FileSystem.FileSystem
+    // Through the symlink guard (§ 9.1): a link at .tutti, .tutti/reports or the report's name,
+    // which a merged ticket can leave there, is refused rather than written through.
     const saved = yield* Effect.exit(
       Effect.andThen(
-        fs.makeDirectory(join(config.repo, reportsDir), { recursive: true }),
-        writeFileAtomic(join(config.repo, name), report),
+        Effect.sync(() => makeFoldersUnder(config.repo, reportsDir)),
+        writeFileUnder(config.repo, name, report),
       ),
     )
     if (saved._tag === "Failure") {

@@ -15,9 +15,19 @@
 //   slot, where va_arg reads it. Without them a created file gets whatever was on the stack as its
 //   mode. Elsewhere variadic integers travel in the same registers as fixed ones.
 import { dlopen, FFIType, type Pointer, read } from "bun:ffi"
-import { constants as fsConstants, fstatSync, ftruncateSync, lstatSync, type Stats } from "node:fs"
+import {
+  fchmodSync,
+  constants as fsConstants,
+  fstatSync,
+  fsyncSync,
+  ftruncateSync,
+  lstatSync,
+  mkdirSync,
+  type Stats,
+  writeSync,
+} from "node:fs"
 import { constants as osConstants } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { Effect, Schema } from "effect"
 
 /** What node:fs and node:os lack, per OS, from darwin's <sys/fcntl.h> and Linux's <fcntl.h>. */
@@ -87,6 +97,10 @@ const symbols = {
     returns: FFIType.i32,
   },
   unlinkat: { args: [FFIType.i32, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
+  renameat: {
+    args: [FFIType.i32, FFIType.ptr, FFIType.i32, FFIType.ptr],
+    returns: FFIType.i32,
+  },
   [errnoSymbol]: { args: [], returns: FFIType.ptr },
 } as const
 
@@ -114,6 +128,7 @@ const s = libc.lib.symbols as unknown as {
   open: (...args: Array<unknown>) => number
   openat: (...args: Array<unknown>) => number
   unlinkat: (dirfd: number, name: Buffer, flags: number) => number
+  renameat: (fromfd: number, from: Buffer, tofd: number, to: Buffer) => number
   __error?: () => Pointer
   __errno_location?: () => Pointer
 }
@@ -312,7 +327,8 @@ const opened = (
   return fd
 }
 
-type Refusal = LibcError | SymlinkRefused | PathRefused | NotAFileRefused
+/** What openUnder and writeFileUnder refuse or fail with. */
+export type Refusal = LibcError | SymlinkRefused | PathRefused | NotAFileRefused
 
 // refused names a failed openat for what stands at its name where that explains it.
 const refused = (
@@ -434,4 +450,139 @@ export const openUnder = (
   Effect.suspend(() => {
     const result = walk(directory, relativePath, flags, mode)
     return typeof result === "number" ? Effect.succeed(result) : Effect.fail(result)
+  })
+
+/**
+ * Makes the folders of `folder` (a path below `directory`) that are missing, one at a time,
+ * stopping at anything that isn't a folder, a symbolic link included, which openUnder then
+ * refuses: nothing is made through a link. A folder that can't be made is left for openUnder to
+ * fail on, saying why.
+ */
+export const makeFoldersUnder = (directory: string, folder: string): void => {
+  let at = directory
+  for (const part of folder.split("/")) {
+    at = join(at, part)
+    try {
+      if (!lstatSync(at).isDirectory()) return
+    } catch {
+      try {
+        mkdirSync(at)
+      } catch {
+        return
+      }
+    }
+  }
+}
+
+// replace writes `data` whole to `name` in the folder open at `dir` (`folder` below `directory`):
+// to a hidden temporary file beside it, created there with O_EXCL, synced and renamed over the
+// name with renameat, and the folder synced. A file at the name keeps its mode.
+const replace = (
+  dir: number,
+  directory: string,
+  folder: string,
+  name: string,
+  data: Uint8Array,
+  mode: number,
+): undefined | Refusal => {
+  const shown = folder === "." ? name : `${folder}/${name}`
+  // What is at the name now: a link or anything but a regular file is refused, though the rename
+  // would only have replaced it.
+  const existing = rawOpenat(dir, name, shown, O.RDONLY | O.NOFOLLOW | O.NONBLOCK | O.CLOEXEC, 0)
+  let keptMode: number | undefined
+  if (existing instanceof LibcError) {
+    if (existing.errno !== ENOENT) return refused(existing, directory, shown, shown, true)
+  } else {
+    const checked = opened(existing, directory, shown, O.RDONLY | O.NONBLOCK)
+    if (typeof checked !== "number") return checked
+    try {
+      keptMode = fstatSync(checked).mode & 0o7777
+    } catch (error) {
+      return nodeFailure("fstat", shown, error)
+    } finally {
+      s.close(checked)
+    }
+  }
+  const temporary = `.${name}.tutti-${process.pid}-${crypto.randomUUID()}.tmp`
+  const flags = O.WRONLY | O.CREAT | O.EXCL | O.NOFOLLOW | O.CLOEXEC
+  const fd = rawOpenat(dir, temporary, shown, flags, keptMode ?? mode)
+  if (fd instanceof LibcError) return fd
+  let call = "write"
+  try {
+    for (let at = 0; at < data.length; ) at += writeSync(fd, data, at)
+    if (keptMode !== undefined) {
+      call = "fchmod"
+      fchmodSync(fd, keptMode)
+    }
+    call = "fsync"
+    fsyncSync(fd)
+  } catch (error) {
+    s.close(fd)
+    s.unlinkat(dir, cstr(temporary), 0)
+    return nodeFailure(call, shown, error)
+  }
+  s.close(fd)
+  const renamed = attempt("renameat", shown, () =>
+    s.renameat(dir, cstr(temporary), dir, cstr(name)),
+  )
+  if (renamed instanceof LibcError) {
+    s.unlinkat(dir, cstr(temporary), 0)
+    return renamed
+  }
+  // Some file systems refuse to sync a folder, and the file was renamed.
+  try {
+    fsyncSync(dir)
+  } catch {}
+  return undefined
+}
+
+// naming gives a refusal of the folder of `relativePath` as one of the file itself.
+const naming = (refusal: Refusal, relativePath: string): Refusal => {
+  if (refusal instanceof SymlinkRefused) {
+    const { directory, component } = refusal
+    return new SymlinkRefused({ directory, path: relativePath, component })
+  }
+  if (refusal instanceof NotAFileRefused) {
+    const { directory, kind } = refusal
+    return new NotAFileRefused({ directory, path: relativePath, kind })
+  }
+  if (refusal instanceof PathRefused) {
+    return new PathRefused({ directory: refusal.directory, path: relativePath })
+  }
+  return refusal
+}
+
+/**
+ * Writes `data` to the file at `relativePath` below `directory` whole, through the symlink guard
+ * (§ 9.1): its folder is opened with openUnder, so a link in its path is refused, and a link or
+ * anything but a regular file at its name is refused too. The bytes go to a temporary file beside
+ * it, created in that folder, synced and renamed over the name (renameat on the folder's
+ * descriptor): the old file or the new one is there, never a mix, and nothing is written through a
+ * link. A file there keeps its mode; a new one takes `mode`, past the umask. The folder must be
+ * there (makeFoldersUnder).
+ */
+export const writeFileUnder = (
+  directory: string,
+  relativePath: string,
+  data: string | Uint8Array,
+  mode = 0o644,
+): Effect.Effect<void, Refusal> =>
+  Effect.suspend(() => {
+    const folder = dirname(relativePath)
+    const name = basename(relativePath)
+    if (name === "" || name === "." || name === ".." || relativePath.endsWith("/")) {
+      return Effect.fail(new PathRefused({ directory, path: relativePath }))
+    }
+    const dir =
+      folder === "."
+        ? rawOpen(directory, O.RDONLY | O.DIRECTORY | O.CLOEXEC, 0)
+        : walk(directory, folder, O.RDONLY | O.DIRECTORY, 0)
+    if (typeof dir !== "number") return Effect.fail(naming(dir, relativePath))
+    const bytes = typeof data === "string" ? Buffer.from(data) : data
+    try {
+      const failed = replace(dir, directory, folder, name, bytes, mode)
+      return failed === undefined ? Effect.void : Effect.fail(failed)
+    } finally {
+      s.close(dir)
+    }
   })

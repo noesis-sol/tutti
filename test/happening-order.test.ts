@@ -6,7 +6,6 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer, Result } from "effect"
 import { EventStream, eventsFile } from "../src/run/eventstream.ts"
 import { Ledger, make as makeLedger } from "../src/run/ledger.ts"
@@ -21,10 +20,7 @@ const run = "2026-10-02T09:12:03.98+02:00"
 const live = async (effect: Effect.Effect<void, never, Log | EventStream | Ledger>) => {
   const repo = realpathSync(mkdtempSync(join(tmpdir(), "tutti-order-")))
   mkdirSync(join(repo, ".tutti"))
-  const files = Layer.merge(
-    Log.layer({ file: join(repo, logFile) }).pipe(Layer.provide(BunServices.layer)),
-    EventStream.layer({ repo, run }),
-  )
+  const files = Layer.merge(Log.layer({ repo }), EventStream.layer({ repo, run }))
   const ledger = Layer.effect(Ledger, makeLedger)
   await Effect.runPromise(effect.pipe(Effect.provide(ledger.pipe(Layer.provideMerge(files)))))
   const logged = readFileSync(join(repo, logFile), "utf8")

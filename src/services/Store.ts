@@ -5,10 +5,11 @@
 //
 // Every write goes through one fiber, which takes the changes queued and commits them in order: it
 // writes the whole state to a temporary file in the same folder, fsyncs it, and renames it over
-// `state.json` (writeFileAtomic). A crash at any point leaves either the old file or the new one, never a mix. An
-// update returns once its change is on disk, so a session ID saved before its session starts
-// survives a crash (§ 4.8). Readers get the last committed state.
-import { join } from "node:path"
+// `state.json` (writeFileUnder, through the symlink guard). A crash at any point leaves either the
+// old file or the new one, never a mix. An update returns once its change is on disk, so a session
+// ID saved before its session starts survives a crash (§ 4.8). Readers get the last committed
+// state.
+import { dirname, join } from "node:path"
 import {
   Context,
   Deferred,
@@ -21,8 +22,7 @@ import {
   Ref,
   Schema,
 } from "effect"
-import type { PlatformError } from "effect/PlatformError"
-import { writeFileAtomic } from "./atomicFile.ts"
+import { makeFoldersUnder, type Refusal, writeFileUnder } from "../native/libc.ts"
 
 /** The carry-over file, relative to the project's top (§ 9.1). */
 export const stateFile = join(".tutti", "run", "state.json")
@@ -190,12 +190,10 @@ export class Store extends Context.Service<
     Layer.effect(
       Store,
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const file = statePath(options.repo)
-        const read = yield* readState(file)
+        const read = yield* readState(statePath(options.repo))
         const committed = yield* Ref.make(read)
         const writes = yield* Queue.unbounded<Write>()
-        const commit = commitWrites(fs, file, options.run, committed)
+        const commit = commitWrites(options.repo, options.run, committed)
 
         // A batch taken is committed even if the writer is interrupted meanwhile.
         const writer = yield* Effect.forkDetach(
@@ -276,18 +274,16 @@ export const readState = (file: string) =>
   })
 
 /**
- * Writes `state` to `file` atomically (writeFileAtomic): to a temporary file in the same folder,
- * fsynced, then renamed over it, and the folder fsynced so the rename itself lasts.
+ * Writes `state` to state.json below `repo` atomically and through the symlink guard
+ * (writeFileUnder, § 9.1): to a temporary file in the same folder, fsynced, then renamed over it,
+ * and the folder fsynced so the rename itself lasts. A symbolic link at .tutti, .tutti/run or
+ * state.json, which a merged ticket can leave there, is refused rather than written through.
  */
-export const writeStateAtomically = (
-  fs: FileSystem.FileSystem,
-  file: string,
-  state: State,
-): Effect.Effect<void, PlatformError> =>
-  Effect.gen(function* () {
-    yield* fs.makeDirectory(join(file, ".."), { recursive: true })
-    yield* Effect.provideService(writeFileAtomic(file, stateText(state)), FileSystem.FileSystem, fs)
-  })
+export const writeStateUnder = (repo: string, state: State): Effect.Effect<void, Refusal> =>
+  Effect.andThen(
+    Effect.sync(() => makeFoldersUnder(repo, dirname(stateFile))),
+    writeFileUnder(repo, stateFile, stateText(state)),
+  )
 
 /**
  * Commits a batch of writes as one: applies each change in turn, writes the result once, and then
@@ -295,7 +291,7 @@ export const writeStateAtomically = (
  * A batch whose file can't be written fails every write in it, and leaves the state as it was.
  */
 const commitWrites =
-  (fs: FileSystem.FileSystem, file: string, run: RunStamp, committed: Ref.Ref<State>) =>
+  (repo: string, run: RunStamp, committed: Ref.Ref<State>) =>
   (writes: ReadonlyArray<Write>): Effect.Effect<void> =>
     Effect.uninterruptible(
       Effect.gen(function* () {
@@ -313,8 +309,10 @@ const commitWrites =
         if (applied.length === 0) return
         const stamped: State = { ...state, run }
         const written = yield* Effect.exit(
-          writeStateAtomically(fs, file, stamped).pipe(
-            Effect.mapError((error) => new StoreWriteFailed({ file, reason: error.message })),
+          writeStateUnder(repo, stamped).pipe(
+            Effect.mapError(
+              (error) => new StoreWriteFailed({ file: statePath(repo), reason: error.message }),
+            ),
           ),
         )
         if (Exit.isSuccess(written)) yield* Ref.set(committed, stamped)
