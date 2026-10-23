@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.2.0] - 2026-10-23
 
 - The notifier, the clipboard and the URL opener look for their commands on the PATH they run them with (§ 7.9; `src/services/Notifier.ts`'s `installedOnPath`, which `src/ui/clipboard.ts`'s and `src/ui/openUrl.ts`'s live layers use too; tutti-xj3t): `Bun.which` alone reads the PATH the process started with, not `process.env.PATH` changed since. `test/live-layers.test.ts` makes a folder of fakes the whole PATH, so on Linux CI, which has `xdg-open` but no `xclip` or `notify-send`, the clipboard fell back to OSC 52 and the notifier to nothing, and three of its tests failed; on macOS they passed by the machine's own `osascript`, `pbcopy` and `open`. A test of `installedOnPath` uses a command only the changed PATH has.
 - An organ call whose SDK query() throws as it is called fails as an AiError (§ 6.1; `src/organs/AgentSdkLanguageModel.ts`'s `layer`, which takes a `query` for tests; tutti-xpzt): with no Claude Code for the platform (no optional platform package, or a musl/glibc mismatch) the call died instead of failing. Now it fails as `AiError.UnknownError` with `queryThrew`'s advice, as the login probe and workers do, and counts a call of unknown cost. `test/organ-query-throws.test.ts` covers it.
