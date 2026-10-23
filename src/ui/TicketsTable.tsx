@@ -28,6 +28,9 @@ const maxRows = 10
 export const tableLines = (room: number, kept: number): number =>
   Math.min(Math.max(room - kept - sectionChrome, minRows), maxRows) + sectionChrome
 
+/** The fewest lines the table is drawn in, its label and frame included. */
+export const fewestTableLines = minRows + sectionChrome
+
 /** The state column's width: its glyph and its longest word, `⟳ resolving`. */
 const stateWidth = 11
 

@@ -31,7 +31,8 @@
 //
 // With everything else done and workers waiting on you (D19), the end-of-run box (EndOfRunBox.tsx)
 // replaces the cards, and `q` ends the run (EndRun). `Tab` then `Enter` open a worker's view to
-// answer there.
+// answer there. The box is placed before the tickets table: the table gives up rows for it, down
+// to its fewest, and is left out below them; the box then keeps to the room left (EndOfRunBox.tsx).
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useRef } from "react"
 import { UiCommand } from "../run/commands.ts"
@@ -46,6 +47,7 @@ import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
 import { LoadLine, loadSegments } from "./LoadLine.tsx"
 import { cut, Line, Lines, type Segments, seg } from "./line.tsx"
 import {
+  fewestTableLines,
   rowsBesideCurrent,
   sectionChrome,
   TicketsTable,
@@ -117,6 +119,22 @@ export const showsGap = (
 ): boolean => titleLines + 1 + totals + table + Math.max(lines, 1) + sectionChrome + foot <= height
 
 /**
+ * The lines the tickets table keeps beside the end-of-run box, `box` lines of it, in a pane
+ * `height` tall: what the box leaves of the table's `tall` lines, none when that is fewer than the
+ * table's fewest.
+ */
+export const tableBesideBox = (
+  height: number,
+  totals: number,
+  foot: number,
+  tall: number,
+  box: number,
+): number => {
+  const lines = Math.min(tall, height - titleLines - totals - foot - box)
+  return lines >= fewestTableLines ? lines : 0
+}
+
+/**
  * The hint's keys, as RunView names them, with `d` and `a` left out when the dashboard draws no
  * request's buttons (`buttons` false): there they open the Answer box, not answer (§ 4.5).
  */
@@ -163,11 +181,24 @@ export const Dashboard = () => {
   const tall = tableHeight(height, width, totals.length, slots, foot, cards.length)
   // A line for each worker, or each card where tickets merging without a slot make them more.
   const lines = Math.max(slots, cards.length)
-  const table = showsTable(height, totals.length, lines, foot, tall)
-  const tableRows = table ? tall : 0
-  const gap = showsGap(height, totals.length, tableRows, lines, foot)
+  // The end-of-run box, whole: the tickets table gives up rows for it.
+  const whole = view.endOfRun === null ? null : endOfRunLines(view.endOfRun, theme, width)
+  const shown = showsTable(height, totals.length, lines, foot, tall) ? tall : 0
+  const tableRows =
+    whole === null ? shown : tableBesideBox(height, totals.length, foot, shown, whole.length)
+  const table = tableRows > 0
+  const gap =
+    whole === null
+      ? showsGap(height, totals.length, tableRows, lines, foot)
+      : titleLines + 1 + totals.length + tableRows + whole.length + foot <= height
   const room = height - titleLines - (gap ? 1 : 0) - totals.length - tableRows - foot
-  const ending = view.endOfRun === null ? null : endOfRunLines(view.endOfRun, theme, width)
+  // The box keeps to the room left, naming fewer workers, but always saying what q does.
+  const ending =
+    view.endOfRun === null || whole === null
+      ? null
+      : whole.length <= room
+        ? whole
+        : endOfRunLines(view.endOfRun, theme, width, Math.max(room, 0))
   // Behind the end-of-run box no card's buttons are drawn: Enter opens the Answer box, as on a
   // compact line.
   const layout: CardsLayout =
@@ -254,9 +285,9 @@ export const Dashboard = () => {
       {gap ? <Line segments={[]} /> : null}
       <LoadLine segments={loadSegments(view.totals, view.load, theme, width)} />
       <Totals lines={totals} />
-      {table ? <TicketsTable lines={ticketsLines(rows, theme, width, tall)} /> : null}
+      {table ? <TicketsTable lines={ticketsLines(rows, theme, width, tableRows)} /> : null}
       {ending !== null ? (
-        <box height={Math.min(ending.length, Math.max(room, 0))} flexShrink={0}>
+        <box height={ending.length} flexShrink={0}>
           <EndOfRunBox lines={ending} />
         </box>
       ) : (
