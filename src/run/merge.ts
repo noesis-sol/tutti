@@ -79,6 +79,7 @@ import { Cause, Detail } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
+import { shownChanges } from "./settle.ts"
 import { type SetUps, setUp } from "./setup.ts"
 import { ignoredFolders } from "./startup.ts"
 import { unlabel } from "./unmerged.ts"
@@ -195,6 +196,22 @@ export const uncommitted = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<s
     .filter((entry) => entry.code !== "??" && entry.code !== "!!" && !under(entry.path, runFolder))
     .map((entry) => entry.path)
     .sort()
+
+/**
+ * The untracked files outside .tutti/run/: a check in the worktree sees them, but a merge of its
+ * branch doesn't bring them in.
+ */
+export const untracked = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>
+  status
+    .filter((entry) => entry.code === "??" && !under(entry.path, runFolder))
+    .map((entry) => entry.path)
+    .sort()
+
+/** The first `shownChanges` of `files`, and how many more there are, as a line names them. */
+export const someFiles = (files: ReadonlyArray<string>): string => {
+  const more = files.length - shownChanges
+  return `${files.slice(0, shownChanges).join(", ")}${more > 0 ? ` and ${more} more` : ""}`
+}
 
 /** The changed files in the main checkout outside the tools' folders, as the startup checks see them. */
 export const changedOutsideTools = (status: ReadonlyArray<StatusEntry>): ReadonlyArray<string> =>

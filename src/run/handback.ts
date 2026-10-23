@@ -64,9 +64,11 @@ import {
   notePass,
   onBranch,
   restoreBranch,
+  someFiles,
   type Unchanged,
   unchanged,
   uncommitted,
+  untracked,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
@@ -811,7 +813,8 @@ export const give = (
 
 /**
  * Why what the worker left is rejected, looked at without taking its word for it: the rebase over,
- * the worktree clean and on its branch, and the branch on top of the base it was rebased onto with
+ * the worktree clean (no untracked files either: the check would see them, the merge not) and on
+ * its branch, and the branch on top of the base it was rebased onto with
  * the ticket's own commits and nothing more (as many as it had, or fewer where its worker skipped
  * those the base has already). A branch left changing nothing passes too. Undefined when it passes.
  */
@@ -827,8 +830,13 @@ export const verifyResolved = (
       Effect.gen(function* () {
         if (yield* git.rebaseInProgress(worktree))
           return line`its worker left the rebase unfinished`
-        if (uncommitted(yield* git.status(worktree)).length > 0) {
+        const status = yield* git.status(worktree)
+        if (uncommitted(status).length > 0) {
           return line`its worker left uncommitted changes in ${worktree}`
+        }
+        const loose = untracked(status)
+        if (loose.length > 0) {
+          return line`its worker left untracked files in ${worktree}: ${someFiles(loose)}`
         }
         const on = yield* onBranch(stop.ticket)
         if (on._tag === "Unknown") return yield* Effect.fail(on.error)

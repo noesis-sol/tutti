@@ -61,7 +61,9 @@ import {
   notePass,
   onBranch,
   restoreBranch,
+  someFiles,
   uncommitted,
+  untracked,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { namesTicket } from "./settle.ts"
@@ -289,9 +291,10 @@ export type Verified =
 
 /**
  * Looks at what the worker left after `stop`'s failure was handed back, without taking its word for
- * it: no rebase in progress, the worktree clean and on its branch, and the branch at `stop.at` with
- * new commits on top, each naming the ticket, or with none (Unchanged). The check runs next on what the worktree has checked
- * out, and the merge then brings in the branch: they must be the same.
+ * it: no rebase in progress, the worktree clean (no untracked files either) and on its branch, and
+ * the branch at `stop.at` with new commits on top, each naming the ticket, or with none
+ * (Unchanged). The check runs next on what the worktree has checked out, and the merge then brings
+ * in the branch: they must be the same.
  */
 export const verifyFixed = (
   stop: CheckStop,
@@ -306,8 +309,13 @@ export const verifyFixed = (
         if (yield* git.rebaseInProgress(worktree)) {
           return reject(line`its worker left a rebase in progress in ${worktree}`)
         }
-        if (uncommitted(yield* git.status(worktree)).length > 0) {
+        const status = yield* git.status(worktree)
+        if (uncommitted(status).length > 0) {
           return reject(line`its worker left uncommitted changes in ${worktree}`)
+        }
+        const loose = untracked(status)
+        if (loose.length > 0) {
+          return reject(line`its worker left untracked files in ${worktree}: ${someFiles(loose)}`)
         }
         const on = yield* onBranch(stop.ticket)
         if (on._tag === "Unknown") return yield* Effect.fail(on.error)
