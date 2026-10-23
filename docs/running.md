@@ -483,8 +483,8 @@ and then the run ends with that reason. The log says
 - **`DIRTY_TREE`**, **`GIT_FAILED`**, **`MERGE_FAILED`**: the merges stop.
 - **`BEADS_FAILED`**, **`AGENT_FAILED`**: `bd` or a worker's session failing.
 - **`ENVIRONMENT`** and **`USAGE_LIMIT`**, below.
-- **`SETUP_PROBLEM`**: a worker's first `system/init` showed a setup problem: MCP servers it
-  wasn't given, or an API key it would bill beside your subscription. The worker is stopped before
+- **`SETUP_PROBLEM`**: a worker's session showed a setup problem as it started, or in its first
+  `system/init`: MCP servers it wasn't given, or an API key it would bill beside your subscription. The worker is stopped before
   it does anything and its ticket reopened for the next run; exit 2.
 - **`REQUIREMENTS_MISSING`**: what the project's requires list names is missing as the run starts,
   or once a merge has changed the list; the run ends at once, or once the running tickets finish,

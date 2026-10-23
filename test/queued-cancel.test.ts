@@ -247,7 +247,10 @@ const liveQueueTwoAndInterrupt = (log: string, settled: WorkerState["_tag"]) =>
       c,
       receipt,
       states: states.map((s) => s._tag),
-      requests: requestsRead(log).filter((r) => r.subtype !== "initialize"),
+      // The start's own requests aside: its initialize, and mcp_status for the setup check.
+      requests: requestsRead(log).filter(
+        (r) => r.subtype !== "initialize" && r.subtype !== "mcp_status",
+      ),
       ...(yield* transcript),
     }
   })

@@ -76,6 +76,11 @@ export type Start = Data.TaggedEnum<{
   SetAside: { readonly why: string; readonly deferred: boolean; readonly session: boolean }
   /** The setup failed in its worktree, so no worker started: back in the queue, Waiting{setup}. */
   SetupFailed: { readonly output: string }
+  /**
+   * Its worker was stopped over a setup problem found as its session started, before its first
+   * turn (§ 4.1, `problem`): the run stops, as for one its first system/init shows (SETUP_PROBLEM).
+   */
+  SetupProblem: { readonly worktree: TicketWorktree; readonly problem: string }
 }>
 
 export const Start = Data.taggedEnum<Start>()
@@ -270,6 +275,12 @@ const notStarted = (error: AgentStartFailed): string =>
 /** The session didn't begin, for `reason`: the start failed. */
 class NotBegun extends Data.TaggedError("NotBegun")<{ readonly reason: string }> {}
 
+/** The session's start found a setup problem, `problem`, before its first turn. */
+class SetupStopped extends Data.TaggedError("SetupStopped")<{
+  readonly worktree: TicketWorktree
+  readonly problem: string
+}> {}
+
 /**
  * How long a new session has to begin its first turn, its system/init, once it is sent its first
  * message: the CLI sends one as it takes the message, before it calls the model.
@@ -368,6 +379,11 @@ export const start = (
     )
     const starting = Effect.gen(function* () {
       yield* host.start(id, { sessionId: session, cwd: path })
+      // Stopped over a setup problem as it started, the session is sent nothing (§ 4.1).
+      const now = yield* Effect.option(host.current(id))
+      if (Option.isSome(now) && now.value._tag === "Gone" && now.value.setup === true) {
+        return yield* new SetupStopped({ worktree, problem: now.value.why })
+      }
       const sent = yield* host.send(id, message, "clientComposed")
       const ended = host.state(id).pipe(
         Stream.filter((state) => state._tag === "Gone" || state._tag === "Closed"),
@@ -421,6 +437,9 @@ export const start = (
     )
     return Start.Started({ worker: { ticket: id, worktree, session, message: sent } })
   }).pipe(
+    Effect.catchTag("SetupStopped", ({ worktree, problem }) =>
+      Effect.succeed(Start.SetupProblem({ worktree, problem })),
+    ),
     Effect.catchTag("SetAsideBy", ({ aside, session }) =>
       Effect.map(putAside(ticket, aside), (deferred) =>
         Start.SetAside({ why: aside.detail, deferred, session: session === true }),

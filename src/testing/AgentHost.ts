@@ -96,6 +96,11 @@ export type Step = Data.TaggedEnum<{
   Gone: { readonly why: string; readonly setup?: true }
   /** As the first step: the session doesn't start, and start or resume fails. */
   FailStart: { readonly reason: string; readonly startupFailureReason?: string }
+  /**
+   * As the first step: a setup problem the live layer finds as the session starts, before its first
+   * turn (§ 4.1): start or resume succeeds, sends nothing, and the worker is Gone with `setup`.
+   */
+  StopAtStart: { readonly why: string }
 }>
 
 export const Step = Data.taggedEnum<Step>()
@@ -365,6 +370,7 @@ export const layer = (
           Gone: ({ why, setup }) => gone(ticket, session, why, setup),
           // Only a session's first step can fail its start; later, it does nothing.
           FailStart: () => Effect.void,
+          StopAtStart: () => Effect.void,
         })
 
       // Pushes a message into the session's inbox; its uuid.
@@ -409,6 +415,13 @@ export const layer = (
                 ? {}
                 : { startupFailureReason: first.startupFailureReason }),
             })
+          }
+          if (first?._tag === "StopAtStart") {
+            yield* workers.fold(
+              entry,
+              WorkerEvent.Ended({ session: session.sessionId, why: first.why, setup: true }),
+            )
+            return undefined
           }
           const playing: Running = {
             sessionId: session.sessionId,
@@ -455,7 +468,14 @@ export const layer = (
         start: (ticket, s) => Effect.asVoid(begin(ticket, s, Sent.Started({ ticket, session: s }))),
         resume: (ticket, s, message) =>
           Effect.flatMap(begin(ticket, s, Sent.Resumed({ ticket, session: s })), (playing) =>
-            push(ticket, playing, message),
+            playing !== undefined
+              ? push(ticket, playing, message)
+              : message.uuid !== undefined
+                ? Effect.succeed(message.uuid)
+                : Effect.map(
+                    Ref.updateAndGet(drawn, (k) => k + 1),
+                    uuidOf,
+                  ),
           ),
         send: (ticket, text, from, uuid) =>
           Effect.flatMap(session(ticket), (playing) =>
@@ -553,6 +573,8 @@ export const run = (effect: Effect.Effect<void>): Step => Step.Do({ effect })
 export const gone = (why: string): Step => Step.Gone({ why })
 /** The session ends over a setup problem its first system/init showed, as the live layer ends it. */
 export const setupProblem = (why: string): Step => Step.Gone({ why, setup: true })
+/** The session is stopped over a setup problem as it starts, as the live layer's checkBefore does. */
+export const stopAtStart = (why: string): Step => Step.StopAtStart({ why })
 export const failStart = (reason: string, startupFailureReason?: string): Step =>
   Step.FailStart({
     reason,

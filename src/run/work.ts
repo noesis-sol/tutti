@@ -14,8 +14,9 @@
 // - still in progress after the nudges and the idle grace: Stopped, and the run holds with PAUSED
 // - left in any other status: set aside, deferred for review
 // - its worker gone and its session not resumed: Review (WORKER_GONE), dropped (sessions.ts)
-// - its worker ended over a setup problem its first system/init showed (§ 4.1): reopened, Waiting
-//   for the next run, and the run holds with SETUP_PROBLEM, exit 2
+// - its worker ended over a setup problem its first system/init showed, or its start found before
+//   its first turn (§ 4.1): reopened, Waiting for the next run, and the run holds with
+//   SETUP_PROBLEM, exit 2
 //
 // The session is closed once the ticket no longer needs it (§ 4.8, sessions.ts): kept open while it
 // waits to merge, and when it stopped the run (it is suspended as the run ends); closed once asked,
@@ -26,7 +27,7 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError, type Status } from "../services/Beads.ts"
 import type { Git, GitError } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
-import { Worktrees } from "../services/Worktrees.ts"
+import { type TicketWorktree, Worktrees } from "../services/Worktrees.ts"
 import { dropNothingDone, leaveForReview, nothingLeft, putAside } from "./aside.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
@@ -198,17 +199,17 @@ const paused = (worker: StartedWorker, gone: string | null) =>
   })
 
 /**
- * Its worker ended over a setup problem its first system/init showed (§ 4.1), before it did
- * anything: the ticket is reopened, as no worker took it on, and Waiting for the next run, its
+ * Its worker ended over a setup problem its first system/init showed, or its start found before its
+ * first turn (§ 4.1), before it did anything: the ticket is reopened, as no worker took it on, and Waiting for the next run, its
  * worktree kept; the run holds with SETUP_PROBLEM, exit 2, as for a setup problem found at startup.
  */
-const setupProblem = (worker: StartedWorker, problem: string) =>
+const setupProblem = (worktree: TicketWorktree, problem: string) =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
     const logs = yield* Log
     const events = yield* EventStream
-    const { id, path } = worker.worktree
+    const { id, path } = worktree
     const reopened = yield* Effect.result(
       beads.update(id, {
         status: "open",
@@ -249,7 +250,7 @@ export const conclude = (
     const { id, title } = ticket
     const { path, branch } = worker.worktree
     if (settled._tag === "Paused") return yield* paused(worker, settled.gone)
-    if (settled._tag === "Setup") return yield* setupProblem(worker, settled.problem)
+    if (settled._tag === "Setup") return yield* setupProblem(worker.worktree, settled.problem)
     if (settled._tag === "Dropped") {
       yield* workerGone(id, path, settled.why)
       yield* fit(id)
@@ -412,6 +413,9 @@ export const work = (
         : started._tag === "SetAside" && started.session
           ? "start"
           : "uncounted"
+    // Stopped over a setup problem as its session started, it stops the run (§ 4.1).
+    if (started._tag === "SetupProblem")
+      stop = yield* setupProblem(started.worktree, started.problem)
     if (started._tag === "Started") {
       const { worker } = started
       // Its clocks, the hold's window and its time limit, start with its worker, once the setup

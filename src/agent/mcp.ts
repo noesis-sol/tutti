@@ -11,6 +11,8 @@
 // is the scope, as § 4.1 has it. Its mcp_servers are decoded with a Schema, not trusted to the
 // SDK's types: a CLI of another version may send none, and a session whose servers tutti can't read
 // is a setup problem, as one with a server it wasn't given is.
+// checkStatus makes the same check, of servers not given, on mcpServerStatus() before the first
+// turn, leaving the rest to checkInit.
 //
 // Claude in Chrome, claude-in-chrome, is built into Claude Code rather than defined in a config
 // file: choosing it gives sessions --chrome, and leaving it out --no-chrome (chromeArgs), as
@@ -328,6 +330,27 @@ const InitServers = Schema.Struct({
 
 const decodeInitServers = Schema.decodeUnknownResult(InitServers)
 
+/** The names of `servers`, as a session lists them, that workers weren't given: not `chosen`. */
+const notGivenIn = (
+  servers: ReadonlyArray<{ readonly name: string; readonly source?: string | undefined }>,
+  chosen: ChosenServers,
+): ReadonlyArray<string> => {
+  const scopes = new Map(chosen.servers.map((server) => [server.name, server.scope]))
+  return servers
+    .filter((server) => {
+      const scope = scopes.get(server.name)
+      const source = server.source
+      if (chosen.chrome === true && server.name === chromeServer && source === "dynamic")
+        return false
+      return (
+        scope === undefined ||
+        source === undefined ||
+        !(passedSources.includes(source) || source === scope)
+      )
+    })
+    .map((server) => server.name)
+}
+
 /**
  * Checks a session's first system/init: its mcp_servers must be exactly the chosen servers, each
  * with source sdk, dynamic or the scope it was resolved from. Statuses aren't compared: a server
@@ -344,25 +367,37 @@ export const checkInit = (
   const read = decodeInitServers(init)
   if (Result.isFailure(read)) return Effect.fail(new SetupProblem({ problems: [unlistedProblem] }))
   const servers = read.success.mcp_servers
-  const scopes = new Map(chosen.servers.map((server) => [server.name, server.scope]))
   const listed = new Set(servers.map((server) => server.name))
-  const notGiven = servers
-    .filter((server) => {
-      const scope = scopes.get(server.name)
-      const source = server.source
-      if (chosen.chrome === true && server.name === chromeServer && source === "dynamic")
-        return false
-      return (
-        scope === undefined ||
-        source === undefined ||
-        !(passedSources.includes(source) || source === scope)
-      )
-    })
-    .map((server) => server.name)
+  const notGiven = notGivenIn(servers, chosen)
   const missing = chosen.servers.map((server) => server.name).filter((name) => !listed.has(name))
   const problems = [
     ...(notGiven.length > 0 ? [notGivenProblem([...new Set(notGiven)])] : []),
     ...(missing.length > 0 ? [missingProblem(missing)] : []),
   ]
   return problems.length > 0 ? Effect.fail(new SetupProblem({ problems })) : Effect.void
+}
+
+// The fields checkStatus reads of mcpServerStatus()'s answer: each server's name and source.
+const decodeStatusServers = Schema.decodeUnknownResult(
+  Schema.Array(Schema.Struct({ name: Schema.String, source: Schema.String })),
+)
+
+/**
+ * Checks a session's MCP servers as mcpServerStatus() lists them before its first turn, so a worker
+ * given a server it shouldn't have ends before it does anything (§ 4.1): one listed that isn't
+ * chosen, or with another source, is a setup problem, as in checkInit. A chosen server not listed
+ * isn't (an in-process server can be listed only a moment later), nor is an answer tutti can't
+ * read, or a server without a source (a CLI that predates the field): the first system/init's
+ * check, checkInit, is left to find those.
+ */
+export const checkStatus = (
+  status: unknown,
+  chosen: ChosenServers,
+): Effect.Effect<void, SetupProblem> => {
+  const read = decodeStatusServers(status)
+  if (Result.isFailure(read)) return Effect.void
+  const notGiven = notGivenIn(read.success, chosen)
+  return notGiven.length > 0
+    ? Effect.fail(new SetupProblem({ problems: [notGivenProblem([...new Set(notGiven)])] }))
+    : Effect.void
 }

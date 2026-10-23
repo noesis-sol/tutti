@@ -61,6 +61,8 @@ interface Scenario {
   readonly exitAtStart?: number
   /** Written to stderr at once, before reading anything. */
   readonly stderrAtStart?: string
+  /** The servers the mcp_status control request answers with; it answers `{}` without them. */
+  readonly mcpStatus?: ReadonlyArray<Record<string, unknown>>
   /** The get_settings control request's answer, in place of `{}`. */
   readonly settings?: Record<string, unknown>
   /**
@@ -456,6 +458,10 @@ const control = async (id: string, request: Record<string, unknown>) => {
       const [dropped] = queued.splice(at, 1)
       await answer({ cancelled: true })
       await lifecycle(dropped === undefined ? [] : [dropped], "cancelled")
+      return
+    }
+    case "mcp_status": {
+      await answer(scenario.mcpStatus === undefined ? {} : { mcpServers: scenario.mcpStatus })
       return
     }
     case "get_settings": {

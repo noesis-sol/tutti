@@ -9,10 +9,20 @@
 // Each session's first system/init is checked (§ 4.1): the permission mode in effect, logged once
 // when it isn't the one asked for; the MCP servers, where any the worker wasn't given ends it as a
 // setup problem (§ 4.6); and the API key source, where a key billed beside the subscription login
-// ends it likewise (§ 4.13). A worker ended so is Gone with `setup`, which stops the run (work.ts). Those fields are decoded with a
-// Schema, not trusted to the SDK's types: a first system/init from a CLI of another version without
-// readable MCP servers ends the worker as a setup problem (checkInit), since tutti can't tell what
-// it got; one without the permission mode or the API key source skips that check, logged once.
+// ends it likewise (§ 4.13). A worker ended so is Gone with `setup`, which stops the run (work.ts).
+// Those fields are decoded with a Schema, not trusted to the SDK's types: a first system/init from
+// a CLI of another version without readable MCP servers ends the worker as a setup problem
+// (checkInit), since tutti can't tell what it got; one without the permission mode or the API key
+// source skips that check, logged once.
+//
+// system/init comes only as the first turn starts, its model request already sent, so the same
+// checks run first in the start, before the session is sent anything (checkBefore): the API key
+// source of its initialize's account, and the MCP servers its mcpServerStatus() lists (checkStatus).
+// A problem there ends the worker Gone with `setup`, as system/init's check does, and the session is
+// sent nothing: the start or resume itself doesn't fail, so the run settles it as a setup problem
+// whatever started it. What they can't read is left to system/init's check. Either way a setup problem kills
+// Claude Code's process group at once, rather than close it with the SDK's grace, during which a
+// turn under way would go on.
 //
 // A session lives in a scope of its own, inside the layer's: closing it, on purpose (close, end),
 // because the session went (Gone), or with the layer's scope, ends the prompt, closes the query
@@ -63,7 +73,7 @@ import {
   Scope,
   Stream,
 } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig, type SetupProblem } from "../cli/AppConfig.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
 import { readmeName } from "../project/requires.ts"
 import { checkCommands } from "../project/settings.ts"
@@ -87,7 +97,7 @@ import type { Attention } from "./Attention.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { coreShare, workerEnv } from "./env.ts"
 import { serverName } from "./interviewTools.ts"
-import { type ChosenServers, checkInit, inProcess, noServers, withOwn } from "./mcp.ts"
+import { type ChosenServers, checkInit, checkStatus, inProcess, noServers, withOwn } from "./mcp.ts"
 import { interviewOptions, type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
 import { requiresServerName } from "./requiresTools.ts"
 import type { Transcripts } from "./Transcripts.ts"
@@ -143,6 +153,19 @@ const decodePermissionMode = Schema.decodeUnknownResult(
 const decodeApiKeySource = Schema.decodeUnknownResult(
   Schema.Struct({ apiKeySource: Schema.String }),
 )
+// The API key source of a session's initialize answer, which checkBefore reads.
+const decodeAccountKey = Schema.decodeUnknownResult(
+  Schema.Struct({ account: Schema.Struct({ apiKeySource: Schema.String }) }),
+)
+
+/** How long a session's mcpServerStatus() has to be answered before its start goes on unchecked. */
+export const statusLimit: Duration.Duration = Duration.seconds(10)
+
+/** The problems a check of the MCP servers failed with, as one. */
+const problemsIn = (cause: Cause.Cause<SetupProblem>): string =>
+  cause.reasons
+    .flatMap((reason) => (reason._tag === "Fail" ? reason.error.problems : []))
+    .join("; ")
 
 /** The log line when the first system/init lacks `field`, so tutti doesn't check `what`. */
 export const uncheckedLine = (field: string, what: string): string =>
@@ -417,10 +440,15 @@ export const layer = (
           if (close !== undefined) yield* Effect.forkIn(close, scope)
         })
 
-      /** Ends the worker over a setup problem, before it does anything: Gone with `setup`. */
+      /**
+       * Ends the worker over a setup problem, before it does anything: Gone with `setup`, its process
+       * group killed at once, not given the SDK's grace.
+       */
       const setupProblem = (session: Live, problem: string) =>
         Effect.gen(function* () {
           yield* log.write(detail`${session.ticket}: ${problem}`)
+          const child = session.spawned.child
+          if (child !== undefined) yield* killGroup(child)
           session.abort.abort()
           yield* gone(session, problem, true)
         })
@@ -447,12 +475,7 @@ export const layer = (
             }
           }
           const mcp = yield* Effect.exit(checkInit(init, session.servers))
-          if (Exit.isFailure(mcp)) {
-            const problems = mcp.cause.reasons.flatMap((reason) =>
-              reason._tag === "Fail" ? reason.error.problems : [],
-            )
-            return problems.join("; ")
-          }
+          if (Exit.isFailure(mcp)) return problemsIn(mcp.cause)
           if (options.account.billing._tag !== "Subscription") return undefined
           const key = decodeApiKeySource(init)
           if (Result.isFailure(key)) {
@@ -464,6 +487,29 @@ export const layer = (
           }
           if (billedKey(options.account.billing, key.success.apiKeySource)) {
             return apiKeyProblem(key.success.apiKeySource)
+          }
+          return undefined
+        })
+
+      /**
+       * Checks a session before it is sent anything, from its initialize answer, `initialized`, and
+       * its mcpServerStatus(): the setup problem they show, if any. What either doesn't say, or says
+       * in a shape tutti can't read, is left to the first system/init's check (checkFirst).
+       */
+      const checkBefore = (session: Live, initialized: unknown) =>
+        Effect.gen(function* () {
+          const status = yield* Effect.tryPromise(() => session.query.mcpServerStatus()).pipe(
+            Effect.timeout(statusLimit),
+            Effect.option,
+          )
+          if (Option.isSome(status)) {
+            const mcp = yield* Effect.exit(checkStatus(status.value, session.servers))
+            if (Exit.isFailure(mcp)) return problemsIn(mcp.cause)
+          }
+          const key = decodeAccountKey(initialized)
+          if (Result.isSuccess(key)) {
+            const source = key.success.account.apiKeySource
+            if (billedKey(options.account.billing, source)) return apiKeyProblem(source)
           }
           return undefined
         })
@@ -570,7 +616,10 @@ export const layer = (
 
       /**
        * Starts (or resumes) the ticket's session; it is open once Claude Code has answered. The
-       * start runs in the session's scope, so closing the session while it starts cancels it.
+       * start runs in the session's scope, so closing the session while it starts cancels it. A
+       * setup problem found as it starts (checkBefore) doesn't fail it: its worker is Gone with
+       * `setup`, as one its first system/init shows makes it, and `problem` says what it was; the
+       * caller sends it nothing.
        */
       const begin = (ticket: string, session: Session, how: SessionStart) =>
         Effect.gen(function* () {
@@ -579,7 +628,12 @@ export const layer = (
           const exit = yield* Fiber.await(started).pipe(
             Effect.onInterrupt(() => closeIn(ticket, of, undefined)),
           )
-          if (Exit.isSuccess(exit)) return exit.value
+          if (Exit.isSuccess(exit)) {
+            // Here, not in the start, which runs in the session's scope that this closes.
+            const { opened, problem } = exit.value
+            if (problem !== undefined) yield* setupProblem(opened, problem)
+            return exit.value
+          }
           const cancelled = Cause.hasInterruptsOnly(exit.cause)
           yield* closeIn(ticket, of, cancelled ? closedWhy : startWhy(exit.cause))
           if (cancelled) return yield* new AgentStartFailed({ ticket, reason: closedWhy })
@@ -715,7 +769,7 @@ export const layer = (
             for (const capability of capabilitiesOf(initialized.value)) {
               opened.capabilities.add(capability)
             }
-            return opened
+            return { opened, problem: yield* checkBefore(opened, initialized.value) }
           }
           // A startup failure's result comes just before the stream ends: the reader sees it.
           yield* Fiber.await(reader).pipe(Effect.timeout(closeLimit), Effect.ignore)
@@ -826,10 +880,15 @@ export const layer = (
       return AgentHost.of({
         start: (ticket, session) =>
           Effect.asVoid(begin(ticket, session, { _tag: "New", sessionId: session.sessionId })),
+        // A session stopped over a setup problem as it resumed is sent nothing: the message's uuid
+        // all the same, its worker Gone with `setup` for the caller to settle.
         resume: (ticket, session, message) =>
           Effect.flatMap(
             begin(ticket, session, { _tag: "Resume", sessionId: session.sessionId }),
-            (opened) => push(opened, message),
+            ({ opened, problem }) =>
+              problem === undefined
+                ? push(opened, message)
+                : Effect.succeed(message.uuid ?? randomUUID()),
           ),
         send: (ticket, text, from, uuid) =>
           Effect.flatMap(sessionOf(ticket), (session) =>

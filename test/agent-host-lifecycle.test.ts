@@ -10,7 +10,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Fiber, Layer, Option, Schedule, Stream } from "effect"
 import { AgentHost, AgentStartFailed, makeWorkers } from "../src/agent/AgentHost.ts"
 import { closedWhy, layer as liveLayer } from "../src/agent/AgentHostLive.ts"
-import { noServersNote, notGivenProblem } from "../src/agent/mcp.ts"
+import { noServersNote } from "../src/agent/mcp.ts"
 import { WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -102,10 +102,18 @@ const exitedBefore = (file: string, pid: number, after: number) => {
 }
 
 describe("AgentHost live: a session's lifecycle", () => {
-  test("a resume waits for the session gone over a setup problem to exit", async () => {
-    const extra = [{ name: "claude.ai Gmail", status: "connected", source: "claudeai" }]
+  test("a resume waits for the session gone without tutti closing it to exit", async () => {
+    // A setup problem kills its Claude Code at once; a startup failure's result closes it as usual.
+    const refused = {
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      errors: ["refused"],
+      num_turns: 0,
+      startup_failure_reason: "refused",
+    }
     const { state, pids, log } = await run(
-      { init: { mcp_servers: extra }, lingerOnClose: 800 },
+      { turns: [[{ message: refused }]], lingerOnClose: 800 },
       ({ dir, log }) =>
         Effect.gen(function* () {
           const host = yield* AgentHost
@@ -117,9 +125,7 @@ describe("AgentHost live: a session's lifecycle", () => {
           return { state, pids: started(log), log }
         }),
     )
-    expect(state).toEqual(
-      WorkerState.Gone({ why: notGivenProblem(["claude.ai Gmail"]), setup: true }),
-    )
+    expect(state).toEqual(WorkerState.Gone({ why: "refused" }))
     expect(pids).toHaveLength(2)
     expect(exitedBefore(log, pids[0] ?? 0, pids[1] ?? 0)).toBe(true)
   })
