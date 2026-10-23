@@ -322,6 +322,7 @@ describe("the request panel's height", () => {
 const partsOf = (head: number, input: number): PanelParts => ({
   head: Array.from({ length: head }, () => [seg("h")]),
   input: Array.from({ length: input }, () => [seg("i")]),
+  sides: (lines) => lines,
   foot: [[seg("f")]],
 })
 

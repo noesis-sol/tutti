@@ -41,6 +41,7 @@
 import {
   BoxRenderable,
   type MarkdownOptions,
+  type MouseEvent,
   RGBA,
   SyntaxStyle,
   type TreeSitterClient,
@@ -72,6 +73,7 @@ import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, useInput, useLayer } from "./keys.ts"
 import {
   boxed,
+  boxSides,
   cut,
   Line,
   Lines,
@@ -562,21 +564,42 @@ const EntryView = memo(({ entry, ...props }: EntryProps) => {
 /** A request's box in the panel: its lines over its input, its input, and its frame's foot. */
 export interface PanelParts {
   readonly head: ReadonlyArray<Segments>
-  /** Its whole input, one framed line a line, scrolled within the box when it is long. */
+  /**
+   * Its whole input, one line a line within the frame, scrolled within the box when it is long. The
+   * box puts only the lines it shows in the frame's sides (`sides`), so a long input costs a
+   * selection or a focused button no more than a short one (tutti-x4wu).
+   */
   readonly input: ReadonlyArray<Segments>
+  readonly sides: (lines: ReadonlyArray<Segments>) => ReadonlyArray<Segments>
   readonly foot: ReadonlyArray<Segments>
 }
 
 /**
+ * A request's input as its box in the panel, `width` wide, shows it: wrapped within the frame's
+ * sides and the space each side of them, never cut (§ 4.5). The costly part of a request's box,
+ * worked out once a request and width, apart from its selection and its focused button.
+ */
+export const panelInput = (
+  request: AttentionRequest,
+  theme: Theme,
+  width: number,
+): ReadonlyArray<Segments> => requestInputLines(request, theme, Math.max(width - 4, 1))
+
+/**
  * A request's box in the panel, `width` wide, framed `needsYou`, heavy when it is selected: the
  * request's line, a URL elicitation's URL, its description and reason faint, its buttons (`focus`
- * the focused one), then its whole input faint, under the buttons so that a long one never hides
- * them.
+ * the focused one), then its whole input faint (`input`, its panelInput, where it is known
+ * already), under the buttons so that a long one never hides them.
  */
 export const panelParts = (
   request: AttentionRequest,
   theme: Theme,
-  options: { readonly width: number; readonly selected: boolean; readonly focus: number | null },
+  options: {
+    readonly width: number
+    readonly selected: boolean
+    readonly focus: number | null
+    readonly input?: ReadonlyArray<Segments>
+  },
 ): PanelParts => {
   const { styles } = theme
   const text = requestText(request)
@@ -595,7 +618,7 @@ export const panelParts = (
     request.kind._tag === "Elicitation" && request.kind.url !== undefined
       ? [sanitizeLine(request.kind.url)]
       : []
-  const input = requestInputLines(request, theme, inner)
+  const input = options.input ?? panelInput(request, theme, options.width)
   const button = (label: string, index: number): ButtonSegment => ({
     text: `[ ${label} ]`,
     look: index === options.focus ? theme.form.focusedButton : theme.form.button,
@@ -612,22 +635,20 @@ export const panelParts = (
     ...faint(reason),
     ...rows,
   ]
-  const lines = boxed(
-    [...above, ...input],
-    options.width,
-    roleLook(theme, "needsYou"),
-    options.selected ? "heavy" : "rounded",
-  )
+  const frame = roleLook(theme, "needsYou")
+  const border = options.selected ? "heavy" : "rounded"
+  const lines = boxed(above, options.width, frame, border)
   return {
-    head: lines.slice(0, 1 + above.length),
-    input: lines.slice(1 + above.length, -1),
+    head: lines.slice(0, -1),
+    input,
+    sides: (shown) => boxSides(shown, options.width, frame, border),
     foot: lines.slice(-1),
   }
 }
 
 /**
- * A request's box in the panel: its input scrolls in at most `room` lines, in a scrollbox that takes
- * no focus; buttons are pressed.
+ * A request's box in the panel: its input scrolls in at most `room` lines, by the wheel, and only
+ * the lines in view are drawn (tutti-x4wu); buttons are pressed.
  */
 export const PanelBox = ({
   parts,
@@ -637,22 +658,32 @@ export const PanelBox = ({
   readonly parts: PanelParts
   readonly room: number
   readonly press: (index: number) => void
-}) => (
-  <box flexDirection="column" flexShrink={0}>
-    <AttentionLines lines={parts.head} press={press} />
-    {parts.input.length === 0 ? null : (
-      <scrollbox
-        height={Math.min(parts.input.length, room)}
-        flexShrink={0}
-        focusable={false}
-        scrollbarOptions={{ visible: false }}
-      >
-        <Lines lines={parts.input} />
-      </scrollbox>
-    )}
-    <Lines lines={parts.foot} />
-  </box>
-)
+}) => {
+  const height = Math.max(Math.min(parts.input.length, room), 0)
+  const last = parts.input.length - height
+  const [scrolled, setScrolled] = useState(0)
+  const top = Math.min(scrolled, last)
+  const shown = useMemo(
+    () => parts.sides(parts.input.slice(top, top + height)),
+    [parts, top, height],
+  )
+  const wheel = (event: MouseEvent) => {
+    const step = event.scroll?.direction === "down" ? 1 : event.scroll?.direction === "up" ? -1 : 0
+    const by = step * Math.max(event.scroll?.delta ?? 1, 1)
+    if (by !== 0) setScrolled((at) => Math.max(Math.min(Math.min(at, last) + by, last), 0))
+  }
+  return (
+    <box flexDirection="column" flexShrink={0}>
+      <AttentionLines lines={parts.head} press={press} />
+      {height === 0 ? null : (
+        <box height={height} flexShrink={0} onMouseScroll={wheel}>
+          <Lines lines={shown} />
+        </box>
+      )}
+      <Lines lines={parts.foot} />
+    </box>
+  )
+}
 
 /** The hand-back notice's lines (§ 4.3): a conflict waits for the steered worker. */
 export const handBackLines = (
@@ -820,7 +851,8 @@ export const TranscriptPane = ({
 
 /**
  * A request's box in the panel, its parts worked out again only when what they show changes: its
- * input is put as JSON and sanitized (tutti-k2n1).
+ * input is put as JSON and sanitized (tutti-k2n1), once a request and width, not again as the
+ * selection or the focused button moves (tutti-x4wu).
  */
 const PanelRequest = ({
   request,
@@ -838,9 +870,10 @@ const PanelRequest = ({
   readonly press: (index: number) => void
 }) => {
   const theme = useTheme()
+  const input = useMemo(() => panelInput(request, theme, width), [request, theme, width])
   const parts = useMemo(
-    () => panelParts(request, theme, { width, selected, focus }),
-    [request, theme, width, selected, focus],
+    () => panelParts(request, theme, { width, selected, focus, input }),
+    [request, theme, width, selected, focus, input],
   )
   return <PanelBox parts={parts} room={room} press={press} />
 }

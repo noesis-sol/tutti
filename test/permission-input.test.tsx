@@ -196,10 +196,11 @@ describe("a permission request's input in the worker view", () => {
             selected: false,
             focus: 0,
           })
-          for (const line of [...parts.head, ...parts.input, ...parts.foot]) {
+          const input = parts.sides(parts.input)
+          for (const line of [...parts.head, ...input, ...parts.foot]) {
             expect(widthOf(line)).toBeLessThanOrEqual(width)
           }
-          const shown = parts.input.map((line) => textOf([line.slice(2, -2)])[0]).join("")
+          const shown = input.map((line) => textOf([line.slice(2, -2)])[0]).join("")
           expect(shown.replace(/\s+/g, "")).toBe(text.replace(/\s+/g, ""))
         },
       ),

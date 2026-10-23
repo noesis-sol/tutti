@@ -381,19 +381,30 @@ export const boxed = (
   border: Border = "rounded",
 ): ReadonlyArray<Segments> => {
   const c = corners[border]
-  const look =
-    border === "heavy" ? { ...frame, attributes: frame.attributes | TextAttributes.BOLD } : frame
-  const inner = Math.max(width - 4, 0)
+  const look = borderLook(frame, border)
   const rule = c.h.repeat(Math.max(width - 2, 0))
   return [
     [seg(c.tl + rule + c.tr, look)],
-    ...lines.map((line) => [
-      seg(c.v, look),
-      seg(" "),
-      ...padded(cut(line, inner), inner),
-      seg(" "),
-      seg(c.v, look),
-    ]),
+    ...boxSides(lines, width, frame, border),
     [seg(c.bl + rule + c.br, look)],
   ]
+}
+
+/** A frame's look: heavy is bold as well. */
+const borderLook = (frame: Look, border: Border): Look =>
+  border === "heavy" ? { ...frame, attributes: frame.attributes | TextAttributes.BOLD } : frame
+
+/**
+ * `lines` between the sides of boxed's frame, `width` wide, without its top and bottom: for a box
+ * that draws its lines a few at a time.
+ */
+export const boxSides = (
+  lines: ReadonlyArray<Segments>,
+  width: number,
+  frame: Look,
+  border: Border = "rounded",
+): ReadonlyArray<Segments> => {
+  const side = seg(corners[border].v, borderLook(frame, border))
+  const inner = Math.max(width - 4, 0)
+  return lines.map((line) => [side, seg(" "), ...padded(cut(line, inner), inner), seg(" "), side])
 }
