@@ -21,6 +21,7 @@ import {
   defaultMaxOutputBytes,
   exec,
   type Output,
+  outputCut,
   showCommand,
   TimeLimit,
 } from "./exec.ts"
@@ -412,7 +413,7 @@ export class Git extends Context.Service<
                       op,
                       command: shown,
                       exitCode: output.exitCode,
-                      stderr: `its output ran past ${maxOutputBytes} bytes, and only the last were kept\n${output.stderr}`,
+                      stderr: `${outputCut(maxOutputBytes)}\n${output.stderr}`,
                     }),
                   )
                 : Effect.succeed({ shown, output }),

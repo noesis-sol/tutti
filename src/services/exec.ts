@@ -124,6 +124,13 @@ export interface Output {
 }
 
 /**
+ * Why a read whose stdout ran past `max` bytes (`truncated.stdout`) fails rather than be read: it
+ * lost its start, so what is left is a partial first field or no JSON at all.
+ */
+export const outputCut = (max: number, whose = "its"): string =>
+  `${whose} output ran past ${max} bytes, and only the last were kept`
+
+/**
  * The process groups exec has started and not yet seen killed, by their leader's PID. A command
  * that is still here once the run's scope has closed was left running: whole-run scenarios read
  * this to fail on it (§ 13), each with a registry of its own.

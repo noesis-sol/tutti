@@ -14,7 +14,15 @@ import {
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { formatDuration } from "../project/configFile.ts"
-import { type Command, exec, type Output, showCommand, TimeLimit } from "./exec.ts"
+import {
+  type Command,
+  defaultMaxOutputBytes,
+  exec,
+  type Output,
+  outputCut,
+  showCommand,
+  TimeLimit,
+} from "./exec.ts"
 
 /** bd's built-in statuses; a project may configure more, so any other string can come back too. */
 export type Status =
@@ -450,11 +458,15 @@ export class Beads extends Context.Service<
     unsetMetadata(id: string, key: string): Effect.Effect<void, BeadsError>
   }
 >()("tutti/services/Beads") {
-  /** bd in the repository at cwd. `command` and `timeLimits` are there for tests. */
+  /**
+   * bd in the repository at cwd. `command`, `timeLimits` and `maxOutputBytes` (exec's cap on the
+   * output kept) are there for tests.
+   */
   static readonly layer = (options: {
     readonly cwd: string
     readonly command?: string
     readonly timeLimits?: { readonly read: Duration.Input; readonly write: Duration.Input }
+    readonly maxOutputBytes?: number
   }) =>
     Layer.effect(
       Beads,
@@ -464,6 +476,7 @@ export class Beads extends Context.Service<
         >()
         const bin = options.command ?? "bd"
         const limits = options.timeLimits ?? TimeLimit
+        const maxOutputBytes = options.maxOutputBytes ?? defaultMaxOutputBytes
 
         const bd = (args: ReadonlyArray<string>, timeLimit: Duration.Input) => {
           const command: Command = {
@@ -471,6 +484,7 @@ export class Beads extends Context.Service<
             args,
             timeLimit,
             cwd: options.cwd,
+            maxOutputBytes,
             // Pins the --json shape. Only bd gets it, as orchestra does.
             env: { BD_JSON_ENVELOPE: "0", NO_COLOR: "1" },
           }
@@ -502,6 +516,27 @@ export class Beads extends Context.Service<
             noSuchIssue: saysNoSuchIssue(output.stdout),
           })
 
+        // bd's stdout past exec's cap lost its start, so it isn't decoded: it would fail as "not
+        // JSON", or worse, decode as the last issues of a list. bd exiting 0 says so; failing, it
+        // fails with its exit code.
+        const decodeWhole = <A>(
+          shown: string,
+          output: Output,
+          decode: (
+            command: string,
+            stdout: string,
+          ) => Effect.Effect<A, BeadsUnreadable | BeadsFailed>,
+        ) =>
+          output.truncated.stdout
+            ? Effect.fail(
+                new BeadsUnreadable({
+                  command: shown,
+                  reason: outputCut(maxOutputBytes, "bd's"),
+                  output: "",
+                }),
+              )
+            : decode(shown, output.stdout)
+
         // A read is bd's answer when its output decodes, whatever bd's exit code.
         const read = <A>(
           args: ReadonlyArray<string>,
@@ -511,7 +546,7 @@ export class Beads extends Context.Service<
           ) => Effect.Effect<A, BeadsUnreadable | BeadsFailed>,
         ) =>
           Effect.flatMap(bd(args, limits.read), ({ shown, output }) =>
-            decode(shown, output.stdout).pipe(
+            decodeWhole(shown, output, decode).pipe(
               Effect.catchTag("BeadsUnreadable", (unreadable) =>
                 Effect.fail(output.exitCode === 0 ? unreadable : failed(shown, output)),
               ),
@@ -527,7 +562,9 @@ export class Beads extends Context.Service<
           )
 
         const writeIssue = (args: ReadonlyArray<string>) =>
-          Effect.flatMap(write(args), ({ shown, output }) => decodeIssue(shown, output.stdout))
+          Effect.flatMap(write(args), ({ shown, output }) =>
+            decodeWhole(shown, output, decodeIssue),
+          )
 
         const show = (id: string) =>
           read(["show", id, "--json"], (command, stdout) => issueFor(id, command, stdout))
