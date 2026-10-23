@@ -233,6 +233,9 @@ describe("an organ's or the usage probe's turn cut short", () => {
     expect(exit).toEqual(Exit.succeed("interrupted"))
     const pid = firstPid(log)
     expect(pid === undefined ? "never started" : processAlive(pid)).toBe(false)
+    // Killed at once, before its stdin closed: not left to read its end and wait out the SDK's
+    // grace before its SIGTERM.
+    expect(readFileSync(log, "utf8")).not.toContain('"closed":true')
   })
 
   test("an interrupted usage probe returns once its Claude Code is gone", async () => {
@@ -251,5 +254,8 @@ describe("an organ's or the usage probe's turn cut short", () => {
     expect(exit).toEqual(Exit.succeed("interrupted"))
     const pid = firstPid(log)
     expect(pid === undefined ? "never started" : processAlive(pid)).toBe(false)
+    // Killed at once, before its stdin closed: not left to read its end and wait out the SDK's
+    // grace before its SIGTERM.
+    expect(readFileSync(log, "utf8")).not.toContain('"closed":true')
   })
 })
