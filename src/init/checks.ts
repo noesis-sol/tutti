@@ -743,14 +743,86 @@ export const passRunnersTitle = (base: string): string =>
   `Make ${fastRunner} and ${fullRunner} pass on ${base}`
 
 /**
+ * What a runner on disk does once init has written the setup: checks nothing (no script, or one
+ * running no command but `exit 0`), runs the suites the choice found as init writes them, or runs
+ * checks of the project's own, such as a runner init kept or a check-full.sh that runs one.
+ */
+export type RunnerOnDisk = "nothing" | "suites" | "own"
+
+/** What each runner on disk does once init has written the setup. */
+export interface RunnersOnDisk {
+  readonly fast: RunnerOnDisk
+  readonly full: RunnerOnDisk
+}
+
+/** The runners as init writes them where none were there: from the suites found, or checking nothing. */
+const runnersAsInitWrites = (choice: ChecksChoice | undefined): RunnersOnDisk =>
+  choice?.kind === "found"
+    ? { fast: "suites", full: "suites" }
+    : { fast: "nothing", full: "nothing" }
+
+/**
+ * Reads what the runners in `repo` do, once init has written the setup: a runner it kept, the
+ * project's own, checks something, and so does a check-full.sh that runs it.
+ */
+export const readRunners = (repo: string, choice: ChecksChoice | undefined) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const read = (path: string) =>
+      fs.readFileString(join(repo, path)).pipe(
+        Effect.option,
+        Effect.map((there) => Option.getOrNull(there)),
+      )
+    const onDisk = (script: string | null, fromSuites: string | null): RunnerOnDisk =>
+      script === null || runsNothing(script) ? "nothing" : script === fromSuites ? "suites" : "own"
+    const fastText = yield* read(fastRunner)
+    const fullText = yield* read(fullRunner)
+    const fast = onDisk(fastText, choice?.kind === "found" ? fastScript(choice.fast) : null)
+    const full = onDisk(
+      fullText,
+      choice?.kind === "found" ? fullScript(choice.full, fast === "nothing") : null,
+    )
+    return { fast, full } satisfies RunnersOnDisk
+  })
+
+/**
+ * Says what the runners on disk do: those init wrote from the suites found, those checking
+ * nothing, and those running the project's own checks; ending with `unchecked` where
+ * check-fast.sh checks nothing, as nothing merged is checked then.
+ */
+const runnersAsWritten = (onDisk: RunnersOnDisk, unchecked: string): string => {
+  const runners = (does: RunnerOnDisk) =>
+    [
+      ...(onDisk.fast === does ? [fastRunner] : []),
+      ...(onDisk.full === does ? [fullRunner] : []),
+    ].join(" and ")
+  const own = runners("own")
+  const says = [
+    ...(runners("suites") === ""
+      ? []
+      : [`tutti init wrote ${runners("suites")} from the suites the project has`]),
+    ...(runners("nothing") === ""
+      ? []
+      : [`tutti init wrote ${runners("nothing")} checking nothing (exit 0)`]),
+    ...(own === ""
+      ? []
+      : [`${own} ${own.includes(" and ") ? "run" : "runs"} the checks the project had`]),
+  ].join("; ")
+  return onDisk.fast === "nothing" ? `${says}: ${unchecked}` : `${says}.`
+}
+
+/**
  * The work a choice files for the project's tests on `base`, an epic before its tickets: from
  * scratch, an epic and the solo P1 ticket that sets the tests up; with the suites found, the solo
  * P1 ticket that gets the runners passing, under an epic with the ticket mapping the untested areas
- * after it where those are filed. Manual files nothing. Every ticket is labelled tutti-tests.
+ * after it where those are filed. Manual files nothing. Every ticket is labelled tutti-tests. The
+ * tickets say what the runners on disk do (readRunners), as init writes them where none were there
+ * by default.
  */
 export const testWork = (
   choice: ChecksChoice | undefined,
   base: string,
+  onDisk: RunnersOnDisk = runnersAsInitWrites(choice),
 ): ReadonlyArray<TestTicket> => {
   const skill = `the create-check-suite skill (${skillPath})`
   const runners = `${fastRunner} and ${fullRunner}`
@@ -774,7 +846,7 @@ export const testWork = (
         labels: [testWorkLabel, soloLabel],
         parent: 0,
         blockedBy: [],
-        description: `tutti init wrote ${runners} checking nothing (exit 0): until this ticket is done, nothing merged is checked. It runs first and alone (P1, solo), so nothing merges meanwhile.\n\nUse ${skill}, every section:\n- set up a harness and smoke tests in the project's own frameworks, added to the runners;\n- get both runners passing on ${base};\n- map the features in FEATURES.md;\n- file one P3 ticket per untested area, under this ticket's epic.`,
+        description: `${runnersAsWritten(onDisk, "until this ticket is done, nothing merged is checked.")} It runs first and alone (P1, solo), so nothing merges meanwhile.\n\nUse ${skill}, every section:\n- set up a harness and smoke tests in the project's own frameworks, added to the runners;\n- get both runners passing on ${base};\n- map the features in FEATURES.md;\n- file one P3 ticket per untested area, under this ticket's epic.`,
         acceptance: `${runners} run the new suites and exit 0 on ${base}; FEATURES.md maps the features; each untested area has a P3 ticket under the epic.`,
       },
     ]
@@ -787,7 +859,7 @@ export const testWork = (
     labels: [testWorkLabel, soloLabel],
     parent: null,
     blockedBy: [],
-    description: `tutti init wrote ${runners} from the suites the project has. Every merge runs ${fastRunner}, so it runs first and alone (P1, solo).\n\nRun ${fastRunner} and fix what fails; once it passes, run it twice more, to catch a test that passes only sometimes. Then run ${fullRunner} once, as a run does at its end, fixing what fails, and again only where a fix since touched what it runs. A failing test whose fix isn't trivial and plainly right is skipped with its framework's own skip, naming in the skip's reason a bug ticket filed for it. Record how long each runner takes in this ticket's notes.`,
+    description: `${runnersAsWritten(onDisk, "nothing merged is checked.")} Every merge runs ${fastRunner}, so it runs first and alone (P1, solo).\n\nRun ${fastRunner} and fix what fails; once it passes, run it twice more, to catch a test that passes only sometimes. Then run ${fullRunner} once, as a run does at its end, fixing what fails, and again only where a fix since touched what it runs. A failing test whose fix isn't trivial and plainly right is skipped with its framework's own skip, naming in the skip's reason a bug ticket filed for it. Record how long each runner takes in this ticket's notes.`,
     acceptance: `${fastRunner} exits 0 on ${base} three times running, and ${fullRunner} once; how long each takes is in the notes.`,
   }
   if (!choice.fileUntested) return [pass]
@@ -809,14 +881,15 @@ export const testWork = (
 }
 
 /**
- * Files the test work `choice` calls for on `base` with bd: a step for each ticket, filed or found
+ * Files the test work `choice` calls for on `base` with bd, saying what the runners in `repo` do
+ * once init has written them: a step for each ticket, filed or found
  * open from an earlier init (labelled tutti-tests, with the same title) and not filed again. A
  * ticket that can't be filed is a step saying why, naming those after it: the files init wrote
  * stand, and init run again files what is missing.
  */
-export const fileTestWork = (choice: ChecksChoice | undefined, base: string) =>
+export const fileTestWork = (repo: string, choice: ChecksChoice | undefined, base: string) =>
   Effect.gen(function* () {
-    const plan = testWork(choice, base)
+    const plan = testWork(choice, base, yield* readRunners(repo, choice))
     if (plan.length === 0) return []
     const beads = yield* Beads
     const label = "ticket"

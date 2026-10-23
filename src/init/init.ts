@@ -1061,7 +1061,7 @@ const initWork = <R>(options: InitOptions<R>) =>
             ? [
                 {
                   name: "the test work",
-                  run: fileTestWork(choice, options.branch),
+                  run: fileTestWork(repo, choice, options.branch),
                   whole: false,
                   stopped: () =>
                     " while filing the test work: tutti init again files what is missing",
