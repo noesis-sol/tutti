@@ -357,6 +357,19 @@ export const doneLine = (n: number, how: "drained" | "limit" | "empty"): Line =>
       : line`READY_EMPTY after ${n} tickets`
 
 /**
+ * Shows the end-of-run box (D19) on `status`: the workers waiting on you it names, or null for
+ * none. It reads and sets the status in one step, so that another fiber's change in between isn't
+ * lost, and publishes nothing when the box is the same.
+ */
+export const showEndOfRun = (
+  status: SubscriptionRef.SubscriptionRef<Status>,
+  tickets: ReadonlyArray<string> | null,
+): Effect.Effect<void> =>
+  SubscriptionRef.updateSome(status, (now) =>
+    same(now.endOfRun, tickets) ? Option.none() : Option.some({ ...now, endOfRun: tickets }),
+  )
+
+/**
  * `root`, when the run closed it, an epic whose last subticket merged in this run: its close reason
  * names a ticket the run merged. None when it didn't, or bd can't show it.
  */
@@ -417,14 +430,6 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       dashboard !== undefined && outputMode(yield* Tty, config.plain)._tag === "Dashboard"
         ? yield* show(dashboard, SubscriptionRef.changes(status))
         : null
-    // The end-of-run box (D19): the workers waiting on you it names, or null for none.
-    const showEndOfRun = (tickets: ReadonlyArray<string> | null) =>
-      Effect.gen(function* () {
-        const now = yield* SubscriptionRef.get(status)
-        if (!same(now.endOfRun, tickets)) {
-          yield* SubscriptionRef.set(status, { ...now, endOfRun: tickets })
-        }
-      })
     // Set by the end-of-run box's `q`, taken by the run's next look.
     const endAsked = yield* Ref.make(false)
 
@@ -1231,7 +1236,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           return { limited: true, asked: false, seen }
         }
         const held = (yield* currentStops).first !== null
-        yield* showEndOfRun(endOfRunBox(look))
+        yield* showEndOfRun(status, endOfRunBox(look))
         const endNow = yield* Ref.getAndSet(endAsked, false)
         const end = decide({ ...look, held, usageHeld: yield* usage.held, endAsked: endNow })
         if (end._tag === "Done") return { limited: false, asked: end.asked, seen }
@@ -1349,7 +1354,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         ? new Set((yield* attention.current).map((request) => request.ticket))
         : new Set<string>()
     if (quit === null) yield* Effect.andThen(scheduler.interrupt, refuseAnswers)
-    yield* showEndOfRun(null)
+    yield* showEndOfRun(status, null)
     if (quit !== null) yield* quitNow(quit)
     yield* mergeStop(yield* queue.state)
     // A ticket set aside and merged by hand since the base last moved counts closed, for the end
