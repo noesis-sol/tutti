@@ -580,6 +580,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // A ticket's fiber, dispatched or carried over: its work, and the stop it ended with, if any.
     const onTicketLimit = (ticket: string) => (stop: StopReason) =>
       stopped(stop, (now) => pastTicketLimit(now, ticket, stop))
+    // The same, for workers resumed by carry-over or an answer, each stop naming its ticket.
+    const onResumedLimit = (stop: StopReason) =>
+      stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop)
     const outcomeOf = <R>(ticket: string, worked: Effect.Effect<Worked, WorkError, R>) =>
       worked.pipe(
         Effect.matchCauseEffect({
@@ -849,8 +852,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
               queue,
               triage,
               closedBranches: branches,
-              onTicketLimit: (stop) =>
-                stop.ticket === undefined ? stopped(stop) : onTicketLimit(stop.ticket)(stop),
+              onTicketLimit: onResumedLimit,
               carry: (ticket, worked, issue) =>
                 scheduler.carry(ticket, outcomeOf(ticket, worked), issue),
             }).pipe(Effect.provideContext(context)),
@@ -1127,6 +1129,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           queue,
           triage,
           closedBranches: branches,
+          onTicketLimit: onResumedLimit,
           carry: (ticket, fiber, issue) => scheduler.carry(ticket, outcomeOf(ticket, fiber), issue),
         })
       }
