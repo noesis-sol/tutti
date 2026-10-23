@@ -96,7 +96,7 @@ the time.
 `Stopped` (the dashboard's rows, see [The tickets table](dashboard.md#the-tickets-table)). Its `cause`
 names the transition: `Ready`, `Held`, `Released`, `Unready`, `Dispatched`, `Verified`, `NoChange`,
 `FiledQuestion`, `WaitsForMerge`, `SetupFailed`, `Defer`, `Aside`, `StopRun`, `RunEnded`, `Answered`, `Requeued`,
-`Reopened`, `ItsTurn`, `FastForwarded`, `MergeInterrupted`, `ConflictsHandedBack`,
+`Reopened`, `Undeferred`, `ItsTurn`, `FastForwarded`, `MergeInterrupted`, `ConflictsHandedBack`,
 `CheckHandedBack`, `Block`, `Recheck`, `HandedOver`, and for tickets carried over from the last run,
 `Resumed`, `StillAsked` and `Unmerged`. A ticket's `phase` record comes before the records of other
 kinds the same change writes (`dispatch`, `closed`, …).

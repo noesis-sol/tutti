@@ -134,6 +134,7 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPh
   ["Waiting → Queued", Waiting({ for: "tut-b1" }), Cause.Requeued(), Queued()],
   ["Waiting{setup} → Queued", Waiting({ for: "setup" }), Cause.Requeued(), Queued()],
   ["Deferred → Waiting", Deferred({ why: "x" }), Cause.Reopened(), Waiting({ for: "probe" })],
+  ["Deferred → Queued", Deferred({ why: "x" }), Cause.Undeferred(), Queued()],
   ["ToMerge → Merging", ToMerge({ place: 1 }), Cause.ItsTurn(), Merging({ step: "rebase" })],
   [
     "ToMerge → Stopped",
@@ -333,6 +334,7 @@ const causeOf: { readonly [C in CauseTag]: Extract<Cause, { readonly _tag: C }> 
   Answered: Cause.Answered(),
   Requeued: Cause.Requeued(),
   Reopened: Cause.Reopened(),
+  Undeferred: Cause.Undeferred(),
   ItsTurn: Cause.ItsTurn(),
   FastForwarded: Cause.FastForwarded({ commit: "abc" }),
   MergeInterrupted: Cause.MergeInterrupted({ place: 1 }),
@@ -451,6 +453,7 @@ const causeArb: fc.Arbitrary<Cause> = fc.oneof(
     Cause.Answered(),
     Cause.Requeued(),
     Cause.Reopened(),
+    Cause.Undeferred(),
     Cause.ItsTurn(),
     Cause.Resumed(),
   ),

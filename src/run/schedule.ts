@@ -23,11 +23,14 @@
 // run, leaves the ledger, so the In queue total counts only what may still start.
 //
 // The ledger's phases keep a ticket from being taken twice: only a ticket the run hasn't taken up,
-// or one still Queued or HeldBack, is a candidate. --limit counts the tickets this run starts; a
-// resumed or carried-over worker takes a slot (carry) but counts toward nothing, and a ticket put
-// back in the queue until its blocker merges counts once, as it starts again: it is dispatched
-// again only once its last fiber has ended and freed its slot. A ticket whose ID can't name a
-// worktree or a branch is set aside as it is queued (BAD_TICKET_ID), without a worker or a slot.
+// or one still Queued or HeldBack, is a candidate. A ticket set aside (Deferred) is one again once a
+// fill has found it gone from bd ready, its fiber ended, and a later fill finds it back: undeferred
+// outside the run, as the notes of a ticket tutti sets aside say to, it is Queued again, and counts
+// toward --limit again as it starts. --limit counts the tickets this run starts; a resumed or
+// carried-over worker takes a slot (carry) but counts toward nothing, and a ticket put back in the
+// queue until its blocker merges counts once, as it starts again: it is dispatched again only once
+// its last fiber has ended and freed its slot. A ticket whose ID can't name a worktree or a branch
+// is set aside as it is queued (BAD_TICKET_ID), without a worker or a slot.
 import {
   Duration,
   Effect,
@@ -364,6 +367,13 @@ const setupFailed = (state: State, id: string): boolean => {
 const candidate = (state: State, id: string): boolean =>
   !state.tickets.has(id) || waiting(state, id)
 
+/** Whether the ticket is set aside, Deferred. */
+const deferred = (state: State, id: string): boolean =>
+  state.tickets.get(id)?.phase._tag === "Deferred"
+
+/** `<id>: undeferred; back in the queue`, for a ticket set aside that bd ready lists again. */
+export const undeferredLine = (id: string): Line => detail`${id}: undeferred; back in the queue`
+
 /** The solo ticket running, or the one next, as queue and dispatch records give it. */
 interface SoloState {
   readonly ticket: string
@@ -474,6 +484,10 @@ export const make = (
     let shownLast = ""
     // The candidates the last fill read, which a queue record counts.
     let lastIds: ReadonlyArray<string> = []
+    // The tickets set aside (Deferred) that a fill found gone from bd ready, their fibers ended: one
+    // bd ready lists again was undeferred outside the run, and is queued again. One bd couldn't
+    // defer, which bd ready still lists, is kept out of the run.
+    const leftReady = new Set<string>()
 
     const soloState = (s: Slots): SoloState | null =>
       s.solo !== null
@@ -658,10 +672,22 @@ export const make = (
         const before = yield* ledger.current
         const kept = yield* carrying
         const listed = found.filter((issue) => !kept.has(issue.id))
-        const candidates = listed.filter((issue) => candidate(before, issue.id))
+        const foundIds = new Set(found.map((issue) => issue.id))
+        const { running } = yield* Ref.get(slots)
+        for (const entry of before.tickets.values()) {
+          if (!deferred(before, entry.ticket)) leftReady.delete(entry.ticket)
+          else if (!foundIds.has(entry.ticket) && !running.has(entry.ticket)) {
+            leftReady.add(entry.ticket)
+          }
+        }
+        const back = (id: string) => deferred(before, id) && leftReady.has(id)
+        const candidates = listed.filter((issue) => candidate(before, issue.id) || back(issue.id))
         // The queue's counts take in the tickets whose setup failed, held back apart.
         const ids = listed
-          .filter((issue) => candidate(before, issue.id) || setupFailed(before, issue.id))
+          .filter(
+            (issue) =>
+              candidate(before, issue.id) || back(issue.id) || setupFailed(before, issue.id),
+          )
           .map((issue) => issue.id)
         lastIds = ids
         const setAsideNow: Array<string> = []
@@ -677,18 +703,22 @@ export const make = (
             skipSaid.forget(entry.ticket)
           }
         }
-        // Each new candidate enters the ledger as Queued; one with an unusable ID is set aside.
+        // Each new candidate enters the ledger as Queued, and one set aside that is back in bd
+        // ready re-enters it so; one with an unusable ID is set aside.
         for (const issue of candidates) {
-          if (before.tickets.has(issue.id)) continue
+          const again = back(issue.id)
+          if (before.tickets.has(issue.id) && !again) continue
           const solo = soloState(yield* Ref.get(slots))
           const queue = yield* recorded(yield* ledger.current, ids, solo, [
             issue.id,
             TicketPhase.Queued(),
           ])
-          yield* ledger.transition(issue.id, Cause.Ready(), {
+          yield* ledger.transition(issue.id, again ? Cause.Undeferred() : Cause.Ready(), {
             title: issue.title,
             beside: [{ kind: "queue", ...queue }],
+            ...(again ? { lines: [undeferredLine(issue.id)] } : {}),
           })
+          leftReady.delete(issue.id)
           const why = ticketIdProblem(issue.id)
           if (why !== undefined) {
             yield* setAside(issue, why)

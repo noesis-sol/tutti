@@ -873,6 +873,7 @@ stateDiagram-v2
     Asked --> Working: answered, session resumed
     Waiting --> Queued: blocker merged · a ticket merged · probe passed
     Deferred --> Waiting: reopened by an environment hold
+    Deferred --> Queued: undeferred, back in bd ready
     ToMerge --> Merging: its turn
     ToMerge --> Stopped: run ended
     Merging --> Done: fast-forwarded · nothing left to merge
@@ -916,6 +917,7 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `Asked` | `Working` | its question is answered and a slot is free for it (§5's Scheduling): its session is resumed and told so | `answered`, `resumed` |
 | `Waiting` | `Queued` | the blocker merged, or the environment probe passed; for `Waiting{setup}`, a ticket merged since its setup failed, or the probe passed | `queue` |
 | `Deferred` | `Waiting` | an environment hold reopened it: it failed at once and did nothing | `reopened` |
+| `Deferred` | `Queued` | undeferred outside the run (`bd undefer`, as the notes of a ticket tutti sets aside say, or its deferral's date passed): a ready poll found it gone from `bd ready` once its worker's fiber ended, and a later one finds it back. One bd couldn't defer (`DEFER_FAILED`), which `bd ready` still lists, stays out of the run. It starts again as a new dispatch, counting toward `--limit` again | the log's `<id>: undeferred; back in the queue`; `queue` |
 | `ToMerge` | `Merging` | its turn: every ticket ahead of it has merged or left the queue | `phase` |
 | `ToMerge` | `Stopped` | the run ended with it in the queue. It is closed but not merged, so it is labelled `unmerged` | `suspended` |
 | `Merging` | `Done{merged}` | rebased if the base moved, set up if a dependency file changed, checked, and fast-forwarded | `closed` |

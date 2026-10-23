@@ -150,6 +150,8 @@ export type Cause = Data.TaggedEnum<{
   Requeued: Empty
   /** An environment hold reopened it: it failed at once and did nothing. */
   Reopened: Empty
+  /** Set aside, it left bd ready and is back in it: undeferred outside the run. */
+  Undeferred: Empty
   /** Its turn to merge: every ticket ahead of it has merged or left the queue. */
   ItsTurn: Empty
   /** Rebased, set up, checked and fast-forwarded to `commit`. */
@@ -376,6 +378,13 @@ export const transitions: ReadonlyArray<Transition> = [
     to: "Waiting",
     recorded: { kinds: ["reopened"] },
     next: () => TicketPhase.Waiting({ for: probeWait }),
+  }),
+  row({
+    from: "Deferred",
+    when: "Undeferred",
+    to: "Queued",
+    recorded: { kinds: ["queue"] },
+    next: () => TicketPhase.Queued(),
   }),
   row({
     from: "ToMerge",
