@@ -393,7 +393,8 @@ export const make = (
                 : prepared._tag === "Ready"
                   ? yield* fastForward(ticket, options, prepared.onto, prepared.at)
                   : undefined
-            // Its branch moved on after its check passed: the commit it is at now is checked first.
+            // Its branch moved on after its check passed, or the base before it merged: the commit
+            // it is at now is checked first, on the base as it is now.
             if (ended !== undefined && "_tag" in ended) {
               prepared = yield* prepareIt
               continue

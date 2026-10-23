@@ -15,7 +15,8 @@
 // - fastForward, the step from the fast-forward to the end of its notes, which the merge queue runs
 //   protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE, GIT_FAILED), the base
 //   fast-forwarded to the commit checked, the branch still at it (MERGE_FAILED; Moved, prepared
-//   and checked again, when it is not), the worktree and branch removed, the epics the ticket was the last
+//   and checked again, when it is not; BaseMoved, the same, when the base moved on before it; a
+//   fast-forward git was kept from tried again, then GIT_FAILED), the worktree and branch removed, the epics the ticket was the last
 //   to merge under closed, up the tree. exec's time limits kill a command themselves, without
 //   interrupting its fiber, so each git command's limit holds in there too.
 // - closeUnchanged, its stand-in when the branch has no change of its own left to merge: git's
@@ -167,6 +168,15 @@ export interface Unchanged {
  */
 export interface Moved {
   readonly _tag: "Moved"
+  readonly to: string
+}
+
+/**
+ * What the fast-forward found instead of merging: the base moved on to `to` from `onto`, the commit
+ * the branch was rebased onto or is on top of, so it is rebased and checked again first.
+ */
+export interface BaseMoved {
+  readonly _tag: "BaseMoved"
   readonly to: string
 }
 
@@ -1109,14 +1119,18 @@ export const closeEpics = (id: string) =>
  * removed, the ticket Done and forgotten in state.json, the `unmerged` label an earlier run gave it
  * removed, and the epics above it closed. Undefined when it merged; the stop when the main checkout
  * or git kept it from merging; Moved, nothing merged, when its branch is no longer at `at`, as
- * when its worker committed after its check passed: the merge checks it again.
+ * when its worker committed after its check passed: the merge checks it again. A fast-forward git
+ * refuses is BaseMoved when the base is no longer at `onto` (a commit made on it by hand), for the
+ * merge to rebase and check the branch again; tried again, up to gitTries in all, while the branch
+ * still fast-forwards onto it (as with another's .git/index.lock), then GIT_FAILED; MERGE_FAILED
+ * only when it doesn't.
  */
 export const fastForward = (
   ticket: FinishedTicket,
   options: MergeOptions,
   onto: string,
   at: string,
-): Effect.Effect<MergeStop | Moved | undefined, never, MergeEnv> =>
+): Effect.Effect<MergeStop | Moved | BaseMoved | undefined, never, MergeEnv> =>
   Effect.gen(function* () {
     const { git, worktrees, beads, ledger, log } = yield* services
     const { id, title, branch, worktree } = ticket
@@ -1170,8 +1184,8 @@ export const fastForward = (
       )
       return { _tag: "Moved", to: head.success } satisfies Moved
     }
-    const merged = yield* Effect.result(git.fastForward(repo, at))
-    if (Result.isFailure(merged)) {
+    let merged = yield* Effect.result(git.fastForward(repo, at))
+    for (let tries = 1; Result.isFailure(merged); tries++) {
       // Changes git leaves out of a clean tree (.beads/, .tutti/run/) can be in the way too.
       const local = new Set(checkout.success.status.map((entry) => entry.path))
       const changed = yield* Effect.result(steering(git.changedFiles(repo, base, at)))
@@ -1186,12 +1200,47 @@ export const fastForward = (
           line`uncommitted changes in ${repo} to ${inTheWay}, which ${branch} changes; ${left}. Commit or undo them, then run again`,
         )
       }
-      return yield* stopOver(
-        ticket,
-        "MERGE_FAILED",
-        `does not fast-forward onto ${base}`,
-        line`${branch} does not fast-forward onto ${base}: ${gitWhy(merged.failure)}; its worktree ${worktree} left for review`,
+      // Not every failure is a branch that doesn't fast-forward: the base may have moved on since
+      // prepare read it, or git may have been kept from writing, as by another's index.lock.
+      const now = yield* Effect.result(
+        Effect.all({
+          base: steering(git.revParse(repo, base)),
+          fork: steering(git.mergeBase(repo, base, at)),
+        }),
       )
+      if (Result.isFailure(now)) {
+        return yield* stopOver(
+          ticket,
+          "GIT_FAILED",
+          "git failed",
+          line`could not fast-forward ${base} to ${branch} (${gitWhy(merged.failure)}), nor tell where ${base} is now (${gitTries} tries): ${gitWhy(now.failure)}; ${left}`,
+        )
+      }
+      if (now.success.base !== onto) {
+        yield* log.write(
+          detail`${base} moved on to ${now.success.base.slice(0, 7)} before ${branch} fast-forwarded onto ${onto.slice(0, 7)}: rebasing and checking it again before it merges`,
+        )
+        return { _tag: "BaseMoved", to: now.success.base } satisfies BaseMoved
+      }
+      if (now.success.fork !== now.success.base) {
+        return yield* stopOver(
+          ticket,
+          "MERGE_FAILED",
+          `does not fast-forward onto ${base}`,
+          line`${branch} does not fast-forward onto ${base}: ${gitWhy(merged.failure)}; its worktree ${worktree} left for review`,
+        )
+      }
+      // It still fast-forwards: git was kept from merging it, which a few seconds may clear.
+      if (tries >= gitTries) {
+        return yield* stopOver(
+          ticket,
+          "GIT_FAILED",
+          "git failed",
+          line`${branch} fast-forwards onto ${base}, but git could not merge it (${gitTries} tries): ${gitWhy(merged.failure)}; ${left}`,
+        )
+      }
+      yield* Effect.sleep(gitAgainAfter)
+      merged = yield* Effect.result(git.fastForward(repo, at))
     }
     const commits = yield* Effect.result(git.log(repo, onto, base))
     const own = Result.isSuccess(commits) ? commits.success : []

@@ -546,14 +546,38 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
 
   test("MERGE_FAILED: the branch doesn't fast-forward; Blocked, exit 6", async () => {
     let worktree = ""
-    const ran = await mergeOne((ticket) =>
-      Effect.gen(function* () {
-        worktree = ticket.worktree
-        yield* (yield* Repository).fail("merge --ff-only", {
-          exitCode: 128,
-          stderr: "fatal: Not possible to fast-forward, aborting.",
-        })
-      }),
+    let refused = false
+    const ran = await scenario(
+      { backlog: backlog().ticket("a").seeds },
+      withQueue(
+        (queue) =>
+          Effect.gen(function* () {
+            const ticket = yield* finished("a", { "a.txt": "a\n" })
+            worktree = ticket.worktree
+            yield* (yield* Repository).fail("merge --ff-only", {
+              exitCode: 128,
+              stderr: "fatal: Not possible to fast-forward, aborting.",
+            })
+            yield* queue.offer(ticket)
+            yield* queue.settled
+          }),
+        // Read after the refusal, the branch has left the base where it is: it doesn't fast-forward.
+        (queue) =>
+          Effect.gen(function* () {
+            const git = yield* Git
+            return yield* Effect.provideService(queue, Git, {
+              ...git,
+              fastForward: (repo, branch) =>
+                Effect.tapError(git.fastForward(repo, branch), () =>
+                  Effect.sync(() => {
+                    refused = true
+                  }),
+                ),
+              mergeBase: (repo, a, b) =>
+                refused ? Effect.succeed("0".repeat(40)) : git.mergeBase(repo, a, b),
+            })
+          }),
+      ),
     )
     const merged = resultOf(ran)
     expect(merged.phases.a).toEqual(
