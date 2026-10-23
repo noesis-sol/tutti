@@ -56,6 +56,17 @@ export interface Usage {
   readonly overage?: true
 }
 
+/**
+ * One of the account's usage windows (§ 4.12), as the title line shows it at all times: its
+ * name, as the SDK gives it (`five_hour`, `seven_day`), how much of it is used, 0 to 1, and when it
+ * resets.
+ */
+export interface UsageWindow {
+  readonly name: string
+  readonly utilization: number
+  readonly resetsAt: number | null
+}
+
 /** The solo ticket (§ 5): running alone, or next, with no new ticket starting until it runs. */
 export interface Solo {
   readonly ticket: string
@@ -76,6 +87,8 @@ export interface Status {
   readonly concurrency: number
   readonly holds: ReadonlyArray<RunHold>
   readonly usage: Usage | null
+  /** The account's windows, in the order the SDK first gave them; none until it has. */
+  readonly windows: ReadonlyArray<UsageWindow>
   /** Something stopped the run, and the running tickets are finishing. */
   readonly stopping: boolean
   /** The run is quitting (§ 4.8): `Quitting… waiting for t-1's worker`; null when it isn't. */
@@ -111,6 +124,7 @@ export const emptyStatus: Status = {
   concurrency: 0,
   holds: [],
   usage: null,
+  windows: [],
   stopping: false,
   quitting: null,
   endOfRun: null,
@@ -228,9 +242,15 @@ export interface Card {
   readonly memory?: number
 }
 
+/** The account's windows, on the title line while no usage banner is. */
+export interface Windows {
+  readonly windows: ReadonlyArray<UsageWindow>
+}
+
 /** A banner on the title line. */
 export type Banner = Data.TaggedEnum<{
   Usage: Usage
+  Windows: Windows
   Hold: RunHold
 }>
 
@@ -312,7 +332,7 @@ export interface RunView {
   /** In their workers' number order. */
   readonly cards: ReadonlyArray<Card>
   readonly requests: ReadonlyArray<ShownRequest>
-  /** Usage first, then each hold. */
+  /** The usage, or else the account's windows, first; then each hold. */
   readonly banners: ReadonlyArray<Banner>
   readonly windDown: WindDownView | null
   /** The workers the end-of-run box names (D19), in place of the cards; null with no box. */
@@ -822,6 +842,10 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
 
   const banners: Array<Banner> = []
   if (status.usage !== null) banners.push(Banner.Usage(status.usage))
+  else if (status.windows.length > 0) {
+    const windows = status.windows.map((each) => ({ ...each, name: sanitizeLine(each.name) }))
+    banners.push(Banner.Windows({ windows }))
+  }
   for (const hold of status.holds) {
     banners.push(Banner.Hold({ ...hold, word: sanitizeLine(hold.word) }))
   }

@@ -84,6 +84,7 @@ the time.
 | `attention_answered` | a request was answered, or withdrawn | `ticket`, `request`; `answer`: `allow`, `deny`, `allow_run`, or the chosen labels, one per question; `via`: `screen` or `answer_command`; `after_ms`, how long it was open; `cancelled: true` when Claude Code withdrew it |
 | `denied` | Claude Code refused a tool call without asking | `ticket`, `tool`; `reason_type`: `classifier`, `safetyCheck`, `mode`, `rule`, another the SDK gives, or `unknown`; `reason` |
 | `usage_limit` | the usage limit's status changed (see [The usage limit](running.md#the-usage-limit)) | `status`: `warning`, `rejected` or `lifted`; `limit`: `five_hour`, `seven_day`, … or `unknown`; `resets_at`; `utilization`, from 0 to 1; `text` on a warning |
+| `usage_window` | a figure of one of the account's usage windows, as the workers' sessions report it: the first the run hears, then each that differs | `window`: `five_hour`, `seven_day`, …; `utilization`, from 0 to 1; `resets_at` |
 | `message` | you sent a worker a message | `ticket`; `length`, in characters. The message itself is recorded nowhere |
 | `steered`, `released` | a worker became steered, or was released (see [Steering](workers.md#steering)) | `ticket`, `text` |
 | `suspended` | a worker's session was suspended as the run ended | `ticket`, `session`; `why`: `quit`, `PAUSED`, `TICKET_LIMIT`, `waiting on you`, `run ended`, … |

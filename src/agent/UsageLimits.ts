@@ -4,11 +4,14 @@
 // worker that becomes UsageLimited or stops being so (makeWorkers); an organ call refused for the
 // limit is reported as a rejection (OrganHold, through usageLimit.ts's organHold). The run's hold
 // (src/run/usageLimit.ts) reads them and sets the hold, and organ calls are skipped while it is on.
+// Every event's `unifiedWindows` gives the account's windows (five-hour, week), which it keeps,
+// each at its latest figure, for the title line and their records (src/run/usageWindows.ts).
 //
 // The live layer keeps them in memory, as the test layer (src/testing/UsageLimits.ts) does; a test
 // reports scripted events through it.
 import type { SDKMessage, SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk"
 import {
+  Clock,
   Context,
   Effect,
   Layer,
@@ -126,6 +129,76 @@ export const turnLimit = (messages: ReadonlyArray<SDKMessage>): TurnLimit =>
 export const endedOnLimit = (limit: TurnLimit, apiStatus: number | null | undefined): boolean =>
   apiStatus === 429 || limit.rejected || limit.rateLimited
 
+/** A window's figure as one `rate_limit_event` gives it: either part may be left out. */
+export interface WindowFigure {
+  /** How much of it is used, 0 to 1. */
+  readonly utilization?: number
+  /** When it resets, in epoch milliseconds. */
+  readonly resetsAt?: number
+}
+
+/** A finite number at or above 0, or undefined. */
+const figure = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+/**
+ * The account's windows a `rate_limit_info` carries in `unifiedWindows`, by name (`five_hour`,
+ * `seven_day`, …), in the event's order. Claude Code 2.1.301 sends them on every event, `allowed`
+ * included, but the SDK's types don't name the field, so it is read defensively: any window name,
+ * each part only where it is a number; a window with neither, or a field that isn't an object, is
+ * none.
+ */
+export const windowsOf = (info: unknown): ReadonlyMap<string, WindowFigure> => {
+  const all = new Map<string, WindowFigure>()
+  if (!isRecord(info) || !isRecord(info.unifiedWindows)) return all
+  for (const [name, window] of Object.entries(info.unifiedWindows)) {
+    if (name === "" || !isRecord(window)) continue
+    const utilization = figure(window.utilization)
+    const resetsAt = figure(window.resetsAt)
+    if (utilization === undefined && resetsAt === undefined) continue
+    all.set(name, {
+      ...(utilization === undefined ? {} : { utilization }),
+      ...(resetsAt === undefined ? {} : { resetsAt: epochMillis(resetsAt) }),
+    })
+  }
+  return all
+}
+
+/** One of the account's windows, as the latest event that gave a figure for it says. */
+export interface AccountWindow {
+  /** How much of it is used, 0 to 1; null while no event has said. */
+  readonly utilization: number | null
+  /** When it resets, in epoch milliseconds; null while no event has said. */
+  readonly resetsAt: number | null
+  /** When an event last gave a figure for it, in epoch milliseconds. */
+  readonly at: number
+}
+
+/** The account's windows by name, in the order they were first reported. */
+export type Windows = ReadonlyMap<string, AccountWindow>
+
+/** `windows` with the figures one event gave at `now`: a part it leaves out is kept. */
+export const withFigures = (
+  windows: Windows,
+  figures: ReadonlyMap<string, WindowFigure>,
+  now: number,
+): Windows => {
+  if (figures.size === 0) return windows
+  const next = new Map(windows)
+  for (const [name, given] of figures) {
+    const before = windows.get(name)
+    next.set(name, {
+      utilization: given.utilization ?? before?.utilization ?? null,
+      resetsAt: given.resetsAt ?? before?.resetsAt ?? null,
+      at: now,
+    })
+  }
+  return next
+}
+
 /** An organ call refused for the limit: which limit and when it resets, null when unknown. */
 export interface Refusal {
   readonly limit: string | null
@@ -155,6 +228,11 @@ export class UsageLimits extends Context.Service<
     /** The events reported from now on, for the rest of the scope. */
     readonly subscribe: Effect.Effect<Stream.Stream<RateLimit>, never, Scope.Scope>
     /**
+     * The account's windows, each with the latest figure reported for it, from any event's
+     * `unifiedWindows`: now, then on each report that gives one.
+     */
+    readonly windows: Stream.Stream<Windows>
+    /**
      * The ticket's worker is UsageLimited until `resetsAt` (epoch milliseconds, null when
      * unknown), or, with undefined, no longer is: AgentHost says so as its state changes.
      */
@@ -178,13 +256,22 @@ export const make: Effect.Effect<UsageLimits["Service"]> = Effect.gen(function* 
   const events = yield* PubSub.unbounded<RateLimit>()
   const held = yield* Ref.make(false)
   const waiting = yield* SubscriptionRef.make<Waiting>(new Map())
+  const windows = yield* SubscriptionRef.make<Windows>(new Map())
   return UsageLimits.of({
-    report: (info) => {
-      const read = rateLimitOf(info)
-      return read === undefined ? Effect.void : Effect.asVoid(PubSub.publish(events, read))
-    },
+    // The windows are read apart from the rest: an info this SDK can't read may still carry them.
+    report: (info) =>
+      Effect.gen(function* () {
+        const figures = windowsOf(info)
+        if (figures.size > 0) {
+          const now = yield* Clock.currentTimeMillis
+          yield* SubscriptionRef.update(windows, (all) => withFigures(all, figures, now))
+        }
+        const read = rateLimitOf(info)
+        if (read !== undefined) yield* PubSub.publish(events, read)
+      }),
     refused: (refusal) => Effect.asVoid(PubSub.publish(events, refusalOf(refusal))),
     subscribe: Effect.map(PubSub.subscribe(events), Stream.fromSubscription),
+    windows: SubscriptionRef.changes(windows),
     limited: (ticket, resetsAt) =>
       SubscriptionRef.update(waiting, (all) => {
         if (resetsAt === undefined && !all.has(ticket)) return all

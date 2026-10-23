@@ -388,6 +388,16 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
     },
     { ...head, kind: "usage_limit", status: "lifted", limit: "seven_day" },
   ],
+  usage_window: [
+    {
+      ...head,
+      kind: "usage_window",
+      window: "five_hour",
+      utilization: 0.17,
+      resets_at: "2026-10-02T14:05:00+02:00",
+    },
+    { ...head, kind: "usage_window", window: "seven_day", utilization: 0.41 },
+  ],
   message: [{ ...head, kind: "message", ticket: "a-1", length: 42 }],
   steered: [{ ...head, kind: "steered", ticket: "a-1" }],
   released: [{ ...head, kind: "released", ticket: "a-1", text: "RELEASED" }],
@@ -428,7 +438,15 @@ describe("the records", () => {
         ...["waits", "reopened", "triage", "warn", "hold", "drain", "resume", "probed", "stop"],
         ...["shared_machine", "machine_hold"],
         ...["done", "full_check", "end", "phase", "attention", "attention_answered", "denied"],
-        ...["usage_limit", "message", "steered", "released", "suspended", "resumed"],
+        ...[
+          "usage_limit",
+          "usage_window",
+          "message",
+          "steered",
+          "released",
+          "suspended",
+          "resumed",
+        ],
         ...["check", "turn", "organ", "ticket_end"],
       ].sort(),
     )

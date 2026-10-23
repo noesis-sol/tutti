@@ -520,6 +520,9 @@ thresholds: `"count": 0` turns the hold off, `"probe": "0"` the probe.
 On a subscription login, workers side by side reach the account's usage limits. tutti reads what
 Claude Code reports:
 
+- **All the time**, the dashboard's title line shows the account's windows, `5h ▰▰▱▱▱▱▱▱▱▱  17% · week 41%`,
+  from what every worker's session reports, and each figure is a `usage_window` record in the event
+  stream.
 - **Nearing it**, the dashboard's title line shows `usage 85% of the five-hour limit · resets 14:05`,
   and the log says it once. Nothing else changes.
 - **Reaching it** holds the run: `USAGE_LIMIT: the five-hour limit is reached; no new tickets until it

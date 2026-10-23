@@ -693,9 +693,12 @@ tutti's built-in worker prompt is orchestra's, rewritten where the tmux world sh
 On a subscription login, many workers at once reach the account's usage limits. The SDK says when:
 
 - **`rate_limit_event`** messages carry `rate_limit_info`: `status` (`allowed`, `allowed_warning`, `rejected`), `rateLimitType` (`five_hour`, `seven_day`, …), `resetsAt`, `utilization`, and overage fields.
+- **The account's windows.** Every `rate_limit_event`, `allowed` ones included, carries the account's windows in `rate_limit_info.unifiedWindows` (`{ "five_hour": { "utilization": 0.17, "resetsAt": 1792754400 }, "seven_day": { … } }`), in whole points, sent when a figure changes; the top-level `utilization` is there only once Claude Code warns or refuses. `UsageLimits` keeps each window at its latest figure, with when it was reported. The field isn't in the SDK's types (`sdk.d.ts`), so it is read defensively, any window's name and each part only where it is a number (an unreadable field is none, and the rest of the event is read as before), and a contract test (§13) pins it for the embedded Claude Code.
 - **A turn that ended on the limit** comes as a `success` result with `is_error: true` and an API error status of 429, or as `api_retry` messages before it.
 
-**`allowed_warning`.** The dashboard's title line shows `usage 85% of the five-hour limit · resets 14:05` in `notice` (yellow in the `orchestra` scheme; `windingDown` is for winding down only, §7.11), and the log says it once per limit. Dispatch doesn't change (§15, Q9).
+**Always.** The dashboard's title line shows the account's windows, faint: `5h ▰▰▱▱▱▱▱▱▱▱  17% · week 41%`, the first with a gauge of ten cells, two spaces before its figure (`seven_day_opus` is `week opus`). A narrow pane puts the tighter window first without the gauge, `week 41% · 5h 17%`, then shows it alone, before it drops it as it drops the usage banner. A window whose reset has passed is left out until an event gives its next figure. Each window's figure is a `usage_window` event (§10): the first the run hears, then each that differs, so that a ticket's share of a window can be estimated from how it rose while its worker ran.
+
+**`allowed_warning`.** In place of the windows, the dashboard's title line shows `usage 85% of the five-hour limit · resets 14:05` in `notice` (yellow in the `orchestra` scheme; `windingDown` is for winding down only, §7.11), and the log says it once per limit. Dispatch doesn't change (§15, Q9).
 
 **`rejected`** holds the run with `USAGE_LIMIT`, as does an organ call refused for the limit: its session's turn ends on it as a worker's would, and it fails with the limit's name and reset from that session's `rate_limit_event`, which the hold takes as a rejection (unknown when it came with none). The reset lifts it as below, whether or not workers are still running, as in orchestra 0.9.0 (orchestra-8jw3):
 
@@ -1075,7 +1078,7 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
 - **Attention cards.** An attention card grows to show its request and buttons (§4.5). The cards keep their stable order, so an attention card stands out by its red border and size, not by moving. A card in the compact one-line layout shows `■ allow?` and opens its request in the Answer box with `Enter`, or with an answer key, which answers only a request drawn with its buttons (§4.5).
   - The illustration shows a request held by the safety check, as it comes in default mode (`defaultToNo`, §4.5): Deny comes first and has the focus, and there is no `a` hint.
 - **Needs you** counts open attention requests, plus orchestra's questions and tickets blocked from merging.
-- **Banners on the title line**: usage (§4.12), and holds (`BLOCKED`, `USAGE_LIMIT · resets 14:05`).
+- **Banners on the title line**: the account's windows, or near a limit the usage (§4.12), and holds (`BLOCKED`, `USAGE_LIMIT · resets 14:05`).
 - **The end-of-run box** (D19, §5 item 14) replaces the Current cards when only workers waiting on you remain. It is placed before the tickets table: the table gives up rows for it, down to its 3, and is left out below them. A box still too tall for the room left names the workers that fit and counts the rest (`…, +2 more`), then leaves out the hand-back's line, then its frame and first words; what `q` does is always drawn.
 - **A taller pane gives Current room, not the tickets table.** Current is kept room for a full card for each of up to 6 of the workers the run may have, two to a row from 120 columns, and a line for each of the rest; the tickets table takes what is left, 3 to 10 rows. orchestra's table takes about a third of the pane, which put six workers' cards on compact lines in an 80×50 pane that holds them whole. A departure on purpose (maintainer, 2026-10-22). As orchestra's, the table's height comes from the pane and the workers the run may have alone, not the cards there are, so it stays put while workers come and go. Tickets waiting to merge or merging have cards without a worker's slot, so where the cards outnumber the slots Current is kept a line for each card, and the table is left out before Current would draw over the foot; a compact box with too few lines for a line each keeps the highlighted card and those waiting for you, and ends in `+N more` (tutti-gf62).
 - **The hint** names the keys there are. `?` opens a key-help overlay.
@@ -1643,6 +1646,7 @@ It is `flock(LOCK_EX|LOCK_NB)` on `<git-common-dir>/tutti.lock`, so the system r
 | `attention_answered` | new | `ticket`, `request`, `answer` (`allow`, `deny`, `allow_run`, or the chosen labels), `via` (`screen` or `answer_command`), `after_ms`; `cancelled: true` when the SDK withdrew it |
 | `denied` | new: the classifier, the safety check, a rule or the mode denied a tool call | `ticket`, `tool`, `reason_type` (`classifier`, `safetyCheck`, `mode`, `rule`, or another the SDK gives), `reason` |
 | `usage_limit` | new | `status` (`warning`, `rejected`, `lifted`), `limit` (`five_hour`, …), `resets_at`, `utilization` |
+| `usage_window` | new: a figure of one of the account's windows, the first the run hears and each that differs (§4.12) | `window` (`five_hour`, `seven_day`, …), `utilization`, `resets_at` |
 | `message` | new: you sent a worker a message | `ticket`, `length` (the text is recorded nowhere) |
 | `steered`, `released` | new | `ticket` |
 | `suspended` | new: a worker's session was suspended as the run ended | `ticket`, `session`, `why` |
@@ -1764,6 +1768,7 @@ Its last line is its verdict, its exit status unchanged: `scripts/check.sh: PASS
   - `resume` with `sessionId`, and of a removed worktree: the spawn fails with no message and no result
   - a session quit as §4.8 does (`interrupt()`, then `close()`), busy and at a pending permission request, resumed with the carry-on message: one turn makes the cut-off call again, a pending request coming back as a new `canUseTool` call with a new `toolUseID`
   - `strictMcpConfig` and the init's `mcp_servers`
+  - a turn's `rate_limit_event`s, each with the account's windows in `rate_limit_info.unifiedWindows`, `five_hour` among them (§4.12)
   - the verifier in the foreground through the hook (§4.1): the Agent call's `tool_result` isn't `async_launched` and comes before the turn's one `result`
   - the probe on a temp repository never trusted, whose `.claude/settings.json` allows one command: its stderr has the line §4.13 matches
   - the probe on a temp repository whose `.claude/settings.json` doesn't parse and whose `.claude/settings.local.json` is invalid: `getSettings()` lists both under `errors`, each with `file`, `path` and `message`, and the initialization result carries `current_permission_mode` (§4.13)

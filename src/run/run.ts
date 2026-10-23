@@ -187,6 +187,7 @@ import { handBackNow, interrupt, releaseAndHandOver, sendMessage } from "./steer
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { labelAtEnd, loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold, neverHanded } from "./usageLimit.ts"
+import { make as watchUsageWindows } from "./usageWindows.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -519,6 +520,13 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       base,
       wakeUp,
       show: (view) => changeHolds((now) => showUsage(now, view)),
+    })
+    // The account's windows on the title line all the time, each figure recorded (usageWindows.ts).
+    yield* watchUsageWindows({
+      show: (windows) =>
+        SubscriptionRef.update(status, (now) =>
+          same(now.windows, windows) ? now : { ...now, windows },
+        ),
     })
 
     // Triage in the background, when the run has organs: each verdict wakes the run, which doesn't

@@ -9,6 +9,10 @@ folds them through WorkerState.
   `status: "rejected"` and its `resetsAt`, an assistant message with `error: "rate_limit"`, and a
   `success` result with `is_error: true` and `api_error_status: 429`.
 - `result-429.jsonl`: the same turn with only the result's `is_error` and `api_error_status: 429`.
+- `allowed.jsonl`: two `allowed` rate_limit_events of one worker's session, unedited, from the
+  mnemos run of 2026-10-23 (SDK 0.3.301, Claude Code 2.1.301): no top-level `utilization`, and the
+  account's windows in `unifiedWindows`, a field the SDK's types don't name, the five-hour window
+  rising a point between them. `test/usage-windows.test.ts` reads them.
 
 Each line was taken from a real session of SDK 0.3.301 and its embedded Claude Code 2.1.301, recorded
 during a contract-test run on 2026-10-17 (an `allowed_warning` rate_limit_event, the assistant

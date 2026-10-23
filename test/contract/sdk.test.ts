@@ -5,7 +5,8 @@
 // queued_turn_count and user_message_uuids, command_lifecycle, canUseTool for a call that needs
 // asking, the held removal (defaultToNo in default mode, a safetyCheck denial in auto mode),
 // interrupt() and its receipt, resume with the session's ID, and strictMcpConfig against the init's
-// mcp_servers; and the rest of § 13's list: idle with a background task live and the turn the CLI
+// mcp_servers, and the account's usage windows in a rate_limit_event's unifiedWindows; and the rest
+// of § 13's list: idle with a background task live and the turn the CLI
 // starts to report it, a background subagent keeping its worker Working until that turn, sends
 // folded into a running turn or sharing a queued one, cancel_async_message on a queued send, the
 // resume of a removed worktree, a session quit as § 4.8
@@ -50,6 +51,7 @@ import type { ChosenServers } from "../../src/agent/mcp.ts"
 import { noServersNote } from "../../src/agent/mcp.ts"
 import { type SessionStart, workerOptions } from "../../src/agent/options.ts"
 import type { Transcripts } from "../../src/agent/Transcripts.ts"
+import { windowsOf } from "../../src/agent/UsageLimits.ts"
 import { initial, step, WorkerEvent, type WorkerState } from "../../src/agent/WorkerState.ts"
 import { defaultSettings } from "../../src/cli/AppConfig.ts"
 import type { permissionModes } from "../../src/project/settings.ts"
@@ -1128,6 +1130,38 @@ live.describe("Agent SDK contract: a result's cost is the session's running tota
       // A resume goes on from the totals the transcript saved, as sdk.d.ts says.
       expect(three.total_cost_usd).toBeGreaterThan(two.total_cost_usd)
       expect(output(three)).toBeGreaterThan(output(two))
+    },
+    testLimit,
+  )
+})
+
+live.describe("Agent SDK contract: the account's usage windows", () => {
+  live.test(
+    "a turn's rate_limit_event carries the account's windows in unifiedWindows, allowed or not",
+    async () => {
+      const dir = repository()
+      const s = direct(dir, dir, { _tag: "New", sessionId: randomUUID() })
+      try {
+        const sent = s.send("Reply with the single word OK.")
+        await until("the turn answered", () => answered(sent)(s.messages))
+      } finally {
+        await s.close()
+      }
+      // unifiedWindows isn't in the SDK's types (sdk.d.ts): read as UsageLimits reads it, so a
+      // bump that moves or drops it fails here rather than leaving the title line without it.
+      const infos = s.messages.flatMap((m) =>
+        m.type === "rate_limit_event" ? [m.rate_limit_info] : [],
+      )
+      expect(infos.length).toBeGreaterThan(0)
+      for (const info of infos) {
+        const windows = windowsOf(info)
+        expect([...windows.keys()]).toContain("five_hour")
+        for (const window of windows.values()) {
+          expect(window.utilization).toBeGreaterThanOrEqual(0)
+          expect(window.utilization).toBeLessThanOrEqual(1)
+          expect(window.resetsAt).toBeGreaterThan(Date.now())
+        }
+      }
     },
     testLimit,
   )

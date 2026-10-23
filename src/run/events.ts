@@ -501,6 +501,20 @@ export const UsageLimit = Schema.Struct({
   text: optional(Schema.String),
 })
 
+/**
+ * A figure of one of the account's usage windows (§ 4.12): the first the run hears, then each that
+ * differs, from the `unifiedWindows` of the workers' rate_limit_events.
+ */
+export const UsageWindow = Schema.Struct({
+  ...head("usage_window"),
+  /** The window's name as the SDK gives it: `five_hour`, `seven_day`, … */
+  window: Schema.String,
+  /** How much of it is used, 0 to 1. */
+  utilization: Schema.Finite,
+  /** When it resets, RFC 3339; absent when the SDK doesn't say. */
+  resets_at: optional(Timestamp),
+})
+
 /** You sent a worker a message. Its text is recorded nowhere. */
 export const Message = Schema.Struct({
   ...head("message"),
@@ -571,6 +585,7 @@ export const kinds = {
   attention_answered: AttentionAnswered,
   denied: Denied,
   usage_limit: UsageLimit,
+  usage_window: UsageWindow,
   message: Message,
   steered: Steered,
   released: Released,

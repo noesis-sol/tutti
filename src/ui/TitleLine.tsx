@@ -1,11 +1,11 @@
 // The dashboard's title line (§ 7.2, § 7.11), under a blank line: the tutti pill, the version, and
 // whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next,
 // and how many other runs share the machine; then, faint, the branch, the run's time and a scoped run's ticket; and on the right tutti's
-// banners, the usage and the holds. A narrow pane drops the branch and the time first, then shortens
-// the usage, and keeps the holds' words longest.
+// banners, the usage (or, short of a limit, the account's windows) and the holds. A narrow pane
+// drops the branch and the time first, then shortens the usage, and keeps the holds' words longest.
 import { runTime } from "../print/summary.ts"
 import { resetLabel } from "../run/localTime.ts"
-import { type Banner, countdown, type TitleView } from "../run/runView.ts"
+import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
 import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 import { useNow, useRunView, useTheme } from "./useRunView.ts"
@@ -25,7 +25,11 @@ type Form = "full" | "reset" | "short" | "word"
  * reset on another day than `now`'s with its weekday and date, `resets Fri Oct 23 14:05`. In a
  * narrow pane the usage is `usage 85% · resets 14:05` or `usage 85%`, and a hold its word.
  */
-const bannerText = (banner: Banner, now: number, form: Form): string => {
+const bannerText = (
+  banner: Exclude<Banner, { readonly _tag: "Windows" }>,
+  now: number,
+  form: Form,
+): string => {
   const resets = banner.resetsAt === null ? "" : ` · resets ${resetLabel(banner.resetsAt, now)}`
   if (banner._tag === "Usage") {
     const percent = `usage ${Math.round(banner.utilization * 100)}%`
@@ -43,11 +47,63 @@ const bannerText = (banner: Banner, now: number, form: Form): string => {
   return `${banner.word}${resets}${left}`
 }
 
+/** How many cells a window's gauge has. */
+const gaugeCells = 10
+
+/** A window's name as the title line says it: `5h` for `five_hour`, `week` for `seven_day`. */
+export const windowLabel = (name: string): string =>
+  name
+    .replace(/^five_hour/, "5h")
+    .replace(/^seven_day/, "week")
+    .replaceAll("_", " ")
+
+/** `▰▰▱▱▱▱▱▱▱▱` for 17%: a cell for each tenth, to the nearest. */
+export const gauge = (utilization: number): string => {
+  const filled = Math.round(Math.min(1, utilization) * gaugeCells)
+  return "▰".repeat(filled) + "▱".repeat(gaugeCells - filled)
+}
+
+/**
+ * The account's windows at `now`, faint: `5h ▰▰▱▱▱▱▱▱▱▱  17% · week 41%` in full, the first with
+ * its gauge, two spaces before its figure; in a narrow pane the tighter window first and no gauge,
+ * `week 41% · 5h 17%`, then the tighter alone. A window whose reset has passed is left out: its
+ * figure is gone with it, until an event gives the next.
+ */
+const windowSegments = (
+  all: ReadonlyArray<UsageWindow>,
+  theme: Theme,
+  now: number,
+  form: Form,
+): Segments => {
+  const { dim } = theme.styles
+  const current = all.filter((window) => window.resetsAt === null || window.resetsAt > now)
+  const percent = (window: UsageWindow) => `${Math.round(window.utilization * 100)}%`
+  const figure = (window: UsageWindow) => `${windowLabel(window.name)} ${percent(window)}`
+  const [first, ...rest] =
+    form === "full"
+      ? current
+      : [...current]
+          .sort((a, b) => b.utilization - a.utilization)
+          .slice(0, form === "short" ? 1 : undefined)
+  if (first === undefined) return []
+  const head =
+    form === "full"
+      ? [
+          seg(`${windowLabel(first.name)} `, dim),
+          seg(gauge(first.utilization), dim),
+          seg("  "),
+          seg(percent(first), dim),
+        ]
+      : [seg(figure(first), dim)]
+  return [...head, ...rest.flatMap((window) => [seg(" · ", dim), seg(figure(window), dim)])]
+}
+
 /**
  * A banner in its style: the usage `notice`, bold once the limit is reached, as the usage limit's
- * hold is; any other hold, such as `BLOCKED`, `needsYou` bold.
+ * hold is; the account's windows faint; any other hold, such as `BLOCKED`, `needsYou` bold.
  */
-const bannerSegment = (banner: Banner, theme: Theme, now: number, form: Form) => {
+const bannerSegments = (banner: Banner, theme: Theme, now: number, form: Form): Segments => {
+  if (banner._tag === "Windows") return windowSegments(banner.windows, theme, now, form)
   const { styles } = theme
   const style =
     banner._tag === "Usage"
@@ -57,7 +113,7 @@ const bannerSegment = (banner: Banner, theme: Theme, now: number, form: Form) =>
       : banner.word === "USAGE_LIMIT"
         ? styles.testing
         : styles.stop
-  return seg(bannerText(banner, now, form), style)
+  return [seg(bannerText(banner, now, form), style)]
 }
 
 /**
@@ -92,16 +148,21 @@ export const titleSegments = (
   }
   const scoped = title.scope === null ? "" : ` · ticket ${title.scope}`
   const where = `${title.branch === "" ? "" : `${title.branch} · `}${runTime(now - title.began)}${scoped}`
-  const usage = banners.filter((banner) => banner._tag === "Usage")
+  const usage = banners.filter((banner) => banner._tag !== "Hold")
   const holds = banners.filter((banner) => banner._tag === "Hold")
-  /** The banners on the right, the usage in `usageForm` or left out, the holds in `holdForm`. */
+  /**
+   * The banners on the right, the usage (or the windows) in `usageForm` or left out, the holds in
+   * `holdForm`.
+   */
   const right = (usageForm: Form | null, holdForm: Form): Segments =>
     [
       ...(usageForm === null
         ? []
-        : usage.map((banner) => bannerSegment(banner, theme, now, usageForm))),
-      ...holds.map((banner) => bannerSegment(banner, theme, now, holdForm)),
-    ].flatMap((segment, i) => (i === 0 ? [segment] : [seg("  "), segment]))
+        : usage.map((banner) => bannerSegments(banner, theme, now, usageForm))),
+      ...holds.map((banner) => bannerSegments(banner, theme, now, holdForm)),
+    ]
+      .filter((segments) => segments.length > 0)
+      .flatMap((segments, i) => (i === 0 ? segments : [seg("  "), ...segments]))
   /** `head` and `side`, the banners, pushed to the right edge, or null if they don't fit. */
   const laid = (head: Segments, side: Segments): Segments | null => {
     if (side.length === 0) return widthOf(head) <= width ? head : null
