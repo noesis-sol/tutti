@@ -13,6 +13,7 @@
 // the requirements among what the machine needs, and `tutti requires` prints each one's state.
 import { join } from "node:path"
 import { Duration, Effect } from "effect"
+import { BranchEnv } from "../agent/env.ts"
 import { O } from "../native/libc.ts"
 import { appliesOn, requireLogName } from "../project/requires.ts"
 import { type Requirement, settingsFile } from "../project/settings.ts"
@@ -75,22 +76,29 @@ const countOf = (n: number, thing: string): string => `${n} ${thing}${n === 1 ? 
 /** The first line of `text`. */
 const firstLine = (text: string): string => text.split("\n")[0] ?? ""
 
-/** Runs `command` with sh in `repo` within `limit`: whether it exited 0. */
+/**
+ * Runs `command` with sh in `repo` within `limit`, in the environment of commands run on a branch's
+ * behalf (BranchEnv): whether it exited 0.
+ */
 const passes = (command: string, repo: string, limit: Duration.Input) =>
-  exec({
-    command: "sh",
-    args: ["-c", command],
-    cwd: repo,
-    timeLimit: limit,
-    maxOutputBytes: 0,
+  Effect.gen(function* () {
+    return yield* exec({
+      command: "sh",
+      args: ["-c", command],
+      cwd: repo,
+      baseEnv: yield* BranchEnv,
+      timeLimit: limit,
+      maxOutputBytes: 0,
+    })
   }).pipe(
     Effect.map((output) => output.exitCode === 0),
     Effect.orElseSucceed(() => false),
   )
 
 /**
- * Runs the install `command` of the requirement `name` in `repo` within `limit`, its whole output
- * in .tutti/run/: why it failed, if it did, and where its output is, or why it couldn't be kept.
+ * Runs the install `command` of the requirement `name` in `repo` within `limit`, in BranchEnv's
+ * environment, its whole output in .tutti/run/: why it failed, if it did, and where its output is,
+ * or why it couldn't be kept.
  */
 const install = (name: string, command: string, repo: string, limit: Duration.Input) =>
   Effect.scoped(
@@ -107,6 +115,7 @@ const install = (name: string, command: string, repo: string, limit: Duration.In
           command: "sh",
           args: ["-c", command],
           cwd: repo,
+          baseEnv: yield* BranchEnv,
           timeLimit: limit,
           maxOutputBytes: 64 * 1024,
           ...("outputFd" in kept ? { outputFd: kept.outputFd } : {}),

@@ -11,6 +11,7 @@
 // page. Interrupting a check kills its process group, and no result comes of it (§ 3.4).
 import { Context, Duration, Effect, type FileSystem, Layer, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
+import { BranchEnv } from "../agent/env.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { exec } from "./exec.ts"
 
@@ -407,8 +408,9 @@ export interface SetupOptions extends RunOptions {
 }
 
 /**
- * Runs `command` with `sh -c` in `options.cwd` within `timeLimit`, the whole output going to
- * `options.outputFile` (or `options.outputFd`, when given). Nothing runs when `command` is null.
+ * Runs `command` with `sh -c` in `options.cwd` within `timeLimit`, in the environment of commands
+ * run on a branch's behalf (BranchEnv), the whole output going to `options.outputFile` (or
+ * `options.outputFd`, when given). Nothing runs when `command` is null.
  */
 export const runCheck = Effect.fn("runCheck")(function* (
   check: CheckKind,
@@ -423,6 +425,7 @@ export const runCheck = Effect.fn("runCheck")(function* (
     args: ["-c", command],
     timeLimit,
     cwd: options.cwd,
+    baseEnv: yield* BranchEnv,
     outputFile: options.outputFile,
     ...(options.outputFd === undefined ? {} : { outputFd: options.outputFd }),
     onOutput: (chunk, from) => output.write(chunk, from),

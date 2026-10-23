@@ -4,8 +4,11 @@
 // key outranks a subscription login and would bill the API without a word. It leaves out the
 // variables naming the terminal pane tutti runs in, and those of a Claude Code session tutti was
 // started from, which its sessions don't own, and git's local variables (src/services/gitEnv.ts),
-// which would have a worker's git act on another repository than its worktree's.
-import { Duration } from "effect"
+// which would have a worker's git act on another repository than its worktree's. What tutti runs
+// on a branch's behalf, the setup, the checks and the requires list's commands, gets the same
+// environment but tutti's variables (branchEnv), so a check run by tutti sees what it saw run by
+// the worker.
+import { Context, Duration } from "effect"
 import pkg from "../../package.json" with { type: "json" }
 import type { billings } from "../cli/flags.ts"
 import { gitLocalVariable } from "../services/gitEnv.ts"
@@ -150,14 +153,24 @@ export interface WorkerEnvOptions {
   readonly cores?: number
 }
 
+/** Which of tutti's environment a command run on a branch's behalf gets (branchEnv). */
+export interface BranchEnvOptions {
+  /** Whether the account probe found a subscription login (§ 4.13). */
+  readonly subscription: boolean
+  /** The run's billing choice: api keeps the key beside a subscription login. */
+  readonly billing: (typeof billings)[number]
+  /** The environment to start from; tutti's own by default. */
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+
 /**
- * A worker's (or an organ's) environment: `env` with tutti's variables laid over it, without
- * ANTHROPIC_API_KEY when there is a subscription login and billing isn't api, and given its share
- * of the cores, coreVariables (after the environment's GOFLAGS). Unset variables, the terminal
+ * The environment of what tutti runs on a branch's behalf, the setup, the checks and the requires
+ * list's commands (§ 4.13), and what a worker's starts from: `env`'s set variables but the terminal
  * pane's (paneVariable), a parent Claude Code session's (sessionVariable) and git's local ones
- * (gitLocalVariable) are left out.
+ * (gitLocalVariable), without ANTHROPIC_API_KEY when there is a subscription login and billing
+ * isn't api. A check then sees what it sees run by the worker, and a passing one passes for both.
  */
-export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => {
+export const branchEnv = (options: BranchEnvOptions): Record<string, string> => {
   const result: Record<string, string> = {}
   for (const [name, value] of Object.entries(options.env ?? process.env)) {
     if (
@@ -168,10 +181,38 @@ export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => 
     )
       result[name] = value
   }
+  if (options.subscription && options.billing !== "api") delete result[apiKeyVariable]
+  return result
+}
+
+/**
+ * The environment of the commands tutti runs on a branch's behalf, branchEnv's for the run's
+ * account and billing: the run sets it as it starts (main.ts). Without a run, as for
+ * `tutti requires`, no login is known and the key is kept.
+ */
+export const BranchEnv = Context.Reference<Readonly<Record<string, string>>>(
+  "tutti/agent/env/BranchEnv",
+  { defaultValue: () => branchEnv({ subscription: false, billing: "subscription" }) },
+)
+
+export interface WorkerEnvOptions extends BranchEnvOptions {
+  /** tutti's version, for the client app; package.json's by default. */
+  readonly version?: string
+  /** The merge check's time limit (checks.fast.timeout), for Bash's timeouts; workers only. */
+  readonly checkTimeout?: Duration.Duration
+  /** The worker's share of the machine's cores (coreShare), for its checks; workers only. */
+  readonly cores?: number
+}
+
+/**
+ * A worker's (or an organ's) environment: branchEnv's, with tutti's variables laid over it and its
+ * share of the cores, coreVariables (after the environment's GOFLAGS).
+ */
+export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => {
+  const result = branchEnv(options)
   Object.assign(result, workerVariables(options.version, options.checkTimeout))
   if (options.cores !== undefined)
     Object.assign(result, coreVariables(options.cores, result.GOFLAGS))
-  if (options.subscription && options.billing !== "api") delete result[apiKeyVariable]
   return result
 }
 

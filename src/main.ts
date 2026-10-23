@@ -24,6 +24,7 @@ import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
+import { BranchEnv, branchEnv } from "./agent/env.ts"
 import { requiresServerFor } from "./agent/requiresTools.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
@@ -131,6 +132,12 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     otherWorkers,
     // The machine's load, which the run reads for the dashboard's load line.
     Layer.succeed(Load, liveLoad()),
+    // The environment of the setup, the checks and the requires list's commands: the workers' but
+    // tutti's variables, the API key handled as theirs is (§ 4.13).
+    Layer.succeed(
+      BranchEnv,
+      branchEnv({ subscription: started.account.subscription, billing: config.billing }),
+    ),
   )
   const second = Layer.mergeAll(
     Checks.layer,

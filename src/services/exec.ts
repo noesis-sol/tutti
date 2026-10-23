@@ -85,7 +85,13 @@ export interface Command {
   readonly args: ReadonlyArray<string>
   readonly timeLimit: Duration.Input
   readonly cwd?: string
-  /** Set over tutti's own environment, which goes without git's local variables (gitEnv.ts). */
+  /**
+   * The environment the command starts from, in place of tutti's own: that of a command run on a
+   * branch's behalf (src/agent/env.ts's BranchEnv). Either goes without git's local variables
+   * (gitEnv.ts).
+   */
+  readonly baseEnv?: Readonly<Record<string, string>>
+  /** Set over the environment it starts from. */
   readonly env?: Readonly<Record<string, string>>
   /** Written to the command's stdin, which is otherwise closed. */
   readonly stdin?: string
@@ -260,7 +266,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
         .spawn(
           ChildProcess.make(command.command, command.args, {
             cwd: command.cwd,
-            env: withoutGitLocal(process.env, command.env),
+            env: withoutGitLocal(command.baseEnv ?? process.env, command.env),
             detached: true,
             killSignal: "SIGTERM",
             forceKillAfter: grace,
