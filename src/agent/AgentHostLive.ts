@@ -28,8 +28,9 @@
 // because the session went (Gone), or with the layer's scope, ends the prompt, closes the query
 // (the SDK ends Claude Code's stdin, then sends SIGTERM after its grace, docs/spikes/02-sdk-
 // lifecycle.md § 2) and waits for the subprocess to exit, killing its process group, and its
-// descendants' (killTree), if it hasn't within closeLimit. A stream that ends or fails without tutti closing it, or a result with a
-// startup_failure_reason, makes the worker Gone.
+// descendants' (killTree), if it hasn't within closeLimit (its SessionProcess's closeAndWait). A
+// stream that ends or fails without tutti closing it, or a result with a startup_failure_reason,
+// makes the worker Gone, its reason ending with what Claude Code last wrote to stderr.
 //
 // An interrupt's control requests, the interrupt and the cancel_async_message requests after it,
 // have interruptLimit to be answered together; past it the query is aborted and the session closed,
@@ -52,7 +53,6 @@ import {
   type SDKMessage,
   type SDKSystemMessage,
   type SDKUserMessage,
-  type SpawnedProcess,
 } from "@anthropic-ai/claude-agent-sdk"
 import {
   Cause,
@@ -79,7 +79,6 @@ import { readmeName } from "../project/requires.ts"
 import { checkCommands } from "../project/settings.ts"
 import { detail, Log, line } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
-import { killTree } from "../services/processTree.ts"
 import { type AccountProbe, type Billing, permissionModeLine } from "./Account.ts"
 import {
   AgentGone,
@@ -100,6 +99,12 @@ import { serverName } from "./interviewTools.ts"
 import { type ChosenServers, checkInit, checkStatus, inProcess, noServers, withOwn } from "./mcp.ts"
 import { interviewOptions, type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
 import { requiresServerName } from "./requiresTools.ts"
+import {
+  type SessionProcess,
+  stderrQuoted,
+  withSessionProcess,
+  withStderr,
+} from "./sessionProcess.ts"
 import type { Transcripts } from "./Transcripts.ts"
 import { projectHasSkills } from "./unusedTools.ts"
 import { WorkerEvent } from "./WorkerState.ts"
@@ -216,8 +221,8 @@ interface Live {
   readonly abort: AbortController
   /** Its lifecycle's scope: closing it closes the session. */
   readonly scope: Scope.Closeable
-  /** Claude Code, once the SDK has spawned it: query() does at once. */
-  readonly spawned: { child: SpawnedProcess | undefined }
+  /** Claude Code's process, spawned by the SDK as query() is called. */
+  readonly process: SessionProcess
   /** The CLI's capabilities, from its initialize answer and each system/init. */
   readonly capabilities: Set<string>
   /** The startup_failure_reason of a result it sent. */
@@ -271,34 +276,6 @@ const capabilitiesOf = (value: unknown): ReadonlyArray<string> => {
   return Array.isArray(listed) ? listed.filter((c) => typeof c === "string") : []
 }
 
-/**
- * Whether `child` has exited, or never started: a spawn that failed has no PID, and its process,
- * which never ran, never exits.
- */
-const exited = (child: SpawnedProcess): boolean =>
-  (child as { pid?: unknown }).pid === undefined ||
-  child.exitCode !== null ||
-  (child.signalCode ?? null) !== null
-
-/**
- * Kills `child`'s process group (it leads one, § 3.2), and its descendants' groups, its detached
- * Bash shells', first (killTree); never a missing or bad PID.
- */
-const killGroup = (child: SpawnedProcess) =>
-  Effect.sync(() => {
-    const pid = (child as { pid?: unknown }).pid
-    if (typeof pid === "number") killTree(pid)
-  })
-
-/** Waits until `child` exits. */
-const exitOf = (child: SpawnedProcess) =>
-  Effect.callback<void>((resume) => {
-    if (exited(child)) return resume(Effect.void)
-    const done = () => resume(Effect.void)
-    child.once("exit", done)
-    return Effect.sync(() => child.off("exit", done))
-  })
-
 /** What a failure says: its first error's message, or the cause's. */
 const causeMessage = (cause: Cause.Cause<unknown>): string => {
   for (const reason of cause.reasons) {
@@ -325,14 +302,14 @@ const isLaunchFailure = (message: string): boolean => message.includes("failed t
  * The reason a session didn't start, from its startup_failure_reason, if it sent one, and what
  * failed its initialize.
  */
-const startFailure = (refused: string | undefined, message: string): string => {
+const startFailure = (refused: string | undefined, message: string, stderr: string): string => {
   if (refused !== undefined) return `Claude Code refused to start: ${refused}`
-  return isLaunchFailure(message) ? launchFailed : message
+  return withStderr(isLaunchFailure(message) ? launchFailed : message, stderr)
 }
 
 /** Why a worker is gone when its stream failed without tutti closing it. */
-const failedWhy = (message: string): string =>
-  isLaunchFailure(message) ? launchFailed : `${endedWhy}: ${message}`
+const failedWhy = (message: string, stderr: string): string =>
+  withStderr(isLaunchFailure(message) ? launchFailed : `${endedWhy}: ${message}`, stderr)
 
 /**
  * The live AgentHost, over the Agent SDK, its workers' sessions set up by `options` and AppConfig.
@@ -447,8 +424,7 @@ export const layer = (
       const setupProblem = (session: Live, problem: string) =>
         Effect.gen(function* () {
           yield* log.write(detail`${session.ticket}: ${problem}`)
-          const child = session.spawned.child
-          if (child !== undefined) yield* killGroup(child)
+          yield* session.process.kill
           session.abort.abort()
           yield* gone(session, problem, true)
         })
@@ -568,7 +544,12 @@ export const layer = (
           ),
           Effect.exit,
           Effect.flatMap((exit) =>
-            gone(session, Exit.isSuccess(exit) ? endedWhy : failedWhy(causeMessage(exit.cause))),
+            gone(
+              session,
+              Exit.isSuccess(exit)
+                ? withStderr(endedWhy, session.process.stderrTail(stderrQuoted))
+                : failedWhy(causeMessage(exit.cause), session.process.stderrTail(stderrQuoted)),
+            ),
           ),
         )
 
@@ -576,12 +557,7 @@ export const layer = (
       const shut = (session: Live) =>
         Effect.gen(function* () {
           yield* Queue.end(session.inbox)
-          session.query.close()
-          const child = session.spawned.child
-          if (child === undefined) return
-          yield* exitOf(child).pipe(
-            Effect.timeoutOrElse({ duration: closeLimit, orElse: () => killGroup(child) }),
-          )
+          yield* session.process.closeAndWait(() => session.query.close(), closeLimit)
         })
 
       /**
@@ -676,7 +652,7 @@ export const layer = (
                       requiresServerName,
                       yield* options.ownServer(session.cwd),
                     )
-          const sdkOptions: Options =
+          const asked: Options =
             setup !== undefined
               ? interviewOptions({
                   config,
@@ -701,8 +677,7 @@ export const layer = (
                   env,
                   abortController: abort,
                 })
-          const spawn = sdkOptions.spawnClaudeCodeProcess
-          const spawned: Live["spawned"] = { child: undefined }
+          const { options: sdkOptions, process: claude } = withSessionProcess(asked)
           const startupFailure = yield* Deferred.make<string>()
           // Claude Code, spawned, is closed with the session's scope, though the start is cancelled.
           const opened = yield* Effect.uninterruptible(
@@ -712,18 +687,7 @@ export const layer = (
                 try: () =>
                   openQuery({
                     prompt: Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
-                    options: {
-                      ...sdkOptions,
-                      ...(spawn === undefined
-                        ? {}
-                        : {
-                            spawnClaudeCodeProcess: (spawnOptions) => {
-                              const child = spawn(spawnOptions)
-                              spawned.child = child
-                              return child
-                            },
-                          }),
-                    },
+                    options: sdkOptions,
                   }),
                 catch: (cause) => new AgentStartFailed({ ticket, reason: queryThrew(cause) }),
               })
@@ -736,7 +700,7 @@ export const layer = (
                 query: handle,
                 abort,
                 scope: of,
-                spawned,
+                process: claude,
                 capabilities: new Set(),
                 startupFailure,
               }
@@ -781,7 +745,11 @@ export const layer = (
           const refused = (yield* Deferred.isDone(startupFailure))
             ? yield* Deferred.await(startupFailure)
             : undefined
-          const reason = startFailure(refused, causeMessage(initialized.cause))
+          const reason = startFailure(
+            refused,
+            causeMessage(initialized.cause),
+            claude.stderrTail(stderrQuoted),
+          )
           yield* gone(opened, reason)
           return yield* new AgentStartFailed({
             ticket,
@@ -916,10 +884,9 @@ export const layer = (
         processes: Effect.sync(() => {
           const pids = new Map<string, number>()
           for (const [ticket, lifecycle] of sessions) {
-            const child = liveOf(lifecycle)?.spawned.child
-            const pid = (child as { pid?: unknown } | undefined)?.pid
-            if (child !== undefined && !exited(child) && typeof pid === "number")
-              pids.set(ticket, pid)
+            const child = liveOf(lifecycle)?.process.child()
+            if (child?.pid !== undefined && child.exitCode === null && child.signalCode === null)
+              pids.set(ticket, child.pid)
           }
           return pids
         }),

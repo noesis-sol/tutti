@@ -49,7 +49,7 @@ const effortsOf = (config: AppConfigValue) => {
       callbacks,
       session,
     }).effort,
-    probe: probeOptions({ ...shared, stderr: () => {}, spawned: () => {} }).effort,
+    probe: probeOptions({ ...shared, stderr: () => {} }).effort,
     interview: interviewOptions({
       ...shared,
       setup: { prompt: "Talk it through.", server },

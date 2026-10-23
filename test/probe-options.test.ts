@@ -3,6 +3,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import type { SpawnOptions } from "@anthropic-ai/claude-agent-sdk"
 import fc from "fast-check"
 import { probeOptions, type WorkerCallbacks, workerOptions } from "../src/agent/options.ts"
+import { withSessionProcess } from "../src/agent/sessionProcess.ts"
 import { unusedTools } from "../src/agent/unusedTools.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { efforts, permissionModes } from "../src/project/settings.ts"
@@ -26,9 +27,8 @@ const env = { PATH: "/usr/bin", CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" }
 const probeFor = (
   config: AppConfigValue = configWith(),
   stderr: (data: string) => void = () => {},
-  spawned: (child: ChildProcessWithoutNullStreams) => void = () => {},
   abortController = new AbortController(),
-) => probeOptions({ config, env, stderr, spawned, abortController })
+) => probeOptions({ config, env, stderr, abortController })
 
 describe("probeOptions", () => {
   test("the probe's options are the workers', in the main checkout, field by field", () => {
@@ -40,7 +40,6 @@ describe("probeOptions", () => {
         { claude: "/opt/claude/bin/claude" },
       ),
       stderr,
-      () => {},
       abortController,
     )
     const { spawnClaudeCodeProcess, ...rest } = options
@@ -110,7 +109,7 @@ describe("probeOptions", () => {
             mcpServers: _probeServers,
             persistSession: _persist,
             ...probe
-          } = probeOptions({ config, env, stderr, spawned: () => {}, abortController })
+          } = probeOptions({ config, env, stderr, abortController })
           const {
             spawnClaudeCodeProcess: _workerSpawn,
             cwd: _workerCwd,
@@ -143,11 +142,8 @@ describe("probeOptions", () => {
 
   test("Claude Code starts in a process group of its own, its stderr and process reported", async () => {
     const received: Array<string> = []
-    const children: Array<ChildProcessWithoutNullStreams> = []
-    const options = probeFor(
-      configWith(),
-      (data) => received.push(data),
-      (child) => children.push(child),
+    const { options, process } = withSessionProcess(
+      probeFor(configWith(), (data) => received.push(data)),
     )
     const child = options.spawnClaudeCodeProcess?.({
       command: "/bin/sh",
@@ -156,7 +152,7 @@ describe("probeOptions", () => {
       env: { PATH: testEnv.PATH },
       signal: new AbortController().signal,
     } satisfies SpawnOptions) as ChildProcessWithoutNullStreams
-    expect(children).toEqual([child])
+    expect(process.child()).toBe(child)
     let stdout = ""
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString()
@@ -165,5 +161,6 @@ describe("probeOptions", () => {
     const [pid, pgid] = stdout.trim().split(/\s+/)
     expect(pid).toBe(pgid)
     expect(received.join("")).toBe("oops\n")
+    expect(process.stderrTail()).toBe("oops")
   })
 })

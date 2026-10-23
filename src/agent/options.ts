@@ -142,8 +142,6 @@ interface SharedInput {
   readonly chrome: boolean
   /** Whether the session keeps Skill, the project having skills (projectHasSkills). */
   readonly skills: boolean
-  /** Told of Claude Code's process once the SDK has spawned it. */
-  readonly spawned?: (child: ChildProcessWithoutNullStreams) => void
 }
 
 /**
@@ -155,8 +153,6 @@ interface SharedInput {
  */
 const sharedOptions = (input: SharedInput) => {
   const workers = input.config.settings.workers
-  const spawn = spawnInOwnProcessGroup(input.stderr)
-  const spawned = input.spawned
   return {
     projectConfigRoot: input.config.repo,
     settingSources: ["user", "project", "local"],
@@ -172,14 +168,7 @@ const sharedOptions = (input: SharedInput) => {
     stderr: input.stderr,
     env: input.env,
     ...(input.config.claude === null ? {} : { pathToClaudeCodeExecutable: input.config.claude }),
-    spawnClaudeCodeProcess:
-      spawned === undefined
-        ? spawn
-        : (options: SpawnOptions) => {
-            const child = spawn(options)
-            spawned(child)
-            return child
-          },
+    spawnClaudeCodeProcess: spawnInOwnProcessGroup(input.stderr),
     abortController: input.abortController,
   } satisfies Options
 }
@@ -266,8 +255,6 @@ export interface ProbeOptionsInput {
   readonly env: Record<string, string>
   /** Every line the probe's Claude Code writes to stderr. */
   readonly stderr: (data: string) => void
-  /** Told of Claude Code's process once the SDK has spawned it, to wait for its exit. */
-  readonly spawned: (child: ChildProcessWithoutNullStreams) => void
   readonly abortController: AbortController
 }
 

@@ -48,6 +48,7 @@ import { queryThrew } from "../agent/claudeBinary.ts"
 import { workerEnv } from "../agent/env.ts"
 import { chromeArgs } from "../agent/mcp.ts"
 import { spawnInOwnProcessGroup } from "../agent/options.ts"
+import { organCloseLimit, withSessionProcess, withStderr } from "../agent/sessionProcess.ts"
 import { endedOnLimit, turnLimit } from "../agent/UsageLimits.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type Cost, OrganCost } from "./OrganCost.ts"
@@ -511,7 +512,19 @@ export const layer = (
                   ),
                 ))
             const abortController = new AbortController()
-            let stderr = ""
+            const { options, process } = withSessionProcess(
+              organOptions({
+                turn,
+                jsonSchema,
+                call,
+                cwd,
+                env,
+                claude: config.claude,
+                abortController,
+                partial,
+                stderr: () => {},
+              }),
+            )
             // query() throws as it is called when there is no Claude Code for the platform.
             const q = yield* Effect.try({
               try: () =>
@@ -519,38 +532,29 @@ export const layer = (
                   prompt: (async function* () {
                     yield userMessage(turn.userText)
                   })(),
-                  options: organOptions({
-                    turn,
-                    jsonSchema,
-                    call,
-                    cwd,
-                    env,
-                    claude: config.claude,
-                    abortController,
-                    partial,
-                    stderr: (data) => {
-                      stderr = (stderr + data).slice(-stderrLimit)
-                    },
-                  }),
+                  options,
                 }),
               catch: (cause) =>
                 fail(method, new AiError.UnknownError({ description: queryThrew(cause) })),
             })
+            // A turn not over is unwanted: its Claude Code is killed at once, not given the SDK's
+            // grace. Either way the call ends once its process has exited, before its folder goes.
             yield* Effect.addFinalizer(() =>
-              Effect.sync(() => {
-                if (!ended) abortController.abort()
-                q.close()
+              Effect.gen(function* () {
+                if (!ended) {
+                  yield* process.kill
+                  abortController.abort()
+                }
+                yield* process.closeAndWait(() => q.close(), organCloseLimit)
               }),
             )
-            const failed = (error: unknown) => {
-              const said = stderr.trim()
-              return fail(
+            const failed = (error: unknown) =>
+              fail(
                 method,
                 new AiError.UnknownError({
-                  description: said === "" ? messageOf(error) : `${messageOf(error)}: ${said}`,
+                  description: withStderr(messageOf(error), process.stderrTail(stderrLimit)),
                 }),
               )
-            }
             return Stream.fromAsyncIterable(q, failed).pipe(
               Stream.takeUntil((m) => m.type === "result"),
               Stream.tap((m) => {

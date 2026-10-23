@@ -4,13 +4,14 @@
 // Claude Code sends them, for the embedded Claude Code, so an SDK bump that moves or drops one fails
 // here rather than letting the probe miss skipped settings files.
 import { expect, test } from "bun:test"
-import type { ChildProcess } from "node:child_process"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { query } from "@anthropic-ai/claude-agent-sdk"
+import { Duration, Effect } from "effect"
 import { probeEnv } from "../src/agent/env.ts"
 import { probeOptions } from "../src/agent/options.ts"
+import { withSessionProcess } from "../src/agent/sessionProcess.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { testEnv } from "./env.ts"
 import { live } from "./gates.ts"
@@ -26,19 +27,15 @@ async function* nothing(signal: AbortSignal): AsyncGenerator<never> {
  */
 const answers = async (repo: string): Promise<{ init: unknown; settings: unknown }> => {
   const abortController = new AbortController()
-  let closed: Promise<void> | undefined
-  const session = query({
-    prompt: nothing(abortController.signal),
-    options: probeOptions({
+  const { options, process } = withSessionProcess(
+    probeOptions({
       config: TestAppConfig.appConfig({}, repo),
       env: probeEnv({ env: testEnv }),
       stderr: () => {},
-      spawned: (child: ChildProcess) => {
-        closed = new Promise((resolve) => child.once("close", () => resolve()))
-      },
       abortController,
     }),
-  })
+  )
+  const session = query({ prompt: nothing(abortController.signal), options })
   try {
     const init: unknown = await session.initializationResult()
     const getSettings = (session as { getSettings?: () => Promise<unknown> }).getSettings
@@ -46,10 +43,7 @@ const answers = async (repo: string): Promise<{ init: unknown; settings: unknown
     const settings = await getSettings?.call(session)
     return { init, settings }
   } finally {
-    session.close()
-    if (closed !== undefined) {
-      await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 10_000))])
-    }
+    await Effect.runPromise(process.closeAndWait(() => session.close(), Duration.seconds(10)))
     abortController.abort()
   }
 }

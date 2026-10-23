@@ -90,7 +90,6 @@ describe("Chrome's arguments", () => {
       config,
       env,
       stderr: () => {},
-      spawned: () => {},
       abortController: new AbortController(),
     })
     expect(probe.extraArgs).toEqual(off)

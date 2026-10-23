@@ -14,16 +14,15 @@
 // SDK's docs suggest: the session's settings (getSettings(), not in the SDK's types) list them. The
 // probe reads both. Only its stderr says the main checkout isn't trusted, so the probe reads every
 // line of it until the session's process has exited.
-import type { ChildProcess } from "node:child_process"
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Context, Duration, Effect, Layer, Schema } from "effect"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
 import type { permissionModes } from "../project/settings.ts"
-import { killTree } from "../services/processTree.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { apiKeySet, apiKeyVariable, probeEnv } from "./env.ts"
 import { probeOptions } from "./options.ts"
+import { stderrQuoted, withSessionProcess, withStderr } from "./sessionProcess.ts"
 
 /** Not logged in to Claude, and no API key to use instead. */
 export class NotLoggedIn extends Schema.TaggedError<NotLoggedIn>()("NotLoggedIn", {}) {
@@ -342,15 +341,6 @@ async function* nothing(signal: AbortSignal): AsyncGenerator<never> {
 /** How long the probe's Claude Code has to exit once closed, before tutti kills its process group. */
 export const probeCloseLimit = Duration.seconds(10)
 
-/** The probe's Claude Code, once the SDK has spawned it, and when its stderr has closed. */
-interface Spawned {
-  child: ChildProcess | undefined
-  closed: Promise<void> | undefined
-}
-
-/** Kills `child`'s process group (it leads one), its descendants' first (killTree). */
-const killGroup = (child: ChildProcess) => Effect.sync(() => killTree(child.pid))
-
 /** The probe's time limits: the live probe's are probeTimeout and probeCloseLimit. */
 export interface ProbeLimits {
   /** How long the session has to start and answer. */
@@ -376,26 +366,20 @@ export const startProbeWith =
         Effect.try({
           try: () => {
             const abortController = new AbortController()
-            const spawned: Spawned = { child: undefined, closed: undefined }
-            const session = open({
-              prompt: nothing(abortController.signal),
-              options: probeOptions({
+            const { options: sdkOptions, process } = withSessionProcess(
+              probeOptions({
                 config: options.config,
                 env: options.env,
                 stderr: (data) => stderr.push(data),
-                spawned: (child) => {
-                  spawned.child = child
-                  // "close" comes once the process has exited and its stdio has closed.
-                  spawned.closed = new Promise((resolve) => child.once("close", () => resolve()))
-                },
                 abortController,
               }),
-            })
-            return { session, abortController, spawned }
+            )
+            const session = open({ prompt: nothing(abortController.signal), options: sdkOptions })
+            return { session, abortController, process }
           },
           catch: (cause) => new AccountProbeFailed({ reason: queryThrew(cause) }),
         }),
-        ({ session }) =>
+        ({ session, process }) =>
           Effect.tryPromise({
             try: async () => {
               const init = await session.initializationResult()
@@ -405,11 +389,18 @@ export const startProbeWith =
                 getSettings === undefined ? undefined : await getSettings.call(session)
               return { init, settings }
             },
-            catch: (cause) =>
-              new AccountProbeFailed({
-                reason: cause instanceof Error ? cause.message : String(cause),
-              }),
+            catch: (cause) => cause,
           }).pipe(
+            // What Claude Code last wrote to stderr says why, where the SDK says only its exit code.
+            Effect.mapError(
+              (cause) =>
+                new AccountProbeFailed({
+                  reason: withStderr(
+                    cause instanceof Error ? cause.message : String(cause),
+                    process.stderrTail(stderrQuoted),
+                  ),
+                }),
+            ),
             Effect.timeoutOrElse({
               duration: limits.timeout,
               orElse: () =>
@@ -420,18 +411,9 @@ export const startProbeWith =
                 ),
             }),
           ),
-        ({ session, abortController, spawned }) =>
+        ({ session, abortController, process }) =>
           Effect.gen(function* () {
-            session.close()
-            const { child, closed } = spawned
-            if (child !== undefined && closed !== undefined) {
-              yield* Effect.promise(() => closed).pipe(
-                Effect.timeoutOrElse({
-                  duration: limits.closeLimit,
-                  orElse: () => killGroup(child),
-                }),
-              )
-            }
+            yield* process.closeAndWait(() => session.close(), limits.closeLimit)
             abortController.abort()
           }),
       )

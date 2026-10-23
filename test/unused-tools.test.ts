@@ -127,7 +127,6 @@ describe("the tools workers never use", () => {
       config: appConfig(),
       env: {},
       stderr: () => {},
-      spawned: () => {},
       abortController: new AbortController(),
     })
     expect(options.disallowedTools).toEqual([...unusedTools, "Skill"])

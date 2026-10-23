@@ -24,6 +24,7 @@ import { OrganCost } from "../organs/OrganCost.ts"
 import type { AccountProbe } from "./Account.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { workerEnv } from "./env.ts"
+import { organCloseLimit, withSessionProcess, withStderr } from "./sessionProcess.ts"
 import { endedOnLimit, turnLimit } from "./UsageLimits.ts"
 
 /** What the account answered the probe. Times are epoch milliseconds. */
@@ -126,7 +127,20 @@ export class UsageProbe extends Context.Service<
             )
             const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "tutti-usage-probe-" })
             const abortController = new AbortController()
-            let stderr = ""
+            const { options: sdkOptions, process } = withSessionProcess({
+              ...organOptions({
+                turn: { systemPrompt: probeSystemPrompt, userText: [probeMessage] },
+                jsonSchema: undefined,
+                call: { organ: probeOrgan, model: probeModel(limit) },
+                cwd,
+                env,
+                claude: config.claude,
+                abortController,
+                partial: false,
+                stderr: () => {},
+              }),
+              maxTurns: 1,
+            })
             const q = yield* Effect.acquireRelease(
               Effect.try({
                 try: () =>
@@ -138,35 +152,23 @@ export class UsageProbe extends Context.Service<
                         parent_tool_use_id: null,
                       }
                     })(),
-                    options: {
-                      ...organOptions({
-                        turn: { systemPrompt: probeSystemPrompt, userText: [probeMessage] },
-                        jsonSchema: undefined,
-                        call: { organ: probeOrgan, model: probeModel(limit) },
-                        cwd,
-                        env,
-                        claude: config.claude,
-                        abortController,
-                        partial: false,
-                        stderr: (data) => {
-                          stderr = (stderr + data).slice(-stderrLimit)
-                        },
-                      }),
-                      maxTurns: 1,
-                    },
+                    options: sdkOptions,
                   }),
                 catch: queryThrew,
               }),
+              // A turn not over is unwanted: its Claude Code is killed at once, not given the
+              // SDK's grace. Either way the probe ends once its process has exited.
               (q) =>
-                Effect.sync(() => {
-                  if (result === undefined) abortController.abort()
-                  q.close()
+                Effect.gen(function* () {
+                  if (result === undefined) {
+                    yield* process.kill
+                    abortController.abort()
+                  }
+                  yield* process.closeAndWait(() => q.close(), organCloseLimit)
                 }),
             )
-            const failed = (cause: unknown) => {
-              const said = stderr.trim()
-              return said === "" ? messageOf(cause) : `${messageOf(cause)}: ${said}`
-            }
+            const failed = (cause: unknown) =>
+              withStderr(messageOf(cause), process.stderrTail(stderrLimit))
             const all = yield* Stream.runCollect(
               Stream.fromAsyncIterable(q, failed).pipe(
                 Stream.takeUntil((m) => m.type === "result"),
