@@ -133,7 +133,7 @@ const lineOf = (ran: Ran<unknown>, pattern: RegExp): number =>
   ran.log.findIndex((each) => pattern.test(each))
 
 describe("the run takes the answers", () => {
-  test("on the ready poll: an answered ticket is resumed beside the one running, and merges", async () => {
+  test("on the ready poll: an answered ticket is resumed once the one running frees its slot", async () => {
     const ran = await runs({
       scripts: (world, root) => ({
         "t-1": [asks(world, "t-1"), finishesAfter(world, root, "t-1", [])],
@@ -157,10 +157,12 @@ describe("the run takes the answers", () => {
     expectLog(ran, [
       /ASKED: t-1 waits on your answer/,
       /t-2 dispatching/,
+      // One slot: t-1 waits Asked, its question answered, until t-2's worker has settled.
+      /^ {2}t-2 settled/,
       /^ {2}ANSWERED: \S+ \(Which way\?\) is answered, so t-1 comes back$/,
       /^ {2}RESUMED: t-1's question \S+ is answered; resuming its session/,
-      /^ {2}t-1 closed \(.*\); merged into main/,
       /^ {2}t-2 closed \(.*\); merged into main/,
+      /^ {2}t-1 closed \(.*\); merged into main/,
     ])
   })
 

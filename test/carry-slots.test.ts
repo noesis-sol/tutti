@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Deferred, Effect, Layer, Ref, type Scope } from "effect"
+import { Deferred, Effect, Fiber, Layer, Ref, type Scope } from "effect"
 import { TestClock } from "effect/testing"
 import { askedWhy, questionKey } from "../src/run/carry.ts"
 import type { EventRecord } from "../src/run/events.ts"
@@ -16,15 +16,17 @@ import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { make, type Scheduler } from "../src/run/schedule.ts"
+import { make, readyPoll, type Scheduler } from "../src/run/schedule.ts"
 import { Beads, type Issue } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import type { TicketRecord } from "../src/services/Store.ts"
-import { claimsAndCloses } from "../src/testing/AgentHost.ts"
+import { bash, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
+import { texts } from "../src/testing/Log.ts"
 import {
+  advance,
   backlog,
   expectExitCode,
   expectLog,
@@ -221,25 +223,33 @@ const savedRecord = (
   ...fields,
 })
 
-/** Claims the ticket, commits a change naming it and closes it, in its worktree under `root`. */
-const finishes = (world: World, root: string, id: string) => {
+/**
+ * Claims the ticket, works for a ready poll's time, then commits a change naming it and closes it,
+ * in its worktree under `root`.
+ */
+const finishes = (world: World, root: string, id: string): SessionScript => {
   const orDie = <A, E>(effect: Effect.Effect<A, E>) => Effect.asVoid(Effect.orDie(effect))
-  return claimsAndCloses(id, {
-    claim: orDie(world.beads.update(id, { claim: true })),
-    commit: orDie(
-      world.repository.commit(join(root, id), `Change (${id})`, { [`${id}.txt`]: "x\n" }),
+  return turn([
+    ...bash(`bd update ${id} --claim`, orDie(world.beads.update(id, { claim: true }))),
+    sleep(readyPoll),
+    ...bash(
+      `git commit -am "Change (${id})"`,
+      orDie(world.repository.commit(join(root, id), `Change (${id})`, { [`${id}.txt`]: "x\n" })),
     ),
-    close: orDie(world.beads.close(id, "done")),
-  })
+    ...bash(`bd close ${id}`, orDie(world.beads.close(id, "done"))),
+  ])
 }
 
 /**
  * A whole plain run with one slot, after an earlier run that left `saved` in state.json, each
- * of `ids` with its worktree and a worker that finishes its ticket.
+ * of `ids` with its worktree and a worker that finishes its ticket. The clock stands still until
+ * `holder`'s worker is resumed and carry-over is over, its worker holding the slot meanwhile;
+ * then it moves on a ready poll at a time until the run ends.
  */
 const runs = async (
   seeds: ReadonlyArray<Seed>,
   ids: ReadonlyArray<string>,
+  holder: string,
   saved: (root: string) => Readonly<Record<string, TicketRecord>>,
 ): Promise<Ran<Outcome>> => {
   const repo = folder("repo")
@@ -260,7 +270,20 @@ const runs = async (
         mkdirSync(join(root, id), { recursive: true })
         yield* git.addWorktree(repo, join(root, id), { branch: `tutti/${id}`, base: "main" })
       }
-      return yield* Effect.scoped(run({ version: "0.1.0-test", base: "main" }))
+      const fiber = yield* Effect.forkChild(
+        Effect.scoped(run({ version: "0.1.0-test", base: "main" })),
+      )
+      const resumed = `RESUMED: ${holder} `
+      for (let i = 0; i < 2000; i++) {
+        if ((yield* texts).some((each) => each.includes(resumed))) break
+        yield* Effect.promise(() => Bun.sleep(5))
+      }
+      yield* Effect.promise(() => Bun.sleep(50))
+      for (let i = 0; i < 200 && fiber.pollUnsafe() === undefined; i++) {
+        yield* advance(readyPoll)
+        yield* Effect.promise(() => Bun.sleep(5))
+      }
+      return yield* Fiber.join(fiber)
     }),
   )
 }
@@ -284,6 +307,7 @@ describe("with one slot", () => {
       backlog().ticket("t-1", { status: "in_progress" }).ticket("t-2", { status: "in_progress" })
         .seeds,
       ["t-1", "t-2"],
+      "t-1",
       (root) => ({ "t-1": savedRecord(root, "t-1"), "t-2": savedRecord(root, "t-2") }),
     )
     expectExitCode(ran, 0)
@@ -308,6 +332,7 @@ describe("with one slot", () => {
         .ticket("t-1", { blockedBy: ["q-1"] })
         .ticket("t-2", { status: "in_progress" }).seeds,
       ["t-1", "t-2"],
+      "t-2",
       (root) => ({
         "t-1": savedRecord(root, "t-1", {
           suspended: askedWhy,
