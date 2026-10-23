@@ -21,7 +21,8 @@ export interface Look {
   readonly canTake: boolean
   /**
    * Whether a worker to be resumed found no slot in the look, carried over from the last run or
-   * its question answered: it is still to start, once a slot frees (§ 5's Scheduling).
+   * its question answered: it is still to start, once a slot frees (§ 5's Scheduling). The look
+   * tries none while the run holds, which, as for a queued ticket, leaves it for the next run.
    */
   readonly resuming: boolean
   /** Whether the merge queue is settled now: nothing merging, queued or resolving. */
