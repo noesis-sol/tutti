@@ -106,6 +106,8 @@ type Release = {
   readonly signedWith?: KeyObject
   /** checksums.txt's sum for each archive, in place of its own. */
   readonly sum?: string
+  /** The shell script after the archive's name in each archive's tutti, in place of the echo. */
+  readonly binary?: string
 }
 
 /**
@@ -120,7 +122,7 @@ export const releasesFolder = (key: KeyObject, releases: ReadonlyArray<Release>)
     let sums = ""
     for (const name of archives(release.tag)) {
       const archive = tarGz({
-        tutti: `#!/bin/sh\n# ${name}\necho 'tutti ${release.tag}'\n`,
+        tutti: `#!/bin/sh\n# ${name}\n${release.binary ?? `echo 'tutti ${release.tag}'`}\n`,
         "README.md": "# tutti\n",
       })
       writeFileSync(join(dir, name), archive)

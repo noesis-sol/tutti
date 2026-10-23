@@ -344,21 +344,25 @@ release workflow from another. Nothing was installed." ;;
   [ "$got" = "$want" ] || fail "$archive's SHA-256 is $got, not checksums.txt's $want. Nothing was installed."
   mkdir "$tmp/x"
   tar -xzf "$tmp/$archive" -C "$tmp/x" tutti </dev/null || fail "cannot unpack tutti from $archive"
-  chmod 755 "$tmp/x/tutti"
-  if ! version="$("$tmp/x/tutti" --version </dev/null 2>&1)"; then
-    if [ "$libc" = musl ]; then
-      fail "the new binary doesn't run: $version
-A musl build needs libstdc++ and libgcc: install them (apk add libstdc++ libgcc) and run this again."
-    fi
-    fail "the new binary doesn't run: $version"
-  fi
-  [ "$version" = "tutti $tag" ] || fail "the new binary's --version says '$version', not tutti $tag"
-
   install_dir
-  # Copied beside the old binary and renamed over it, so that 'tutti' is never half written.
+  # Copied beside the old binary and renamed over it, so that 'tutti' is never half written. It runs
+  # there, not in $tmp, which may be mounted noexec; only its stdout is its version, as tutti update
+  # reads it, so that a warning on stderr doesn't fail the install.
   new="$dir/.tutti-install-$$"
   cp "$tmp/x/tutti" "$new" || fail "cannot write in $dir"
   chmod 755 "$new"
+  status=0
+  version="$("$new" --version </dev/null 2>"$tmp/stderr")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    said="it exited $status"
+    if [ -s "$tmp/stderr" ]; then said="$said: $(cat "$tmp/stderr")"; fi
+    if [ "$libc" = musl ]; then
+      fail "the new binary doesn't run: $said
+A musl build needs libstdc++ and libgcc: install them (apk add libstdc++ libgcc) and run this again."
+    fi
+    fail "the new binary doesn't run: $said"
+  fi
+  [ "$version" = "tutti $tag" ] || fail "the new binary's --version says '$version', not tutti $tag"
   mv -f "$new" "$dir/tutti" || fail "cannot replace $dir/tutti"
   new=
   say "Installed $("$dir/tutti" --version </dev/null) in $dir/tutti."
