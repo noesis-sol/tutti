@@ -279,12 +279,20 @@ export const make = (
     const mergedByHand = looking.withPermits(1)(
       handMerged(seen, { rechecks, handBacks }, options).pipe(Effect.provideContext(context)),
     )
-    const recheck = looking.withPermits(1)(
-      Effect.andThen(
-        handMerged(seen, { rechecks, handBacks }, options),
-        recheckDue(rechecks, { offer, state, changes: SubscriptionRef.changes(ref) }, options),
-      ).pipe(Effect.provideContext(context)),
-    )
+    // `at`: where the base is, as a merge just put it, for neither to ask git again.
+    const recheckFrom = (at?: string) =>
+      looking.withPermits(1)(
+        Effect.andThen(
+          handMerged(seen, { rechecks, handBacks }, options, at),
+          recheckDue(
+            rechecks,
+            { offer, state, changes: SubscriptionRef.changes(ref) },
+            options,
+            at,
+          ),
+        ).pipe(Effect.provideContext(context)),
+      )
+    const recheck = recheckFrom()
 
     // The merges stopping leave the tickets behind waiting: the branches their trains rebased are
     // put back.
@@ -427,12 +435,15 @@ export const make = (
             break
           }
           // A merge that changed .tutti/settings.json may set the setup the run uses from now on.
+          // The fast-forward put the base at the commit checked, `at`: it isn't read again.
           if (stop === undefined && prepared._tag === "Ready") {
-            yield* takeSettings(ticket.id, options, setUps, prepared.onto)
+            yield* takeSettings(ticket.id, options, setUps, prepared.onto, prepared.at)
           }
           // A merge moves the base on, which may be what a ticket's failed check waits for: the
           // tickets it puts back are in line before this merge is over, so `settled` waits for them.
-          if (stop === undefined && prepared._tag === "Ready") yield* Effect.exit(restore(recheck))
+          if (stop === undefined && prepared._tag === "Ready") {
+            yield* Effect.exit(restore(recheckFrom(prepared.at)))
+          }
           yield* heldMessages.over(ticket.id)
           yield* merged(stop)
           yield* fit(ticket.id, rechecks, handBacks)

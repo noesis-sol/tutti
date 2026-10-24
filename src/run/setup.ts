@@ -42,7 +42,7 @@ import { decodeConfig, formatDuration } from "../project/configFile.ts"
 import { type Requirement, Settings, settingsFile } from "../project/settings.ts"
 import { Beads } from "../services/Beads.ts"
 import { type CheckError, Checks, setupLogName } from "../services/Checks.ts"
-import { Git } from "../services/Git.ts"
+import { Git, type StatusEntry } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import {
   checkRunFolder,
@@ -248,7 +248,8 @@ export const fileList = (files: ReadonlyArray<string>): string =>
 export type SetUp =
   /** No setup command is set, or no file it is for changed: nothing ran. */
   | { readonly _tag: "Unneeded" }
-  | { readonly _tag: "Passed" }
+  /** `after`: its worktree's status read as it ended, if git read one (noteWritten). */
+  | { readonly _tag: "Passed"; readonly after?: ReadonlyArray<StatusEntry> }
   /** It failed, timed out or couldn't run; `output` is where its whole output is. */
   | { readonly _tag: "Failed"; readonly error: CheckError; readonly output: string }
 
@@ -269,7 +270,8 @@ export interface Fix {
  * then do, or git can't say whether they do; Merging{setup} while it runs, unless it is for a `fix`
  * (checked again in Fixing or Resolving), or `ahead` of its turn to merge (mergetrain.ts), its
  * branch rebased onto the branch ahead of it at `onto` and its phase left as it is. `at`: the commit
- * its branch is at, as its caller read it just before; it is read here without it.
+ * its branch is at, as its caller read it just before; it is read here without it. `before`: its
+ * worktree's status, as its caller read it just before, nothing having run in it since (noteWritten).
  */
 export const setUp = (
   ticket: FinishedTicket,
@@ -280,6 +282,7 @@ export const setUp = (
   fix?: Fix,
   ahead = false,
   at?: string,
+  before?: ReadonlyArray<StatusEntry>,
 ): Effect.Effect<SetUp, never, Checks | Git | Worktrees | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
@@ -324,6 +327,7 @@ export const setUp = (
     }
     yield* (yield* Log).write(detail`${ticket.id}: ${what}; running '${command}' before the check`)
     const checks = yield* Checks
+    let after: ReadonlyArray<StatusEntry> | undefined
     const { ran, output } = yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, setupLogName, "the setup's")
@@ -333,6 +337,12 @@ export const setUp = (
           noteWritten(
             ticket.worktree,
             checks.setup({ cwd: ticket.worktree, ...to, before: "fast", command }),
+            {
+              before,
+              read: (status) => {
+                after = status
+              },
+            },
           ),
         )
         return { ran, output: to.outputFile }
@@ -343,7 +353,7 @@ export const setUp = (
     }
     if (ran.success._tag === "NoCheckCommand") return { _tag: "Unneeded" } satisfies SetUp
     yield* setUps.set(ticket.id, onto, head)
-    return { _tag: "Passed" } satisfies SetUp
+    return { _tag: "Passed", ...(after === undefined ? {} : { after }) } satisfies SetUp
   })
 
 /** How the setup before a ticket's worker went. */
@@ -638,7 +648,8 @@ const setupSaid = (command: string | null): string => (command === null ? "none"
 
 /**
  * Has the run take checks.setup from .tutti/settings.json as ticket `id`'s merge committed it to the
- * base, when the merge, from `before` to `now`, changed that file: a setup set during the run counts
+ * base, when the merge, from `before` to `merged`, the commit it put the base at, changed that file
+ * (the base read when not given): a setup set during the run counts
  * from then on, as the environment ticket a spec's breakdown files first sets it for the tickets
  * after it. Its requires list too, which the run checks before the next ticket starts (requires.ts),
  * and names to the workers started or resumed from then on (AgentHost's takeRequires). One git
@@ -650,12 +661,14 @@ export const takeSettings = (
   options: MergeOptions,
   setUps: SetUps,
   before: string,
+  merged?: string,
 ): Effect.Effect<void, never, AgentHost | Git | Log | EventStream> =>
   Effect.gen(function* () {
     const git = yield* Git
     const logs = yield* Log
     const { repo, base } = options
-    const at = yield* Effect.result(git.revParse(repo, base))
+    const at =
+      merged === undefined ? yield* Effect.result(git.revParse(repo, base)) : Result.succeed(merged)
     if (before === "" || Result.isFailure(at)) return
     const now = at.success
     const changed = yield* Effect.result(git.filesBetween(repo, before, now))

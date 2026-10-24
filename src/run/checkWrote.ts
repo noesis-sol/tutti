@@ -39,20 +39,24 @@ const listed = (worktree: string): Effect.Effect<ReadonlySet<string>> =>
  * Runs `effect`, a setup or check in the worktree, and adds the untracked files it made there to
  * its check-wrote list. Nothing is added when git can't read the worktree before or after, or
  * when `effect` fails or is interrupted: no file is taken for one tutti wrote that it may not have.
- * `read` is given the worktree's status read after it, when git read one, for its caller to go on
- * with rather than read it again.
+ * `before`: the worktree's status its caller read just before, nothing having run in it since; it
+ * is read here without one. `read` is given the worktree's status read after it, when git read one,
+ * for its caller to go on with rather than read it again.
  */
 export const noteWritten = <A, E, R>(
   worktree: string,
   effect: Effect.Effect<A, E, R>,
-  read?: (after: ReadonlyArray<StatusEntry>) => void,
+  how: {
+    readonly before?: ReadonlyArray<StatusEntry> | undefined
+    readonly read?: (after: ReadonlyArray<StatusEntry>) => void
+  } = {},
 ): Effect.Effect<A, E, R | Git> =>
   Effect.gen(function* () {
-    const before = yield* statusIn(worktree)
+    const before = how.before ?? (yield* statusIn(worktree))
     const result = yield* effect
     const status = before === undefined ? undefined : yield* statusIn(worktree)
     if (before === undefined || status === undefined) return result
-    read?.(status)
+    how.read?.(status)
     const earlier = new Set(untrackedFiles(before))
     const made = untrackedFiles(status).filter((file) => !earlier.has(file))
     if (made.length === 0) return result

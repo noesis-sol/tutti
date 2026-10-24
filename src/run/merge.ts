@@ -359,11 +359,13 @@ export const gitReads = { concurrency: "unbounded" } as const
 
 /**
  * A branch with a change of its own beyond the base, or one git couldn't rule out: `status` is its
- * worktree's, as `unchanged` read it once, for the merge's next steps; undefined when git couldn't.
+ * worktree's, as `unchanged` read it once, for the merge's next steps, and `entries` the status as
+ * git read it, for the setup's and check's (noteWritten); undefined when git couldn't.
  */
 export interface Changed {
   readonly _tag: "Changed"
   readonly status: WorktreeStatus | undefined
+  readonly entries: ReadonlyArray<StatusEntry> | undefined
 }
 
 /**
@@ -386,8 +388,9 @@ export const unchanged = (
       },
       gitReads,
     )
-    const status = Result.isSuccess(read.status) ? statusOf(read.status.success) : undefined
-    const changed = { _tag: "Changed", status } satisfies Changed
+    const entries = Result.isSuccess(read.status) ? read.status.success : undefined
+    const status = entries === undefined ? undefined : statusOf(entries)
+    const changed = { _tag: "Changed", status, entries } satisfies Changed
     if (status?._tag !== "Clean" || Result.isFailure(read.changed)) return changed
     if (read.changed.success.length > 0) return changed
     const commits = yield* Effect.result(git.log(repo, base, ticket.branch))
@@ -705,6 +708,8 @@ const rebaseAndCheck = (
       Result.isSuccess(before) ? before.success.head : "",
       false,
       carried,
+      undefined,
+      dropped.entries,
     )
   })
 
@@ -717,7 +722,9 @@ const rebaseAndCheck = (
  * handed back to its worker. `carried`: what a hand-back left for this check, its
  * worker's fix or resolution made while the base moved on: the check says whether the fix fixed it,
  * as checkback.ts's fixCheck would have, and the setup counts its worker's own changes. `now`: the
- * commit the branch is at, as the merge read it just before; it is read here without it.
+ * commit the branch is at, as the merge read it just before; it is read here without it. `before`:
+ * its worktree's status as the merge read it just before, nothing having run in it since, for the
+ * setup, or the check when no setup runs, to start from (noteWritten).
  */
 const setUpAndCheck = (
   ticket: FinishedTicket,
@@ -729,6 +736,7 @@ const setUpAndCheck = (
   onTop = false,
   carried?: Carried,
   now?: string,
+  before?: ReadonlyArray<StatusEntry>,
 ): Effect.Effect<
   Extract<CheckOutcome, { _tag: "Aside" | "Checked" | "CheckFailed" }>,
   never,
@@ -797,7 +805,17 @@ const setUpAndCheck = (
     const train = memory.train
     if (train !== undefined) yield* train.starts(ticket, at)
     const ends = (passed: boolean) => (train === undefined ? Effect.void : train.ends(passed))
-    const setup = yield* setUp(ticket, options, memory.setUps, fork, onto, carried?.fix, false, at)
+    const setup = yield* setUp(
+      ticket,
+      options,
+      memory.setUps,
+      fork,
+      onto,
+      carried?.fix,
+      false,
+      at,
+      before,
+    )
     if (setup._tag === "Failed") {
       yield* ends(false)
       return yield* failed(setup.error, setup.output)
@@ -805,7 +823,9 @@ const setUpAndCheck = (
     yield* ledger.refine(id, Detail.Step({ step: "check" }))
     // A ticket checked once more after a failed check (recheck.ts) has its check recorded so.
     const rechecking = (yield* ledger.current).tickets.get(id)?.rechecking === true
-    const checked = yield* runMergeCheck(ticket, rechecking ? "recheck" : "merge")
+    // The worktree as the setup left it, or as read before it when none ran.
+    const start = setup._tag === "Passed" ? setup.after : before
+    const checked = yield* runMergeCheck(ticket, rechecking ? "recheck" : "merge", start)
     // What merges is the commit checked: changes the setup or check left would pass unmerged.
     const dirty =
       checked._tag !== "Failed" &&
@@ -1052,7 +1072,7 @@ export const prepare = (
       )
       if (nothing._tag === "Unchanged") return nothing
       // Its worktree's status as read just now, which nothing has run in since.
-      const { status } = nothing
+      const { status, entries } = nothing
       let result: CheckOutcome
       if (fork === onto) {
         // The base moved on to where its branch, checked, is on top of it still.
@@ -1089,6 +1109,8 @@ export const prepare = (
             unchecked.head,
             false,
             taken(),
+            undefined,
+            entries,
           )
         } else {
           // Every merge is checked, a branch on top of the base already too, unless the check
@@ -1130,6 +1152,7 @@ export const prepare = (
             true,
             taken(),
             head,
+            entries,
           )
         }
       } else {

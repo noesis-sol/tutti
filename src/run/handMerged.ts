@@ -148,12 +148,14 @@ const takeAsMerged = (
 /**
  * Asks git, once the base has moved on since `seen` (the base as it last asked, bd answering for
  * every ticket), of each ticket closed but not merged whether it was merged by hand since, and
- * takes those that were as merged (see above). The tickets it found merged.
+ * takes those that were as merged (see above). `at`: where the base is, as a merge just put it;
+ * git is asked without it. The tickets it found merged.
  */
 export const mergedByHand = (
   seen: Ref.Ref<string | undefined>,
   memory: { readonly rechecks: Pick<Rechecks, "drop">; readonly handBacks: HandBacks },
   options: MergeOptions,
+  at?: string,
 ): Effect.Effect<ReadonlyArray<string>, never, MergeEnv> =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -161,7 +163,8 @@ export const mergedByHand = (
     const ledger = yield* Ledger
     const { base } = options
     // git failing, it is asked again as the run next looks.
-    const head = yield* Effect.result(git.revParse(options.repo, base))
+    const head =
+      at === undefined ? yield* Effect.result(git.revParse(options.repo, base)) : Result.succeed(at)
     if (Result.isFailure(head)) return []
     if ((yield* Ref.get(seen)) === head.success) return []
 

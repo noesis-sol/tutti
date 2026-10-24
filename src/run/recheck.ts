@@ -256,17 +256,20 @@ const notNow = (queue: Pick<MergeQueue, "state">, options: MergeOptions) =>
  * whose base has moved on since its check failed, each in a slot of its own until its merge is
  * over (`options.recheckSlot`); none while the run winds down or holds, the merges have stopped, a
  * solo ticket runs or is next, or no slot is free. A ticket touched since stays set aside, and the
- * log says why. The tickets it put back.
+ * log says why. `at`: where the base is, as a merge just put it; git is asked without it. The
+ * tickets it put back.
  */
 export const recheckDue = (
   rechecks: Rechecks,
   queue: Pick<MergeQueue, "offer" | "state" | "changes">,
   options: MergeOptions,
+  at?: string,
 ): Effect.Effect<ReadonlyArray<string>, never, Beads | Git | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const back: Array<string> = []
     // Where the base is, read once for every ticket waiting, when one is due a look.
-    let base: Result.Result<string, GitError> | undefined
+    let base: Result.Result<string, GitError> | undefined =
+      at === undefined ? undefined : Result.succeed(at)
     for (const recheck of yield* rechecks.waiting) {
       if (yield* notNow(queue, options)) break
       base ??= yield* Effect.result((yield* Git).revParse(options.repo, options.base))

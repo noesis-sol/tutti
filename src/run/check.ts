@@ -266,23 +266,30 @@ export const makePasses: Effect.Effect<Passes> = Effect.map(
 /**
  * Runs the merge check in the ticket's worktree, its output in check.log, and says how it went,
  * its `check` record of `suite` (merge by default) written. A check that passes, or that there is none of, clears the ticket's rebased-and-unchecked mark.
+ * `before`: its worktree's status, as checkOnce's.
  */
 export const runMergeCheck = (
   ticket: CheckedTicket,
   suite: CheckSuite = "merge",
+  before?: ReadonlyArray<StatusEntry>,
 ): Effect.Effect<Checked, never, Checks | Git | Worktrees | Store | Log | EventStream> =>
-  Effect.tap(checkOnce(ticket, { suite }), (checked) =>
+  Effect.tap(checkOnce(ticket, { suite, before }), (checked) =>
     checked._tag === "Failed" ? Effect.void : clearUnchecked(ticket.id),
   )
 
 /**
  * Runs the merge check in the ticket's worktree, its output in check.log, and says how it went,
  * its `check` record written as `how` says, leaving its rebased-and-unchecked mark as it is: as for a check ahead of its turn to merge
- * (mergetrain.ts), on a branch that may yet be put back.
+ * (mergetrain.ts), on a branch that may yet be put back. `how.before`: its worktree's status as
+ * the caller read it just before, nothing having run in it since (noteWritten's).
  */
 export const checkOnce = (
   ticket: CheckedTicket,
-  how: { readonly suite: CheckSuite; readonly train?: boolean } = { suite: "merge" },
+  how: {
+    readonly suite: CheckSuite
+    readonly train?: boolean
+    readonly before?: ReadonlyArray<StatusEntry> | undefined
+  } = { suite: "merge" },
 ): Effect.Effect<Checked, never, Checks | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const checks = yield* Checks
@@ -293,8 +300,11 @@ export const checkOnce = (
         const ran = yield* recorded(
           how.suite,
           ticket.id,
-          noteWritten(ticket.worktree, checks.fast({ cwd: ticket.worktree, ...to }), (after) => {
-            status = after
+          noteWritten(ticket.worktree, checks.fast({ cwd: ticket.worktree, ...to }), {
+            before: how.before,
+            read: (after) => {
+              status = after
+            },
           }),
           how.train === true ? { train: true } : {},
         )
