@@ -12,6 +12,7 @@ import {
   resolve,
 } from "../src/cli/AppConfig.ts"
 import { noFlags, type RunFlagName } from "../src/cli/flags.ts"
+import { live } from "../src/run/startup.ts"
 
 const repo = "/work/project"
 const sub = "/work/project/sub"
@@ -126,5 +127,27 @@ describe("a run's configuration", () => {
     if (!Exit.isSuccess(exit)) throw new Error(`expected a config, got ${exit.cause}`)
     expect(exit.value.prompt).toBe(join(started, "p.md"))
     expect(exit.value.claude).toBe(join(project, "bin", "claude"))
+  })
+
+  test("as a run's startup checks read it, from the folder the run was started in", async () => {
+    const project = mkdtempSync(join(tmpdir(), "tutti-flag-paths-"))
+    const xdg = mkdtempSync(join(tmpdir(), "tutti-xdg-"))
+    const started = join(project, "sub")
+    const exit = await Effect.runPromise(
+      Effect.exit(
+        live(started, { ...noFlags, worktrees: Option.some("../../trees") })
+          .config(project)
+          .pipe(
+            Effect.provide(
+              ConfigProvider.layer(
+                ConfigProvider.fromEnv({ env: { XDG_CONFIG_HOME: xdg, HOME: "/nowhere" } }),
+              ),
+            ),
+            Effect.provide(BunServices.layer),
+          ),
+      ),
+    )
+    if (!Exit.isSuccess(exit)) throw new Error(`expected a config, got ${exit.cause}`)
+    expect(exit.value.worktrees).toBe(join(project, "..", "trees"))
   })
 })
