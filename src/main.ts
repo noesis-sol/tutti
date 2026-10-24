@@ -55,6 +55,7 @@ import { exitCodes } from "./run/holds.ts"
 import { interview, interviewEnding } from "./run/interview.ts"
 import { keepAwake, keepAwakePlan } from "./run/keepAwake.ts"
 import { Load, liveLoad } from "./run/load.ts"
+import { runStarted } from "./run/localTime.ts"
 import { detail, type Line, Log, type Sink } from "./run/log.ts"
 import { otherWorkers } from "./run/machine.ts"
 import {
@@ -251,7 +252,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         ? { ...checked.success, warnings: [...checked.success.warnings, awake.warning] }
         : checked.success
     const { config, base } = started
-    const at = new Date(yield* Clock.currentTimeMillis).toISOString()
+    const at = runStarted(yield* Clock.currentTimeMillis)
 
     // The run lock, held until the runtime below has been disposed of.
     const commonDir = yield* Effect.result(

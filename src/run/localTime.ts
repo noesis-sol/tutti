@@ -69,6 +69,12 @@ export const timestamp = (t: Date): string => {
 }
 
 /**
+ * When a run started at `millis`, as its events' `run`, its lock's `started` and its store's: RFC
+ * 3339 in local time, as each event's `time` is, so the two compare as strings.
+ */
+export const runStarted = (millis: number): string => timestamp(new Date(millis))
+
+/**
  * When `at` is, read on the day of `now`: `14:05` that day, and with its weekday and date on
  * another, `Fri Oct 23 14:05`, as a usage limit's reset is shown.
  */
