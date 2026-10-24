@@ -845,7 +845,7 @@ A ticket is finished when its phase is `Done`: closed in Beads, merged into the 
 
 **One table counts the phases.** What each phase counts as, its total above, what the run's end notice counts it as (§7.9), the reviewer's section it is in and its mark on the wind-down line, is one table, `counting` in `src/run/phase.ts`, which every place that counts tickets reads, so the dashboard and the notification say the same of a ticket. A phase without an entry doesn't compile. The reviewer's sections are closed (`Done`), set aside (`Asked`, `Waiting`, `Deferred`, `Review`, `Blocked`) and in progress as the run stopped (`Working`, `ToMerge`, `Merging`, `Resolving`, `Fixing`, `Stopped`); `Queued` and `HeldBack` are in none, as the reviewer counts the tickets still ready from `bd ready`.
 
-**Final or not.** Only `Done` is final. A ticket can leave a run in any phase except `Working`, `Resolving`, `Fixing` and `Merging`. At the end of a run those become `Stopped`, except that a merge under way finishes its protected step first (§3.4).
+**Final or not.** Only `Done` is final. A ticket can leave a run in any phase except `Working`, `Resolving`, `Fixing` and `Merging`. At the end of a run those become `Stopped`, except that a merge under way finishes its protected step first (§3.4), and one not yet at it goes back to `ToMerge` before it stops.
 
 **The next run** picks a ticket up again where its phase left it. Through `bd ready` it comes back in `Queued`. Through carry-over it comes back in one of three phases:
 
@@ -877,6 +877,7 @@ stateDiagram-v2
     ToMerge --> Merging: its turn
     ToMerge --> Stopped: run ended
     Merging --> Done: fast-forwarded · nothing left to merge
+    Merging --> ToMerge: quit before the fast-forward
     Merging --> Resolving: conflicts, handed back
     Merging --> Fixing: check failed, handed back
     Merging --> Review: can't be handed back · dirty worktree · rebase refused
@@ -922,6 +923,7 @@ The table is the authority. A transition it doesn't list doesn't happen.
 | `ToMerge` | `Stopped` | the run ended with it in the queue. It is closed but not merged, so it is labelled `unmerged` | `suspended` |
 | `Merging` | `Done{merged}` | rebased if the base moved, set up if a dependency file changed, checked, and fast-forwarded | `closed` |
 | `Merging` | `Done{noChange}` | its branch has no change of its own left to merge: git's rebase dropped every commit, the base having their changes already, or its commits together change nothing. Its worktree and branch are removed as after a merge | `closed` (`no change to merge`) |
+| `Merging` | `ToMerge{1}` | the run ended during its rebase, setup or check, before the protected fast-forward (§3.4): the rebase is put back (`git rebase --abort`), the check or setup killed with its process group, and it goes back to the head of the line, the tickets behind it renumbered; the run's end then takes the `ToMerge` → `Stopped` row. One the merge set aside or blocked just before stays as it was | `phase` |
 | `Merging` | `Resolving` | the rebase stopped on conflicts, and its worker can take them: idle, not steered (§4.3) unless you handed it the conflict, attempts left, a check command set, hand-backs on | the log's `RESOLVING` |
 | `Merging` | `Fixing` | the check failed on the branch, rebased or on top of the base already, and its worker can take it | the log's `FIXING` |
 | `Merging` | `Review` | the check failed and can't be handed back (it timed out, the run holds or winds down, the attempts are used up, hand-backs are off); or `DIRTY_WORKTREE`, `REBASE_FAILED`, `OFF_BRANCH`, or git unable to read its worktree (`GIT_FAILED`) | `warn` with `aside` |
