@@ -316,7 +316,8 @@ export interface Workers {
    */
   readonly fold: (entry: WorkerEntry, event: WorkerEvent) => Effect.Effect<void>
   /**
-   * A message of the session `session`: recorded in Transcripts, published and folded in; a
+   * A message of the session `session`: recorded in Transcripts, published and folded in (a
+   * partial `stream_event` only while an api_retry holds, the one thing it changes); a
    * `permission_denied` is recorded through Attention too, a `rate_limit_event`'s info is
    * reported to UsageLimits, when there is one (§ 4.12), and a result goes to Spending, when there
    * is one, for its `turn` record (§ 10).
@@ -519,6 +520,12 @@ export const makeWorkers = (
         Effect.gen(function* () {
           yield* transcripts.record(entry.ticket, session, message)
           yield* PubSub.publish(entry.messages, { session, message })
+          // All a partial message can change of the worker's state is to end an api_retry, so it is
+          // folded only while one holds: the rest are cheap to pass on (§ 4.4).
+          if (message.type === "stream_event") {
+            if ((yield* SubscriptionRef.get(entry.worker)).retry === null) return
+            return yield* fold(entry, WorkerEvent.Message({ session, message }))
+          }
           yield* fold(entry, WorkerEvent.Message({ session, message }))
           const why = unreadable(message)
           if (why !== undefined) yield* misread(entry.ticket, message, why)
