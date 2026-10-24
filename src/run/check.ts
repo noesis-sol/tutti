@@ -36,6 +36,7 @@ import { noteWritten } from "./checkWrote.ts"
 import { type checkSuites, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { Log, line, Tag, ticketLine } from "./log.ts"
+import { warn } from "./say.ts"
 
 /** How a ticket's merge check went. */
 export type Checked =
@@ -278,8 +279,6 @@ export const checkOnce = (
 ): Effect.Effect<Checked, never, Checks | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const checks = yield* Checks
-    const log = yield* Log
-    const events = yield* EventStream
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, checkLogName, "the check's")
@@ -310,10 +309,7 @@ export const checkOnce = (
           )
         }
         for (const warning of flaky) {
-          yield* log.writeWith(
-            [warning],
-            events.emit({ kind: "warn", ticket: ticket.id, text: warning }),
-          )
+          yield* warn(warning, ticket.id)
         }
         return { _tag: "Passed", command: result.command } satisfies Checked
       }),

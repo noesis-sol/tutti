@@ -77,7 +77,6 @@ import {
   whyNotFix,
 } from "./checkback.ts"
 import { writtenOnly } from "./checkWrote.ts"
-import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import {
   type AtReset,
@@ -91,6 +90,7 @@ import { branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from 
 import { Cause, Detail } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
+import { info, type Said } from "./say.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
 import { shownChanges } from "./settle.ts"
 import { fileList, type SetUps, setUp } from "./setup.ts"
@@ -252,11 +252,11 @@ const services = Effect.all({
 const aside = (ticket: FinishedTicket, why: string, short: string, text: Line) =>
   leaveForReview(ticket.id, { why, detail: short, text })
 
-/** The ticket can't merge until you act: Merging → Blocked, with `record` beside it. */
-const block = (ticket: FinishedTicket, why: string, record: Event, text: Line) =>
+/** The ticket can't merge until you act: Merging → Blocked, with `record` and its line beside it. */
+const block = (ticket: FinishedTicket, why: string, record: Said) =>
   Effect.gen(function* () {
     const { ledger } = yield* services
-    yield* ledger.transition(ticket.id, Cause.Block({ why }), { beside: [record], lines: [text] })
+    yield* ledger.transition(ticket.id, Cause.Block({ why }), { said: [record] })
   })
 
 /** A merge that stops the merges: DIRTY_TREE and GIT_FAILED hold the run, MERGE_FAILED stops it. */
@@ -264,11 +264,11 @@ export const stopOver = (ticket: FinishedTicket, why: StopWhy, blocked: string, 
   Effect.gen(function* () {
     const text =
       why === "MERGE_FAILED" ? tagged(why)`${reason}` : tagged(Tag.hold)`${line`${why}: ${reason}`}`
-    const record: Event =
+    const record: Said =
       why === "MERGE_FAILED"
         ? { kind: "stop", detail: why, ticket: ticket.id, blocked, text }
         : { kind: "hold", ticket: ticket.id, blocked, text }
-    yield* block(ticket, why, record, text)
+    yield* block(ticket, why, record)
     return { why, code: stopCodes[why], ticket: ticket.id, line: text } satisfies MergeStop
   })
 
@@ -853,19 +853,14 @@ export const keptChanging = (ticket: FinishedTicket, what: string) =>
     const text = ticketLine(
       Tag.mergeConflict,
     )`${ticket.id} closed, but ${what} while its checks ran (commits made by hand?); worktree ${ticket.worktree} left for review`
-    yield* block(
-      ticket,
-      Tag.mergeConflict,
-      {
-        kind: "warn",
-        ticket: ticket.id,
-        aside: true,
-        detail: what,
-        blocked: what,
-        text,
-      },
+    yield* block(ticket, Tag.mergeConflict, {
+      kind: "warn",
+      ticket: ticket.id,
+      aside: true,
+      detail: what,
+      blocked: what,
       text,
-    )
+    })
     return { _tag: "Over" } satisfies Prepared
   })
 
@@ -1116,8 +1111,7 @@ export const closeUnchanged = (
         }`
     const text = detail`${id} closed with no change: ${unchanged.why}, so there is nothing to merge; ${left}`
     yield* ledger.transition(id, Cause.NoChange(), {
-      beside: [{ kind: "closed", ticket: id, title, detail: "no change to merge", text }],
-      lines: [text],
+      said: [{ kind: "closed", ticket: id, title, detail: "no change to merge", text }],
     })
     // Done, it has nothing left for a later run: its record in state.json goes, its marks with it.
     yield* Effect.ignore((yield* Store).remove(id))
@@ -1129,9 +1123,7 @@ export const closeUnchanged = (
 /** The epics `id` was the last subticket to merge under, closed, each then its own parent's. */
 export const closeEpics = (id: string) =>
   Effect.gen(function* () {
-    const { config, beads, ledger, log, events } = yield* services
-    const say = (text: Line, ticket: string) =>
-      log.writeWith([text], events.emit({ kind: "info", ticket, text }))
+    const { config, beads, ledger } = yield* services
     const shown = yield* Effect.result(beads.show(id))
     let parent = Result.isSuccess(shown) ? shown.success.parent : undefined
     while (parent !== undefined) {
@@ -1140,7 +1132,7 @@ export const closeEpics = (id: string) =>
         Effect.all({ issue: beads.show(epic), children: beads.list({ parent: epic, all: true }) }),
       )
       if (Result.isFailure(read)) {
-        yield* say(
+        yield* info(
           detail`bd could not say whether the subtickets of ${epic} are all merged: ${beadsWhy(read.failure)}; it is left open`,
           epic,
         )
@@ -1161,13 +1153,13 @@ export const closeEpics = (id: string) =>
       const all = allMerged(children.length)
       const closed = yield* Effect.result(beads.close(epic, epicCloseReason(children.length, id)))
       if (Result.isFailure(closed)) {
-        yield* say(
+        yield* info(
           detail`${all}, but bd could not close ${epic}: ${beadsWhy(closed.failure)}; close it with: bd close ${epic}`,
           epic,
         )
         return
       }
-      yield* say(detail`closed epic ${epic}: ${all}`, epic)
+      yield* info(detail`closed epic ${epic}: ${all}`, epic)
       parent = issue.parent
     }
   })
@@ -1318,7 +1310,7 @@ export const fastForward = (
           cleanup.failure._tag === "BadTicketId" ? cleanup.failure.why : gitWhy(cleanup.failure)
         }`
     yield* ledger.transition(id, Cause.FastForwarded({ commit: hash }), {
-      beside: [
+      said: [
         {
           kind: "closed",
           ticket: id,
@@ -1329,7 +1321,6 @@ export const fastForward = (
           text,
         },
       ],
-      lines: [text],
     })
     // Done, it has nothing left for a later run: its record in state.json goes.
     yield* Effect.ignore((yield* Store).remove(id))

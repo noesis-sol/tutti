@@ -44,7 +44,6 @@ import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { type Commit, Git } from "../services/Git.ts"
 import { type Checked, failedHow, saidOf } from "./check.ts"
-import { EventStream } from "./eventstream.ts"
 import {
   type Counts,
   carryIfBaseMoved,
@@ -70,6 +69,7 @@ import {
   restoreBranch,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
+import { info } from "./say.ts"
 import { namesTicket } from "./settle.ts"
 import type { Fix, SetUp } from "./setup.ts"
 
@@ -258,8 +258,6 @@ export const handOverFix = (
   Effect.gen(function* () {
     const config = yield* AppConfig
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
     const { id } = stop.ticket
     const attempt = (yield* fixes.count(id)) + 1
     const moved = yield* ledger.transition(id, Cause.CheckHandedBack({ attempt }))
@@ -274,7 +272,7 @@ export const handOverFix = (
       limit: formatDuration(config.settings.merge.resolve_timeout),
       onTop: stop.onTop === true,
     })
-    yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+    yield* info(text, id)
     return true
   })
 

@@ -40,6 +40,7 @@ import { dateClock } from "./localTime.ts"
 import { detail, type Line, Log, line, logFile, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import type { TicketPhase } from "./phase.ts"
+import { say, warn } from "./say.ts"
 
 /** Marks the ticket filed for a suite the full check failed in; orchestra's label too (§ 11). */
 export const fullCheckLabel = "check-full"
@@ -224,7 +225,7 @@ const leftWarning = (
     const text = ticketLine(
       Tag.cleanupFailed,
     )`the full check's worktree ${path} is left (${worktreeWhy(error)}); git worktree remove --force ${path} removes it`
-    yield* (yield* Log).writeWith([text], (yield* EventStream).emit({ kind: "warn", text }))
+    yield* warn(text)
   })
 
 /**
@@ -242,7 +243,7 @@ export const removeLeftFullChecks: Effect.Effect<void, never, Worktrees | Log | 
       const text = ticketLine(
         Tag.cleanupFailed,
       )`could not look for the full check's worktrees a killed run left (${worktreeWhy(left.failure)})`
-      yield* logs.writeWith([text], (yield* EventStream).emit({ kind: "warn", text }))
+      yield* warn(text)
       return
     }
     for (const path of left.success) {
@@ -280,20 +281,12 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
     const git = yield* Git
     const worktrees = yield* Worktrees
     const logs = yield* Log
-    const events = yield* EventStream
     const { base } = options
     const { full } = config.settings.checks
     const setup = {
       command: options.setup === undefined ? config.settings.checks.setup.command : options.setup,
     }
     const command = full.command ?? ""
-    const say = (record: {
-      readonly detail: FullCheckOutcome
-      readonly text: Line
-      readonly suite?: string
-      readonly output?: string
-      readonly ticket?: string
-    }) => logs.writeWith([record.text], events.emit({ kind: "full_check", ...record }))
 
     const head = yield* Effect.result(git.revParse(config.repo, base))
     const at = Result.isSuccess(head) ? head.success : ""
@@ -306,7 +299,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       const text = ticketLine(
         Tag.fullCheckNotRun,
       )`'${command}' could not run on ${base}: no worktree for it (${why})`
-      yield* say({ detail: "not run", text })
+      yield* say({ kind: "full_check", detail: "not run", text })
       return { outcome: "not run", at, took: 0, end: [], text } satisfies FullChecked
     }
     const path = made.success
@@ -348,13 +341,14 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       const text = ticketLine(
         `${Tag.fullCheck} passed`,
       )`'${command}' on ${base} at ${short(at)} (${took(ms)})`
-      yield* say({ detail: "passed", text })
+      yield* say({ kind: "full_check", detail: "passed", text })
       if (ran.success._tag === "CheckPassed") yield* flaky(command, ran.success)
       return { outcome: "passed", at, took: ms, end: [], text } satisfies FullChecked
     }).pipe(
       Effect.onInterrupt(() =>
         Effect.flatMap(elapsed, (ms) =>
           say({
+            kind: "full_check",
             detail: "skipped",
             text: ticketLine(
               Tag.fullCheckSkipped,
@@ -398,8 +392,6 @@ const outputIn = (
 /** FLAKY warnings for a full check that passed with tests that failed and then passed on a rerun. */
 const flaky = (command: string, passed: CheckPassed) =>
   Effect.gen(function* () {
-    const logs = yield* Log
-    const events = yield* EventStream
     const what = line`the full check '${command}'`
     const warnings = passed.flaky.map(
       (test) =>
@@ -416,7 +408,7 @@ const flaky = (command: string, passed: CheckPassed) =>
       )
     }
     for (const text of warnings) {
-      yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
+      yield* warn(text)
     }
   })
 
@@ -493,7 +485,7 @@ const failed = (
       const text = ticketLine(
         Tag.fullCheckNotRun,
       )`${what} ${how} on ${base} at ${short(at)}; ${filed}`
-      yield* logs.writeWith([text], events.emit({ kind: "full_check", detail: "not run", text }))
+      yield* say({ kind: "full_check", detail: "not run", text })
       return {
         outcome: "not run",
         at,

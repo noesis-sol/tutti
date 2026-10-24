@@ -8,12 +8,13 @@
 import { Effect, type FileSystem, Ref, type Scope, SubscriptionRef } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { withMachineHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
 import { detail, Log } from "./log.ts"
 import { holdLine, machinePoll, make as makeMachine, OtherWorkers } from "./machine.ts"
 import type { Status } from "./runView.ts"
+import { sayer } from "./say.ts"
 import type { Scheduler } from "./schedule.ts"
 
 export interface MachineGate {
@@ -59,7 +60,7 @@ export const make = (options: {
   Effect.gen(function* () {
     const config = yield* AppConfig
     const logs = yield* Log
-    const events = yield* EventStream
+    const { say } = yield* sayer
     const { holds, status } = options
     const machine = yield* makeMachine({
       dir: config.runs,
@@ -94,10 +95,7 @@ export const make = (options: {
       yield* sayRunning
       const seen = yield* machine.look
       for (const each of seen) {
-        yield* logs.writeWith(
-          [each.text],
-          events.emit({ kind: "shared_machine", shared: each.shared, text: each.text }),
-        )
+        yield* say({ kind: "shared_machine", shared: each.shared, text: each.text })
       }
       const last = seen.at(-1)
       if (last !== undefined) {
@@ -116,7 +114,7 @@ export const make = (options: {
       if (yield* holdMachine(true)) {
         const own = yield* ownWorkers
         const text = holdLine(own + (yield* machine.others), own, config.machineWorkers)
-        yield* logs.writeWith([text], events.emit({ kind: "machine_hold", text }))
+        yield* say({ kind: "machine_hold", text })
         yield* Effect.flatten(Ref.get(queueRecord))
       }
       return false

@@ -46,7 +46,6 @@ import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import type { ClosedBranches } from "./closedBranches.ts"
-import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { type Footprint, showFootprint, withChanges, worktreeChanges } from "./footprint.ts"
@@ -80,6 +79,7 @@ import { Cause, type Hold, type PhaseTag, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
+import { type Said as SaidRecord, sayer } from "./say.ts"
 import { ready, unclosedIn, unmergedLabel } from "./scope.ts"
 
 /** How often bd ready is read while tickets run: tickets become ready mid-run. */
@@ -567,6 +567,7 @@ export const make = (
     const ledger = yield* Ledger
     const logs = yield* Log
     const events = yield* EventStream
+    const { warn } = yield* sayer
     const tickets = yield* (yield* RunFibers).make<void, never>("tickets")
     const slots = yield* Ref.make<Slots>({
       running: new Set(),
@@ -675,8 +676,7 @@ export const make = (
         const text = badTicketIdLine(issue.id, why)
         yield* ledger.transition(issue.id, Cause.Dispatched())
         yield* ledger.transition(issue.id, Cause.Defer({ why: "BAD_TICKET_ID" }), {
-          beside: [{ kind: "deferred", ticket: issue.id, title: issue.title, detail: why, text }],
-          lines: [text],
+          said: [{ kind: "deferred", ticket: issue.id, title: issue.title, detail: why, text }],
         })
         const deferred = yield* beads
           .defer(issue.id, { reason: badTicketIdNote(issue.id, why) })
@@ -697,7 +697,7 @@ export const make = (
           issue.id,
           TicketPhase.Working({ activity: "starting" }),
         ])
-        const record: Event = {
+        const record: SaidRecord = {
           kind: "dispatch",
           ticket: issue.id,
           title: issue.title,
@@ -707,8 +707,7 @@ export const make = (
           text,
         }
         const moved = yield* ledger.transition(issue.id, Cause.Dispatched(), {
-          beside: [record],
-          lines: [text],
+          said: [record],
         })
         if (Result.isFailure(moved)) {
           // A PHASE_BUG, which the ledger logged: nothing starts, and nothing is counted.
@@ -974,7 +973,7 @@ export const make = (
             )
             if (!fresh) continue
             const text = likelyConflictLine(edit)
-            yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
+            yield* warn(text)
           }
         }
 

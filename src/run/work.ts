@@ -31,13 +31,14 @@ import { type TicketWorktree, Worktrees } from "../services/Worktrees.ts"
 import { dropNothingDone, leaveForReview, nothingLeft, putAside } from "./aside.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { exitCodes, type StopReason, timeLimit } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
+import { detail, type Line, type Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause, type TicketPhase } from "./phase.ts"
+import { warn } from "./say.ts"
 import { fit, workerGone } from "./sessions.ts"
 import {
   idleGrace,
@@ -119,7 +120,7 @@ const noChange = (ticket: StartTicket, worker: StartedWorker, why: string, own: 
     const left = yield* removeWorktree(worker, own)
     const text = detail`${ticket.id} closed with no change: ${why}, so there is nothing to merge; ${left}`
     yield* ledger.transition(ticket.id, Cause.NoChange(), {
-      beside: [
+      said: [
         {
           kind: "closed",
           ticket: ticket.id,
@@ -128,7 +129,6 @@ const noChange = (ticket: StartTicket, worker: StartedWorker, why: string, own: 
           text,
         },
       ],
-      lines: [text],
     })
     // Done, it has nothing left for a later run: its record in state.json goes.
     yield* Effect.ignore((yield* Store).remove(ticket.id))
@@ -147,8 +147,6 @@ const waitsForMerge = (
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
     const { id } = ticket
     const list = named(blockers)
     const does = blockers.length === 1 ? "it does" : "they do"
@@ -158,7 +156,7 @@ const waitsForMerge = (
         const text = ticketLine(
           Tag.reopenFailed,
         )`${id} stays ${status}, so it won't be back in the queue as it waits for ${list}: ${beadsWhy(reopened.failure)}; reopen it with: bd update ${id} --status open`
-        yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
+        yield* warn(text, id)
       }
     }
     yield* Effect.ignore(
@@ -171,8 +169,7 @@ const waitsForMerge = (
       Tag.waitsForMerge,
     )`${id} waits for ${list} to merge; its worker stopped with nothing done, so it is back in the queue until ${does}; ${left}`
     yield* ledger.transition(id, Cause.WaitsForMerge({ blockers }), {
-      beside: [{ kind: "waits", ticket: id, title: ticket.title, detail: list, text }],
-      lines: [text],
+      said: [{ kind: "waits", ticket: id, title: ticket.title, detail: list, text }],
     })
   })
 
@@ -207,8 +204,6 @@ const setupProblem = (worktree: TicketWorktree, problem: string) =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
     const { id, path } = worktree
     const reopened = yield* Effect.result(
       beads.update(id, {
@@ -220,7 +215,7 @@ const setupProblem = (worktree: TicketWorktree, problem: string) =>
       const text = ticketLine(
         Tag.reopenFailed,
       )`${id}'s worker was stopped over a setup problem, and bd could not reopen it: ${beadsWhy(reopened.failure)}; reopen it with: bd update ${id} --status open`
-      yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
+      yield* warn(text, id)
     }
     const reason = line`${id}'s worker was stopped before it did anything: ${problem}; ${id} is reopened (worktree ${path}); fix the setup, then run again`
     const text = tagged(Tag.setupProblem)`${reason}`
@@ -268,8 +263,7 @@ export const conclude = (
           Tag.asked,
         )`${id} waits on your answer to ${q.id} (${q.title}); answer with: bd human respond ${q.id}; worktree ${path} left open`
         yield* ledger.transition(id, Cause.FiledQuestion({ question: q.id }), {
-          beside: [{ kind: "asked", ticket: id, title, detail: `${q.id}: ${q.title}`, text }],
-          lines: [text],
+          said: [{ kind: "asked", ticket: id, title, detail: `${q.id}: ${q.title}`, text }],
         })
         break
       }
@@ -313,8 +307,7 @@ export const conclude = (
         const left = reading.nothingDone ? nothingLeft : line`worktree ${path} left open`
         const text = detail`${id} deferred by its worker; ${left}`
         yield* ledger.transition(id, Cause.Defer({ why: "by the worker" }), {
-          beside: [{ kind: "deferred", ticket: id, title, detail: "by the worker", text }],
-          lines: [text],
+          said: [{ kind: "deferred", ticket: id, title, detail: "by the worker", text }],
         })
         break
       }

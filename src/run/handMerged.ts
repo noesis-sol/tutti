@@ -18,13 +18,13 @@ import { type Commit, Git } from "../services/Git.ts"
 import { allChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { branchOf, Worktrees } from "../services/Worktrees.ts"
-import { EventStream } from "./eventstream.ts"
 import type { HandBacks } from "./handback.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
-import { detail, type Line, Log, line, Tag } from "./log.ts"
+import { detail, type Line, line, Tag } from "./log.ts"
 import { closeEpics, gitWhy, type MergeEnv, type MergeOptions, restoreBranch } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
+import { info } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
 import { mergedSince, unlabel } from "./unmerged.ts"
 
@@ -130,7 +130,7 @@ const takeAsMerged = (
     const was = wasOf(phase)
     const text = detail`${id}, ${was} in this run, is on ${options.base} now (${named(commit)}): merged by hand, so no longer ${was}${removed.text}${label}`
     yield* ledger.transition(id, Cause.MergedByHand({ commit: commit.hash }), {
-      beside: [
+      said: [
         {
           kind: "closed",
           ticket: id,
@@ -139,7 +139,6 @@ const takeAsMerged = (
           text,
         },
       ],
-      lines: [text],
     })
     // Done, it has nothing left for a later run: its record in state.json goes.
     yield* Effect.ignore(store.remove(id))
@@ -160,8 +159,6 @@ export const mergedByHand = (
     const git = yield* Git
     const beads = yield* Beads
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
     const { base } = options
     // git failing, it is asked again as the run next looks.
     const head = yield* Effect.result(git.revParse(options.repo, base))
@@ -203,7 +200,7 @@ export const mergedByHand = (
       const removed = yield* unlabel(issue.id)
       const label = removed ? line`; its '${unmergedLabel}' label is removed` : ""
       const text = detail`${issue.id}, left unmerged by an earlier run, is on ${base} now (${named(merged)}): merged by hand${label}`
-      yield* logs.writeWith([text], events.emit({ kind: "info", ticket: issue.id, text }))
+      yield* info(text, issue.id)
       found.push(issue.id)
     }
     return found

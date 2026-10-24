@@ -30,6 +30,7 @@ import {
   underWayLine,
 } from "./quit.ts"
 import type { Status } from "./runView.ts"
+import { sayer } from "./say.ts"
 import type { Scheduler } from "./schedule.ts"
 import { endRecord } from "./spending.ts"
 import type { Triage } from "./triage.ts"
@@ -71,6 +72,7 @@ export const make = (options: {
     const store = yield* Store
     const logs = yield* Log
     const events = yield* EventStream
+    const { say, warn } = yield* sayer
     const { quitting, queue, status } = options
     // The requests to quit heard.
     const asked = yield* Ref.make(0)
@@ -94,10 +96,7 @@ export const make = (options: {
         yield* saveAsked
         yield* saveLeft
         const stop = stopFor("INTERRUPTED", atOnceText(request.how, saved, merging))
-        yield* logs.writeWith(
-          [stop.text],
-          events.emit({ kind: "stop", detail: stop.why, text: stop.text }),
-        )
+        yield* say({ kind: "stop", detail: stop.why, text: stop.text })
         yield* Effect.flatMap(endRecord(stop.code), events.emit)
         if (options.exitNow !== undefined) yield* options.exitNow(stop.code, [stop.text])
       }).pipe(Effect.provideService(Store, store), Effect.provideService(Ledger, ledger))
@@ -119,14 +118,7 @@ export const make = (options: {
               merging === null
                 ? stillQuittingLine(yield* Ref.get(awaiting), request)
                 : underWayLine(merging, request)
-            yield* logs.writeWith(
-              [text],
-              events.emit({
-                kind: "warn",
-                ...(merging === null ? {} : { ticket: merging }),
-                text,
-              }),
-            )
+            yield* warn(text, merging ?? undefined)
             return
           }
           case "exit":
@@ -134,7 +126,7 @@ export const make = (options: {
         }
       })
 
-    const say = (awaited: ReadonlyArray<Awaited>) =>
+    const waitFor = (awaited: ReadonlyArray<Awaited>) =>
       Effect.andThen(
         Ref.set(awaiting, awaited),
         SubscriptionRef.update(status, (now) => ({ ...now, quitting: quittingText(awaited) })),
@@ -157,10 +149,10 @@ export const make = (options: {
     const quitNow = (quit: Quitting) =>
       Effect.gen(function* () {
         const workers = yield* openWorkers
-        yield* say(workers.map((ticket) => ({ ticket, what: "worker" as const })))
+        yield* waitFor(workers.map((ticket) => ({ ticket, what: "worker" as const })))
         if ("request" in quit) {
           const text = quitLine(quit.request, workers)
-          yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
+          yield* warn(text)
         }
         yield* options.scheduler.interrupt
         yield* refuseAnswers
@@ -170,10 +162,10 @@ export const make = (options: {
         )
         if (unanswered.length > 0) yield* logs.write(unansweredLine(unanswered))
         const merging = (yield* queue.state).merging
-        yield* say(merging === null ? [] : [{ ticket: merging, what: "merge" as const }])
+        yield* waitFor(merging === null ? [] : [{ ticket: merging, what: "merge" as const }])
         yield* queue.stopMerges
         yield* options.triage.interrupt
-        yield* say([])
+        yield* waitFor([])
       })
 
     return { hearQuit, quitNow, refuseAnswers, openWorkers } satisfies Quits

@@ -12,8 +12,9 @@ import { allChanges } from "../services/gitStatus.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import type { Carried } from "./carry.ts"
 import { asking, type Branches, type ClosedBranches } from "./closedBranches.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { detail, Log, line } from "./log.ts"
+import { info } from "./say.ts"
 import { descendants, excludedTypes, type Filter } from "./scope.ts"
 
 /** A deferred ticket in the run's scope whose blockers have all merged. */
@@ -203,7 +204,6 @@ export const say = (
   Effect.gen(function* () {
     const beads = yield* Beads
     const logs = yield* Log
-    const events = yield* EventStream
     const free = yield* Effect.result(Effect.flatMap(beads.list(), (open) => list(freeing, open)))
     if (Result.isFailure(free)) {
       yield* logs.write(line`${unreadable(reasonOf(free.failure))}`)
@@ -211,7 +211,7 @@ export const say = (
     }
     for (const d of free.success) {
       const text = detail`${startLine(d, freeing.base)}`
-      yield* logs.writeWith([text], events.emit({ kind: "info", ticket: d.id, text }))
+      yield* info(text, d.id)
     }
   })
 

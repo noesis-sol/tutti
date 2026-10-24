@@ -22,13 +22,14 @@ import { Beads, type Issue } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
+import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, type FinishedTicket, type MergeOptions, someFiles } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause } from "./phase.ts"
 import { clean } from "./repoFiles.ts"
+import { info } from "./say.ts"
 import { fit } from "./sessions.ts"
 
 /** A ticket set aside for a failed check, to be checked once more once the base moves on. */
@@ -187,12 +188,10 @@ export const dropRechecks = (
   why: string,
 ): Effect.Effect<ReadonlyArray<string>, never, AgentHost | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
-    const logs = yield* Log
-    const events = yield* EventStream
     const dropped = (yield* rechecks.dropAll).map((recheck) => recheck.ticket.id)
     for (const id of dropped) {
       const text = detail`${id} is not checked again in this run, as ${why}; it stays set aside`
-      yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+      yield* info(text, id)
       yield* fit(id)
     }
     return dropped
@@ -267,8 +266,6 @@ export const recheckDue = (
   options: MergeOptions,
 ): Effect.Effect<ReadonlyArray<string>, never, Beads | Git | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
-    const logs = yield* Log
-    const events = yield* EventStream
     const back: Array<string> = []
     for (const recheck of yield* rechecks.waiting) {
       if (yield* notNow(queue, options)) break
@@ -286,20 +283,20 @@ export const recheckDue = (
         const issue = yield* Effect.result((yield* Beads).show(id))
         if (Result.isFailure(issue)) {
           const text = detail`${id} is not checked again yet: bd could not say whether it is still closed: ${beadsWhy(issue.failure)}; it is asked again at the next look`
-          yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+          yield* info(text, id)
           return
         }
         if (!(yield* rechecks.take(id))) return
         const why = yield* whyNot(recheck, issue.success, options)
         if (why !== undefined) {
           const text = detail`${id} is not checked again: ${why}; it stays set aside`
-          yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+          yield* info(text, id)
           return
         }
         const text = ticketLine(
           Tag.recheck,
         )`${id}'s check failed on ${options.base} at ${recheck.onto.slice(0, 7)}, which has moved on since; rebasing ${branch} and checking it once more`
-        yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+        yield* info(text, id)
         const moved = yield* queue.offer(recheck.ticket, (place) => Cause.Recheck({ place }), false)
         if (Result.isSuccess(moved)) back.push(id)
       })

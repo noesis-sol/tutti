@@ -4,10 +4,11 @@
 // record. Triage reads them from the worker's transcript instead (src/run/triage.ts).
 import { Effect, Stream } from "effect"
 import { AgentHost, type Compaction } from "../agent/AgentHost.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
+import type { Log } from "./log.ts"
 import * as log from "./log.ts"
-import { Log } from "./log.ts"
+import { info } from "./say.ts"
 
 /** Counts and logs `c`; a worker whose ticket the run hasn't taken up (the probe's) is left out. */
 export const noteCompaction = (
@@ -18,10 +19,7 @@ export const noteCompaction = (
     if (!(yield* ledger.current).tickets.has(c.ticket)) return
     yield* ledger.count(c.ticket, "compactions")
     const text = log.compacted(c.ticket, c.trigger)
-    yield* (yield* Log).writeWith(
-      [text],
-      (yield* EventStream).emit({ kind: "info", ticket: c.ticket, text }),
-    )
+    yield* info(text, c.ticket)
   })
 
 /** Notes every worker's compactions from now on, for as long as it runs. */

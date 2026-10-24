@@ -29,6 +29,7 @@ import { finished } from "./notices.ts"
 import { Cause, stopsAtEnd, type TicketPhase } from "./phase.ts"
 import type { Quitting } from "./quitting.ts"
 import { emptyStatus, project, type Row, type Totals } from "./runView.ts"
+import { sayer } from "./say.ts"
 import type { Scheduler } from "./schedule.ts"
 import * as scope from "./scope.ts"
 import { type SetUps, setupWaiting, setupWaitsPart } from "./setup.ts"
@@ -188,6 +189,7 @@ export const make = (options: {
     const ledger = yield* Ledger
     const logs = yield* Log
     const events = yield* EventStream
+    const { say } = yield* sayer
     const notifier = yield* Notifier
     const { base, begun, setUps, scheduler, quitting } = options
 
@@ -323,7 +325,7 @@ export const make = (options: {
           state.windDown !== null ? "drained" : (yield* scheduler.limitReached) ? "limit" : "empty"
         const waits = setupWaitsPart(setupWaiting(state, yield* setUps.failures))
         const text = line`${doneLine(n, how)}${waits}${yield* scopePart}`
-        yield* logs.writeWith([text], events.emit({ kind: "done", text }))
+        yield* say({ kind: "done", text })
         yield* notifier.notify(finished([...state.tickets.values()].map((entry) => entry.phase)))
         return { line: text, ending: Ending.Done({ text, tickets: n, limit: config.limit, took }) }
       })
@@ -333,10 +335,7 @@ export const make = (options: {
       Effect.gen(function* () {
         const stop: StopReason =
           "panic" in late ? late.panic : stopFor("INTERRUPTED", `quit ${late.request.how} ${when}`)
-        yield* logs.writeWith(
-          [stop.text],
-          events.emit({ kind: "stop", detail: stop.why, text: stop.text }),
-        )
+        yield* say({ kind: "stop", detail: stop.why, text: stop.text })
         return { said: [stop.text], sections: [], after: "", code: stop.code } satisfies Checked
       })
 

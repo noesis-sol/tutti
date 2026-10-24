@@ -50,7 +50,6 @@ import { Store } from "../services/Store.ts"
 import { awakeSince } from "../services/Wake.ts"
 import { type Checked, failedHow, markHandedBack, runMergeCheck } from "./check.ts"
 import type { Carried } from "./checkback.ts"
-import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { loadEvery } from "./load.ts"
 import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "./log.ts"
@@ -71,6 +70,7 @@ import {
   unchanged,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
+import { info, say } from "./say.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
 import { namesTicket, untilAnswered, untilSettled } from "./settle.ts"
 import { type Fix, type SetUp, type SetUps, setUp, setupToResolve } from "./setup.ts"
@@ -305,7 +305,7 @@ const block = (stop: RebaseStop, base: string, why: string, by: "Block" | "Aside
         ? Cause.Block({ why: Tag.mergeConflict })
         : Cause.Aside({ why: Tag.mergeConflict })
     yield* ledger.transition(stop.ticket.id, cause, {
-      beside: [
+      said: [
         {
           kind: "warn",
           ticket: stop.ticket.id,
@@ -318,7 +318,6 @@ const block = (stop: RebaseStop, base: string, why: string, by: "Block" | "Aside
           text,
         },
       ],
-      lines: [text],
     })
   })
 
@@ -363,8 +362,6 @@ export const handOver = (
   Effect.gen(function* () {
     const config = yield* AppConfig
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
     const { id } = stop.ticket
     const attempt = (yield* handBacks.count(id)) + 1
     // The rebase left in progress is its worker's now: carried over unfinished, it is said so.
@@ -382,7 +379,7 @@ export const handOver = (
       limit: formatDuration(config.settings.merge.resolve_timeout),
       told: (yield* setupToResolve(stop, options, setUps)).told,
     })
-    yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+    yield* info(text, id)
     return true
   })
 
@@ -522,18 +519,13 @@ const resumeGoneFor = (
 ): Effect.Effect<string | undefined, never, GiveEnv> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
     if (!(yield* ledger.claimGoneResume(id))) return goneAgain(why)
     const failed = yield* resumeFor(id, "gone", prompt, line`${what}, which is gone (${why})`)
     if (failed === undefined) return undefined
     const text = ticketLine(
       Tag.workerGone,
     )`${id}'s worker is gone (${why}), and its session could not be resumed for its hand-back (${failed})`
-    yield* logs.writeWith(
-      [text],
-      events.emit({ kind: "warn", ticket: id, detail: "its worker gone", text }),
-    )
+    yield* say({ kind: "warn", ticket: id, detail: "its worker gone", text })
     return line`its worker is gone (${why}) and its session could not be resumed: ${failed}`
   })
 

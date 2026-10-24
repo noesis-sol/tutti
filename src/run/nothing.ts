@@ -15,6 +15,7 @@ import * as free from "./deferredFree.ts"
 import { EventStream } from "./eventstream.ts"
 import { exitCodes } from "./holds.ts"
 import { dated, detail, type Line, Log, line } from "./log.ts"
+import { say } from "./say.ts"
 import * as scope from "./scope.ts"
 import { endRecord } from "./spending.ts"
 
@@ -495,7 +496,7 @@ export const report = (
   Effect.gen(function* () {
     const logs = yield* Log
     const text = line`${n.done}`
-    yield* logs.writeWith([text], (yield* EventStream).emit({ kind: "done", text }))
+    yield* say({ kind: "done", text })
     if (n.freeError !== null) yield* logs.write(line`${n.freeError}`)
     yield* show(n, output)
   })

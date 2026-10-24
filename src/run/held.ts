@@ -24,10 +24,11 @@
 // message is never sent to a ticket that went to merge after its phase was read. The mark, not the
 // permit, spans the move, so a merge's `over` doesn't wait on an offer that waits on the ledger.
 import { Effect, Ref, Semaphore } from "effect"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { Ledger, showsCard } from "./ledger.ts"
-import { detail, Log } from "./log.ts"
+import { detail, type Log } from "./log.ts"
 import type { TicketPhase } from "./phase.ts"
+import { info } from "./say.ts"
 import { lengthOf, type SteerEnv, sendMessage, steer } from "./steer.ts"
 
 /** A message you sent a merging ticket's worker, held under the uuid the composer drew for it. */
@@ -102,10 +103,7 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
         (all) => new Map([...all, [ticket, [...(all.get(ticket) ?? []), { text, uuid }]]]),
       )
       const said = heldLine(ticket, text, entry.phase)
-      yield* (yield* Log).writeWith(
-        [said],
-        (yield* EventStream).emit({ kind: "info", ticket, text: said }),
-      )
+      yield* info(said, ticket)
       return true
     })
   const hold: Held["hold"] = (ticket, text, uuid) => permit.withPermit(holding(ticket, text, uuid))
@@ -130,10 +128,7 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
           return
         }
         const said = notSentLine(ticket, held.length)
-        yield* (yield* Log).writeWith(
-          [said],
-          (yield* EventStream).emit({ kind: "info", ticket, text: said }),
-        )
+        yield* info(said, ticket)
       }),
     )
   const cancel: Held["cancel"] = (ticket) =>
@@ -143,10 +138,7 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
         if (held.length === 0) return
         yield* Ref.update(ref, (all) => new Map([...all].filter(([id]) => id !== ticket)))
         const said = cancelledLine(ticket, held.length)
-        yield* (yield* Log).writeWith(
-          [said],
-          (yield* EventStream).emit({ kind: "info", ticket, text: said }),
-        )
+        yield* info(said, ticket)
       }),
     )
   const entering: Held["entering"] = (ticket, effect) =>

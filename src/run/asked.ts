@@ -82,8 +82,7 @@ export const takeAnswers = (
           Tag.answered,
         )`${question} (${asked}) is answered, so ${id} comes back`
         const moved = yield* ledger.transition(id, Cause.Answered(), {
-          beside: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
-          lines: [text],
+          said: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
         })
         if (Result.isFailure(moved)) return undefined
         const saved = yield* store.ticket(id)

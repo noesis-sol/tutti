@@ -17,14 +17,15 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Dependency, type Issue } from "../services/Beads.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import type { Footprint } from "./footprint.ts"
 import type { State } from "./ledger.ts"
-import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
+import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import { holdWord as machineWord } from "./machine.ts"
 import { type Mentions, shared } from "./overlap.ts"
 import type { Hold, PhaseTag } from "./phase.ts"
 import type { RunHold, Usage } from "./runView.ts"
+import { warn } from "./say.ts"
 import { ledgerView } from "./scope.ts"
 import type { UsageView } from "./usageLimit.ts"
 
@@ -668,10 +669,7 @@ export const timeLimit = (
     yield* goneOn(ticket, limit ?? longRunning, since)
     if (limit === null) {
       const text = longRunningLine(ticket)
-      yield* (yield* Log).writeWith(
-        [text],
-        (yield* EventStream).emit({ kind: "warn", ticket, text }),
-      )
+      yield* warn(text, ticket)
       return
     }
     const after = formatDuration(limit)

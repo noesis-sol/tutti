@@ -51,11 +51,12 @@ import { Beads } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { allChangeEntries } from "../services/gitStatus.ts"
 import type { EnvironmentHold } from "./environment.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { causeWhy, detail, filed, type Line, Log, line, Tag } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { attentionLines, attentionSaid } from "./report.ts"
+import { sayer } from "./say.ts"
 
 /** A ticket set aside as its worker settled, for triage. */
 export interface Deferral {
@@ -148,7 +149,7 @@ export const make = (options: {
     const beads = yield* Beads
     const git = yield* Git
     const logs = yield* Log
-    const events = yield* EventStream
+    const { say, warn } = yield* sayer
     const transcripts = yield* Transcripts
     const attention = yield* Attention
     const queued = yield* Queue.unbounded<Queued>()
@@ -234,7 +235,7 @@ export const make = (options: {
     const survived = (id: string, cause: Cause.Cause<never>) => {
       if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
       const text = triageFailedLine(id, causeWhy(cause))
-      return logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
+      return warn(text, id)
     }
 
     const triageOne = (q: Queued) =>
@@ -248,22 +249,19 @@ export const make = (options: {
           // A call skipped for the usage limit is logged as such already.
           if (answer.failure._tag === "OrganSkipped") return
           const text = triageFailedLine(id, failure(answer.failure))
-          yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
+          yield* warn(text, id)
           return
         }
         const v = answer.success
         yield* Effect.ignore(beads.update(id, { appendNotes: note(v) }))
         const text = verdictLine(id, v)
-        yield* logs.writeWith(
-          [text],
-          events.emit({
-            kind: "triage",
-            ticket: id,
-            title: v.summary.trim(),
-            detail: `${v.cause} · ${v.confidence}`,
-            text,
-          }),
-        )
+        yield* say({
+          kind: "triage",
+          ticket: id,
+          title: v.summary.trim(),
+          detail: `${v.cause} · ${v.confidence}`,
+          text,
+        })
         yield* SubscriptionRef.update(verdicts, (all) => new Map(all).set(id, rowText(v)))
         yield* options.hold.blamed({
           ticket: id,

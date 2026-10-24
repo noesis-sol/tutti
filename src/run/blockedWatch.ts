@@ -4,10 +4,11 @@
 // asks, or is answered, may end it or keep it open (D19).
 import { Clock, Duration, Effect, Ref, Semaphore, Stream } from "effect"
 import { Attention, blockedAfter } from "../agent/Attention.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { blockedAt, blockedLifted, blockedStop, blockedTickets, liftBlocked } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
-import { Log } from "./log.ts"
+import type { Log } from "./log.ts"
+import { sayer } from "./say.ts"
 
 export interface BlockedWatch {
   /** Holds the run for each request now past blockedAfter, and lifts the holds of tickets with none. */
@@ -26,8 +27,7 @@ export const make = (options: {
 }): Effect.Effect<BlockedWatch, never, Attention | Log | EventStream> =>
   Effect.gen(function* () {
     const attention = yield* Attention
-    const logs = yield* Log
-    const events = yield* EventStream
+    const { say } = yield* sayer
     const { holds, wakeUp, watch } = options
     const oneLook = yield* Semaphore.make(1)
     const look = oneLook.withPermits(1)(
@@ -40,7 +40,7 @@ export const make = (options: {
         for (const ticket of lifts) {
           yield* holds.changeHolds((now) => liftBlocked(now, ticket))
           const text = blockedLifted(ticket)
-          yield* logs.writeWith([text], events.emit({ kind: "hold", ticket, lifted: true, text }))
+          yield* say({ kind: "hold", ticket, lifted: true, text })
         }
         for (const trip of trips) yield* holds.stopped(blockedStop(trip.ticket, trip.what))
         yield* wakeUp

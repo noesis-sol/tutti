@@ -19,8 +19,8 @@ import { appliesOn, requireLogName } from "../project/requires.ts"
 import { type Requirement, settingsFile } from "../project/settings.ts"
 import { exec } from "../services/exec.ts"
 import { openRunFile, runFolder } from "../services/Worktrees.ts"
-import { EventStream } from "./eventstream.ts"
-import { detail, Log, line, Tag } from "./log.ts"
+import { detail, line, Tag } from "./log.ts"
+import { sayer } from "./say.ts"
 
 /** How long each check may run: it only looks, so it is short. */
 export const checkLimit: Duration.Duration = Duration.minutes(1)
@@ -273,11 +273,10 @@ export const missingDetail = (report: RequireReport): string => {
 export const runRequires = (list: ReadonlyArray<Requirement>, options: CheckOptions) =>
   Effect.gen(function* () {
     if (list.length === 0) return ""
-    const logs = yield* Log
-    const events = yield* EventStream
+    const { info } = yield* sayer
     const say = (what: string) => {
       const text = detail`${Tag.requires}: ${what}`
-      return logs.writeWith([text], events.emit({ kind: "info", text }))
+      return info(text)
     }
     const report = yield* checkRequires(list, { ...options, working: say })
     for (const res of report) {

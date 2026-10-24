@@ -17,12 +17,13 @@ import { Effect, Result } from "effect"
 import { Beads } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
+import type { Line, Log } from "./log.ts"
 import * as log from "./log.ts"
-import { type Line, Log } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { Cause } from "./phase.ts"
+import { warn } from "./say.ts"
 
 /** The ticket set aside: its ID and title, as its records name it. */
 export interface AsideTicket {
@@ -70,8 +71,7 @@ export const leaveForReview = (
     const store = yield* Store
     yield* Effect.ignore(beads.update(id, { appendNotes: reviewNote(review.text) }))
     yield* ledger.transition(id, Cause.Aside({ why: review.why }), {
-      beside: [{ kind: "warn", ticket: id, aside: true, detail: review.detail, text: review.text }],
-      lines: [review.text],
+      said: [{ kind: "warn", ticket: id, aside: true, detail: review.detail, text: review.text }],
     })
     const record = yield* store.ticket(id)
     if (record !== undefined && record.suspended === undefined) {
@@ -96,7 +96,7 @@ export const putAside = (
     const cause = Cause.Defer({ why: aside.detail })
     if (Result.isSuccess(deferred)) {
       yield* ledger.transition(ticket.id, cause, {
-        beside: [
+        said: [
           {
             kind: "deferred",
             ticket: ticket.id,
@@ -105,7 +105,6 @@ export const putAside = (
             text: aside.deferred,
           },
         ],
-        lines: [aside.deferred],
       })
       return true
     }
@@ -113,8 +112,7 @@ export const putAside = (
       log.Tag.deferFailed,
     )`${aside.failed}: ${beadsWhy(deferred.failure)}; kept out of this run, ${aside.instead}`
     yield* ledger.transition(ticket.id, cause, {
-      beside: [{ kind: "warn", ticket: ticket.id, aside: true, detail: aside.detail, text }],
-      lines: [text],
+      said: [{ kind: "warn", ticket: ticket.id, aside: true, detail: aside.detail, text }],
     })
     return false
   })
@@ -139,8 +137,5 @@ export const dropNothingDone = (worktree: {
     const why =
       removed.failure._tag === "BadTicketId" ? removed.failure.why : gitWhy(removed.failure)
     const text = log.detail`${log.Tag.cleanupFailed} for ${path} / ${branch}: ${why}`
-    yield* (yield* Log).writeWith(
-      [text],
-      (yield* EventStream).emit({ kind: "warn", ticket: id, text }),
-    )
+    yield* warn(text, id)
   })

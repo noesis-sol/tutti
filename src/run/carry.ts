@@ -48,12 +48,12 @@ import { type PhaseName, Store, type TicketRecord } from "../services/Store.ts"
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
 import { handedBackOf, uncheckedKey, uncheckedOf } from "./check.ts"
-import { EventStream } from "./eventstream.ts"
 import { removeMerged } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { Cause } from "./phase.ts"
+import { info } from "./say.ts"
 import { readAgainAfter, readTries } from "./schedule.ts"
 import { descendants } from "./scope.ts"
 import { resume, workerGone } from "./sessions.ts"
@@ -280,7 +280,6 @@ const takeUp = (
     const store = yield* Store
     const ledger = yield* Ledger
     const logs = yield* Log
-    const events = yield* EventStream
     const fs = yield* FileSystem.FileSystem
     const context = yield* Effect.context<WorkEnv>()
     const { base } = options
@@ -306,7 +305,7 @@ const takeUp = (
     const said = (id: string, what: Carried, text: Line) =>
       Effect.gen(function* () {
         carried.set(id, what)
-        yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+        yield* info(text, id)
       })
     const dropped = (id: string, what: Carried, text: Line) =>
       Effect.andThen(said(id, what, text), Effect.ignore(store.remove(id)))

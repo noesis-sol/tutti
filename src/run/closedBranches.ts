@@ -14,11 +14,12 @@ import { Effect, Result } from "effect"
 import type { Dependency } from "../services/Beads.ts"
 import { Git, type GitError } from "../services/Git.ts"
 import { branchOf } from "../services/Worktrees.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { asksGit } from "./holds.ts"
 import type { State } from "./ledger.ts"
-import { type Line, Log, Tag, ticketLine } from "./log.ts"
+import { type Line, type Log, Tag, ticketLine } from "./log.ts"
 import { gitWhy } from "./merge.ts"
+import { warn } from "./say.ts"
 
 /** Where the run's tickets merge: the main checkout and the base branch. */
 export interface Where {
@@ -114,10 +115,7 @@ export const closedBranches = (
           if (why !== undefined && !warned.has(id)) {
             warned.add(id)
             const text = closedUnmergedLine(id, where.base)
-            yield* (yield* Log).writeWith(
-              [text],
-              (yield* EventStream).emit({ kind: "warn", ticket: id, text }),
-            )
+            yield* warn(text, id)
           }
           return why
         }).pipe(Effect.provideContext(context)),

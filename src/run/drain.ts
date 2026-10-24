@@ -9,10 +9,11 @@
 // doesn't promise them again.
 import { Effect } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import { type Line, Log, line } from "./log.ts"
+import { type Line, type Log, line } from "./log.ts"
 import { dropRechecks, type Rechecks } from "./recheck.ts"
+import { say } from "./say.ts"
 
 /** A request to wind down (`on`) or to take tickets again, and who asked: `by SIGUSR1`. */
 export interface DrainRequest {
@@ -70,20 +71,18 @@ export const hear = (
 ): Effect.Effect<boolean, never, AgentHost | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
     const winding = (yield* ledger.current).windDown !== null
     if (request.on === winding) return winding
     if (!request.on) {
       yield* ledger.windUp
       const text = undrainLine(request.how)
-      yield* logs.writeWith([text], events.emit({ kind: "resume", text }))
+      yield* say({ kind: "resume", text })
       return false
     }
     yield* ledger.windDown
     const running = (yield* ledger.current).windDown?.tickets ?? []
     const text = drainLine(running, request.how)
-    yield* logs.writeWith([text], events.emit({ kind: "drain", text }))
+    yield* say({ kind: "drain", text })
     if (rechecks !== undefined) yield* dropRechecks(rechecks, "the run winds down")
     return true
   })

@@ -29,6 +29,7 @@ import { detail, type Line, Log, Tag } from "./log.ts"
 import type { MergeOptions } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause } from "./phase.ts"
+import { info } from "./say.ts"
 
 /** What steering reads and writes through. */
 export type SteerEnv = AgentHost | Ledger | Log | EventStream
@@ -132,8 +133,6 @@ const handOver = (
 ): Effect.Effect<boolean, never, Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
     const stop = yield* queue.handBacks.take(ticket)
     if (stop === undefined) {
       yield* Effect.logDebug(`dropped ${why}: ${ticket} has no hand-back waiting`)
@@ -147,7 +146,7 @@ const handOver = (
     }
     // Said before the queue can take it up, so its merge's lines come after.
     const text = said(stop)
-    yield* logs.writeWith([text], events.emit({ kind: "info", ticket, text }))
+    yield* info(text, ticket)
     if (waive) yield* queue.handBacks.waive(ticket)
     const moved = yield* queue.offer(stop.ticket, (place) => Cause.HandedOver({ place }), false)
     if (Result.isSuccess(moved)) return true

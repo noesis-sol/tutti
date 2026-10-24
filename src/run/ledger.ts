@@ -46,6 +46,7 @@ import {
   transition as transitionPhase,
   waitShown,
 } from "./phase.ts"
+import type { Said } from "./say.ts"
 import { nothingSpent, Spending, type Spent } from "./spending.ts"
 
 /**
@@ -450,7 +451,8 @@ export class Ledger extends Context.Service<
   {
     /**
      * Moves `ticket` by `cause`, as the state machine says, and writes its `phase` record, then
-     * `beside` (the orchestra-era records its row names), with `lines` logged in the same write.
+     * `said` and `beside` (the orchestra-era records its row names), with each of `said`'s texts
+     * and then `lines` logged in the same write.
      * `title` sets its title, as a ticket entering the run needs; a ticket leaving it (null) leaves
      * the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
      * was.
@@ -460,6 +462,7 @@ export class Ledger extends Context.Service<
       cause: Cause,
       options?: {
         readonly title?: string
+        readonly said?: ReadonlyArray<Said>
         readonly beside?: ReadonlyArray<Event>
         readonly lines?: ReadonlyArray<log.Line>
       },
@@ -549,6 +552,8 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
             next.success !== null &&
             next.success._tag !== entry.phase._tag &&
             endsPart.has(next.success._tag)
+          const said = options.said ?? []
+          const given = [...said, ...(options.beside ?? [])]
           const beside =
             ends && entry !== undefined && next.success !== null
               ? ending(
@@ -556,15 +561,16 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
                   next.success,
                   now,
                   Option.isSome(spending) ? yield* spending.value.ofTicket(ticket) : nothingSpent,
-                  options.beside ?? [],
+                  given,
                 )
-              : (options.beside ?? [])
+              : given
           const records = Effect.forEach(
             [phaseRecord(ticket, from, next.success, cause), ...beside],
             (event) => events.emit(event),
             { discard: true },
           )
-          yield* options.lines === undefined ? records : logs.writeWith(options.lines, records)
+          const lines = [...said.map((record) => record.text), ...(options.lines ?? [])]
+          yield* lines.length === 0 ? records : logs.writeWith(lines, records)
           if (next.success === null) {
             const tickets = new Map(state.tickets)
             tickets.delete(ticket)

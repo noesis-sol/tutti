@@ -15,10 +15,11 @@ import { Effect, Result } from "effect"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { type Commit, Git } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, Log, line, Tag, ticketLine } from "./log.ts"
+import { detail, type Log, line, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, type MergeOptions } from "./merge.ts"
+import { info, warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
 
 /**
@@ -161,14 +162,12 @@ const named = (commit: Commit) => line`${commit.hash.slice(0, 7)} ${commit.subje
 export const unlabel = (id: string) =>
   Effect.gen(function* () {
     const beads = yield* Beads
-    const log = yield* Log
-    const events = yield* EventStream
     const removed = yield* Effect.result(beads.removeLabel(id, unmergedLabel))
     if (Result.isSuccess(removed)) return true
     const text = ticketLine(
       Tag.labelFailed,
     )`bd could not remove ${id}'s '${unmergedLabel}' label: ${beadsWhy(removed.failure)}; later runs hold the tickets it blocks until it is removed (bd label remove ${id} ${unmergedLabel})`
-    yield* log.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
+    yield* warn(text, id)
     return false
   })
 
@@ -183,8 +182,6 @@ export const loadUnmerged = (
 ): Effect.Effect<ReadonlyArray<LeftUnmerged>, BeadsError, Git | Beads | Log | EventStream> =>
   Effect.gen(function* () {
     const beads = yield* Beads
-    const log = yield* Log
-    const events = yield* EventStream
     const { base } = options
     const labelled = yield* beads.list({ status: "closed", labels: [unmergedLabel] })
     const left: Array<LeftUnmerged> = []
@@ -193,13 +190,13 @@ export const loadUnmerged = (
       const found = yield* mergedSince(issue, options)
       if (found.merged !== undefined) {
         const text = detail`${id}, left unmerged by an earlier run, is on ${base} now (${named(found.merged)}); its '${unmergedLabel}' label is removed`
-        yield* log.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+        yield* info(text, id)
         yield* unlabel(id)
         continue
       }
       const branch = found.branch ?? branchOf(id)
       const text = detail`${id} was left unmerged by an earlier run; tickets it blocks wait until ${branch} is merged into ${base} or its '${unmergedLabel}' label is removed`
-      yield* log.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+      yield* info(text, id)
       left.push(found.branch === undefined ? { issue } : { issue, branch: found.branch })
     }
     return left
@@ -214,8 +211,6 @@ const label = (id: string, options: MergeOptions) =>
   Effect.gen(function* () {
     const git = yield* Git
     const beads = yield* Beads
-    const log = yield* Log
-    const events = yield* EventStream
     const { repo, base } = options
     const branch = branchOf(id)
     const fork = yield* Effect.result(git.mergeBase(repo, base, branch))
@@ -228,14 +223,7 @@ const label = (id: string, options: MergeOptions) =>
       : ticketLine(
           Tag.labelFailed,
         )`bd could not label ${id} '${unmergedLabel}': ${beadsWhy(added.failure)}; later runs may start the tickets it blocks before it merges (bd label add ${id} ${unmergedLabel})`
-    yield* log.writeWith(
-      [text],
-      events.emit(
-        Result.isSuccess(added)
-          ? { kind: "info", ticket: id, text }
-          : { kind: "warn", ticket: id, text },
-      ),
-    )
+    yield* (Result.isSuccess(added) ? info : warn)(text, id)
     return Result.isSuccess(added)
   })
 

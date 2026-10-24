@@ -42,10 +42,11 @@ import {
 } from "../services/Worktrees.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { type Aside, type AsideTicket, putAside } from "./aside.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import type { Ledger } from "./ledger.ts"
+import type { Log } from "./log.ts"
 import * as log from "./log.ts"
-import { Log } from "./log.ts"
+import { info } from "./say.ts"
 import { leaveSetupFailed, makeSetUps, type SetUps, setUpWorktree, setupNote } from "./setup.ts"
 
 /** The ticket to start, as bd ready gives it. */
@@ -327,8 +328,6 @@ export const start = (
     const worktrees = yield* Worktrees
     const store = yield* Store
     const host = yield* AgentHost
-    const logs = yield* Log
-    const events = yield* EventStream
     const id = ticket.id
 
     const why = ticketIdProblem(id)
@@ -344,7 +343,7 @@ export const start = (
     const made = worktree.reused
       ? log.detail`reusing worktree ${path} (${branch})`
       : log.detail`worktree ${path} on ${branch}`
-    yield* logs.writeWith([made], events.emit({ kind: "info", ticket: id, text: made }))
+    yield* info(made, id)
     yield* worktrees
       .checkRunFolder(path)
       .pipe(Effect.mapError((error) => runFolderFailed(id, path, error)))

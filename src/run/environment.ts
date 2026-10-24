@@ -50,12 +50,13 @@ import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import { sleepAwake } from "../services/Wake.ts"
 import { readRunFile, runFolder, writeRunFile } from "../services/Worktrees.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { type StopReason, type Stops, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
 import { Cause } from "./phase.ts"
+import { sayer } from "./say.ts"
 import type { Settled } from "./settle.ts"
 
 /**
@@ -255,7 +256,7 @@ export const make = (options: {
     const beads = yield* Beads
     const ledger = yield* Ledger
     const logs = yield* Log
-    const events = yield* EventStream
+    const { say, warn } = yield* sayer
     const { count, probe: after } = config.settings.environment_hold
     const state = yield* Ref.make(fresh)
     const probing = yield* SubscriptionRef.make<ProbeView | null>(null)
@@ -270,7 +271,7 @@ export const make = (options: {
           const text = ticketLine(
             Tag.reopenFailed,
           )`${id} failed at once like the tickets before it, and bd could not reopen it: ${beadsWhy(reopened.failure)}; reopen it with: bd update ${id} --status open`
-          yield* logs.writeWith([text], events.emit({ kind: "warn", ticket: id, text }))
+          yield* warn(text, id)
           return
         }
         yield* Effect.ignore(
@@ -281,10 +282,9 @@ export const make = (options: {
         )
         const text = detail`${id} reopened: its worker failed at once, like the tickets before it`
         yield* ledger.transition(id, Cause.Reopened(), {
-          beside: [
+          said: [
             { kind: "reopened", ticket: id, detail: "the run held for the environment", text },
           ],
-          lines: [text],
         })
       })
 
@@ -450,7 +450,7 @@ export const make = (options: {
         const text = tagged(
           Tag.probe,
         )`the run holds for the environment; in ${formatDuration(after)} a session without a ticket runs a command in the main checkout, and if it does the run takes tickets again`
-        yield* logs.writeWith([text], events.emit({ kind: "hold", text }))
+        yield* say({ kind: "hold", text })
         if (!(yield* waitToProbe)) return Probed.Ends()
         const failed = yield* runProbe
         if (failed !== null) return Probed.Failed({ stop: probeFailedStop(now.why, after, failed) })
@@ -466,7 +466,7 @@ export const make = (options: {
         const ok = tagged(
           Tag.probeOk,
         )`a session without a ticket ran a command ${formatDuration(after)} after the hold; taking tickets again`
-        yield* logs.writeWith([ok], events.emit({ kind: "probed", text: ok }))
+        yield* say({ kind: "probed", text: ok })
         yield* requeue
         return Probed.Resumed()
       })

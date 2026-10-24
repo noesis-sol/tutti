@@ -4,13 +4,14 @@
 // line and its notice. A stop holds the run: said as it comes while tickets still run, unless its
 // line was, and the run is woken to look again.
 import { Effect, Semaphore, SubscriptionRef } from "effect"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import { type Holds, noHolds, raiseStop, type StopReason, type Stops, shownHolds } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
-import { hold, Log } from "./log.ts"
+import { hold, type Log } from "./log.ts"
 import type { PhaseTag, TicketPhase } from "./phase.ts"
 import type { Status } from "./runView.ts"
 import { same } from "./same.ts"
+import { sayer } from "./say.ts"
 
 /** The phases of a ticket the run is still at: the HOLD line counts them as running. */
 const running: ReadonlySet<PhaseTag> = new Set([
@@ -57,8 +58,7 @@ export const make = (options: {
 }): Effect.Effect<HoldsGate, never, Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const logs = yield* Log
-    const events = yield* EventStream
+    const { say } = yield* sayer
     const { status, notices } = options
     const holds = yield* SubscriptionRef.make<Holds>(noHolds)
     const oneChange = yield* Semaphore.make(1)
@@ -90,15 +90,12 @@ export const make = (options: {
         const count = runningIn(yield* ledger.current, (yield* now).overLimit)
         if (!stop.held && (count > 0 || stop.why === "TICKET_LIMIT")) {
           const text = hold(stop.text, count)
-          yield* logs.writeWith(
-            [text],
-            events.emit({
-              kind: "hold",
-              ...(stop.ticket === undefined ? {} : { ticket: stop.ticket }),
-              ...(stop.blocked === undefined ? {} : { blocked: stop.blocked }),
-              text,
-            }),
-          )
+          yield* say({
+            kind: "hold",
+            ...(stop.ticket === undefined ? {} : { ticket: stop.ticket }),
+            ...(stop.blocked === undefined ? {} : { blocked: stop.blocked }),
+            text,
+          })
         }
         yield* options.wakeUp
       })
