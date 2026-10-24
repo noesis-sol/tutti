@@ -399,7 +399,7 @@ ended:
 | `USAGE_LIMIT` | 8 | the account's usage limit, with its reset unknown or later than `--usage-limit-wait` | Start the run again after the reset; it resumes the waiting workers. |
 | `MERGE_FAILED` | 6 | a ticket's branch doesn't fast-forward after rebasing | Rare: something else changed the base. Rebase the worktree, check, merge by hand (below). |
 | `DIRTY_TREE` | 5 | uncommitted changes in the main checkout, or it left its branch | `git status`. These are the user's changes: ask before touching them. |
-| `BEADS_FAILED`, `GIT_FAILED`, `AGENT_FAILED`, `WORKTREE_FAILED`, `STATE_UNWRITABLE`, `PANIC` | 4 | Beads, git, the Agent SDK (a worker's session failed) or the filesystem failed, or tutti hit a bug | The line ends with the tool's error; the log has the rest. Workers still running are suspended for the next run. |
+| `BEADS_FAILED`, `GIT_FAILED`, `WORKTREE_FAILED`, `STATE_UNWRITABLE`, `PANIC` | 4 | Beads, git or the filesystem failed, or tutti hit a bug | The line ends with the tool's error; the log has the rest. Workers still running are suspended for the next run. |
 | `INTERRUPTED` | 130 | quit (a signal, or `q` in the dashboard) | Nothing is lost: the next run resumes the saved sessions. After `quit at once` with `abandoned <id>'s merge`, check `git status` and `git worktree list` first. |
 | (printed on stderr, not logged) | 2 | setup problem, another run going, or `--feature` with nothing filed | The output lists each problem and its fix. |
 
