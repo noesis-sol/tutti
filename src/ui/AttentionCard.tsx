@@ -23,6 +23,8 @@ import {
   useSendAnswer,
 } from "./attentionKeys.ts"
 import { clickable } from "./click.ts"
+import { hintSegments } from "./Hint.tsx"
+import { type Command, hintOf, useCommands } from "./keyCommands.ts"
 import { useInput, useLayer } from "./keys.ts"
 import {
   type Border,
@@ -264,10 +266,20 @@ export const reasonQuestion = (ticket: string): string => `Deny ${ticket}'s requ
  * `requestId` with. `Enter` denies it with what you typed, `Esc` closes it. The answer names the
  * request Shift+D was pressed on, and is dropped with a toast when it is no longer open.
  */
+/** The reason box's keys: `Enter` is its field's; `Esc` closes it. */
+const reasonCommands = (close: () => void): ReadonlyArray<Command> => [
+  { keys: [], run: () => {}, hint: { keys: "Enter", does: "deny" } },
+  { keys: ["escape"], run: close, hint: { keys: "Esc", does: "cancel" } },
+]
+
 /** The reason box's Esc, bound while no box is open too, so that it works from the moment it opens. */
 export const ReasonKeys = () => {
   const { box } = useInput()
-  useLayer("box", [{ key: "escape", run: () => box.set(null) }], "Reason")
+  useCommands(
+    "box",
+    reasonCommands(() => box.set(null)),
+    "Reason",
+  )
   return null
 }
 
@@ -341,13 +353,7 @@ export const ReasonBox = ({
         </box>
         <Line segments={row([])} />
         <Line
-          segments={row([
-            seg("Enter", theme.styles.key),
-            seg(" deny", theme.styles.dim),
-            seg(" · ", theme.styles.dim),
-            seg("Esc", theme.styles.key),
-            seg(" cancel", theme.styles.dim),
-          ])}
+          segments={row(hintSegments(hintOf(reasonCommands(close)), theme, inner + 2).slice(1))}
         />
         <Line segments={[seg(`╰${rule}╯`, frame)]} />
       </box>

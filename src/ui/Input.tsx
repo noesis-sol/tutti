@@ -12,7 +12,8 @@ import { UiCommand } from "../run/commands.ts"
 import { AnswerForm, AnswerFormKeys } from "./AnswerForm.tsx"
 import { AnswerBox, ReasonBox, ReasonKeys } from "./AttentionCard.tsx"
 import { useCopyOnSelect } from "./clipboard.ts"
-import { Box, guardInput, InputContext, type InputState, useInput, useLayer } from "./keys.ts"
+import { globalCommands, useCommands } from "./keyCommands.ts"
+import { Box, guardInput, InputContext, type InputState, useInput } from "./keys.ts"
 import { SelectionLook, selectionLookOf } from "./line.tsx"
 import { QuitBox, QuitKeys } from "./QuitBox.tsx"
 import { StopKeys, StopQuestion } from "./StopQuestion.tsx"
@@ -23,20 +24,20 @@ import { external, useCommand, useTheme } from "./useRunView.ts"
 const GlobalKeys = () => {
   const input = useInput()
   const command = useCommand()
-  useLayer("always", [
-    {
+  useCommands(
+    "always",
+    globalCommands({
       // The quit box; a second Ctrl+C, the box still open, quits now (D15).
-      key: "ctrl+c",
-      run: () => {
+      quit: () => {
         if (input.box.get()?._tag === "Quit") {
           input.box.set(null)
           command(UiCommand.Quit({ now: true }))
         } else input.box.set(Box.Quit())
       },
-    },
-    // tutti can't be suspended: SIGTSTP is ignored, and in raw mode Ctrl+Z is a key (D18).
-    { key: "ctrl+z", run: () => input.toasts.show(suspendToast) },
-  ])
+      // tutti can't be suspended: SIGTSTP is ignored, and in raw mode Ctrl+Z is a key (D18).
+      suspend: () => input.toasts.show(suspendToast),
+    }),
+  )
   return null
 }
 

@@ -26,6 +26,7 @@ import {
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { waitForTest } from "../src/testing/Attention.ts"
 import { texts } from "../src/testing/Log.ts"
+import { dashboardHint } from "../src/ui/Dashboard.tsx"
 import {
   advance,
   backlog,
@@ -247,7 +248,9 @@ describe("with a dashboard, the run waits for you (D19)", () => {
       { ticket: "a", asks: ["Allow Bash(rm -rf build)?"] },
       { ticket: "b", asks: ["a question"] },
     ])
-    expect(boxed?.hint.map((key) => key.keys)).toContain("q")
+    expect(boxed === undefined ? [] : dashboardHint(boxed, false).map((key) => key.keys)).toContain(
+      "q",
+    )
     expect(answered?.endOfRun).toBeNull()
     expectLog(ran, [
       /^ {2}c closed .*; merged into main/,

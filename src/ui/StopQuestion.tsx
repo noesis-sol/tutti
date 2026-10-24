@@ -7,7 +7,8 @@
 // the box says even if the run changes its mind before the answer.
 import { UiCommand } from "../run/commands.ts"
 import { drainWords } from "../run/drain.ts"
-import { useInput, useLayer } from "./keys.ts"
+import { type Command, useCommands } from "./keyCommands.ts"
+import { useInput } from "./keys.ts"
 import { seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { useCommand, useRunViewPart, useTheme } from "./useRunView.ts"
@@ -57,18 +58,18 @@ const useAnswers = () => {
   }
 }
 
-/** The stop question's keys, bound while it is open. */
+/** The stop question's keys, `y` and `n` drawn as `words` name them: bound while it is open, and drawn in it. */
+const stopCommands = (
+  answers: ReturnType<typeof useAnswers>,
+  words: { readonly yes: string; readonly no: string },
+): ReadonlyArray<Command> => [
+  { keys: ["y"], run: answers.yes, hint: { keys: "y", does: words.yes } },
+  { keys: ["n", "escape"], run: answers.no, hint: { keys: "n", does: words.no } },
+]
+
+/** The stop question's keys, bound while it is open; what they are named is the open question's. */
 export const StopKeys = () => {
-  const answers = useAnswers()
-  useLayer(
-    "box",
-    [
-      { key: "y", run: answers.yes },
-      { key: "n", run: answers.no },
-      { key: "escape", run: answers.no },
-    ],
-    "Stop",
-  )
+  useCommands("box", stopCommands(useAnswers(), { yes: "", no: "" }), "Stop")
   return null
 }
 
@@ -84,10 +85,7 @@ export const StopQuestion = ({ windingDown }: { readonly windingDown: boolean })
     <Modal
       frame={theme.look("notice")}
       paragraphs={[seg(words.ask, theme.look("notice", "bold")), seg(""), seg(words.about)]}
-      choices={[
-        { name: "y", does: words.yes, run: answers.yes },
-        { name: "n", does: words.no, run: answers.no },
-      ]}
+      choices={stopCommands(answers, words)}
     />
   )
 }

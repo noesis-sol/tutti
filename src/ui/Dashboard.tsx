@@ -40,8 +40,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useMemo } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { Card, Key, RunView } from "../run/runView.ts"
-import { answerBindings } from "./AttentionCard.tsx"
-import { useAnswering } from "./attentionKeys.ts"
+import { type AnswerKey, keyAnswer, useAnswering } from "./attentionKeys.ts"
 import {
   Cards,
   type CardsLayout,
@@ -54,7 +53,8 @@ import {
 import { EndOfRunBox, endOfRunLines } from "./EndOfRunBox.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
-import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
+import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
+import { Box, useInput } from "./keys.ts"
 import { LoadLine, loadSegments } from "./LoadLine.tsx"
 import { cut, Lines, Section, type Segments, seg } from "./line.tsx"
 import {
@@ -69,7 +69,7 @@ import { useHintHeight } from "./Toasts.tsx"
 import { Totals, totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { useCommand, useEvent, useRunView, useTheme } from "./useRunView.ts"
+import { useCommand, useRunView, useTheme } from "./useRunView.ts"
 import { WindDown, windDownSegments } from "./WindDown.tsx"
 
 /** The smallest pane the whole dashboard is drawn in (§ 7.7). */
@@ -126,14 +126,16 @@ export interface DashboardLayout {
  * tableLines), or left out where that doesn't fit (beside the box, where its fewest don't); then
  * the blank line over the load line, the first to go, before any line with something on it; and
  * Current, or the box, takes the rest. Below the minimum size, the hint and the totals on one line.
- * The hint is laid out with `d` and `a` where a request's buttons may be drawn; where they aren't
- * (drawnHint), a hint the shorter for it gives its lines to the blank ones above the foot.
+ * The hint (dashboardHint, with `highlighted`'s card highlighted) is laid out with `d` and `a`
+ * where a request's buttons may be drawn; where they aren't, a hint the shorter for it gives its
+ * lines to the blank ones above the foot.
  */
 export const dashboardLayout = (
   view: RunView,
   theme: Theme,
   width: number,
   height: number,
+  highlighted: string | null = targetOf(view),
 ): DashboardLayout => {
   let rest = Math.max(height, 0)
   // A section's lines: as many as it needs of those left.
@@ -143,9 +145,10 @@ export const dashboardLayout = (
     return got
   }
   const small = width < minWidth || height < minHeight
-  const hintOf = (buttons: boolean) => hintLines(drawnHint(view.hint, buttons), theme, width)
+  const hintAt = (buttons: boolean) =>
+    hintLines(dashboardHint(view, buttons, highlighted), theme, width)
   // Below the minimum size and behind the end-of-run box no card's buttons are drawn.
-  const allHint = hintOf(!small && view.endOfRun === null)
+  const allHint = hintAt(!small && view.endOfRun === null)
   const hint = allHint.slice(0, take(allHint.length))
   const allTotals = totalsLines(view.totals, theme, width, small)
   if (small) {
@@ -186,17 +189,189 @@ export const dashboardLayout = (
   const current = Math.min(sectionLines(layout, cards.length), room)
   const spare = room - current
   if (layout._tag === "Cards") return { ...drawn, current, cards: layout, ending: null, spare }
-  const fewer = hintOf(false).slice(0, hint.length)
+  const fewer = hintAt(false).slice(0, hint.length)
   const freed = hint.length - fewer.length
   return { ...drawn, hint: fewer, current, cards: layout, ending: null, spare: spare + freed }
 }
 
+/** The card highlighted while none is chosen: that of the oldest open request (§ 4.5). */
+export const targetOf = (view: RunView): string | null =>
+  view.cards.find((card) => card.ticket === view.requests[0]?.ticket)?.ticket ?? null
+
+/** Where the dashboard's keys are: the card they act on, and whether a request's buttons are drawn. */
+export interface DashboardAt {
+  /** Whether the full cards are drawn, and with them a request's buttons (§ 4.5). */
+  readonly buttons: boolean
+  /** The highlighted card, as the key is pressed. */
+  readonly highlighted: () => Card | undefined
+}
+
+/** What the dashboard's keys do. */
+export interface DashboardActions {
+  /** `?`: opens or closes the key help. */
+  readonly help: () => void
+  /** `Esc`: closes the key help. */
+  readonly escape: () => void
+  /** Moves the highlight `by` cards, or, `buttons`, first between an attention card's buttons. */
+  readonly step: (by: 1 | -1, buttons: boolean) => void
+  readonly enter: () => void
+  readonly answer: (card: Card, key: AnswerKey) => void
+  readonly denyWithReason: (card: Card) => void
+  /** Opens the Answer box on the card, drawn on a compact line, to read its request first. */
+  readonly openAnswer: (card: Card) => void
+  readonly pick: (card: Card, n: number) => void
+  /** `s`: the stop question. */
+  readonly stop: () => void
+  /** `q`, with the end-of-run box shown: ends the run. */
+  readonly endRun: () => void
+}
+
+const nothing = () => {}
+
+/** Keys that do nothing: the dashboard's commands as its hint and key help name them. */
+const inertDashboard: DashboardActions = {
+  help: nothing,
+  escape: nothing,
+  step: nothing,
+  enter: nothing,
+  answer: nothing,
+  denyWithReason: nothing,
+  openAnswer: nothing,
+  pick: nothing,
+  stop: nothing,
+  endRun: nothing,
+}
+
+const moveRow: HelpRow = ["Tab, Shift+Tab, arrows", "move the highlight between cards"]
+const denyRow: HelpRow = ["d, Shift+D", "deny the request; deny with a reason"]
+const pickRow: HelpRow = ["1–4 in a question", "pick an option"]
+
 /**
- * The hint's keys, as RunView names them, with `d` and `a` left out when the dashboard draws no
- * request's buttons (`buttons` false): there they open the Answer box, not answer (§ 4.5).
+ * The dashboard's keys (§ 7.3), its hint's and its key help's. The answer keys answer only a
+ * request drawn with its buttons, which only the full cards draw (`at.buttons`): the highlighted
+ * attention card's, where the key answers it (keyAnswer), so that the hint names `d` and `a` only
+ * there. On a compact line they open the Answer box instead, and the hint names neither (§ 4.5).
+ * With the end-of-run box shown, `q` ends the run, and the hint names it in place of `s`.
  */
-export const drawnHint = (keys: ReadonlyArray<Key>, buttons: boolean): ReadonlyArray<Key> =>
-  buttons ? keys : keys.filter((key) => key.keys !== "d" && key.keys !== "a")
+export const dashboardCommands = (
+  view: RunView,
+  at: DashboardAt,
+  act: DashboardActions = inertDashboard,
+): ReadonlyArray<Command> => {
+  const cards = view.cards.length > 0
+  const ending = view.endOfRun !== null
+  // The highlighted attention card, with its buttons drawn or on a compact line.
+  const attention = (buttons: boolean) => () => {
+    const card = at.highlighted()
+    return at.buttons === buttons && card !== undefined && grows(card) ? card : undefined
+  }
+  const inCard = attention(true)
+  const onLine = attention(false)
+  const answers = (key: AnswerKey) => () => {
+    const request = inCard()?.requests[0]
+    return request !== undefined && keyAnswer(request, key) !== null
+  }
+  const on = (card: () => Card | undefined, run: (card: Card) => void) => () => {
+    const found = card()
+    if (found !== undefined) run(found)
+  }
+  const named = (shown: boolean, keys: string, does: string) => (shown ? { keys, does } : undefined)
+  return [
+    // Tab and → move between an attention card's buttons, and on to the next card; ↓ and ↑ from
+    // card to card.
+    {
+      keys: ["tab", "right"],
+      run: () => act.step(1, true),
+      hint: named(cards, "Tab", "select"),
+      help: moveRow,
+    },
+    { keys: ["shift+tab", "left"], run: () => act.step(-1, true), help: moveRow },
+    { keys: ["down"], run: () => act.step(1, false), help: moveRow },
+    { keys: ["up"], run: () => act.step(-1, false), help: moveRow },
+    {
+      keys: ["return", "enter"],
+      run: act.enter,
+      hint: named(cards, "Enter", "open"),
+      help: ["Enter, a click", "open the highlighted card; press the focused button"],
+    },
+    { keys: ["escape"], run: act.escape, help: ["Esc", "close an open box"] },
+    {
+      keys: ["d"],
+      when: answers("d"),
+      run: on(inCard, (card) => act.answer(card, "d")),
+      hint: { keys: "d", does: "deny" },
+      help: denyRow,
+    },
+    {
+      keys: ["shift+d"],
+      when: () => inCard() !== undefined,
+      run: on(inCard, act.denyWithReason),
+      help: denyRow,
+    },
+    {
+      keys: ["a"],
+      when: answers("a"),
+      run: on(inCard, (card) => act.answer(card, "a")),
+      hint: { keys: "a", does: "allow" },
+      help: ["a", "allow the request, unless it opens on Deny"],
+    },
+    {
+      keys: ["r"],
+      when: answers("r"),
+      run: on(inCard, (card) => act.answer(card, "r")),
+      help: ["r", "allow for this run"],
+    },
+    // On a compact line an answer key opens the Answer box, where you read the request first.
+    {
+      keys: ["d", "shift+d", "a", "r"],
+      when: () => onLine() !== undefined,
+      run: on(onLine, act.openAnswer),
+      help: denyRow,
+    },
+    // `1`–`4` pick an option of the highlighted card's question; no number opens a worker.
+    ...[1, 2, 3, 4].map((n) => ({
+      keys: [String(n)],
+      when: () => inCard() !== undefined,
+      run: on(inCard, (card) => act.pick(card, n)),
+      help: pickRow,
+    })),
+    // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
+    {
+      keys: ["s"],
+      run: act.stop,
+      hint: named(
+        !ending,
+        "s",
+        view.windDown !== null ? "keep taking tickets" : "stop after current",
+      ),
+      help: ["s", "stop after current, or keep taking tickets"],
+    },
+    {
+      keys: ["q"],
+      when: () => ending,
+      run: act.endRun,
+      hint: { keys: "q", does: "end the run" },
+      help: ["q", "end the run, from the end-of-run box"],
+    },
+    { keys: ["?"], run: act.help, hint: { keys: "?", does: "keys" }, help: ["?", "these keys"] },
+  ]
+}
+
+/**
+ * The dashboard's hint, `highlighted`'s card highlighted (the target's when left out) and, where
+ * `buttons`, a request's buttons drawn.
+ */
+export const dashboardHint = (
+  view: RunView,
+  buttons: boolean,
+  highlighted: string | null = targetOf(view),
+): ReadonlyArray<Key> =>
+  hintOf(
+    dashboardCommands(view, {
+      buttons,
+      highlighted: () => view.cards.find((card) => card.ticket === highlighted),
+    }),
+  )
 
 /** The ticket of the card `step` cards on from `from`'s, round; the first or last from none. */
 export const moveHighlight = (
@@ -221,16 +396,16 @@ export const Dashboard = () => {
   const [help, setHelp, helpOpen] = useKeyState(() => false)
   const cards = view.cards
   // With none chosen, the card of the oldest open request is the target, and highlighted (§ 4.5).
-  const oldest = view.requests[0]
-  const target = cards.find((card) => card.ticket === oldest?.ticket)?.ticket ?? null
+  const target = targetOf(view)
   const current = () => (cards.some((card) => card.ticket === chosen()) ? chosen() : target)
   const highlighted = current()
   const choose = (ticket: string | null) => setChosen(() => ticket)
   const open = useCallback((ticket: string) => command(UiCommand.OpenWorker({ ticket })), [command])
 
+  // The hint names `d` and `a` for the highlighted card's request: the layout is the highlight's.
   const laid = useMemo(
-    () => dashboardLayout(view, theme, width, height),
-    [view, theme, width, height],
+    () => dashboardLayout(view, theme, width, height, highlighted),
+    [view, theme, width, height, highlighted],
   )
   const { small, ending } = laid
   // Behind the end-of-run box no card's buttons are drawn: Enter opens the Answer box, as on a
@@ -241,7 +416,6 @@ export const Dashboard = () => {
   const answering = useAnswering(buttons ? cards : [])
   // Beside Current, the table leaves out the tickets it shows; the end-of-run box shows none.
   const rows = ending === null ? rowsBesideCurrent(view.rows, cards) : view.rows
-  const endingNow = useEvent(() => ending !== null)
 
   // The view's keys, as bound: a key does nothing while the key help is open, but close it.
   const input = useInput()
@@ -249,18 +423,21 @@ export const Dashboard = () => {
   // Toasts are drawn above the hint's lines, however many it wraps onto.
   useHintHeight(input.toasts, laid.hint.length)
   const showHelp = (shown: boolean) => setHelp(() => shown)
-  const key = (keys: ReadonlyArray<string>, run: () => void): ReadonlyArray<KeyBinding> =>
-    keys.map((each) => ({ key: each, run: () => (helpOpen() ? undefined : run()) }))
+  const unlessHelp =
+    <A extends ReadonlyArray<unknown>>(run: (...args: A) => void) =>
+    (...args: A) => {
+      if (!helpOpen()) run(...args)
+    }
   const highlightedCard = () => cards.find((card) => card.ticket === current())
   // The highlighted card's request is the target: its guard starts again as the highlight moves.
   answering.target(buttons ? highlightedCard() : undefined)
   // The attention card highlighted, with its buttons drawn: the one Tab, Enter and 1–4 work in.
   const inCard = () => {
     const card = highlightedCard()
-    return card !== undefined && grows(card) && layout._tag === "Cards" ? card : undefined
+    return card !== undefined && grows(card) && buttons ? card : undefined
   }
-  const step = (by: 1 | -1, buttons: boolean) => {
-    const card = buttons ? inCard() : undefined
+  const step = (by: 1 | -1, inside: boolean) => {
+    const card = inside ? inCard() : undefined
     if (card !== undefined && answering.step(card, by)) return
     answering.reset()
     choose(moveHighlight(cards, current(), by))
@@ -268,40 +445,33 @@ export const Dashboard = () => {
   const enter = () => {
     const card = highlightedCard()
     if (card === undefined) return
-    if (grows(card) && layout._tag !== "Cards") box.set(Box.Answer({ ticket: card.ticket }))
+    if (grows(card) && !buttons) box.set(Box.Answer({ ticket: card.ticket }))
     else if (inCard() === undefined || !answering.pressFocused(card)) open(card.ticket)
   }
-  // `1`–`4` pick an option of the highlighted card's question; no number opens a worker.
-  const pick = (n: number) => () => {
-    const card = inCard()
-    if (card !== undefined) answering.pick(card, n)
-  }
-  // An answer key answers the highlighted card's request with its buttons drawn; else it opens the
-  // Answer box on the highlighted attention card, where you read the request first.
-  const answerKey = (run: () => void) => () => {
-    if (inCard() !== undefined) return run()
-    const card = highlightedCard()
-    if (card !== undefined && grows(card)) box.set(Box.Answer({ ticket: card.ticket }))
-  }
-  useLayer("view", [
-    { key: "?", run: () => showHelp(!helpOpen()) },
-    { key: "escape", run: () => showHelp(false) },
-    // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
-    ...key(["s"], () => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
-    // With the end-of-run box shown, `q` ends the run.
-    ...key(["q"], () => (endingNow() ? command(UiCommand.EndRun()) : undefined)),
-    // Tab and → move between an attention card's buttons, and on to the next card; ↓ and ↑ from
-    // card to card.
-    ...key(["tab", "right"], () => step(1, true)),
-    ...key(["shift+tab", "left"], () => step(-1, true)),
-    ...key(["down"], () => step(1, false)),
-    ...key(["up"], () => step(-1, false)),
-    ...key(["return", "enter"], enter),
-    ...answerBindings(answering, inCard).flatMap((binding) =>
-      key([binding.key], answerKey(binding.run)),
+  const keys = useCommands(
+    "view",
+    dashboardCommands(
+      view,
+      { buttons, highlighted: highlightedCard },
+      {
+        help: () => showHelp(!helpOpen()),
+        escape: () => showHelp(false),
+        step: unlessHelp(step),
+        enter: unlessHelp(enter),
+        answer: unlessHelp(answering.key),
+        denyWithReason: unlessHelp(answering.denyWithReason),
+        openAnswer: unlessHelp((card: Card) => box.set(Box.Answer({ ticket: card.ticket }))),
+        pick: unlessHelp((card: Card, n: number) => {
+          answering.pick(card, n)
+        }),
+        stop: unlessHelp(() => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
+        endRun: unlessHelp(() => command(UiCommand.EndRun())),
+      },
     ),
-    ...[1, 2, 3, 4].flatMap((n) => key([String(n)], pick(n))),
-  ])
+  )
+  const keyHelp = help ? (
+    <KeyHelp theme={theme} width={width} height={height} keys={keys.help} />
+  ) : null
 
   if (small) {
     return (
@@ -313,7 +483,7 @@ export const Dashboard = () => {
         <Section lines={laid.hint.length}>
           <Lines lines={laid.hint} />
         </Section>
-        {help ? <KeyHelp theme={theme} width={width} height={height} /> : null}
+        {keyHelp}
       </box>
     )
   }
@@ -362,7 +532,7 @@ export const Dashboard = () => {
       <Section lines={laid.hint.length}>
         <Lines lines={laid.hint} />
       </Section>
-      {help ? <KeyHelp theme={theme} width={width} height={height} /> : null}
+      {keyHelp}
     </box>
   )
 }

@@ -72,6 +72,7 @@ import {
   finishedWords,
   heldLine,
   InterruptQuestion,
+  interruptCommands,
   QueuedLines,
   queuedLines,
   SteeredLine,
@@ -80,7 +81,8 @@ import { clickable } from "./click.ts"
 import { useFilingDesk } from "./filingDesk.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
-import { Box, useInput, useLayer } from "./keys.ts"
+import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
+import { Box, useInput } from "./keys.ts"
 import {
   boxed,
   boxSides,
@@ -110,10 +112,13 @@ import {
 } from "./transcriptItems.ts"
 import {
   entryId,
+  inertTranscript,
   type Panel,
   requestKey,
   type Selection,
+  type TranscriptActions,
   type TranscriptWindow,
+  transcriptCommands,
   useComposer,
   usePanel,
   useSelection,
@@ -830,62 +835,133 @@ export const handBackLines = (
   )
 }
 
-/**
- * The worker view's hint: the keys there are; the composer's while you write in it. Once the worker
- * has `finished`, nothing is sent to it, so the hint has no Enter send, Ctrl+X or Ctrl+R (tutti-2n7y),
- * and has Ctrl+T, which files what you typed as a ticket (tutti-g0wd).
- */
-const hintKeys = (requests: boolean, composing: boolean, steered: boolean, finished: boolean) => {
-  const steering = finished
-    ? [{ keys: "Ctrl+T", does: "file as ticket" }]
-    : [
-        { keys: "Ctrl+X", does: "interrupt" },
-        ...(steered ? [{ keys: "Ctrl+R", does: "release" }] : []),
-      ]
-  return composing
-    ? [
-        ...(finished ? [] : [{ keys: "Enter", does: "send" }]),
-        { keys: "Alt+Enter/Ctrl+J", does: "new line" },
-        { keys: "Esc", does: "leave" },
-        ...steering,
-      ]
-    : [
-        { keys: "Esc", does: "dashboard" },
-        { keys: "i", does: "write" },
-        ...(requests ? [{ keys: "d", does: "deny" }] : []),
-        ...steering,
-        { keys: "↑↓", does: "select" },
-        { keys: "Enter", does: "expand" },
-        { keys: "?", does: "keys" },
-        { keys: "PgUp/PgDn", does: "scroll" },
-        { keys: "g/G", does: "top/end" },
-      ]
+/** Where the worker view's keys are: what its hint names depends on it. */
+export interface WorkerViewAt {
+  /** Whether the panel has requests open. */
+  readonly requests: boolean
+  /** Whether you write in the composer now: the hint names the composer's keys. */
+  readonly composing: boolean
+  readonly steered: boolean
+  /** Whether the worker has finished: nothing is sent to it, and Ctrl+T files what you wrote. */
+  readonly finished: boolean
 }
 
-/** The worker view's keys, for its key help (§ 7.3's table). */
-export const workerViewKeys: ReadonlyArray<readonly [string, string]> = [
-  ["Tab, Shift+Tab, arrows", "move between items; between a request's buttons"],
-  ["Enter, a click", "expand or collapse the item; press the focused button"],
-  [
-    "i, a click on the composer",
-    "write to the worker; Enter sends, Alt+Enter or Ctrl+J a new line",
-  ],
-  ["Esc, ← Dashboard", "leave the composer; back to the dashboard"],
-  ["Esc, Tab, Enter", "switch workers, by way of the dashboard"],
-  ["Ctrl+X", "interrupt the worker's turn (asks first)"],
-  ["Ctrl+R, Release", "release a steered worker"],
-  ["Ctrl+T, File as ticket", "once the worker has finished, file what you wrote as a ticket"],
-  ["d, Shift+D", "deny the request; deny with a reason"],
-  ["a", "allow the request, unless it opens on Deny"],
-  ["r", "allow for this run"],
-  ["1–4 in a question", "pick an option"],
-  ["Answer in view", "the answer form: ↑↓ move, Space picks, Enter presses"],
-  ["the wheel, PgUp/PgDn", "scroll; past the top loads earlier items"],
-  ["g, G", "jump to the top or the end"],
-  ["Ctrl+C", "quit: stop after current, or quit now"],
-  ["a drag", "select text and copy it"],
-  ["?", "these keys"],
+/** What the worker view's keys do: the transcript's, and its own. */
+export interface WorkerViewActions extends TranscriptActions {
+  readonly interrupt: () => void
+  readonly release: () => void
+  readonly fileAsTicket: () => void
+}
+
+const nothing = () => {}
+
+/** Keys that do nothing, for the hint as the layout counts it, before the keys are bound. */
+const inertWorkerView: WorkerViewActions = {
+  ...inertTranscript,
+  interrupt: nothing,
+  release: nothing,
+  fileAsTicket: nothing,
+}
+
+const writeRow: HelpRow = [
+  "i, a click on the composer",
+  "write to the worker; Enter sends, Alt+Enter or Ctrl+J a new line",
 ]
+const moveRow: HelpRow = [
+  "Tab, Shift+Tab, arrows",
+  "move between items; between a request's buttons",
+]
+const denyRow: HelpRow = ["d, Shift+D", "deny the request; deny with a reason"]
+const scrollRow: HelpRow = ["the wheel, PgUp/PgDn", "scroll; past the top loads earlier items"]
+const jumpRow: HelpRow = ["g, G", "jump to the top or the end"]
+const pickRow: HelpRow = ["1–4 in a question", "pick an option"]
+
+/**
+ * The worker view's keys (§ 7.3), its hint's and its key help's: the keys there are; the composer's
+ * while you write in it. Once the worker has `finished`, nothing is sent to it, so the hint has no
+ * Enter send, Ctrl+X or Ctrl+R (tutti-2n7y), and has Ctrl+T, which files what you typed as a
+ * ticket (tutti-g0wd).
+ */
+export const workerViewCommands = (
+  at: WorkerViewAt,
+  act: WorkerViewActions = inertWorkerView,
+): ReadonlyArray<Command> => {
+  const keys = transcriptCommands(act)
+  const viewing = !at.composing
+  const named = (shown: boolean, keys: string, does: string) => (shown ? { keys, does } : undefined)
+  return [
+    // The composer's own keys, which its field binds.
+    {
+      keys: [],
+      run: nothing,
+      hint: named(at.composing && !at.finished, "Enter", "send"),
+      help: writeRow,
+    },
+    {
+      keys: [],
+      run: nothing,
+      hint: named(at.composing, "Alt+Enter/Ctrl+J", "new line"),
+      help: writeRow,
+    },
+    {
+      ...keys.escape,
+      hint: { keys: "Esc", does: at.composing ? "leave" : "dashboard" },
+      help: ["Esc, ← Dashboard", "leave the composer; back to the dashboard"],
+    },
+    // Esc, then the dashboard's keys: the view has no key of its own for it (§ 7.3).
+    {
+      keys: [],
+      run: nothing,
+      help: ["Esc, Tab, Enter", "switch workers, by way of the dashboard"],
+    },
+    { ...keys.write, hint: named(viewing, "i", "write"), help: writeRow },
+    { ...keys.deny, hint: named(viewing && at.requests, "d", "deny"), help: denyRow },
+    { ...keys.denyWithReason, help: denyRow },
+    { ...keys.allow, help: ["a", "allow the request, unless it opens on Deny"] },
+    { ...keys.forRun, help: ["r", "allow for this run"] },
+    {
+      keys: ["ctrl+x"],
+      run: act.interrupt,
+      hint: named(!at.finished, "Ctrl+X", "interrupt"),
+      help: ["Ctrl+X", "interrupt the worker's turn (asks first)"],
+    },
+    {
+      keys: ["ctrl+r"],
+      run: act.release,
+      hint: named(at.steered && !at.finished, "Ctrl+R", "release"),
+      help: ["Ctrl+R, Release", "release a steered worker"],
+    },
+    {
+      keys: ["ctrl+t"],
+      run: act.fileAsTicket,
+      hint: named(at.finished, "Ctrl+T", "file as ticket"),
+      help: [
+        "Ctrl+T, File as ticket",
+        "once the worker has finished, file what you wrote as a ticket",
+      ],
+    },
+    { ...keys.down, hint: named(viewing, "↑↓", "select"), help: moveRow },
+    { ...keys.up, help: moveRow },
+    { ...keys.next, help: moveRow },
+    { ...keys.previous, help: moveRow },
+    {
+      ...keys.enter,
+      hint: named(viewing, "Enter", "expand"),
+      help: ["Enter, a click", "expand or collapse the item; press the focused button"],
+    },
+    { ...keys.help, hint: named(viewing, "?", "keys"), help: ["?", "these keys"] },
+    { ...keys.pageUp, hint: named(viewing, "PgUp/PgDn", "scroll"), help: scrollRow },
+    { ...keys.pageDown, help: scrollRow },
+    { ...keys.top, hint: named(viewing, "g/G", "top/end"), help: jumpRow },
+    { ...keys.end, help: jumpRow },
+    ...keys.picks.map((pick) => ({ ...pick, help: pickRow })),
+    {
+      keys: [],
+      run: nothing,
+      help: ["Answer in view", "the answer form: ↑↓ move, Space picks, Enter presses"],
+    },
+  ]
+}
 
 /**
  * The head of a transcript's view: `link`, which a click follows as `leave`, then `head` at the
@@ -1194,7 +1270,11 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     line: finished || steered ? 1 : 0,
     queued: queued.length,
     composer: composer.lines,
-    hint: hintLines(hintKeys(requests, composer.typing, steered, finished), theme, inner).length,
+    hint: hintLines(
+      hintOf(workerViewCommands({ requests, composing: composer.typing, steered, finished })),
+      theme,
+      inner,
+    ).length,
   })
   const fit = usePanelRooms(theme, panelWidth, panelBudget(height, chrome(true)), height)
   // The requests open now: a finished worker's card, kept for its head, has none.
@@ -1254,13 +1334,12 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     sends.cancelled(asked.ticket)
     command(UiCommand.Interrupt({ ticket: asked.ticket }))
   }
-  useLayer(
+  useCommands(
     "box",
-    [
-      { key: "y", run: () => answerInterrupt(true) },
-      { key: "n", run: () => answerInterrupt(false) },
-      { key: "escape", run: () => answerInterrupt(false) },
-    ],
+    interruptCommands(
+      () => answerInterrupt(true),
+      () => answerInterrupt(false),
+    ),
     "Interrupt",
   )
   // The view draws its Interrupt box and binds its keys: unmounted with it open, nothing would, and the
@@ -1278,19 +1357,26 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     if (ticket !== undefined) command(UiCommand.HandBackNow({ ticket }))
   }
   const close = () => command(UiCommand.CloseWorker())
-  const help = useTranscriptKeys({
+  const { help, actions, unlessHelp } = useTranscriptKeys({
     transcript,
     panel,
     selection,
     composer,
     back: close,
     enter: () => (selection.current() === handBackKey ? handBackNow() : selection.enter()),
-    own: [
-      { key: "ctrl+x", run: interrupt },
-      { key: "ctrl+r", run: release },
-      { key: "ctrl+t", run: fileAsTicket },
-    ],
   })
+  const keys = useCommands(
+    "view",
+    workerViewCommands(
+      { requests: panel.requests.length > 0, composing: composer.typing, steered, finished },
+      {
+        ...actions,
+        interrupt: unlessHelp(interrupt),
+        release: unlessHelp(release),
+        fileAsTicket: unlessHelp(fileAsTicket),
+      },
+    ),
+  )
 
   const rule: Segments = [seg("─".repeat(inner), theme.look("frame"))]
   const head = (now: number, spin: string): Segments => {
@@ -1374,14 +1460,9 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           />
         </Section>
         <Section lines={laid.hint}>
-          <ViewHint
-            keys={hintKeys(panel.requests.length > 0, composer.typing, steered, finished)}
-            width={inner}
-          />
+          <ViewHint keys={keys.hint} width={inner} />
         </Section>
-        {help ? (
-          <KeyHelp theme={theme} width={width} height={height} keys={workerViewKeys} />
-        ) : null}
+        {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
         {box?._tag === "Interrupt" ? (
           <InterruptQuestion
             theme={theme}

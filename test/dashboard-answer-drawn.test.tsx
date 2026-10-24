@@ -10,11 +10,11 @@ import { WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { TicketPhase } from "../src/run/phase.ts"
-import { emptyStatus, type Key, project, type RunView } from "../src/run/runView.ts"
+import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
-import { drawnHint } from "../src/ui/Dashboard.tsx"
+import { dashboardHint } from "../src/ui/Dashboard.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
 import { type Frame, type Rendered, type Size, withRender } from "./render.ts"
@@ -221,18 +221,23 @@ describe("a request whose buttons aren't drawn", () => {
   })
 })
 
-describe("drawnHint", () => {
-  const keys: ReadonlyArray<Key> = [
-    { keys: "Tab", does: "select" },
-    { keys: "Enter", does: "open" },
-    { keys: "d", does: "deny" },
-    { keys: "a", does: "allow" },
-    { keys: "s", does: "stop after current" },
-    { keys: "?", does: "keys" },
-  ]
+describe("the dashboard's hint", () => {
+  const words = (view: RunView, buttons: boolean, highlighted?: string | null) =>
+    dashboardHint(view, buttons, highlighted).map((key) => key.keys)
 
-  test("keeps every key with the buttons drawn, and leaves out d and a without", () => {
-    expect(drawnHint(keys, true)).toBe(keys)
-    expect(drawnHint(keys, false).map((key) => key.keys)).toEqual(["Tab", "Enter", "s", "?"])
+  test("names d and a with the buttons drawn, and neither without", () => {
+    const view = viewOf([permission("r1", "t-1")], 2)
+    expect(words(view, true)).toEqual(["Tab", "Enter", "d", "a", "s", "?"])
+    expect(words(view, false)).toEqual(["Tab", "Enter", "s", "?"])
+  })
+
+  test("names a only where it allows the highlighted card's request", () => {
+    const view = viewOf([{ ...permission("r1", "t-1"), defaultToNo: true }], 2)
+    expect(words(view, true)).toEqual(["Tab", "Enter", "d", "s", "?"])
+  })
+
+  test("names neither on a card with no request highlighted, where they answer nothing", () => {
+    const view = viewOf([permission("r1", "t-1")], 2)
+    expect(words(view, true, "t-2")).toEqual(["Tab", "Enter", "s", "?"])
   })
 })

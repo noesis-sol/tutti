@@ -260,7 +260,6 @@ describe("drawn", () => {
       ...emptyView,
       totals: { ...emptyView.totals, slots: 2 },
       warnings: Array.from({ length: 12 }, (_, i) => `warning ${i + 1}`),
-      hint: [{ keys: "?", does: "keys" }],
     }
     const frame = await renderFrame(
       <Root

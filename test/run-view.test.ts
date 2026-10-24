@@ -32,6 +32,7 @@ import {
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
+import { dashboardHint } from "../src/ui/Dashboard.tsx"
 import { sanitizeLine } from "../src/ui/sanitize.ts"
 
 type Env = Ledger | Log | EventStream | Captured | Scope.Scope
@@ -273,7 +274,6 @@ describe("identity", () => {
     expect(row(second, "c")).toBe(row(first, "c"))
     expect(card(second, "b")).toBe(card(first, "b"))
     expect(second.totals).toBe(first.totals)
-    expect(second.hint).toBe(first.hint)
     expect(second.requests).toBe(first.requests)
     expect(row(third, "a")).toBe(row(second, "a"))
     expect(card(third, "a")).toBe(card(second, "a"))
@@ -455,7 +455,10 @@ describe("wind-down and hint", () => {
         return { before, during, after }
       }),
     )
-    const hint = (view: RunView) => view.hint.map((key) => `${key.keys} ${key.does}`).join(" · ")
+    const hint = (view: RunView) =>
+      dashboardHint(view, true)
+        .map((key) => `${key.keys} ${key.does}`)
+        .join(" · ")
     expect(result.before.windDown).toBeNull()
     expect(hint(result.before)).toBe(
       "Tab select · Enter open · d deny · s stop after current · ? keys",

@@ -2,7 +2,8 @@
 // tickets (Drain, orchestra's drain), `q` quits now (Quit{now}), `Esc` cancels; a second Ctrl+C
 // quits now (Input.tsx's global keys).
 import { UiCommand } from "../run/commands.ts"
-import { useInput, useLayer } from "./keys.ts"
+import { type Command, useCommands } from "./keyCommands.ts"
+import { useInput } from "./keys.ts"
 import { seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { useCommand, useTheme } from "./useRunView.ts"
@@ -27,18 +28,16 @@ const useAnswers = () => {
   }
 }
 
+/** The quit box's keys: bound while it is open, and drawn in it. */
+const quitCommands = (answers: ReturnType<typeof useAnswers>): ReadonlyArray<Command> => [
+  { keys: ["s"], run: answers.drain, hint: { keys: "s", does: "stop after current" } },
+  { keys: ["q"], run: answers.quit, hint: { keys: "q", does: "quit now" } },
+  { keys: ["escape"], run: answers.cancel, hint: { keys: "Esc", does: "cancel" } },
+]
+
 /** The quit box's keys, bound while it is open. */
 export const QuitKeys = () => {
-  const answers = useAnswers()
-  useLayer(
-    "box",
-    [
-      { key: "s", run: answers.drain },
-      { key: "q", run: answers.quit },
-      { key: "escape", run: answers.cancel },
-    ],
-    "Quit",
-  )
+  useCommands("box", quitCommands(useAnswers()), "Quit")
   return null
 }
 
@@ -53,11 +52,7 @@ export const QuitBox = () => {
         seg(""),
         seg(quitAbout, theme.styles.dim),
       ]}
-      choices={[
-        { name: "s", does: "stop after current", run: answers.drain },
-        { name: "q", does: "quit now", run: answers.quit },
-        { name: "Esc", does: "cancel", run: answers.cancel },
-      ]}
+      choices={quitCommands(answers)}
     />
   )
 }

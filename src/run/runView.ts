@@ -361,7 +361,6 @@ export interface RunView {
   readonly windDown: WindDownView | null
   /** The workers the end-of-run box names (D19), in place of the cards; null with no box. */
   readonly endOfRun: ReadonlyArray<Waiting> | null
-  readonly hint: ReadonlyArray<Key>
   /** The warning line's notices, each once. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -399,7 +398,6 @@ export const emptyView: RunView = {
   banners: [],
   windDown: null,
   endOfRun: null,
-  hint: [],
   warnings: [],
 }
 
@@ -697,30 +695,6 @@ const noteOf = (entry: Entry, title: string, branch: string): string => {
 const latestOf = (action: LatestAction | undefined): LatestAction | null =>
   action === undefined ? null : { text: sanitizeLine(action.text), denied: action.denied }
 
-const hintOf = (
-  cards: ReadonlyArray<Card>,
-  requests: ReadonlyArray<AttentionRequest>,
-  windingDown: boolean,
-  ending: boolean,
-): ReadonlyArray<Key> => {
-  const keys: Array<Key> = []
-  if (cards.length > 0) {
-    keys.push({ keys: "Tab", does: "select" })
-    keys.push({ keys: "Enter", does: "open" })
-  }
-  const target = requests[0]
-  if (target !== undefined) {
-    keys.push({ keys: "d", does: "deny" })
-    if (target.kind._tag === "Permission" && !target.defaultToNo) {
-      keys.push({ keys: "a", does: "allow" })
-    }
-  }
-  if (ending) keys.push({ keys: "q", does: "end the run" })
-  else keys.push({ keys: "s", does: windingDown ? "keep taking tickets" : "stop after current" })
-  keys.push({ keys: "?", does: "keys" })
-  return keys
-}
-
 /** A card's memory from `load`, for its worker on `ticket`: none when the reading has none. */
 const memoryOf = (load: Reading | null, ticket: string): { readonly memory?: number } => {
   const memory = load?.workers.get(ticket)
@@ -896,7 +870,6 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     banners: keep(previous.banners, banners),
     windDown: keep(previous.windDown, windDown),
     endOfRun: keep(previous.endOfRun, endOfRun),
-    hint: keep(previous.hint, hintOf(cards, requests, ledger.windDown !== null, endOfRun !== null)),
     warnings: keep(previous.warnings, warnings),
   }
   const parts = Object.keys(next) as ReadonlyArray<keyof RunView>

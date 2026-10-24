@@ -45,6 +45,7 @@ import { appConfig } from "../src/testing/AppConfig.ts"
 import { waitForTest } from "../src/testing/Attention.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
+import { dashboardHint } from "../src/ui/Dashboard.tsx"
 import { endOfRunText } from "../src/ui/EndOfRunBox.tsx"
 import { advance, backlog, type Env, type Ran, scenario, type World } from "./harness.ts"
 
@@ -171,7 +172,7 @@ describe("RunView", () => {
     expect(card?.status).toBe("conflict waits for you")
     expect(card?.motion).toBe("•")
     expect(card?.steered).toBe(true)
-    expect(view.hint.map((key) => key.keys)).toContain("Enter")
+    expect(dashboardHint(view, true).map((key) => key.keys)).toContain("Enter")
   })
 
   test("gives a Blocked ticket with no hand-back waiting no card", () => {
@@ -377,7 +378,7 @@ const expectWaiting = (seen: Seen) => {
   expect(card?.phase._tag).toBe("Blocked")
   expect(card?.status).toBe(handBackStatus)
   expect(card?.motion).toBe("•")
-  expect(seen.waiting.hint.map((key) => key.keys)).toContain("q")
+  expect(dashboardHint(seen.waiting, false).map((key) => key.keys)).toContain("q")
   expect(seen.endedThen).toBe(false)
   expect(seen.opened).toEqual(Screen.Worker({ ticket: "a" }))
 }

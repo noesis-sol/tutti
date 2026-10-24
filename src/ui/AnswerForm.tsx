@@ -34,7 +34,8 @@ import {
 import { staleToast, useSendAnswer } from "./attentionKeys.ts"
 import { clickable } from "./click.ts"
 import { hintSegments } from "./Hint.tsx"
-import { useInput, useLayer } from "./keys.ts"
+import { useCommands } from "./keyCommands.ts"
+import { useInput } from "./keys.ts"
 import { cut, Line, plainFg, type Segments, seg, styled } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
@@ -46,14 +47,6 @@ export const formWidth = 72
 
 /** The id of row `index`'s renderable, to scroll it into view. */
 const rowId = (index: number): string => `form-row-${index}`
-
-/** The form's hint: its keys. */
-const formKeys = [
-  { keys: "↑↓", does: "move" },
-  { keys: "Space", does: "pick" },
-  { keys: "Enter", does: "pick or press" },
-  { keys: "Esc", does: "cancel" },
-]
 
 /** An option row's mark: `(•)` picked of one, `[x]` of several. */
 const markOf = (field: Field, picked: boolean): string =>
@@ -180,21 +173,33 @@ const FormBody = ({
     setFocus(to)
     pickRow({ field: row.field, option: n - 1 })
   }
-  useLayer(
+  // The form's keys, and its hint.
+  const { hint } = useCommands(
     "box",
     [
-      ...["down", "tab"].map((key) => ({ key, run: () => setFocus(at() + 1) })),
-      ...["up", "shift+tab"].map((key) => ({ key, run: () => setFocus(at() - 1) })),
-      ...["return", "enter"].map((key) => ({ key, run: () => press(at()) })),
       {
-        key: "space",
+        keys: ["down", "tab"],
+        run: () => setFocus(at() + 1),
+        hint: { keys: "↑↓", does: "move" },
+      },
+      { keys: ["up", "shift+tab"], run: () => setFocus(at() - 1) },
+      {
+        keys: ["space"],
         run: () => {
           const row = rows[at()]
           if (row === undefined) press(at())
           else if (!typesAt(form, row)) pickRow(row)
         },
+        hint: { keys: "Space", does: "pick" },
       },
-      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ key: String(n), run: number(n) })),
+      {
+        keys: ["return", "enter"],
+        run: () => press(at()),
+        hint: { keys: "Enter", does: "pick or press" },
+      },
+      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ keys: [String(n)], run: number(n) })),
+      // Bound by AnswerFormKeys, from before the form opens.
+      { keys: [], run: close, hint: { keys: "Esc", does: "cancel" } },
     ],
     "Form",
   )
@@ -342,7 +347,7 @@ const FormBody = ({
         <Line
           segments={
             missing === null
-              ? cut(hintSegments(formKeys, theme, inner + 2).slice(1), inner)
+              ? cut(hintSegments(hint, theme, inner + 2).slice(1), inner)
               : cut([seg(missing, looks.error)], inner)
           }
         />
@@ -383,6 +388,6 @@ export const AnswerForm = ({
 /** The form's Esc, bound while no box is open too, so that it works from the moment it opens. */
 export const AnswerFormKeys = () => {
   const { box } = useInput()
-  useLayer("box", [{ key: "escape", run: () => box.set(null) }], "Form")
+  useCommands("box", [{ keys: ["escape"], run: () => box.set(null) }], "Form")
   return null
 }

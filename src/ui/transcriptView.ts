@@ -1,7 +1,8 @@
 // What the worker view and the Interview view share (§ 7.5, § 4.10): a session's transcript open
 // while the view is, with your messages queued over it, bounded and scrolled (useTranscriptWindow);
 // the attention panel's requests and their answering (usePanel); the selection over the items and
-// the panel (useSelection); the composer (useComposer); and the keys of both (useTranscriptKeys).
+// the panel (useSelection); the composer (useComposer); and what the keys of both do
+// (transcriptCommands, useTranscriptKeys).
 // Each view adds its own: the worker view the hand-back, Ctrl+X and Ctrl+R; the Interview view its
 // leave question.
 import type { MouseEvent, Renderable, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
@@ -9,10 +10,10 @@ import { useRenderer } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import type { Card } from "../run/runView.ts"
-import { answerBindings } from "./AttentionCard.tsx"
-import { type Answering, optionKeys, useAnswering } from "./attentionKeys.ts"
+import { type Answering, type AnswerKey, optionKeys, useAnswering } from "./attentionKeys.ts"
 import { useSends } from "./Composer.tsx"
-import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
+import type { Command } from "./keyCommands.ts"
+import { Box, useInput } from "./keys.ts"
 import {
   bounded,
   type Entry,
@@ -352,12 +353,82 @@ export const useComposer = () => {
 
 export type ComposerState = ReturnType<typeof useComposer>
 
+/** What a transcript view's keys do (useTranscriptKeys). */
+export interface TranscriptActions {
+  /** `?`: opens or closes the key help. */
+  readonly help: () => void
+  /** `Esc`: closes the key help, leaves the composer, then leaves the view. */
+  readonly escape: () => void
+  /** `i`: the composer. */
+  readonly write: () => void
+  readonly page: (by: 1 | -1) => void
+  /** Moves the selection between items. */
+  readonly move: (by: 1 | -1) => void
+  /** Moves the focus between a request's buttons, and on past them, or else the selection. */
+  readonly stepOrMove: (by: 1 | -1) => void
+  readonly enter: () => void
+  /** Answers the target request as `key` does, if it answers it. */
+  readonly answer: (key: AnswerKey) => void
+  readonly denyWithReason: () => void
+  /** Picks the question's option `n`, 1 to 4. */
+  readonly pick: (n: number) => void
+  readonly top: () => void
+  readonly end: () => void
+}
+
+const nothing = () => {}
+
+/** Keys that do nothing: a view's commands as its hint and key help name them, before they are bound. */
+export const inertTranscript: TranscriptActions = {
+  help: nothing,
+  escape: nothing,
+  write: nothing,
+  page: nothing,
+  move: nothing,
+  stepOrMove: nothing,
+  enter: nothing,
+  answer: nothing,
+  denyWithReason: nothing,
+  pick: nothing,
+  top: nothing,
+  end: nothing,
+}
+
 /**
- * The keys of a transcript's view, in its layer: `own` (the view's own) first, then the
- * transcript's and the panel's. `Esc` closes the key help, leaves the composer, then does `back`.
- * With the key help open, `?` and `Esc` close it and the other keys do nothing. While you write,
- * the composer takes the printable keys, Enter, Tab and the arrows (keys.ts). Gives whether the
- * key help is open.
+ * A transcript view's commands, as `act` binds them: each view gives them their hint and key help,
+ * in its own words and order, with its own commands among them (WorkerView's workerViewCommands,
+ * InterviewView's interviewCommands).
+ */
+export const transcriptCommands = (act: TranscriptActions) =>
+  ({
+    help: { keys: ["?"], run: act.help },
+    escape: { keys: ["escape"], run: act.escape },
+    write: { keys: ["i"], run: act.write },
+    pageUp: { keys: ["pageup"], run: () => act.page(-1) },
+    pageDown: { keys: ["pagedown"], run: () => act.page(1) },
+    down: { keys: ["down"], run: () => act.move(1) },
+    up: { keys: ["up"], run: () => act.move(-1) },
+    next: { keys: ["tab", "right"], run: () => act.stepOrMove(1) },
+    previous: { keys: ["shift+tab", "left"], run: () => act.stepOrMove(-1) },
+    enter: { keys: ["return", "enter"], run: act.enter },
+    deny: { keys: ["d"], run: () => act.answer("d") },
+    denyWithReason: { keys: ["shift+d"], run: act.denyWithReason },
+    allow: { keys: ["a"], run: () => act.answer("a") },
+    forRun: { keys: ["r"], run: () => act.answer("r") },
+    picks: Array.from({ length: optionKeys }, (_, i) => ({
+      keys: [String(i + 1)],
+      run: () => act.pick(i + 1),
+    })),
+    top: { keys: ["g"], run: act.top },
+    end: { keys: ["shift+g"], run: act.end },
+  }) satisfies Record<string, Command | ReadonlyArray<Command>>
+
+/**
+ * What the keys of a transcript's view do (transcriptCommands), which the view binds in its layer
+ * with its own. `Esc` closes the key help, leaves the composer, then does `back`. With the key help
+ * open, `?` and `Esc` close it and the other keys do nothing: `unlessHelp` keeps the view's own
+ * keys from it too. While you write, the composer takes the printable keys, Enter, Tab and the
+ * arrows (keys.ts). Gives whether the key help is open.
  */
 export const useTranscriptKeys = (options: {
   readonly transcript: TranscriptWindow
@@ -366,41 +437,45 @@ export const useTranscriptKeys = (options: {
   readonly composer: ComposerState
   readonly back: () => void
   readonly enter?: () => void
-  readonly own?: ReadonlyArray<KeyBinding>
-}): boolean => {
+}): {
+  readonly help: boolean
+  readonly actions: TranscriptActions
+  readonly unlessHelp: <A extends ReadonlyArray<unknown>>(
+    run: (...args: A) => void,
+  ) => (...args: A) => void
+} => {
   const { transcript, panel, selection, composer, back } = options
   const [help, setHelp, helpOpen] = useKeyState(() => false)
   const showHelp = (on: boolean) => setHelp(() => on)
   const enter = options.enter ?? selection.enter
-  const keys: ReadonlyArray<KeyBinding> = [
-    ...(options.own ?? []),
-    { key: "pageup", run: () => transcript.page(-1) },
-    { key: "pagedown", run: () => transcript.page(1) },
-    { key: "i", run: () => composer.setComposing(true) },
-    { key: "down", run: () => selection.move(1) },
-    { key: "up", run: () => selection.move(-1) },
-    ...["tab", "right"].map((key) => ({ key, run: () => selection.stepOrMove(1) })),
-    ...["shift+tab", "left"].map((key) => ({ key, run: () => selection.stepOrMove(-1) })),
-    ...["return", "enter"].map((key) => ({ key, run: enter })),
-    ...answerBindings(panel.answering, selection.targetCard),
-    ...Array.from({ length: optionKeys }, (_, i) => ({
-      key: String(i + 1),
-      run: () => selection.pick(i + 1),
-    })),
-    { key: "g", run: transcript.top },
-    { key: "shift+g", run: transcript.end },
-  ]
-  useLayer("view", [
-    { key: "?", run: () => showHelp(!helpOpen()) },
-    {
-      key: "escape",
-      run: () =>
+  const unlessHelp =
+    <A extends ReadonlyArray<unknown>>(run: (...args: A) => void) =>
+    (...args: A) => {
+      if (!helpOpen()) run(...args)
+    }
+  const target = (run: (card: Card) => void) => {
+    const card = selection.targetCard()
+    if (card !== undefined) run(card)
+  }
+  return {
+    help,
+    unlessHelp,
+    actions: {
+      help: () => showHelp(!helpOpen()),
+      escape: () =>
         helpOpen() ? showHelp(false) : composer.composing() ? composer.setComposing(false) : back(),
+      write: unlessHelp(() => composer.setComposing(true)),
+      page: unlessHelp(transcript.page),
+      move: unlessHelp(selection.move),
+      stepOrMove: unlessHelp(selection.stepOrMove),
+      enter: unlessHelp(enter),
+      answer: unlessHelp((key: AnswerKey) => target((card) => panel.answering.key(card, key))),
+      denyWithReason: unlessHelp(() => target(panel.answering.denyWithReason)),
+      pick: unlessHelp((n: number) => {
+        selection.pick(n)
+      }),
+      top: unlessHelp(transcript.top),
+      end: unlessHelp(transcript.end),
     },
-    ...keys.map((binding) => ({
-      key: binding.key,
-      run: () => (helpOpen() ? undefined : binding.run()),
-    })),
-  ])
-  return help
+  }
 }

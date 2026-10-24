@@ -2,12 +2,14 @@
 // paragraphs wrapped to its width, then the keys it answers to, named as the hint names its own (each key `emphasis` bold,
 // its words faint, ` · ` faint) and wrapped as the hint wraps (Hint.tsx hintLines). Each key's
 // words are a click target too, a single click (D9).
-// The box's keys are bound in the box layer apart from it (keys.ts useLayer), from before it opens.
+// Its keys are a list of commands (keyCommands.ts): it draws those the hint names, and binds none;
+// whoever opens the box binds the same list in the box layer (useCommands), from before it opens.
 // Under it, a backdrop over the whole screen takes the mouse: a click beside the box doesn't reach
 // the view under it (tutti-por).
 import { type MouseEvent, RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { clickable } from "./click.ts"
+import { type Command, isOn } from "./keyCommands.ts"
 import {
   cut,
   Line,
@@ -22,14 +24,6 @@ import {
   wrap,
 } from "./line.tsx"
 import { useTheme } from "./useRunView.ts"
-
-/** A key the box answers to, as it names it, and what a click on it does. */
-export interface Choice {
-  /** The key as the box names it: `s`, `Esc`. */
-  readonly name: string
-  readonly does: string
-  readonly run: () => void
-}
 
 /**
  * Over the whole screen, under a box (zIndex 10) and over the view: it draws nothing, and every
@@ -102,7 +96,8 @@ export const Modal = ({
   readonly frame: Look
   /** Each wrapped to the box's width; one with no text is a blank line. */
   readonly paragraphs: ReadonlyArray<Segment>
-  readonly choices: ReadonlyArray<Choice>
+  /** The box's commands: those there now that the hint names are drawn, each its click target. */
+  readonly choices: ReadonlyArray<Command>
 }) => {
   const theme = useTheme()
   const { width, height } = useTerminalDimensions()
@@ -117,10 +112,13 @@ export const Modal = ({
     seg(" "),
     bar,
   ]
+  const drawn = choices.flatMap((choice) =>
+    choice.hint !== undefined && isOn(choice) ? [{ hint: choice.hint, run: choice.run }] : [],
+  )
   const keys = choiceRows(
-    choices.map((choice) => [
-      seg(choice.name, theme.styles.key),
-      seg(` ${choice.does}`, theme.styles.dim),
+    drawn.map(({ hint }) => [
+      seg(hint.keys, theme.styles.key),
+      seg(` ${hint.does}`, theme.styles.dim),
     ]),
     seg(" · ", theme.styles.dim),
     inner,
@@ -156,7 +154,7 @@ export const Modal = ({
                 wrapMode="none"
                 height={1}
                 fg={plainFg}
-                {...clickable(choices[piece.choice]?.run ?? (() => {}))}
+                {...clickable(drawn[piece.choice]?.run ?? (() => {}))}
               >
                 {piece.segments.map((each, j) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: a key's segments are drawn anew in order

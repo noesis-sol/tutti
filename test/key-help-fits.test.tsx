@@ -9,11 +9,13 @@ import { makeCommands } from "../src/run/commands.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
-import { dashboardKeys, keyHelpLines, keyHelpRoom } from "../src/ui/KeyHelp.tsx"
+import { dashboardCommands } from "../src/ui/Dashboard.tsx"
+import { keyHelpLines, keyHelpRoom, screenHelp } from "../src/ui/KeyHelp.tsx"
+import { helpOf } from "../src/ui/keyCommands.ts"
 import { type Segments, widthOf } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
-import { workerViewKeys } from "../src/ui/WorkerView.tsx"
+import { workerViewCommands } from "../src/ui/WorkerView.tsx"
 import { type Frame, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
@@ -47,6 +49,16 @@ const value = (): ShellValue => ({
   now: () => began,
 })
 
+/** The key help of the dashboard and the worker view, as their commands give it. */
+const dashboardKeys = screenHelp(
+  helpOf(dashboardCommands(empty, { buttons: true, highlighted: () => undefined })),
+)
+const workerViewKeys = screenHelp(
+  helpOf(
+    workerViewCommands({ requests: false, composing: false, steered: false, finished: false }),
+  ),
+)
+
 const linesOf = (frame: Frame): ReadonlyArray<string> =>
   frame.chars.split("\n").map((line) => line.trimEnd())
 
@@ -57,32 +69,32 @@ describe("the key help's height", () => {
     expect(lines[2]).toMatch(/^│ +│$/)
   })
 
-  test("leaves out the blank lines at the smallest size, the dashboard's keys all shown", () => {
+  test("leaves out the blank lines at the smallest size, then shows the dashboard's keys a window at a time", () => {
     const lines = textOf(keyHelpLines(theme, 60, dashboardKeys, 16))
-    expect(lines).toHaveLength(dashboardKeys.length + 4)
-    expect(lines[1]).toMatch(/^│ Keys +│$/)
+    expect(lines).toHaveLength(16)
+    expect(lines[1]).toMatch(/^│ Keys {2}1–12 of 13 +│$/)
     expect(lines[2]).toContain("Tab, Shift+Tab, arrows")
-    expect(lines.at(-3)).toContain("these keys")
-    expect(lines.at(-2)).toMatch(/^│ Esc close +│$/)
+    expect(lines.at(-3)).toContain("Ctrl+Z")
+    expect(lines.at(-2)).toMatch(/^│ Esc close · ↑↓ PgUp PgDn scroll +│$/)
   })
 
   test("shows the worker view's keys a window at a time, saying which", () => {
     expect(textOf(keyHelpLines(theme, 60, workerViewKeys, 16))).toMatchInlineSnapshot(`
       [
         "╭──────────────────────────────────────────────────────────╮",
-        "│ Keys  1–12 of 18                                         │",
-        "│ Tab, Shift+Tab, arrows      move between items; between… │",
-        "│ Enter, a click              expand or collapse the item… │",
+        "│ Keys  1–12 of 19                                         │",
         "│ i, a click on the composer  write to the worker; Enter … │",
         "│ Esc, ← Dashboard            leave the composer; back to… │",
         "│ Esc, Tab, Enter             switch workers, by way of t… │",
-        "│ Ctrl+X                      interrupt the worker's turn… │",
-        "│ Ctrl+R, Release             release a steered worker     │",
-        "│ Ctrl+T, File as ticket      once the worker has finishe… │",
         "│ d, Shift+D                  deny the request; deny with… │",
         "│ a                           allow the request, unless i… │",
         "│ r                           allow for this run           │",
-        "│ 1–4 in a question           pick an option               │",
+        "│ Ctrl+X                      interrupt the worker's turn… │",
+        "│ Ctrl+R, Release             release a steered worker     │",
+        "│ Ctrl+T, File as ticket      once the worker has finishe… │",
+        "│ Tab, Shift+Tab, arrows      move between items; between… │",
+        "│ Enter, a click              expand or collapse the item… │",
+        "│ ?                           these keys                   │",
         "│ Esc close · ↑↓ PgUp PgDn scroll                          │",
         "╰──────────────────────────────────────────────────────────╯",
       ]
@@ -91,8 +103,8 @@ describe("the key help's height", () => {
 
   test("scrolled past the end, shows the last window", () => {
     const lines = textOf(keyHelpLines(theme, 60, workerViewKeys, 16, 100))
-    expect(lines[1]).toContain("7–18 of 18")
-    expect(lines.at(-3)).toContain("these keys")
+    expect(lines[1]).toContain("8–19 of 19")
+    expect(lines.at(-3)).toContain("a drag")
   })
 
   test("never takes more rows than the pane, nor more columns, and always says Esc", () => {
@@ -132,22 +144,22 @@ describe("the key help over a short pane", () => {
       const title = async () =>
         linesOf(await rendered.capture()).find((line) => line.includes("Keys")) ?? ""
       await rendered.input((setup) => setup.mockInput.typeText("?"))
-      expect(await title()).toContain("1–8 of 11")
+      expect(await title()).toContain("1–8 of 13")
       await rendered.input((setup) => setup.mockInput.pressArrow("down"))
-      expect(await title()).toContain("2–9 of 11")
+      expect(await title()).toContain("2–9 of 13")
       await rendered.input((setup) => setup.mockInput.typeText("G"))
-      expect(await title()).toContain("4–11 of 11")
+      expect(await title()).toContain("6–13 of 13")
       const lines = linesOf(await rendered.capture())
-      expect(lines.some((line) => line.includes("these keys"))).toBe(true)
+      expect(lines.some((line) => line.includes("a drag"))).toBe(true)
       expect(lines.some((line) => line.includes("Esc close"))).toBe(true)
       await rendered.input((setup) => setup.mockInput.typeText("g"))
-      expect(await title()).toContain("1–8 of 11")
+      expect(await title()).toContain("1–8 of 13")
       await rendered.input((setup) => setup.mockInput.pressKey("\x1b[6~"))
-      expect(await title()).toContain("4–11 of 11")
+      expect(await title()).toContain("6–13 of 13")
       await rendered.input((setup) => setup.mockInput.pressArrow("up"))
-      expect(await title()).toContain("3–10 of 11")
+      expect(await title()).toContain("5–12 of 13")
       await rendered.input((setup) => setup.mockMouse.scroll(30, 5, "up"))
-      expect(await title()).toContain("2–9 of 11")
+      expect(await title()).toContain("4–11 of 13")
     })
   })
 })

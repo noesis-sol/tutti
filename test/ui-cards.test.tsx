@@ -27,9 +27,10 @@ import {
   layoutOf,
   statusLook,
 } from "../src/ui/Card.tsx"
-import { moveHighlight } from "../src/ui/Dashboard.tsx"
+import { dashboardCommands, dashboardHint, moveHighlight } from "../src/ui/Dashboard.tsx"
 import { hintSegments } from "../src/ui/Hint.tsx"
-import { keyHelpLines } from "../src/ui/KeyHelp.tsx"
+import { keyHelpLines, screenHelp } from "../src/ui/KeyHelp.tsx"
+import { helpOf } from "../src/ui/keyCommands.ts"
 import { type Look, type Segments, widthOf } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue, spinnerAt, spinnerFrames } from "../src/ui/useRunView.ts"
@@ -672,7 +673,7 @@ describe("the wind-down line", () => {
 
 describe("the hint and the key help", () => {
   test("the hint's keys emphasis bold, their words and the dots faint", () => {
-    const line = hintSegments(viewOf(four).hint, theme, 120)
+    const line = hintSegments(dashboardHint(viewOf(four), true), theme, 120)
     expect(line.map((s) => s.text).join("")).toBe(
       "  Tab select · Enter open · s stop after current · ? keys",
     )
@@ -706,7 +707,17 @@ describe("the hint and the key help", () => {
   })
 
   test("the key help lists the dashboard's keys", () => {
-    expect(textOf(keyHelpLines(theme, 100))).toMatchInlineSnapshot(`
+    expect(
+      textOf(
+        keyHelpLines(
+          theme,
+          100,
+          screenHelp(
+            helpOf(dashboardCommands(viewOf([]), { buttons: true, highlighted: () => undefined })),
+          ),
+        ),
+      ),
+    ).toMatchInlineSnapshot(`
       "
       ╭─────────────────────────────────────────────────────────────────────────────╮
       │ Keys                                                                        │
@@ -719,9 +730,11 @@ describe("the hint and the key help", () => {
       │ r                       allow for this run                                  │
       │ 1–4 in a question       pick an option                                      │
       │ s                       stop after current, or keep taking tickets          │
-      │ Ctrl+C                  quit: stop after current, or quit now               │
-      │ a drag                  select text and copy it                             │
+      │ q                       end the run, from the end-of-run box                │
       │ ?                       these keys                                          │
+      │ Ctrl+C                  quit: stop after current, or quit now               │
+      │ Ctrl+Z                  a toast: tutti can't be suspended                   │
+      │ a drag                  select text and copy it                             │
       │                                                                             │
       │ Esc close                                                                   │
       ╰─────────────────────────────────────────────────────────────────────────────╯

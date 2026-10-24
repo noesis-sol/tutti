@@ -23,6 +23,7 @@ import { Predicate } from "effect"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "../agent/Transcripts.ts"
 import { AttentionLines, type ButtonSegment } from "./AttentionCard.tsx"
+import type { Command } from "./keyCommands.ts"
 import { cut, Line, padded, type Segments, seg, widthOf } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { descriptionKeys } from "./StartQuestion.tsx"
@@ -356,7 +357,13 @@ export const interruptWords = (ticket: string) => ({
     "Messages still queued or held are cancelled. tutti then sends the worker nothing until you release it (Ctrl+R).",
 })
 
-/** Ctrl+X's question, over the worker view: `y` interrupts, `n` or `Esc` leaves the turn be. */
+/** Ctrl+X's question's keys: `y` interrupts, `n` or `Esc` leaves the turn be. */
+export const interruptCommands = (yes: () => void, no: () => void): ReadonlyArray<Command> => [
+  { keys: ["y"], run: yes, hint: { keys: "y", does: "interrupt" } },
+  { keys: ["n", "escape"], run: no, hint: { keys: "n", does: "keep going" } },
+]
+
+/** Ctrl+X's question, over the worker view, its keys interruptCommands. */
 export const InterruptQuestion = ({
   theme,
   ticket,
@@ -373,10 +380,7 @@ export const InterruptQuestion = ({
     <Modal
       frame={theme.look("notice")}
       paragraphs={[seg(words.ask, theme.look("notice", "bold")), seg(""), seg(words.about)]}
-      choices={[
-        { name: "y", does: "interrupt", run: yes },
-        { name: "n", does: "keep going", run: no },
-      ]}
+      choices={interruptCommands(yes, no)}
     />
   )
 }

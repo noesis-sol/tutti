@@ -27,11 +27,15 @@ import { elapsed, statusLook } from "./Card.tsx"
 import { Composer, QueuedLines, queuedLines } from "./Composer.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
-import { Box, useInput, useLayer } from "./keys.ts"
+import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
+import { Box, useInput } from "./keys.ts"
 import { Line, Section, type Segments, seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { sanitizeLine } from "./sanitize.ts"
 import {
+  inertTranscript,
+  type TranscriptActions,
+  transcriptCommands,
   useComposer,
   usePanel,
   useSelection,
@@ -72,41 +76,85 @@ export const leaveAbout = "Nothing has been filed."
 export const answerPlaceholder = (focused: boolean): string =>
   focused ? "your answer" : "i to answer"
 
-/** The interview's hint: the keys there are; the composer's while you write in it. */
-const hintKeys = (question: boolean, composing: boolean) =>
-  composing
-    ? [
-        { keys: "Enter", does: "send" },
-        { keys: "Alt+Enter/Ctrl+J", does: "new line" },
-        { keys: "Esc", does: "leave the composer" },
-      ]
-    : [
-        { keys: "Esc", does: "back" },
-        { keys: "i", does: "answer" },
-        ...(question ? [{ keys: "1–4", does: "pick" }] : []),
-        { keys: "↑↓", does: "select" },
-        { keys: "Enter", does: "expand" },
-        { keys: "PgUp/PgDn", does: "scroll" },
-        { keys: "?", does: "keys" },
-      ]
+const nothing = () => {}
 
-/** The Interview view's keys, for its key help (§ 7.3's table). */
-export const interviewViewKeys: ReadonlyArray<readonly [string, string]> = [
-  ["Tab, Shift+Tab, arrows", "move between items; between a question's options"],
-  ["Enter, a click", "expand or collapse the item; press the focused button"],
-  ["i, a click on the composer", "write your answer; Enter sends, Alt+Enter or Ctrl+J a new line"],
-  ["Esc, ← Back", "leave the composer; end the interview (asks first)"],
-  ["1–4 in a question", "pick an option"],
-  ["d, Shift+D", "decline the question; decline with a reason"],
-  ["Answer in view", "the answer form: ↑↓ move, Space picks, Enter presses"],
-  ["the wheel, PgUp/PgDn", "scroll; past the top loads earlier items"],
-  ["g, G", "jump to the top or the end"],
-  ["Ctrl+C", "quit"],
-  ["a drag", "select text and copy it"],
-  ["?", "these keys"],
+const writeRow: HelpRow = [
+  "i, a click on the composer",
+  "write your answer; Enter sends, Alt+Enter or Ctrl+J a new line",
+]
+const moveRow: HelpRow = [
+  "Tab, Shift+Tab, arrows",
+  "move between items; between a question's options",
+]
+const pickRow: HelpRow = ["1–4 in a question", "pick an option"]
+const declineRow: HelpRow = ["d, Shift+D", "decline the question; decline with a reason"]
+const scrollRow: HelpRow = ["the wheel, PgUp/PgDn", "scroll; past the top loads earlier items"]
+const jumpRow: HelpRow = ["g, G", "jump to the top or the end"]
+
+/**
+ * The Interview view's keys (§ 7.3), its hint's and its key help's: the keys there are; the
+ * composer's while you write in it. `question`: the panel has a question open, which 1–4 pick from.
+ */
+export const interviewCommands = (
+  at: { readonly question: boolean; readonly composing: boolean },
+  act: TranscriptActions = inertTranscript,
+): ReadonlyArray<Command> => {
+  const keys = transcriptCommands(act)
+  const viewing = !at.composing
+  const named = (shown: boolean, keys: string, does: string) => (shown ? { keys, does } : undefined)
+  return [
+    // The composer's own keys, which its field binds.
+    { keys: [], run: nothing, hint: named(at.composing, "Enter", "send"), help: writeRow },
+    {
+      keys: [],
+      run: nothing,
+      hint: named(at.composing, "Alt+Enter/Ctrl+J", "new line"),
+      help: writeRow,
+    },
+    {
+      ...keys.escape,
+      hint: { keys: "Esc", does: at.composing ? "leave the composer" : "back" },
+      help: ["Esc, ← Back", "leave the composer; end the interview (asks first)"],
+    },
+    { ...keys.write, hint: named(viewing, "i", "answer"), help: writeRow },
+    ...keys.picks.map((pick, i) => ({
+      ...pick,
+      hint: named(i === 0 && viewing && at.question, "1–4", "pick"),
+      help: pickRow,
+    })),
+    { ...keys.down, hint: named(viewing, "↑↓", "select"), help: moveRow },
+    { ...keys.up, help: moveRow },
+    { ...keys.next, help: moveRow },
+    { ...keys.previous, help: moveRow },
+    {
+      ...keys.enter,
+      hint: named(viewing, "Enter", "expand"),
+      help: ["Enter, a click", "expand or collapse the item; press the focused button"],
+    },
+    { ...keys.pageUp, hint: named(viewing, "PgUp/PgDn", "scroll"), help: scrollRow },
+    { ...keys.pageDown, help: scrollRow },
+    { ...keys.help, hint: named(viewing, "?", "keys"), help: ["?", "these keys"] },
+    { ...keys.deny, help: declineRow },
+    { ...keys.denyWithReason, help: declineRow },
+    { ...keys.allow, help: ["a", "allow the request, unless it opens on Deny"] },
+    { ...keys.forRun, help: ["r", "allow for this run"] },
+    {
+      keys: [],
+      run: nothing,
+      help: ["Answer in view", "the answer form: ↑↓ move, Space picks, Enter presses"],
+    },
+    { ...keys.top, help: jumpRow },
+    { ...keys.end, help: jumpRow },
+  ]
+}
+
+/** Leaving's question's keys: `y` ends the interview, `n` or `Esc` stays. */
+const leaveCommands = (yes: () => void, no: () => void): ReadonlyArray<Command> => [
+  { keys: ["y"], run: yes, hint: { keys: "y", does: "end it" } },
+  { keys: ["n", "escape"], run: no, hint: { keys: "n", does: "keep talking" } },
 ]
 
-/** Leaving's question, over the view: `y` ends the interview, `n` or `Esc` stays. */
+/** Leaving's question, over the view, its keys leaveCommands. */
 export const LeaveQuestion = ({
   yes,
   no,
@@ -119,10 +167,7 @@ export const LeaveQuestion = ({
     <Modal
       frame={theme.look("notice")}
       paragraphs={[seg(leaveQuestion, theme.look("notice", "bold")), seg(""), seg(leaveAbout)]}
-      choices={[
-        { name: "y", does: "end it", run: yes },
-        { name: "n", does: "keep talking", run: no },
-      ]}
+      choices={leaveCommands(yes, no)}
     />
   )
 }
@@ -157,7 +202,11 @@ export const InterviewView = () => {
     line: 0,
     queued: queued.length,
     composer: composer.lines,
-    hint: hintLines(hintKeys(question, composer.typing), theme, inner).length,
+    hint: hintLines(
+      hintOf(interviewCommands({ question, composing: composer.typing })),
+      theme,
+      inner,
+    ).length,
   })
   const fit = usePanelRooms(
     theme,
@@ -192,13 +241,12 @@ export const InterviewView = () => {
     if (yes) command(UiCommand.CloseWorker())
     else composer.refocus()
   }
-  useLayer(
+  useCommands(
     "box",
-    [
-      { key: "y", run: () => answerLeave(true) },
-      { key: "n", run: () => answerLeave(false) },
-      { key: "escape", run: () => answerLeave(false) },
-    ],
+    leaveCommands(
+      () => answerLeave(true),
+      () => answerLeave(false),
+    ),
     "Leave",
   )
   // The view draws its Leave box and binds its keys: unmounted with it open, nothing would, and the
@@ -209,7 +257,13 @@ export const InterviewView = () => {
     },
     [input],
   )
-  const help = useTranscriptKeys({ transcript, panel, selection, composer, back: leave })
+  const { help, actions } = useTranscriptKeys({
+    transcript,
+    panel,
+    selection,
+    composer,
+    back: leave,
+  })
 
   const rule: Segments = [seg("─".repeat(inner), theme.look("frame"))]
   const { styles } = theme
@@ -228,6 +282,10 @@ export const InterviewView = () => {
           seg(sanitizeLine(card.title)),
         ]
   const question = panel.requests.some((request) => request.kind._tag === "Question")
+  const keys = useCommands(
+    "view",
+    interviewCommands({ question, composing: composer.typing }, actions),
+  )
   const laid = viewLayout(height, chrome(question), fit.lines(panel.requests, panel.more))
   const { box } = composer
   return (
@@ -276,11 +334,9 @@ export const InterviewView = () => {
           />
         </Section>
         <Section lines={laid.hint}>
-          <ViewHint keys={hintKeys(question, composer.typing)} width={inner} />
+          <ViewHint keys={keys.hint} width={inner} />
         </Section>
-        {help ? (
-          <KeyHelp theme={theme} width={width} height={height} keys={interviewViewKeys} />
-        ) : null}
+        {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
         {box?._tag === "Leave" ? (
           <LeaveQuestion yes={() => answerLeave(true)} no={() => answerLeave(false)} />
         ) : null}

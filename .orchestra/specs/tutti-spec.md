@@ -224,7 +224,7 @@ Each service has a live layer and a test layer. Names are illustrative. Errors a
 
 ### 3.5 Bridging Effect and React
 
-- **`RunView`** is an immutable projection of what the dashboard shows: totals, ticket rows, cards, open attention requests, holds and banners, the wind-down state and the hint.
+- **`RunView`** is an immutable projection of what the dashboard shows: totals, ticket rows, cards, open attention requests, holds and banners, the wind-down state and the end-of-run box. The hint isn't in it: each screen draws its hint from its keys (§7.3).
   - Transcripts are not in it. The worker view subscribes to its own worker's stream from `Transcripts` (§4.4).
   - Writing the projection has its own fiber, throttled to at most 30 Hz, so a burst of SDK messages costs one render. Unchanged parts keep their identity, so React memoisation works.
 - **React reads `RunView`** with `useSyncExternalStore`. A fiber consuming the `SubscriptionRef`'s changes stores the latest `RunView` in a plain variable and notifies the subscribed listeners. `getSnapshot` returns that variable, the same object until the next change, as `useSyncExternalStore` requires.
@@ -1121,6 +1121,8 @@ orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with t
 The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (§7.5, branding).
 
 ### 7.3 Keys and mouse
+
+**Key commands.** Each screen's keys, and each box's, are one list of commands (`src/ui/keyCommands.ts`): a command's keys, what pressing one does, whether it is there now, and how the hint and the key help name it. The screen's hint, its key help and its bindings are all drawn from that list, so that every key it binds has a row in its key help and the hint names only keys it has; a box draws its keys from the list it is bound from. A key whose command isn't there now goes to the next command in the list with that key. The key help ends with the global keys' rows (`Ctrl+C`, `Ctrl+Z`, a drag). On the dashboard the hint names `d` and `a` where they answer the highlighted card's request, drawn with its buttons (§4.5): `a` only where it allows it, so neither for a card with no request highlighted (tutti-rvzn.8).
 
 **Input layers.** The layers are the composer or another text field; then an open box (quit, stop, an answer form); then the key help's, while it is open over the view (its scroll keys, §7.2); then the view's keys; then global keys. A focused text field takes every printable key. Ctrl+C is always global. Use `@opentui/keymap` for the layers.
 
