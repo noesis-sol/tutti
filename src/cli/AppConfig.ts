@@ -110,6 +110,11 @@ export interface AppConfigValue {
    * name, or `default: half of 10 cores`.
    */
   readonly machineWorkersFrom: string
+  /**
+   * Whether the machine is kept from sleeping while the run goes (--keep-awake): chosen for each
+   * run, not in the project's settings (src/run/keepAwake.ts).
+   */
+  readonly keepAwake: boolean
   readonly billing: (typeof billings)[number]
   readonly usageLimitWait: Duration.Duration
   /**
@@ -324,6 +329,7 @@ export const resolveAll = (
     runs: runsDir(env),
     machineWorkers,
     machineWorkersFrom,
+    keepAwake: pick("keepAwake", false),
     billing: pick("billing", user.billing),
     usageLimitWait: pick("usageLimitWait", defaultUsageLimitWait),
     claude: pick("claude", null),

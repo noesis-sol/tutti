@@ -33,7 +33,7 @@ import { type OrganProvider, organProvider } from "../organs/AnthropicProvider.t
 import { formatDuration } from "../project/configFile.ts"
 import { loadWorkerPrompt, type WorkerPrompt } from "../project/prompt.ts"
 import { readmeStaleLine } from "../project/requires.ts"
-import { settingsFile } from "../project/settings.ts"
+import { retiredIn, settingsFile } from "../project/settings.ts"
 import { Beads, type BeadsError, HumanLabel } from "../services/Beads.ts"
 import { Git, gitTooOld } from "../services/Git.ts"
 import { checkoutChanges } from "../services/gitStatus.ts"
@@ -449,6 +449,7 @@ export const check = <R>(checking: Checking<R>) =>
     const warnings = [
       ...claude.warnings,
       ...(leftWorkers.length > 0 ? [orchestraWarning(leftWorkers)] : []),
+      ...retiredIn(given.settings),
     ]
     if (
       notSetUp ||

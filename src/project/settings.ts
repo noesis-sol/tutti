@@ -189,11 +189,8 @@ export const Settings = Schema.Struct({
   concurrent: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: maxConcurrent })).pipe(
     withDefault(1),
   ),
-  /**
-   * Whether the machine is kept from sleeping while a run goes, its organs included: caffeinate on
-   * macOS, systemd-inhibit on Linux (src/run/keepAwake.ts). Off by default, as orchestra's.
-   */
-  keep_awake: Schema.Boolean.pipe(withDefault(false)),
+  /** Retired: whatever it is, it isn't read, and the START block says so (retiredSettings). */
+  keep_awake: Schema.optionalKey(Schema.Unknown),
   checks: Schema.Struct({
     /** The merge check, run on each finished ticket. */
     fast: Check("30m").pipe(withDefault({})),
@@ -282,6 +279,21 @@ export const Settings = Schema.Struct({
 }).annotate({ title: "tutti settings", description: "a project's .tutti/settings.json" })
 
 export type Settings = typeof Settings.Type
+
+/**
+ * The keys the settings no longer read, each with what the START block says of a file that still
+ * has one. Such a file isn't refused, as an unknown key would be, and the key is ignored; the
+ * published schema leaves the key out, so an editor flags it (scripts/gen-schemas.ts).
+ */
+export const retiredSettings = {
+  keep_awake: `keep_awake in ${settingsFile} is no longer read: keeping the machine awake is chosen for each run, with --keep-awake (TUTTI_KEEP_AWAKE); remove it from the settings`,
+} as const satisfies { readonly [K in keyof Settings]?: string }
+
+/** What the START block says of each retired key `settings` still has. */
+export const retiredIn = (settings: Settings): ReadonlyArray<string> =>
+  Object.entries(retiredSettings)
+    .filter(([key]) => Object.hasOwn(settings, key))
+    .map(([, warning]) => warning)
 
 /** One entry of the requires list, as the settings decode it. */
 export type Requirement = typeof Requirement.Type

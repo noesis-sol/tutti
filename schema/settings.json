@@ -19,10 +19,6 @@
       "maximum": 16,
       "default": 1
     },
-    "keep_awake": {
-      "type": "boolean",
-      "default": false
-    },
     "checks": {
       "type": "object",
       "properties": {

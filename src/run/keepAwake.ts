@@ -1,9 +1,10 @@
-// The machine kept awake while a run goes (§ 8.4 `keep_awake`), as orchestra's keep_awake: with
-// `"keep_awake": true` in the settings, the system's keep-awake command, given tutti's PID, starts as
-// the run begins and stops as the run's scope closes, after the report's organs (src/main.ts). It
-// goes through exec, in a process group of its own that the scope kills; given the PID, it also ends
-// by itself should tutti end some other way. Where the system has none, or it isn't on the PATH, the
-// START block warns once (`keepAwakePlan`), and the run goes on all the same.
+// The machine kept awake while a run goes (§ 8.2 `--keep-awake`), as orchestra's keep_awake, but
+// chosen for each run rather than in the project's settings: with --keep-awake, the system's
+// keep-awake command, given tutti's PID, starts as the run begins and stops as the run's scope
+// closes, after the report's organs (src/main.ts). It goes through exec, in a process group of its
+// own that the scope kills; given the PID, it also ends by itself should tutti end some other way.
+// Where the system has none, or it isn't on the PATH, the START block warns once (`keepAwakePlan`),
+// and the run goes on all the same.
 import { Duration, Effect } from "effect"
 import { type Command, exec, showCommand } from "../services/exec.ts"
 import { type Line, Log, line } from "./log.ts"
@@ -62,13 +63,13 @@ export const keepAwakePlan = (options: {
   if (awake === null) {
     return {
       _tag: "Missing",
-      warning: `keep_awake: tutti can't keep the machine awake on ${options.platform}; set it not to sleep, or the run sleeps with it`,
+      warning: `--keep-awake: tutti can't keep the machine awake on ${options.platform}; set it not to sleep, or the run sleeps with it`,
     }
   }
   if (options.which(awake.command) === null) {
     return {
       _tag: "Missing",
-      warning: `keep_awake: ${awake.command} isn't on the PATH, so nothing keeps the machine awake and the run sleeps with it; set the machine not to sleep`,
+      warning: `--keep-awake: ${awake.command} isn't on the PATH, so nothing keeps the machine awake and the run sleeps with it; set the machine not to sleep`,
     }
   }
   return { _tag: "Command", command: awake }

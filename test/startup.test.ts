@@ -12,8 +12,9 @@ import {
   SettingsUnreadable,
 } from "../src/agent/Account.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { type AppConfigValue, SetupProblem } from "../src/cli/AppConfig.ts"
+import { type AppConfigValue, defaultSettings, SetupProblem } from "../src/cli/AppConfig.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import { retiredSettings } from "../src/project/settings.ts"
 import {
   check,
   exitSetup,
@@ -165,6 +166,14 @@ describe("the startup checks", () => {
     expect(started.mcp.servers).toEqual([])
     expect(started.account.billing).toEqual({ _tag: "Subscription", keyUnused: false })
     expect(started.warnings).toEqual([])
+  })
+
+  test("warn of a key the settings no longer read, and start all the same", async () => {
+    const { repo } = project()
+    const settings = { ...defaultSettings, keep_awake: true }
+    const started = passed(await run(repo, { config: { settings } }))
+    expect(started.warnings).toEqual([retiredSettings.keep_awake])
+    expect(started.config.keepAwake).toBe(false)
   })
 
   test("the exit code of a run that can't start is 2", () => {

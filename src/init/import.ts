@@ -90,7 +90,6 @@ const mapped: Readonly<Record<string, ReadonlyArray<string>>> = {
   setup: ["checks", "setup", "command"],
   setup_files: ["checks", "setup", "files"],
   concurrent: ["concurrent"],
-  keep_awake: ["keep_awake"],
   ticket_limit: ["workers", "ticket_limit"],
   mcp_servers: ["workers", "mcp_servers"],
   worker_effort: ["workers", "effort"],
@@ -117,6 +116,7 @@ const unplaced: Readonly<Record<string, string>> = {
   templates: "the versions of orchestra's templates; tutti records those of its own",
   usage_limit_wait:
     "tutti takes it for each run, as --usage-limit-wait (6h by default), not from its settings",
+  keep_awake: "tutti takes it for each run, as --keep-awake, not from its settings",
   overnight_free_disk_gb: "tutti has no overnight runs yet, whose pre-flight checks the free disk",
   spec_timeout: "tutti has no spec runs yet, whose breakdown it limits",
   spec_effort: "tutti has no spec runs yet, whose breakdown's effort it sets",

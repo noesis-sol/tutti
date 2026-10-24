@@ -4,7 +4,7 @@ import { Exit, Option } from "effect"
 import fc from "fast-check"
 import { type SchemaName, schemaFile, schemas, schemaText } from "../scripts/gen-schemas.ts"
 import { decodeConfig, formatDuration, parseDuration } from "../src/project/configFile.ts"
-import { Settings } from "../src/project/settings.ts"
+import { retiredSettings, Settings } from "../src/project/settings.ts"
 import { kinds } from "../src/run/events.ts"
 import { timestamp } from "../src/run/localTime.ts"
 
@@ -25,9 +25,12 @@ for (const name of Object.keys(schemas) as Array<SchemaName>) {
   })
 }
 
-test("schema/settings.json has every settings key and refuses others", () => {
+test("schema/settings.json has every settings key but the retired, and refuses others", () => {
   const settings = document("settings.json") as JsonSchema & { additionalProperties: boolean }
-  expect(Object.keys(settings.properties ?? {})).toEqual(Object.keys(Settings.fields))
+  expect(Object.keys(settings.properties ?? {})).toEqual(
+    Object.keys(Settings.fields).filter((key) => !Object.hasOwn(retiredSettings, key)),
+  )
+  expect(Object.keys(retiredSettings)).toEqual(["keep_awake"])
   expect(settings.additionalProperties).toBe(false)
 })
 

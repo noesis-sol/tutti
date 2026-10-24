@@ -103,6 +103,7 @@ flag given alone is on (`--plain`). Anything else is a setup problem. orchestra'
 |---|---|
 | `-c N`, `--concurrent N` | tickets at the same time, 1 to 16 (default: the settings', else 1) |
 | `--machine-workers N` | start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included ([below](#runs-that-share-a-machine)); `0` for no cap (default: `ORCHESTRA_MACHINE_WORKERS`, else half the cores, at least 2) |
+| `--keep-awake` | keep the machine from sleeping while the run goes, its report included: `caffeinate` on macOS, `systemd-inhibit` on Linux; the `START` block warns where there is none. `TUTTI_KEEP_AWAKE=1` in your shell's profile keeps every run on that machine awake (default: off) |
 | `--tickets` | run the current tickets without asking first |
 | `--ticket <id>` | run only this ticket and its subtickets ([below](#one-ticket-and-its-subtickets)) |
 | `--feature "<request>"` | plan a request as an epic and its tickets, then run them ([below](#planned-by-the-organs)) |

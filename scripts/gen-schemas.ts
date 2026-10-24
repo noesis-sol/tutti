@@ -5,7 +5,7 @@
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Schema } from "effect"
-import { Settings } from "../src/project/settings.ts"
+import { retiredSettings, Settings } from "../src/project/settings.ts"
 import { EventRecord } from "../src/run/events.ts"
 import { ColourScheme } from "../src/ui/theme.ts"
 
@@ -26,12 +26,19 @@ const jsonSchema = (schema: Schema.Top, name: string, strict: boolean): Record<s
   }
 }
 
+/** The settings' schema without the keys they no longer read, so that an editor flags them. */
+const withoutRetired = (schema: Record<string, unknown>): Record<string, unknown> => {
+  const properties = { ...(schema.properties as Record<string, unknown>) }
+  for (const key of Object.keys(retiredSettings)) delete properties[key]
+  return { ...schema, properties }
+}
+
 /**
  * Each published schema, by its file's name in schema/. The settings and colour schemes refuse an
  * unknown key, as tutti does reading them; an event record may have keys a reader doesn't know.
  */
 export const schemas = {
-  "settings.json": () => jsonSchema(Settings, "settings.json", true),
+  "settings.json": () => withoutRetired(jsonSchema(Settings, "settings.json", true)),
   "events.json": () => jsonSchema(EventRecord, "events.json", false),
   "colour-scheme.json": () => jsonSchema(ColourScheme, "colour-scheme.json", true),
 } as const

@@ -139,6 +139,11 @@ export const runFlags = {
     description:
       "start no ticket while this many workers run across the machine's tutti and orchestra runs, this one's included; 0 for no cap (default: ORCHESTRA_MACHINE_WORKERS, else half the cores, at least 2)",
   }),
+  keepAwake: runFlag("keep-awake", onOff, {
+    onOff: true,
+    description:
+      "keep the machine from sleeping while the run goes, its report included: caffeinate on macOS, systemd-inhibit on Linux (default: off)",
+  }),
   tickets: runFlag("tickets", onOff, {
     onOff: true,
     description: "run the current tickets without first asking whether to plan a new feature",
