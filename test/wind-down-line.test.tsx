@@ -6,7 +6,7 @@ import { Effect } from "effect"
 import fc from "fast-check"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, type WindDown } from "../src/run/ledger.ts"
-import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type WindDownView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
@@ -24,7 +24,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const now = began + 67_000
 
 const working = TicketPhase.Working({ activity: "working" })
-const merged = TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) })
+const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) })
 
 const entryOf = (ticket: string, phase: TicketPhase, row: number): Entry => ({
   ticket,

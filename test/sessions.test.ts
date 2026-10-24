@@ -12,9 +12,9 @@ import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import {
+  Finished,
   type Lifetime,
   Move,
-  Outcome,
   type PhaseTag,
   TicketPhase,
   WaitFor,
@@ -87,8 +87,8 @@ describe("lifetime: § 4.8's table, row by row", () => {
     ["merging", TicketPhase.Merging({ step: "check" }), "open"],
     ["handed back its conflicts", TicketPhase.Resolving({ attempt: 1 }), "open"],
     ["handed back its check", TicketPhase.Fixing({ attempt: 1, afterResolution: false }), "open"],
-    ["merged", TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) }), "closed"],
-    ["closed with no change", TicketPhase.Done({ outcome: Outcome.NoChange() }), "closed"],
+    ["merged", TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }), "closed"],
+    ["closed with no change", TicketPhase.Done({ outcome: Finished.NoChange() }), "closed"],
     ["asked", TicketPhase.Asked({ question: "t-9" }), "closed"],
     ["waits for merge", TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["t-0"] }) }), "closed"],
     ["deferred", TicketPhase.Deferred({ why: "by the worker" }), "closed"],

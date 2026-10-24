@@ -13,7 +13,7 @@ import {
   fullCheckTitle,
   titleWidth,
 } from "../src/run/fullcheck.ts"
-import { Outcome as Finished, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { Issue } from "../src/services/Beads.ts"
 import { CheckFailed, CheckTimedOut, type Said } from "../src/services/Checks.ts"

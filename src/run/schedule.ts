@@ -81,7 +81,7 @@ import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { hasRoom, type Room } from "./machineGate.ts"
 import { type Mentions, readMentions, type Sources } from "./overlap.ts"
-import { type Hold, Move, phaseFacts, TicketPhase } from "./phase.ts"
+import { type HoldBack, Move, phaseFacts, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
@@ -410,7 +410,7 @@ const counts = (
   change?: readonly [string, TicketPhase],
 ) => {
   let queued = 0
-  const by: Partial<Record<Hold | "setup", number>> = {}
+  const by: Partial<Record<HoldBack | "setup", number>> = {}
   for (const id of ids) {
     const phase = change?.[0] === id ? change[1] : state.tickets.get(id)?.phase
     if (phase?._tag === "Queued") queued++
@@ -839,7 +839,7 @@ export const make = (
 
     // Moves a waiting ticket to the phase `held` says: HeldBack for its reason, or Queued; one held
     // for another reason is released first. Each move writes a queue record.
-    const settle = (id: string, held: Hold | undefined, ids: ReadonlyArray<string>) =>
+    const placeWaiting = (id: string, held: HoldBack | undefined, ids: ReadonlyArray<string>) =>
       Effect.gen(function* () {
         const before = yield* ledger.current
         const phase = before.tickets.get(id)?.phase
@@ -1118,7 +1118,7 @@ export const make = (
           const inLine = queue.filter(
             (issue) => waiting(state, issue.id) && !was.running.has(issue.id),
           )
-          const holds = new Map<string, Hold>()
+          const holds = new Map<string, HoldBack>()
           const notHeld: Array<Issue> = []
           for (const issue of inLine) {
             const held = yield* heldFor(issue, state)
@@ -1143,15 +1143,15 @@ export const make = (
           ])
           if (say !== "") yield* logs.write(say)
           for (const id of picked.heldSolo) holds.set(id, "solo")
-          // The others settle once the slots are filled, as the last pick leaves them: one
+          // The others are placed once the slots are filled, as the last pick leaves them: one
           // dispatched changes what holds the rest, and they aren't released only to be held again.
           if (start === undefined || !(yield* mayStart)) {
-            for (const issue of inLine) yield* settle(issue.id, holds.get(issue.id), ids)
+            for (const issue of inLine) yield* placeWaiting(issue.id, holds.get(issue.id), ids)
             // A ticket that ended while its footprint was read no longer holds the others back.
             if (overlaps.size > 0 && (yield* Ref.get(slots)).running !== s.running) continue
             break
           }
-          yield* settle(start.id, undefined, ids)
+          yield* placeWaiting(start.id, undefined, ids)
           const branch = yield* branchIn(start.id)
           yield* remember((m) => ({
             ...m,

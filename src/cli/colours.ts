@@ -7,7 +7,7 @@
 import { Console, Effect } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { WorkerState } from "../agent/WorkerState.ts"
-import { Outcome, TicketPhase } from "../run/phase.ts"
+import { Finished, TicketPhase } from "../run/phase.ts"
 import { type Card, type Key, type Row, rowStatus, shownRequest } from "../run/runView.ts"
 import { Tty } from "../services/Tty.ts"
 import { attentionLines } from "../ui/AttentionCard.tsx"
@@ -154,7 +154,7 @@ const rows: ReadonlyArray<Row> = [
   {
     ticket: "tut-9",
     label: "tut-9",
-    ...rowStatus(TicketPhase.Done({ outcome: Outcome.Merged({ commit: "" }) })),
+    ...rowStatus(TicketPhase.Done({ outcome: Finished.Merged({ commit: "" }) })),
     title: "",
     note: "merged in 4m12s",
     verdict: null,

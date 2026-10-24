@@ -15,7 +15,7 @@ import { makeCommands } from "../src/run/commands.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { type Entry, emptyTallies, Ledger, type State } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Move, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { Finished, Move, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, rowStatus, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
@@ -208,7 +208,7 @@ describe("the tickets table beside Current", () => {
       TicketPhase.Merging({ step: "check" }),
       TicketPhase.Resolving({ attempt: 1 }),
       TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
-      TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) }),
+      TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
       TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }),
       TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
       TicketPhase.Review({ why: "CHECKS_FAILED" }),

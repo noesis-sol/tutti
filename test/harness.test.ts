@@ -5,7 +5,7 @@ import { settled } from "../src/agent/WorkerState.ts"
 import { EventStream } from "../src/run/eventstream.ts"
 import { RunFibers } from "../src/run/fibers.ts"
 import { Log, line } from "../src/run/log.ts"
-import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { exec, ProcessGroups, run as runCommand } from "../src/services/exec.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -81,7 +81,7 @@ const trivialRun = Effect.gen(function* () {
   yield* events.emit({ kind: "done", text: "READY_EMPTY" })
   return {
     exitCode: 0,
-    phases: { "t-1": TicketPhase.Done({ outcome: Outcome.Merged({ commit }) }) },
+    phases: { "t-1": TicketPhase.Done({ outcome: Finished.Merged({ commit }) }) },
   } satisfies RunOutcome
 })
 

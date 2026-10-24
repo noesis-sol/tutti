@@ -8,7 +8,7 @@ import fc from "fast-check"
 import { act } from "react"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
-import { type Activity, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { type Activity, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
@@ -100,7 +100,7 @@ const looksLike = (frame: Frame, text: string, style: StyleName) => {
   if (drawn.fg !== undefined) expect(span.fg).toEqual(drawn.fg.toInts().slice(0, 3))
 }
 
-const merged = (commit: string) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) })
+const merged = (commit: string) => TicketPhase.Done({ outcome: Finished.Merged({ commit }) })
 
 /** The run as § 7.2's illustration shows it. */
 const illustrated = viewOf(
@@ -391,7 +391,7 @@ describe("the tickets table", () => {
       "deferred",
     ],
     ["✓ done", merged("abc1234def"), "abc1234 merged into batch/2026-10-20", "closed"],
-    ["✓ done", TicketPhase.Done({ outcome: Outcome.NoChange() }), "no change to merge", "closed"],
+    ["✓ done", TicketPhase.Done({ outcome: Finished.NoChange() }), "no change to merge", "closed"],
     ["? for you", TicketPhase.Asked({ question: "q-1" }), "The ticket's title", "stop"],
     [
       "◷ waiting",

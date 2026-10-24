@@ -7,7 +7,7 @@ import { closedBranches, closedUnmergedLine, startBranches } from "../src/run/cl
 import * as free from "../src/run/deferredFree.ts"
 import { type Entry, emptyState, Ledger, type State } from "../src/run/ledger.ts"
 import { check, heldAtStart, lines, noStyles, type Options } from "../src/run/nothing.ts"
-import { Outcome as Finished, Move, TicketPhase } from "../src/run/phase.ts"
+import { Finished, Move, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { unmergedBlockers } from "../src/run/settle.ts"
 import { requeueWaiting } from "../src/run/work.ts"

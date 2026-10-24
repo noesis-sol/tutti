@@ -5,7 +5,14 @@
 // line was, and the run is woken to look again.
 import { Effect, Option, SubscriptionRef } from "effect"
 import type { EventStream } from "./eventstream.ts"
-import { type Holds, noHolds, raiseStop, type StopReason, type Stops, shownHolds } from "./holds.ts"
+import {
+  noHolds,
+  type RunHolds,
+  raiseStop,
+  type StopReason,
+  type Stops,
+  shownHolds,
+} from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { hold, type Log } from "./log.ts"
 import { phaseFacts, type TicketPhase } from "./phase.ts"
@@ -30,17 +37,17 @@ const runningIn = (state: State, over: ReadonlySet<string>): number =>
 
 export interface HoldsGate {
   /** What holds the run now. */
-  readonly now: Effect.Effect<Holds>
+  readonly now: Effect.Effect<RunHolds>
   /** The run's stops now. */
   readonly currentStops: Effect.Effect<Stops>
   /** Changes the holds by `change`, one change at a time, and shows them: gives the holds it found. */
-  changeHolds(change: (now: Holds) => Holds): Effect.Effect<Holds>
+  changeHolds(change: (now: RunHolds) => RunHolds): Effect.Effect<RunHolds>
   /**
    * Holds the run for `stop`: `raise` puts it among the holds. Said as it comes while tickets still
    * run, unless its line was; a worker past its ticket limit goes on, so its hold is said even with
    * nothing else running.
    */
-  stopped(stop: StopReason, raise?: (now: Holds) => Holds): Effect.Effect<void>
+  stopped(stop: StopReason, raise?: (now: RunHolds) => RunHolds): Effect.Effect<void>
 }
 
 /** The run's holds, shown on `status` beside the run's `notices`; a stop wakes the run (`wakeUp`). */
@@ -53,10 +60,10 @@ export const make = (options: {
     const ledger = yield* Ledger
     const { say } = yield* sayer
     const { status, notices } = options
-    const holds = yield* SubscriptionRef.make<Holds>(noHolds)
+    const holds = yield* SubscriptionRef.make<RunHolds>(noHolds)
     const now = SubscriptionRef.get(holds)
 
-    const changeHolds = (change: (now: Holds) => Holds) =>
+    const changeHolds = (change: (now: RunHolds) => RunHolds) =>
       SubscriptionRef.modifySomeEffect(holds, (before) => {
         const after = change(before)
         if (after === before) return Effect.succeed([before, Option.none()] as const)
@@ -73,7 +80,7 @@ export const make = (options: {
 
     const stopped = (
       stop: StopReason,
-      raise: (now: Holds) => Holds = (now) => raiseStop(now, stop),
+      raise: (now: RunHolds) => RunHolds = (now) => raiseStop(now, stop),
     ) =>
       Effect.gen(function* () {
         yield* changeHolds(raise)

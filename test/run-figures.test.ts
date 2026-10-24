@@ -21,7 +21,7 @@ import {
   tokenCount,
 } from "../src/run/figures.ts"
 import { line } from "../src/run/log.ts"
-import { Outcome as Ended, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
 import { Git } from "../src/services/Git.ts"
@@ -263,7 +263,7 @@ const row = (ticket: string): Row => ({
   ticket,
   label: ticket,
   title: "",
-  ...rowStatus(TicketPhase.Done({ outcome: Ended.NoChange() })),
+  ...rowStatus(TicketPhase.Done({ outcome: Finished.NoChange() })),
   note: "merged into main",
   verdict: null,
 })

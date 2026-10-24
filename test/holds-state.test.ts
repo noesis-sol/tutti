@@ -1,6 +1,6 @@
-// What holds the run is one value (holds.ts's Holds): its stops, BLOCKED among them once per ticket,
-// the tickets past --ticket-limit, the machine's hold and the usage limit's view; `· stopping`, the
-// banners and the usage line are what it shows.
+// What holds the run is one value (holds.ts's RunHolds): its stops, BLOCKED among them once per
+// ticket, the tickets past --ticket-limit, the machine's hold and the usage limit's view;
+// `· stopping`, the banners and the usage line are what it shows.
 import { describe, expect, test } from "bun:test"
 import * as fc from "fast-check"
 import {
@@ -8,11 +8,11 @@ import {
   blockedTickets,
   changeStops,
   extendFirst,
-  type Holds,
   liftBlocked,
   noHolds,
   pastTicketLimit,
   putFirst,
+  type RunHolds,
   raiseStop,
   shownHolds,
   showUsage,
@@ -35,9 +35,9 @@ const usageFree: UsageView = {
   notice: null,
 }
 
-const words = (holds: Holds) => shownHolds(holds).holds.map((each) => each.word)
+const words = (holds: RunHolds) => shownHolds(holds).holds.map((each) => each.word)
 
-describe("Holds", () => {
+describe("RunHolds", () => {
   test("nothing holds a fresh run", () => {
     expect(shownHolds(noHolds)).toEqual({ stopping: false, holds: [], usage: null, notice: null })
     expect(blockedTickets(noHolds).size).toBe(0)

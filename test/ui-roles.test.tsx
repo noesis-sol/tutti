@@ -15,7 +15,7 @@ import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, type WindDown } from "../src/run/ledger.ts"
-import { hasCard, Outcome, type PhaseTag, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { Finished, hasCard, type PhaseTag, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { App, Root } from "../src/ui/App.tsx"
@@ -157,7 +157,7 @@ const viewOf = (
 
 const working = (activity: Parameters<typeof TicketPhase.Working>[0]["activity"]) =>
   TicketPhase.Working({ activity })
-const merged = (commit: string) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) })
+const merged = (commit: string) => TicketPhase.Done({ outcome: Finished.Merged({ commit }) })
 
 const permission = (
   id: string,
@@ -641,7 +641,7 @@ const scenes: ReadonlyArray<Scene> = [
     size: { width: 120, height: 60 },
     view: rowsOf([
       TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
-      TicketPhase.Done({ outcome: Outcome.NoChange() }),
+      TicketPhase.Done({ outcome: Finished.NoChange() }),
       TicketPhase.Asked({ question: "q-1" }),
       TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-1"] }) }),
       TicketPhase.Review({ why: "OFF_BRANCH" }),

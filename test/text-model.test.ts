@@ -6,7 +6,7 @@ import { TextAttributes } from "@opentui/core"
 import fc from "fast-check"
 import { initSummary } from "../src/print/initSummary.ts"
 import { type Summary, summary } from "../src/print/summary.ts"
-import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
 import { boxed, paint, type Segments, seg, wrap } from "../src/ui/line.tsx"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
@@ -130,7 +130,7 @@ const ended = (rows: ReadonlyArray<Row>): Summary => ({
 
 describe("the summary's tickets", () => {
   const rows = [
-    row("tut-1", TicketPhase.Done({ outcome: Outcome.NoChange() }), "abc1234 merged into main"),
+    row("tut-1", TicketPhase.Done({ outcome: Finished.NoChange() }), "abc1234 merged into main"),
     { ...row("tut-2", TicketPhase.Deferred({ why: "" }), "gave up"), verdict: "retry after tut-1" },
     row("tut-3", TicketPhase.Working({ activity: "working" }), "Three"),
   ]
@@ -149,7 +149,7 @@ describe("the summary's tickets", () => {
 
   test("every row is shown, however many", () => {
     const many = Array.from({ length: 30 }, (_, i) =>
-      row(`tut-${i}`, TicketPhase.Done({ outcome: Outcome.NoChange() }), "merged"),
+      row(`tut-${i}`, TicketPhase.Done({ outcome: Finished.NoChange() }), "merged"),
     )
     const out = summary(ended(many), theme, 80).replace(sgr, "")
     expect(out).not.toContain("earlier tickets")

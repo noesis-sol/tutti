@@ -12,7 +12,7 @@ import { Transcripts } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, Ledger, type WindDown } from "../src/run/ledger.ts"
-import { Move, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { Finished, Move, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { type Card, emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { actionPoll, latestActions, Screen } from "../src/run/screen.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -524,7 +524,7 @@ describe("the Current section", () => {
         .filter((line) => /^│ \S [a-d] {2}/.test(line))
         .map((line) => line.slice(2, 5))
     expect(await heads(viewOf(all))).toEqual([`${turned} a`, `${turned} b`, `${turned} c`])
-    const merged = TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) })
+    const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) })
     const finished: ReadonlyArray<Ticket> = all.map((t) =>
       t.ticket === "a" ? { ...t, phase: merged, worker: null } : t,
     )
@@ -625,7 +625,7 @@ describe("the wind-down line", () => {
         { ticket: "b", phase: TicketPhase.Merging({ step: "check" }), worker: 2 },
         {
           ticket: "c",
-          phase: TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) }),
+          phase: TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
           worker: null,
         },
         { ticket: "d", phase: TicketPhase.Review({ why: "OFF_BRANCH" }), worker: null },

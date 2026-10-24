@@ -9,7 +9,7 @@ import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
-import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import {
   type FailedCheck,
   failedCheckSaid,
@@ -139,7 +139,7 @@ describe("the failed checks' section", () => {
   test("names the tickets still set aside for their check, in the order they were set aside", () => {
     const entries = new Map([
       ["a", entry("a", TicketPhase.Review({ why: "CHECKS_FAILED" }))],
-      ["b", entry("b", TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc" }) }))],
+      ["b", entry("b", TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc" }) }))],
       ["c", entry("c", TicketPhase.Review({ why: "CHECKS_FAILED" }))],
       ["d", entry("d", TicketPhase.Review({ why: "DIRTY_WORKTREE" }))],
     ])

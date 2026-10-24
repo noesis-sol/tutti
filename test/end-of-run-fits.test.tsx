@@ -6,7 +6,7 @@ import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
-import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { conflictWaits, emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
@@ -63,7 +63,7 @@ const viewOf = (): RunView =>
           entryOf(
             ticket,
             null,
-            TicketPhase.Done({ outcome: Outcome.Merged({ commit: "ffd6ce4" }) }),
+            TicketPhase.Done({ outcome: Finished.Merged({ commit: "ffd6ce4" }) }),
             row,
           ),
         ]),

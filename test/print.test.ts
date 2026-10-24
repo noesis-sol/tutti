@@ -5,7 +5,7 @@ import fc from "fast-check"
 import { decodeReferences, renderMarkdown, ruleWidth } from "../src/print/markdown.ts"
 import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
 import { closing, Ending, printSummary, type Summary, summary } from "../src/print/summary.ts"
-import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
@@ -51,7 +51,7 @@ describe("the summary", () => {
     const rows = Array.from({ length: 40 }, (_, i) =>
       row(
         `tut-${i}`,
-        TicketPhase.Done({ outcome: Outcome.NoChange() }),
+        TicketPhase.Done({ outcome: Finished.NoChange() }),
         `abc${i} merged into main`,
       ),
     )
@@ -96,7 +96,11 @@ describe("the summary", () => {
   test("each row takes its state's style, and a finished row's note is faint", () => {
     const out = summary(
       ended([
-        row("tut-1", TicketPhase.Done({ outcome: Outcome.NoChange() }), "abc1234 merged into main"),
+        row(
+          "tut-1",
+          TicketPhase.Done({ outcome: Finished.NoChange() }),
+          "abc1234 merged into main",
+        ),
         row("tut-2", TicketPhase.Stopped({ why: "PAUSED" }), "Two"),
         row("tut-3", TicketPhase.ToMerge({ place: 1 }), "Three"),
       ]),
@@ -118,7 +122,7 @@ describe("the summary", () => {
       const out = strip(
         summary(
           ended([
-            row("tutti-nrg.5.11.long", TicketPhase.Done({ outcome: Outcome.NoChange() }), "x"),
+            row("tutti-nrg.5.11.long", TicketPhase.Done({ outcome: Finished.NoChange() }), "x"),
           ]),
           theme,
           width,
@@ -193,7 +197,7 @@ describe("the closing line", () => {
     await Effect.runPromise(
       printSummary(
         makePrinter(out, theme),
-        ended([row("tut-1", TicketPhase.Done({ outcome: Outcome.NoChange() }), "merged")]),
+        ended([row("tut-1", TicketPhase.Done({ outcome: Finished.NoChange() }), "merged")]),
         Ending.Done({ text: "READY_EMPTY after 1 ticket", tickets: 1, limit: null, took: 0 }),
         theme,
         80,

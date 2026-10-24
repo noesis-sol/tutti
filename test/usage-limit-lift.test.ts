@@ -14,7 +14,14 @@ import { resetLabel } from "../src/run/localTime.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
 import { nudgeText, resetText } from "../src/run/told.ts"
-import { Hold, liftAfter, liftTime, Reset, resetOf, retryEvery } from "../src/run/usageLimit.ts"
+import {
+  LimitHold,
+  liftAfter,
+  liftTime,
+  Reset,
+  resetOf,
+  retryEvery,
+} from "../src/run/usageLimit.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   apiErrorResult,
@@ -323,7 +330,9 @@ describe("the hold's reset", () => {
 
   test("it lifts at its reset plus liftAfter, its next try, or once allowed, retryEvery apart", () => {
     const held = (reset: Reset, lifted: number | null = null) =>
-      Hold.Held({ since: 0, limit: "five_hour", reset, lifted }) as Hold & { _tag: "Held" }
+      LimitHold.Held({ since: 0, limit: "five_hour", reset, lifted }) as LimitHold & {
+        _tag: "Held"
+      }
     const after = Duration.toMillis(liftAfter)
     expect(liftTime(held(Reset.Known({ at: hour * 1000 })))).toBe(hour * 1000 + after)
     expect(liftTime(held(Reset.Unknown({ nextTry: 20 * minute, passed: null })))).toBe(20 * minute)

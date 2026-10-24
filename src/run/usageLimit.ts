@@ -15,8 +15,8 @@
 // - At the reset plus liftAfter, the hold is lifted (`USAGE_LIMIT lifted`) and each UsageLimited
 //   worker you haven't steered is sent a client_composed message to carry on. A worker handed back
 //   its ticket while at the limit (handback.ts's give) is sent the hand-back in its place.
-// - The hold lifts on what the account says, not only on the clock (Hold): a reset at or before now
-//   is unknown, as one the clock or the server has wrong; an unknown reset is tried again
+// - The hold lifts on what the account says, not only on the clock (LimitHold): a reset at or
+//   before now is unknown, as one the clock or the server has wrong; an unknown reset is tried again
 //   retryEvery after the hold began; and a session's `allowed` or `allowed_warning` event for the
 //   held limit, liftAfter or more after the hold began, shows the account under it again and lifts
 //   the hold, whether or not a reset is known. Lifts
@@ -213,7 +213,7 @@ export type Reset = Data.TaggedEnum<{
 export const Reset = Data.taggedEnum<Reset>()
 
 /** The usage-limit hold. `lifted` is when it was last lifted, for the next lift's spacing. */
-export type Hold = Data.TaggedEnum<{
+export type LimitHold = Data.TaggedEnum<{
   Free: { readonly lifted: number | null }
   Held: {
     readonly since: number
@@ -223,7 +223,7 @@ export type Hold = Data.TaggedEnum<{
   }
 }>
 
-export const Hold = Data.taggedEnum<Hold>()
+export const LimitHold = Data.taggedEnum<LimitHold>()
 
 /** A reset `at` given at `now`, as the hold reads it: one at or before now is unknown. */
 export const resetOf = (at: number | null, now: number): Reset =>
@@ -232,7 +232,7 @@ export const resetOf = (at: number | null, now: number): Reset =>
     : Reset.Unknown({ nextTry: now + Duration.toMillis(retryEvery), passed: at })
 
 /** When a hold lifts: at its reset plus liftAfter, its next try or once allowed, retryEvery apart. */
-export const liftTime = (held: Hold & { readonly _tag: "Held" }): number => {
+export const liftTime = (held: LimitHold & { readonly _tag: "Held" }): number => {
   const due = Reset.$match(held.reset, {
     Known: ({ at }) => at + Duration.toMillis(liftAfter),
     Unknown: ({ nextTry }) => nextTry,
@@ -252,7 +252,7 @@ interface HoldState {
   /** The last rejection: what a hold for a worker's 429 alone names. */
   readonly rejected: { readonly limit: string | null; readonly resetsAt: number | null } | null
   readonly usage: Usage | null
-  readonly hold: Hold
+  readonly hold: LimitHold
   /** The tickets whose workers are UsageLimited. */
   readonly limited: ReadonlySet<string>
   /** When the run began waiting for the reset with nothing else running; null when it isn't. */
@@ -266,7 +266,7 @@ const fresh: HoldState = {
   warned: new Set(),
   rejected: null,
   usage: null,
-  hold: Hold.Free({ lifted: null }),
+  hold: LimitHold.Free({ lifted: null }),
   limited: new Set(),
   waiting: null,
   said: 0,
@@ -364,7 +364,7 @@ export const make = (options: {
     // What the probe at a try answered: Refused, the hold takes the reset it gave, and the next try
     // to go with it; otherwise null, for the lift. One at a time with the hold's other changes, which
     // interrupt the try in place of setting it.
-    const probed = (held: Hold & { readonly _tag: "Held" }, answer: ProbeAnswer) =>
+    const probed = (held: LimitHold & { readonly _tag: "Held" }, answer: ProbeAnswer) =>
       Effect.gen(function* () {
         const s = yield* Ref.get(state)
         if (s.hold._tag === "Free") return null
@@ -382,7 +382,7 @@ export const make = (options: {
           Allowed: () => null,
         })
         const reset = resetOf(answer.resetsAt ?? had, now)
-        const next = Hold.Held({ ...held, limit, reset })
+        const next = LimitHold.Held({ ...held, limit, reset })
         yield* update((each) => ({ ...each, hold: next }))
         const at = liftTime(next)
         const until =
@@ -397,7 +397,7 @@ export const make = (options: {
     // At its liftTime the hold lifts: at once on a session's word that the account is under the
     // limit, else once the probe finds it so, or gets no answer, which lifts it on the clock as
     // before the probe. Refused, the hold holds on to the probe's reset, or its next try.
-    const tries = (held: Hold & { readonly _tag: "Held" }): Effect.Effect<void> =>
+    const tries = (held: LimitHold & { readonly _tag: "Held" }): Effect.Effect<void> =>
       Effect.gen(function* () {
         const wait = liftTime(held) - (yield* Clock.currentTimeMillis)
         yield* Effect.sleep(Duration.millis(Math.max(0, wait)))
@@ -409,16 +409,16 @@ export const make = (options: {
       })
 
     // Tries the hold at its liftTime, in place of any try set before.
-    const liftAt = (held: Hold & { readonly _tag: "Held" }) =>
+    const liftAt = (held: LimitHold & { readonly _tag: "Held" }) =>
       Effect.gen(function* () {
         yield* FiberSet.clear(lifter)
         yield* FiberSet.run(lifter, tries(held))
       })
 
     // Sets the held reset, and the lift that goes with it.
-    const reset = (held: Hold & { readonly _tag: "Held" }, next: Reset) =>
+    const reset = (held: LimitHold & { readonly _tag: "Held" }, next: Reset) =>
       Effect.gen(function* () {
-        const moved = Hold.Held({ ...held, reset: next })
+        const moved = LimitHold.Held({ ...held, reset: next })
         yield* update((s) => ({ ...s, hold: moved }))
         yield* liftAt(moved)
       })
@@ -437,7 +437,7 @@ export const make = (options: {
           } else if (current._tag === "Allowed") yield* reset(before, next)
           return
         }
-        const held = Hold.Held({ since: now, limit, reset: next, lifted: before.lifted })
+        const held = LimitHold.Held({ since: now, limit, reset: next, lifted: before.lifted })
         yield* update((s) => ({ ...s, hold: held }))
         yield* usage.hold(true)
         const at = shownReset(next)
@@ -491,7 +491,7 @@ export const make = (options: {
       const lifted = yield* Clock.currentTimeMillis
       yield* update((s) => ({
         ...s,
-        hold: Hold.Free({ lifted }),
+        hold: LimitHold.Free({ lifted }),
         usage: null,
         rejected: null,
         waiting: null,

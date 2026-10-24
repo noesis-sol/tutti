@@ -19,8 +19,8 @@ import {
 type Empty = Record<never, never>
 
 /** What holds a ready ticket back, besides a free slot. */
-export const holds = ["overlap", "parent", "merge", "solo"] as const
-export type Hold = (typeof holds)[number]
+export const holdBacks = ["overlap", "parent", "merge", "solo"] as const
+export type HoldBack = (typeof holdBacks)[number]
 
 /** A merge's steps, in order. */
 export type MergeStep = (typeof mergeSteps)[number]
@@ -78,19 +78,19 @@ export const activities = [
 export type Activity = (typeof activities)[number]
 
 /** How a Done ticket finished: merged with its commit, or closed with no change of its own. */
-export type Outcome = Data.TaggedEnum<{
+export type Finished = Data.TaggedEnum<{
   Merged: { readonly commit: string }
   NoChange: Empty
 }>
 
-export const Outcome = Data.taggedEnum<Outcome>()
+export const Finished = Data.taggedEnum<Finished>()
 
 /** A ticket's phase in the run (§ 5.1). Places and attempts count from 1. */
 export type TicketPhase = Data.TaggedEnum<{
   /** Ready, waiting for a free slot. */
   Queued: Empty
   /** Ready, but waiting for something other than a slot. */
-  HeldBack: { readonly why: Hold }
+  HeldBack: { readonly why: HoldBack }
   /** Picked up, with its worker at it. */
   Working: { readonly activity: Activity }
   /** Its work verified, waiting for its turn in the merge queue; place 1 is next. */
@@ -102,7 +102,7 @@ export type TicketPhase = Data.TaggedEnum<{
   /** Its check failed on its branch before it merged, and the failure was handed back. */
   Fixing: { readonly attempt: number; readonly afterResolution: boolean }
   /** Merged, or closed with no change of its own to merge. The only final phase. */
-  Done: { readonly outcome: Outcome }
+  Done: { readonly outcome: Finished }
   /** Waits on a question ticket for you: the question's ID. */
   Asked: { readonly question: string }
   /** Back in the queue until what it waits for comes: its blockers' merge, a probe, the next run. */
@@ -126,7 +126,7 @@ const Ordinal = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
 /** TicketPhase's Schema, for the event stream: the phase as a tagged object. */
 export const TicketPhaseSchema = Schema.TaggedUnion({
   Queued: {},
-  HeldBack: { why: Schema.Literals(holds) },
+  HeldBack: { why: Schema.Literals(holdBacks) },
   Working: { activity: Schema.Literals(activities) },
   ToMerge: { place: Ordinal },
   Merging: { step: Schema.Literals(mergeSteps) },
@@ -158,7 +158,7 @@ export type Move = Data.TaggedEnum<{
   /** bd ready no longer lists it: closed, deferred or blocked outside the run. */
   Unready: Empty
   /** Its footprint overlaps a running ticket's, its subtickets or a blocker aren't merged, or solo. */
-  Held: { readonly why: Hold }
+  Held: { readonly why: HoldBack }
   /** What held it back is gone. */
   Released: Empty
   /** A slot is free and it is the highest-priority ticket not held back. */
@@ -324,7 +324,7 @@ export const transitions: ReadonlyArray<Transition> = [
     when: "NoChange",
     to: "Done",
     recorded: { kinds: ["closed"], detail: "no change to merge" },
-    next: () => TicketPhase.Done({ outcome: Outcome.NoChange() }),
+    next: () => TicketPhase.Done({ outcome: Finished.NoChange() }),
   }),
   row({
     from: "Working",
@@ -429,14 +429,14 @@ export const transitions: ReadonlyArray<Transition> = [
     when: "FastForwarded",
     to: "Done",
     recorded: { kinds: ["closed"] },
-    next: (_, { commit }) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) }),
+    next: (_, { commit }) => TicketPhase.Done({ outcome: Finished.Merged({ commit }) }),
   }),
   row({
     from: "Merging",
     when: "NoChange",
     to: "Done",
     recorded: { kinds: ["closed"], detail: "no change to merge" },
-    next: () => TicketPhase.Done({ outcome: Outcome.NoChange() }),
+    next: () => TicketPhase.Done({ outcome: Finished.NoChange() }),
   }),
   // § 3.4: a quit during the rebase or the check, before the fast-forward, leaves the ticket
   // waiting to merge, and the run's end then stops it as one in the queue.
@@ -487,7 +487,7 @@ export const transitions: ReadonlyArray<Transition> = [
     when: "NoChange",
     to: "Done",
     recorded: { kinds: ["closed"], detail: "no change to merge" },
-    next: () => TicketPhase.Done({ outcome: Outcome.NoChange() }),
+    next: () => TicketPhase.Done({ outcome: Finished.NoChange() }),
   }),
   row({
     from: "Resolving",
@@ -572,14 +572,14 @@ export const transitions: ReadonlyArray<Transition> = [
     when: "MergedByHand",
     to: "Done",
     recorded: { kinds: ["closed"], detail: "merged by hand" },
-    next: (_, { commit }) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) }),
+    next: (_, { commit }) => TicketPhase.Done({ outcome: Finished.Merged({ commit }) }),
   }),
   row({
     from: "Blocked",
     when: "MergedByHand",
     to: "Done",
     recorded: { kinds: ["closed"], detail: "merged by hand" },
-    next: (_, { commit }) => TicketPhase.Done({ outcome: Outcome.Merged({ commit }) }),
+    next: (_, { commit }) => TicketPhase.Done({ outcome: Finished.Merged({ commit }) }),
   }),
   row({
     from: null,

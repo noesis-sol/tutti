@@ -4,7 +4,7 @@
 // a new mark must not add to them. Not tested: shapes that differ but look alike, ■ and ◼.
 import { describe, expect, test } from "bun:test"
 import { type Entry, emptyTallies, type State } from "../src/run/ledger.ts"
-import { activities, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { activities, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
 import { lookOf, type Mark, marks, motionTones } from "../src/ui/marks.ts"
 import { makeTheme, orchestra, type StyleName } from "../src/ui/theme.ts"
@@ -92,7 +92,7 @@ const phases: ReadonlyArray<TicketPhase> = [
   TicketPhase.Merging({ step: "check" }),
   TicketPhase.Resolving({ attempt: 1 }),
   TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
-  TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) }),
+  TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
   TicketPhase.Asked({ question: "q-1" }),
   TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["t-0"] }) }),
   TicketPhase.Deferred({ why: "gave up" }),

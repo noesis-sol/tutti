@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
-import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Finished, TicketPhase } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
@@ -20,7 +20,7 @@ const themeOf = (appearance: Appearance) =>
 const began = new Date(2026, 9, 22, 13, 0, 0).getTime()
 const now = began + 67_000
 const working = TicketPhase.Working({ activity: "working" })
-const merged = TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) })
+const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) })
 
 /** RunView for tickets, each `[ticket, its worker's number or null, its phase]`. */
 const viewOf = (
