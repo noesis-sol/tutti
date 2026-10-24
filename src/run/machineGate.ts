@@ -18,8 +18,12 @@ import { sayer } from "./say.ts"
 import type { Scheduler } from "./schedule.ts"
 
 export interface MachineGate {
-  /** Whether the machine has room for the ticket about to start: the hold begins when it hasn't. */
-  readonly room: Effect.Effect<boolean>
+  /**
+   * Claims room on the machine for the ticket about to start, and says whether it has it. When it
+   * hasn't, the hold at the cap begins: written on the run's holds, said (HOLD: MACHINE) and
+   * recorded with the queue; when it has, a hold is lifted.
+   */
+  readonly claimRoom: Effect.Effect<boolean>
   /**
    * Writes how many of the run's workers run, reads the other runs, saying which started and ended
    * and keeping how many workers they run (OtherWorkers) and how many runs share the machine (the
@@ -104,7 +108,7 @@ export const make = (options: {
       yield* otherWorkers.set(yield* machine.others)
       if (!(yield* atCap)) yield* holdMachine(false)
     })
-    const room = Effect.gen(function* () {
+    const claimRoom = Effect.gen(function* () {
       if (!(yield* atCap)) {
         yield* holdMachine(false)
         return true
@@ -130,7 +134,7 @@ export const make = (options: {
         : undefined
 
     return {
-      room,
+      claimRoom,
       lookAround,
       sayRunning,
       poll,

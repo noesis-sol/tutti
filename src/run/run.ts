@@ -112,6 +112,7 @@ import {
   exitCodeOf,
   exitCodes,
   extendFirst,
+  type Gate,
   noMoreWork,
   pastTicketLimit,
   putFirst,
@@ -120,6 +121,8 @@ import {
   stopFor,
   stopOfLine,
   swapStop,
+  takesBack,
+  takesNew,
 } from "./holds.ts"
 import { make as makeHoldsGate, waitedFor } from "./holdsGate.ts"
 import { type Entry, Ledger } from "./ledger.ts"
@@ -377,11 +380,27 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           Effect.provideService(Organs, organs.value),
         )
 
-    // Why the run takes on no more work, for the merges: no failed check is handed back then.
-    const noMore = Effect.map(
-      Effect.all([currentStops, usage.held, ledger.current]),
-      ([all, held, state]) => noMoreWork(all, held, state.windDown !== null),
+    // Whether the run may take work (holds.ts's Gate), read once for each decision. --limit is the
+    // scheduler's count, made below: no ticket has started before it is.
+    const limitReached = yield* Ref.make<Effect.Effect<boolean>>(Effect.succeed(false))
+    const gate = Effect.map(
+      Effect.all([
+        currentStops,
+        usage.held,
+        commands.ended,
+        ledger.current,
+        Effect.flatten(Ref.get(limitReached)),
+      ]),
+      ([all, usageHeld, ended, state, limit]): Gate => ({
+        stop: all.first,
+        usageHeld,
+        ended,
+        windingDown: state.windDown !== null,
+        limitReached: limit,
+      }),
     )
+    // Why the run takes on no more work, for the merges: no failed check is handed back then.
+    const noMore = Effect.map(gate, noMoreWork)
     // A ticket checked once more takes a slot from the scheduler, made after the queue it starts
     // tickets with: none before it is.
     const slots = yield* Ref.make<Scheduler["recheckSlot"] | undefined>(undefined)
@@ -471,9 +490,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // A merge that changed the requires list has it checked again before the next ticket starts
     // (requires.ts): what is still missing stops the run as at its start, the running tickets
-    // finishing first. Each ask whether the run takes a ticket checks it first, so that a merge
-    // during a look's fill is checked before the fill starts another; one check at a time, so that
-    // an ask while one runs waits for its answer.
+    // finishing first. The scheduler checks it before each start and carry (its beforeStart), so
+    // that a merge during a look's fill is checked before the fill starts another; one check at a
+    // time, so that a start while one runs waits for its answer.
     const requiresChecking = yield* Semaphore.make(1)
     const requiresContext = yield* Effect.context<
       WorkEnv | FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner
@@ -490,13 +509,6 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         }),
       )
       .pipe(Effect.provideContext(requiresContext))
-    const taking = Effect.andThen(
-      requiresChecked,
-      Effect.map(
-        Effect.all([currentStops, commands.ended, usage.held]),
-        ([all, ended, held]) => all.first === null && !ended && !held,
-      ),
-    )
 
     // The machine's other tutti and orchestra runs (machineGate.ts): with --machine-workers, the
     // ticket about to start waits while the workers across them are at that cap.
@@ -536,8 +548,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       scope: config.ticket,
       excludeTypes: config.settings.queue.exclude_types,
       start: { start: ticketFiber },
-      taking: Effect.flatMap(taking, (yes) => (yes ? machine.room : Effect.succeed(false))),
-      holding: Effect.map(taking, (yes) => !yes),
+      gate,
+      beforeStart: requiresChecked,
+      claimRoom: machine.claimRoom,
       machineFull,
       carrying: Ref.get(carrying),
       ...(footprints === undefined ? {} : { footprints }),
@@ -547,6 +560,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         Effect.andThen(showOn(status, "solo")(solo), showOn(status, "unclosed")(unclosed)),
     })
     yield* Ref.set(slots, scheduler.recheckSlot)
+    yield* Ref.set(limitReached, scheduler.limitReached)
     yield* machine.attach(scheduler)
 
     // The run's watchers: one that dies panics the run.
@@ -753,11 +767,6 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // ticket has none open (blockedWatch.ts).
     yield* makeBlockedWatch({ holds, ended: commands.ended, wakeUp, watch })
 
-    // Whether the run would take a ticket now, given a free slot.
-    const canTake = Effect.gen(function* () {
-      const winding = (yield* ledger.current).windDown !== null
-      return (yield* taking) && !winding && !(yield* scheduler.limitReached)
-    })
     // The look's effects, which read bd and git: the tickets put back in the queue, the setups,
     // checks and requires taken again, the carried and answered workers taken up, then the free
     // slots filled.
@@ -777,14 +786,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
       // winds down, which takes up only what is running: the next run resumes them.
       yield* Ref.set(unslotted, new Set())
-      if ((yield* taking) && (yield* ledger.current).windDown === null) {
+      if (takesBack(yield* gate)) {
         const left = yield* carryWaiting(carryOptions, yield* Ref.get(carrying)).pipe(
           Effect.provideContext(context),
         )
         yield* Ref.set(carrying, waitingOf(left))
         yield* takeAnswers(carryOptions)
       }
-      if (yield* canTake) {
+      if (takesNew(yield* gate)) {
         const filled = yield* Effect.result(scheduler.fillTrying)
         if (Result.isFailure(filled)) {
           yield* stopped(
@@ -811,7 +820,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         overLimit: (yield* holds.now).overLimit,
         asking: (yield* attention.current).map((request) => request.ticket),
         running: yield* scheduler.running,
-        canTake: yield* canTake,
+        canTake: takesNew(yield* gate),
         resuming: (yield* Ref.get(unslotted)).size > 0,
         settled: isSettled(yield* queue.state),
         triagePending: yield* triage.pending,
@@ -860,10 +869,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           yield* stopped(limit)
           return { limited: true, asked: false, seen }
         }
-        const held = (yield* currentStops).first !== null
+        const { stop, usageHeld } = yield* gate
         yield* showEndOfRun(status, endOfRunBox(look))
         const endAsked = yield* commands.endAsked
-        const end = decide({ ...look, held, usageHeld: yield* usage.held, endAsked })
+        const end = decide({ ...look, held: stop !== null, usageHeld, endAsked })
         if (end._tag === "Done") return { limited: false, asked: end.asked, seen }
         yield* wakes.next(scheduler.freed)
       }

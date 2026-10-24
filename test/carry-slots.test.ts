@@ -13,6 +13,7 @@ import { askedWhy, questionKey } from "../src/run/carry.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
+import { type Gate, openGate } from "../src/run/holds.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
@@ -64,7 +65,8 @@ const flush = Effect.gen(function* () {
 const scheduler = (options: {
   readonly concurrent: number
   readonly limit?: number
-  readonly taking?: Effect.Effect<boolean>
+  readonly gate?: Effect.Effect<Gate>
+  readonly claimRoom?: Effect.Effect<boolean>
   readonly carrying?: Effect.Effect<ReadonlySet<string>>
 }) =>
   Effect.gen(function* () {
@@ -74,7 +76,8 @@ const scheduler = (options: {
       limit: options.limit ?? 40,
       scope: null,
       excludeTypes: ["epic"],
-      ...(options.taking === undefined ? {} : { taking: options.taking }),
+      ...(options.gate === undefined ? {} : { gate: options.gate }),
+      ...(options.claimRoom === undefined ? {} : { claimRoom: options.claimRoom }),
       ...(options.carrying === undefined ? {} : { carrying: options.carrying }),
       start: {
         start: (issue: Issue) => Effect.sync(() => void started.push(`dispatched ${issue.id}`)),
@@ -134,14 +137,21 @@ describe("the scheduler's carry", () => {
     const seen = await inMemory(
       [],
       Effect.gen(function* () {
-        const open = yield* Ref.make(false)
-        const { carry, started } = yield* scheduler({ concurrent: 3, taking: Ref.get(open) })
+        const gate = yield* Ref.make<Gate>({ ...openGate, usageHeld: true })
+        const room = yield* Ref.make(false)
+        const { carry, started } = yield* scheduler({
+          concurrent: 3,
+          gate: Ref.get(gate),
+          claimRoom: Ref.get(room),
+        })
         const held = yield* carry("c-1")
-        yield* Ref.set(open, true)
-        return { held, after: yield* carry("c-1"), started }
+        yield* Ref.set(gate, openGate)
+        const full = yield* carry("c-1")
+        yield* Ref.set(room, true)
+        return { held, full, after: yield* carry("c-1"), started }
       }),
     )
-    expect(seen).toEqual({ held: false, after: true, started: ["carried c-1"] })
+    expect(seen).toEqual({ held: false, full: false, after: true, started: ["carried c-1"] })
   })
 
   test("takes none while the run winds down", async () => {

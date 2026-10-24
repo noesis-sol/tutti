@@ -385,20 +385,57 @@ export const noStops: Stops = { first: null, others: [] }
 export const usageHolds = "the run holds (USAGE_LIMIT)"
 
 /**
+ * Whether the run may take work, as one decision reads it: the five values each "may it" asks of,
+ * read together once (the run's gate, run.ts), so that the predicates below answer from one look.
+ */
+export interface Gate {
+  /** The first of the stops holding the run, or null for none. */
+  readonly stop: StopReason | null
+  /** Whether the account's usage limit holds the run (usageLimit.ts). */
+  readonly usageHeld: boolean
+  /** Whether the run has ended (screenCommands.ts): nothing starts after it. */
+  readonly ended: boolean
+  /** Whether the run winds down (the ledger's windDown): it takes up only what is running. */
+  readonly windingDown: boolean
+  /** Whether the run has started as many tickets as --limit allows. */
+  readonly limitReached: boolean
+}
+
+/** A gate with nothing holding the run back. */
+export const openGate: Gate = {
+  stop: null,
+  usageHeld: false,
+  ended: false,
+  windingDown: false,
+  limitReached: false,
+}
+
+/**
+ * Whether the run holds: a stop, the usage limit, or its end. A ticket set aside is taken
+ * back into the queue only while it doesn't.
+ */
+export const holds = (gate: Gate): boolean => gate.stop !== null || gate.usageHeld || gate.ended
+
+/**
+ * Whether the run takes back the work it has: the workers carried over and the answered tickets,
+ * none while it holds or winds down, which takes up only what is running.
+ */
+export const takesBack = (gate: Gate): boolean => !holds(gate) && !gate.windingDown
+
+/** Whether the run takes new tickets: as it takes work back, and short of --limit. */
+export const takesNew = (gate: Gate): boolean => takesBack(gate) && !gate.limitReached
+
+/**
  * Why the run takes on no more work, as the merges say it when they hand no failed check back
  * (orchestra's sayNoMore): a stop holds it, the usage limit does, or it winds down. Undefined when
  * it takes work.
  */
-export const noMoreWork = (
-  stops: Stops,
-  usageHeld: boolean,
-  windingDown: boolean,
-): string | undefined =>
-  stops.first !== null
-    ? `the run holds (${stops.first.text})`
-    : usageHeld
+export const noMoreWork = (gate: Gate): string | undefined =>
+  gate.stop !== null
+    ? `the run holds (${gate.stop.text})`
+    : gate.usageHeld
       ? usageHolds
-      : windingDown
+      : gate.windingDown
         ? "the run is winding down"
         : undefined
 

@@ -52,11 +52,14 @@ import { RunFibers } from "./fibers.ts"
 import { type Footprint, showFootprint, withChanges, worktreeChanges } from "./footprint.ts"
 import {
   asksGit,
+  type Gate,
   type Held,
+  holds,
   isSolo,
   leftUnmerged,
   likelyConflictLine,
   mergeHold,
+  openGate,
   overlapHold,
   parentHold,
   parentsWaiting,
@@ -66,6 +69,8 @@ import {
   sharedChanges,
   skippingLine,
   soloLine,
+  takesBack,
+  takesNew,
   unmerged,
   unreadableHold,
   unsaid,
@@ -204,13 +209,23 @@ export interface Options {
   /** The queue's `exclude_types`. */
   readonly excludeTypes: ReadonlyArray<string>
   readonly start: Start
-  /** Whether the run takes new tickets now (holds say no); the ledger's wind-down says no too. */
-  readonly taking?: Effect.Effect<boolean>
   /**
-   * Whether the run holds now (a stop, the environment hold, the usage limit), read without
-   * `taking`'s machine cap or its records: a ticket set aside is taken back only while it doesn't.
+   * Whether the run may take work (holds.ts's Gate), read once for each decision: a ticket starts
+   * only as takesNew says, a worker is carried as takesBack says, and a ticket set aside is taken
+   * back only while it doesn't hold. Without it, the ledger's wind-down and --limit alone say no.
    */
-  readonly holding?: Effect.Effect<boolean>
+  readonly gate?: Effect.Effect<Gate>
+  /**
+   * Run before each start and carry, before the gate is read: the requires check a merge made due
+   * (requires.ts), which may stop the run. Nothing without it.
+   */
+  readonly beforeStart?: Effect.Effect<void>
+  /**
+   * Whether the machine has room for the ticket about to start (machineGate.ts), asked last, once
+   * the gate lets it start: the hold at --machine-workers begins, with its line and queue record,
+   * when it hasn't. Room always without it.
+   */
+  readonly claimRoom?: Effect.Effect<boolean>
   /**
    * Whether the run holds a free slot at --machine-workers (machine.ts), which the queue and
    * dispatch records say with `machine_full`; never without it.
@@ -579,8 +594,18 @@ export const make = (
     // A ticket's fiber that ends wakes the poll, so its slot is filled at once.
     const freed = yield* Queue.sliding<void>(1)
     const oneFill = yield* Semaphore.make(1)
-    const taking = options.taking ?? Effect.succeed(true)
-    const holding = options.holding ?? Effect.succeed(false)
+    const gate =
+      options.gate ??
+      Effect.map(
+        Effect.all([ledger.current, Ref.get(slots)]),
+        ([state, s]): Gate => ({
+          ...openGate,
+          windingDown: state.windDown !== null,
+          limitReached: reached(s.started, options.limit),
+        }),
+      )
+    const beforeStart = options.beforeStart ?? Effect.void
+    const claimRoom = options.claimRoom ?? Effect.succeed(true)
     const machineFull = options.machineFull ?? Effect.succeed(false)
     const carrying = options.carrying ?? Effect.succeed(new Set<string>())
     // The queue's counts for a record, `machine_full` with them while the run holds at the cap.
@@ -789,12 +814,9 @@ export const make = (
 
     const mayStart = Effect.gen(function* () {
       const { s, state } = yield* current
-      return (
-        slotFree(s, state, options.concurrent) &&
-        !reached(s.started, options.limit) &&
-        state.windDown === null &&
-        (yield* taking)
-      )
+      if (!slotFree(s, state, options.concurrent)) return false
+      yield* beforeStart
+      return takesNew(yield* gate) && (yield* claimRoom)
     })
 
     // Moves a waiting ticket to the phase `held` says: HeldBack for its reason, or Queued; one held
@@ -840,7 +862,7 @@ export const make = (
             leftReady.add(entry.ticket)
           }
         }
-        const holdsNow = yield* holding
+        const holdsNow = holds(yield* gate)
         const back = (id: string) => !holdsNow && deferred(before, id) && leftReady.has(id)
         const candidates = listed.filter((issue) => candidate(before, issue.id) || back(issue.id))
         // The queue's counts take in the tickets whose setup failed, held back apart.
@@ -1158,14 +1180,14 @@ export const make = (
           Effect.gen(function* () {
             const { s, state } = yield* known
             const others = s.running.size + mergingIn(state, s.running).length
-            const room =
+            const free =
               slotFree(s, state, options.concurrent) &&
-              state.windDown === null &&
               s.solo === null &&
               !s.running.has(ticket) &&
-              (issue === undefined || !isSolo(issue) || others === 0) &&
-              (yield* taking)
-            if (!room) return false
+              (issue === undefined || !isSolo(issue) || others === 0)
+            if (!free) return false
+            yield* beforeStart
+            if (!takesBack(yield* gate) || !(yield* claimRoom)) return false
             const work = yield* start
             if (work !== undefined) {
               yield* Effect.andThen(carriedFootprint(issue), occupy(ticket, work, issue))

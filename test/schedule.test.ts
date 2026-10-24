@@ -5,6 +5,7 @@ import fc from "fast-check"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
+import { openGate } from "../src/run/holds.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import { Cause, type PhaseTag } from "../src/run/phase.ts"
@@ -45,7 +46,8 @@ const scheduler = (options: {
   readonly limit?: number
   readonly scope?: string | null
   readonly excludeTypes?: ReadonlyArray<string>
-  readonly taking?: Effect.Effect<boolean>
+  /** Whether the usage limit holds the run, its gate's only hold besides the ledger's wind-down. */
+  readonly usageHeld?: Effect.Effect<boolean>
 }) =>
   Effect.gen(function* () {
     const started = yield* Ref.make<ReadonlyArray<string>>([])
@@ -63,7 +65,18 @@ const scheduler = (options: {
       limit: options.limit ?? 40,
       scope: options.scope ?? null,
       excludeTypes: options.excludeTypes ?? ["epic"],
-      ...(options.taking === undefined ? {} : { taking: options.taking }),
+      ...(options.usageHeld === undefined
+        ? {}
+        : {
+            gate: Effect.map(
+              Effect.all([options.usageHeld, (yield* Ledger).current]),
+              ([usageHeld, state]) => ({
+                ...openGate,
+                usageHeld,
+                windingDown: state.windDown !== null,
+              }),
+            ),
+          }),
       start: {
         start: (issue: Issue) =>
           Effect.gen(function* () {
@@ -259,11 +272,11 @@ describe("the slots", () => {
     const [held, wound, after] = await run(
       [{ id: "t-1" }],
       Effect.gen(function* () {
-        const open = yield* Ref.make(false)
-        const { schedule, started } = yield* scheduler({ taking: Ref.get(open) })
+        const usageHeld = yield* Ref.make(true)
+        const { schedule, started } = yield* scheduler({ usageHeld: Ref.get(usageHeld) })
         yield* schedule.fill
         const held = yield* started
-        yield* Ref.set(open, true)
+        yield* Ref.set(usageHeld, false)
         const ledger = yield* Ledger
         yield* ledger.windDown
         yield* schedule.fill

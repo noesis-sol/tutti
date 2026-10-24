@@ -3,6 +3,7 @@ import { Deferred, Effect, Fiber, Layer, Ref, type Scope } from "effect"
 import { TestClock } from "effect/testing"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
+import { openGate, stopFor } from "../src/run/holds.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import { Cause, type PhaseTag } from "../src/run/phase.ts"
@@ -52,8 +53,10 @@ const scheduler = (options: { readonly deferFails?: boolean } = {}) =>
       limit: null,
       scope: null,
       excludeTypes: ["epic"],
-      taking: Effect.map(Ref.get(held), (yes) => !yes),
-      holding: Ref.get(held),
+      gate: Effect.map(Ref.get(held), (yes) => ({
+        ...openGate,
+        stop: yes ? stopFor("PAUSED", "paused for a test") : null,
+      })),
       start: {
         start: (issue: Issue) =>
           Effect.gen(function* () {

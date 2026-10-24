@@ -7,7 +7,7 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
-import { addStop, noMoreWork, noStops, stopFor } from "../src/run/holds.ts"
+import { addStop, noMoreWork, noStops, openGate, type Stops, stopFor } from "../src/run/holds.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readyPoll } from "../src/run/schedule.ts"
@@ -175,10 +175,12 @@ describe("a failed check while the run holds", () => {
 describe("why the run takes on no more work", () => {
   const stop = (why: "PAUSED" | "BLOCKED" | "TICKET_LIMIT" | "ENVIRONMENT") =>
     stopFor(why, `${why.toLowerCase()} for a reason`)
+  const said = (stops: Stops, usageHeld: boolean, windingDown: boolean) =>
+    noMoreWork({ ...openGate, stop: stops.first, usageHeld, windingDown })
 
   for (const why of ["PAUSED", "BLOCKED", "TICKET_LIMIT", "ENVIRONMENT"] as const) {
     test(`a ${why} stop holds it: "the run holds (${why}: …)"`, () => {
-      expect(noMoreWork(addStop(noStops, stop(why)), false, false)).toBe(
+      expect(said(addStop(noStops, stop(why)), false, false)).toBe(
         `the run holds (${why}: ${why.toLowerCase()} for a reason)`,
       )
     })
@@ -186,18 +188,18 @@ describe("why the run takes on no more work", () => {
 
   test("the first stop is the one named, over the usage limit and a drain", () => {
     const stops = addStop(addStop(noStops, stop("BLOCKED")), stop("PAUSED"))
-    expect(noMoreWork(stops, true, true)).toBe("the run holds (BLOCKED: blocked for a reason)")
+    expect(said(stops, true, true)).toBe("the run holds (BLOCKED: blocked for a reason)")
   })
 
   test("the usage limit holds it: USAGE_LIMIT, over a drain", () => {
-    expect(noMoreWork(noStops, true, true)).toBe("the run holds (USAGE_LIMIT)")
+    expect(said(noStops, true, true)).toBe("the run holds (USAGE_LIMIT)")
   })
 
   test("a drain winds it down", () => {
-    expect(noMoreWork(noStops, false, true)).toBe("the run is winding down")
+    expect(said(noStops, false, true)).toBe("the run is winding down")
   })
 
   test("nothing holds it: it takes work", () => {
-    expect(noMoreWork(noStops, false, false)).toBeUndefined()
+    expect(said(noStops, false, false)).toBeUndefined()
   })
 })
