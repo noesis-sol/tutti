@@ -9,7 +9,7 @@ import { type Query, query, type SDKMessage } from "@anthropic-ai/claude-agent-s
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Option, Stream } from "effect"
 import fc from "fast-check"
-import { AgentHost } from "../src/agent/AgentHost.ts"
+import { AgentHost, makeWorkers } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { read } from "../src/agent/reading.ts"
@@ -23,6 +23,7 @@ import {
   type WorkerState,
 } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
+import { Spending } from "../src/run/spending.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -253,6 +254,48 @@ describe("WorkerState: a message missing a field it reads", () => {
         },
       ),
     )
+  })
+})
+
+describe("a result it can't read", () => {
+  test("still ends the worker Gone when it gives a startup_failure_reason", () => {
+    const refused = {
+      type: "result",
+      subtype: "error_during_execution",
+      errors: [{ message: "not a string" }],
+      startup_failure_reason: "cwd_unavailable",
+    }
+    expect(read(refused as unknown as SDKMessage)).toEqual(
+      expect.objectContaining({ _tag: "Result", startupFailure: "cwd_unavailable" }),
+    )
+    expect(step(working, sdk(refused), 5000).state).toEqual({
+      _tag: "Gone",
+      why: "cwd_unavailable",
+    } as WorkerState)
+  })
+
+  test("still goes to Spending, its turn's cost counted", async () => {
+    const results = [
+      { type: "result", subtype: "success", is_error: false, result: "DONE", total_cost_usd: 1 },
+      { type: "result", subtype: "error_during_execution", is_error: true, errors: [{}] },
+    ].map((fields) => ({ num_turns: 1, session_id: "s-1", ...fields }) as unknown as SDKMessage)
+    expect(results.map((message) => read(message)._tag)).toEqual(["Result", "Unreadable"])
+    const spent = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const workers = yield* makeWorkers()
+          const entry = yield* workers.open("t-1", "s-1", false)
+          for (const message of results) yield* workers.emit(entry, "s-1", message)
+          return yield* (yield* Spending).ofTicket("t-1")
+        }),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), Spending.layer),
+        ),
+        Effect.provide(Layer.mergeAll(logLayer(), eventsLayer())),
+      ),
+    )
+    expect(spent).toMatchObject({ turns: 2, results: 2 })
   })
 })
 

@@ -51,7 +51,10 @@ export type Reading = Data.TaggedEnum<{
     readonly message: SDKResultMessage
     /** The sends it lists, `user_message_uuids`; null when it has none, from a CLI that doesn't. */
     readonly sends: ReadonlyArray<string> | null
-    /** Its `startup_failure_reason`, when it isn't a success: Claude Code refused to start. */
+    /**
+     * Its `startup_failure_reason`, when it isn't a success: Claude Code refused to start. Such a
+     * result is read whatever its other fields are.
+     */
     readonly startupFailure: string | null
     /** The turn's error, when it is `is_error`: its result's text, or its errors, or subtype. */
     readonly error: string | null
@@ -167,11 +170,22 @@ const denied: Reader = (raw) =>
 const result: Reader = (raw, kind) => {
   const { subtype, is_error: isError, user_message_uuids: sends, api_error_status: status } = raw
   if (typeof subtype !== "string") return unreadable(kind, "its subtype isn't a string")
+  const startup = raw.startup_failure_reason
+  // Claude Code refused to start: that is all there is to read, whatever else the result says.
+  if (subtype !== "success" && typeof startup === "string") {
+    return Reading.Result({
+      message: raw as unknown as SDKResultMessage,
+      sends: isStrings(sends) ? sends : null,
+      startupFailure: startup,
+      error: isStrings(raw.errors) ? raw.errors.join("\n") || subtype : subtype,
+      apiStatus: null,
+      interrupted: subtype === "error_during_execution",
+    })
+  }
   if (typeof isError !== "boolean") return unreadable(kind, "its is_error isn't a boolean")
   if (sends !== undefined && !isStrings(sends)) {
     return unreadable(kind, "its user_message_uuids aren't a list of strings")
   }
-  const startup = raw.startup_failure_reason
   if (startup !== undefined && typeof startup !== "string") {
     return unreadable(kind, "its startup_failure_reason isn't a string")
   }

@@ -284,8 +284,8 @@ export interface Workers {
    * `stream_event` only while an api_retry holds, the one thing it changes). One it can't read is
    * logged; an assistant message's calls are kept for the denials that name them, a
    * `permission_denied` is recorded through Attention, a `rate_limit_event` is reported to
-   * UsageLimits, when there is one (§ 4.12), and a result goes to Spending, when there is one, for
-   * its `turn` record (§ 10). What it read, for the host to read no more of it.
+   * UsageLimits, when there is one (§ 4.12), and a result, read or not, goes to Spending, when
+   * there is one, for its `turn` record (§ 10). What it read, for the host to read no more of it.
    */
   readonly emit: (
     entry: WorkerEntry,
@@ -500,6 +500,10 @@ export const makeWorkers = (
               yield* misread(entry.ticket, reading)
               if (reading.windows !== undefined && Option.isSome(usage)) {
                 yield* usage.value.report({ info: null, windows: reading.windows })
+              }
+              // Spending reads a result's figures defensively itself: a turn it ended still cost.
+              if (message.type === "result" && Option.isSome(spending)) {
+                yield* spending.value.message(entry.ticket, session, message)
               }
               break
             case "Assistant":

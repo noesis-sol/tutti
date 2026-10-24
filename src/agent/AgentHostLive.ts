@@ -54,7 +54,6 @@ import {
   query,
   type SDKControlInterruptResponse,
   type SDKMessage,
-  type SDKSystemMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import {
