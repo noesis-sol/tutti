@@ -35,7 +35,7 @@ import { writeFileAtomic } from "../services/atomicFile.ts"
 import { Beads, bdPayload, beadsWhy } from "../services/Beads.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { lenientKey } from "../services/lenient.ts"
-import { stateFile } from "../services/Store.ts"
+import { readStateText, stateFile } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import type { PrefixQuestion } from "./checks.ts"
 import { joinAnd, type Machine, type Step, step } from "./steps.ts"
@@ -505,7 +505,6 @@ const beadsPrefix = (machine: Machine, repo: string) =>
  */
 export const prefixRefusal = (machine: Machine, repo: string) =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
     const beads = yield* Beads
     const reasons: Array<string> = []
     const refs = yield* machine
@@ -527,14 +526,16 @@ export const prefixRefusal = (machine: Machine, repo: string) =>
         )
       }
     }
-    const state = yield* fs
-      .readFileString(join(repo, stateFile))
-      .pipe(Effect.orElseSucceed(() => ""))
-    const carried = Option.exists(
-      Schema.decodeUnknownOption(CarriedState)(state),
-      (read) => Object.keys(read.tickets ?? {}).length > 0,
-    )
-    if (carried) {
+    // Through the symlink guard: a link a merged ticket left at .tutti/run or state.json is a
+    // reason of its own, as what the next run would carry on with can't be told.
+    const state = yield* Effect.result(readStateText(repo))
+    if (state._tag === "Failure") reasons.push(state.failure.message)
+    else if (
+      Option.exists(
+        Schema.decodeUnknownOption(CarriedState)(state.success ?? ""),
+        (read) => Object.keys(read.tickets ?? {}).length > 0,
+      )
+    ) {
       reasons.push(`the last run left workers in ${stateFile}, which the next run carries on with`)
     }
     const unmerged = yield* Effect.result(beads.list({ status: "closed", labels: [unmergedLabel] }))

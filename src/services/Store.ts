@@ -273,12 +273,13 @@ export const parseState = (file: string, text: string): Effect.Effect<State, Sto
   })
 
 /**
- * Reads state.json below `repo` through the symlink guard (openUnder, § 9.1): `emptyState` when
- * there is none, .tutti or .tutti/run missing too. A symbolic link at .tutti, .tutti/run or
- * state.json, which a merged ticket can leave there, is refused rather than read through, as is
- * anything there but a regular file: StoreUnreadable, saying why and quoting nothing behind it.
+ * Reads the text of state.json below `repo` through the symlink guard (openUnder, § 9.1):
+ * undefined when there is none, .tutti or .tutti/run missing too. A symbolic link at .tutti,
+ * .tutti/run or state.json, which a merged ticket can leave there, is refused rather than read
+ * through, as is anything there but a regular file: StoreUnreadable, saying why and quoting nothing
+ * behind it.
  */
-export const readState = (repo: string): Effect.Effect<State, StoreUnreadable> => {
+export const readStateText = (repo: string): Effect.Effect<string | undefined, StoreUnreadable> => {
   const file = statePath(repo)
   const unreadable = (reason: string) => new StoreUnreadable({ file, reason })
   return Effect.acquireUseRelease(
@@ -291,14 +292,23 @@ export const readState = (repo: string): Effect.Effect<State, StoreUnreadable> =
     ),
     (fd) =>
       fd === undefined
-        ? Effect.succeed(emptyState)
+        ? Effect.succeed(undefined)
         : Effect.try({
             try: () => readFileSync(fd, "utf8"),
             catch: (error) => unreadable(error instanceof Error ? error.message : String(error)),
-          }).pipe(Effect.flatMap((text) => parseState(file, text))),
+          }),
     (fd) => (fd === undefined ? Effect.void : Effect.ignore(close(fd))),
   )
 }
+
+/**
+ * Reads state.json below `repo` through the symlink guard (readStateText): `emptyState` when there
+ * is none; StoreUnreadable where the guard refuses it or it isn't a state this tutti reads.
+ */
+export const readState = (repo: string): Effect.Effect<State, StoreUnreadable> =>
+  Effect.flatMap(readStateText(repo), (text) =>
+    text === undefined ? Effect.succeed(emptyState) : parseState(statePath(repo), text),
+  )
 
 /**
  * Writes `text`, a state's (stateText), to state.json below `repo` atomically and through the
