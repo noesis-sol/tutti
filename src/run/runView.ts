@@ -13,6 +13,7 @@ import {
   Duration,
   Effect,
   type Stream as EffectStream,
+  Option,
   Predicate,
   Queue,
   type Scope,
@@ -925,9 +926,11 @@ export const make = (
     )
     yield* Effect.gen(function* () {
       const inputs = yield* Queue.take(latest)
-      const previous = yield* SubscriptionRef.get(view)
-      const next = project({ ...inputs, now: yield* Clock.currentTimeMillis }, previous)
-      if (next !== previous) yield* SubscriptionRef.set(view, next)
+      const now = yield* Clock.currentTimeMillis
+      yield* SubscriptionRef.updateSome(view, (previous) => {
+        const next = project({ ...inputs, now }, previous)
+        return next === previous ? Option.none() : Option.some(next)
+      })
       yield* Effect.sleep(interval)
     }).pipe(Effect.forever, Effect.forkScoped)
     return view

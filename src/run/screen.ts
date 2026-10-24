@@ -8,7 +8,7 @@
 // (the worker ended). Their latest actions come from Transcripts, read for each ticket whose phase
 // holds a worker every `actionPoll`: a tool call starts and ends without changing the worker's
 // state, and a denied call stops being the latest action after its 10 s.
-import { Data, Duration, Effect, type Scope, Stream, SubscriptionRef } from "effect"
+import { Data, Duration, Effect, Option, type Scope, Stream, SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
 import { type LatestAction, Transcripts } from "../agent/Transcripts.ts"
@@ -111,10 +111,11 @@ export const latestActions: Effect.Effect<
   yield* Effect.gen(function* () {
     yield* Effect.sleep(actionPoll)
     const found = yield* read
-    const before = yield* SubscriptionRef.get(actions)
-    if (!same(Object.fromEntries(before), Object.fromEntries(found))) {
-      yield* SubscriptionRef.set(actions, found)
-    }
+    yield* SubscriptionRef.updateSome(actions, (before) =>
+      same(Object.fromEntries(before), Object.fromEntries(found))
+        ? Option.none()
+        : Option.some(found),
+    )
   }).pipe(Effect.forever, Effect.forkScoped)
   return SubscriptionRef.changes(actions)
 })
