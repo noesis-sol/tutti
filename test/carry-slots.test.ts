@@ -204,7 +204,7 @@ describe("the scheduler's carry", () => {
           concurrent: 3,
           carrying: Effect.succeed(new Set(["t-1"])),
         })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return started
       }),

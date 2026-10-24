@@ -180,9 +180,9 @@ describe("the scheduler", () => {
               ),
           },
         })
-        yield* schedule.fill
-        yield* schedule.fill
-        yield* schedule.fill
+        yield* schedule.fillTrying
+        yield* schedule.fillTrying
+        yield* schedule.fillTrying
         return [yield* Ref.get(started), yield* texts] as const
       }).pipe(
         Effect.scoped,

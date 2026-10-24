@@ -13,6 +13,7 @@ import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Bea
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
+import { filling } from "./filling.ts"
 
 // A ticket set aside (Deferred) whose notes say to bring it back with bd undefer is taken again
 // in the same run once it is: gone from bd ready, then back in it, it is Queued again
@@ -96,7 +97,7 @@ describe("a ticket set aside, then undeferred during the run", () => {
       Effect.gen(function* () {
         const { schedule, starts } = yield* scheduler()
         const beads = yield* Beads
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         yield* poll
         const aside = { phase: yield* phaseOf("t-1"), starts: yield* starts }
@@ -130,7 +131,7 @@ describe("a ticket set aside, then undeferred during the run", () => {
       [{ id: "t-1" }],
       Effect.gen(function* () {
         const { schedule, starts } = yield* scheduler({ deferFails: true })
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         yield* poll
         yield* poll
@@ -150,7 +151,7 @@ describe("a ticket set aside, then undeferred during the run", () => {
         const { schedule, starts, hold } = yield* scheduler()
         const beads = yield* Beads
         const ledger = yield* Ledger
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         yield* poll
         // The hold reopens it in bd, and a poll comes before its Reopened.
@@ -178,7 +179,7 @@ describe("a ticket set aside, then undeferred during the run", () => {
       Effect.gen(function* () {
         const { schedule, starts, hold } = yield* scheduler()
         const beads = yield* Beads
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         yield* poll
         yield* hold(true)

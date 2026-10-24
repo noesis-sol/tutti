@@ -148,8 +148,8 @@ describe("the scheduler", () => {
               ),
           },
         })
-        yield* schedule.fill
-        yield* schedule.fill
+        yield* schedule.fillTrying
+        yield* schedule.fillTrying
         expect(yield* Ref.get(started)).toEqual(["A", "B", "C"])
         return asked
       }).pipe(

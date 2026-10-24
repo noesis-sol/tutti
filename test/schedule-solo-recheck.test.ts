@@ -63,7 +63,7 @@ const t2After = (r: Seed, rechecked: boolean, withFootprints: boolean) =>
       // One checked once more waits in Review, its check failed, until it takes its slot.
       if (!rechecked) yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
       const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
-      yield* schedule.fill
+      yield* schedule.fillTrying
       const state = yield* ledger.current
       return {
         took,

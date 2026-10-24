@@ -163,13 +163,13 @@ describe("the scheduler shows the queue", () => {
         const last = Effect.map(Ref.get(shown), (all) => all.at(-1))
         const finish = (id: string) => Effect.andThen(Deferred.succeed(gate(id), undefined), flush)
         const steps: Array<QueueShown | undefined> = []
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push(yield* last)
         yield* finish("t-1")
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push(yield* last)
         yield* finish("s")
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push(yield* last)
         // Only a change is shown: none is shown twice in a row.
         const all = (yield* Ref.get(shown)).map((each) => JSON.stringify(each))

@@ -134,14 +134,14 @@ describe("a Queued ticket that bd ready no longer lists", () => {
       Effect.gen(function* () {
         const { schedule, started, finish } = yield* scheduler(1)
         const steps: Array<unknown> = []
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push([yield* phases("a", "b"), yield* inQueue])
         yield* change("b", (seed) => ({ ...seed, status: "closed" }))
-        const filled = yield* schedule.fill
+        const filled = yield* schedule.fillTrying
         steps.push([yield* phases("a", "b"), yield* inQueue, filled.queued])
         // Its slot free, nothing is left to start.
         yield* finish("a")
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push(yield* started)
         return [steps, yield* records] as const
       }),
@@ -169,15 +169,15 @@ describe("a Queued ticket that bd ready no longer lists", () => {
       Effect.gen(function* () {
         const { schedule, started, finish } = yield* scheduler(1)
         const steps: Array<unknown> = []
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* change("b", (seed) => ({ ...seed, status: "deferred" }))
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push(yield* phases("b"))
         yield* change("b", (seed) => ({ ...seed, status: "open" }))
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push(yield* phases("b"))
         yield* finish("a")
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push([yield* started, yield* phases("b")])
         return steps
       }),
@@ -191,12 +191,12 @@ describe("a Queued ticket that bd ready no longer lists", () => {
       Effect.gen(function* () {
         const { schedule } = yield* scheduler(1)
         const steps: Array<unknown> = []
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* change("b", (seed) => ({ ...seed, dependencies: [{ id: "c", type: "blocks" }] }))
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push([yield* phases("b"), yield* inQueue])
         yield* change("c", (seed) => ({ ...seed, status: "closed" }))
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push([yield* phases("b"), yield* inQueue])
         return [steps, yield* records] as const
       }),
@@ -216,13 +216,13 @@ describe("a HeldBack ticket that bd ready no longer lists", () => {
       Effect.gen(function* () {
         const { schedule } = yield* scheduler(1)
         const steps: Array<unknown> = []
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push([yield* phases("p"), yield* inQueue])
         yield* change("p", (seed) => ({ ...seed, status: "deferred" }))
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push([yield* phases("p"), yield* inQueue])
         yield* change("p", (seed) => ({ ...seed, status: "open" }))
-        yield* schedule.fill
+        yield* schedule.fillTrying
         steps.push([yield* phases("p"), yield* inQueue])
         return [steps, yield* records, yield* texts] as const
       }),
@@ -261,7 +261,7 @@ describe("the queue, whatever bd ready lists from poll to poll", () => {
                   const status = listed.includes(id) ? "open" : "deferred"
                   yield* change(id, (seed) => ({ ...seed, status }))
                 }
-                yield* schedule.fill
+                yield* schedule.fillTrying
                 const state = yield* current
                 const queued = [...state.tickets.keys()].sort()
                 if (queued.join(" ") !== [...listed].sort().join(" ")) {

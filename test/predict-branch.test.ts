@@ -100,9 +100,9 @@ describe("a ticket with commits on its branch", () => {
           predictor,
           start: { start: () => Effect.never },
         })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return [yield* issue("t-1"), yield* predictor.predicted, yield* texts] as const
       }),

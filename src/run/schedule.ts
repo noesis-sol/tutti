@@ -274,16 +274,12 @@ export interface Filled {
 }
 
 export interface Scheduler {
-  /** Reads bd ready, queues its new candidates, holds back or releases them, fills the free slots. */
-  readonly fill: Effect.Effect<Filled, BeadsError>
   /**
-   * Fills, then again on each ready poll and each slot freed, until interrupted. A read that
-   * fails is tried again, up to `readTries` reads in all; then it fails with bd's error.
+   * Reads bd ready, queues its new candidates, holds back or releases them, fills the free slots.
+   * A read that fails is tried again, up to `readTries` reads in all; then it fails with bd's error.
    */
-  readonly run: Effect.Effect<never, BeadsError>
-  /** Fills once, a read that fails tried again as `run` tries it; then it fails with bd's error. */
   readonly fillTrying: Effect.Effect<Filled, BeadsError>
-  /** Waits until a ticket's fiber has ended and freed its slot, for a caller that doesn't use `run`. */
+  /** Waits until a ticket's fiber has ended and freed its slot. */
   readonly freed: Effect.Effect<void>
   /**
    * Runs a resumed or carried-over worker in a slot, counting toward no limit: only with a slot
@@ -1181,16 +1177,7 @@ export const make = (
         ),
     })
 
-    const run = Effect.forever(
-      Effect.andThen(
-        fillTrying,
-        Effect.race(Queue.take(freed), Effect.asVoid(Effect.sleep(readyPoll))),
-      ),
-    )
-
     return {
-      fill,
-      run,
       fillTrying,
       freed: Queue.take(freed),
       carry: (ticket, start, issue) =>

@@ -21,6 +21,7 @@ import { appConfig } from "../src/testing/AppConfig.ts"
 import { layer as beadsLayer } from "../src/testing/Beads.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
+import { filling } from "./filling.ts"
 import {
   backlog,
   expectExitCode,
@@ -88,7 +89,7 @@ describe("the scheduler with no limit", () => {
           excludeTypes: ["epic"],
           start: { start: () => Effect.never },
         })
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         for (let i = 0; i < 200; i++) yield* Effect.yieldNow
         const count = yield* schedule.started
         const reached = yield* schedule.limitReached

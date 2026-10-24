@@ -62,7 +62,7 @@ describe("a fill with a ticket of the run's pending", () => {
         })
         // Every bd show fails: a ticket that needs one waits, one that doesn't goes ahead.
         yield* (yield* Backlog).fail("show", { times: Infinity })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         const state = yield* (yield* Ledger).current
         return [
           yield* Ref.get(started),

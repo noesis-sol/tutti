@@ -37,7 +37,7 @@ const logOfFill = (
         ...options,
         start: { start: () => Effect.never },
       })
-      yield* schedule.fill
+      yield* schedule.fillTrying
       return yield* texts
     }).pipe(Effect.scoped, Effect.provide(layers(seeds))),
   )

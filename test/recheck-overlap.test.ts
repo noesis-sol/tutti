@@ -68,7 +68,7 @@ const t2After = (rechecked: boolean) =>
       })
       yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
       const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
-      yield* schedule.fill
+      yield* schedule.fillTrying
       const state = yield* ledger.current
       return {
         took,

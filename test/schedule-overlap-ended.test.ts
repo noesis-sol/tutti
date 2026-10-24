@@ -68,7 +68,7 @@ test("a ticket that ends while the fill reads its footprint no longer holds the 
             }),
         },
       })
-      yield* schedule.fill
+      yield* schedule.fillTrying
       return [yield* Ref.get(started), (yield* phaseOf("t-2"))?._tag] as const
     }),
   )

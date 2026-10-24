@@ -11,6 +11,7 @@ import { Beads, type Issue } from "../src/services/Beads.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
+import { filling } from "./filling.ts"
 
 // A ticket back in the queue for WAITS_FOR_MERGE enters Waiting a few steps before its fiber ends.
 // Its blocker merging inside that window puts it back in the queue while its fiber still holds its
@@ -74,7 +75,7 @@ describe("a ticket put back in the queue before its fiber ends", () => {
       Effect.gen(function* () {
         const { schedule, starts, end } = yield* scheduler({ concurrent: 2, limit: 2 })
         const ledger = yield* Ledger
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         const waiting = yield* phaseOf("t-1")
         // Its blocker merges inside the window, and the next poll fills the free slot.
@@ -112,7 +113,7 @@ describe("a ticket put back in the queue before its fiber ends", () => {
         const { schedule, starts, end } = yield* scheduler({ concurrent: 2, limit: 2 })
         const ledger = yield* Ledger
         const beads = yield* Beads
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         // Back in the queue, then deferred outside the run: the next poll takes it out of the ledger.
         yield* ledger.transition("t-1", Move.Requeued())

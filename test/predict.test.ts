@@ -206,7 +206,7 @@ describe("a ticket naming nothing", () => {
       { predictor: { files: ["src/a.ts", "nowhere.ts", "src/b.ts"] } },
       Effect.gen(function* () {
         const { schedule } = yield* scheduler({ concurrent: 1 })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return [yield* issue("t-1"), yield* texts] as const
       }),
@@ -232,9 +232,9 @@ describe("a ticket naming nothing", () => {
       { predictor: { files: [] } },
       Effect.gen(function* () {
         const { schedule } = yield* scheduler({ concurrent: 1 })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return yield* texts
       }),
@@ -249,7 +249,7 @@ describe("a ticket naming nothing", () => {
       { predictor: { files: ["src/a.ts"] } },
       Effect.gen(function* () {
         const { schedule } = yield* scheduler({ concurrent: 1, footprints: false })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
       }),
     )
@@ -267,7 +267,7 @@ describe("a ticket naming nothing", () => {
       { predictor: Effect.fail(failed) },
       Effect.gen(function* () {
         const { schedule } = yield* scheduler({ concurrent: 1 })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return [yield* issue("t-1"), yield* texts] as const
       }),
@@ -285,7 +285,7 @@ describe("a ticket naming nothing", () => {
       { predictor: { files: ["src/a.ts"] } },
       Effect.gen(function* () {
         const { schedule } = yield* scheduler({ concurrent: 1 })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return yield* texts
       }),
@@ -331,10 +331,10 @@ describe("a predicted footprint", () => {
       { predictor: { files: ["src/a.ts"] } },
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 2 })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         yield* (yield* Backlog).put({ id: "t-2", metadata: files("src/a.ts") })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         return [yield* started, yield* phase("t-2"), yield* texts] as const
       }),
     )
@@ -358,7 +358,7 @@ describe("a predicted footprint", () => {
           Effect.succeed([]),
         )
         yield* flush
-        yield* schedule.fill
+        yield* schedule.fillTrying
         return [yield* started, yield* phase("t-2"), yield* texts] as const
       }),
     )
@@ -376,7 +376,7 @@ describe("a predicted footprint", () => {
       { predictor: late },
       Effect.gen(function* () {
         const { schedule, started, changed } = yield* scheduler({ concurrent: 2 })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         const both = yield* started
         yield* TestClock.adjust(Duration.seconds(30))
         yield* flush
@@ -387,8 +387,8 @@ describe("a predicted footprint", () => {
             ["t-2", ["src/a.ts"]],
           ]),
         )
-        yield* schedule.fill
-        yield* schedule.fill
+        yield* schedule.fillTrying
+        yield* schedule.fillTrying
         return [both, yield* texts, yield* records] as const
       }),
     )

@@ -16,6 +16,7 @@ import { Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
+import { filling } from "./filling.ts"
 
 type Env = Beads | Backlog | Ledger | Log | EventStream | Captured | RunFibers | Scope.Scope
 
@@ -116,7 +117,7 @@ describe("the candidates", () => {
       seeds,
       Effect.gen(function* () {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 1 })
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         for (const id of ["t-2", "t-4", "t-3"]) yield* finish(id)
         const order = yield* started
@@ -141,7 +142,7 @@ describe("the candidates", () => {
           concurrent: 4,
           excludeTypes: ["chore"],
         })
-        const filled = yield* schedule.fill
+        const filled = yield* schedule.fillTrying
         yield* flush
         return [filled, yield* started, yield* phaseOf("q-1")] as const
       }),
@@ -166,7 +167,7 @@ describe("the candidates", () => {
       [{ id: "t-1", title: "First" }, { id: "t-2" }],
       Effect.gen(function* () {
         const { schedule } = yield* scheduler({ concurrent: 1 })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         return [yield* records, [yield* phaseOf("t-1"), yield* phaseOf("t-2")]] as const
       }),
     )
@@ -197,7 +198,7 @@ describe("the slots", () => {
       seeds,
       Effect.gen(function* () {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 2 })
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         const first = yield* started
         yield* finish("t-1")
@@ -217,7 +218,7 @@ describe("the slots", () => {
       [],
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 2 })
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         yield* (yield* Backlog).put({ id: "t-1" })
         yield* TestClock.adjust("29 seconds")
@@ -239,12 +240,12 @@ describe("the slots", () => {
       [{ id: "t-1" }, { id: "t-2" }],
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 4 })
-        yield* schedule.fill
-        yield* schedule.fill
+        yield* schedule.fillTrying
+        yield* schedule.fillTrying
         // A ticket the run set aside that bd still lists as ready, as after a defer that failed.
         const ledger = yield* Ledger
         yield* ledger.transition("t-1", Move.Defer({ why: "deferred" }))
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return [yield* started, [yield* phaseOf("t-1"), yield* phaseOf("t-2")]] as const
       }),
@@ -259,7 +260,7 @@ describe("the slots", () => {
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 2, limit: 1 })
         yield* schedule.carry("c-1", Effect.succeed(Effect.never))
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return [yield* started, yield* schedule.started] as const
       }),
@@ -274,15 +275,15 @@ describe("the slots", () => {
       Effect.gen(function* () {
         const usageHeld = yield* Ref.make(true)
         const { schedule, started } = yield* scheduler({ usageHeld: Ref.get(usageHeld) })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         const held = yield* started
         yield* Ref.set(usageHeld, false)
         const ledger = yield* Ledger
         yield* ledger.windDown
-        yield* schedule.fill
+        yield* schedule.fillTrying
         const wound = yield* started
         yield* ledger.windUp
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return [held, wound, yield* started] as const
       }),
@@ -300,7 +301,7 @@ describe("--limit", () => {
       seeds,
       Effect.gen(function* () {
         const { schedule, started, finish } = yield* scheduler({ concurrent: 3, limit: 2 })
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         yield* finish("t-1")
         yield* TestClock.adjust("30 seconds")
@@ -333,7 +334,7 @@ describe("BAD_TICKET_ID", () => {
       [{ id: "x-../y", title: "Bad" }, { id: "t-1" }],
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 1 })
-        const filled = yield* schedule.fill
+        const filled = yield* schedule.fillTrying
         yield* flush
         expect(filled.setAside).toEqual(["x-../y"])
         return [
@@ -401,7 +402,7 @@ describe("reading bd ready", () => {
       [{ id: "t-1" }],
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({})
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         yield* TestClock.adjust("3 seconds")
         yield* flush
@@ -419,7 +420,7 @@ describe("reading bd ready", () => {
       [{ id: "t-1" }],
       Effect.gen(function* () {
         const { schedule } = yield* scheduler({})
-        const fiber = yield* Effect.forkChild(schedule.run)
+        const fiber = yield* Effect.forkChild(filling(schedule))
         yield* flush
         for (let i = 0; i < readTries; i++) {
           yield* TestClock.adjust("3 seconds")
@@ -464,7 +465,7 @@ describe("the scope", () => {
       tree,
       Effect.gen(function* () {
         const { schedule, started } = yield* scheduler({ concurrent: 8, scope: "r.2" })
-        yield* schedule.fill
+        yield* schedule.fillTrying
         yield* flush
         return [yield* started, yield* phaseOf("r.2")] as const
       }),
