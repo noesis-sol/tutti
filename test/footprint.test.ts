@@ -9,17 +9,13 @@ import {
   emptyFootprint,
   type Footprint,
   type FootprintTicket,
-  mentionsIn,
-  overlaps,
-  readMentions,
-  repoFiles,
-  repoPath,
-  shared,
   showFootprint,
   ticketFootprint,
   withChanges,
   worktreeChanges,
 } from "../src/run/footprint.ts"
+import { mentionsIn, overlaps, readMentions, shared } from "../src/run/overlap.ts"
+import { repoFiles, repoPath } from "../src/run/repoFiles.ts"
 import { metadataList } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"

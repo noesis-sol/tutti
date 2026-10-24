@@ -10,15 +10,10 @@ import { Deferred, Effect, Layer, Ref } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
-import {
-  askedFiles,
-  emptyFootprint,
-  type Footprint,
-  globMatch,
-  readMentions,
-  repoFiles,
-  type Sources,
-} from "../src/run/footprint.ts"
+import { emptyFootprint, type Footprint } from "../src/run/footprint.ts"
+import { globMatch } from "../src/run/glob.ts"
+import { askedFiles, readMentions, type Sources } from "../src/run/overlap.ts"
+import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
 import type { Issue } from "../src/services/Beads.ts"
 import { layer as beadsLayer } from "../src/testing/Beads.ts"

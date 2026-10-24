@@ -16,15 +16,10 @@ import {
   branchFootprint,
   emptyFootprint,
   type Footprint,
-  type Mentions,
-  mentionsIn,
-  type RepoFiles,
-  readSources,
-  repoFiles,
-  sharedFile,
-  sharedFunc,
   ticketFootprint,
 } from "../run/footprint.ts"
+import { type Mentions, mentionsIn, readSources, sharedFile, sharedFunc } from "../run/overlap.ts"
+import { type RepoFiles, repoFiles } from "../run/repoFiles.ts"
 import { takes } from "../run/scope.ts"
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"

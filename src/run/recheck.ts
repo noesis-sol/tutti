@@ -28,6 +28,7 @@ import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, type FinishedTicket, type MergeOptions, someFiles } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause } from "./phase.ts"
+import { clean } from "./repoFiles.ts"
 import { fit } from "./sessions.ts"
 
 /** A ticket set aside for a failed check, to be checked once more once the base moves on. */
@@ -112,12 +113,6 @@ const failedInBiome = /^([^\s:]+\.\w+)(?::\d+(?::\d+)?)? [a-z][\w/]*(?: +[A-Z]+)
 /** The file a line of a check's output names by its position; undefined when it names none. */
 const fileOf = (line: string): string | undefined =>
   (failedFile.exec(line) ?? failedInTsc.exec(line) ?? failedInBiome.exec(line))?.[1]
-
-/** `path` as Go's path.Clean has it: no `.` or `..` parts, no trailing slash, `.` for none. */
-const clean = (path: string): string => {
-  const normal = posix.normalize(path)
-  return normal.length > 1 && normal.endsWith("/") ? normal.slice(0, -1) : normal
-}
 
 /** The folders of `files` (`.` for the top level), each once, sorted. */
 export const foldersOf = (files: ReadonlyArray<string>): ReadonlyArray<string> =>

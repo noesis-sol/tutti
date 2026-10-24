@@ -13,19 +13,18 @@ import fc from "fast-check"
 import { type Link, plan, planLinks } from "../src/plan/plan.ts"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import {
-  asksChange,
   branchFootprint,
   emptyFootprint,
   type FootprintTicket,
-  overlaps,
-  repoFiles,
-  shared,
   showFootprint,
   ticketFootprint,
   withChanges,
 } from "../src/run/footprint.ts"
+import { overlaps, shared } from "../src/run/overlap.ts"
 import { footprintOf } from "../src/run/predict.ts"
+import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, footprintsOf, make } from "../src/run/schedule.ts"
+import { asksChange } from "../src/run/text.ts"
 import { type Issue, metadataList } from "../src/services/Beads.ts"
 import { Git, GitWriter, parseUnion } from "../src/services/Git.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"

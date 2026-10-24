@@ -3,7 +3,9 @@
 // known (tutti-shrg).
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
-import { type FootprintTicket, overlaps, repoFiles, ticketFootprint } from "../src/run/footprint.ts"
+import { type FootprintTicket, ticketFootprint } from "../src/run/footprint.ts"
+import { overlaps } from "../src/run/overlap.ts"
+import { repoFiles } from "../src/run/repoFiles.ts"
 
 const ticket = (title: string, description = ""): FootprintTicket => ({
   title,

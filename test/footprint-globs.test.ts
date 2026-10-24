@@ -11,15 +11,13 @@ import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import {
   emptyFootprint,
   type FootprintTicket,
-  globHolds,
-  globsMeet,
-  type RepoFiles,
-  repoFiles,
-  shared,
   showFootprint,
   ticketFootprint,
   withChanges,
 } from "../src/run/footprint.ts"
+import { globHolds, globsMeet } from "../src/run/glob.ts"
+import { shared } from "../src/run/overlap.ts"
+import { type RepoFiles, repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
 import type { Issue } from "../src/services/Beads.ts"
 import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"

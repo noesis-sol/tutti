@@ -26,7 +26,7 @@ import {
   withSuites,
 } from "../src/project/prompt.ts"
 import { checkCommands, Settings } from "../src/project/settings.ts"
-import { repoFiles } from "../src/run/footprint.ts"
+import { repoFiles } from "../src/run/repoFiles.ts"
 import { RunLock } from "../src/services/RunLock.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"

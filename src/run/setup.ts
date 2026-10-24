@@ -54,7 +54,7 @@ import {
 } from "../services/Worktrees.ts"
 import { outputTo, recorded } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
-import { globMatch } from "./footprint.ts"
+import { globMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, type FinishedTicket, type MergeOptions } from "./merge.ts"

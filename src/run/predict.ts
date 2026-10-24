@@ -15,15 +15,10 @@ import { predictFiles } from "../organs/predictor.ts"
 import { Beads, beadsWhy, type Issue, MetadataKey } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { RunFibers } from "./fibers.ts"
-import {
-  branchFootprint,
-  type Footprint,
-  isEmpty,
-  type RepoFiles,
-  ticketFootprint,
-} from "./footprint.ts"
+import { branchFootprint, type Footprint, isEmpty, ticketFootprint } from "./footprint.ts"
 import { isSolo } from "./holds.ts"
 import { causeWhy, detail, type Line, Log, line, Tag } from "./log.ts"
+import type { RepoFiles } from "./repoFiles.ts"
 
 export interface Predictor {
   /**

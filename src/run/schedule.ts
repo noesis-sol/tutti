@@ -49,17 +49,7 @@ import type { ClosedBranches } from "./closedBranches.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
-import {
-  type Footprint,
-  type Mentions,
-  type RepoFiles,
-  readMentions,
-  repoFiles,
-  type Sources,
-  showFootprint,
-  withChanges,
-  worktreeChanges,
-} from "./footprint.ts"
+import { type Footprint, showFootprint, withChanges, worktreeChanges } from "./footprint.ts"
 import {
   asksGit,
   type Held,
@@ -83,8 +73,10 @@ import {
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
+import { type Mentions, readMentions, type Sources } from "./overlap.ts"
 import { Cause, type Hold, type PhaseTag, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
+import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
 import { ready, unclosedIn, unmergedLabel } from "./scope.ts"
 
