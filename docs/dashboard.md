@@ -13,9 +13,9 @@ terminal shows what it showed before, followed by the run's summary.
  tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2    usage 85% of the five-hour limit · resets 14:05
 
  ▶ 3 of 3 workers · memory 4.1 GB (workers 3.2, merge check 0.9) · pressure normal · CPU 9.8/10 cores
-╭───────────────┬───────────────┬──────────────┬─────────────────────────╮
-│ ✓ 2 Completed │ ↷ 1 Set aside │ 1 Needs you  │ 9 of 16 In queue        │
-╰───────────────┴───────────────┴──────────────┴─────────────────────────╯
+╭───────────────┬───────────────┬───────────────┬────────────────────────╮
+│ ✓ 2 Completed │ ↷ 1 Set aside │ 1 Needs you   │ 9 of 16 In queue       │
+╰───────────────┴───────────────┴───────────────┴────────────────────────╯
   Tickets
 ╭────────────┬─────────────┬─────────────────────────────────────────────╮
 │ ✓ done     │ tut-dwv     │ ffd6ce4 merged into batch/2026-10-20        │

@@ -93,7 +93,7 @@ export const totalsStrip = (
   const widthsAt = (least: number) => firsts.map((n) => Math.max(n, least))
   const sum = (ns: ReadonlyArray<number>) => ns.reduce((total, n) => total + n, 0)
   if (sum(firsts) + queue > room) return null
-  let least = Math.floor(room / 5)
+  let least = Math.max(Math.floor(room / 5), ...firsts)
   while (least > 0 && sum(widthsAt(least)) + queue > room) least -= 1
   const widths = widthsAt(least)
   return framed([all], [...widths, room - sum(widths)], frameLook(theme))

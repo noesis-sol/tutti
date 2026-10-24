@@ -45,6 +45,12 @@ describe("the totals strip", () => {
 
   test("the first three line up at the widest's where a fifth is too narrow", () => {
     expect(cellWidths(typical, 85)).toEqual([14, 14, 14, 30])
+    // `✓ 2 Completed` and `↷ 1 Set aside` 13, `1 Needs you` 11, `9 of 16 In queue` 16: a fifth of
+    // the 57 columns inside the frame is 11.
+    const few = totals({ completed: 2, deferred: 1, needsYou: 1, queued: 9, unclosed: 16 })
+    expect(cellWidths(few, 70)).toEqual([13, 13, 13, 18])
+    expect(cellWidths(few, 68)).toEqual([13, 13, 13, 16])
+    expect(cellWidths(few, 67)).toEqual([13, 13, 12, 16])
   })
 
   test("then each gives up width down to its own before the queue's goes under its own", () => {
