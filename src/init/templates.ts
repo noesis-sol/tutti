@@ -205,6 +205,11 @@ interface TemplateFile {
    * to take.
    */
   readonly optional: (text: string, title: string) => boolean
+  /**
+   * Whether `text`, the file at the template's path, is the project's own rather than a copy of the
+   * template: none of the template's changes are its to take.
+   */
+  readonly own: (text: string) => boolean
 }
 
 /** The worker prompt, from the project's top. */
@@ -217,7 +222,17 @@ const promptFile: TemplateFile = {
   recorded: (templates) => templates.worker_prompt,
   order: sections(builtInWorkerPrompt + verifierSection).map((each) => each.title),
   optional: (text, title) => title === verifyHeading && !usesVerifier(text),
+  own: () => false,
 }
+
+/**
+ * Words every version of the verifier's template opens with, orchestra's too: a verifier.md without
+ * them, nor the template's sections of its own, is the project's own subagent of that name.
+ */
+export const verifierOpening = "You verify a change you did not write"
+
+/** The headings of the verifier template's sections that a project's own verifier wouldn't have. */
+const verifierHeadings = ["Its checks", "How to verify"]
 
 const verifierFile: TemplateFile = {
   path: verifierPath,
@@ -226,6 +241,9 @@ const verifierFile: TemplateFile = {
   recorded: (templates) => templates.verifier,
   order: sections(verifierTemplate).map((each) => each.title),
   optional: () => false,
+  own: (text) =>
+    !text.includes(verifierOpening) &&
+    !sections(text).some((each) => verifierHeadings.includes(each.title)),
 }
 
 const skillFile: TemplateFile = {
@@ -236,18 +254,20 @@ const skillFile: TemplateFile = {
   order: sections(skillText).map((each) => each.title),
   // A copy without the section is the project's own skill, not tutti's to change.
   optional: () => true,
+  own: () => false,
 }
 
 /**
  * The changes of `file`'s template that `text`, the project's copy, which came from version
  * `recorded` of it, lacks: those since that version, unless the copy has their marker; in the
- * order of the template's sections.
+ * order of the template's sections. None where `text` is the project's own file, not a copy.
  */
 const missingChanges = (
   file: TemplateFile,
   text: string,
   recorded: number,
 ): ReadonlyArray<TemplateChange> => {
+  if (file.own(text)) return []
   const have = sections(text)
   const place = (change: TemplateChange) => file.order.indexOf(change.section)
   return file.changes
