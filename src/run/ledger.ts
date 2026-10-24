@@ -391,15 +391,16 @@ export const accounted = (entry: Entry, phase: TicketPhase, cause: Cause, now: n
   }
   const entered = countsIn[phase._tag]
   if (entered !== undefined) spentIn[entered] = spentIn[entered] ?? 0
-  const handedBack = phase._tag !== entry.phase._tag
+  // A hand-back counts by its cause, as Fixing hands back to Fixing on a second failed check.
+  const handedBack = (tag: Cause["_tag"]) => (cause._tag === tag ? 1 : 0)
   return {
     ...entry,
     account: {
       took: account.took ?? (entered === undefined ? null : now),
       spentIn,
       handBacks: {
-        resolve: account.handBacks.resolve + (handedBack && phase._tag === "Resolving" ? 1 : 0),
-        fix: account.handBacks.fix + (handedBack && phase._tag === "Fixing" ? 1 : 0),
+        resolve: account.handBacks.resolve + handedBack("ConflictsHandedBack"),
+        fix: account.handBacks.fix + handedBack("CheckHandedBack"),
       },
       carried: account.carried || (fresh && carriedIn.has(cause._tag)),
     },
