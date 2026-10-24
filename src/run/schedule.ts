@@ -61,12 +61,14 @@ import {
   parentHold,
   parentsWaiting,
   pending,
-  sayOnce,
+  type Said,
+  saying,
   sharedChanges,
   skippingLine,
   soloLine,
   unmerged,
   unreadableHold,
+  unsaid,
   waitsLine,
   waitsOnLinks,
 } from "./holds.ts"
@@ -438,6 +440,124 @@ const taken = (s: Slots, state: State, concurrent: number): number =>
 const slotFree = (s: Slots, state: State, concurrent: number): boolean =>
   taken(s, state, concurrent) < concurrent
 
+/** What a pick chooses from. */
+export interface PickFrom {
+  /** The tickets in line held back for nothing but a slot or a solo ticket, in the order they start. */
+  readonly free: ReadonlyArray<Issue>
+  /** The solo ticket running, or past its work until it merges, if any. */
+  readonly solo: string | null
+  /** The tickets running, and those past their work and not merged yet. */
+  readonly busy: number
+  /** Whether a slot is free. */
+  readonly slot: boolean
+}
+
+/** What a pick chose. */
+export interface Picked {
+  /** The ticket to start, if any. */
+  readonly start?: Issue
+  /** The solo ticket next, which holds back the others while a slot is free. */
+  readonly soloNext: string | null
+  /**
+   * The solo ticket first in line, even with every slot taken: no recheck takes a slot ahead of it.
+   */
+  readonly soloFirst: string | null
+  /** The solo line saying why nothing starts, or "" for none. */
+  readonly soloLine: Line | ""
+  /** The tickets held back for a solo ticket: with a slot free and none to start, the free ones. */
+  readonly heldSolo: ReadonlyArray<string>
+}
+
+/**
+ * The pick: the first ticket free, unless a solo ticket runs, or is first in line and waits for the
+ * running tickets, and those past their work, to finish. With every slot taken the tickets wait for
+ * a slot anyway, and none is held for a solo ticket.
+ */
+export const pick = (p: PickFrom): Picked => {
+  const first = p.free[0]
+  let start: Issue | undefined
+  let next: string | null = null
+  if (first !== undefined && p.solo === null) {
+    if (isSolo(first) && p.busy > 0) next = first.id
+    else start = first
+  }
+  const soloNext = p.slot ? next : null
+  const why =
+    p.slot && start === undefined && p.free.length > 0 && p.solo !== null
+      ? soloLine(p.solo, false)
+      : soloNext !== null
+        ? soloLine(soloNext, true)
+        : ""
+  return {
+    ...(start === undefined ? {} : { start }),
+    soloNext,
+    soloFirst: next,
+    soloLine: why,
+    heldSolo: p.slot && start === undefined ? p.free.map((issue) => issue.id) : [],
+  }
+}
+
+/**
+ * What the scheduler keeps between fills, as its fills, the slots it frees and the queue it shows
+ * share it: changed in one step each.
+ */
+interface Memo {
+  /** The parents of the tickets the run took up, for those closed and not merged yet. */
+  readonly parentOf: ReadonlyMap<string, string>
+  /** What holds each waiting ticket back, as last said. */
+  readonly waitSaid: Said
+  /** What each ticket was last skipped for, an overlap. */
+  readonly skipSaid: Said
+  /** The solo ticket next, which holds back the others while a slot is free. */
+  readonly soloNext: string | null
+  /**
+   * The solo ticket first in line at the last pick, even one made with every slot taken: no
+   * recheck takes a slot ahead of it.
+   */
+  readonly soloFirst: string | null
+  /** The solo line last said. */
+  readonly soloSaid: string
+  /** The LIKELY_CONFLICT lines said, each once. */
+  readonly warned: ReadonlySet<string>
+  /**
+   * What the branch of each ticket dispatched or carried changed on top of the base as it
+   * started: one with some is footprinted from them while it runs, as it was when it started.
+   */
+  readonly startBranch: ReadonlyMap<string, ReadonlyArray<string>>
+  /** The tickets the queue draws from, as the last fill read them. */
+  readonly unclosed: number | null
+  /** The queue last shown. */
+  readonly shownLast: string
+  /** The candidates the last fill read, which a queue record counts. */
+  readonly lastIds: ReadonlyArray<string>
+  /**
+   * The tickets set aside (Deferred) that a fill found gone from bd ready, their fibers ended: one
+   * bd ready lists again was undeferred outside the run, and is queued again while the run doesn't
+   * hold. One bd couldn't defer, which bd ready still lists, is kept out of the run. So is one an
+   * environment hold reopens itself (Deferred → Waiting), which it does once the run holds.
+   */
+  readonly leftReady: ReadonlySet<string>
+}
+
+const noMemo: Memo = {
+  parentOf: new Map(),
+  waitSaid: new Map(),
+  skipSaid: new Map(),
+  soloNext: null,
+  soloFirst: null,
+  soloSaid: "",
+  warned: new Set(),
+  startBranch: new Map(),
+  unclosed: null,
+  shownLast: "",
+  lastIds: [],
+  leftReady: new Set(),
+}
+
+/** The solo ticket running, or else the one next. */
+const soloState = (s: Slots, soloNext: string | null): SoloState | null =>
+  s.solo !== null ? { ticket: s.solo } : soloNext !== null ? { ticket: soloNext, next: true } : null
+
 /** The scheduler over the run's Beads, Ledger (which writes the records), Log and RunFibers. */
 export const make = (
   options: Options,
@@ -468,54 +588,39 @@ export const make = (
         ...(full ? { machine_full: true as const } : {}),
       }))
     const filter = { excludeTypes: options.excludeTypes }
-    // The parents of the tickets the run took up, for those closed and not merged yet.
-    const parentOf = new Map<string, string>()
-    const waitSaid = sayOnce()
-    const skipSaid = sayOnce()
-    // The solo ticket next, which holds back the others while a slot is free, and its line last said.
-    let soloNext: string | null = null
-    // The solo ticket first in line at the last pick, even one made with every slot taken: no
-    // recheck takes a slot ahead of it.
-    let soloFirst: string | null = null
-    let soloSaid = ""
-    // The LIKELY_CONFLICT lines said, each once.
-    const warned = new Set<string>()
-    // What the branch of each ticket dispatched or carried changed on top of the base as it
-    // started: one with some is footprinted from them while it runs, as it was when it started.
-    const startBranch = new Map<string, ReadonlyArray<string>>()
-    // The tickets the queue draws from, as the last fill read them, and the queue last shown.
-    let unclosed: number | null = null
-    let shownLast = ""
-    // The candidates the last fill read, which a queue record counts.
-    let lastIds: ReadonlyArray<string> = []
-    // The tickets set aside (Deferred) that a fill found gone from bd ready, their fibers ended: one
-    // bd ready lists again was undeferred outside the run, and is queued again while the run doesn't
-    // hold. One bd couldn't defer, which bd ready still lists, is kept out of the run. So is one
-    // an environment hold reopens itself (Deferred → Waiting), which it does once the run holds.
-    const leftReady = new Set<string>()
-
-    const soloState = (s: Slots): SoloState | null =>
-      s.solo !== null
-        ? { ticket: s.solo }
-        : soloNext !== null
-          ? { ticket: soloNext, next: true }
-          : null
+    // What the scheduler keeps between fills (Memo), each change one step.
+    const memo = yield* Ref.make(noMemo)
+    const remember = (change: (m: Memo) => Memo) => Ref.update(memo, change)
+    const soloNow = Effect.map(Effect.all([Ref.get(slots), Ref.get(memo)]), ([s, m]) =>
+      soloState(s, m.soloNext),
+    )
+    // Records the ticket's reason, waiting or skipped, and says whether it is one to say.
+    const said = (which: "waitSaid" | "skipSaid", id: string, why: string) =>
+      Ref.modify(memo, (m): readonly [boolean, Memo] => {
+        const next = saying(m[which], id, why)
+        return [next.say, { ...m, [which]: next.said }]
+      })
+    const forget = (which: "waitSaid" | "skipSaid", id: string) =>
+      remember((m) => ({ ...m, [which]: unsaid(m[which], id) }))
 
     // Shows the queue when it changed since it was last shown.
     const showQueue = Effect.suspend(() => {
       const show = options.show
       if (show === undefined) return Effect.void
-      return Effect.flatMap(Ref.get(slots), (s) => {
-        const solo = soloState(s)
-        const queue: QueueShown = {
-          solo: solo === null ? null : { ticket: solo.ticket, running: solo.next !== true },
-          unclosed,
-        }
-        const key = JSON.stringify(queue)
-        if (key === shownLast) return Effect.void
-        shownLast = key
-        return show(queue)
-      })
+      return Effect.flatMap(Ref.get(slots), (s) =>
+        Effect.flatMap(
+          Ref.modify(memo, (m): readonly [QueueShown | undefined, Memo] => {
+            const solo = soloState(s, m.soloNext)
+            const queue: QueueShown = {
+              solo: solo === null ? null : { ticket: solo.ticket, running: solo.next !== true },
+              unclosed: m.unclosed,
+            }
+            const key = JSON.stringify(queue)
+            return key === m.shownLast ? [undefined, m] : [queue, { ...m, shownLast: key }]
+          }),
+          (queue) => (queue === undefined ? Effect.void : show(queue)),
+        ),
+      )
     })
 
     // A ticket dispatched (`counted`) that started too early, put back in the queue until its
@@ -531,7 +636,10 @@ export const make = (
 
     const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue, counted = false) =>
       Effect.gen(function* () {
-        if (issue?.parent !== undefined) parentOf.set(ticket, issue.parent)
+        const parent = issue?.parent
+        if (parent !== undefined) {
+          yield* remember((m) => ({ ...m, parentOf: new Map(m.parentOf).set(ticket, parent) }))
+        }
         yield* Ref.update(slots, (s) => ({
           ...s,
           running: new Set([...s.running, ticket]),
@@ -543,17 +651,17 @@ export const make = (
         const release = Effect.gen(function* () {
           const state = yield* ledger.current
           const again = counted && requeued(state, ticket)
-          yield* Ref.update(slots, (s) => {
-            skipSaid.forget(ticket)
-            return prune(
+          yield* forget("skipSaid", ticket)
+          yield* Ref.update(slots, (s) =>
+            prune(
               {
                 ...s,
                 running: new Set([...s.running].filter((id) => id !== ticket)),
                 started: again ? s.started - 1 : s.started,
               },
               state,
-            )
-          })
+            ),
+          )
           yield* showQueue
           yield* Queue.offer(freed, undefined)
         })
@@ -582,7 +690,9 @@ export const make = (
       Effect.gen(function* () {
         const s = yield* Ref.updateAndGet(slots, (s) => ({ ...s, started: s.started + 1 }))
         const text = dispatchLine(s.started, options.limit, issue)
-        const solo = isSolo(issue) ? { ticket: issue.id } : soloState(s)
+        const solo = isSolo(issue)
+          ? { ticket: issue.id }
+          : soloState(s, (yield* Ref.get(memo)).soloNext)
         const queue = yield* recorded(yield* ledger.current, ids, solo, [
           issue.id,
           TicketPhase.Working({ activity: "starting" }),
@@ -622,7 +732,10 @@ export const make = (
           ? new Map()
           : yield* options.predictor.predicted
         const branch = footprints.branch === undefined ? [] : yield* footprints.branch(issue.id)
-        startBranch.set(issue.id, branch)
+        yield* remember((m) => ({
+          ...m,
+          startBranch: new Map(m.startBranch).set(issue.id, branch),
+        }))
         yield* logs.write(footprintLine(issue.id, footprintOf(issue, repo, predicted, branch)))
       })
 
@@ -693,7 +806,7 @@ export const make = (
         if (phase === undefined) return
         if (phase._tag === "HeldBack" ? phase.why === held : held === undefined) return
         if (phase._tag === "HeldBack") {
-          const solo = soloState(yield* Ref.get(slots))
+          const solo = yield* soloNow
           yield* ledger.transition(id, Cause.Released(), {
             beside: [
               {
@@ -705,7 +818,7 @@ export const make = (
         }
         if (held === undefined) return
         const now = yield* ledger.current
-        const solo = soloState(yield* Ref.get(slots))
+        const solo = yield* soloNow
         const to = TicketPhase.HeldBack({ why: held })
         yield* ledger.transition(id, Cause.Held({ why: held }), {
           beside: [{ kind: "queue", ...(yield* recorded(now, ids, solo, [id, to])) }],
@@ -720,6 +833,7 @@ export const make = (
         const listed = found.filter((issue) => !kept.has(issue.id))
         const foundIds = new Set(found.map((issue) => issue.id))
         const { running } = yield* Ref.get(slots)
+        const leftReady = new Set((yield* Ref.get(memo)).leftReady)
         for (const entry of before.tickets.values()) {
           if (!deferred(before, entry.ticket)) leftReady.delete(entry.ticket)
           else if (!foundIds.has(entry.ticket) && !running.has(entry.ticket)) {
@@ -736,18 +850,18 @@ export const make = (
               candidate(before, issue.id) || back(issue.id) || setupFailed(before, issue.id),
           )
           .map((issue) => issue.id)
-        lastIds = ids
+        yield* remember((m) => ({ ...m, leftReady, lastIds: ids }))
         const setAsideNow: Array<string> = []
         // A ticket waiting in the queue that bd ready no longer lists (closed, deferred or blocked
         // outside the run) leaves it; it is queued anew if it is ready again.
         for (const entry of before.tickets.values()) {
           if (waiting(before, entry.ticket) && !ids.includes(entry.ticket)) {
-            const solo = soloState(yield* Ref.get(slots))
+            const solo = yield* soloNow
             yield* ledger.transition(entry.ticket, Cause.Unready(), {
               beside: [{ kind: "queue", ...(yield* recorded(before, ids, solo)) }],
             })
-            waitSaid.forget(entry.ticket)
-            skipSaid.forget(entry.ticket)
+            yield* forget("waitSaid", entry.ticket)
+            yield* forget("skipSaid", entry.ticket)
           }
         }
         // Each new candidate enters the ledger as Queued, and one set aside that is back in bd
@@ -755,7 +869,7 @@ export const make = (
         for (const issue of candidates) {
           const again = back(issue.id)
           if (before.tickets.has(issue.id) && !again) continue
-          const solo = soloState(yield* Ref.get(slots))
+          const solo = yield* soloNow
           const queue = yield* recorded(yield* ledger.current, ids, solo, [
             issue.id,
             TicketPhase.Queued(),
@@ -765,7 +879,11 @@ export const make = (
             beside: [{ kind: "queue", ...queue }],
             ...(again ? { lines: [undeferredLine(issue.id)] } : {}),
           })
-          leftReady.delete(issue.id)
+          yield* remember((m) => {
+            const left = new Set(m.leftReady)
+            left.delete(issue.id)
+            return { ...m, leftReady: left }
+          })
           const why = ticketIdProblem(issue.id)
           if (why !== undefined) {
             yield* setAside(issue, why)
@@ -778,17 +896,20 @@ export const make = (
         // unmerged by an earlier run, and of the run's tickets not merged yet. bd show gives the
         // parent of one the run didn't dispatch.
         const open = yield* beads.list()
-        unclosed = unclosedIn(open, options.scope, filter)
+        const unclosed = unclosedIn(open, options.scope, filter)
+        yield* remember((m) => ({ ...m, unclosed }))
         const left = leftUnmerged(
           yield* ledger.current,
           yield* beads.list({ status: "closed", labels: [unmergedLabel] }),
         )
         const openIds = new Set(open.map((issue) => issue.id))
+        const parentOf = new Map((yield* Ref.get(memo)).parentOf)
         for (const id of unmerged(yield* ledger.current)) {
           if (parentOf.has(id) || openIds.has(id)) continue
           const read = yield* beads.show(id).pipe(Effect.result)
           if (Result.isSuccess(read)) parentOf.set(id, read.success.parent ?? "")
         }
+        yield* remember((m) => ({ ...m, parentOf: new Map([...m.parentOf, ...parentOf]) }))
         const parents = parentsWaiting([...open, ...left], yield* ledger.current, parentOf)
 
         // A ticket's links, as bd show gives them, read once a fill; null when bd couldn't.
@@ -848,8 +969,10 @@ export const make = (
           for (const id of runningNow) changed.set(id, yield* changedIn(id))
           for (const edit of sharedChanges(changed)) {
             const key = `${edit.a} ${edit.b} ${edit.file}`
-            if (warned.has(key)) continue
-            warned.add(key)
+            const fresh = yield* Ref.modify(memo, (m): readonly [boolean, Memo] =>
+              m.warned.has(key) ? [false, m] : [true, { ...m, warned: new Set(m.warned).add(key) }],
+            )
+            if (!fresh) continue
             const text = likelyConflictLine(edit)
             yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
           }
@@ -896,7 +1019,7 @@ export const make = (
               const links = yield* linksOf(issue.id)
               if (links !== null) held = mergeHold(state, links, yield* branchesOf(state, links))
             }
-            if (waitSaid.changed(issue.id, held?.text ?? "")) {
+            if (yield* said("waitSaid", issue.id, held?.text ?? "")) {
               yield* logs.write(waitsLine(issue.id, held?.text ?? ""))
             }
             return held
@@ -916,6 +1039,7 @@ export const make = (
             ) {
               return skipped
             }
+            const { startBranch } = yield* Ref.get(memo)
             const running = new Map<string, Footprint>()
             for (const [id, issue] of s.issues) {
               const fp = footprintOf(issue, repo, predicted, startBranch.get(id) ?? [])
@@ -936,7 +1060,7 @@ export const make = (
                 mentions,
                 (file) => !repo.shared(file),
               )
-              if (skipSaid.changed(issue.id, held?.text ?? "")) {
+              if (yield* said("skipSaid", issue.id, held?.text ?? "")) {
                 yield* logs.write(skippingLine(issue.id, held?.text ?? ""))
               }
               if (held !== undefined) skipped.set(issue.id, held)
@@ -964,29 +1088,20 @@ export const make = (
           const overlaps = slot ? yield* overlapping(notHeld, s, past) : new Map<string, Held>()
           for (const [id, held] of overlaps) holds.set(id, held.why)
           const free = notHeld.filter((issue) => !overlaps.has(issue.id))
-          // The pick: the first ticket free, unless a solo ticket runs, or is first in line and
-          // waits for the running tickets, and those past their work, to finish.
-          const first = free[0]
-          let start: Issue | undefined
-          let next: string | null = null
-          if (first !== undefined && s.solo === null) {
-            if (isSolo(first) && s.running.size + past.length > 0) next = first.id
-            else start = first
-          }
-          soloNext = slot ? next : null
-          soloFirst = next
-          const soloWhy =
-            slot && start === undefined && free.length > 0 && s.solo !== null
-              ? soloLine(s.solo, false)
-              : soloNext !== null
-                ? soloLine(soloNext, true)
-                : ""
-          if (soloWhy !== soloSaid) {
-            soloSaid = soloWhy
-            if (soloWhy !== "") yield* logs.write(soloWhy)
-          }
-          // With a slot free and none to start, only a solo ticket keeps the free ones waiting.
-          if (slot && start === undefined) for (const issue of free) holds.set(issue.id, "solo")
+          // The pick (`pick`), and its solo line said when it changed.
+          const picked = pick({ free, solo: s.solo, busy: s.running.size + past.length, slot })
+          const start = picked.start
+          const say = yield* Ref.modify(memo, (m): readonly [Line | "", Memo] => [
+            picked.soloLine === m.soloSaid ? "" : picked.soloLine,
+            {
+              ...m,
+              soloNext: picked.soloNext,
+              soloFirst: picked.soloFirst,
+              soloSaid: picked.soloLine,
+            },
+          ])
+          if (say !== "") yield* logs.write(say)
+          for (const id of picked.heldSolo) holds.set(id, "solo")
           // The others settle once the slots are filled, as the last pick leaves them: one
           // dispatched changes what holds the rest, and they aren't released only to be held again.
           if (start === undefined || !(yield* mayStart)) {
@@ -997,7 +1112,10 @@ export const make = (
           }
           yield* settle(start.id, undefined, ids)
           const branch = yield* branchIn(start.id)
-          startBranch.set(start.id, branch)
+          yield* remember((m) => ({
+            ...m,
+            startBranch: new Map(m.startBranch).set(start.id, branch),
+          }))
           const footprint =
             repo === undefined ? undefined : footprintOf(start, repo, predicted, branch)
           if (!(yield* dispatch(start, ids, footprint))) break
@@ -1069,7 +1187,7 @@ export const make = (
             const free =
               slotFree(s, state, options.concurrent) &&
               s.solo === null &&
-              soloFirst === null &&
+              (yield* Ref.get(memo)).soloFirst === null &&
               !s.running.has(ticket)
             // Its issue, read as it takes the slot, so that its footprint and solo label hold the
             // others back from the start, as a dispatched ticket's do.
@@ -1085,10 +1203,10 @@ export const make = (
       interrupt: FiberSet.clear(tickets),
       limitReached: Effect.map(Ref.get(slots), (s) => reached(s.started, options.limit)),
       recordQueue: Effect.gen(function* () {
-        const solo = soloState(yield* Ref.get(slots))
+        const solo = yield* soloNow
         yield* events.emit({
           kind: "queue",
-          ...(yield* recorded(yield* ledger.current, lastIds, solo)),
+          ...(yield* recorded(yield* ledger.current, (yield* Ref.get(memo)).lastIds, solo)),
         })
       }),
     }

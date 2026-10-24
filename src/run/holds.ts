@@ -235,25 +235,27 @@ export const likelyConflictLine = (edit: SharedChange): Line =>
   detail`LIKELY_CONFLICT: ${edit.a} and ${edit.b} both edit ${edit.file}; the second to merge may conflict`
 
 /** The reason last said for each ticket, so that it is said again only when it changes. */
-export interface SayOnce {
-  /** Records `why` ("" for none), and says whether it is one to say: not "", and not the last. */
-  changed(id: string, why: string): boolean
-  /** Forgets the ticket's reason: the next one is said, whatever it is. */
-  forget(id: string): void
-}
+export type Said = ReadonlyMap<string, string>
 
-export const sayOnce = (): SayOnce => {
-  const said = new Map<string, string>()
-  return {
-    changed: (id, why) => {
-      const last = said.get(id)
-      said.set(id, why)
-      return why !== "" && why !== last
-    },
-    forget: (id) => {
-      said.delete(id)
-    },
-  }
+/**
+ * `said` with `why` ("" for none) recorded as the ticket's reason, and whether it is one to say:
+ * not "", and not the last.
+ */
+export const saying = (
+  said: Said,
+  id: string,
+  why: string,
+): { readonly said: Said; readonly say: boolean } => ({
+  said: new Map(said).set(id, why),
+  say: why !== "" && why !== said.get(id),
+})
+
+/** `said` without the ticket's reason: the next one is said, whatever it is. */
+export const unsaid = (said: Said, id: string): Said => {
+  if (!said.has(id)) return said
+  const without = new Map(said)
+  without.delete(id)
+  return without
 }
 
 // The run's stops (§ 5 item 10): what holds the run, then ends it with an exit code. A stop holds
