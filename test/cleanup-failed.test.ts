@@ -7,7 +7,7 @@ import { Duration, Effect, Exit, type Scope } from "effect"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket, MergeStop } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type PhaseTag } from "../src/run/phase.ts"
+import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Git, type GitError, GitFailed, GitTimedOut } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -32,8 +32,8 @@ const finished = (id: string, files: Files) =>
     yield* repository.commit(worktree.path, `Do ${id} (${id})`, files)
     yield* (yield* Beads).close(id, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition(id, Cause.Ready(), { title: `Ticket ${id}` })
-    yield* ledger.transition(id, Cause.Dispatched())
+    yield* ledger.transition(id, Move.Ready(), { title: `Ticket ${id}` })
+    yield* ledger.transition(id, Move.Dispatched())
     return {
       id,
       title: `Ticket ${id}`,

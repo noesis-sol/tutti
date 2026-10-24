@@ -19,7 +19,7 @@ import { Ledger, type State } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
@@ -90,7 +90,7 @@ const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* 
   const ledger = yield* Ledger
   let places = 0
   return {
-    offer: (finished, cause = (place) => Cause.Verified({ place })) =>
+    offer: (finished, cause = (place) => Move.Verified({ place })) =>
       ledger.transition(finished.id, cause(++places)),
     state: Effect.succeed(emptyQueue),
     changes: undefined as never,
@@ -130,8 +130,8 @@ const working = (
         branch: `tutti/${id}`,
         base: "main",
       })
-      yield* ledger.transition(id, Cause.Ready(), { title: ticket.title })
-      yield* ledger.transition(id, Cause.Dispatched())
+      yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
+      yield* ledger.transition(id, Move.Dispatched())
       const queue = yield* lineOnly
       const fiber = yield* Effect.forkChild(work(ticket, { base: "main", queue }))
       yield* during(fiber)
@@ -263,8 +263,8 @@ describe("a message you send", () => {
       { backlog: tiny.seeds },
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition(id, Cause.Ready(), { title: ticket.title })
-        yield* ledger.transition(id, Cause.Dispatched())
+        yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
+        yield* ledger.transition(id, Move.Dispatched())
         expect(yield* sendMessage(id, secret, yours)).toBe(false)
         return yield* ledger.current
       }).pipe(Effect.provide(Ledger.layer)),
@@ -462,8 +462,8 @@ const finished = (files: Files) =>
     yield* repository.commit(worktree.path, "Do a (a)", files)
     yield* (yield* Beads).close("a", "done")
     const ledger = yield* Ledger
-    yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-    yield* ledger.transition("a", Cause.Dispatched())
+    yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+    yield* ledger.transition("a", Move.Dispatched())
     yield* (yield* Store).saveSession("a", {
       session: "session-a",
       worktree: worktree.path,
@@ -585,8 +585,8 @@ describe("HandBackNow", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const queue = yield* lineOnly
-        yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-        yield* ledger.transition("a", Cause.Dispatched())
+        yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+        yield* ledger.transition("a", Move.Dispatched())
         const none = yield* handBackNow("a", queue, options)
         const stop: RebaseStop = {
           ticket: { id: "a", title: "Ticket a", branch: "tutti/a", worktree: "/w/a" },
@@ -712,8 +712,8 @@ describe("a steered worker blocked on its waiting hand-back", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const queue = yield* lineOnly
-        yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-        yield* ledger.transition("a", Cause.Dispatched())
+        yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+        yield* ledger.transition("a", Move.Dispatched())
         const unsteered = yield* releaseAndHandOver("a", queue, options)
         yield* ledger.steer("a", "interrupt")
         const steered = yield* releaseAndHandOver("a", queue, options)

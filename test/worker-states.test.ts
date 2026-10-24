@@ -4,7 +4,7 @@ import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import { holdsWorker, Ledger } from "../src/run/ledger.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { workerStates } from "../src/run/screen.ts"
 import { layer as hostLayer, type Script, wait } from "../src/testing/AgentHost.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
@@ -36,8 +36,8 @@ const session = (ticket: string, sessionId = "s-1") => ({ sessionId, cwd: `/work
 const dispatch = (ticket: string) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    yield* ledger.transition(ticket, Cause.Ready(), { title: ticket })
-    yield* ledger.transition(ticket, Cause.Dispatched())
+    yield* ledger.transition(ticket, Move.Ready(), { title: ticket })
+    yield* ledger.transition(ticket, Move.Dispatched())
   })
 
 /** A fiber with the first of `states` that `seen` holds for. */

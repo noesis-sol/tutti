@@ -5,7 +5,7 @@ import { uncheckedKey, uncheckedOf } from "../src/run/check.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
@@ -56,8 +56,8 @@ const finished = (id: string, files: Files) =>
 const working = (ticket: FinishedTicket) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    yield* ledger.transition(ticket.id, Cause.Ready(), { title: ticket.title })
-    yield* ledger.transition(ticket.id, Cause.Dispatched())
+    yield* ledger.transition(ticket.id, Move.Ready(), { title: ticket.title })
+    yield* ledger.transition(ticket.id, Move.Dispatched())
   })
 
 /** Another ticket's merge, landing on main while the tickets ran. */

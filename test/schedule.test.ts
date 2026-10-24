@@ -8,7 +8,7 @@ import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { openGate } from "../src/run/holds.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause, type PhaseTag } from "../src/run/phase.ts"
+import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { make, readTries, type Scheduler } from "../src/run/schedule.ts"
 import { byPriority, end, ledgerView, line, ready, takes } from "../src/run/scope.ts"
 import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
@@ -243,7 +243,7 @@ describe("the slots", () => {
         yield* schedule.fill
         // A ticket the run set aside that bd still lists as ready, as after a defer that failed.
         const ledger = yield* Ledger
-        yield* ledger.transition("t-1", Cause.Defer({ why: "deferred" }))
+        yield* ledger.transition("t-1", Move.Defer({ why: "deferred" }))
         yield* schedule.fill
         yield* flush
         return [yield* started, [yield* phaseOf("t-1"), yield* phaseOf("t-2")]] as const
@@ -520,14 +520,10 @@ describe("the scope", () => {
       Effect.gen(function* () {
         // r.5 is closed but waits to merge, and r.1 was set aside in this run.
         const ledger = yield* Ledger
-        for (const cause of [Cause.Ready(), Cause.Dispatched(), Cause.Verified({ place: 1 })]) {
+        for (const cause of [Move.Ready(), Move.Dispatched(), Move.Verified({ place: 1 })]) {
           yield* ledger.transition("r.5", cause)
         }
-        for (const cause of [
-          Cause.Ready(),
-          Cause.Dispatched(),
-          Cause.Aside({ why: "OFF_BRANCH" }),
-        ]) {
+        for (const cause of [Move.Ready(), Move.Dispatched(), Move.Aside({ why: "OFF_BRANCH" })]) {
           yield* ledger.transition("r.1", cause)
         }
         return yield* endOf("r")

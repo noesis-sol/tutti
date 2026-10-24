@@ -12,7 +12,7 @@ import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { Move, type TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import { idleGrace, namesTicket, nudgeText, untilSettled } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
@@ -57,7 +57,7 @@ const lineOnly = (offered: Array<FinishedTicket>): Effect.Effect<MergeQueue, nev
   Effect.gen(function* () {
     const ledger = yield* Ledger
     return {
-      offer: (finished, cause = (place) => Cause.Verified({ place })) => {
+      offer: (finished, cause = (place) => Move.Verified({ place })) => {
         offered.push(finished)
         return ledger.transition(finished.id, cause(offered.length))
       },
@@ -101,8 +101,8 @@ const working = (
         branch: `tutti/${id}`,
         base: "main",
       })
-      yield* ledger.transition(id, Cause.Ready(), { title: ticket.title })
-      yield* ledger.transition(id, Cause.Dispatched())
+      yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
+      yield* ledger.transition(id, Move.Dispatched())
       const offered: Array<FinishedTicket> = []
       const queue = yield* lineOnly(offered)
       const fiber = yield* Effect.forkChild(work(ticket, { base: "main", queue }))
@@ -420,9 +420,9 @@ describe("the outcome of a settled worker", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           yield* (yield* Beads).close("t-0", "done")
-          yield* ledger.transition("t-0", Cause.Ready(), { title: "t-0" })
-          yield* ledger.transition("t-0", Cause.Dispatched())
-          yield* ledger.transition("t-0", Cause.Verified({ place: 1 }))
+          yield* ledger.transition("t-0", Move.Ready(), { title: "t-0" })
+          yield* ledger.transition("t-0", Move.Dispatched())
+          yield* ledger.transition("t-0", Move.Verified({ place: 1 }))
           yield* Fiber.join(fiber)
           expect(yield* requeueWaiting()).toEqual([])
         }),

@@ -81,7 +81,7 @@ import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { hasRoom, type Room } from "./machineGate.ts"
 import { type Mentions, readMentions, type Sources } from "./overlap.ts"
-import { Cause, type Hold, phaseFacts, TicketPhase } from "./phase.ts"
+import { type Hold, Move, phaseFacts, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
@@ -718,8 +718,8 @@ export const make = (
     const setAside = (issue: Issue, why: string) =>
       Effect.gen(function* () {
         const text = badTicketIdLine(issue.id, why)
-        yield* ledger.transition(issue.id, Cause.Dispatched())
-        yield* ledger.transition(issue.id, Cause.Defer({ why: "BAD_TICKET_ID" }), {
+        yield* ledger.transition(issue.id, Move.Dispatched())
+        yield* ledger.transition(issue.id, Move.Defer({ why: "BAD_TICKET_ID" }), {
           said: [{ kind: "deferred", ticket: issue.id, title: issue.title, detail: why, text }],
         })
         const deferred = yield* beads
@@ -750,7 +750,7 @@ export const make = (
           ...queue,
           text,
         }
-        const moved = yield* ledger.transition(issue.id, Cause.Dispatched(), {
+        const moved = yield* ledger.transition(issue.id, Move.Dispatched(), {
           said: [record],
         })
         if (Result.isFailure(moved)) {
@@ -847,7 +847,7 @@ export const make = (
         if (phase._tag === "HeldBack" ? phase.why === held : held === undefined) return
         if (phase._tag === "HeldBack") {
           const solo = yield* soloNow
-          yield* ledger.transition(id, Cause.Released(), {
+          yield* ledger.transition(id, Move.Released(), {
             beside: [
               {
                 kind: "queue",
@@ -860,7 +860,7 @@ export const make = (
         const now = yield* ledger.current
         const solo = yield* soloNow
         const to = TicketPhase.HeldBack({ why: held })
-        yield* ledger.transition(id, Cause.Held({ why: held }), {
+        yield* ledger.transition(id, Move.Held({ why: held }), {
           beside: [{ kind: "queue", ...(yield* recorded(now, ids, solo, [id, to])) }],
         })
       })
@@ -897,7 +897,7 @@ export const make = (
         for (const entry of before.tickets.values()) {
           if (waiting(before, entry.ticket) && !ids.includes(entry.ticket)) {
             const solo = yield* soloNow
-            yield* ledger.transition(entry.ticket, Cause.Unready(), {
+            yield* ledger.transition(entry.ticket, Move.Unready(), {
               beside: [{ kind: "queue", ...(yield* recorded(before, ids, solo)) }],
             })
             yield* forget("waitSaid", entry.ticket)
@@ -914,7 +914,7 @@ export const make = (
             issue.id,
             TicketPhase.Queued(),
           ])
-          yield* ledger.transition(issue.id, again ? Cause.Undeferred() : Cause.Ready(), {
+          yield* ledger.transition(issue.id, again ? Move.Undeferred() : Move.Ready(), {
             title: issue.title,
             issue,
             beside: [{ kind: "queue", ...queue }],

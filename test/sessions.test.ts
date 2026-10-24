@@ -12,8 +12,8 @@ import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import {
-  Cause,
   type Lifetime,
+  Move,
   Outcome,
   type PhaseTag,
   TicketPhase,
@@ -127,7 +127,7 @@ const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* 
   const ledger = yield* Ledger
   let places = 0
   return {
-    offer: (finished, cause = (place) => Cause.Verified({ place })) =>
+    offer: (finished, cause = (place) => Move.Verified({ place })) =>
       ledger.transition(finished.id, cause(++places)),
     state: Effect.succeed(emptyQueue),
     changes: undefined as never,
@@ -174,8 +174,8 @@ const working = (
         branch: `tutti/${id}`,
         base: "main",
       })
-      yield* ledger.transition(id, Cause.Ready(), { title: ticket.title })
-      yield* ledger.transition(id, Cause.Dispatched())
+      yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
+      yield* ledger.transition(id, Move.Dispatched())
       const queue = yield* lineOnly
       const fiber = yield* Effect.forkChild(work(ticket, { base: "main", queue }))
       yield* options.during?.(fiber) ?? Effect.void
@@ -286,8 +286,8 @@ const finished = (ticket: string, files: Files) =>
     yield* repository.commit(worktree.path, `Do ${ticket} (${ticket})`, files)
     yield* (yield* Beads).close(ticket, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition(ticket, Cause.Ready(), { title: `Ticket ${ticket}` })
-    yield* ledger.transition(ticket, Cause.Dispatched())
+    yield* ledger.transition(ticket, Move.Ready(), { title: `Ticket ${ticket}` })
+    yield* ledger.transition(ticket, Move.Dispatched())
     yield* host.start(ticket, { sessionId: `session-${ticket}`, cwd: worktree.path })
     return {
       id: ticket,

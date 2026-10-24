@@ -9,7 +9,7 @@ import { Ledger, make as makeLedger } from "../src/run/ledger.ts"
 import { Tag } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, TicketPhase } from "../src/run/phase.ts"
+import { Move, TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
@@ -48,8 +48,8 @@ const working = Effect.gen(function* () {
   yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
   yield* (yield* Beads).close("a", "done")
   const ledger = yield* Ledger
-  yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-  yield* ledger.transition("a", Cause.Dispatched())
+  yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+  yield* ledger.transition("a", Move.Dispatched())
   yield* (yield* Store).saveSession("a", {
     session: "session-a",
     worktree: worktree.path,
@@ -103,7 +103,7 @@ describe("holding a message or sending it", () => {
             Effect.gen(function* () {
               yield* held.holdOrSend("a", words, yours)
               const kept = (yield* held.messages).get("a")
-              yield* ledger.transition("a", Cause.Verified({ place: 1 }))
+              yield* ledger.transition("a", Move.Verified({ place: 1 }))
               return kept
             }),
           )
@@ -131,7 +131,7 @@ describe("holding a message or sending it", () => {
             "a",
             Effect.andThen(
               held.holdOrSend("a", words, yours),
-              ledger.transition("a", Cause.ItsTurn()),
+              ledger.transition("a", Move.ItsTurn()),
             ),
           )
           return { refused: Result.isFailure(moved), after: yield* held.messages }
@@ -154,7 +154,7 @@ describe("holding a message or sending it", () => {
         ...ledger,
         transition: (
           ticket: string,
-          cause: Cause,
+          cause: Move,
           more?: Parameters<typeof ledger.transition>[2],
         ) => {
           const moved = ledger.transition(ticket, cause, more)

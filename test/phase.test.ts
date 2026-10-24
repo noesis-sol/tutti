@@ -4,14 +4,14 @@ import fc from "fast-check"
 import { phaseNames } from "../src/run/events.ts"
 import {
   activities,
-  Cause,
-  type CauseTag,
   countsUnder,
   Detail,
   hasCard,
   holds,
   InvalidTransition,
   isFinal,
+  Move,
+  type MoveTag,
   Outcome,
   type PhaseTag,
   refine,
@@ -57,242 +57,242 @@ const rejected = (
 }
 
 // § 5.1's transition table, row by row, written out here rather than read from the code: the
-// phase a ticket leaves (null: outside the machine), the cause, and the phase it reaches (null:
+// phase a ticket leaves (null: outside the machine), the move, and the phase it reaches (null:
 // outside, leaving the run). The carry-over entries of "The next run" follow it.
-const table: ReadonlyArray<readonly [string, TicketPhase | null, Cause, TicketPhase | null]> = [
-  ["ready in bd ready → Queued", null, Cause.Ready(), Queued()],
-  ["Queued → HeldBack", Queued(), Cause.Held({ why: "overlap" }), HeldBack({ why: "overlap" })],
-  ["HeldBack → Queued", HeldBack({ why: "solo" }), Cause.Released(), Queued()],
-  ["Queued → gone from bd ready", Queued(), Cause.Unready(), null],
-  ["HeldBack → gone from bd ready", HeldBack({ why: "merge" }), Cause.Unready(), null],
-  ["Queued → Working", Queued(), Cause.Dispatched(), Working({ activity: "starting" })],
+const table: ReadonlyArray<readonly [string, TicketPhase | null, Move, TicketPhase | null]> = [
+  ["ready in bd ready → Queued", null, Move.Ready(), Queued()],
+  ["Queued → HeldBack", Queued(), Move.Held({ why: "overlap" }), HeldBack({ why: "overlap" })],
+  ["HeldBack → Queued", HeldBack({ why: "solo" }), Move.Released(), Queued()],
+  ["Queued → gone from bd ready", Queued(), Move.Unready(), null],
+  ["HeldBack → gone from bd ready", HeldBack({ why: "merge" }), Move.Unready(), null],
+  ["Queued → Working", Queued(), Move.Dispatched(), Working({ activity: "starting" })],
   [
     "Working → ToMerge",
     Working({ activity: "editing" }),
-    Cause.Verified({ place: 2 }),
+    Move.Verified({ place: 2 }),
     ToMerge({ place: 2 }),
   ],
   [
     "Working → Done{noChange}",
     Working({ activity: "working" }),
-    Cause.NoChange(),
+    Move.NoChange(),
     Done({ outcome: Outcome.NoChange() }),
   ],
   [
     "Working → Asked",
     Working({ activity: "working" }),
-    Cause.FiledQuestion({ question: "tut-q1" }),
+    Move.FiledQuestion({ question: "tut-q1" }),
     Asked({ question: "tut-q1" }),
   ],
   [
     "Working → Waiting",
     Working({ activity: "working" }),
-    Cause.WaitsForMerge({ blockers: ["tut-b1"] }),
+    Move.WaitsForMerge({ blockers: ["tut-b1"] }),
     Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) }),
   ],
   [
     "Working → Waiting{setup}",
     Working({ activity: "starting" }),
-    Cause.SetupFailed(),
+    Move.SetupFailed(),
     Waiting({ for: WaitFor.Setup() }),
   ],
   [
     "Working → Waiting{setup problem}",
     Working({ activity: "starting" }),
-    Cause.SetupProblem(),
+    Move.SetupProblem(),
     Waiting({ for: WaitFor.SetupProblem() }),
   ],
   [
     "Working → Deferred",
     Working({ activity: "working" }),
-    Cause.Defer({ why: "BAD_TICKET_ID" }),
+    Move.Defer({ why: "BAD_TICKET_ID" }),
     Deferred({ why: "BAD_TICKET_ID" }),
   ],
   [
     "Working → Review",
     Working({ activity: "working" }),
-    Cause.Aside({ why: "OFF_BRANCH" }),
+    Move.Aside({ why: "OFF_BRANCH" }),
     Review({ why: "OFF_BRANCH" }),
   ],
   [
     "Working → Stopped (it stopped the run)",
     Working({ activity: "working" }),
-    Cause.StopRun({ why: "PAUSED" }),
+    Move.StopRun({ why: "PAUSED" }),
     Stopped({ why: "PAUSED" }),
   ],
   [
     "Working → Stopped (the run ended)",
     Working({ activity: "testing" }),
-    Cause.RunEnded({ why: "INTERRUPTED" }),
+    Move.RunEnded({ why: "INTERRUPTED" }),
     Stopped({ why: "INTERRUPTED" }),
   ],
   [
     "Asked → Working",
     Asked({ question: "tut-q1" }),
-    Cause.Answered(),
+    Move.Answered(),
     Working({ activity: "starting" }),
   ],
   [
     "Waiting → Queued",
     Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) }),
-    Cause.Requeued(),
+    Move.Requeued(),
     Queued(),
   ],
-  ["Waiting{setup} → Queued", Waiting({ for: WaitFor.Setup() }), Cause.Requeued(), Queued()],
+  ["Waiting{setup} → Queued", Waiting({ for: WaitFor.Setup() }), Move.Requeued(), Queued()],
   [
     "Deferred → Waiting",
     Deferred({ why: "x" }),
-    Cause.Reopened(),
+    Move.Reopened(),
     Waiting({ for: WaitFor.Probe() }),
   ],
-  ["Deferred → Queued", Deferred({ why: "x" }), Cause.Undeferred(), Queued()],
-  ["ToMerge → Merging", ToMerge({ place: 1 }), Cause.ItsTurn(), Merging({ step: "rebase" })],
+  ["Deferred → Queued", Deferred({ why: "x" }), Move.Undeferred(), Queued()],
+  ["ToMerge → Merging", ToMerge({ place: 1 }), Move.ItsTurn(), Merging({ step: "rebase" })],
   [
     "ToMerge → Stopped",
     ToMerge({ place: 3 }),
-    Cause.RunEnded({ why: "INTERRUPTED" }),
+    Move.RunEnded({ why: "INTERRUPTED" }),
     Stopped({ why: "INTERRUPTED" }),
   ],
   [
     "Merging → Done{merged}",
     Merging({ step: "fast-forward" }),
-    Cause.FastForwarded({ commit: "abc123" }),
+    Move.FastForwarded({ commit: "abc123" }),
     Done({ outcome: Outcome.Merged({ commit: "abc123" }) }),
   ],
   [
     "Merging → Done{noChange} (nothing left to merge once rebased)",
     Merging({ step: "rebase" }),
-    Cause.NoChange(),
+    Move.NoChange(),
     Done({ outcome: Outcome.NoChange() }),
   ],
   [
     "Merging → ToMerge (the run ended before the fast-forward, § 3.4)",
     Merging({ step: "check" }),
-    Cause.MergeInterrupted({ place: 1 }),
+    Move.MergeInterrupted({ place: 1 }),
     ToMerge({ place: 1 }),
   ],
   [
     "Merging → Resolving",
     Merging({ step: "rebase" }),
-    Cause.ConflictsHandedBack({ attempt: 1 }),
+    Move.ConflictsHandedBack({ attempt: 1 }),
     Resolving({ attempt: 1 }),
   ],
   [
     "Merging → Fixing",
     Merging({ step: "check" }),
-    Cause.CheckHandedBack({ attempt: 1 }),
+    Move.CheckHandedBack({ attempt: 1 }),
     Fixing({ attempt: 1, afterResolution: false }),
   ],
   [
     "Merging → Review",
     Merging({ step: "check" }),
-    Cause.Aside({ why: "CHECKS_FAILED" }),
+    Move.Aside({ why: "CHECKS_FAILED" }),
     Review({ why: "CHECKS_FAILED" }),
   ],
   [
     "Merging → Blocked",
     Merging({ step: "rebase" }),
-    Cause.Block({ why: "MERGE_CONFLICT" }),
+    Move.Block({ why: "MERGE_CONFLICT" }),
     Blocked({ why: "MERGE_CONFLICT" }),
   ],
   [
     "Resolving → ToMerge",
     Resolving({ attempt: 1 }),
-    Cause.Verified({ place: 1 }),
+    Move.Verified({ place: 1 }),
     ToMerge({ place: 1 }),
   ],
   [
     "Resolving → Done{noChange}",
     Resolving({ attempt: 1 }),
-    Cause.NoChange(),
+    Move.NoChange(),
     Done({ outcome: Outcome.NoChange() }),
   ],
   [
     "Resolving → Fixing{afterResolution}",
     Resolving({ attempt: 1 }),
-    Cause.CheckHandedBack({ attempt: 1 }),
+    Move.CheckHandedBack({ attempt: 1 }),
     Fixing({ attempt: 1, afterResolution: true }),
   ],
   [
     "Resolving → Blocked",
     Resolving({ attempt: 2 }),
-    Cause.Block({ why: "MERGE_CONFLICT" }),
+    Move.Block({ why: "MERGE_CONFLICT" }),
     Blocked({ why: "MERGE_CONFLICT" }),
   ],
   [
     "Fixing → ToMerge",
     Fixing({ attempt: 1, afterResolution: false }),
-    Cause.Verified({ place: 1 }),
+    Move.Verified({ place: 1 }),
     ToMerge({ place: 1 }),
   ],
   [
     "Fixing → Fixing",
     Fixing({ attempt: 1, afterResolution: false }),
-    Cause.CheckHandedBack({ attempt: 2 }),
+    Move.CheckHandedBack({ attempt: 2 }),
     Fixing({ attempt: 2, afterResolution: false }),
   ],
   [
     "Fixing{afterResolution} → Fixing keeps afterResolution",
     Fixing({ attempt: 1, afterResolution: true }),
-    Cause.CheckHandedBack({ attempt: 2 }),
+    Move.CheckHandedBack({ attempt: 2 }),
     Fixing({ attempt: 2, afterResolution: true }),
   ],
   [
     "Fixing → Review",
     Fixing({ attempt: 2, afterResolution: false }),
-    Cause.Aside({ why: "CHECKS_FAILED" }),
+    Move.Aside({ why: "CHECKS_FAILED" }),
     Review({ why: "CHECKS_FAILED" }),
   ],
   [
     "Fixing{afterResolution} → Blocked",
     Fixing({ attempt: 2, afterResolution: true }),
-    Cause.Aside({ why: "CHECKS_FAILED" }),
+    Move.Aside({ why: "CHECKS_FAILED" }),
     Blocked({ why: "CHECKS_FAILED" }),
   ],
   [
     "Resolving → Stopped",
     Resolving({ attempt: 1 }),
-    Cause.RunEnded({ why: "INTERRUPTED" }),
+    Move.RunEnded({ why: "INTERRUPTED" }),
     Stopped({ why: "INTERRUPTED" }),
   ],
   [
     "Fixing → Stopped",
     Fixing({ attempt: 1, afterResolution: true }),
-    Cause.RunEnded({ why: "INTERRUPTED" }),
+    Move.RunEnded({ why: "INTERRUPTED" }),
     Stopped({ why: "INTERRUPTED" }),
   ],
   [
     "Review{CHECKS_FAILED} → ToMerge",
     Review({ why: "CHECKS_FAILED" }),
-    Cause.Recheck({ place: 1 }),
+    Move.Recheck({ place: 1 }),
     ToMerge({ place: 1 }),
   ],
   [
     "Blocked{MERGE_CONFLICT} → ToMerge",
     Blocked({ why: "MERGE_CONFLICT" }),
-    Cause.HandedOver({ place: 1 }),
+    Move.HandedOver({ place: 1 }),
     ToMerge({ place: 1 }),
   ],
   [
     "Review → Done, merged by hand",
     Review({ why: "CHECKS_FAILED" }),
-    Cause.MergedByHand({ commit: "abc" }),
+    Move.MergedByHand({ commit: "abc" }),
     Done({ outcome: Outcome.Merged({ commit: "abc" }) }),
   ],
   [
     "Blocked → Done, merged by hand",
     Blocked({ why: "MERGE_CONFLICT" }),
-    Cause.MergedByHand({ commit: "abc" }),
+    Move.MergedByHand({ commit: "abc" }),
     Done({ outcome: Outcome.Merged({ commit: "abc" }) }),
   ],
-  ["carried over: → Working", null, Cause.Resumed(), Working({ activity: "starting" })],
+  ["carried over: → Working", null, Move.Resumed(), Working({ activity: "starting" })],
   [
     "carried over: → Asked",
     null,
-    Cause.StillAsked({ question: "tut-q1" }),
+    Move.StillAsked({ question: "tut-q1" }),
     Asked({ question: "tut-q1" }),
   ],
-  ["carried over: → ToMerge", null, Cause.Unmerged({ place: 1 }), ToMerge({ place: 1 })],
+  ["carried over: → ToMerge", null, Move.Unmerged({ place: 1 }), ToMerge({ place: 1 })],
 ]
 
 // The (from, to) pairs § 5.1 lists, by tag; From and To joined as "From>To", "" for outside.
@@ -325,45 +325,45 @@ const phases: ReadonlyArray<TicketPhase | null> = [
   Stopped({ why: "PAUSED" }),
 ]
 
-// A cause of every tag: the type makes sure none is missing.
-const causeOf: { readonly [C in CauseTag]: Extract<Cause, { readonly _tag: C }> } = {
-  Ready: Cause.Ready(),
-  Unready: Cause.Unready(),
-  Held: Cause.Held({ why: "merge" }),
-  Released: Cause.Released(),
-  Dispatched: Cause.Dispatched(),
-  Verified: Cause.Verified({ place: 1 }),
-  NoChange: Cause.NoChange(),
-  FiledQuestion: Cause.FiledQuestion({ question: "tut-q1" }),
-  WaitsForMerge: Cause.WaitsForMerge({ blockers: ["tut-b1"] }),
-  SetupFailed: Cause.SetupFailed(),
-  SetupProblem: Cause.SetupProblem(),
-  Defer: Cause.Defer({ why: "x" }),
-  Aside: Cause.Aside({ why: "CHECKS_FAILED" }),
-  StopRun: Cause.StopRun({ why: "TICKET_LIMIT" }),
-  RunEnded: Cause.RunEnded({ why: "INTERRUPTED" }),
-  Answered: Cause.Answered(),
-  Requeued: Cause.Requeued(),
-  Reopened: Cause.Reopened(),
-  Undeferred: Cause.Undeferred(),
-  ItsTurn: Cause.ItsTurn(),
-  FastForwarded: Cause.FastForwarded({ commit: "abc" }),
-  MergeInterrupted: Cause.MergeInterrupted({ place: 1 }),
-  ConflictsHandedBack: Cause.ConflictsHandedBack({ attempt: 1 }),
-  CheckHandedBack: Cause.CheckHandedBack({ attempt: 1 }),
-  Block: Cause.Block({ why: "GIT_FAILED" }),
-  Recheck: Cause.Recheck({ place: 1 }),
-  HandedOver: Cause.HandedOver({ place: 1 }),
-  MergedByHand: Cause.MergedByHand({ commit: "abc" }),
-  Resumed: Cause.Resumed(),
-  StillAsked: Cause.StillAsked({ question: "tut-q1" }),
-  Unmerged: Cause.Unmerged({ place: 1 }),
+// A move of every tag: the type makes sure none is missing.
+const moveOf: { readonly [C in MoveTag]: Extract<Move, { readonly _tag: C }> } = {
+  Ready: Move.Ready(),
+  Unready: Move.Unready(),
+  Held: Move.Held({ why: "merge" }),
+  Released: Move.Released(),
+  Dispatched: Move.Dispatched(),
+  Verified: Move.Verified({ place: 1 }),
+  NoChange: Move.NoChange(),
+  FiledQuestion: Move.FiledQuestion({ question: "tut-q1" }),
+  WaitsForMerge: Move.WaitsForMerge({ blockers: ["tut-b1"] }),
+  SetupFailed: Move.SetupFailed(),
+  SetupProblem: Move.SetupProblem(),
+  Defer: Move.Defer({ why: "x" }),
+  Aside: Move.Aside({ why: "CHECKS_FAILED" }),
+  StopRun: Move.StopRun({ why: "TICKET_LIMIT" }),
+  RunEnded: Move.RunEnded({ why: "INTERRUPTED" }),
+  Answered: Move.Answered(),
+  Requeued: Move.Requeued(),
+  Reopened: Move.Reopened(),
+  Undeferred: Move.Undeferred(),
+  ItsTurn: Move.ItsTurn(),
+  FastForwarded: Move.FastForwarded({ commit: "abc" }),
+  MergeInterrupted: Move.MergeInterrupted({ place: 1 }),
+  ConflictsHandedBack: Move.ConflictsHandedBack({ attempt: 1 }),
+  CheckHandedBack: Move.CheckHandedBack({ attempt: 1 }),
+  Block: Move.Block({ why: "GIT_FAILED" }),
+  Recheck: Move.Recheck({ place: 1 }),
+  HandedOver: Move.HandedOver({ place: 1 }),
+  MergedByHand: Move.MergedByHand({ commit: "abc" }),
+  Resumed: Move.Resumed(),
+  StillAsked: Move.StillAsked({ question: "tut-q1" }),
+  Unmerged: Move.Unmerged({ place: 1 }),
 }
-const causes: ReadonlyArray<Cause> = Object.values(causeOf)
+const moves: ReadonlyArray<Move> = Object.values(moveOf)
 
 describe("transition", () => {
-  test.each(table)("%s", (_, from, cause, to) => {
-    expect(ok(transition(from, cause))).toEqual(to)
+  test.each(table)("%s", (_, from, move, to) => {
+    expect(ok(transition(from, move))).toEqual(to)
   })
 
   test("the code's table lists § 5.1's pairs and no others", () => {
@@ -373,8 +373,8 @@ describe("transition", () => {
   test("every pair the table doesn't list is rejected", () => {
     const taken = new Set<string>()
     for (const from of phases) {
-      for (const cause of causes) {
-        const result = transition(from, cause)
+      for (const move of moves) {
+        const result = transition(from, move)
         if (Result.isSuccess(result)) {
           taken.add(`${from?._tag ?? ""}>${result.success?._tag ?? ""}`)
         }
@@ -387,29 +387,29 @@ describe("transition", () => {
 
   test("the conditions on a phase's fields hold", () => {
     expect(
-      rejected(transition(Review({ why: "DIRTY_WORKTREE" }), Cause.Recheck({ place: 1 }))),
+      rejected(transition(Review({ why: "DIRTY_WORKTREE" }), Move.Recheck({ place: 1 }))),
     ).toBeInstanceOf(InvalidTransition)
     expect(
-      rejected(transition(Blocked({ why: "DIRTY_TREE" }), Cause.HandedOver({ place: 1 }))),
+      rejected(transition(Blocked({ why: "DIRTY_TREE" }), Move.HandedOver({ place: 1 }))),
     ).toBeInstanceOf(InvalidTransition)
     expect(
-      ok(transition(Fixing({ attempt: 1, afterResolution: true }), Cause.Aside({ why: "x" }))),
+      ok(transition(Fixing({ attempt: 1, afterResolution: true }), Move.Aside({ why: "x" }))),
     ).toEqual(Blocked({ why: "x" }))
     expect(
       rejected(
-        transition(Fixing({ attempt: 1, afterResolution: false }), Cause.Block({ why: "x" })),
+        transition(Fixing({ attempt: 1, afterResolution: false }), Move.Block({ why: "x" })),
       ),
     ).toBeInstanceOf(InvalidTransition)
   })
 
-  test("an invalid transition names its phases and cause, and PHASE_BUG's line", () => {
-    const bug = rejected(transition(Queued(), Cause.FastForwarded({ commit: "abc" })))
+  test("an invalid transition names its phases and move, and PHASE_BUG's line", () => {
+    const bug = rejected(transition(Queued(), Move.FastForwarded({ commit: "abc" })))
     expect([bug.from, bug.to, bug.when]).toEqual(["Queued", "Done", "FastForwarded"])
     expect(bug.phaseBug("tut-9a1")).toBe("PHASE_BUG: tut-9a1 Queued → Done (FastForwarded)")
-    expect(rejected(transition(null, Cause.Dispatched())).phaseBug("tut-9a1")).toBe(
+    expect(rejected(transition(null, Move.Dispatched())).phaseBug("tut-9a1")).toBe(
       "PHASE_BUG: tut-9a1 outside → Working (Dispatched)",
     )
-    expect(rejected(transition(Working({ activity: "working" }), Cause.Unready())).message).toBe(
+    expect(rejected(transition(Working({ activity: "working" }), Move.Unready())).message).toBe(
       "Working → outside (Unready)",
     )
   })
@@ -422,9 +422,9 @@ describe("transition", () => {
     ])
   })
 
-  test("every cause leads somewhere in the table", () => {
+  test("every move leads somewhere in the table", () => {
     expect(new Set<string>(transitions.map((row) => row.when))).toEqual(
-      new Set(Object.keys(causeOf)),
+      new Set(Object.keys(moveOf)),
     )
   })
 })
@@ -457,48 +457,48 @@ const phaseArb: fc.Arbitrary<TicketPhase> = fc.oneof(
   text.map((why) => Stopped({ why })),
 )
 
-const causeArb: fc.Arbitrary<Cause> = fc.oneof(
+const moveArb: fc.Arbitrary<Move> = fc.oneof(
   fc.constantFrom(
-    Cause.Ready(),
-    Cause.Unready(),
-    Cause.Released(),
-    Cause.Dispatched(),
-    Cause.NoChange(),
-    Cause.Answered(),
-    Cause.Requeued(),
-    Cause.Reopened(),
-    Cause.Undeferred(),
-    Cause.ItsTurn(),
-    Cause.Resumed(),
+    Move.Ready(),
+    Move.Unready(),
+    Move.Released(),
+    Move.Dispatched(),
+    Move.NoChange(),
+    Move.Answered(),
+    Move.Requeued(),
+    Move.Reopened(),
+    Move.Undeferred(),
+    Move.ItsTurn(),
+    Move.Resumed(),
   ),
-  fc.constantFrom(...holds).map((why) => Cause.Held({ why })),
-  ordinal.map((place) => Cause.Verified({ place })),
-  ordinal.map((place) => Cause.Recheck({ place })),
-  ordinal.map((place) => Cause.HandedOver({ place })),
-  ordinal.map((place) => Cause.Unmerged({ place })),
-  text.map((question) => Cause.FiledQuestion({ question })),
-  text.map((question) => Cause.StillAsked({ question })),
-  fc.array(text).map((blockers) => Cause.WaitsForMerge({ blockers })),
-  text.map((why) => Cause.Defer({ why })),
-  fc.oneof(fc.constant("CHECKS_FAILED"), text).map((why) => Cause.Aside({ why })),
-  fc.constantFrom("PAUSED", "TICKET_LIMIT" as const).map((why) => Cause.StopRun({ why })),
-  text.map((why) => Cause.RunEnded({ why })),
-  text.map((commit) => Cause.FastForwarded({ commit })),
-  ordinal.map((attempt) => Cause.ConflictsHandedBack({ attempt })),
-  ordinal.map((attempt) => Cause.CheckHandedBack({ attempt })),
-  text.map((why) => Cause.Block({ why })),
+  fc.constantFrom(...holds).map((why) => Move.Held({ why })),
+  ordinal.map((place) => Move.Verified({ place })),
+  ordinal.map((place) => Move.Recheck({ place })),
+  ordinal.map((place) => Move.HandedOver({ place })),
+  ordinal.map((place) => Move.Unmerged({ place })),
+  text.map((question) => Move.FiledQuestion({ question })),
+  text.map((question) => Move.StillAsked({ question })),
+  fc.array(text).map((blockers) => Move.WaitsForMerge({ blockers })),
+  text.map((why) => Move.Defer({ why })),
+  fc.oneof(fc.constant("CHECKS_FAILED"), text).map((why) => Move.Aside({ why })),
+  fc.constantFrom("PAUSED", "TICKET_LIMIT" as const).map((why) => Move.StopRun({ why })),
+  text.map((why) => Move.RunEnded({ why })),
+  text.map((commit) => Move.FastForwarded({ commit })),
+  ordinal.map((attempt) => Move.ConflictsHandedBack({ attempt })),
+  ordinal.map((attempt) => Move.CheckHandedBack({ attempt })),
+  text.map((why) => Move.Block({ why })),
 )
 
-describe("transition, driven by random causes", () => {
+describe("transition, driven by random moves", () => {
   test("no unlisted transition is taken, and Done{merged} is reached only from Merging", () => {
     fc.assert(
       fc.property(
         fc.option(phaseArb, { nil: null }),
-        fc.array(causeArb, { maxLength: 40 }),
+        fc.array(moveArb, { maxLength: 40 }),
         (start, steps) => {
           let phase = start
-          for (const cause of steps) {
-            const result = transition(phase, cause)
+          for (const move of steps) {
+            const result = transition(phase, move)
             if (Result.isFailure(result)) {
               // The ticket keeps its phase.
               continue
@@ -517,9 +517,9 @@ describe("transition, driven by random causes", () => {
 
   test("only Done is final: nothing leaves it", () => {
     fc.assert(
-      fc.property(phaseArb, causeArb, (phase, cause) => {
+      fc.property(phaseArb, moveArb, (phase, move) => {
         if (isFinal(phase)) {
-          expect(Result.isFailure(transition(phase, cause))).toBe(true)
+          expect(Result.isFailure(transition(phase, move))).toBe(true)
         }
       }),
     )

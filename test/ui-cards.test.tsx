@@ -12,7 +12,7 @@ import { Transcripts } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, Ledger, type WindDown } from "../src/run/ledger.ts"
-import { Cause, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { Move, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { type Card, emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { actionPoll, latestActions, Screen } from "../src/run/screen.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -758,11 +758,11 @@ describe("the latest actions", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const transcripts = yield* Transcripts
-        for (const cause of [Cause.Ready(), Cause.Dispatched()]) {
+        for (const cause of [Move.Ready(), Move.Dispatched()]) {
           const next = yield* ledger.transition("t-1", cause, { title: "One" })
           if (Result.isFailure(next)) throw new Error("invalid transition")
         }
-        yield* ledger.transition("t-2", Cause.Ready(), { title: "Queued" })
+        yield* ledger.transition("t-2", Move.Ready(), { title: "Queued" })
         yield* transcripts.record("t-1", "s-1", assistant("call-1", "scripts/check-fast.sh"))
         yield* transcripts.record("t-2", "s-2", assistant("call-9", "ls"))
         const actions = yield* latestActions

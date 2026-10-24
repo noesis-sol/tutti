@@ -53,7 +53,7 @@ import { byHand, removedText } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { removeMerged } from "./merge.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import { info } from "./say.ts"
 import { readAgain } from "./schedule.ts"
 import { descendants } from "./scope.ts"
@@ -399,7 +399,7 @@ const takeUp = (
         }
         const moved = yield* options.queue.offer(
           { id, title: issue.title, branch, worktree },
-          (place) => Cause.Unmerged({ place }),
+          (place) => Move.Unmerged({ place }),
         )
         if (Result.isFailure(moved)) continue
         yield* taken(id, "toMerge", carriedLine(id, line`is closed, so it waits to merge`))
@@ -422,7 +422,7 @@ const takeUp = (
       const question = asked?.id ?? (record.phase === "Asked" ? savedQuestion(record) : undefined)
       if (question !== undefined || record.phase === ("Asked" satisfies PhaseName)) {
         const q = question ?? ""
-        const moved = yield* ledger.transition(id, Cause.StillAsked({ question: q }), {
+        const moved = yield* ledger.transition(id, Move.StillAsked({ question: q }), {
           title: issue.title,
         })
         if (Result.isFailure(moved)) continue
@@ -442,7 +442,7 @@ const takeUp = (
       // Resumed, Working: told it was interrupted, with this run's facts, as its session starts,
       // once there is a slot for it.
       const start = Effect.gen(function* () {
-        const moved = yield* ledger.transition(id, Cause.Resumed(), { title: issue.title, issue })
+        const moved = yield* ledger.transition(id, Move.Resumed(), { title: issue.title, issue })
         if (Result.isFailure(moved)) return undefined
         const facts = runFacts({
           id,

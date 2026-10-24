@@ -29,7 +29,7 @@ import type { Verdict as HoldVerdict } from "../src/run/environment.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import * as log from "../src/run/log.ts"
 import { Log, line } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
 import { Reading, Settled } from "../src/run/settle.ts"
 import type { StartedWorker } from "../src/run/start.ts"
@@ -371,11 +371,11 @@ describe("what triage is handed", () => {
       {},
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition("t-1", Cause.Ready())
-        yield* ledger.transition("t-1", Cause.Dispatched())
+        yield* ledger.transition("t-1", Move.Ready())
+        yield* ledger.transition("t-1", Move.Dispatched())
         yield* toTriage(workerOf("t-1"), settled, triaging)
         expect(handed).toHaveLength(0) // still Working
-        yield* ledger.transition("t-1", Cause.Defer({ why: "by the worker" }))
+        yield* ledger.transition("t-1", Move.Defer({ why: "by the worker" }))
         yield* toTriage(workerOf("t-1"), settled, triaging)
         yield* toTriage(workerOf("t-1"), settled, undefined)
       }).pipe(Effect.provide(Layer.fresh(Ledger.layer))),

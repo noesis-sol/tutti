@@ -9,7 +9,7 @@ import { type InputPart, renderInput, type Section, section } from "../src/organ
 import { OrganCost } from "../src/organs/OrganCost.ts"
 import { Ending } from "../src/print/summary.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import {
   cappedEvidence,
   cappedList,
@@ -191,16 +191,16 @@ const gathered = (
       for (let i = 0; i < n; i++) yield* git.commit(repo, `Commit ${i} ${huge.slice(0, 300)}`)
       const ledger = yield* Ledger
       for (const id of [...ids("closed"), ...ids("aside"), ...ids("running")]) {
-        yield* ledger.transition(id, Cause.Ready(), { title: id })
-        yield* ledger.transition(id, Cause.Dispatched())
+        yield* ledger.transition(id, Move.Ready(), { title: id })
+        yield* ledger.transition(id, Move.Dispatched())
       }
       for (const id of ids("closed")) {
-        yield* ledger.transition(id, Cause.Verified({ place: 1 }))
-        yield* ledger.transition(id, Cause.ItsTurn())
-        yield* ledger.transition(id, Cause.FastForwarded({ commit: "abc123" }))
+        yield* ledger.transition(id, Move.Verified({ place: 1 }))
+        yield* ledger.transition(id, Move.ItsTurn())
+        yield* ledger.transition(id, Move.FastForwarded({ commit: "abc123" }))
       }
       for (const id of ids("aside")) {
-        yield* ledger.transition(id, Cause.Defer({ why: "deferred by its worker" }))
+        yield* ledger.transition(id, Move.Defer({ why: "deferred by its worker" }))
       }
       const run: ReportRun = {
         started: 0,

@@ -10,7 +10,7 @@ import { ticketFootprint } from "../src/run/footprint.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
 import { overlaps } from "../src/run/overlap.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, footprintsOf, make, type Scheduler } from "../src/run/schedule.ts"
 import type { Beads, Issue } from "../src/services/Beads.ts"
@@ -101,7 +101,7 @@ const phases = (...ids: ReadonlyArray<string>) =>
     return all
   })
 
-const transition = (id: string, cause: Cause) =>
+const transition = (id: string, cause: Move) =>
   Effect.flatMap(Ledger, (ledger) => ledger.transition(id, cause))
 
 /** The ticket's work verified: closed in bd and ToMerge. */
@@ -110,14 +110,14 @@ const verified = (id: string) =>
     const backlog = yield* Backlog
     const issue = yield* backlog.get(id)
     if (issue !== undefined) yield* backlog.put({ ...seedOf(issue), status: "closed" })
-    yield* transition(id, Cause.Verified({ place: 1 }))
+    yield* transition(id, Move.Verified({ place: 1 }))
   })
 
 /** The ticket merged: its turn, then fast-forwarded. */
 const merged = (id: string) =>
   Effect.gen(function* () {
-    yield* transition(id, Cause.ItsTurn())
-    yield* transition(id, Cause.FastForwarded({ commit: "abc1234" }))
+    yield* transition(id, Move.ItsTurn())
+    yield* transition(id, Move.FastForwarded({ commit: "abc1234" }))
   })
 
 /** The issue as a seed, its links kept. */
@@ -208,7 +208,7 @@ describe("a blocker", () => {
         yield* backlog.put({ ...seedOf(b1), status: "closed" })
         yield* schedule.fill
         steps.push([yield* started, yield* phases("t-2")])
-        yield* transition("b-1", Cause.Verified({ place: 1 }))
+        yield* transition("b-1", Move.Verified({ place: 1 }))
         yield* finish("b-1")
         yield* schedule.fill
         steps.push([yield* started, yield* phases("t-2")])
@@ -299,7 +299,7 @@ describe("a ticket left unmerged by an earlier run", () => {
         yield* schedule.fill
         const steps: Array<unknown> = [[yield* started, yield* phases("t-2")]]
         // Carried over and merged by this run, though bd may still label it.
-        yield* transition("b-1", Cause.Unmerged({ place: 1 }))
+        yield* transition("b-1", Move.Unmerged({ place: 1 }))
         yield* merged("b-1")
         yield* schedule.fill
         steps.push([yield* started, yield* phases("t-2")])
@@ -619,7 +619,7 @@ describe("a footprint overlapping a running ticket's", () => {
                 const backlog = yield* Backlog
                 const issue = (yield* backlog.get(id)) as Issue
                 yield* backlog.put({ ...seedOf(issue), status: "closed" })
-                yield* transition(id, Cause.NoChange())
+                yield* transition(id, Move.NoChange())
                 yield* finish(id)
                 done.add(id)
               }

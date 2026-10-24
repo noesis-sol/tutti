@@ -28,7 +28,7 @@ import * as log from "./log.ts"
 import { detail, type Line, Log, Tag } from "./log.ts"
 import type { MergeTarget } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import { info } from "./say.ts"
 
 /** What steering reads and writes through. */
@@ -148,7 +148,7 @@ const handOver = (
     const text = said(stop)
     yield* info(text, ticket)
     if (waive) yield* queue.handBacks.waive(ticket)
-    const moved = yield* queue.offer(stop.ticket, (place) => Cause.HandedOver({ place }), false)
+    const moved = yield* queue.offer(stop.ticket, (place) => Move.HandedOver({ place }), false)
     if (Result.isSuccess(moved)) return true
     // The ledger refused (PHASE_BUG, logged): the hand-back waits as it did.
     if (waive) yield* queue.handBacks.waived(ticket)

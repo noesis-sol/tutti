@@ -5,7 +5,7 @@ import type { EventStream } from "../src/run/eventstream.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause, type PhaseTag } from "../src/run/phase.ts"
+import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { make } from "../src/run/schedule.ts"
 import { Beads, type Issue } from "../src/services/Beads.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -52,7 +52,7 @@ const scheduler = (options: { readonly concurrent: number; readonly limit: numbe
           Effect.gen(function* () {
             const before = yield* Ref.getAndUpdate(starts, (all) => [...all, issue.id])
             if (before.length > 0) return yield* Deferred.await(forever)
-            yield* ledger.transition(issue.id, Cause.WaitsForMerge({ blockers: ["t-0"] }))
+            yield* ledger.transition(issue.id, Move.WaitsForMerge({ blockers: ["t-0"] }))
             yield* Deferred.await(window)
           }),
       },
@@ -78,7 +78,7 @@ describe("a ticket put back in the queue before its fiber ends", () => {
         yield* flush
         const waiting = yield* phaseOf("t-1")
         // Its blocker merges inside the window, and the next poll fills the free slot.
-        yield* ledger.transition("t-1", Cause.Requeued())
+        yield* ledger.transition("t-1", Move.Requeued())
         yield* TestClock.adjust("30 seconds")
         yield* flush
         const inWindow = { starts: yield* starts, started: yield* schedule.started }
@@ -115,7 +115,7 @@ describe("a ticket put back in the queue before its fiber ends", () => {
         const fiber = yield* Effect.forkChild(schedule.run)
         yield* flush
         // Back in the queue, then deferred outside the run: the next poll takes it out of the ledger.
-        yield* ledger.transition("t-1", Cause.Requeued())
+        yield* ledger.transition("t-1", Move.Requeued())
         yield* beads.defer("t-1", { reason: "not now" })
         yield* TestClock.adjust("30 seconds")
         yield* flush

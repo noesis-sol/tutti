@@ -18,7 +18,7 @@ import { makeCommands, offer, resolve, UiCommand } from "../src/run/commands.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { emptyState, emptyTallies, Ledger, type State } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause, Detail, type TicketPhase } from "../src/run/phase.ts"
+import { Detail, Move, type TicketPhase } from "../src/run/phase.ts"
 import {
   emptyStatus,
   type Inputs,
@@ -48,7 +48,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, Env>): Promise<A> =>
   )
 
 /** Moves `ticket` by each of `causes` in turn, failing the test on an invalid one. */
-const go = (ticket: string, ...causes: ReadonlyArray<Cause>) =>
+const go = (ticket: string, ...causes: ReadonlyArray<Move>) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     for (const [i, cause] of causes.entries()) {
@@ -58,9 +58,9 @@ const go = (ticket: string, ...causes: ReadonlyArray<Cause>) =>
     }
   })
 
-const dispatched = [Cause.Ready(), Cause.Dispatched()] as const
-const toMerge = [...dispatched, Cause.Verified({ place: 1 })] as const
-const merging = [...toMerge, Cause.ItsTurn()] as const
+const dispatched = [Move.Ready(), Move.Dispatched()] as const
+const toMerge = [...dispatched, Move.Verified({ place: 1 })] as const
+const merging = [...toMerge, Move.ItsTurn()] as const
 
 const permission = (id: string, ticket: string, defaultToNo = false): AttentionRequest => ({
   id,
@@ -96,22 +96,22 @@ describe("totals", () => {
   test("count each phase as § 5.1 does, and Needs you each ticket once", async () => {
     const view = await run(
       Effect.gen(function* () {
-        yield* go("queued", Cause.Ready())
-        yield* go("held", Cause.Ready(), Cause.Held({ why: "overlap" }))
+        yield* go("queued", Move.Ready())
+        yield* go("held", Move.Ready(), Move.Held({ why: "overlap" }))
         yield* go("working", ...dispatched)
         yield* go("asking", ...dispatched)
         yield* go("needs", ...dispatched)
         yield* go("to-merge", ...toMerge)
         yield* go("merging", ...merging)
-        yield* go("merged", ...merging, Cause.FastForwarded({ commit: "abc1234def" }))
-        yield* go("no-change", ...dispatched, Cause.NoChange())
-        yield* go("asked", ...dispatched, Cause.FiledQuestion({ question: "q-1" }))
-        yield* go("blocked", ...merging, Cause.Block({ why: "MERGE_CONFLICT" }))
-        yield* go("deferred", ...dispatched, Cause.Defer({ why: "BAD_TICKET_ID" }))
-        yield* go("review", ...dispatched, Cause.Aside({ why: "OFF_BRANCH" }))
-        yield* go("stopped", ...dispatched, Cause.StopRun({ why: "PAUSED" }))
-        yield* go("waiting", ...dispatched, Cause.WaitsForMerge({ blockers: ["x-1"] }))
-        yield* go("fixing", ...merging, Cause.CheckHandedBack({ attempt: 1 }))
+        yield* go("merged", ...merging, Move.FastForwarded({ commit: "abc1234def" }))
+        yield* go("no-change", ...dispatched, Move.NoChange())
+        yield* go("asked", ...dispatched, Move.FiledQuestion({ question: "q-1" }))
+        yield* go("blocked", ...merging, Move.Block({ why: "MERGE_CONFLICT" }))
+        yield* go("deferred", ...dispatched, Move.Defer({ why: "BAD_TICKET_ID" }))
+        yield* go("review", ...dispatched, Move.Aside({ why: "OFF_BRANCH" }))
+        yield* go("stopped", ...dispatched, Move.StopRun({ why: "PAUSED" }))
+        yield* go("waiting", ...dispatched, Move.WaitsForMerge({ blockers: ["x-1"] }))
+        yield* go("fixing", ...merging, Move.CheckHandedBack({ attempt: 1 }))
         // asking has two open requests; needs's worker waits on you without one.
         return project(
           inputs(yield* current, {
@@ -169,13 +169,13 @@ describe("totals", () => {
   test("rows keep the order the run picked their tickets up in, but as they leave Current", async () => {
     const view = await run(
       Effect.gen(function* () {
-        yield* go("b", Cause.Ready())
+        yield* go("b", Move.Ready())
         yield* go("a", ...dispatched)
         yield* go("c", ...dispatched)
         const ledger = yield* Ledger
-        yield* ledger.transition("b", Cause.Dispatched())
-        yield* ledger.transition("a", Cause.WaitsForMerge({ blockers: ["c"] }))
-        yield* ledger.transition("a", Cause.Requeued())
+        yield* ledger.transition("b", Move.Dispatched())
+        yield* ledger.transition("a", Move.WaitsForMerge({ blockers: ["c"] }))
+        yield* ledger.transition("a", Move.Requeued())
         return project(inputs(yield* current))
       }),
     )
@@ -222,16 +222,16 @@ describe("worker numbers", () => {
         yield* go("t2", ...dispatched)
         yield* go("t3", ...dispatched)
         const first = workers(yield* current)
-        yield* ledger.transition("t2", Cause.NoChange())
-        yield* ledger.transition("t1", Cause.Verified({ place: 1 }))
+        yield* ledger.transition("t2", Move.NoChange())
+        yield* ledger.transition("t1", Move.Verified({ place: 1 }))
         const second = workers(yield* current)
         yield* go("t4", ...dispatched)
         yield* go("t5", ...dispatched)
         const third = workers(yield* current)
-        yield* ledger.transition("t1", Cause.ItsTurn())
-        yield* ledger.transition("t1", Cause.CheckHandedBack({ attempt: 1 }))
-        yield* ledger.transition("t1", Cause.Aside({ why: "CHECKS_FAILED" }))
-        yield* ledger.transition("t3", Cause.Defer({ why: "deferred by its worker" }))
+        yield* ledger.transition("t1", Move.ItsTurn())
+        yield* ledger.transition("t1", Move.CheckHandedBack({ attempt: 1 }))
+        yield* ledger.transition("t1", Move.Aside({ why: "CHECKS_FAILED" }))
+        yield* ledger.transition("t3", Move.Defer({ why: "deferred by its worker" }))
         yield* go("t6", ...dispatched)
         const fourth = workers(yield* current)
         const view = project(inputs(yield* current))
@@ -254,7 +254,7 @@ describe("identity", () => {
         const ledger = yield* Ledger
         yield* go("a", ...dispatched)
         yield* go("b", ...dispatched)
-        yield* go("c", ...merging, Cause.FastForwarded({ commit: "abc1234" }))
+        yield* go("c", ...merging, Move.FastForwarded({ commit: "abc1234" }))
         const first = project(inputs(yield* current))
         const again = project(inputs(yield* current), first)
         yield* ledger.refine("a", Detail.Activity({ activity: "editing" }))
@@ -370,13 +370,13 @@ describe("transitions", () => {
     const records = await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition("a", Cause.Ready(), { title: "A" })
-        yield* ledger.transition("a", Cause.Dispatched(), {
+        yield* ledger.transition("a", Move.Ready(), { title: "A" })
+        yield* ledger.transition("a", Move.Dispatched(), {
           beside: [
             { kind: "dispatch", ticket: "a", title: "A", n: 1, limit: 0, queued: 0, text: "[1] a" },
           ],
         })
-        yield* ledger.transition("a", Cause.Verified({ place: 2 }))
+        yield* ledger.transition("a", Move.Verified({ place: 2 }))
         return yield* (yield* Captured).records
       }),
     )
@@ -391,11 +391,11 @@ describe("transitions", () => {
     const result = await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition("a", Cause.Ready())
-        const first = yield* ledger.transition("a", Cause.ItsTurn(), {
+        yield* ledger.transition("a", Move.Ready())
+        const first = yield* ledger.transition("a", Move.ItsTurn(), {
           beside: [{ kind: "info", ticket: "a", text: "never written" }],
         })
-        const second = yield* ledger.transition("a", Cause.ItsTurn())
+        const second = yield* ledger.transition("a", Move.ItsTurn())
         const refined = yield* ledger.refine("a", Detail.Step({ step: "check" }))
         const state = yield* current
         return {
@@ -445,11 +445,11 @@ describe("wind-down and hint", () => {
         yield* go("a", ...dispatched)
         yield* go("b", ...dispatched)
         yield* go("c", ...dispatched)
-        yield* go("q", Cause.Ready())
+        yield* go("q", Move.Ready())
         const before = project(inputs(yield* current, { requests: [permission("r1", "c", true)] }))
         yield* ledger.windDown
-        yield* ledger.transition("a", Cause.NoChange())
-        yield* ledger.transition("b", Cause.WaitsForMerge({ blockers: ["x"] }))
+        yield* ledger.transition("a", Move.NoChange())
+        yield* ledger.transition("b", Move.WaitsForMerge({ blockers: ["x"] }))
         const during = project(inputs(yield* current))
         yield* ledger.windUp
         const after = project(inputs(yield* current), during)
@@ -502,7 +502,7 @@ describe("commands", () => {
         const ledger = yield* Ledger
         yield* go("a", ...dispatched)
         yield* go("b", ...dispatched)
-        yield* ledger.transition("a", Cause.NoChange())
+        yield* ledger.transition("a", Move.NoChange())
         const state = yield* current
         const now = { ledger: state, requests: [permission("r1", "b")] }
         const commands = yield* makeCommands

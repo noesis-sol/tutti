@@ -27,7 +27,7 @@ import { Ledger } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import { type FinishedTicket, type MergeOptions, type MergeTarget, someFiles } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import { clean } from "./repoFiles.ts"
 import { info } from "./say.ts"
 import { fit } from "./sessions.ts"
@@ -299,7 +299,7 @@ export const recheckDue = (
           Tag.recheck,
         )`${id}'s check failed on ${options.base} at ${shortHash(recheck.onto)}, which has moved on since; rebasing ${branch} and checking it once more`
         yield* info(text, id)
-        const moved = yield* queue.offer(recheck.ticket, (place) => Cause.Recheck({ place }), false)
+        const moved = yield* queue.offer(recheck.ticket, (place) => Move.Recheck({ place }), false)
         if (Result.isSuccess(moved)) back.push(id)
       })
       yield* put.pipe(Effect.ensuring(Deferred.succeed(offered, undefined)))

@@ -28,7 +28,7 @@ import {
   type MergeTarget,
   retire,
 } from "./merge.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
 import { info } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
@@ -100,7 +100,7 @@ const takeAsMerged = (
     const ticket = { id, title: issue.title, branch, worktree }
     yield* retire(ticket, options, {
       ...byHand,
-      cause: Cause.MergedByHand({ commit: commit.hash }),
+      move: Move.MergedByHand({ commit: commit.hash }),
       issue,
       closed: (cleanup, removed) => ({
         detail: `${shortHash(commit.hash)} merged by hand`,

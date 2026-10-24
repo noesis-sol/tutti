@@ -11,7 +11,7 @@ import { TestClock } from "effect/testing"
 import type { EventRecord } from "../src/run/events.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { run } from "../src/run/run.ts"
 import { Spending } from "../src/run/spending.ts"
@@ -81,23 +81,23 @@ describe("the ledger's ticket_end for the tickets left in the queue", () => {
     const records = await inLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        const move = (ticket: string, cause: Cause) =>
+        const move = (ticket: string, cause: Move) =>
           ledger.transition(ticket, cause, { title: ticket })
         for (const id of ["w", "s", "q", "h", "d"]) {
-          yield* move(id, Cause.Ready())
-          yield* move(id, Cause.Dispatched())
+          yield* move(id, Move.Ready())
+          yield* move(id, Move.Dispatched())
         }
-        yield* move("n", Cause.Ready())
+        yield* move("n", Move.Ready())
         yield* (yield* Spending).message("w", "s-w", resultMessage(0.25, 40))
         yield* TestClock.adjust(30_000)
-        yield* move("w", Cause.WaitsForMerge({ blockers: ["t-9"] }))
-        yield* move("s", Cause.SetupFailed())
-        yield* move("q", Cause.WaitsForMerge({ blockers: ["t-9"] }))
-        yield* move("q", Cause.Requeued())
-        yield* move("h", Cause.WaitsForMerge({ blockers: ["t-9"] }))
-        yield* move("h", Cause.Requeued())
-        yield* move("h", Cause.Held({ why: "overlap" }))
-        yield* move("d", Cause.NoChange())
+        yield* move("w", Move.WaitsForMerge({ blockers: ["t-9"] }))
+        yield* move("s", Move.SetupFailed())
+        yield* move("q", Move.WaitsForMerge({ blockers: ["t-9"] }))
+        yield* move("q", Move.Requeued())
+        yield* move("h", Move.WaitsForMerge({ blockers: ["t-9"] }))
+        yield* move("h", Move.Requeued())
+        yield* move("h", Move.Held({ why: "overlap" }))
+        yield* move("d", Move.NoChange())
         yield* TestClock.adjust(10_000)
         yield* ledger.endQueued
       }),
@@ -126,7 +126,7 @@ describe("the ledger's ticket_end for the tickets left in the queue", () => {
     const records = await inLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition("a", Cause.Ready(), { title: "a" })
+        yield* ledger.transition("a", Move.Ready(), { title: "a" })
         yield* ledger.endQueued
       }),
     )

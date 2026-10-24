@@ -27,7 +27,6 @@ import { EventStream } from "./eventstream.ts"
 import * as log from "./log.ts"
 import { Log, Tag } from "./log.ts"
 import {
-  type Cause,
   type Detail,
   type EndingPhase,
   factsOf,
@@ -35,6 +34,7 @@ import {
   InvalidTransition,
   type Lifetime,
   type MergeStep,
+  type Move,
   type PhaseSeconds,
   type PhaseTag,
   phaseFacts,
@@ -134,8 +134,8 @@ const endsPart = (phase: TicketPhase): boolean => {
   return !facts.inQueue && facts.ends(phase) !== null
 }
 
-/** The causes that bring a ticket carried over from an earlier run into this one. */
-const carriedIn: ReadonlySet<Cause["_tag"]> = new Set(["Resumed", "StillAsked", "Unmerged"])
+/** The moves that bring a ticket carried over from an earlier run into this one. */
+const carriedIn: ReadonlySet<Move["_tag"]> = new Set(["Resumed", "StillAsked", "Unmerged"])
 
 /**
  * What the record that ends `entry`'s part in the run says of what it spent, `spent` its workers'
@@ -307,23 +307,17 @@ export const phaseRecord = (
   ticket: string,
   from: TicketPhase | null,
   to: TicketPhase | null,
-  cause: Cause,
+  move: Move,
 ): Event => ({
   kind: "phase",
   ticket,
   ...(from === null ? {} : { from: from._tag }),
   ...(to === null ? {} : { to: to._tag, ...details(to) }),
-  cause: cause._tag,
+  cause: move._tag,
 })
 
-/** `entry` moved to `phase` by `cause` at `now`: its row and its worker's number follow. */
-const moved = (
-  state: State,
-  entry: Entry,
-  phase: TicketPhase,
-  cause: Cause,
-  now: number,
-): State => {
+/** `entry` moved to `phase` by `move` at `now`: its row and its worker's number follow. */
+const moved = (state: State, entry: Entry, phase: TicketPhase, move: Move, now: number): State => {
   // A hand-back waits only while the ticket is Blocked on it.
   const handBack = entry.handBack === true && phase._tag === "Blocked"
   // A row whose ticket leaves Current moves to the end, so that the rows are in the order their
@@ -337,11 +331,11 @@ const moved = (
     ? (entry.worker ?? lowestFree(state.tickets))
     : null
   const rechecking =
-    cause._tag === "Recheck" ||
+    move._tag === "Recheck" ||
     (entry.rechecking && (phase._tag === "ToMerge" || phase._tag === "Merging"))
   const tickets = new Map(state.tickets)
   tickets.set(entry.ticket, {
-    ...accounted(entry, phase, cause, now),
+    ...accounted(entry, phase, move, now),
     phase,
     since: now,
     row,
@@ -357,10 +351,10 @@ const moved = (
 }
 
 /**
- * `entry`'s time in its phase counted, up to `now`, as it moves to `phase` by `cause`: its
+ * `entry`'s time in its phase counted, up to `now`, as it moves to `phase` by `move`: its
  * phases' times, its hand-backs, and for a ticket entering the run, whether it was carried over.
  */
-export const accounted = (entry: Entry, phase: TicketPhase, cause: Cause, now: number): Entry => {
+export const accounted = (entry: Entry, phase: TicketPhase, move: Move, now: number): Entry => {
   // A ticket entering the run has no account yet: its phase is the one it enters.
   const fresh = entry.account === undefined
   const account = entry.account ?? newAccount()
@@ -371,8 +365,8 @@ export const accounted = (entry: Entry, phase: TicketPhase, cause: Cause, now: n
   }
   const entered = phaseFacts[phase._tag].orchestra
   if (entered !== null) spentIn[entered] = spentIn[entered] ?? 0
-  // A hand-back counts by its cause, as Fixing hands back to Fixing on a second failed check.
-  const handedBack = (tag: Cause["_tag"]) => (cause._tag === tag ? 1 : 0)
+  // A hand-back counts by its move, as Fixing hands back to Fixing on a second failed check.
+  const handedBack = (tag: Move["_tag"]) => (move._tag === tag ? 1 : 0)
   return {
     ...entry,
     account: {
@@ -382,7 +376,7 @@ export const accounted = (entry: Entry, phase: TicketPhase, cause: Cause, now: n
         resolve: account.handBacks.resolve + handedBack("ConflictsHandedBack"),
         fix: account.handBacks.fix + handedBack("CheckHandedBack"),
       },
-      carried: account.carried || (fresh && carriedIn.has(cause._tag)),
+      carried: account.carried || (fresh && carriedIn.has(move._tag)),
     },
   }
 }
@@ -419,7 +413,7 @@ export class Ledger extends Context.Service<
   Ledger,
   {
     /**
-     * Moves `ticket` by `cause`, as the state machine says, and writes its `phase` record, then
+     * Moves `ticket` by `move`, as the state machine says, and writes its `phase` record, then
      * `said` and `beside` (the orchestra-era records its row names), with each of `said`'s texts
      * and then `lines` logged in the same write.
      * `title` sets its title, as a ticket entering the run needs, and `issue` the issue it was read
@@ -428,7 +422,7 @@ export class Ledger extends Context.Service<
      */
     transition(
       ticket: string,
-      cause: Cause,
+      move: Move,
       options?: {
         readonly title?: string
         readonly issue?: Issue
@@ -510,12 +504,12 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       return Effect.as(logs.write(text), { ...state, bugs: [...state.bugs, text] })
     }
 
-    const transition: Ledger["Service"]["transition"] = (ticket, cause, options = {}) =>
+    const transition: Ledger["Service"]["transition"] = (ticket, move, options = {}) =>
       SubscriptionRef.modifyEffect(ref, (state) =>
         Effect.gen(function* () {
           const entry = state.tickets.get(ticket)
           const from = entry?.phase ?? null
-          const next = transitionPhase(from, cause)
+          const next = transitionPhase(from, move)
           if (Result.isFailure(next)) {
             return changed(next, yield* bug(state, ticket, next.failure))
           }
@@ -532,7 +526,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
           const beside =
             ends && entry !== undefined && next.success !== null
               ? ending(
-                  accounted(entry, next.success, cause, now),
+                  accounted(entry, next.success, move, now),
                   next.success,
                   now,
                   Option.isSome(spending) ? yield* spending.value.ofTicket(ticket) : nothingSpent,
@@ -540,7 +534,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
                 )
               : given
           const records = Effect.forEach(
-            [phaseRecord(ticket, from, next.success, cause), ...beside],
+            [phaseRecord(ticket, from, next.success, move), ...beside],
             (event) => events.emit(event),
             { discard: true },
           )
@@ -557,7 +551,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
             ...(options.title === undefined ? {} : { title: options.title }),
             ...(options.issue === undefined ? {} : { issue: options.issue }),
           }
-          return changed(next, moved(state, titled, next.success, cause, now))
+          return changed(next, moved(state, titled, next.success, move, now))
         }),
       )
 

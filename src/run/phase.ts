@@ -1,8 +1,8 @@
-// The ticket state machine (§ 5.1): the phases a ticket the run takes up moves through, the causes
-// that move it, and the transition table, as data. transition() is the one way to change a ticket's
-// phase; refine() changes only a phase's details (the worker's activity, a place in the merge
-// queue, a merge's step), never its tag. The run loop drives the machine; the ledger, RunView, the
-// log, the event stream and the report read it.
+// The ticket state machine (§ 5.1): the phases a ticket the run takes up moves through, the moves
+// that take it from one to the next, and the transition table, as data. transition() is the one way
+// to change a ticket's phase; refine() changes only a phase's details (the worker's activity, a
+// place in the merge queue, a merge's step), never its tag. The run loop drives the machine; the
+// ledger, RunView, the log, the event stream and the report read it.
 import { Data, Result, Schema } from "effect"
 import type { Mark, Shown, Tone } from "../ui/marks.ts"
 import {
@@ -152,7 +152,7 @@ void sameType
 void sameTags
 
 /** What moves a ticket from one phase to another: the table's When. */
-export type Cause = Data.TaggedEnum<{
+export type Move = Data.TaggedEnum<{
   /** The ready poll found it. */
   Ready: Empty
   /** bd ready no longer lists it: closed, deferred or blocked outside the run. */
@@ -217,12 +217,12 @@ export type Cause = Data.TaggedEnum<{
   Unmerged: { readonly place: number }
 }>
 
-export const Cause = Data.taggedEnum<Cause>()
+export const Move = Data.taggedEnum<Move>()
 
-export type CauseTag = Cause["_tag"]
+export type MoveTag = Move["_tag"]
 
 type PhaseOf<T extends PhaseTag> = Extract<TicketPhase, { readonly _tag: T }>
-type CauseOf<C extends CauseTag> = Extract<Cause, { readonly _tag: C }>
+type MoveOf<C extends MoveTag> = Extract<Move, { readonly _tag: C }>
 
 /** Where a transition starts: a phase, or null for outside the machine (entering the run). */
 export type From = PhaseTag | null
@@ -243,23 +243,19 @@ export interface Recorded {
 }
 
 /** A row of the transition table. */
-export interface Transition<
-  F extends From = From,
-  C extends CauseTag = CauseTag,
-  T extends To = To,
-> {
+export interface Transition<F extends From = From, C extends MoveTag = MoveTag, T extends To = To> {
   readonly from: F
   readonly when: C
   readonly to: T
   readonly recorded: Recorded
   /** A condition on the phase it leaves, besides its tag. */
   only?(phase: FromPhase<F>): boolean
-  next(phase: FromPhase<F>, cause: CauseOf<C>): ToPhase<T>
+  next(phase: FromPhase<F>, move: MoveOf<C>): ToPhase<T>
 }
 
-// A row, typed by its phases and cause, as a row of the table. The table finds a row by its from,
-// when and only before it calls them, so they are only ever given the phase and cause they take.
-const row = <const F extends From, const C extends CauseTag, const T extends To>(
+// A row, typed by its phases and move, as a row of the table. The table finds a row by its from,
+// when and only before it calls them, so they are only ever given the phase and move they take.
+const row = <const F extends From, const C extends MoveTag, const T extends To>(
   transition: Transition<F, C, T>,
 ): Transition => transition as unknown as Transition
 
@@ -269,7 +265,7 @@ const aside = { kinds: ["warn"], detail: "aside" } as const
 const blocked = { kinds: ["warn"], detail: "blocked" } as const
 
 /**
- * The transition table: § 5.1's, row by row, with its rows for several causes split by cause, and
+ * The transition table: § 5.1's, row by row, with its rows for several moves split by move, and
  * the carry-over of § 5.1's "The next run" as entries from outside. A transition it doesn't list
  * doesn't happen. A ticket waiting in the queue that bd ready no longer lists leaves the machine.
  */
@@ -610,7 +606,7 @@ export const transitions: ReadonlyArray<Transition> = [
 
 /**
  * A phase change the table doesn't list: a bug. The run logs it once as `PHASE_BUG`, and the
- * ticket keeps its phase. `to` is the phase the cause leads to elsewhere in the table (null:
+ * ticket keeps its phase. `to` is the phase the move leads to elsewhere in the table (null:
  * outside the machine).
  */
 export class InvalidTransition extends Schema.TaggedError<InvalidTransition>()(
@@ -625,46 +621,46 @@ export class InvalidTransition extends Schema.TaggedError<InvalidTransition>()(
     return `${this.from ?? "outside"} → ${this.to ?? "outside"} (${this.when})`
   }
 
-  /** The log's line for it: `PHASE_BUG: <id> <from> → <to> (<cause>)`. */
+  /** The log's line for it: `PHASE_BUG: <id> <from> → <to> (<move>)`. */
   phaseBug(ticket: string): string {
     return `PHASE_BUG: ${ticket} ${this.message}`
   }
 }
 
-// Every cause has a row, so each leads somewhere: the first row's phase for it, or outside.
-const leadsTo = (cause: CauseTag): To => {
-  const found = transitions.find((transition) => transition.when === cause)
+// Every move has a row, so each leads somewhere: the first row's phase for it, or outside.
+const leadsTo = (move: MoveTag): To => {
+  const found = transitions.find((transition) => transition.when === move)
   return found === undefined ? "Queued" : found.to
 }
 
-/** The table's row that `cause` takes from `phase` (null: outside the machine), if any. */
-export const rowFor = (phase: TicketPhase | null, cause: Cause): Transition | undefined =>
+/** The table's row that `move` takes from `phase` (null: outside the machine), if any. */
+export const rowFor = (phase: TicketPhase | null, move: Move): Transition | undefined =>
   transitions.find(
     (transition) =>
       transition.from === (phase?._tag ?? null) &&
-      transition.when === cause._tag &&
+      transition.when === move._tag &&
       (transition.only?.(phase) ?? true),
   )
 
 /**
- * The phase `cause` moves a ticket in `phase` to, or InvalidTransition when the table doesn't
+ * The phase `move` moves a ticket in `phase` to, or InvalidTransition when the table doesn't
  * list it. `phase` null is a ticket entering the run; a result of null, one leaving it.
  */
 export const transition = (
   phase: TicketPhase | null,
-  cause: Cause,
+  move: Move,
 ): Result.Result<TicketPhase | null, InvalidTransition> => {
-  const found = rowFor(phase, cause)
+  const found = rowFor(phase, move)
   if (found === undefined) {
     return Result.fail(
       new InvalidTransition({
         from: phase?._tag ?? null,
-        to: leadsTo(cause._tag),
-        when: cause._tag,
+        to: leadsTo(move._tag),
+        when: move._tag,
       }),
     )
   }
-  return Result.succeed(found.next(phase, cause))
+  return Result.succeed(found.next(phase, move))
 }
 
 /** A change of a phase's details that leaves its tag as it is. */

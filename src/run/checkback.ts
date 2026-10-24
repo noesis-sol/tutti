@@ -68,7 +68,7 @@ import {
   type MergeOptions,
   type MergeTarget,
 } from "./merge.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import { info } from "./say.ts"
 import { namesTicket } from "./settle.ts"
 import type { Fix } from "./setup.ts"
@@ -276,7 +276,7 @@ export const handOverFix = (
     const ledger = yield* Ledger
     const { id } = stop.ticket
     const attempt = (yield* fixes.count(id)) + 1
-    const moved = yield* ledger.transition(id, Cause.CheckHandedBack({ attempt }))
+    const moved = yield* ledger.transition(id, Move.CheckHandedBack({ attempt }))
     if (Result.isFailure(moved)) return false
     yield* fixes.next(id)
     const text = fixing({

@@ -36,7 +36,7 @@ import { exitCodes, type StopReason, timeLimit } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import type { MergeQueue } from "./mergequeue.ts"
-import { Cause, type TicketPhase } from "./phase.ts"
+import { Move, type TicketPhase } from "./phase.ts"
 import { warn } from "./say.ts"
 import { fit, workerGone } from "./sessions.ts"
 import {
@@ -118,7 +118,7 @@ const noChange = (ticket: StartTicket, worker: StartedWorker, why: string, own: 
     // Commits that change nothing keep git from deleting the branch as merged; its reflog has them.
     const left = yield* removeWorktree(worker, own)
     const text = detail`${ticket.id} closed with no change: ${why}, so there is nothing to merge; ${left}`
-    yield* ledger.transition(ticket.id, Cause.NoChange(), {
+    yield* ledger.transition(ticket.id, Move.NoChange(), {
       said: [
         {
           kind: "closed",
@@ -167,7 +167,7 @@ const waitsForMerge = (
     const text = ticketLine(
       Tag.waitsForMerge,
     )`${id} waits for ${list} to merge; its worker stopped with nothing done, so it is back in the queue until ${does}; ${left}`
-    yield* ledger.transition(id, Cause.WaitsForMerge({ blockers }), {
+    yield* ledger.transition(id, Move.WaitsForMerge({ blockers }), {
       said: [{ kind: "waits", ticket: id, title: ticket.title, detail: list, text }],
     })
   })
@@ -188,7 +188,7 @@ const paused = (worker: StartedWorker, gone: string | null) =>
     const reason = line`${id} still in_progress, ${after} (worktree ${path}); stopping so it can be answered`
     const text = tagged(Tag.paused)`${reason}`
     // The run says the HOLD line, with the tickets still running, as it takes the stop.
-    yield* ledger.transition(id, Cause.StopRun({ why: "PAUSED" }), {
+    yield* ledger.transition(id, Move.StopRun({ why: "PAUSED" }), {
       beside: [{ kind: "stop", detail: Tag.paused, ticket: id, text }],
     })
     return { why: "PAUSED", code: stuckCode, ticket: id, line: text } satisfies RunStop
@@ -219,7 +219,7 @@ const setupProblem = (worktree: TicketWorktree, problem: string) =>
     const reason = line`${id}'s worker was stopped before it did anything: ${problem}; ${id} is reopened (worktree ${path}); fix the setup, then run again`
     const text = tagged(Tag.setupProblem)`${reason}`
     // The run says the HOLD line, with the tickets still running, as it takes the stop.
-    yield* ledger.transition(id, Cause.SetupProblem(), {
+    yield* ledger.transition(id, Move.SetupProblem(), {
       beside: [{ kind: "stop", detail: Tag.setupProblem, ticket: id, text }],
     })
     return {
@@ -261,7 +261,7 @@ export const conclude = (
         const text = ticketLine(
           Tag.asked,
         )`${id} waits on your answer to ${q.id} (${q.title}); answer with: bd human respond ${q.id}; worktree ${path} left open`
-        yield* ledger.transition(id, Cause.FiledQuestion({ question: q.id }), {
+        yield* ledger.transition(id, Move.FiledQuestion({ question: q.id }), {
           said: [{ kind: "asked", ticket: id, title, detail: `${q.id}: ${q.title}`, text }],
         })
         break
@@ -305,7 +305,7 @@ export const conclude = (
       case "Deferred": {
         const left = reading.nothingDone ? nothingLeft : line`worktree ${path} left open`
         const text = detail`${id} deferred by its worker; ${left}`
-        yield* ledger.transition(id, Cause.Defer({ why: "by the worker" }), {
+        yield* ledger.transition(id, Move.Defer({ why: "by the worker" }), {
           said: [{ kind: "deferred", ticket: id, title, detail: "by the worker", text }],
         })
         break
@@ -524,7 +524,7 @@ export const requeueWaiting = (
       const queued =
         [...(yield* ledger.current).tickets.values()].filter((each) => each.phase._tag === "Queued")
           .length + 1
-      const moved = yield* ledger.transition(entry.ticket, Cause.Requeued(), {
+      const moved = yield* ledger.transition(entry.ticket, Move.Requeued(), {
         beside: [{ kind: "queue", queued }],
         lines: [detail`${entry.ticket}: ${named(phase.for.ids)} merged; back in the queue`],
       })

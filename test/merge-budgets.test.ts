@@ -6,7 +6,7 @@ import { Effect, Exit } from "effect"
 import { Ledger } from "../src/run/ledger.ts"
 import { budgets, type FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Checks } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
@@ -42,8 +42,8 @@ const finished = Effect.gen(function* () {
   yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
   yield* (yield* Beads).close("a", "done")
   const ledger = yield* Ledger
-  yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-  yield* ledger.transition("a", Cause.Dispatched())
+  yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+  yield* ledger.transition("a", Move.Dispatched())
   return {
     id: "a",
     title: "Ticket a",

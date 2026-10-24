@@ -8,7 +8,7 @@ import type { EventStream } from "../src/run/eventstream.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
 import type { Beads, Issue } from "../src/services/Beads.ts"
@@ -61,7 +61,7 @@ const t2After = (r: Seed, rechecked: boolean, withFootprints: boolean) =>
         },
       })
       // One checked once more waits in Review, its check failed, until it takes its slot.
-      if (!rechecked) yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
+      if (!rechecked) yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
       const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
       yield* schedule.fill
       const state = yield* ledger.current
@@ -125,7 +125,7 @@ const besideR = (rechecked: boolean) =>
         excludeTypes: ["epic"],
         start: { start: () => Effect.never },
       })
-      if (!rechecked) yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
+      if (!rechecked) yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
       const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
       const r2 = yield* schedule.recheckSlot("r2", Effect.never)
       const c = yield* schedule.carry("c", Effect.succeed(Effect.never))
@@ -153,7 +153,7 @@ test("a solo ticket past its work without a slot keeps a carried worker out, bef
         excludeTypes: ["epic"],
         start: { start: () => Effect.never },
       })
-      yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
+      yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
       return yield* schedule.carry("c", Effect.succeed(Effect.never))
     }),
   )

@@ -18,7 +18,7 @@ import { makePrinter } from "../src/print/organLine.ts"
 import { recorded } from "../src/run/check.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { finish, run } from "../src/run/run.ts"
 import { endRecord, nothingSpent, Spending, shareOf, type Totals } from "../src/run/spending.ts"
 import {
@@ -369,20 +369,20 @@ describe("what a ticket spent, on the records that end its part in the run", () 
     const records = await inLedger(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        const move = (cause: Cause, wait = 0) =>
+        const move = (cause: Move, wait = 0) =>
           Effect.andThen(TestClock.adjust(wait), ledger.transition("t-1", cause, { title: "T" }))
-        yield* move(Cause.Ready())
-        yield* move(Cause.Dispatched(), 1000)
+        yield* move(Move.Ready())
+        yield* move(Move.Dispatched(), 1000)
         yield* (yield* Spending).message("t-1", "s-1", resultMessage(0.5, usage(1, 10)))
-        yield* move(Cause.Verified({ place: 1 }), 60_000)
-        yield* move(Cause.ItsTurn(), 5000)
-        yield* move(Cause.ConflictsHandedBack({ attempt: 1 }), 2000)
-        yield* move(Cause.Verified({ place: 1 }), 3000)
-        yield* move(Cause.ItsTurn())
-        yield* move(Cause.CheckHandedBack({ attempt: 1 }), 2000)
-        yield* move(Cause.Verified({ place: 1 }), 4000)
-        yield* move(Cause.ItsTurn())
-        yield* ledger.transition("t-1", Cause.FastForwarded({ commit: "abc1234" }), {
+        yield* move(Move.Verified({ place: 1 }), 60_000)
+        yield* move(Move.ItsTurn(), 5000)
+        yield* move(Move.ConflictsHandedBack({ attempt: 1 }), 2000)
+        yield* move(Move.Verified({ place: 1 }), 3000)
+        yield* move(Move.ItsTurn())
+        yield* move(Move.CheckHandedBack({ attempt: 1 }), 2000)
+        yield* move(Move.Verified({ place: 1 }), 4000)
+        yield* move(Move.ItsTurn())
+        yield* ledger.transition("t-1", Move.FastForwarded({ commit: "abc1234" }), {
           beside: [{ kind: "closed", ticket: "t-1", title: "T", text: "  t-1 closed" }],
         })
       }),
@@ -411,18 +411,18 @@ describe("what a ticket spent, on the records that end its part in the run", () 
       Effect.gen(function* () {
         const ledger = yield* Ledger
         for (const id of ["a", "b", "c", "d"]) {
-          yield* ledger.transition(id, Cause.Ready(), { title: id })
-          yield* ledger.transition(id, Cause.Dispatched())
+          yield* ledger.transition(id, Move.Ready(), { title: id })
+          yield* ledger.transition(id, Move.Dispatched())
         }
-        yield* ledger.transition("a", Cause.Aside({ why: "CHECKS_FAILED" }), {
+        yield* ledger.transition("a", Move.Aside({ why: "CHECKS_FAILED" }), {
           beside: [{ kind: "warn", ticket: "a", aside: true, detail: "checks failed", text: "x" }],
         })
-        yield* ledger.transition("b", Cause.FiledQuestion({ question: "q-1" }))
-        yield* ledger.transition("c", Cause.RunEnded({ why: "run ended" }))
-        yield* ledger.transition("d", Cause.NoChange())
+        yield* ledger.transition("b", Move.FiledQuestion({ question: "q-1" }))
+        yield* ledger.transition("c", Move.RunEnded({ why: "run ended" }))
+        yield* ledger.transition("d", Move.NoChange())
         // Carried over from an earlier run: its worker resumed, then deferred.
-        yield* ledger.transition("e", Cause.Resumed(), { title: "e" })
-        yield* ledger.transition("e", Cause.Defer({ why: "by the worker" }), {
+        yield* ledger.transition("e", Move.Resumed(), { title: "e" })
+        yield* ledger.transition("e", Move.Defer({ why: "by the worker" }), {
           beside: [{ kind: "deferred", ticket: "e", title: "e", text: "x" }],
         })
       }),

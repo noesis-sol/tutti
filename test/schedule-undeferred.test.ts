@@ -6,7 +6,7 @@ import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { openGate, stopFor } from "../src/run/holds.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause, type PhaseTag } from "../src/run/phase.ts"
+import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { make } from "../src/run/schedule.ts"
 import { Beads, type Issue } from "../src/services/Beads.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -65,7 +65,7 @@ const scheduler = (options: { readonly deferFails?: boolean } = {}) =>
             if (options.deferFails !== true) {
               yield* Effect.orDie(beads.defer(issue.id, { reason: "set aside" }))
             }
-            yield* ledger.transition(issue.id, Cause.Defer({ why: "START_FAILED" }))
+            yield* ledger.transition(issue.id, Move.Defer({ why: "START_FAILED" }))
           }),
       },
     })
@@ -158,7 +158,7 @@ describe("a ticket set aside, then undeferred during the run", () => {
         yield* beads.update("t-1", { status: "open" })
         yield* poll
         const mid = yield* phaseOf("t-1")
-        yield* ledger.transition("t-1", Cause.Reopened())
+        yield* ledger.transition("t-1", Move.Reopened())
         const after = { phase: yield* phaseOf("t-1"), starts: yield* starts }
         const bugs = (yield* texts).filter((text) => text.includes("PHASE_BUG"))
         yield* Fiber.interrupt(fiber)

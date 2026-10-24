@@ -3,7 +3,7 @@ import { Effect, Layer } from "effect"
 import { leaveForReview, putAside } from "../src/run/aside.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { type Log, Tag, ticketLine } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import type { Beads } from "../src/services/Beads.ts"
 import { Store } from "../src/services/Store.ts"
 import { Backlog, layer as beadsLayer } from "../src/testing/Beads.ts"
@@ -17,8 +17,8 @@ const aside = (body: Effect.Effect<unknown, never, Ledger | Beads | Log | Store>
   Effect.runPromise(
     Effect.gen(function* () {
       const ledger = yield* Ledger
-      yield* ledger.transition("t-1", Cause.Ready(), { title: "One ticket" })
-      yield* ledger.transition("t-1", Cause.Dispatched())
+      yield* ledger.transition("t-1", Move.Ready(), { title: "One ticket" })
+      yield* ledger.transition("t-1", Move.Dispatched())
       yield* body
       const issues = yield* (yield* Backlog).issues
       return {

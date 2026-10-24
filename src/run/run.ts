@@ -62,7 +62,7 @@
 // quitting (quitting.ts) and the end's steps (endOfRun.ts).
 import { join } from "node:path"
 import {
-  Cause as Causes,
+  Cause,
   Clock,
   Deferred,
   Effect,
@@ -253,18 +253,18 @@ export const panicStop = (ticket: string, defect: unknown): StopReason =>
   stopFor("PANIC", `${ticket}'s fiber: ${firstLine(defect)}`, { ticket })
 
 /** What a fiber that died with `cause` died of: its defect, or the cause told. */
-const defectOf = (cause: Causes.Cause<unknown>): unknown => {
-  const defect = Causes.findDefect(cause)
-  return Result.isSuccess(defect) ? defect.success : Causes.pretty(cause)
+const defectOf = (cause: Cause.Cause<unknown>): unknown => {
+  const defect = Cause.findDefect(cause)
+  return Result.isSuccess(defect) ? defect.success : Cause.pretty(cause)
 }
 
 /** The stop a ticket's fiber ending with `cause` stops the run for, if any. */
-const causeStop = (ticket: string, cause: Causes.Cause<WorkError>): StopReason | undefined => {
-  if (Causes.hasInterruptsOnly(cause)) return undefined
-  const error = Causes.findError(cause)
+const causeStop = (ticket: string, cause: Cause.Cause<WorkError>): StopReason | undefined => {
+  if (Cause.hasInterruptsOnly(cause)) return undefined
+  const error = Cause.findError(cause)
   if (Result.isSuccess(error)) return errorStop(ticket, error.success)
-  const defect = Causes.findDefect(cause)
-  return panicStop(ticket, Result.isSuccess(defect) ? defect.success : Causes.pretty(cause))
+  const defect = Cause.findDefect(cause)
+  return panicStop(ticket, Result.isSuccess(defect) ? defect.success : Cause.pretty(cause))
 }
 
 /**

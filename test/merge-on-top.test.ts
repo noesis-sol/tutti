@@ -10,7 +10,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { failedCheckSaid } from "../src/run/reportEvidence.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { Beads } from "../src/services/Beads.ts"
@@ -342,8 +342,8 @@ const mergesOnTop = (script: (ticket: FinishedTicket) => Effect.Effect<void, unk
       yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
       yield* (yield* Beads).close("a", "done")
       const ledger = yield* Ledger
-      yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-      yield* ledger.transition("a", Cause.Dispatched())
+      yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+      yield* ledger.transition("a", Move.Dispatched())
       const ticket = {
         id: "a",
         title: "Ticket a",

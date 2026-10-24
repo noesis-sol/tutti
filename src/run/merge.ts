@@ -102,7 +102,7 @@ import {
 } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { type Arg, branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
-import { Cause, Detail } from "./phase.ts"
+import { Detail, Move } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
 import { info, type Said } from "./say.ts"
@@ -291,7 +291,7 @@ const closedBut =
 const block = (ticket: FinishedTicket, why: string, record: Said) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    yield* ledger.transition(ticket.id, Cause.Block({ why }), { said: [record] })
+    yield* ledger.transition(ticket.id, Move.Block({ why }), { said: [record] })
   })
 
 /** A merge that stops the merges: DIRTY_TREE and GIT_FAILED hold the run, MERGE_FAILED stops it. */
@@ -1200,7 +1200,7 @@ export const cleanupFailed = (
 }
 
 /**
- * A done ticket retired, as `how.cause` says it is done (merged, closed with no change, merged by
+ * A done ticket retired, as `how.move` says it is done (merged, closed with no change, merged by
  * hand): its worktree and branch removed as removeMerged does it, as `how` asks, the `unmerged`
  * label an earlier run gave it removed (a carried-over ticket keeps it until it merges, closeEpics
  * taking a labelled subticket for one not merged), Done with the `closed` record `how.closed` makes
@@ -1211,7 +1211,7 @@ export const retire = (
   ticket: DoneTicket,
   options: MergeTarget,
   how: {
-    readonly cause: Cause
+    readonly move: Move
     readonly moveToBase: boolean | "ahead"
     readonly leaveChanged?: boolean
     readonly issue?: Issue
@@ -1232,7 +1232,7 @@ export const retire = (
     const labelled = Result.isSuccess(shown) && shown.success.labels.includes(unmergedLabel)
     const unlabelled = labelled && (yield* unlabel(id))
     const said = how.closed(cleanup, unlabelled)
-    yield* ledger.transition(id, how.cause, {
+    yield* ledger.transition(id, how.move, {
       said: [{ kind: "closed", ticket: id, title, ...said }],
     })
     // Done, it has nothing left for a later run.
@@ -1250,7 +1250,7 @@ export const closeUnchanged = (
   unchanged: Unchanged,
 ): Effect.Effect<void, never, MergeEnv> =>
   retire(ticket, options, {
-    cause: Cause.NoChange(),
+    move: Move.NoChange(),
     moveToBase: unchanged.own,
     closed: (cleanup) => {
       const left =
@@ -1500,7 +1500,7 @@ export const fastForward = (
     const short = shortHash(hash)
     const named = commit === undefined ? short : line`${short} ${commit.subject}`
     yield* retire(ticket, options, {
-      cause: Cause.FastForwarded({ commit: hash }),
+      move: Move.FastForwarded({ commit: hash }),
       moveToBase: false,
       closed: (cleanup) =>
         cleanup._tag === "Removed"

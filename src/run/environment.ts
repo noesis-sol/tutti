@@ -55,7 +55,7 @@ import type { EventStream } from "./eventstream.ts"
 import { type StopReason, type Stops, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log, Tag, tagged, ticketLine } from "./log.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import { sayer } from "./say.ts"
 import type { Settled } from "./settle.ts"
 
@@ -281,7 +281,7 @@ export const make = (options: {
           }),
         )
         const text = detail`${id} reopened: its worker failed at once, like the tickets before it`
-        yield* ledger.transition(id, Cause.Reopened(), {
+        yield* ledger.transition(id, Move.Reopened(), {
           said: [
             { kind: "reopened", ticket: id, detail: "the run held for the environment", text },
           ],
@@ -415,7 +415,7 @@ export const make = (options: {
           [...(yield* ledger.current).tickets.values()].filter(
             (each) => each.phase._tag === "Queued",
           ).length + 1
-        yield* ledger.transition(entry.ticket, Cause.Requeued(), {
+        yield* ledger.transition(entry.ticket, Move.Requeued(), {
           beside: [{ kind: "queue", queued }],
           lines: [detail`${entry.ticket}: the probe passed; back in the queue`],
         })

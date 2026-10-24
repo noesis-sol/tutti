@@ -66,7 +66,7 @@ import {
   type Unchanged,
   unchanged,
 } from "./merge.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import { info, say } from "./say.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
 import { namesTicket, untilSettled } from "./settle.ts"
@@ -297,11 +297,11 @@ const block = (stop: RebaseStop, base: string, why: string, by: "Block" | "Aside
     const ledger = yield* Ledger
     const { files } = stop
     const text = conflictLine(stop, base, why)
-    const cause =
+    const move =
       by === "Block"
-        ? Cause.Block({ why: Tag.mergeConflict })
-        : Cause.Aside({ why: Tag.mergeConflict })
-    yield* ledger.transition(stop.ticket.id, cause, {
+        ? Move.Block({ why: Tag.mergeConflict })
+        : Move.Aside({ why: Tag.mergeConflict })
+    yield* ledger.transition(stop.ticket.id, move, {
       said: [
         {
           kind: "warn",
@@ -363,7 +363,7 @@ export const handOver = (
     const attempt = (yield* handBacks.count(id)) + 1
     // The rebase left in progress is its worker's now: carried over unfinished, it is said so.
     yield* markHandedBack(id)
-    const moved = yield* ledger.transition(id, Cause.ConflictsHandedBack({ attempt }))
+    const moved = yield* ledger.transition(id, Move.ConflictsHandedBack({ attempt }))
     if (Result.isFailure(moved)) {
       yield* (yield* Git).abandonRebase(stop.ticket.worktree)
       return false

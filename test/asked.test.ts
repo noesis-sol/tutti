@@ -9,7 +9,7 @@ import { makeHandBacks } from "../src/run/handback.ts"
 import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import { readyPoll } from "../src/run/schedule.ts"
 import type { StartTicket } from "../src/run/start.ts"
@@ -74,7 +74,7 @@ const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* 
   const ledger = yield* Ledger
   let places = 0
   return {
-    offer: (finished, cause = (place) => Cause.Verified({ place })) =>
+    offer: (finished, cause = (place) => Move.Verified({ place })) =>
       ledger.transition(finished.id, cause(++places)),
     state: Effect.succeed(emptyQueue),
     changes: undefined as never,
@@ -169,8 +169,8 @@ const asked = (
         branch: `tutti/${id}`,
         base: "main",
       })
-      yield* ledger.transition(id, Cause.Ready(), { title: ticket.title })
-      yield* ledger.transition(id, Cause.Dispatched())
+      yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
+      yield* ledger.transition(id, Move.Dispatched())
       const queue = yield* lineOnly
       const options = { base: "main", queue }
       const first = yield* work(ticket, options)

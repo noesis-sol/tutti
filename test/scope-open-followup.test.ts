@@ -7,7 +7,7 @@ import { TestClock } from "effect/testing"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { end, ledgerView, line, unmergedLabel } from "../src/run/scope.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { type Backlog, layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
@@ -50,7 +50,7 @@ describe("SCOPE_OPEN for a follow-up", () => {
       Effect.gen(function* () {
         // r.1's worker filed r.2 and closed r.1, which now waits to merge.
         const ledger = yield* Ledger
-        for (const cause of [Cause.Ready(), Cause.Dispatched(), Cause.Verified({ place: 1 })]) {
+        for (const cause of [Move.Ready(), Move.Dispatched(), Move.Verified({ place: 1 })]) {
           yield* ledger.transition("r.1", cause)
         }
         return yield* endOf("r")

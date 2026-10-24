@@ -19,7 +19,7 @@ import { makePrinter } from "../src/print/organLine.ts"
 import { noteCompaction, noteCompactions } from "../src/run/compactions.ts"
 import type { EventRecord, Info } from "../src/run/events.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { reportsDir } from "../src/run/report.ts"
 import { finish, run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
@@ -61,8 +61,8 @@ const compactionInfos = Effect.map(
 const dispatched = (ticket: string) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    yield* ledger.transition(ticket, Cause.Ready(), { title: `Ticket ${ticket}` })
-    yield* ledger.transition(ticket, Cause.Dispatched())
+    yield* ledger.transition(ticket, Move.Ready(), { title: `Ticket ${ticket}` })
+    yield* ledger.transition(ticket, Move.Dispatched())
   })
 
 /** The ticket's compactions tally now. */

@@ -3,7 +3,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer } from "effect"
 import fc from "fast-check"
 import { Ledger } from "../src/run/ledger.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { unmergedLabel } from "../src/run/scope.ts"
 import {
   forkKey,
@@ -57,8 +57,8 @@ const moveMain = (message = "Land something else", files: Files = { "main.txt": 
 const dispatched = (id: string) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    yield* ledger.transition(id, Cause.Ready(), { title: `Ticket ${id}` })
-    yield* ledger.transition(id, Cause.Dispatched())
+    yield* ledger.transition(id, Move.Ready(), { title: `Ticket ${id}` })
+    yield* ledger.transition(id, Move.Dispatched())
   })
 
 const withLedger = <A, E>(effect: Effect.Effect<A, E, Env | Ledger>) =>
@@ -162,9 +162,9 @@ describe("labelled as the run ends", () => {
           yield* beads.close("a", "done")
           yield* moveMain()
           const ledger = yield* Ledger
-          yield* ledger.transition("a", Cause.Verified({ place: 1 }))
-          yield* ledger.transition("a", Cause.RunEnded({ why: "quit" }))
-          yield* ledger.transition("b", Cause.RunEnded({ why: "quit" }))
+          yield* ledger.transition("a", Move.Verified({ place: 1 }))
+          yield* ledger.transition("a", Move.RunEnded({ why: "quit" }))
+          yield* ledger.transition("b", Move.RunEnded({ why: "quit" }))
           yield* labelAtEnd(options)
           return fork
         }),
@@ -199,9 +199,9 @@ describe("labelled as the run ends", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           for (const id of ["a", "c"]) yield* dispatched(id)
-          yield* ledger.transition("a", Cause.Verified({ place: 1 }))
-          yield* ledger.transition("a", Cause.RunEnded({ why: "quit" }))
-          yield* ledger.transition("c", Cause.NoChange())
+          yield* ledger.transition("a", Move.Verified({ place: 1 }))
+          yield* ledger.transition("a", Move.RunEnded({ why: "quit" }))
+          yield* ledger.transition("c", Move.NoChange())
           yield* labelAtEnd(options)
         }),
       ),
@@ -223,7 +223,7 @@ describe("labelled as the run ends", () => {
         Effect.gen(function* () {
           for (const id of ["a", "b"]) {
             yield* dispatched(id)
-            yield* (yield* Ledger).transition(id, Cause.Verified({ place: 1 }))
+            yield* (yield* Ledger).transition(id, Move.Verified({ place: 1 }))
           }
           const beads = yield* Beads
           const refused = new BeadsFailed({
@@ -449,8 +449,8 @@ slow.describe("with real git", () => {
           yield* beads.addLabel("o", unmergedLabel)
           for (const id of ["a", "s"]) {
             yield* dispatched(id)
-            yield* ledger.transition(id, Cause.Verified({ place: 1 }))
-            yield* ledger.transition(id, Cause.RunEnded({ why: "quit" }))
+            yield* ledger.transition(id, Move.Verified({ place: 1 }))
+            yield* ledger.transition(id, Move.RunEnded({ why: "quit" }))
           }
           yield* labelAtEnd(real)
           const before = yield* loadUnmerged(real)

@@ -10,7 +10,7 @@ import { Effect, Layer, Result } from "effect"
 import { EventStream, eventsFile } from "../src/run/eventstream.ts"
 import { Ledger, make as makeLedger } from "../src/run/ledger.ts"
 import { detail, Log, line, logFile } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { Captured, layer as capturedEvents } from "../src/testing/EventStream.ts"
 import { layer as capturedLog, texts } from "../src/testing/Log.ts"
 
@@ -77,7 +77,7 @@ describe("a happening's line and record", () => {
             const text = detail`n${i}`
             return i % 2 === 0
               ? Effect.asVoid(
-                  ledger.transition(`t-${i}`, Cause.Ready(), {
+                  ledger.transition(`t-${i}`, Move.Ready(), {
                     beside: [{ kind: "info", ticket: `t-${i}`, text }],
                     lines: [text],
                   }),
@@ -96,8 +96,8 @@ describe("a happening's line and record", () => {
   test("a transition the machine doesn't have logs neither its lines nor its records", async () => {
     const program = Effect.gen(function* () {
       const ledger = yield* Ledger
-      yield* ledger.transition("t-1", Cause.Ready())
-      const again = yield* ledger.transition("t-1", Cause.Ready(), {
+      yield* ledger.transition("t-1", Move.Ready())
+      const again = yield* ledger.transition("t-1", Move.Ready(), {
         beside: [{ kind: "info", ticket: "t-1", text: detail`t-1 queued again` }],
         lines: [detail`t-1 queued again`],
       })

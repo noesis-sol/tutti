@@ -19,7 +19,7 @@ import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { resume } from "../src/run/sessions.ts"
 import { start } from "../src/run/start.ts"
 import { Store } from "../src/services/Store.ts"
@@ -167,8 +167,8 @@ describe("a failed spawn", () => {
         },
         Effect.gen(function* () {
           const ledger = yield* Ledger
-          yield* ledger.transition("t-1", Cause.Ready(), { title: "One ticket" })
-          yield* ledger.transition("t-1", Cause.Dispatched())
+          yield* ledger.transition("t-1", Move.Ready(), { title: "One ticket" })
+          yield* ledger.transition("t-1", Move.Dispatched())
           const started = yield* start({ id: "t-1", title: "One ticket", metadata: {} }, "main")
           return {
             started,

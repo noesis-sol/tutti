@@ -8,7 +8,7 @@ import { type CheckStop, verifyFixed } from "../src/run/checkback.ts"
 import { type RebaseStop, verifyResolved } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { type FinishedTicket, someFiles } from "../src/run/merge.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
@@ -63,8 +63,8 @@ const leaves = <A>(
       yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
       yield* (yield* Beads).close("a", "done")
       const ledger = yield* Ledger
-      yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-      yield* ledger.transition("a", Cause.Dispatched())
+      yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+      yield* ledger.transition("a", Move.Dispatched())
       const first = yield* repository.head(worktree.branch)
       yield* repository.commit(worktree.path, "Fix the check (a)", {
         "src/a.ts": 'import { util } from "./util.ts"\n',

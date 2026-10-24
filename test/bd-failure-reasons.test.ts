@@ -13,7 +13,7 @@ import { putAside } from "../src/run/aside.ts"
 import { layer as runFibersLayer } from "../src/run/fibers.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line, ticketLine } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { make as makePredictor } from "../src/run/predict.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Outcome, run } from "../src/run/run.ts"
@@ -39,8 +39,8 @@ const setAside = (op: string, fault: Fault) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const ledger = yield* Ledger
-      yield* ledger.transition("t-1", Cause.Ready(), { title: "One ticket" })
-      yield* ledger.transition("t-1", Cause.Dispatched())
+      yield* ledger.transition("t-1", Move.Ready(), { title: "One ticket" })
+      yield* ledger.transition("t-1", Move.Dispatched())
       yield* (yield* Backlog).fail(op, fault)
       const deferred = yield* putAside(
         { id: "t-1", title: "One ticket" },

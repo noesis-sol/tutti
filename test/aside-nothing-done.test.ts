@@ -12,7 +12,7 @@ import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import type { Deferral, Triage } from "../src/run/triage.ts"
@@ -42,7 +42,7 @@ const worktreesRoot = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-aside
 const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* () {
   const ledger = yield* Ledger
   return {
-    offer: (finished: FinishedTicket, cause = (place: number) => Cause.Verified({ place })) =>
+    offer: (finished: FinishedTicket, cause = (place: number) => Move.Verified({ place })) =>
       ledger.transition(finished.id, cause(1)),
     state: Effect.succeed(emptyQueue),
     changes: undefined as never,
@@ -87,8 +87,8 @@ const working = (setup: Setup & { readonly root: string }, triage?: Triage): Pro
         branch: `tutti/${id}`,
         base: "main",
       })
-      yield* ledger.transition(id, Cause.Ready(), { title: ticket.title })
-      yield* ledger.transition(id, Cause.Dispatched())
+      yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
+      yield* ledger.transition(id, Move.Dispatched())
       const queue = yield* lineOnly
       const fiber = yield* Effect.forkChild(
         work(ticket, { base: "main", queue, ...(triage === undefined ? {} : { triage }) }),

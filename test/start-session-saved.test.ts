@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, Effect, Exit, Fiber } from "effect"
 import { Ledger } from "../src/run/ledger.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { type Start, type StartTicket, start } from "../src/run/start.ts"
 import { Store, type TicketRecord } from "../src/services/Store.ts"
 import { init, type SessionScript, run as step, wait } from "../src/testing/AgentHost.ts"
@@ -55,8 +55,8 @@ const starting = (
         })
         // Suspended by a run whose carry-over this one kept, as when bd couldn't show it.
         yield* store.suspend("t-1", "quit", "Stopped")
-        yield* ledger.transition("t-1", Cause.Ready(), { title: t1.title })
-        yield* ledger.transition("t-1", Cause.Dispatched())
+        yield* ledger.transition("t-1", Move.Ready(), { title: t1.title })
+        yield* ledger.transition("t-1", Move.Dispatched())
         const started = yield* Effect.forkChild(start(t1, "main"))
         yield* Deferred.await(taken)
         yield* then(started)

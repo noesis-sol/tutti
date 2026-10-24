@@ -7,7 +7,7 @@ import { closedBranches, closedUnmergedLine, startBranches } from "../src/run/cl
 import * as free from "../src/run/deferredFree.ts"
 import { type Entry, emptyState, Ledger, type State } from "../src/run/ledger.ts"
 import { check, heldAtStart, lines, noStyles, type Options } from "../src/run/nothing.ts"
-import { Cause, Outcome as Finished, TicketPhase } from "../src/run/phase.ts"
+import { Outcome as Finished, Move, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { unmergedBlockers } from "../src/run/settle.ts"
 import { requeueWaiting } from "../src/run/work.ts"
@@ -170,9 +170,9 @@ describe("WAITS_FOR_MERGE on a blocker closed by hand, its branch not merged", (
       Effect.gen(function* () {
         const ledger = yield* Ledger
         const path = yield* offMain(where.repo)
-        yield* ledger.transition("t-2", Cause.Ready(), { title: "t-2" })
-        yield* ledger.transition("t-2", Cause.Dispatched())
-        yield* ledger.transition("t-2", Cause.WaitsForMerge({ blockers: ["t-1"] }))
+        yield* ledger.transition("t-2", Move.Ready(), { title: "t-2" })
+        yield* ledger.transition("t-2", Move.Dispatched())
+        yield* ledger.transition("t-2", Move.WaitsForMerge({ blockers: ["t-1"] }))
         const branches = yield* closedBranches(where)
         const held = yield* requeueWaiting(branches)
         yield* deleteBranch(where.repo, path, "tutti/t-1")

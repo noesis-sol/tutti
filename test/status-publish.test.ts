@@ -6,7 +6,7 @@ import { TestClock } from "effect/testing"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { emptyStatus, project, type Status, showOn } from "../src/run/runView.ts"
 import { same } from "../src/run/same.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
@@ -138,7 +138,7 @@ describe("a ledger entry's texts", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         // A ticket has a row from its dispatch.
-        for (const cause of [Cause.Ready(), Cause.Dispatched()]) {
+        for (const cause of [Move.Ready(), Move.Dispatched()]) {
           const next = yield* ledger.transition("a", cause, { title: "First" })
           if (Result.isFailure(next)) throw new Error(next.failure.phaseBug("a"))
         }

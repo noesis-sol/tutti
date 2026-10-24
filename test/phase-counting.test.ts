@@ -9,10 +9,10 @@ import { holdsWorker, keepsWorker, Ledger } from "../src/run/ledger.ts"
 import { finished } from "../src/run/notices.ts"
 import {
   activities,
-  Cause,
   countsUnder,
   factsOf,
   hasCard,
+  Move,
   Outcome,
   type PhaseTag,
   phaseFacts,
@@ -396,7 +396,7 @@ describe("a run that ends with a MERGE_CONFLICT", () => {
     const state = await Effect.runPromise(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        const go = (ticket: string, ...causes: ReadonlyArray<Cause>) =>
+        const go = (ticket: string, ...causes: ReadonlyArray<Move>) =>
           Effect.gen(function* () {
             for (const [i, cause] of causes.entries()) {
               const options = i === 0 ? { title: `Title of ${ticket}` } : {}
@@ -405,13 +405,13 @@ describe("a run that ends with a MERGE_CONFLICT", () => {
             }
           })
         const merging = [
-          Cause.Ready(),
-          Cause.Dispatched(),
-          Cause.Verified({ place: 1 }),
-          Cause.ItsTurn(),
+          Move.Ready(),
+          Move.Dispatched(),
+          Move.Verified({ place: 1 }),
+          Move.ItsTurn(),
         ]
-        yield* go("a", ...merging, Cause.FastForwarded({ commit: "abc1234def" }))
-        yield* go("b", ...merging, Cause.Block({ why: "MERGE_CONFLICT" }))
+        yield* go("a", ...merging, Move.FastForwarded({ commit: "abc1234def" }))
+        yield* go("b", ...merging, Move.Block({ why: "MERGE_CONFLICT" }))
         return yield* ledger.current
       }).pipe(Effect.provide(ledgerLayer().pipe(Layer.provideMerge(TestClock.layer())))),
     )

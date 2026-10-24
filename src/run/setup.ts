@@ -60,7 +60,7 @@ import { settingsGlobMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import type { FinishedTicket, MergeTarget } from "./merge.ts"
-import { Cause, Detail } from "./phase.ts"
+import { Detail, Move } from "./phase.ts"
 import { sameRequires } from "./requires.ts"
 import { warn } from "./say.ts"
 
@@ -530,7 +530,7 @@ export const leaveSetupFailed = (
     const text = ticketLine(
       Tag.setupFailed,
     )`'${command}' ${how} in ${worktree} for ${id}; the whole output is in ${output}`
-    yield* ledger.transition(id, Cause.SetupFailed(), {
+    yield* ledger.transition(id, Move.SetupFailed(), {
       said: [{ kind: "warn", ticket: id, detail: "setup failed", text }],
     })
   })
@@ -553,7 +553,7 @@ export const retrySetups = (
       const state = yield* ledger.current
       if (mergedCount(state) <= (failures.get(entry.ticket)?.merged ?? -1)) continue
       const queued = [...state.tickets.values()].filter((each) => each.phase._tag === "Queued")
-      const moved = yield* ledger.transition(entry.ticket, Cause.Requeued(), {
+      const moved = yield* ledger.transition(entry.ticket, Move.Requeued(), {
         beside: [{ kind: "queue", queued: queued.length + 1 }],
         lines: [detail`${entry.ticket}: a ticket merged since its setup failed; back in the queue`],
       })

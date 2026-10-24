@@ -21,7 +21,7 @@ import { Effect, Fiber } from "effect"
 import { probeFile, probeWorker } from "../src/run/environment.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
-import { Cause, countsUnder, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { countsUnder, Move, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyView } from "../src/run/runView.ts"
 import {
@@ -447,8 +447,8 @@ describe("leaving a ticket whose setup failed", () => {
         const setUps = yield* makeSetUps
         // "gone" isn't in bd: reopening it fails.
         for (const id of ["a", "gone"]) {
-          yield* ledger.transition(id, Cause.Ready(), { title: id })
-          yield* ledger.transition(id, Cause.Dispatched())
+          yield* ledger.transition(id, Move.Ready(), { title: id })
+          yield* ledger.transition(id, Move.Dispatched())
           yield* leaveSetupFailed({ id, title: id, status: "in_progress" }, path, failed, setUps)
         }
         const state = yield* ledger.current

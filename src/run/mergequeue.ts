@@ -70,7 +70,7 @@ import {
   mergeTurn,
 } from "./merge.ts"
 import { type CheckAhead, make as makeTrain } from "./mergetrain.ts"
-import { Cause, Detail, type InvalidTransition, type TicketPhase } from "./phase.ts"
+import { Detail, type InvalidTransition, Move, type TicketPhase } from "./phase.ts"
 import { makeRechecks, type Rechecks, recheckDue } from "./recheck.ts"
 import { fit } from "./sessions.ts"
 import { makeSetUps, takeSettings } from "./setup.ts"
@@ -94,13 +94,13 @@ export const emptyQueue: QueueState = { waiting: [], merging: null, resolving: [
 export interface MergeQueue {
   /**
    * Puts the ticket in line behind the tickets already in it, ToMerge at its place there, by
-   * `cause` (Verified, from Working, unless given). A transition the ledger refuses (PHASE_BUG)
+   * `move` (Verified, from Working, unless given). A transition the ledger refuses (PHASE_BUG)
    * leaves it out of the queue. `ahead`: it waits for its first turn in its merge, and may be
    * checked ahead of it (mergetrain.ts); true unless given.
    */
   offer(
     ticket: FinishedTicket,
-    cause?: (place: number) => Cause,
+    move?: (place: number) => Move,
     ahead?: boolean,
   ): Effect.Effect<Result.Result<TicketPhase | null, InvalidTransition>>
   readonly state: Effect.Effect<QueueState>
@@ -209,7 +209,7 @@ export const make = (
 
     const offer: MergeQueue["offer"] = (
       ticket,
-      cause = (place) => Cause.Verified({ place }),
+      move = (place) => Move.Verified({ place }),
       ahead = true,
     ) =>
       Effect.tap(
@@ -221,7 +221,7 @@ export const make = (
               const moved = yield* heldMessages
                 .entering(
                   ticket.id,
-                  ledger.transition(ticket.id, cause(place), { title: ticket.title }),
+                  ledger.transition(ticket.id, move(place), { title: ticket.title }),
                 )
                 .pipe(Effect.provideContext(context))
               if (Result.isFailure(moved)) return moved
@@ -248,7 +248,7 @@ export const make = (
             const state = yield* SubscriptionRef.get(ref)
             if (state.stop !== null || (yield* Ref.get(held))) return false
             const waiting = state.waiting.filter((id) => id !== ticket.id)
-            const moved = yield* ledger.transition(ticket.id, Cause.ItsTurn())
+            const moved = yield* ledger.transition(ticket.id, Move.ItsTurn())
             yield* renumber(waiting)
             const merging = Result.isSuccess(moved) ? ticket.id : null
             yield* SubscriptionRef.update(ref, (now) => ({
@@ -272,7 +272,7 @@ export const make = (
           if (entry?.phase._tag !== "Merging") {
             return yield* SubscriptionRef.update(ref, (now) => ({ ...now, merging: null }))
           }
-          yield* ledger.transition(ticket.id, Cause.MergeInterrupted({ place: 1 }))
+          yield* ledger.transition(ticket.id, Move.MergeInterrupted({ place: 1 }))
           yield* renumber([ticket.id, ...(yield* SubscriptionRef.get(ref)).waiting])
           yield* SubscriptionRef.update(ref, (now) => ({
             ...now,

@@ -23,7 +23,7 @@ import { nothingEarlier } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
 import { Ledger } from "./ledger.ts"
 import { line, Tag, ticketLine } from "./log.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"
 import { openQuestion } from "./settle.ts"
 import type { StartedWorker } from "./start.ts"
@@ -81,7 +81,7 @@ export const takeAnswers = (
         const text = ticketLine(
           Tag.answered,
         )`${question} (${asked}) is answered, so ${id} comes back`
-        const moved = yield* ledger.transition(id, Cause.Answered(), {
+        const moved = yield* ledger.transition(id, Move.Answered(), {
           said: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
         })
         if (Result.isFailure(moved)) return undefined

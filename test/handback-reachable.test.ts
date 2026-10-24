@@ -20,7 +20,7 @@ import {
   showsCard,
 } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
-import { Cause, TicketPhase } from "../src/run/phase.ts"
+import { Move, TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import {
   conflictWaits,
@@ -59,10 +59,10 @@ const withLedger = <A>(effect: Effect.Effect<A, never, Ledger>): Promise<A> =>
 const toMerging = (ticket: string) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    yield* ledger.transition(ticket, Cause.Ready(), { title: `Ticket ${ticket}` })
-    yield* ledger.transition(ticket, Cause.Dispatched())
-    yield* ledger.transition(ticket, Cause.Verified({ place: 1 }))
-    yield* ledger.transition(ticket, Cause.ItsTurn())
+    yield* ledger.transition(ticket, Move.Ready(), { title: `Ticket ${ticket}` })
+    yield* ledger.transition(ticket, Move.Dispatched())
+    yield* ledger.transition(ticket, Move.Verified({ place: 1 }))
+    yield* ledger.transition(ticket, Move.ItsTurn())
   })
 
 const workerOf = (state: State, ticket: string) => state.tickets.get(ticket)?.worker
@@ -75,13 +75,13 @@ describe("the ledger", () => {
         yield* toMerging("a")
         // As notHandedBack does: the hand-back kept first, then the ticket Blocked on it.
         yield* ledger.handBackWaits("a")
-        yield* ledger.transition("a", Cause.Block({ why: conflict }))
+        yield* ledger.transition("a", Move.Block({ why: conflict }))
         const blocked = yield* ledger.current
         // Another ticket started meanwhile doesn't take a's number.
-        yield* ledger.transition("b", Cause.Ready(), { title: "Ticket b" })
-        yield* ledger.transition("b", Cause.Dispatched())
+        yield* ledger.transition("b", Move.Ready(), { title: "Ticket b" })
+        yield* ledger.transition("b", Move.Dispatched())
         const meanwhile = yield* ledger.current
-        yield* ledger.transition("a", Cause.HandedOver({ place: 1 }))
+        yield* ledger.transition("a", Move.HandedOver({ place: 1 }))
         const handed = yield* ledger.current
         return { blocked, meanwhile, handed }
       }),
@@ -107,7 +107,7 @@ describe("the ledger", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         yield* toMerging("a")
-        yield* ledger.transition("a", Cause.Block({ why: conflict }))
+        yield* ledger.transition("a", Move.Block({ why: conflict }))
         return yield* ledger.current
       }),
     )
@@ -122,7 +122,7 @@ describe("the ledger", () => {
       Effect.gen(function* () {
         const ledger = yield* Ledger
         yield* toMerging("a")
-        yield* ledger.transition("a", Cause.Block({ why: conflict }))
+        yield* ledger.transition("a", Move.Block({ why: conflict }))
         yield* ledger.handBackWaits("a")
         return yield* ledger.current
       }),

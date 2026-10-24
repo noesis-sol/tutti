@@ -8,7 +8,7 @@ import type { EventStream } from "../src/run/eventstream.ts"
 import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { repoFiles } from "../src/run/repoFiles.ts"
 import { type Footprints, make } from "../src/run/schedule.ts"
 import type { Beads, Issue } from "../src/services/Beads.ts"
@@ -66,7 +66,7 @@ const t2After = (rechecked: boolean) =>
             ),
         },
       })
-      yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
+      yield* ledger.transition("r", Move.Unmerged({ place: 1 }))
       const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
       yield* schedule.fill
       const state = yield* ledger.current

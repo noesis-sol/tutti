@@ -9,7 +9,7 @@ import { makeHeld } from "../src/run/held.ts"
 import type { StopReason } from "../src/run/holds.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import type { Outcome } from "../src/run/run.ts"
 import { run } from "../src/run/run.ts"
@@ -67,7 +67,7 @@ const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* 
   const ledger = yield* Ledger
   let places = 0
   return {
-    offer: (finished, cause = (place) => Cause.Verified({ place })) =>
+    offer: (finished, cause = (place) => Move.Verified({ place })) =>
       ledger.transition(finished.id, cause(++places)),
     state: Effect.succeed(emptyQueue),
     changes: undefined as never,
@@ -131,8 +131,8 @@ const answered = (waited: number): Promise<Ran<Seen>> => {
         branch: `tutti/${id}`,
         base: "main",
       })
-      yield* ledger.transition(id, Cause.Ready(), { title: ticket.title })
-      yield* ledger.transition(id, Cause.Dispatched())
+      yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
+      yield* ledger.transition(id, Move.Dispatched())
       const stops: Array<StopReason> = []
       const options = {
         base: "main",

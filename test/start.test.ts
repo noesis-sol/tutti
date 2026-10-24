@@ -13,7 +13,7 @@ import { Duration, Effect, Exit } from "effect"
 import fc from "fast-check"
 import { AgentGone, AgentHost } from "../src/agent/AgentHost.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type TicketPhase } from "../src/run/phase.ts"
 import {
   earlierNote,
   type FirstMessage,
@@ -203,8 +203,8 @@ const starting = (
       const ledger = yield* Ledger
       const store = yield* Store
       const host = yield* AgentHost
-      yield* ledger.transition(ticket.id, Cause.Ready(), { title: ticket.title })
-      yield* ledger.transition(ticket.id, Cause.Dispatched())
+      yield* ledger.transition(ticket.id, Move.Ready(), { title: ticket.title })
+      yield* ledger.transition(ticket.id, Move.Dispatched())
       // The host as the run sees it, noting what state.json has on the ticket as its session starts.
       const atStart: Array<TicketRecord | undefined> = []
       const watched = AgentHost.of({

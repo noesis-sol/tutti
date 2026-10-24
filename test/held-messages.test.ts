@@ -10,7 +10,7 @@ import { Ledger, type State } from "../src/run/ledger.ts"
 import { Tag } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, TicketPhase } from "../src/run/phase.ts"
+import { Move, TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
@@ -86,8 +86,8 @@ const finished = (id: string, files: Files, session: boolean) =>
     yield* repository.commit(worktree.path, `Do ${id} (${id})`, files)
     yield* (yield* Beads).close(id, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition(id, Cause.Ready(), { title: `Ticket ${id}` })
-    yield* ledger.transition(id, Cause.Dispatched())
+    yield* ledger.transition(id, Move.Ready(), { title: `Ticket ${id}` })
+    yield* ledger.transition(id, Move.Dispatched())
     if (session) {
       yield* (yield* Store).saveSession(id, {
         session: `session-${id}`,
@@ -306,8 +306,8 @@ describe("the held messages", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           const held = yield* makeHeld
-          yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-          yield* ledger.transition("a", Cause.Dispatched())
+          yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+          yield* ledger.transition("a", Move.Dispatched())
           expect(yield* held.hold("a", words, yours)).toBe(false)
           expect(yield* held.hold("nobody", words, yours)).toBe(false)
           return { steered: (yield* ledger.current).tickets.get("a")?.steered, held }
@@ -326,14 +326,14 @@ describe("the held messages", () => {
         Effect.gen(function* () {
           const ledger = yield* Ledger
           const held = yield* makeHeld
-          yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-          yield* ledger.transition("a", Cause.Dispatched())
-          yield* ledger.transition("a", Cause.Verified({ place: 1 }))
+          yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+          yield* ledger.transition("a", Move.Dispatched())
+          yield* ledger.transition("a", Move.Verified({ place: 1 }))
           expect(yield* held.hold("a", words, yours)).toBe(true)
           yield* held.over("a")
           const kept = (yield* held.messages).get("a")
-          yield* ledger.transition("a", Cause.ItsTurn())
-          yield* ledger.transition("a", Cause.Aside({ why: Tag.checksFailed }))
+          yield* ledger.transition("a", Move.ItsTurn())
+          yield* ledger.transition("a", Move.Aside({ why: Tag.checksFailed }))
           yield* held.over("a")
           return { kept, after: yield* held.messages }
         }),

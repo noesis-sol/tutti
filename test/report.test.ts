@@ -20,7 +20,7 @@ import { Ledger } from "../src/run/ledger.ts"
 import { reportName } from "../src/run/localTime.ts"
 import * as log from "../src/run/log.ts"
 import { Log } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import {
   compose,
   type ReportRun,
@@ -122,13 +122,13 @@ const report = async (setup: Setup = {}) => {
         ["t-2", "Fix the flaky test"],
         ["t-3", "Write the docs"],
       ] as const) {
-        yield* ledger.transition(id, Cause.Ready(), { title })
-        yield* ledger.transition(id, Cause.Dispatched())
+        yield* ledger.transition(id, Move.Ready(), { title })
+        yield* ledger.transition(id, Move.Dispatched())
       }
-      yield* ledger.transition("t-1", Cause.Verified({ place: 1 }))
-      yield* ledger.transition("t-1", Cause.ItsTurn())
-      yield* ledger.transition("t-1", Cause.FastForwarded({ commit: "abc123" }))
-      yield* ledger.transition("t-2", Cause.Defer({ why: "deferred by its worker" }))
+      yield* ledger.transition("t-1", Move.Verified({ place: 1 }))
+      yield* ledger.transition("t-1", Move.ItsTurn())
+      yield* ledger.transition("t-1", Move.FastForwarded({ commit: "abc123" }))
+      yield* ledger.transition("t-2", Move.Defer({ why: "deferred by its worker" }))
       // t-1's worker asks twice and is denied once, and Claude Code denies it three calls.
       const attention = yield* Attention
       const ask = yield* attention.request("t-1")

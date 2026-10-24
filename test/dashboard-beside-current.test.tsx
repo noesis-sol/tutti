@@ -15,7 +15,7 @@ import { makeCommands } from "../src/run/commands.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { type Entry, emptyTallies, Ledger, type State } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { Move, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, rowStatus, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
@@ -56,7 +56,7 @@ const titles: Readonly<Record<string, string>> = {
 }
 
 /** Moves `ticket` by each of `causes` in turn, failing the test on an invalid one. */
-const go = (ticket: string, ...causes: ReadonlyArray<Cause>) =>
+const go = (ticket: string, ...causes: ReadonlyArray<Move>) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     for (const [i, cause] of causes.entries()) {
@@ -66,7 +66,7 @@ const go = (ticket: string, ...causes: ReadonlyArray<Cause>) =>
     }
   })
 
-const dispatched = [Cause.Ready(), Cause.Dispatched()] as const
+const dispatched = [Move.Ready(), Move.Dispatched()] as const
 
 const statusOf = (over: Partial<Status> = {}): Status => ({
   ...emptyStatus,
@@ -133,19 +133,19 @@ const permission = (id: string, ticket: string): AttentionRequest => ({
 describe("the tickets table beside Current", () => {
   test("a ticket is shown once a frame as it goes through Current and comes to an end", async () => {
     const tickets = Object.keys(titles)
-    const steps: ReadonlyArray<readonly [string, ReadonlyArray<Cause>]> = [
+    const steps: ReadonlyArray<readonly [string, ReadonlyArray<Move>]> = [
       ["tut-a1", dispatched],
       ["tut-b2", dispatched],
       ["tut-c3", dispatched],
-      ["tut-a1", [Cause.Verified({ place: 1 })]],
-      ["tut-b2", [Cause.Defer({ why: "BAD_TICKET_ID" })]],
-      ["tut-a1", [Cause.ItsTurn()]],
-      ["tut-c3", [Cause.Verified({ place: 1 })]],
-      ["tut-a1", [Cause.FastForwarded({ commit: "abc1234def" })]],
+      ["tut-a1", [Move.Verified({ place: 1 })]],
+      ["tut-b2", [Move.Defer({ why: "BAD_TICKET_ID" })]],
+      ["tut-a1", [Move.ItsTurn()]],
+      ["tut-c3", [Move.Verified({ place: 1 })]],
+      ["tut-a1", [Move.FastForwarded({ commit: "abc1234def" })]],
       ["tut-d4", dispatched],
-      ["tut-c3", [Cause.ItsTurn()]],
-      ["tut-c3", [Cause.Block({ why: "MERGE_CONFLICT" })]],
-      ["tut-d4", [Cause.Aside({ why: "OFF_BRANCH" })]],
+      ["tut-c3", [Move.ItsTurn()]],
+      ["tut-c3", [Move.Block({ why: "MERGE_CONFLICT" })]],
+      ["tut-d4", [Move.Aside({ why: "OFF_BRANCH" })]],
     ]
     const views = await run(
       Effect.gen(function* () {
@@ -187,8 +187,8 @@ describe("the tickets table beside Current", () => {
         yield* go("tut-a1", ...dispatched)
         yield* go("tut-b2", ...dispatched)
         yield* go("tut-c3", ...dispatched)
-        yield* go("tut-b2", Cause.Defer({ why: "BAD_TICKET_ID" }))
-        yield* go("tut-a1", Cause.WaitsForMerge({ blockers: ["tut-c3"] }))
+        yield* go("tut-b2", Move.Defer({ why: "BAD_TICKET_ID" }))
+        yield* go("tut-a1", Move.WaitsForMerge({ blockers: ["tut-c3"] }))
         return viewOf(yield* (yield* Ledger).current)
       }),
     )
@@ -262,7 +262,7 @@ describe("the tickets table beside Current", () => {
     const ledger = await run(
       Effect.gen(function* () {
         yield* go("tut-a1", ...dispatched)
-        yield* go("tut-b2", ...dispatched, Cause.Defer({ why: "BAD_TICKET_ID" }))
+        yield* go("tut-b2", ...dispatched, Move.Defer({ why: "BAD_TICKET_ID" }))
         return yield* (yield* Ledger).current
       }),
     )

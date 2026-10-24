@@ -21,7 +21,7 @@ import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import type { Line, Log } from "./log.ts"
 import * as log from "./log.ts"
-import { Cause } from "./phase.ts"
+import { Move } from "./phase.ts"
 import { warn } from "./say.ts"
 
 /** The ticket set aside: its ID and title, as its records name it. */
@@ -69,7 +69,7 @@ export const leaveForReview = (
     const ledger = yield* Ledger
     const store = yield* Store
     yield* Effect.ignore(beads.update(id, { appendNotes: reviewNote(review.text) }))
-    yield* ledger.transition(id, Cause.Aside({ why: review.why }), {
+    yield* ledger.transition(id, Move.Aside({ why: review.why }), {
       said: [{ kind: "warn", ticket: id, aside: true, detail: review.detail, text: review.text }],
     })
     const record = yield* store.ticket(id)
@@ -92,9 +92,9 @@ export const putAside = (
         beads.defer(ticket.id, { reason: aside.reason }),
       ),
     )
-    const cause = Cause.Defer({ why: aside.detail })
+    const move = Move.Defer({ why: aside.detail })
     if (Result.isSuccess(deferred)) {
-      yield* ledger.transition(ticket.id, cause, {
+      yield* ledger.transition(ticket.id, move, {
         said: [
           {
             kind: "deferred",
@@ -110,7 +110,7 @@ export const putAside = (
     const text = log.ticketLine(
       log.Tag.deferFailed,
     )`${aside.failed}: ${beadsWhy(deferred.failure)}; kept out of this run, ${aside.instead}`
-    yield* ledger.transition(ticket.id, cause, {
+    yield* ledger.transition(ticket.id, move, {
       said: [{ kind: "warn", ticket: ticket.id, aside: true, detail: aside.detail, text }],
     })
     return false

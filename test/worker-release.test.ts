@@ -9,7 +9,7 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { makeTranscripts, type Storage, Transcripts } from "../src/agent/Transcripts.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { fit } from "../src/run/sessions.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { Beads } from "../src/services/Beads.ts"
@@ -208,14 +208,14 @@ describe("the host's end", () => {
 })
 
 /** The ticket's worker started, its ticket moved by `cause` and fitted: what the host knows of it. */
-const fitted = (cause: Cause) =>
+const fitted = (cause: Move) =>
   scenario(
     { backlog: backlog().ticket(worker).seeds, scripts: { [worker]: [turn([])] } },
     Effect.gen(function* () {
       const host = yield* AgentHost
       const ledger = yield* Ledger
-      yield* ledger.transition(worker, Cause.Ready(), { title: "One ticket" })
-      yield* ledger.transition(worker, Cause.Dispatched())
+      yield* ledger.transition(worker, Move.Ready(), { title: "One ticket" })
+      yield* ledger.transition(worker, Move.Dispatched())
       yield* host.start(worker, { sessionId: "s-1", cwd: "/work/t-1" })
       yield* host.send(worker, "go", "clientComposed")
       yield* untilSettled(worker)
@@ -225,7 +225,7 @@ const fitted = (cause: Cause) =>
     }).pipe(Effect.provide(Ledger.layer)),
   )
 
-const known = async (cause: Cause) => {
+const known = async (cause: Move) => {
   const ran = await fitted(cause)
   if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
   const current = ran.exit.value
@@ -236,13 +236,13 @@ const known = async (cause: Cause) => {
 }
 
 describe("fit, as a ticket's part in the run ends", () => {
-  const ended: ReadonlyArray<readonly [string, Cause]> = [
-    ["closed with no change", Cause.NoChange()],
-    ["deferred", Cause.Defer({ why: "by the worker" })],
-    ["left for review", Cause.Aside({ why: "CLOSED_WITHOUT_COMMIT" })],
+  const ended: ReadonlyArray<readonly [string, Move]> = [
+    ["closed with no change", Move.NoChange()],
+    ["deferred", Move.Defer({ why: "by the worker" })],
+    ["left for review", Move.Aside({ why: "CLOSED_WITHOUT_COMMIT" })],
     [
       "set aside after a failed check not to be checked again",
-      Cause.Aside({ why: "CHECKS_FAILED" }),
+      Move.Aside({ why: "CHECKS_FAILED" }),
     ],
   ]
   for (const [what, cause] of ended) {
@@ -251,9 +251,9 @@ describe("fit, as a ticket's part in the run ends", () => {
     })
   }
 
-  const back: ReadonlyArray<readonly [string, Cause]> = [
-    ["asked", Cause.FiledQuestion({ question: "t-2" })],
-    ["waiting for a merge", Cause.WaitsForMerge({ blockers: ["t-0"] })],
+  const back: ReadonlyArray<readonly [string, Move]> = [
+    ["asked", Move.FiledQuestion({ question: "t-2" })],
+    ["waiting for a merge", Move.WaitsForMerge({ blockers: ["t-0"] })],
   ]
   for (const [what, cause] of back) {
     test(`${what}: its session closed, its worker kept for the resume`, async () => {
@@ -291,8 +291,8 @@ describe("a ticket merged by hand during the run", () => {
         const ledger = yield* Ledger
         const tree = yield* (yield* Worktrees).prepare(worker)
         yield* git.addWorktree(repository.dir, tree.path, { branch: tree.branch, base: "main" })
-        yield* ledger.transition(worker, Cause.Ready(), { title: "One ticket" })
-        yield* ledger.transition(worker, Cause.Dispatched())
+        yield* ledger.transition(worker, Move.Ready(), { title: "One ticket" })
+        yield* ledger.transition(worker, Move.Dispatched())
         yield* host.start(worker, { sessionId: "s-1", cwd: tree.path })
         yield* repository.commit(tree.path, `Do ${worker} (${worker})`, { "a/a.go": "a\n" })
         yield* (yield* Beads).close(worker, "done")

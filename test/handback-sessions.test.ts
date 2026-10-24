@@ -8,7 +8,7 @@ import type { EventRecord } from "../src/run/events.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
@@ -163,8 +163,8 @@ const finished = (worker: Worker) =>
     yield* repository.commit(worktree.path, "Do a (a)", { "a.txt": "a\n" })
     yield* (yield* Beads).close("a", "done")
     const ledger = yield* Ledger
-    yield* ledger.transition("a", Cause.Ready(), { title: "Ticket a" })
-    yield* ledger.transition("a", Cause.Dispatched())
+    yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
+    yield* ledger.transition("a", Move.Dispatched())
     yield* (yield* Store).saveSession("a", {
       session: "session-a",
       worktree: worktree.path,

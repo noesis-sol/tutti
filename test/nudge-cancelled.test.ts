@@ -14,7 +14,7 @@ import { makeHandBacks } from "../src/run/handback.ts"
 import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import { idleGrace, nudgeText } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
@@ -32,7 +32,7 @@ const ticket: StartTicket = { id, title: "One ticket", metadata: {} }
 const lineOnly: Effect.Effect<MergeQueue, never, Ledger> = Effect.gen(function* () {
   const ledger = yield* Ledger
   return {
-    offer: (finished, cause = (place) => Cause.Verified({ place })) =>
+    offer: (finished, cause = (place) => Move.Verified({ place })) =>
       ledger.transition(finished.id, cause(1)),
     state: Effect.succeed(emptyQueue),
     changes: undefined as never,
@@ -118,8 +118,8 @@ describe("a nudge an interrupt cancels", () => {
           branch: `tutti/${id}`,
           base: "main",
         })
-        yield* ledger.transition(id, Cause.Ready(), { title: ticket.title })
-        yield* ledger.transition(id, Cause.Dispatched())
+        yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
+        yield* ledger.transition(id, Move.Dispatched())
         const fiber = yield* Effect.forkChild(
           work(ticket, { base: "main", queue: yield* lineOnly }),
         )

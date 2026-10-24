@@ -8,7 +8,7 @@ import type { EventRecord } from "../src/run/events.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import { budgets, type FinishedTicket, type MergeStop } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed, Checks, CheckTimedOut } from "../src/services/Checks.ts"
 import { ProcessGroups } from "../src/services/exec.ts"
@@ -72,8 +72,8 @@ const finished = (id: string, files: Files) =>
     yield* repository.commit(worktree.path, `Do ${id} (${id})`, files)
     yield* (yield* Beads).close(id, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition(id, Cause.Ready(), { title: `Ticket ${id}` })
-    yield* ledger.transition(id, Cause.Dispatched())
+    yield* ledger.transition(id, Move.Ready(), { title: `Ticket ${id}` })
+    yield* ledger.transition(id, Move.Dispatched())
     return {
       id,
       title: `Ticket ${id}`,

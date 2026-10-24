@@ -5,7 +5,7 @@ import { type CheckStop, fixPrompt, times } from "../src/run/checkback.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed, CheckTimedOut } from "../src/services/Checks.ts"
@@ -154,8 +154,8 @@ const finished = (id: string, files: Files) =>
     yield* repository.commit(worktree.path, `Do ${id} (${id})`, files)
     yield* (yield* Beads).close(id, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition(id, Cause.Ready(), { title: `Ticket ${id}` })
-    yield* ledger.transition(id, Cause.Dispatched())
+    yield* ledger.transition(id, Move.Ready(), { title: `Ticket ${id}` })
+    yield* ledger.transition(id, Move.Dispatched())
     const sessionId = `session-${id}`
     yield* (yield* Store).saveSession(id, {
       session: sessionId,

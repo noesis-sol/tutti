@@ -26,7 +26,7 @@ import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import type { CheckAhead } from "../src/run/mergetrain.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { run } from "../src/run/run.ts"
 import { checkAheadText, emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { readyPoll } from "../src/run/schedule.ts"
@@ -86,7 +86,7 @@ const withLedger = <A, E>(effect: Effect.Effect<A, E, Env>): Promise<A> =>
   )
 
 /** Moves `ticket` by each of `causes` in turn, failing the test on an invalid one. */
-const go = (ticket: string, ...causes: ReadonlyArray<Cause>) =>
+const go = (ticket: string, ...causes: ReadonlyArray<Move>) =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     for (const [i, cause] of causes.entries()) {
@@ -96,7 +96,7 @@ const go = (ticket: string, ...causes: ReadonlyArray<Cause>) =>
     }
   })
 
-const toMerge = [Cause.Ready(), Cause.Dispatched(), Cause.Verified({ place: 1 })] as const
+const toMerge = [Move.Ready(), Move.Dispatched(), Move.Verified({ place: 1 })] as const
 
 /** The card's action line of `ticket` with `checksAhead`. */
 const actionWith = (ticket: string, checksAhead: ReadonlyMap<string, CheckAhead>) =>
@@ -132,7 +132,7 @@ describe("a card waiting to merge", () => {
   test("says it in its turn while its train is boarded, its merge's step after", async () => {
     const seen = await withLedger(
       Effect.gen(function* () {
-        yield* go("b", ...toMerge, Cause.ItsTurn())
+        yield* go("b", ...toMerge, Move.ItsTurn())
         return {
           boarding: yield* actionWith("b", new Map([["b", { step: "check", behind: "tutti/a" }]])),
           after: yield* actionWith("b", new Map()),
@@ -295,7 +295,7 @@ const finished = (id: string, files: Files) =>
     })
     yield* repository.commit(worktree.path, `Do ${id} (${id})`, files)
     yield* (yield* Beads).close(id, "done")
-    yield* go(id, Cause.Ready(), Cause.Dispatched())
+    yield* go(id, Move.Ready(), Move.Dispatched())
     return {
       id,
       title: `Title of ${id}`,

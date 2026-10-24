@@ -6,7 +6,7 @@ import { Effect } from "effect"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { detail, type Log, line } from "../src/run/log.ts"
-import { Cause } from "../src/run/phase.ts"
+import { Move } from "../src/run/phase.ts"
 import { info, say, sayer, warn } from "../src/run/say.ts"
 import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -72,7 +72,7 @@ describe("a transition's said records", () => {
         const ledger = yield* Ledger
         const first = detail`t-1 queued`
         const second = detail`t-1 noted`
-        yield* ledger.transition("t-1", Cause.Ready(), {
+        yield* ledger.transition("t-1", Move.Ready(), {
           said: [
             { kind: "info", ticket: "t-1", text: first },
             { kind: "warn", ticket: "t-1", text: second },
@@ -90,10 +90,10 @@ describe("a transition's said records", () => {
     await run(
       Effect.gen(function* () {
         const ledger = yield* Ledger
-        yield* ledger.transition("t-1", Cause.Ready(), { title: "One" })
-        yield* ledger.transition("t-1", Cause.Dispatched())
+        yield* ledger.transition("t-1", Move.Ready(), { title: "One" })
+        yield* ledger.transition("t-1", Move.Dispatched())
         const text = detail`t-1 closed with no change`
-        yield* ledger.transition("t-1", Cause.NoChange(), {
+        yield* ledger.transition("t-1", Move.NoChange(), {
           said: [{ kind: "closed", ticket: "t-1", title: "One", detail: "no change", text }],
         })
         expect((yield* texts).at(-1)).toBe(text)

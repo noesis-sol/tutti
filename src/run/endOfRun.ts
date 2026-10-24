@@ -27,7 +27,7 @@ import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { closedAfter } from "./merge.ts"
 import { finished } from "./notices.ts"
-import { Cause, stopsAtEnd, type TicketPhase } from "./phase.ts"
+import { Move, stopsAtEnd, type TicketPhase } from "./phase.ts"
 import type { Quitting } from "./quitting.ts"
 import { emptyStatus, project, type Row, type Totals } from "./runView.ts"
 import { sayer } from "./say.ts"
@@ -238,7 +238,7 @@ export const make = (options: {
               ? []
               : [{ kind: "suspended" as const, ticket, session, why: because }]
           if (move) {
-            yield* ledger.transition(ticket, Cause.RunEnded({ why: because }), { beside: records })
+            yield* ledger.transition(ticket, Move.RunEnded({ why: because }), { beside: records })
           } else yield* Effect.forEach(records, (record) => events.emit(record), { discard: true })
           suspended.push({ ticket, because })
           if (session !== undefined) saved.push(ticket)

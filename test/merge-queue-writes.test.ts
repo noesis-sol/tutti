@@ -7,7 +7,7 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { Ledger, make as makeLedger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue, type QueueState } from "../src/run/mergequeue.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Move, type TicketPhase } from "../src/run/phase.ts"
 import { untilSettled } from "../src/run/settle.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
@@ -44,12 +44,12 @@ const withCheck = {
 /** A transition held until the test opens it: `entered` once the queue's call reaches it. */
 interface Gate {
   readonly ticket: string
-  readonly cause: Cause["_tag"]
+  readonly cause: Move["_tag"]
   readonly entered: Deferred.Deferred<void>
   readonly open: Deferred.Deferred<void>
 }
 
-const gate = (ticket: string, cause: Cause["_tag"]) =>
+const gate = (ticket: string, cause: Move["_tag"]) =>
   Effect.all({ entered: Deferred.make<void>(), open: Deferred.make<void>() }).pipe(
     Effect.map((deferreds): Gate => ({ ticket, cause, ...deferreds })),
   )
@@ -60,11 +60,7 @@ const gatedLedger = (gates: ReadonlyArray<Gate>) =>
     Ledger,
     Effect.map(makeLedger, (ledger) => ({
       ...ledger,
-      transition: (
-        ticket: string,
-        cause: Cause,
-        more?: Parameters<typeof ledger.transition>[2],
-      ) => {
+      transition: (ticket: string, cause: Move, more?: Parameters<typeof ledger.transition>[2]) => {
         const held = gates.find((each) => each.ticket === ticket && each.cause === cause._tag)
         const moved = ledger.transition(ticket, cause, more)
         return held === undefined
@@ -126,8 +122,8 @@ const finished = (id: string, files: Files) =>
     yield* repository.commit(worktree.path, `Do ${id} (${id})`, files)
     yield* (yield* Beads).close(id, "done")
     const ledger = yield* Ledger
-    yield* ledger.transition(id, Cause.Ready(), { title: `Ticket ${id}` })
-    yield* ledger.transition(id, Cause.Dispatched())
+    yield* ledger.transition(id, Move.Ready(), { title: `Ticket ${id}` })
+    yield* ledger.transition(id, Move.Dispatched())
     const sessionId = `session-${id}`
     yield* (yield* Store).saveSession(id, {
       session: sessionId,

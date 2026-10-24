@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { Result, Schema } from "effect"
 import fc from "fast-check"
 import {
-  Cause,
   countsUnder,
+  Move,
   TicketPhase,
   transition,
   WaitFor,
@@ -27,7 +27,7 @@ describe("what a Waiting ticket waits for", () => {
   test("its worker's blockers, each of them", () => {
     const moved = transition(
       TicketPhase.Working({ activity: "working" }),
-      Cause.WaitsForMerge({ blockers: ["tut-b1", "tut-b2"] }),
+      Move.WaitsForMerge({ blockers: ["tut-b1", "tut-b2"] }),
     )
     expect(Result.isSuccess(moved) && moved.success).toEqual(
       waiting(WaitFor.Blockers({ ids: ["tut-b1", "tut-b2"] })),
