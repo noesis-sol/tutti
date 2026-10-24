@@ -855,10 +855,30 @@ export const make = (
             return held
           })
 
+        // `s` with the issue of each ticket running or past its work that took no slot with its issue
+        // (carried over closed, checked once more, handed over again), read from bd once and kept
+        // until it merges: its footprint and solo label then count as a dispatched ticket's do.
+        const withIssues = (s: Slots, past: ReadonlyArray<string>) =>
+          Effect.gen(function* () {
+            const read = new Map<string, Issue>()
+            for (const id of [...s.running, ...past]) {
+              if (s.issues.has(id)) continue
+              const issue = yield* linksOf(id)
+              if (issue !== null) read.set(id, issue)
+            }
+            if (read.size === 0) return s
+            const solo = [...read.values()].find(isSolo)?.id ?? null
+            const add = (now: Slots): Slots => ({
+              ...now,
+              issues: new Map([...now.issues, ...read]),
+              solo: now.solo ?? solo,
+            })
+            yield* Ref.update(slots, add)
+            return add(s)
+          })
+
         // With a slot free, what overlaps the footprint of a ticket running or past its work, saying
         // why once. A solo ticket waits for every one of them anyway, so it is never skipped for one.
-        // One running or past its work that took no slot with its issue (carried over closed, checked
-        // once more, handed over again) has its issue read from bd once, kept until it merges.
         const overlapping = (issues: ReadonlyArray<Issue>, s: Slots, past: ReadonlyArray<string>) =>
           Effect.gen(function* () {
             const skipped = new Map<string, Held>()
@@ -871,20 +891,8 @@ export const make = (
             ) {
               return skipped
             }
-            const read = new Map<string, Issue>()
-            for (const id of [...s.running, ...past]) {
-              if (s.issues.has(id)) continue
-              const issue = yield* linksOf(id)
-              if (issue !== null) read.set(id, issue)
-            }
-            if (read.size > 0) {
-              yield* Ref.update(slots, (now) => ({
-                ...now,
-                issues: new Map([...now.issues, ...read]),
-              }))
-            }
             const running = new Map<string, Footprint>()
-            for (const [id, issue] of [...s.issues, ...read]) {
+            for (const [id, issue] of s.issues) {
               const fp = footprintOf(issue, repo, predicted, startBranch.get(id) ?? [])
               running.set(id, withChanges(fp, yield* changedIn(id), repo))
             }
@@ -908,12 +916,12 @@ export const make = (
 
         const dispatched: Array<string> = []
         for (;;) {
-          const { s, state } = yield* current
-          const past = mergingIn(state, s.running)
-          const slot = slotFree(s, state, options.concurrent)
+          const { s: was, state } = yield* current
+          const past = mergingIn(state, was.running)
+          const slot = slotFree(was, state, options.concurrent)
           // A ticket back in the queue whose last fiber still holds its slot waits for it to end.
           const inLine = queue.filter(
-            (issue) => waiting(state, issue.id) && !s.running.has(issue.id),
+            (issue) => waiting(state, issue.id) && !was.running.has(issue.id),
           )
           const holds = new Map<string, Hold>()
           const notHeld: Array<Issue> = []
@@ -922,6 +930,7 @@ export const make = (
             if (held === undefined) notHeld.push(issue)
             else holds.set(issue.id, held.why)
           }
+          const s = slot && notHeld.length > 0 ? yield* withIssues(was, past) : was
           const overlaps = slot ? yield* overlapping(notHeld, s, past) : new Map<string, Held>()
           for (const [id, held] of overlaps) holds.set(id, held.why)
           const free = notHeld.filter((issue) => !overlaps.has(issue.id))

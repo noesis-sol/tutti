@@ -1,0 +1,112 @@
+// A solo ticket runs alone (§ 5): one checked once more, or past its work, that took no slot with
+// its issue holds back the others while it rebases and merges, footprints on or off, its issue read
+// from bd as the overlap check reads it.
+import { expect, test } from "bun:test"
+import { Effect, Layer, Ref, type Scope } from "effect"
+import { TestClock } from "effect/testing"
+import type { EventStream } from "../src/run/eventstream.ts"
+import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
+import { repoFiles } from "../src/run/footprint.ts"
+import { Ledger } from "../src/run/ledger.ts"
+import type { Log } from "../src/run/log.ts"
+import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { type Footprints, make } from "../src/run/schedule.ts"
+import type { Beads, Issue } from "../src/services/Beads.ts"
+import { layer as beadsLayer, type Seed } from "../src/testing/Beads.ts"
+import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
+import { texts } from "../src/testing/Log.ts"
+
+type Env = Beads | Ledger | Log | EventStream | RunFibers | Scope.Scope
+
+const run = <A, E>(seeds: ReadonlyArray<Seed>, effect: Effect.Effect<A, E, Env>): Promise<A> =>
+  Effect.runPromise(
+    effect.pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(beadsLayer(seeds), ledgerLayer(), runFibersLayer).pipe(
+          Layer.provideMerge(TestClock.layer()),
+        ),
+      ),
+    ),
+  )
+
+const footprints: Footprints = {
+  repo: Effect.succeed(repoFiles(["src/a.ts", "src/b.ts"])),
+  changed: () => Effect.succeed([]),
+  mentions: () => Effect.succeed(() => false),
+}
+
+const shown = (p: TicketPhase | undefined): string =>
+  p === undefined ? "none" : p._tag === "HeldBack" ? `HeldBack:${p.why}` : p._tag
+
+/** t-2's phase after a fill, with r, closed and waiting to merge, checked once more in a slot or not. */
+const t2After = (r: Seed, rechecked: boolean, withFootprints: boolean) =>
+  run(
+    [r, { id: "t-2", priority: 1, metadata: { files: ["src/b.ts"] } }],
+    Effect.gen(function* () {
+      const ledger = yield* Ledger
+      const started = yield* Ref.make<ReadonlyArray<string>>([])
+      const schedule = yield* make({
+        concurrent: 2,
+        limit: 40,
+        scope: null,
+        excludeTypes: ["epic"],
+        ...(withFootprints ? { footprints } : {}),
+        start: {
+          start: (issue: Issue) =>
+            Effect.andThen(
+              Ref.update(started, (all) => [...all, issue.id]),
+              Effect.never,
+            ),
+        },
+      })
+      yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
+      const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
+      yield* schedule.fill
+      const state = yield* ledger.current
+      return {
+        took,
+        started: yield* Ref.get(started),
+        t2: shown(state.tickets.get("t-2")?.phase),
+        solo: (yield* texts).filter((text) => text.includes("solo")),
+      }
+    }),
+  )
+
+const solo: Seed = {
+  id: "r",
+  status: "closed",
+  labels: ["solo"],
+  metadata: { files: ["src/a.ts"] },
+}
+
+for (const withFootprints of [true, false]) {
+  const footprinted = withFootprints ? "footprints on" : "footprints off"
+
+  test(`a solo ticket checked once more in a slot holds back the others (${footprinted})`, async () => {
+    expect(await t2After(solo, true, withFootprints)).toEqual({
+      took: true,
+      started: [],
+      t2: "HeldBack:solo",
+      solo: ["  waiting for solo ticket r to finish"],
+    })
+  })
+
+  test(`a solo ticket past its work without a slot holds back the others (${footprinted})`, async () => {
+    expect(await t2After(solo, false, withFootprints)).toEqual({
+      took: false,
+      started: [],
+      t2: "HeldBack:solo",
+      solo: ["  waiting for solo ticket r to finish"],
+    })
+  })
+}
+
+test("a ticket checked once more without the solo label lets one beside it start", async () => {
+  expect(await t2After({ ...solo, labels: [] }, true, true)).toEqual({
+    took: true,
+    started: ["t-2"],
+    t2: "Working",
+    solo: [],
+  })
+})
