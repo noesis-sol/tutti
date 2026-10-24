@@ -126,6 +126,8 @@ export interface Setup {
   readonly scripts?: Scripts | ((world: World) => Scripts)
   /** The process each ticket's Claude Code has while its session is open: none by default. */
   readonly processes?: ReadonlyMap<string, number>
+  /** How long a closed session's Claude Code takes to exit: no time by default. */
+  readonly closeTakes?: Duration.Input
   /** How Attention answers requests as they open; it allows everything by default. */
   readonly policy?: Policy
   readonly checks?: ChecksScript
@@ -200,6 +202,7 @@ export const environment = (
   const hostOptions = {
     checks,
     ...(setup.processes === undefined ? {} : { processes: setup.processes }),
+    ...(setup.closeTakes === undefined ? {} : { closeTakes: setup.closeTakes }),
   }
   const host =
     typeof scripts === "function"

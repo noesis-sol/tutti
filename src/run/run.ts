@@ -1441,8 +1441,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     }
     // The tickets left in the queue, waiting for a merge, a probe or a slot, end their part too.
     yield* ledger.endQueued
-    for (const each of suspended) yield* host.close(each.ticket)
-    if (quit !== null) yield* Effect.forEach(yield* openWorkers, host.close, { discard: true })
+    // All at once: a session's Claude Code may take up to closeLimit to exit.
+    const toClose = new Set(suspended.map((each) => each.ticket))
+    if (quit !== null) for (const ticket of yield* openWorkers) toClose.add(ticket)
+    yield* Effect.forEach(toClose, host.close, { concurrency: "unbounded", discard: true })
     // One whose worker never began has no session to resume: bd ready gives it to the next run.
     for (const each of suspended) {
       if (!saved.includes(each.ticket)) continue

@@ -202,6 +202,11 @@ export interface Options {
   readonly cancelAsync?: "refuse" | "notQueued"
   /** The process each ticket's Claude Code would have while its session is open: none by default. */
   readonly processes?: ReadonlyMap<string, number>
+  /**
+   * How long a closed session's Claude Code takes to exit, on the Clock, which `close` waits for:
+   * none by default. The wait holds no other start, resume or close, as the live layer's doesn't.
+   */
+  readonly closeTakes?: Duration.Input
 }
 
 /**
@@ -456,13 +461,16 @@ export const layer = (
       const close = (ticket: string) =>
         Effect.gen(function* () {
           const open = running.get(ticket)
-          if (open === undefined) return
+          if (open === undefined) return false
           running.delete(ticket)
           ;(yield* Ref.get(open.controller)).abort()
           if (open.fiber !== undefined) yield* Fiber.interrupt(open.fiber)
           yield* record(Sent.Closed({ ticket }))
           yield* workers.fold(open.entry, WorkerEvent.Closed({ session: open.sessionId }))
+          return true
         })
+      const exiting = (closed: boolean) =>
+        closed && options.closeTakes !== undefined ? Effect.sleep(options.closeTakes) : Effect.void
 
       const host = AgentHost.of({
         start: (ticket, s) => Effect.asVoid(begin(ticket, s, Sent.Started({ ticket, session: s }))),
@@ -516,7 +524,7 @@ export const layer = (
             yield* Queue.offer(playing.interrupts, undefined)
             return receipt
           }),
-        close: (ticket) => close(ticket).pipe(one.withPermit),
+        close: (ticket) => Effect.flatMap(close(ticket).pipe(one.withPermit), exiting),
         end: (ticket) =>
           Effect.gen(function* () {
             yield* close(ticket)
