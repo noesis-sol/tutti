@@ -19,7 +19,7 @@ describe("noticeOf", () => {
 
   test("gives nothing for a notice empty once sanitised", () => {
     expect(noticeOf({ notify: true }, "")).toBeUndefined()
-    expect(noticeOf({ notify: true }, `  ${ESC}[2J‮ `)).toBeUndefined()
+    expect(noticeOf({ notify: true }, `  ${ESC}[2J\u202e `)).toBeUndefined()
   })
 
   test("gives nothing with notifications off", () => {
