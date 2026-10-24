@@ -46,6 +46,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import { absurd } from "effect/Function"
+import { Git } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
 import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from "./checkback.ts"
 import { RunFibers } from "./fibers.ts"
@@ -54,7 +55,6 @@ import { mergedByHand as handMerged } from "./handMerged.ts"
 import { type Held, makeHeld } from "./held.ts"
 import { Ledger } from "./ledger.ts"
 import {
-  abandonRebase,
   closeUnchanged,
   type FinishedTicket,
   fastForward,
@@ -160,6 +160,7 @@ export const make = (
 ): Effect.Effect<MergeQueue, never, MergeEnv | RunFibers | Scope.Scope> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
+    const git = yield* Git
     const fibers = yield* RunFibers
     const context = yield* Effect.context<MergeEnv>()
     const line = yield* Queue.unbounded<FinishedTicket>()
@@ -255,7 +256,7 @@ export const make = (
     const backInLine = (ticket: FinishedTicket) =>
       lock.withPermit(
         Effect.gen(function* () {
-          yield* abandonRebase(ticket.worktree)
+          yield* git.abandonRebase(ticket.worktree)
           const entry = (yield* ledger.current).tickets.get(ticket.id)
           if (entry?.phase._tag !== "Merging") {
             return yield* SubscriptionRef.update(ref, (now) => ({ ...now, merging: null }))

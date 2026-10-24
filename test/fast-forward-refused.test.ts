@@ -5,7 +5,8 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Fiber } from "effect"
 import { TestClock } from "effect/testing"
-import { diagnose, gitAgainAfter, gitTries, type Refused } from "../src/run/merge.ts"
+import { gitAgainAfter, gitTries } from "../src/run/branch.ts"
+import { diagnose, type Refused } from "../src/run/merge.ts"
 import { Git, GitFailed } from "../src/services/Git.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 

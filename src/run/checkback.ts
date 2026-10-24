@@ -42,7 +42,8 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { type Commit, Git } from "../services/Git.ts"
+import { type Commit, Git, gitWhy } from "../services/Git.ts"
+import { restoreBranch } from "./branch.ts"
 import { type Checked, failedHow, saidOf } from "./check.ts"
 import {
   type Counts,
@@ -62,11 +63,9 @@ import { branchOn, detail, fixing, Log, line } from "./log.ts"
 import {
   checksFailed,
   type FinishedTicket,
-  gitWhy,
   type MergeEnv,
   type MergeMemory,
   type MergeOptions,
-  restoreBranch,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { info } from "./say.ts"

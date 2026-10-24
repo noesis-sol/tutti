@@ -12,13 +12,13 @@
 // and a commit on the base since the fork names it. The label is then removed. One that hasn't
 // merged is handed back, for carry-over to bring back ToMerge. git that can't tell keeps the label.
 import { Effect, Result } from "effect"
-import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
 import { type Commit, Git } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Log, line, Tag, ticketLine } from "./log.ts"
-import { beadsWhy, type MergeOptions } from "./merge.ts"
+import type { MergeOptions } from "./merge.ts"
 import { info, warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
 

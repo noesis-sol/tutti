@@ -47,14 +47,13 @@ import {
   transcriptText,
   type Verdict,
 } from "../organs/triage.ts"
-import { Beads } from "../services/Beads.ts"
-import { Git } from "../services/Git.ts"
+import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Git, gitWhy } from "../services/Git.ts"
 import { allChangeEntries } from "../services/gitStatus.ts"
 import type { EnvironmentHold } from "./environment.ts"
 import type { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { causeWhy, detail, filed, type Line, Log, line, Tag } from "./log.ts"
-import { beadsWhy, gitWhy } from "./merge.ts"
 import { attentionLines, attentionSaid } from "./report.ts"
 import { sayer } from "./say.ts"
 

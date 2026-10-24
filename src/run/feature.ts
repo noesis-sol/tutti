@@ -20,7 +20,7 @@ import { screenRequest } from "../organs/screen.ts"
 import type { Out, Printer } from "../print/organLine.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { type FeaturePlan, filePlan, filingFailedLines, needsAnswers } from "../project/planFile.ts"
-import type { Beads } from "../services/Beads.ts"
+import { type Beads, beadsWhy } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { paint } from "../ui/line.tsx"
 import { FormCancelled, fileQuestion, type Plan, planLines } from "../ui/questions.ts"
@@ -28,7 +28,6 @@ import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
 import { exitCodes } from "./holds.ts"
 import { type Arg, type Line, Log, line, Tag } from "./log.ts"
-import { beadsWhy } from "./merge.ts"
 
 /** What --feature asks for. */
 export interface FeatureRequest {

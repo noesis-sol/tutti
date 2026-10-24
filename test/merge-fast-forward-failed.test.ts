@@ -6,8 +6,9 @@
 // while the merges run.
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Fiber } from "effect"
+import { gitAgainAfter, gitTries } from "../src/run/branch.ts"
 import { Ledger } from "../src/run/ledger.ts"
-import { type FinishedTicket, gitAgainAfter, gitTries } from "../src/run/merge.ts"
+import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"

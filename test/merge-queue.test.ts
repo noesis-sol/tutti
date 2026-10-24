@@ -3,15 +3,10 @@ import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { Deferred, Duration, Effect, Exit, Fiber, Layer, Ref, Scope, Stream } from "effect"
 import { AppConfig } from "../src/cli/AppConfig.ts"
+import { gitAgainAfter, gitTries } from "../src/run/branch.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
-import {
-  type FinishedTicket,
-  gitAgainAfter,
-  gitTries,
-  type MergeStop,
-  maxPasses,
-} from "../src/run/merge.ts"
+import { type FinishedTicket, type MergeStop, maxPasses } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"

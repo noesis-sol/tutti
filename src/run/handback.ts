@@ -44,27 +44,22 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { Git, type GitError } from "../services/Git.ts"
+import { Git, type GitError, gitWhy } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { awakeSince } from "../services/Wake.ts"
+import { baseSince, branchHead, onBranch, restoreBranch } from "./branch.ts"
 import { type Checked, failedHow, markHandedBack, runMergeCheck } from "./check.ts"
 import type { Carried } from "./checkback.ts"
 import { Ledger } from "./ledger.ts"
 import { loadEvery } from "./load.ts"
 import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "./log.ts"
 import {
-  abandonRebase,
-  baseSince,
-  branchHead,
   type FinishedTicket,
-  gitWhy,
   type MergeEnv,
   type MergeMemory,
   type MergeOptions,
   notePass,
-  onBranch,
-  restoreBranch,
   someFiles,
   type Unchanged,
   unchanged,
@@ -334,7 +329,7 @@ export const notHandedBack = (
   Effect.gen(function* () {
     const git = yield* Git
     const { worktree } = stop.ticket
-    yield* abandonRebase(worktree)
+    yield* git.abandonRebase(worktree)
     const stuck = yield* Effect.result(git.rebaseInProgress(worktree))
     const left =
       Result.isSuccess(stuck) && !stuck.success
@@ -368,7 +363,7 @@ export const handOver = (
     yield* markHandedBack(id)
     const moved = yield* ledger.transition(id, Cause.ConflictsHandedBack({ attempt }))
     if (Result.isFailure(moved)) {
-      yield* abandonRebase(stop.ticket.worktree)
+      yield* (yield* Git).abandonRebase(stop.ticket.worktree)
       return false
     }
     yield* handBacks.next(id)

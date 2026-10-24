@@ -16,6 +16,7 @@ import {
   Semaphore,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
+import { formatDuration } from "../project/configFile.ts"
 import {
   type Command,
   defaultMaxOutputBytes,
@@ -51,6 +52,12 @@ export class RebaseConflict extends Schema.TaggedError<RebaseConflict>()("Rebase
 }) {}
 
 export type GitError = GitFailed | GitTimedOut
+
+/** What git said of its failure, in a few words. */
+export const gitWhy = (error: GitError): string =>
+  error._tag === "GitFailed"
+    ? (error.stderr.trim().split("\n")[0] ?? "") || `exit code ${error.exitCode}`
+    : `git took longer than ${formatDuration(error.timeLimit)}`
 
 /**
  * The oldest git tutti runs on: `git merge-tree --write-tree` (`holds`) came in git 2.38, after
@@ -99,6 +106,21 @@ export interface Commit {
   /** The whole message, subject included. */
   readonly message: string
 }
+
+/**
+ * Whether `text` is a commit hash, abbreviated or whole, and so a revision git can't take for an
+ * option or a range.
+ */
+export const isHash = (text: string): boolean => /^[0-9a-f]{7,64}$/.test(text)
+
+/** A commit's hash as a line names it: its first 7 characters, as git abbreviates it. */
+export const shortHash = (hash: string): string => hash.slice(0, 7)
+
+/**
+ * A commit's hash as a note or a prompt hands it on for git to be given (git show, git reset): its
+ * first 10 characters, which stay unambiguous in a repository where 7 may not.
+ */
+export const givenHash = (hash: string): string => hash.slice(0, 10)
 
 /** A file `git status --porcelain` lists. */
 export interface StatusEntry {
@@ -568,6 +590,11 @@ export class Git extends Context.Service<
     /** Whether a rebase has stopped in worktree and not been finished or aborted. */
     rebaseInProgress(worktree: string): Effect.Effect<boolean, GitError>
     /**
+     * Puts back the branch a rebase that didn't finish was rewriting, if one is under way in
+     * worktree: git rebase --abort when rebaseInProgress says so. A failure is let go.
+     */
+    abandonRebase(worktree: string): Effect.Effect<void>
+    /**
      * git reset --hard: moves what worktree has checked out to `to`, its index and working tree
      * with it; untracked files stay.
      */
@@ -806,6 +833,7 @@ export class Git extends Context.Service<
           rebase,
           abortRebase,
           rebaseInProgress,
+          abandonRebase,
           resetBranch,
           mergeBase: (repo, a, b) =>
             Effect.map(read(gitCall(gitOps.mergeBase, a, b), repo), (out) => out.trim()),

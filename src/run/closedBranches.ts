@@ -12,13 +12,12 @@
 // first time a blocker is found so, CLOSED_UNMERGED says once how to clear it.
 import { Effect, Result } from "effect"
 import type { Dependency } from "../services/Beads.ts"
-import { Git, type GitError } from "../services/Git.ts"
+import { Git, type GitError, gitWhy } from "../services/Git.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { asksGit } from "./holds.ts"
 import type { State } from "./ledger.ts"
 import { type Line, type Log, Tag, ticketLine } from "./log.ts"
-import { gitWhy } from "./merge.ts"
 import { warn } from "./say.ts"
 
 /** Where the run's tickets merge: the main checkout and the base branch. */

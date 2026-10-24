@@ -14,14 +14,14 @@
 // worktree and branch removed once triage has its evidence, as orchestra 0.8.1's dropNothingDone:
 // nothing there is left to review. Its lines say so (nothingLeft) in place of `left open`.
 import { Effect, Result } from "effect"
-import { Beads } from "../services/Beads.ts"
+import { Beads, beadsWhy } from "../services/Beads.ts"
+import { gitWhy } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import type { Line, Log } from "./log.ts"
 import * as log from "./log.ts"
-import { beadsWhy, gitWhy } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { warn } from "./say.ts"
 

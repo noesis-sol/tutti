@@ -4,7 +4,7 @@
 // caller to say in its own words. Run against the in-memory Git.
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { type Restored, restoreBranch } from "../src/run/merge.ts"
+import { type Restored, restoreBranch } from "../src/run/branch.ts"
 import { Git } from "../src/services/Git.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 

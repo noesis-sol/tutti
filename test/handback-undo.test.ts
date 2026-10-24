@@ -5,8 +5,8 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Fiber, Layer } from "effect"
 import { TestClock } from "effect/testing"
+import { gitAgainAfter } from "../src/run/branch.ts"
 import { type RebaseStop, undoResolution } from "../src/run/handback.ts"
-import { gitAgainAfter } from "../src/run/merge.ts"
 import { Git } from "../src/services/Git.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 

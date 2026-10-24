@@ -22,7 +22,7 @@ import type { PlatformError } from "effect/PlatformError"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { Beads, type Issue } from "../services/Beads.ts"
+import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
 import {
   type CheckError,
   type CheckPassed,
@@ -30,7 +30,7 @@ import {
   type RunOptions,
   setupLogName,
 } from "../services/Checks.ts"
-import { Git, type GitError } from "../services/Git.ts"
+import { Git, type GitError, gitWhy } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import { recorded, saidOf } from "./check.ts"
@@ -38,7 +38,6 @@ import type { fullCheckOutcomes } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { dateClock } from "./localTime.ts"
 import { detail, type Line, Log, line, logFile, Tag, ticketLine } from "./log.ts"
-import { beadsWhy, gitWhy } from "./merge.ts"
 import type { TicketPhase } from "./phase.ts"
 import { say, warn } from "./say.ts"
 

@@ -43,28 +43,23 @@ import {
   SubscriptionRef,
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { Git } from "../services/Git.ts"
+import { Git, gitWhy } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import { aheadKey, clearAhead, markAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
+import { gitReads, onBranch, type Restored, restoreBranch } from "./branch.ts"
 import { Checked, checkOnce, clearUnchecked, failedHow } from "./check.ts"
 import { RunFibers } from "./fibers.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import {
-  abandonRebase,
   type CheckWatch,
   type FinishedTicket,
-  gitReads,
-  gitWhy,
   type MergeEnv,
   type MergeMemory,
   type MergeOptions,
-  onBranch,
   Prepared,
-  type Restored,
-  restoreBranch,
   stopOver,
 } from "./merge.ts"
 import { type SetUps, setUp } from "./setup.ts"
@@ -414,7 +409,7 @@ export const make = (
         yield* mark(read)
         const rebased = yield* Effect.result(git.rebase(worktree, read.onto))
         if (Result.isFailure(rebased)) {
-          yield* abandonRebase(worktree)
+          yield* git.abandonRebase(worktree)
           yield* clearAhead(id)
           yield* log.write(
             detail`${branch} is not checked ahead of its turn: it does not rebase cleanly onto ${read.behind}`,

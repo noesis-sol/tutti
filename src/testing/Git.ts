@@ -561,6 +561,11 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           }),
         )
 
+      const rebaseInProgress = (worktree: string) =>
+        operation(gitCall(gitOps.gitPaths, rebaseFolders), worktree, (refuse) =>
+          Effect.map(inRepo(refuse, worktree), (checkout) => checkout.rebase !== undefined),
+        )
+
       const fastForward = (repo: string, branch: string) =>
         operation(gitCall(gitOps.fastForward, branch), repo, (refuse) =>
           Effect.gen(function* () {
@@ -786,9 +791,11 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           ),
         rebase,
         abortRebase,
-        rebaseInProgress: (worktree) =>
-          operation(gitCall(gitOps.gitPaths, rebaseFolders), worktree, (refuse) =>
-            Effect.map(inRepo(refuse, worktree), (checkout) => checkout.rebase !== undefined),
+        rebaseInProgress,
+        abandonRebase: (worktree) =>
+          rebaseInProgress(worktree).pipe(
+            Effect.flatMap((inProgress) => (inProgress ? abortRebase(worktree) : Effect.void)),
+            Effect.ignore,
           ),
         // rev-parse first, which fails on a rev that names nothing, then reset to its hash, as live.
         resetBranch: resetTo(writer, revParse, (worktree, hash) =>

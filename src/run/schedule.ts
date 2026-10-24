@@ -42,7 +42,7 @@ import {
   type Scope,
   Semaphore,
 } from "effect"
-import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
+import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import { type Again, retrying } from "./again.ts"
@@ -79,7 +79,6 @@ import {
 } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
-import { beadsWhy } from "./merge.ts"
 import { type Mentions, readMentions, type Sources } from "./overlap.ts"
 import { Cause, type Hold, phaseFacts, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
