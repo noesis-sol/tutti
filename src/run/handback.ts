@@ -37,7 +37,6 @@
 // A conflict that can't be handed back is Blocked at once, its rebase aborted, and the MERGE_CONFLICT
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Clock, Duration, Effect, Option, Ref, Result, Stream, SubscriptionRef } from "effect"
 import { type AgentGone, AgentHost, type SessionMessage } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
@@ -71,7 +70,7 @@ import {
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
-import { answers, namesTicket, untilSettled } from "./settle.ts"
+import { namesTicket, untilAnswered, untilSettled } from "./settle.ts"
 import { type SetUps, setUp, setupToResolve } from "./setup.ts"
 
 /** How many times a ticket's rebase conflicts are handed back to its worker in a run. */
@@ -755,7 +754,7 @@ export const give = (
       const { id } = ticket
       const { atReset } = options
       const state = yield* Effect.result(host.current(id))
-      let taken: Effect.Effect<void>
+      let taken: Effect.Effect<void, never, AgentHost>
       if (Result.isSuccess(state) && state.success._tag === "Gone") {
         const failed = yield* resumeGoneFor(id, state.success.why, prompt, what)
         if (failed !== undefined) return failed
@@ -774,16 +773,7 @@ export const give = (
         // It left the limit without the hand-back: given as to any worker, from its state now.
         if (sent === undefined) return yield* give(handBack, limit, options)
         if (Result.isFailure(sent)) return sent.failure
-        const answered = heard.pipe(
-          Stream.filter(({ message }) => answers(message, sent.success)),
-          Stream.runHead,
-        )
-        const ended = host.state(id).pipe(
-          Stream.filter((each) => each._tag === "Gone" || each._tag === "Closed"),
-          Stream.runHead,
-          Effect.ignore,
-        )
-        taken = Effect.raceFirst(Effect.asVoid(answered), ended)
+        taken = untilAnswered(id, heard, sent.success)
       } else {
         const failed = yield* resumeFor(id, "hand_back", prompt, what)
         if (failed !== undefined) return line`its session could not be resumed: ${failed}`
