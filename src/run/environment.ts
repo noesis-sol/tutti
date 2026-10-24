@@ -438,8 +438,8 @@ export const make = (options: {
         const winding = (yield* ledger.current).windDown !== null
         if (
           now.stop === null ||
-          stops.first !== now.stop ||
-          stops.others.length > 0 ||
+          stops[0] !== now.stop ||
+          stops.length > 1 ||
           now.probed ||
           Duration.isZero(after) ||
           winding

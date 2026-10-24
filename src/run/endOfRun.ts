@@ -21,7 +21,7 @@ import { drainedLine } from "./drain.ts"
 import { EventStream } from "./eventstream.ts"
 import { type FiguresLine, figuresLines, figuresText } from "./figures.ts"
 import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
-import { type StopReason, type Stops, stopFor, stopsLine } from "./holds.ts"
+import { firstStop, type StopReason, type Stops, stopFor, stopsLine } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { closedAfter } from "./merge.ts"
@@ -201,7 +201,7 @@ export const make = (options: {
             ? "TICKET_LIMIT"
             : entry.phase._tag === "Working" && asking.has(entry.ticket)
               ? "waiting on you"
-              : (ended ?? stops.first?.why ?? "run ended")
+              : (ended ?? stops[0]?.why ?? "run ended")
         const neverSent: Array<string> = []
         const unsent = [...(yield* options.usage.unsent)].sort(([a], [b]) => a.localeCompare(b))
         for (const [ticket, mode] of unsent) {
@@ -303,11 +303,11 @@ export const make = (options: {
           })
           return `; ${scope.line(end)}`
         })
-        const first = stops.first
+        const first = firstStop(stops)
         if (first !== null) {
           const text = stopsLine(stops)
           const record =
-            !first.recorded || stops.others.length > 0
+            !first.recorded || stops.length > 1
               ? events.emit({
                   kind: "stop",
                   detail: first.why,

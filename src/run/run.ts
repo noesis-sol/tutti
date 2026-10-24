@@ -112,6 +112,7 @@ import {
   exitCodeOf,
   exitCodes,
   extendFirst,
+  firstStop,
   type Gate,
   noMoreWork,
   pastTicketLimit,
@@ -391,7 +392,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         Effect.flatten(Ref.get(limitReached)),
       ]),
       ([all, usageHeld, ended, state, limit]): Gate => ({
-        stop: all.first,
+        stop: firstStop(all),
         usageHeld,
         ended,
         windingDown: state.windDown !== null,
@@ -890,7 +891,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         // that one, those raised while it waited (BLOCKED, TICKET_LIMIT, PAUSED) kept.
         const before = yield* currentStops
         const probed = yield* environment.probe(before)
-        const held = before.first
+        const held = firstStop(before)
         if (probed._tag === "Resumed" && held !== null) {
           yield* changeHolds((now) => changeStops(now, (all) => swapStop(all, held, null)))
           continue
@@ -968,7 +969,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* changeHolds((now) => changeStops(now, (all) => extendFirst(all, neverSent)))
     const all = yield* currentStops
     // A stopped run names the tickets it leaves without the check once more it promised them.
-    if (quit === null && all.first !== null) yield* dropRechecks(queue.rechecks, "the run stopped")
+    if (quit === null && all.length > 0) yield* dropRechecks(queue.rechecks, "the run stopped")
 
     // The summary lines, then the closing line: the stops', or how the run ended by itself.
     const state = yield* ledger.current
@@ -981,7 +982,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // The report's evidence beside the log, in orchestra's order: the failed checks, the full
     // check, the follow-ups filed outside the scope, the feature request.
     const sections = [...failedChecksSection(state.tickets, yield* queue.rechecks.failures)]
-    const checked = yield* end.fullCheck(Object.values(phases), all.first !== null, quit)
+    const checked = yield* end.fullCheck(Object.values(phases), all.length > 0, quit)
     const said = [...summary, closing, ...checked.said]
     sections.push(...checked.sections)
     const exitCode = checked.code ?? exitCodeOf(all)

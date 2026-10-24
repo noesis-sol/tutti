@@ -176,7 +176,7 @@ describe("why the run takes on no more work", () => {
   const stop = (why: "PAUSED" | "BLOCKED" | "TICKET_LIMIT" | "ENVIRONMENT") =>
     stopFor(why, `${why.toLowerCase()} for a reason`)
   const said = (stops: Stops, usageHeld: boolean, windingDown: boolean) =>
-    noMoreWork({ ...openGate, stop: stops.first, usageHeld, windingDown })
+    noMoreWork({ ...openGate, stop: stops[0] ?? null, usageHeld, windingDown })
 
   for (const why of ["PAUSED", "BLOCKED", "TICKET_LIMIT", "ENVIRONMENT"] as const) {
     test(`a ${why} stop holds it: "the run holds (${why}: …)"`, () => {

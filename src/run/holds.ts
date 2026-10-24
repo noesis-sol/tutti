@@ -373,13 +373,13 @@ export const stopOfLine = (
   }
 }
 
-/** The stops so far: the first decides the exit code. */
-export interface Stops {
-  readonly first: StopReason | null
-  readonly others: ReadonlyArray<StopReason>
-}
+/** The stops so far, in the order raised: the first decides the exit code. */
+export type Stops = ReadonlyArray<StopReason>
 
-export const noStops: Stops = { first: null, others: [] }
+export const noStops: Stops = []
+
+/** The first of `stops`, which decides the exit code, or null for none. */
+export const firstStop = (stops: Stops): StopReason | null => stops[0] ?? null
 
 /** Why the run takes on no more work while the account's usage limit holds it. */
 export const usageHolds = "the run holds (USAGE_LIMIT)"
@@ -440,51 +440,36 @@ export const noMoreWork = (gate: Gate): string | undefined =>
         : undefined
 
 /** `stops` with `stop` added after them. */
-export const addStop = (stops: Stops, stop: StopReason): Stops =>
-  stops.first === null ? { first: stop, others: [] } : { ...stops, others: [...stops.others, stop] }
+export const addStop = (stops: Stops, stop: StopReason): Stops => [...stops, stop]
 
 /** `stops` without those `lifted` picks: the first left decides the exit code. */
-export const liftStops = (stops: Stops, lifted: (stop: StopReason) => boolean): Stops => {
-  const kept = [stops.first, ...stops.others].flatMap((stop) =>
-    stop === null || lifted(stop) ? [] : [stop],
-  )
-  return { first: kept[0] ?? null, others: kept.slice(1) }
-}
+export const liftStops = (stops: Stops, lifted: (stop: StopReason) => boolean): Stops =>
+  stops.some(lifted) ? stops.filter((stop) => !lifted(stop)) : stops
 
 /**
  * `stops` with `stop` swapped for `by` where it stands, or lifted with null: those raised beside it
  * stay, as the environment probe's pass or failure keeps the stops raised while it waited.
  */
-export const swapStop = (stops: Stops, stop: StopReason, by: StopReason | null): Stops => {
-  const kept = [stops.first, ...stops.others].flatMap((each) =>
-    each === null ? [] : each !== stop ? [each] : by === null ? [] : [by],
-  )
-  return { first: kept[0] ?? null, others: kept.slice(1) }
-}
+export const swapStop = (stops: Stops, stop: StopReason, by: StopReason | null): Stops =>
+  stops.flatMap((each) => (each !== stop ? [each] : by === null ? [] : [by]))
 
 /** The line the run ends with: the first stop's, then `; also` and each of the others. */
 export const stopsLine = (stops: Stops): Line =>
-  [stops.first, ...stops.others]
-    .flatMap((stop) => (stop === null ? [] : [stop.text]))
-    .join("; also ") as Line
+  stops.map((stop) => stop.text).join("; also ") as Line
 
 /** The exit code the stops end the run with: the first's, or 0 with none. */
-export const exitCodeOf = (stops: Stops): number => stops.first?.code ?? exitCodes.ok
+export const exitCodeOf = (stops: Stops): number => stops[0]?.code ?? exitCodes.ok
 
 /** `stops` with `stop` first, before those it had, as quitting's or a panic's stop goes. */
-export const putFirst = (stops: Stops, stop: StopReason): Stops => ({
-  first: stop,
-  others: [stops.first, ...stops.others].flatMap((other) => (other === null ? [] : [other])),
-})
+export const putFirst = (stops: Stops, stop: StopReason): Stops => [stop, ...stops]
 
 /** `stops` with `parts` added to the first's line, each after `; `; unchanged with no stop. */
-export const extendFirst = (stops: Stops, parts: ReadonlyArray<string>): Stops =>
-  stops.first === null || parts.length === 0
+export const extendFirst = (stops: Stops, parts: ReadonlyArray<string>): Stops => {
+  const [first, ...others] = stops
+  return first === undefined || parts.length === 0
     ? stops
-    : {
-        ...stops,
-        first: { ...stops.first, text: `${stops.first.text}; ${parts.join("; ")}` as Line },
-      }
+    : [{ ...first, text: `${first.text}; ${parts.join("; ")}` as Line }, ...others]
+}
 
 // Everything that holds the whole run is one value, Holds, which run.ts keeps in a SubscriptionRef
 // and changes only through the functions below: its stops, BLOCKED among them once per ticket, the
@@ -529,8 +514,8 @@ export const pastTicketLimit = (holds: Holds, ticket: string, stop: StopReason):
 /** The tickets the run holds with BLOCKED, each its stop's. */
 export const blockedTickets = (holds: Holds): ReadonlySet<string> =>
   new Set(
-    [holds.stops.first, ...holds.stops.others].flatMap((stop) =>
-      stop?.why === "BLOCKED" && stop.ticket !== undefined ? [stop.ticket] : [],
+    holds.stops.flatMap((stop) =>
+      stop.why === "BLOCKED" && stop.ticket !== undefined ? [stop.ticket] : [],
     ),
   )
 
@@ -557,7 +542,7 @@ export interface ShownHolds {
 }
 
 export const shownHolds = (holds: Holds): ShownHolds => ({
-  stopping: holds.stops.first !== null,
+  stopping: holds.stops.length > 0,
   holds: [
     ...(blockedTickets(holds).size > 0 ? [{ word: Tag.blocked, resetsAt: null }] : []),
     ...(holds.usage.hold === null ? [] : [holds.usage.hold]),

@@ -41,7 +41,7 @@ describe("the holds gate", () => {
         const { holds, status, woken } = yield* gate
         const stop = stopFor("PAUSED", "the worker paused", { ticket: "t-1" })
         yield* holds.stopped(stop)
-        expect((yield* holds.currentStops).first).toEqual(stop)
+        expect((yield* holds.currentStops)[0]).toEqual(stop)
         expect((yield* SubscriptionRef.get(status)).stopping).toBe(true)
         expect((yield* SubscriptionRef.get(status)).warnings).toEqual(["a notice"])
         expect(yield* Ref.get(woken)).toBe(1)

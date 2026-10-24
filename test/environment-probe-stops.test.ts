@@ -58,16 +58,13 @@ describe("the stops the probe keeps", () => {
   const raised = addStop(addStop(addStop(noStops, environment), blocked), limit)
 
   test("a pass lifts only the probe's stop, the next one first", () => {
-    expect(swapStop(raised, environment, null)).toEqual({ first: blocked, others: [limit] })
+    expect(swapStop(raised, environment, null)).toEqual([blocked, limit])
     expect(swapStop(addStop(noStops, environment), environment, null)).toEqual(noStops)
   })
 
   test("a failure takes the probe's stop's place, the others kept after it", () => {
     const failed = stopFor("ENVIRONMENT", "the probe ran no command")
-    expect(swapStop(raised, environment, failed)).toEqual({
-      first: failed,
-      others: [blocked, limit],
-    })
+    expect(swapStop(raised, environment, failed)).toEqual([failed, blocked, limit])
   })
 
   test("a stop not there changes nothing", () => {

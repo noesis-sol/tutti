@@ -58,7 +58,7 @@ describe("Holds", () => {
     const held = [blockedStop("a", "q"), paused, blockedStop("b", "q")].reduce(raiseStop, noHolds)
     const lifted = liftBlocked(held, "a")
     expect([...blockedTickets(lifted)]).toEqual(["b"])
-    expect(lifted.stops.first).toBe(paused)
+    expect(lifted.stops[0]).toBe(paused)
     expect(words(lifted)).toEqual(["BLOCKED"])
     const none = liftBlocked(lifted, "b")
     expect(blockedTickets(none).size).toBe(0)
@@ -70,7 +70,7 @@ describe("Holds", () => {
     const stop = ticketLimitStop("t-1", "2h", "/w/t-1")
     const over = pastTicketLimit(noHolds, "t-1", stop)
     expect([...over.overLimit]).toEqual(["t-1"])
-    expect(over.stops.first).toBe(stop)
+    expect(over.stops[0]).toBe(stop)
     expect(shownHolds(over).stopping).toBe(true)
     expect(words(over)).toEqual([])
   })
@@ -111,7 +111,7 @@ describe("Holds", () => {
       changeStops(blocked, (stops) => putFirst(stops, quit)),
       (stops) => extendFirst(stops, ["t-1 never handed back", "t-2 too"]),
     )
-    expect(ended.stops.first?.why).toBe("INTERRUPTED")
+    expect(ended.stops[0]?.why).toBe("INTERRUPTED")
     expect<string>(stopsLine(ended.stops)).toBe(
       "INTERRUPTED: quit; t-1 never handed back; t-2 too; also BLOCKED >4min: a needs you: q",
     )
@@ -167,15 +167,16 @@ describe("Holds", () => {
               others++
           }
         }
-        const all = [holds.stops.first, ...holds.stops.others].filter((stop) => stop !== null)
-        const blocks = all.filter((stop) => stop.why === "BLOCKED").map((stop) => stop.ticket)
+        const blocks = holds.stops
+          .filter((stop) => stop.why === "BLOCKED")
+          .map((stop) => stop.ticket)
         expect(blocks.length).toBe(new Set(blocks).size)
         expect(new Set(blocks)).toEqual(blocked)
         expect(blockedTickets(holds)).toEqual(blocked)
-        expect(all.length).toBe(blocked.size + others)
+        expect(holds.stops.length).toBe(blocked.size + others)
         expect(holds.overLimit).toEqual(over)
         const shown = shownHolds(holds)
-        expect(shown.stopping).toBe(all.length > 0)
+        expect(shown.stopping).toBe(holds.stops.length > 0)
         expect(shown.holds.map((hold) => hold.word)).toEqual([
           ...(blocked.size > 0 ? ["BLOCKED"] : []),
           ...(usage ? ["USAGE_LIMIT"] : []),
