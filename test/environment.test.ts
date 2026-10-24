@@ -257,19 +257,25 @@ describe("the environment hold", () => {
   })
 
   test("a usage-limited worker doesn't count", async () => {
-    // The limit resets an hour into the run (TestClock starts at the epoch): the run waits for it.
-    // Its session ends once the lifted hold tells it to carry on: still UsageLimited, not gone before
-    // the run watches it for the limit, as one ending on real time could be under load.
-    const limited: SessionScript = [...hitsUsageLimit(3600), wait, gone("its session ended")]
+    // The limit resets 30s into the run (TestClock starts at the epoch), and the hold lifts a minute
+    // after: t-1's session ends once the lifted hold tells it to carry on, within the window of its
+    // dispatch, its ticket open and nothing done. Counted, it would make two in a row with t-2.
+    // Still UsageLimited as the run watches it for the limit, not gone before, as one ending on
+    // real time could be under load.
+    const limited: SessionScript = [...hitsUsageLimit(30), wait, gone("its session ended")]
     const ran = await runs({
       tickets: ["t-1", "t-2", "t-3"],
+      // Without the probe, a hold would end the run at once, ENVIRONMENT.
+      settings: {
+        environment_hold: { ...appConfig().settings.environment_hold, probe: Duration.zero },
+      },
       scripts: (world, root) => ({
         "t-1": [limited],
         "t-2": [givesUp],
         "t-3": [finishes(world, root, "t-3")],
       }),
       during: () =>
-        Effect.andThen(untilLogged(/^USAGE_LIMIT: nothing else runs/), advance("2 hours")),
+        Effect.andThen(untilLogged(/^USAGE_LIMIT: nothing else runs/), advance("100 seconds")),
     })
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Deferred", "t-2": "Deferred", "t-3": "Done" })
