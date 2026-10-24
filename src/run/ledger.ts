@@ -21,6 +21,7 @@ import {
   type Stream,
   SubscriptionRef,
 } from "effect"
+import type { Issue } from "../services/Beads.ts"
 import {
   type Event,
   type endingPhases,
@@ -69,6 +70,11 @@ export interface Entry {
   readonly ticket: string
   /** Its title as Beads gave it: untrusted, sanitised where it enters RunView. */
   readonly title: string
+  /**
+   * Its issue as Beads last gave it, for its worker view's description and whole ticket (§ 7.5):
+   * untrusted, sanitised where it enters RunView; absent until the run has read it.
+   */
+  readonly issue?: Issue
   readonly phase: TicketPhase
   /** When it entered its phase. */
   readonly since: number
@@ -453,8 +459,8 @@ export class Ledger extends Context.Service<
      * Moves `ticket` by `cause`, as the state machine says, and writes its `phase` record, then
      * `said` and `beside` (the orchestra-era records its row names), with each of `said`'s texts
      * and then `lines` logged in the same write.
-     * `title` sets its title, as a ticket entering the run needs; a ticket leaving it (null) leaves
-     * the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
+     * `title` sets its title, as a ticket entering the run needs, and `issue` the issue it was read
+     * as; a ticket leaving it (null) leaves the ledger. An invalid change logs PHASE_BUG once, writes nothing, and leaves the ticket as it
      * was.
      */
     transition(
@@ -462,6 +468,7 @@ export class Ledger extends Context.Service<
       cause: Cause,
       options?: {
         readonly title?: string
+        readonly issue?: Issue
         readonly said?: ReadonlyArray<Said>
         readonly beside?: ReadonlyArray<Event>
         readonly lines?: ReadonlyArray<log.Line>
@@ -479,6 +486,11 @@ export class Ledger extends Context.Service<
     steer(ticket: string, by: "message" | "interrupt"): Effect.Effect<void>
     /** Releases `ticket`'s worker: it is no longer steered. */
     release(ticket: string): Effect.Effect<void>
+    /**
+     * Keeps `issue`, as bd show gave it now, on `ticket`'s entry, for its worker view (§ 7.5); a
+     * ticket not in the run is left out.
+     */
+    readIssue(ticket: string, issue: Issue): Effect.Effect<void>
     /**
      * Notes that a conflict hand-back waits for `ticket`'s steered worker (§ 4.3), as it is kept:
      * Blocked on it, the ticket keeps its worker's number and its card until it leaves Blocked.
@@ -577,7 +589,11 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
             return changed(next, { ...state, tickets })
           }
           const base = entry ?? newEntry(ticket, options.title ?? "", next.success)
-          const titled = options.title === undefined ? base : { ...base, title: options.title }
+          const titled = {
+            ...base,
+            ...(options.title === undefined ? {} : { title: options.title }),
+            ...(options.issue === undefined ? {} : { issue: options.issue }),
+          }
           return changed(next, moved(state, titled, next.success, cause, now))
         }),
       )
@@ -639,6 +655,9 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
     const release: Ledger["Service"]["release"] = (ticket) =>
       updateEntry(ticket, (entry) => ({ ...entry, steered: false }))
 
+    const readIssue: Ledger["Service"]["readIssue"] = (ticket, issue) =>
+      updateEntry(ticket, (entry) => ({ ...entry, issue }))
+
     const handBackWaitsFor: Ledger["Service"]["handBackWaits"] = (ticket) =>
       SubscriptionRef.update(ref, (state) => {
         const entry = state.tickets.get(ticket)
@@ -699,6 +718,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       refine,
       steer,
       release,
+      readIssue,
       handBackWaits: handBackWaitsFor,
       claimGoneResume,
       goneResumed: goneResumedOf,

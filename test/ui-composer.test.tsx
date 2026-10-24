@@ -254,8 +254,8 @@ describe("the composer", () => {
         "
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
-          PgUp/PgDn scroll · g/G top/end
+          Esc dashboard · i write · t ticket · Ctrl+X interrupt · ↑↓ select
+          Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end
         "
       `)
       expect(colourOf(frame, ">")).toEqual(rgb(theme.form.selector))
@@ -479,8 +479,8 @@ describe("releasing", () => {
           ────────────────────────────────────────────────────────────────────────────────
             steered: tutti sends it nothing until you release it       [ Release ]  Ctrl+R
            > i to write to the worker
-            Esc dashboard · i write · Ctrl+X interrupt · Ctrl+R release · ↑↓ select
-            Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end
+            Esc dashboard · i write · t ticket · Ctrl+X interrupt · Ctrl+R release
+            ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end
           "
         `)
         expect(colourOf(frame, "steered")).toEqual(rgb(theme.styles.key))

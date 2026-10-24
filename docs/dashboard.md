@@ -250,8 +250,10 @@ When the run ends, the dashboard closes and the main screen gets:
 `Enter` on a card, a click, or `1`–`9` opens the worker's view, full screen:
 
 ```
- ← Dashboard   2 ⣾  tut-zq4  testing  1m07s   Add an undo stack for property edits
+ ← Dashboard   2 ⣾  tut-zq4  testing  1m07s  feature · P2   Add an undo stack for property edits
   6m53s  1.2M tokens  5h window ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  0.8 GB
+  Each property edit pushes its own entry, so undoing a drag takes as many undos as
+  the drag had frames. Group the edits of one gesture into one entry…  ▾ whole ticket  t
 ─────────────────────────────────────────────────────────────────────────────────
   Read  src/history/undo.ts                                                    ✓
   Edit  src/history/undo.ts                                               +42 −3
@@ -260,7 +262,7 @@ When the run ends, the dashboard closes and the main screen gets:
   a whole drag. Next I'll add the keyboard binding.
 ─────────────────────────────────────────────────────────────────────────────────
  > i to write to the worker
- Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
+ Esc dashboard · i write · t ticket · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
 ```
 
 - **What it consumes.** The line under the head: the worker's time on the ticket, its tokens, its
@@ -274,6 +276,13 @@ When the run ends, the dashboard closes and the main screen gets:
   line shows the breakdown, **Spent**: tokens by model and how many came from the cache, model calls,
   dollars, how the share is made, what fills the context, and the ticket's share of the run's tokens.
   `Esc` or a click closes it.
+- **The ticket.** Line 1 has the ticket's type and priority and its title in bold. Under the
+  resource line, the first lines of the ticket's description: 2, 3 on a pane of 40 rows or more, none at the minimum
+  size. `▾ whole ticket  t` ends them when the ticket has more than shows. `t`, or a click on it,
+  opens the whole ticket in their place: the description, design, acceptance criteria as a
+  checklist, notes, links and labels, in a frame up to 60% of the pane that `PgUp`, `PgDn` and the
+  wheel scroll, `↓ N more lines` at its foot while there is more. Opening it reads the ticket from
+  bd again, so notes added during the run show. `t`, a click on `▴ less`, or `Esc` closes it.
 - **The transcript.** What the worker writes is drawn as Markdown. Each tool call is one line, its
   result at the right: `✓`, an error's first line, or `+N −M` for an edit. Selected with the arrows
   and opened with `Enter` or a click, a call shows an edit's diff, a command's output (400 lines at
@@ -295,7 +304,7 @@ When the run ends, the dashboard closes and the main screen gets:
 - **A hand-back waiting.** A steered worker isn't handed a conflict or a failing check. The view
   says `A merge conflict waits for this worker` with **Hand it the conflict now**.
 
-`Esc` leaves the composer, then the view; to switch to another worker, go back to the dashboard and
+`Esc` leaves the composer, then closes the whole ticket, then leaves the view; to switch to another worker, go back to the dashboard and
 open its card (`Tab`, then `Enter`).
 
 ## Keys
@@ -313,11 +322,12 @@ open its card (`Tab`, then `Enter`).
 | `s` | stop after the running tickets, or keep taking tickets (asks `y`/`n`) | |
 | `q` | end the run, while the end-of-run box shows | |
 | `i` | | focus the composer |
+| `t` | | open or close the whole ticket |
 | `Ctrl+X` | | interrupt the worker's turn (asks first) |
 | `Ctrl+R` | | release a steered worker |
-| the wheel, `PgUp`, `PgDn` | | scroll the transcript |
+| the wheel, `PgUp`, `PgDn` | | scroll the transcript, or the whole ticket while it is open |
 | `g`, `G` | | jump to the top or the end |
-| `Esc` | close a box or the key help | leave the composer, then the view |
+| `Esc` | close a box or the key help | leave the composer, then close the whole ticket, then the view |
 | `?` | key help | key help |
 | `Ctrl+C` | the quit box | the quit box |
 | `Ctrl+Z` | a toast: tutti can't be suspended | the same |

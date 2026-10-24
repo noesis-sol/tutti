@@ -1,14 +1,15 @@
 // The worker view (§ 7.5, § 7.3, § 7.11): tutti's transcript of one worker, drawn by tutti, under
 // orchestra-style chrome: `← Dashboard`, then the worker's card head (number, mark, ticket, status,
-// elapsed time) and its title, wrapped onto more lines in a narrow pane, then the resource line
-// (ResourceLine.tsx: what the worker consumes; a click opens what it spent), over a rule. Below the
-// transcript, the attention panel shows the worker's open requests with the card's buttons and
-// rules (attentionKeys.ts), each with its description, its reason and its whole input, and a
-// conflict hand-back waiting for a steered worker (§ 4.3) as a notice with Hand it the conflict
-// now. Answer in view, for what a card can't hold, opens the answer form over the view
-// (AnswerForm.tsx). Under them and the rule, the composer (Composer.tsx): the held line while the
-// ticket waits to merge or merges, the steered line with its Release button, your messages still
-// queued or held, the field.
+// elapsed time), the ticket's type and priority, and its title in bold, wrapped onto more lines in
+// a narrow pane, then the resource line (ResourceLine.tsx: what the worker consumes; a click opens
+// what it spent), and under it the ticket's description, or its whole ticket while `t` has it open
+// (TicketHead.tsx), over a rule. Below the transcript, the attention panel shows the worker's open
+// requests with the card's buttons and rules (attentionKeys.ts), each with its description, its
+// reason and its whole input, and a conflict hand-back waiting for a steered worker (§ 4.3) as a
+// notice with Hand it the conflict now. Answer in view, for what a card can't hold, opens the
+// answer form over the view (AnswerForm.tsx). Under them and the rule, the composer (Composer.tsx):
+// the held line while the ticket waits to merge or merges, the steered line with its Release
+// button, your messages still queued or held, the field.
 //
 // The items (transcriptItems.ts): assistant text as Markdown (<markdown>, in the theme's heading,
 // code and link roles); each tool call `Tool  summary`, wrapped, its result at the end of it (`✓`,
@@ -27,12 +28,14 @@
 // panel's requests, and between a request's buttons; `Enter` expands or collapses the selected item
 // or presses the focused button; `1`–`4` pick a question's option; `d`, `Shift+D`, `a` and `r`
 // answer the selected request, or the oldest; PgUp/PgDn and `g`/`G` scroll; `i` or a click focuses
-// the composer; `Ctrl+X` asks, then interrupts the worker's turn; `Ctrl+R` releases a steered
-// worker; once the worker has finished, `Ctrl+T` files the composer's text as a ticket; `Esc` leaves
-// the composer, then goes back to the dashboard, as a click on `← Dashboard`
-// does. No key switches workers: `Tab` is the items', so another worker is opened from the
-// dashboard (§ 7.3). While you write in the composer, it takes the printable keys, Enter and
-// the arrows; PgUp/PgDn, Ctrl+X, Ctrl+R, Ctrl+T and Esc still work.
+// the composer; `t` or a click on `▾ whole ticket` opens the whole ticket, which PgUp/PgDn then
+// scroll, and `t`, a click on `▴ less` or `Esc` closes it; `Ctrl+X` asks, then interrupts the
+// worker's turn; `Ctrl+R` releases a steered worker; once the worker has finished, `Ctrl+T` files
+// the composer's text as a ticket; `Esc` leaves the composer, then closes the whole ticket, then
+// goes back to the dashboard, as a click on `← Dashboard` does. No key switches workers: `Tab` is
+// the items', so another worker is opened from the dashboard (§ 7.3). While you write in the
+// composer, it takes the printable keys, `t` too, Enter and the arrows; PgUp/PgDn, Ctrl+X, Ctrl+R,
+// Ctrl+T and Esc still work.
 //
 // The transcript, the panel, the selection, the composer and the keys are shared with the
 // Interview view (transcriptView.ts), as are the head, the pane, the panel and the hint below.
@@ -102,6 +105,16 @@ import {
 import { ResourceLine, SpentBox } from "./ResourceLine.tsx"
 import { requestInputLines } from "./requestInput.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
+import {
+  badgesOf,
+  DescriptionView,
+  descriptionLimit,
+  descriptionLines,
+  panelLines,
+  TicketPanelView,
+  titleSegment,
+  useTicketPanel,
+} from "./TicketHead.tsx"
 import { useHintHeight } from "./Toasts.tsx"
 import type { Role, Theme } from "./theme.ts"
 import {
@@ -152,8 +165,9 @@ export const transcriptRows = 3
 
 /**
  * The lines of a transcript view's parts but the transcript and the request panel: the head, the
- * hand-back notice, the held line, the finished or steered line, the queued messages, the composer
- * and the hint. The Interview view has no hand-back, held or steered line.
+ * ticket under it, the hand-back notice, the held line, the finished or steered line, the queued
+ * messages, the composer and the hint. The Interview view has no ticket, hand-back, held or steered
+ * line.
  */
 export interface ViewChrome {
   readonly head: number
@@ -162,6 +176,8 @@ export interface ViewChrome {
    * a short pane gives it up before the request panel's lines, so it is left out of panelBudget.
    */
   readonly resources: number
+  /** The ticket's description under the head, or its whole ticket while that is open (§ 7.5). */
+  readonly ticket: number
   readonly handBack: number
   readonly held: number
   readonly line: number
@@ -198,10 +214,10 @@ export const panelBudget = (height: number, chrome: ViewChrome): number => {
 /**
  * A transcript view's lines in a pane `height` tall, handed out in priority order, each part as
  * many as it needs of what is left, so that they add up to `height`: the hint, the head, the
- * rules, the composer, the finished or steered line, the held line, the queued messages and the
- * hand-back notice, then the transcript's `transcriptRows`, then the `panel` lines the request
- * panel takes (panelBudget's at most, but for one request too tall for it), then the resource line,
- * and the transcript the rest.
+ * rules, the composer, the finished or steered line, the held line, the queued messages, the
+ * hand-back notice and the ticket, then the transcript's `transcriptRows`, then the `panel` lines
+ * the request panel takes (panelBudget's at most, but for one request too tall for it), then the
+ * resource line, and the transcript the rest.
  */
 export const viewLayout = (height: number, chrome: ViewChrome, panel: number): ViewLayout => {
   let rest = Math.max(height, 0)
@@ -218,6 +234,7 @@ export const viewLayout = (height: number, chrome: ViewChrome, panel: number): V
   const held = take(chrome.held)
   const queued = take(chrome.queued)
   const handBack = take(chrome.handBack)
+  const ticket = take(chrome.ticket)
   const kept = take(transcriptRows)
   const panelLines = take(panel)
   const resources = take(chrome.resources)
@@ -225,6 +242,7 @@ export const viewLayout = (height: number, chrome: ViewChrome, panel: number): V
   return {
     head,
     resources,
+    ticket,
     handBack,
     held,
     line,
@@ -241,7 +259,7 @@ export const viewLayout = (height: number, chrome: ViewChrome, panel: number): V
 const handBackKey = "handback"
 
 /** The Markdown and code styles, from the theme's roles (§ 7.11 "Markdown"). */
-interface Looks {
+export interface Looks {
   readonly theme: Theme
   readonly markdown: SyntaxStyle
   /** The Markdown's quotes and rules, drawn faint (markdownBlocks). */
@@ -857,6 +875,8 @@ export interface WorkerViewAt {
   readonly steered: boolean
   /** Whether the worker has finished: nothing is sent to it, and Ctrl+T files what you wrote. */
   readonly finished: boolean
+  /** Whether the whole ticket is open (TicketHead.tsx): `t` or `Esc` closes it. */
+  readonly ticketOpen?: boolean
 }
 
 /** What the worker view's keys do: the transcript's, and its own. */
@@ -864,6 +884,8 @@ export interface WorkerViewActions extends TranscriptActions {
   readonly interrupt: () => void
   readonly release: () => void
   readonly fileAsTicket: () => void
+  /** `t`: opens or closes the whole ticket. */
+  readonly ticket: () => void
 }
 
 const nothing = () => {}
@@ -874,6 +896,7 @@ const inertWorkerView: WorkerViewActions = {
   interrupt: nothing,
   release: nothing,
   fileAsTicket: nothing,
+  ticket: nothing,
 }
 
 const writeRow: HelpRow = [
@@ -885,7 +908,10 @@ const moveRow: HelpRow = [
   "move between items; between a request's buttons",
 ]
 const denyRow: HelpRow = ["d, Shift+D", "deny the request; deny with a reason"]
-const scrollRow: HelpRow = ["the wheel, PgUp/PgDn", "scroll; past the top loads earlier items"]
+const scrollRow: HelpRow = [
+  "the wheel, PgUp/PgDn",
+  "scroll; past the top loads earlier items; the whole ticket, open",
+]
 const jumpRow: HelpRow = ["g, G", "jump to the top or the end"]
 const pickRow: HelpRow = ["1–4 in a question", "pick an option"]
 
@@ -893,7 +919,7 @@ const pickRow: HelpRow = ["1–4 in a question", "pick an option"]
  * The worker view's keys (§ 7.3), its hint's and its key help's: the keys there are; the composer's
  * while you write in it. Once the worker has `finished`, nothing is sent to it, so the hint has no
  * Enter send, Ctrl+X or Ctrl+R (tutti-2n7y), and has Ctrl+T, which files what you typed as a
- * ticket (tutti-g0wd).
+ * ticket (tutti-g0wd). `t` opens the whole ticket; while it is open, `t/Esc` closes it.
  */
 export const workerViewCommands = (
   at: WorkerViewAt,
@@ -918,8 +944,15 @@ export const workerViewCommands = (
     },
     {
       ...keys.escape,
-      hint: { keys: "Esc", does: at.composing ? "leave" : "dashboard" },
-      help: ["Esc, ← Dashboard", "leave the composer; back to the dashboard"],
+      hint: at.composing
+        ? { keys: "Esc", does: "leave" }
+        : at.ticketOpen === true
+          ? { keys: "t/Esc", does: "less" }
+          : { keys: "Esc", does: "dashboard" },
+      help: [
+        "Esc, ← Dashboard",
+        "leave the composer; close the whole ticket; back to the dashboard",
+      ],
     },
     // Esc, then the dashboard's keys: the view has no key of its own for it (§ 7.3).
     {
@@ -934,6 +967,12 @@ export const workerViewCommands = (
       help: ["a click on resources", "what the worker spent: tokens, calls, dollars, context"],
     },
     { ...keys.write, hint: named(viewing, "i", "write"), help: writeRow },
+    {
+      keys: ["t"],
+      run: act.ticket,
+      hint: named(viewing && at.ticketOpen !== true, "t", "ticket"),
+      help: ["t, ▾ whole ticket", "the whole ticket; t, ▴ less or Esc closes it"],
+    },
     { ...keys.deny, hint: named(viewing && at.requests, "d", "deny"), help: denyRow },
     { ...keys.denyWithReason, help: denyRow },
     { ...keys.allow, help: ["a", "allow the request, unless it opens on Deny"] },
@@ -1288,17 +1327,44 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   // The panel has the height the view's other parts leave it, and a few of the transcript's
   // (tutti-7nzv), the hint as it is with requests.
   const [headLines, setHeadLines] = useState(1)
+  // The ticket under the head (TicketHead.tsx): its description, or its whole ticket while open,
+  // two columns in.
+  const ticketPanel = useTicketPanel(viewed)
+  const issue = card?.issue
+  const ticketWidth = Math.max(inner - 2, 1)
+  const description = useMemo(
+    () =>
+      issue === undefined
+        ? null
+        : descriptionLines(issue, theme, ticketWidth, descriptionLimit(height)),
+    [issue, theme, ticketWidth, height],
+  )
+  const ticketLines =
+    card === undefined
+      ? 0
+      : ticketPanel.open
+        ? panelLines(issue, height, ticketWidth)
+        : (description?.lines.length ?? 0)
   const steered = card?.steered === true
   const chrome = (requests: boolean): ViewChrome => ({
     head: headLines,
     resources: resources === undefined ? 0 : 1,
+    ticket: ticketLines,
     handBack: handBack ? handBackLines(theme, { width: panelWidth, selected: false }).length : 0,
     held: holding ? 1 : 0,
     line: finished || steered ? 1 : 0,
     queued: queued.length,
     composer: composer.lines,
     hint: hintLines(
-      hintOf(workerViewCommands({ requests, composing: composer.typing, steered, finished })),
+      hintOf(
+        workerViewCommands({
+          requests,
+          composing: composer.typing,
+          steered,
+          finished,
+          ticketOpen: ticketPanel.open,
+        }),
+      ),
       theme,
       inner,
     ).length,
@@ -1401,18 +1467,27 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     panel,
     selection,
     composer,
-    back: close,
+    // Esc closes the whole ticket before it leaves the view.
+    back: () => (ticketPanel.open ? ticketPanel.close() : close()),
     enter: () => (selection.current() === handBackKey ? handBackNow() : selection.enter()),
+    page: (step) => (ticketPanel.open ? ticketPanel.page(step) : transcript.page(step)),
   })
   const keys = useCommands(
     "view",
     workerViewCommands(
-      { requests: panel.requests.length > 0, composing: composer.typing, steered, finished },
+      {
+        requests: panel.requests.length > 0,
+        composing: composer.typing,
+        steered,
+        finished,
+        ticketOpen: ticketPanel.open,
+      },
       {
         ...actions,
         interrupt: unlessHelp(interrupt),
         release: unlessHelp(release),
         fileAsTicket: unlessHelp(fileAsTicket),
+        ticket: unlessHelp(ticketPanel.toggle),
       },
     ),
   )
@@ -1427,10 +1502,12 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     const status = finished
       ? seg(finishedWords(viewed).status, theme.styles.done)
       : seg(card.status, statusLook(card, theme))
+    const badges = badgesOf(card.issue)
     return [
       ...headOf(shown, theme, ended.current ?? now, spin, [status]),
+      ...(badges === "" ? [] : [seg("  "), seg(badges, theme.styles.dim)]),
       seg("   "),
-      seg(sanitizeLine(card.title)),
+      titleSegment(sanitizeLine(card.title), theme),
     ]
   }
   const { box } = composer
@@ -1457,6 +1534,21 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
               open={openSpent}
             />
           )}
+        </Section>
+        <Section lines={laid.ticket}>
+          <box paddingLeft={2} flexDirection="column" height={laid.ticket} flexShrink={0}>
+            {ticketPanel.open ? (
+              <TicketPanelView
+                issue={issue}
+                panel={ticketPanel}
+                looks={looks}
+                width={ticketWidth}
+                lines={laid.ticket}
+              />
+            ) : description === null ? null : (
+              <DescriptionView lines={description} open={ticketPanel.toggle} />
+            )}
+          </box>
         </Section>
         <Section lines={laid.rules[0]}>
           <Line segments={rule} />

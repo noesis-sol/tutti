@@ -437,6 +437,8 @@ export const useTranscriptKeys = (options: {
   readonly composer: ComposerState
   readonly back: () => void
   readonly enter?: () => void
+  /** PgUp's and PgDn's: the transcript's page by default. */
+  readonly page?: (step: 1 | -1) => void
 }): {
   readonly help: boolean
   readonly actions: TranscriptActions
@@ -465,7 +467,7 @@ export const useTranscriptKeys = (options: {
       escape: () =>
         helpOpen() ? showHelp(false) : composer.composing() ? composer.setComposing(false) : back(),
       write: unlessHelp(() => composer.setComposing(true)),
-      page: unlessHelp(transcript.page),
+      page: unlessHelp(options.page ?? transcript.page),
       move: unlessHelp(selection.move),
       stepOrMove: unlessHelp(selection.stepOrMove),
       enter: unlessHelp(enter),

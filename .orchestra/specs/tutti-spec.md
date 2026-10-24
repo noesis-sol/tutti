@@ -1130,20 +1130,21 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 |---|---|---|
 | `Tab`, `Shift+Tab`, arrows | move the highlight between cards; inside an attention card, between its buttons | move between transcript items |
 | `Enter`, a click | open the highlighted card; press the focused button | expand or collapse the selected item; press the focused button |
-| `Esc`, a click on `← Dashboard` | close an open box | leave the composer, then the view |
+| `Esc`, a click on `← Dashboard` | close an open box | leave the composer, then close the whole ticket, then the view |
 | `Esc`, then `Tab` and `Enter` | | switch workers: back to the dashboard, where `Tab` highlights the other's card and `Enter` opens it. `Tab` stays the transcript's, so the view has no key of its own for it (§7.2) |
 | `d`, `Shift+D` | deny the target request; deny with a reason | the same |
 | `a` | allow the target request, only without `defaultToNo` (§4.5) | the same |
 | `r` | allow for this run (not with `suppressAlwaysAllowRule`, nor without a suggested `addRules` that allows) | the same |
 | `1`–`4` inside a question | pick an option | pick an option |
 | `i`, a click on the composer | | focus the composer; `Enter` sends, `Alt+Enter` or `Ctrl+J` adds a new line |
+| `t`, a click on `▾ whole ticket` or `▴ less` | | open or close the whole ticket (§7.5); while the composer has the focus, `t` types |
 | `Ctrl+X` | | interrupt the worker's turn (asks first); the worker becomes steered |
 | `Ctrl+R` | | release a steered worker (§4.3) |
 | `Ctrl+T`, a click on **File as ticket** | | once the worker has finished, file what you wrote in the composer as a new ticket (§7.5) |
 | `s` | stop after current, or keep taking tickets (asks y/n) | |
 | `Ctrl+C` | the quit box (D15): `s` stop after current, `q` quit now, `Esc` cancel; a second Ctrl+C quits now (§4.8) | the same |
 | `Ctrl+Z` | a toast: `tutti can't be suspended: s stops after the current tickets, Ctrl+C quits` (D18) | the same |
-| the wheel, PgUp/PgDn, `g`/`G` | | scroll the transcript; jump to the top or the end |
+| the wheel, PgUp/PgDn, `g`/`G` | | scroll the transcript, or the whole ticket while it is open; jump to the top or the end |
 | `?` | key help | key help |
 | a drag | select text; copied on release (below), with a toast | the same |
 
@@ -1186,8 +1187,10 @@ Workers and commands run in process groups of their own (§3.2), so none of thes
 Opened by selecting a card. Full-screen, with orchestra-style chrome:
 
 ```
- ← Dashboard   ⣾ tut-zq4  testing  1m07s   Add an undo stack for property edits
+ ← Dashboard   ⣾ tut-zq4  testing  1m07s  feature · P2   Add an undo stack for property edits
   6m53s  1.2M tokens  5h window ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  0.8 GB
+  Each property edit pushes its own entry, so undoing a drag takes as many undos as
+  the drag had frames. Group the edits of one gesture into one entry…  ▾ whole ticket  t
 ─────────────────────────────────────────────────────────────────────────────────
   Read  internal/history/undo.ts
   Edit  internal/history/undo.ts                                       +42 −3
@@ -1200,6 +1203,11 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
  > _                                                    Enter send · Ctrl+X interrupt
 ```
 
+- **The ticket** (D1 of the worker-view design, tutti-cxgo): a departure from orchestra's worker view, on purpose, so that on entering the view you know what the worker is doing.
+  - Line 1 has the ticket's type and priority after its card head, faint (`feature · P2`), and its title in bold.
+  - Under the resource line, the ticket's description, not its title: its first lines wrapped at words, in the normal text colour (the main thing to read, not secondary), its inline Markdown shown (bold, code, a link's label) but no headings, lists, rules or code blocks; 2 lines, 3 on panes of 40 rows or more, none at the minimum size (§7.7); cut with `…`. `▾ whole ticket  t` ends the last line, right aligned, in the `link` colour, clickable, when there is more than shows: the description cut, or any of design, acceptance criteria, notes, links. No description: `No description.`, faint, with the control if the ticket has other fields.
+  - `t`, or a click on the control, opens the whole ticket in place of those lines: a framed panel with no title (line 1 names the ticket), up to 60% of the pane's height (as tall as its content when that is less), the transcript shrinking for it. It is drawn with `<markdown>`: the whole description, design, acceptance criteria as a checklist (`☐`, `☑` for one ticked), notes, links (`parent`, `blocked by`, `related`, as bd show gives them) and labels, each left out when empty. `▴ less  t · Esc` is at the frame's top right, and `↓ N more lines` in its bottom border while there is more below; PgUp/PgDn and the wheel scroll it while it is open. `t`, a click on `▴ less`, or `Esc` closes it: `Esc` closes it before it leaves the view.
+  - The issue is the one the run read as it took the ticket up, kept on its ledger entry; opening the panel reads it again with one bd show (the screen's `ReadTicket`), so notes added during the run show. All of it is text a ticket author or worker wrote: sanitised as it enters `RunView` (§7.10), its several lines kept; the links' IDs and labels are escaped for the Markdown.
 - **Items.**
   - Assistant text renders as Markdown (`<markdown>`).
   - Each tool call is `Tool  summary`, wrapped to the pane's width under its summary, its result collapsed to a mark at the end of its last line, or on a line of its own when it doesn't fit there: `✓`, an error's first line, or `+N −M` for edits.

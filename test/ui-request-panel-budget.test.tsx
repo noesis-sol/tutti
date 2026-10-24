@@ -166,8 +166,8 @@ describe("the request panel's height", () => {
           +1 more requests
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · d deny · Ctrl+X interrupt · ↑↓ select · Enter expand
-          ? keys · PgUp/PgDn scroll · g/G top/end
+          Esc dashboard · i write · t ticket · d deny · Ctrl+X interrupt · ↑↓ select
+          Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end
 
         "
       `)
@@ -207,8 +207,8 @@ describe("the request panel's height", () => {
         ╰────────────────────────────────────────────────────────────────────────────╯
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · d deny · Ctrl+X interrupt · ↑↓ select · Enter expand
-          ? keys · PgUp/PgDn scroll · g/G top/end
+          Esc dashboard · i write · t ticket · d deny · Ctrl+X interrupt · ↑↓ select
+          Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end
 
         "
       `)
@@ -288,8 +288,8 @@ describe("the request panel's height", () => {
           +1 more requests
         ────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · d deny
-          Ctrl+X interrupt · ↑↓ select
+          Esc dashboard · i write · t ticket
+          d deny · Ctrl+X interrupt · ↑↓ select
           Enter expand · ? keys
           PgUp/PgDn scroll · g/G top/end
 

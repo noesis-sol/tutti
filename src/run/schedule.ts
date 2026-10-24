@@ -875,6 +875,7 @@ export const make = (
           ])
           yield* ledger.transition(issue.id, again ? Cause.Undeferred() : Cause.Ready(), {
             title: issue.title,
+            issue,
             beside: [{ kind: "queue", ...queue }],
             ...(again ? { lines: [undeferredLine(issue.id)] } : {}),
           })

@@ -24,7 +24,8 @@ import type { ContextUsage } from "../agent/contextUsage.ts"
 import type { LatestAction } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { formatDuration } from "../project/configFile.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import type { Issue } from "../services/Beads.ts"
+import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
@@ -247,6 +248,56 @@ export interface Row {
   readonly verdict: string | null
 }
 
+/** A link of a ticket's to another, as bd show gives it: `parent-child`, `blocks`, … */
+export interface TicketLink {
+  readonly type: string
+  readonly id: string
+}
+
+/**
+ * A ticket's issue as its worker view shows it (§ 7.5): the text a ticket author or a worker wrote,
+ * sanitised (§ 7.10), its several lines kept. Its links are its parent first, then the rest.
+ */
+export interface TicketText {
+  /** bd's issue type: task, bug, feature, …; "" when bd gives none. */
+  readonly type: string
+  readonly priority: number | null
+  readonly description: string
+  readonly design: string
+  readonly acceptance: string
+  readonly notes: string
+  readonly labels: ReadonlyArray<string>
+  readonly links: ReadonlyArray<TicketLink>
+}
+
+/** Each issue read, sanitised once: an entry keeps its issue until the run reads it again. */
+const ticketTexts = new WeakMap<Issue, TicketText>()
+
+/** `issue` as its worker view shows it, sanitised. */
+export const ticketText = (issue: Issue): TicketText => {
+  const found = ticketTexts.get(issue)
+  if (found !== undefined) return found
+  const parent = issue.parent === undefined ? [] : [{ type: "parent-child", id: issue.parent }]
+  const others = issue.dependencies.filter(
+    (link) => !(link.type === "parent-child" && link.id === issue.parent),
+  )
+  const text: TicketText = {
+    type: sanitizeLine(issue.type),
+    priority: issue.priority ?? null,
+    description: sanitize(issue.description),
+    design: sanitize(issue.design),
+    acceptance: sanitize(issue.acceptance),
+    notes: sanitize(issue.notes),
+    labels: issue.labels.map(sanitizeLine),
+    links: [...parent, ...others].map((link) => ({
+      type: sanitizeLine(link.type),
+      id: sanitizeLine(link.id),
+    })),
+  }
+  ticketTexts.set(issue, text)
+  return text
+}
+
 /** What a card shows instead of a spinner when its worker isn't at work (§ 5.1). */
 export type Motion = "spinner" | "◼" | "◆" | "•"
 
@@ -275,6 +326,8 @@ export interface Card {
   readonly steered: boolean
   /** Its worker's open requests, oldest first. */
   readonly requests: ReadonlyArray<ShownRequest>
+  /** Its issue, for its worker view's description and whole ticket; absent until the run reads it. */
+  readonly issue?: TicketText
   /**
    * The memory its worker's processes take, in bytes, as the run last read it: unknownMemory when
    * they can't be found; absent when the reading has none for it.
@@ -816,6 +869,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         latest: latestOf(actions.get(entry.ticket)),
         steered: entry.steered,
         requests: open,
+        ...(entry.issue === undefined ? {} : { issue: ticketText(entry.issue) }),
         ...memoryOf(status.load, entry.ticket),
       })
       resources.push(

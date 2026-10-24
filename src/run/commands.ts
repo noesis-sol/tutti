@@ -31,6 +31,11 @@ export type UiCommand = Data.TaggedEnum<{
    * uuid the view drew: the screen's filings say how it went by it (fileTicket.ts, § 7.5).
    */
   FileTicket: { readonly from: string; readonly text: string; readonly uuid: string }
+  /**
+   * Read the ticket's issue again with bd show, for its worker view's whole ticket (§ 7.5): the notes
+   * added during the run show. The ledger keeps what bd gives on the ticket's entry.
+   */
+  ReadTicket: { readonly ticket: string }
   /** Stop after the current tickets: wind down. */
   Drain: Record<never, never>
   /** Take tickets again. */
@@ -118,6 +123,9 @@ export const resolve = (command: UiCommand, current: Current): Result.Result<Res
     case "FileTicket":
       // Its worker has finished: it names nothing the run has to still have.
       return Result.succeed({ command, ticket: command.from })
+    case "ReadTicket":
+      // A ticket the run no longer has is left out as the ledger keeps the issue.
+      return Result.succeed({ command, ticket: command.ticket })
     case "CloseWorker":
     case "Drain":
     case "Undrain":

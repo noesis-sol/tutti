@@ -446,7 +446,7 @@ const takeUp = (
       // Resumed, Working: told it was interrupted, with this run's facts, as its session starts,
       // once there is a slot for it.
       const start = Effect.gen(function* () {
-        const moved = yield* ledger.transition(id, Cause.Resumed(), { title: issue.title })
+        const moved = yield* ledger.transition(id, Cause.Resumed(), { title: issue.title, issue })
         if (Result.isFailure(moved)) return undefined
         const facts = runFacts({
           id,

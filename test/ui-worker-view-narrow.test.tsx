@@ -129,8 +129,9 @@ describe("the worker view in a narrow pane", () => {
           Reading the scripts.
         ────────────────────────────────────────────────────────────
          > i to write to the worker
-          Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select
-          Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end
+          Esc dashboard · i write · t ticket · Ctrl+X interrupt
+          ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll
+          g/G top/end
         "
       `)
     })
@@ -167,9 +168,10 @@ describe("the worker view in a narrow pane", () => {
       const lines = frame.chars.split("\n").map((line) => line.trimEnd())
       const hintAt = lines.findIndex((line) => line.startsWith("  Esc dashboard"))
       expect(lines[hintAt - 1]).toContain("tutti can't be suspended")
-      expect(lines.slice(hintAt, hintAt + 2)).toEqual([
-        "  Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select",
-        "  Enter expand · ? keys · PgUp/PgDn scroll · g/G top/end",
+      expect(lines.slice(hintAt, hintAt + 3)).toEqual([
+        "  Esc dashboard · i write · t ticket · Ctrl+X interrupt",
+        "  ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll",
+        "  g/G top/end",
       ])
     })
   })

@@ -3,14 +3,15 @@
 // dropped. The end-of-run box's `q` (EndRun) ends the run. Quit without `now` is the quit box's to
 // ask. Steering's commands (SendMessage, Interrupt, Release, HandBackNow) go to steer.ts. Once the
 // run ends, only moving between the views, quitting and filing a finished worker's message as a
-// ticket (FileTicket, fileTicket.ts) act: the others are dropped.
+// ticket (FileTicket, fileTicket.ts) act: the others are dropped. ReadTicket reads a worker view's
+// ticket again with bd show, in a fiber of its own, for the view's whole ticket (§ 7.5).
 //
 // The commands that act on the run act one at a time under `acting`, each counted in `acted`; the
 // run's end is set under it too, once its last look saw every command acted on, so that none acts
 // after the end (a hand-back merged, a worker steered, after the summary).
 import { Effect, Queue, Ref, Result, Semaphore, Stream, SubscriptionRef } from "effect"
 import { Attention } from "../agent/Attention.ts"
-import type { Beads } from "../services/Beads.ts"
+import { Beads, beadsWhy } from "../services/Beads.ts"
 import { resolve, type UiCommand } from "./commands.ts"
 import { hear } from "./drain.ts"
 import { fileTicket } from "./fileTicket.ts"
@@ -51,6 +52,15 @@ export interface ScreenCommands {
   ): Effect.Effect<void>
 }
 
+/** Reads `ticket` again with bd show, onto its ledger entry; what bd can't say is logged only. */
+const readTicket = (ticket: string): Effect.Effect<void, never, Beads | Ledger> =>
+  Effect.gen(function* () {
+    const ledger = yield* Ledger
+    const read = yield* Effect.result((yield* Beads).show(ticket))
+    if (Result.isSuccess(read)) return yield* ledger.readIssue(ticket, read.success)
+    yield* Effect.logDebug(`could not read ${ticket} again: ${beadsWhy(read.failure)}`)
+  })
+
 /** The run's end, and the screen's commands acting on the run until it, in `repo` onto `base`. */
 export const make = (options: {
   readonly repo: string
@@ -75,6 +85,7 @@ export const make = (options: {
             case "CloseWorker":
             case "Quit":
             case "FileTicket":
+            case "ReadTicket":
               return
             case "Answer":
               return yield* attention
@@ -127,6 +138,11 @@ export const make = (options: {
               // bd's, not the run's: in a fiber of its own, after the end too (fileTicket.ts).
               return yield* Effect.asVoid(
                 watch(fileTicket(command, screen.filings).pipe(Effect.provideContext(context))),
+              )
+            case "ReadTicket":
+              // bd's too: the view shows what it has until bd answers, and keeps it if bd can't.
+              return yield* Effect.asVoid(
+                watch(readTicket(command.ticket).pipe(Effect.provideContext(context))),
               )
           }
           yield* acting.withPermits(1)(
