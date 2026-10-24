@@ -12,7 +12,7 @@ import { expect } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Layer, type Scope } from "effect"
 import { TestClock } from "effect/testing"
-import type { Account, AccountError, AccountProbe } from "../src/agent/Account.ts"
+import type { Account, AccountProbeFailed, Initialization } from "../src/agent/Account.ts"
 import type { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Attention, Policy } from "../src/agent/Attention.ts"
 import { AttentionPoll } from "../src/agent/attentionFiles.ts"
@@ -37,7 +37,7 @@ import type { RunLock } from "../src/services/RunLock.ts"
 import type { State, Store } from "../src/services/Store.ts"
 import type { Tty, TtyValue } from "../src/services/Tty.ts"
 import type { Worktrees } from "../src/services/Worktrees.ts"
-import { layer as accountLayer, accountProbe } from "../src/testing/Account.ts"
+import { layer as accountLayer } from "../src/testing/Account.ts"
 import {
   checkCommand,
   layer as hostLayer,
@@ -118,7 +118,8 @@ export interface World {
 export interface Setup {
   /** Laid over the configuration a run with no flags, variables or config files resolves. */
   readonly config?: Partial<AppConfigValue>
-  readonly account?: AccountProbe | AccountError
+  /** What the probe session says of itself, or how it fails to start. */
+  readonly account?: Initialization | AccountProbeFailed
   /** The backlog's issues: `backlog()`'s builder makes them. */
   readonly backlog?: ReadonlyArray<Seed>
   /**
@@ -234,7 +235,7 @@ export const environment = (
     Layer.provideMerge(
       Layer.mergeAll(
         configLayer(config),
-        accountLayer(setup.account ?? accountProbe()),
+        accountLayer(setup.account).pipe(Layer.provide(configLayer(config))),
         backlogLayer(setup.backlog),
         gitLayer(setup.git),
         checksLayer(setup.checks, checkRuns),

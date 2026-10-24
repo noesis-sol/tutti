@@ -12,7 +12,12 @@ import {
   SettingsUnreadable,
 } from "../src/agent/Account.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
-import { type AppConfigValue, defaultSettings, SetupProblem } from "../src/cli/AppConfig.ts"
+import {
+  type AppConfig,
+  type AppConfigValue,
+  defaultSettings,
+  SetupProblem,
+} from "../src/cli/AppConfig.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { retiredSettings } from "../src/project/settings.ts"
 import {
@@ -102,7 +107,7 @@ interface Scenario {
   /** The configuration, or the problems loading it finds. */
   readonly config?: Partial<AppConfigValue> | ReadonlyArray<string>
   readonly beads?: Layer.Layer<Beads>
-  readonly account?: Layer.Layer<Account>
+  readonly account?: Layer.Layer<Account, never, AppConfig>
   /** What to do to the repository before the checks. */
   readonly before?: Effect.Effect<void, unknown, Git | Repository>
   readonly env?: Record<string, string>
@@ -311,7 +316,7 @@ describe("the startup checks", () => {
 
     test("not logged in to Claude", async () => {
       const { repo } = project()
-      const failure = failed(await run(repo, { account: TestAccount.layer(new NotLoggedIn()) }))
+      const failure = failed(await run(repo, { account: TestAccount.layer(TestAccount.loggedOut) }))
       expect(failure.problems).toEqual([
         "Not logged in to Claude: run claude /login, or tutti login",
       ])
@@ -319,10 +324,13 @@ describe("the startup checks", () => {
 
     test("a Claude Code settings file that doesn't parse", async () => {
       const { repo } = project()
-      const unreadable = new SettingsUnreadable({
-        errors: [{ file: "/home/me/.claude/settings.json", path: "", message: "Invalid JSON" }],
-      })
-      const failure = failed(await run(repo, { account: TestAccount.layer(unreadable) }))
+      const errors = [{ file: "/home/me/.claude/settings.json", path: "", message: "Invalid JSON" }]
+      const unreadable = new SettingsUnreadable({ errors })
+      const failure = failed(
+        await run(repo, {
+          account: TestAccount.layer(TestAccount.initialization({ settingsErrors: errors })),
+        }),
+      )
       expect(failure.problems).toEqual([unreadable.message])
     })
 
@@ -412,7 +420,7 @@ describe("the startup checks", () => {
       const failure = failed(
         await run(repo, {
           beads: noDatabase,
-          account: TestAccount.layer(new NotLoggedIn()),
+          account: TestAccount.layer(TestAccount.loggedOut),
         }),
       )
       expect(failure.notSetUp).toBe(true)
@@ -475,7 +483,7 @@ describe("the startup checks", () => {
     test("are warned about beside the problems", async () => {
       const { repo } = project()
       state(repo, JSON.stringify({ workers: [{ ticket: "tut-3" }] }))
-      const failure = failed(await run(repo, { account: TestAccount.layer(new NotLoggedIn()) }))
+      const failure = failed(await run(repo, { account: TestAccount.layer(TestAccount.loggedOut) }))
       expect(failure.warnings).toEqual([orchestraWarning(["tut-3"])])
       expect(report(failure)).toEndWith(
         "\n\nWarning: orchestra left workers on tut-3; finish them with orchestra first",
@@ -566,10 +574,11 @@ describe("the START block", () => {
           ],
           note: null,
         },
-        account: TestAccount.accountProbe({
-          billing: { _tag: "Subscription", keyUnused: true },
-          permissionMode: { requested: "auto", inEffect: "default" },
-        }),
+        account: TestAccount.accountProbe(
+          config,
+          TestAccount.initialization({ permissionMode: "default" }),
+          { ANTHROPIC_API_KEY: "sk-ant-test" },
+        ),
         warnings: [orchestraWarning(["tut-1"])],
       }),
       "0.1.0",
@@ -585,7 +594,13 @@ describe("the START block", () => {
 
   test("says when workers are billed to the API key", () => {
     const lines = block(
-      started({ account: TestAccount.accountProbe({ billing: { _tag: "ApiKey" } }) }),
+      started({
+        account: TestAccount.accountProbe(
+          TestAppConfig.appConfig({ billing: "api" }),
+          TestAccount.initialization(),
+          { ANTHROPIC_API_KEY: "sk-ant-test" },
+        ),
+      }),
       "0.1.0",
     )
     expect(lines).toContain("  billing: API key")

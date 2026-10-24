@@ -19,9 +19,9 @@ import {
   Account,
   type AccountError,
   type AccountProbe,
-  NotLoggedIn,
   UntrustedCheckout,
 } from "../src/agent/Account.ts"
+import type { AppConfig } from "../src/cli/AppConfig.ts"
 import { readInitFlags } from "../src/cli/commands.ts"
 import { readConcurrency } from "../src/init/form.ts"
 import {
@@ -136,7 +136,7 @@ const runInit = (
     readonly flags?: InitFlags
     readonly form?: InitForm | null
     readonly machine?: Machine
-    readonly account?: Layer.Layer<Account>
+    readonly account?: Layer.Layer<Account, never, AppConfig>
     readonly beads?: ReadonlyArray<TestBeads.Seed>
   } = {},
 ) =>
@@ -579,7 +579,7 @@ describe("the login probe", () => {
   test("no login is something missing", async () => {
     const project = newProject()
     const summary = summaryOf(
-      await runInit(project, { account: TestAccount.layer(new NotLoggedIn()) }),
+      await runInit(project, { account: TestAccount.layer(TestAccount.loggedOut) }),
     )
     expect(lines(summary)).toContain(
       "✗ login  Not logged in to Claude: run claude /login, or tutti login",

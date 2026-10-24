@@ -20,7 +20,6 @@ import {
 import { apiKeySet, probeEnv, workerEnv, workerVariables } from "../src/agent/env.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
-import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { testEnv } from "./env.ts"
 import { live } from "./gates.ts"
@@ -440,28 +439,6 @@ describe("the probe", () => {
     )
     const [error] = failures(exit)
     expect(error?.message).toBe("The account probe couldn't start Claude Code: no binary")
-  })
-})
-
-describe("the test layer", () => {
-  const run = (layer: Layer.Layer<Account>) =>
-    Effect.runPromise(
-      Effect.exit(
-        Effect.gen(function* () {
-          return yield* (yield* Account).probe
-        }).pipe(Effect.provide(layer)),
-      ),
-    )
-
-  test("gives a literal account", async () => {
-    expect(success(await run(TestAccount.layer()))).toEqual(TestAccount.accountProbe())
-    const keyed = TestAccount.accountProbe({ billing: { _tag: "ApiKey" } })
-    expect(success(await run(TestAccount.layer(keyed))).billing).toEqual({ _tag: "ApiKey" })
-  })
-
-  test("fails with an error it is given", async () => {
-    const [error] = failures(await run(TestAccount.layer(new NotLoggedIn())))
-    expect(error).toBeInstanceOf(NotLoggedIn)
   })
 })
 

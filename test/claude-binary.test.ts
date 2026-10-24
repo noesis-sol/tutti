@@ -354,7 +354,7 @@ describe("the startup checks", () => {
         return Account.of({
           probe:
             config.claude === path
-              ? Effect.succeed(TestAccount.accountProbe())
+              ? Effect.succeed(TestAccount.accountProbe(config))
               : Effect.fail(new NotLoggedIn()),
         })
       }),
@@ -378,7 +378,7 @@ describe("the startup checks", () => {
     const exit = await run(
       repo,
       { path: "claude", warnings: [], problems: ["There is no claude on PATH"] },
-      TestAccount.layer(new NotLoggedIn()),
+      TestAccount.layer(TestAccount.loggedOut),
     )
     if (Exit.isSuccess(exit)) throw new Error("the checks passed")
     const failure = exit.cause.reasons.find((reason) => reason._tag === "Fail")

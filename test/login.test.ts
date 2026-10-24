@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
 import { Console, Effect, Exit, Layer } from "effect"
-import { Account, NotLoggedIn, SettingsUnreadable } from "../src/agent/Account.ts"
+import { Account, SettingsUnreadable } from "../src/agent/Account.ts"
 import type { Claude } from "../src/agent/claudeBinary.ts"
 import { AppConfig } from "../src/cli/AppConfig.ts"
 import {
@@ -206,15 +206,14 @@ describe("login", () => {
   })
 
   test("fails with the probe's problems when it finds no login after all", () => {
-    const { exit } = run({ probe: new NotLoggedIn() })
+    const { exit } = run({ probe: TestAccount.loggedOut })
     expect(problems(exit)).toEqual(["Not logged in to Claude: run claude /login, or tutti login"])
   })
 
   test("fails with the settings files the probe found Claude Code skips", () => {
-    const error = new SettingsUnreadable({
-      errors: [{ file: ".claude/settings.json", path: "", message: "Invalid JSON" }],
-    })
-    const { exit } = run({ probe: error })
+    const errors = [{ file: ".claude/settings.json", path: "", message: "Invalid JSON" }]
+    const error = new SettingsUnreadable({ errors })
+    const { exit } = run({ probe: TestAccount.initialization({ settingsErrors: errors }) })
     expect(problems(exit)).toEqual([error.message])
   })
 })

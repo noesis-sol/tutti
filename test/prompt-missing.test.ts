@@ -7,7 +7,6 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Cause, ConfigProvider, Effect, Exit } from "effect"
-import { NotLoggedIn } from "../src/agent/Account.ts"
 import type { AppConfigValue, SetupProblem } from "../src/cli/AppConfig.ts"
 import { builtInWorkerPrompt, loadWorkerPrompt, type WorkerPrompt } from "../src/project/prompt.ts"
 import { check, report, type Started, type StartupFailed } from "../src/run/startup.ts"
@@ -92,7 +91,7 @@ describe("loadWorkerPrompt", () => {
 describe("the startup checks", () => {
   test("list the missing worker prompt with the other problems", async () => {
     const { repo } = project()
-    const failed = failure(await run(repo, {}, TestAccount.layer(new NotLoggedIn())))
+    const failed = failure(await run(repo, {}, TestAccount.layer(TestAccount.loggedOut)))
     expect(failed.notSetUp).toBe(false)
     expect(failed.problems).toEqual([
       "Not logged in to Claude: run claude /login, or tutti login",

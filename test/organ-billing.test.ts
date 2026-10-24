@@ -26,8 +26,8 @@ const project = () => {
   return repo
 }
 
-/** The startup checks in a project set up, with `env` as tutti's environment and `billing`. */
-const run = (env: Record<string, string>, billing: Billing) => {
+/** The startup checks in a project set up, with `env` as tutti's environment, the probe's too. */
+const run = (env: Record<string, string>) => {
   const repo = project()
   return Effect.runPromise(
     Effect.exit(
@@ -37,7 +37,7 @@ const run = (env: Record<string, string>, billing: Billing) => {
         config: (top) => Effect.succeed(TestAppConfig.appConfig({}, top)),
         beads: () => TestBeads.layer(),
         claude: (given) => Effect.succeed({ path: given, warnings: [], problems: [] }),
-        account: TestAccount.layer(TestAccount.accountProbe({ billing })),
+        account: TestAccount.layer(TestAccount.initialization(), env),
       }),
     ).pipe(
       Effect.provide(TestGit.layer({ dir: repo })),
@@ -102,7 +102,7 @@ describe("the billing line when organs bill ANTHROPIC_API_KEY", () => {
 
 describe("the startup checks of organs' provider", () => {
   test("TUTTI_ORGAN_PROVIDER=anthropic with no key can't start", async () => {
-    const failure = failed(await run({ TUTTI_ORGAN_PROVIDER: "anthropic" }, subscription))
+    const failure = failed(await run({ TUTTI_ORGAN_PROVIDER: "anthropic" }))
     expect(failure.problems).toEqual([
       "TUTTI_ORGAN_PROVIDER=anthropic needs ANTHROPIC_API_KEY, the API key organs are billed to",
     ])
@@ -110,16 +110,14 @@ describe("the startup checks of organs' provider", () => {
   })
 
   test("TUTTI_ORGAN_PROVIDER set to another provider can't start", async () => {
-    const failure = failed(await run({ TUTTI_ORGAN_PROVIDER: "openai" }, subscription))
+    const failure = failed(await run({ TUTTI_ORGAN_PROVIDER: "openai" }))
     expect(failure.problems).toEqual([
       'TUTTI_ORGAN_PROVIDER is "openai"; it must be agent-sdk or anthropic',
     ])
   })
 
   test("TUTTI_ORGAN_PROVIDER=anthropic with the key: START says organs bill it", async () => {
-    const started = passed(
-      await run({ TUTTI_ORGAN_PROVIDER: "anthropic", ANTHROPIC_API_KEY: key }, subscription),
-    )
+    const started = passed(await run({ TUTTI_ORGAN_PROVIDER: "anthropic", ANTHROPIC_API_KEY: key }))
     expect(started.organs).toBe("Anthropic")
     expect(billingOf(started)).toBe(
       "  billing: subscription for workers, ANTHROPIC_API_KEY for organs (TUTTI_ORGAN_PROVIDER=anthropic)",
@@ -127,7 +125,7 @@ describe("the startup checks of organs' provider", () => {
   })
 
   test("unset, organs use the Agent SDK and START says the key isn't used", async () => {
-    const started = passed(await run({ ANTHROPIC_API_KEY: key }, subscription))
+    const started = passed(await run({ ANTHROPIC_API_KEY: key }))
     expect(started.organs).toBe("AgentSdk")
     expect(billingOf(started)).toBe(
       "  billing: subscription (ANTHROPIC_API_KEY is set but not used; --billing api uses it)",
