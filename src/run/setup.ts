@@ -320,15 +320,15 @@ export const setUp = (
     }
     yield* (yield* Log).write(detail`${ticket.id}: ${what}; running '${command}' before the check`)
     const checks = yield* Checks
-    const output = join(ticket.worktree, runFolder, setupLogName)
-    const ran = yield* Effect.scoped(
+    const { ran, output } = yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, setupLogName, "the setup's")
-        return yield* recorded(
+        const ran = yield* recorded(
           "setup",
           ticket.id,
           checks.setup({ cwd: ticket.worktree, ...to, before: "fast", command }),
         )
+        return { ran, output: to.outputFile }
       }),
     )
     if (Result.isFailure(ran)) {
@@ -433,15 +433,15 @@ export const setUpWorktree = (
     yield* (yield* Log).write(detail`${id}: ${what} before its worker starts`)
     yield* writeMark(id, path, "")
     const checks = yield* Checks
-    const output = join(path, runFolder, setupLogName)
-    const ran = yield* Effect.scoped(
+    const { ran, output } = yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo({ id, worktree: path }, setupLogName, "the setup's")
-        return yield* recorded(
+        const ran = yield* recorded(
           "setup",
           id,
           checks.setup({ cwd: path, ...to, before: "fast", command }),
         )
+        return { ran, output: to.outputFile }
       }),
     )
     if (Result.isFailure(ran)) {

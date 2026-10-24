@@ -281,7 +281,6 @@ export const checkOnce = (
     const checks = yield* Checks
     const log = yield* Log
     const events = yield* EventStream
-    const output = join(ticket.worktree, runFolder, checkLogName)
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, checkLogName, "the check's")
@@ -292,7 +291,7 @@ export const checkOnce = (
           how.train === true ? { train: true } : {},
         )
         if (ran._tag === "Failure") {
-          return { _tag: "Failed", error: ran.failure, output } satisfies Checked
+          return { _tag: "Failed", error: ran.failure, output: to.outputFile } satisfies Checked
         }
         const result = ran.success
         if (result._tag === "NoCheckCommand") return { _tag: "Unchecked" } satisfies Checked
