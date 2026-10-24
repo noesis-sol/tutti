@@ -140,9 +140,12 @@ export const marks: Record<StepKind, string> = {
   caution: "!",
 }
 
-/** A step as a plain line: its mark, its label, and its detail. */
+/**
+ * A step as a plain line: its mark, its label, and its detail, sanitised (§ 7.10), as a detail may
+ * carry bd's output or a committed settings file's key.
+ */
 export const stepLine = (each: Step): string =>
-  `${marks[each.kind]} ${each.label}${each.detail === "" ? "" : `  ${each.detail}`}`
+  `${marks[each.kind]} ${sanitizeLine(each.label)}${each.detail === "" ? "" : `  ${sanitizeLine(each.detail)}`}`
 
 /** Lists items as a sentence does: "a", "a and b", "a, b and c". */
 export const joinAnd = (items: ReadonlyArray<string>): string =>

@@ -53,6 +53,7 @@ import * as Tty from "../services/Tty.ts"
 import { initFormKind, openInitForm } from "../ui/InitForm.tsx"
 import { streamInput } from "../ui/plain/forms.ts"
 import { open as openRenderer } from "../ui/renderer.ts"
+import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import {
   type Appearance,
   appearanceOf,
@@ -578,10 +579,17 @@ export const readInitFlags = (
 export const initMouse = (flags: InitFlags, mouse: Option.Option<boolean>): boolean =>
   flags.noMouse === undefined ? Option.getOrElse(mouse, () => true) : !flags.noMouse
 
+/**
+ * `text` for a terminal, sanitised (§ 7.10) as it may carry bd's output or a committed settings
+ * file's key: each of its lines kept, as a refusal may list problems a line each.
+ */
+export const stderrText = (text: string): string =>
+  sanitize(text).split("\n").map(sanitizeLine).join("\n")
+
 /** init stopped, having said why: it exits with status 2 and the project as it was. */
 const initStopped = (lines: ReadonlyArray<string>) =>
   Effect.andThen(
-    Effect.forEach(lines, (line) => Console.error(line)),
+    Effect.forEach(lines, (line) => Console.error(stderrText(line))),
     Effect.sync(() => {
       process.exitCode = exitCodes.setup
     }),
@@ -603,7 +611,10 @@ export const stoppedEnding = (
   scout: ReadonlyArray<Step> = [],
 ) => ({
   stdout: printedSteps([...scout, ...stopped.steps], theme, width),
-  stderr: theme === null ? `tutti init: ${stopped.message}` : initStoppedLine(theme, stopped.words),
+  stderr:
+    theme === null
+      ? `tutti init: ${stderrText(stopped.message)}`
+      : initStoppedLine(theme, stopped.words),
   code: exitCodes.interrupted,
 })
 
@@ -619,7 +630,7 @@ export const failedEnding = (
   scout: ReadonlyArray<Step> = [],
 ) => ({
   stdout: printedSteps([...scout, ...failed.steps], theme, width),
-  stderr: `tutti init: ${failed.message}`,
+  stderr: `tutti init: ${stderrText(failed.message)}`,
   code: exitCodes.setup,
 })
 
