@@ -6,17 +6,14 @@
 // inbox is recorded there as it is pushed; its hook callbacks are folded in too, and its stderr
 // goes to the transcript's stderr.log (workerOptions).
 //
-// Each session's first system/init is checked (§ 4.1): the permission mode in effect, logged once
-// when it isn't the one asked for; the MCP servers, where any the worker wasn't given ends it as a
-// setup problem (§ 4.6); and the API key source, where a key billed beside the subscription login
-// ends it likewise (§ 4.13). A worker ended so is Gone with `setup`, which stops the run (work.ts).
-// Those fields are decoded with a Schema, not trusted to the SDK's types: a first system/init from
-// a CLI of another version without readable MCP servers ends the worker as a setup problem
-// (checkInit), since tutti can't tell what it got; one without the permission mode or the API key
-// source skips that check, logged once.
+// Each session's first system/init is checked (§ 4.1, sessionChecks.ts's `first`): the permission
+// mode in effect, the MCP servers (§ 4.6) and the API key source (§ 4.13). A worker ended so is
+// Gone with `setup`, which stops the run (work.ts). A first system/init from a CLI of another
+// version without readable MCP servers ends the worker as a setup problem (checkInit), since tutti
+// can't tell what it got.
 //
 // system/init comes only as the first turn starts, its model request already sent, so the same
-// checks run first in the start, before the session is sent anything (checkBefore): the API key
+// checks run first in the start, before the session is sent anything (`before`): the API key
 // source of its initialize's account, and the MCP servers its mcpServerStatus() lists (checkStatus).
 // A problem there ends the worker Gone with `setup`, as system/init's check does, and the session is
 // sent nothing: the start or resume itself doesn't fail, so the run settles it as a setup problem
@@ -74,18 +71,16 @@ import {
   Option,
   Queue,
   Ref,
-  Result,
-  Schema,
   Scope,
   Stream,
 } from "effect"
-import { AppConfig, type SetupProblem } from "../cli/AppConfig.ts"
+import { AppConfig } from "../cli/AppConfig.ts"
 import type { WorkerPrompt } from "../project/prompt.ts"
 import { readmeName } from "../project/requires.ts"
 import { checkCommands } from "../project/settings.ts"
-import { detail, Log, line } from "../run/log.ts"
+import { detail, Log } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
-import { type AccountProbe, type Billing, permissionModeLine } from "./Account.ts"
+import type { AccountProbe } from "./Account.ts"
 import {
   AgentGone,
   AgentHost,
@@ -103,7 +98,7 @@ import type { Attention } from "./Attention.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { coreShare, workerEnv } from "./env.ts"
 import { serverName } from "./interviewTools.ts"
-import { type ChosenServers, checkInit, checkStatus, inProcess, noServers, withOwn } from "./mcp.ts"
+import { type ChosenServers, inProcess, noServers, withOwn } from "./mcp.ts"
 import {
   changingNotes,
   interviewOptions,
@@ -112,6 +107,17 @@ import {
   workerOptions,
 } from "./options.ts"
 import { requiresServerName } from "./requiresTools.ts"
+import {
+  cancelQueuedCapability,
+  capabilitiesOf,
+  isLaunchFailure,
+  launchFailed,
+  makeChecks,
+  setupLine,
+  skippedLine,
+  startFailure,
+  startupFailureOf,
+} from "./sessionChecks.ts"
 import {
   type SessionProcess,
   stderrQuoted,
@@ -151,9 +157,6 @@ export const interruptLimit: Duration.Duration = Duration.seconds(10)
 export const unansweredWhy = (limit: Duration.Duration): string =>
   `it didn't answer an interrupt within ${Duration.format(limit)}`
 
-/** The capability system/init advertises when an interrupt can cancel the queued messages. */
-export const cancelQueuedCapability = "interrupt_cancel_queued_v1"
-
 /**
  * The Query's control requests its runtime has and its types lack (SDK 0.3.301, § 4.8):
  * `interrupt({ cancelQueued })`, and `cancelAsyncMessage(uuid)`, the `cancel_async_message` control
@@ -169,38 +172,8 @@ export interface QueuedControls {
 /** `query`'s controls, through the local type. */
 export const queuedControls = (query: Query): QueuedControls => query as unknown as QueuedControls
 
-/** The API key source system/init gives a session billed to the subscription login. */
-const noKey = "none"
-
-// The fields checkFirst reads of a session's first system/init beside its MCP servers (checkInit),
-// each decoded on its own, so that one missing skips only its own check.
-const decodePermissionMode = Schema.decodeUnknownResult(
-  Schema.Struct({ permissionMode: Schema.String }),
-)
-const decodeApiKeySource = Schema.decodeUnknownResult(
-  Schema.Struct({ apiKeySource: Schema.String }),
-)
-// The API key source of a session's initialize answer, which checkBefore reads.
-const decodeAccountKey = Schema.decodeUnknownResult(
-  Schema.Struct({ account: Schema.Struct({ apiKeySource: Schema.String }) }),
-)
-
 /** How long a session's mcpServerStatus() has to be answered before its start goes on unchecked. */
 export const statusLimit: Duration.Duration = Duration.seconds(10)
-
-/** The problems a check of the MCP servers failed with, as one. */
-const problemsIn = (cause: Cause.Cause<SetupProblem>): string =>
-  cause.reasons
-    .flatMap((reason) => (reason._tag === "Fail" ? reason.error.problems : []))
-    .join("; ")
-
-/** The log line when the first system/init lacks `field`, so tutti doesn't check `what`. */
-export const uncheckedLine = (field: string, what: string): string =>
-  `system/init gives no ${field} tutti can read, so it doesn't check ${what}`
-
-/** The problem when a worker would bill an API key while billing is the subscription login. */
-export const apiKeyProblem = (source: string): string =>
-  `workers would bill an API key (${source}), not the subscription login: Claude Code finds it in its own settings or login; remove it there, or run with --billing api`
 
 /** Why a worker is gone when its stream ended without tutti closing it. */
 export const endedWhy = "its session ended"
@@ -323,12 +296,6 @@ export const push = (
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
 
-/** The capabilities listed in `value`'s `capabilities`, when it has them. */
-const capabilitiesOf = (value: unknown): ReadonlyArray<string> => {
-  const listed = (value as { capabilities?: unknown } | undefined)?.capabilities
-  return Array.isArray(listed) ? listed.filter((c) => typeof c === "string") : []
-}
-
 /** What a failure says: its first error's message, or the cause's. */
 const causeMessage = (cause: Cause.Cause<unknown>): string => {
   for (const reason of cause.reasons) {
@@ -342,22 +309,6 @@ const causeMessage = (cause: Cause.Cause<unknown>): string => {
 const startWhy = (cause: Cause.Cause<unknown>): string => {
   const failed = cause.reasons.find((reason) => reason._tag === "Fail")?.error
   return failed instanceof AgentStartFailed ? failed.reason : causeMessage(cause)
-}
-
-/** Why a worker is gone, and its start failed, when Claude Code couldn't be spawned (§ 4.8). */
-const launchFailed = "Claude Code couldn't be launched"
-
-// The SDK reports any spawn that fails as a libc mismatch (docs/spikes/02-sdk-lifecycle.md § 3).
-/** Whether `message`, from the SDK, is a spawn that failed. */
-const isLaunchFailure = (message: string): boolean => message.includes("failed to launch")
-
-/**
- * The reason a session didn't start, from its startup_failure_reason, if it sent one, and what
- * failed its initialize.
- */
-const startFailure = (refused: string | undefined, message: string, stderr: string): string => {
-  if (refused !== undefined) return `Claude Code refused to start: ${refused}`
-  return withStderr(isLaunchFailure(message) ? launchFailed : message, stderr)
 }
 
 /** Why a worker is gone when its stream failed without tutti closing it. */
@@ -397,7 +348,6 @@ export const layer = (
           ...(options.env === undefined ? {} : { env: options.env }),
         }),
       )
-      const requestedMode = config.settings.workers.permission_mode
       // Whether workers keep Skill (§ 4.1), decided once, from the main checkout, as the run begins.
       const skills = yield* projectHasSkills(config.repo)
       // Whether workers that change the requires list write the README's section again (§ 4.11).
@@ -408,10 +358,11 @@ export const layer = (
       const requires = yield* Ref.make<ReadonlyArray<string>>(
         config.settings.requires.map((r) => r.name),
       )
-      // Whether a session's permission mode in effect, not the one asked for, has been logged.
-      const modeSaid = yield* Ref.make(false)
-      // The fields of the first system/init whose check was skipped, logged once each (unchecked).
-      const uncheckedFields = yield* Ref.make<ReadonlySet<string>>(new Set())
+      const checks = yield* makeChecks({
+        log,
+        permissionMode: config.settings.workers.permission_mode,
+        billing: options.account.billing,
+      })
       const sessions = new Map<string, Lifecycle>()
       // The changing notes (changingNotes) each ticket's worker was last given, as its session
       // started or in its last resume's message: a resume with others tells it them (resumedNotes).
@@ -481,71 +432,10 @@ export const layer = (
        */
       const setupProblem = (session: Live, problem: string) =>
         Effect.gen(function* () {
-          yield* log.write(detail`${session.ticket}: ${problem}`)
+          yield* log.write(setupLine(session.ticket, problem))
           yield* session.process.kill
           session.abort.abort()
           yield* gone(session, problem, true)
-        })
-
-      /** Logs, once in the run, that the first system/init lacks `field`, so `what` isn't checked. */
-      const unchecked = (field: string, what: string) =>
-        Effect.gen(function* () {
-          const first = yield* Ref.modify(uncheckedFields, (fields) =>
-            fields.has(field) ? [false, fields] : [true, new Set([...fields, field])],
-          )
-          if (first) yield* log.write(line`${uncheckedLine(field, what)}`)
-        })
-
-      /** Checks the session's first system/init (§ 4.1): the setup problem it shows, if any. */
-      const checkFirst = (session: Live, init: SDKSystemMessage) =>
-        Effect.gen(function* () {
-          const mode = decodePermissionMode(init)
-          if (Result.isFailure(mode)) {
-            yield* unchecked("permissionMode", `the permission mode in effect is ${requestedMode}`)
-          } else if (mode.success.permissionMode !== requestedMode) {
-            const inEffect = mode.success.permissionMode
-            if (!(yield* Ref.getAndSet(modeSaid, true))) {
-              yield* log.write(line`${permissionModeLine({ requested: requestedMode, inEffect })}`)
-            }
-          }
-          const mcp = yield* Effect.exit(checkInit(init, session.servers))
-          if (Exit.isFailure(mcp)) return problemsIn(mcp.cause)
-          if (options.account.billing._tag !== "Subscription") return undefined
-          const key = decodeApiKeySource(init)
-          if (Result.isFailure(key)) {
-            yield* unchecked(
-              "apiKeySource",
-              "that workers bill the subscription login, not an API key",
-            )
-            return undefined
-          }
-          if (billedKey(options.account.billing, key.success.apiKeySource)) {
-            return apiKeyProblem(key.success.apiKeySource)
-          }
-          return undefined
-        })
-
-      /**
-       * Checks a session before it is sent anything, from its initialize answer, `initialized`, and
-       * its mcpServerStatus(): the setup problem they show, if any. What either doesn't say, or says
-       * in a shape tutti can't read, is left to the first system/init's check (checkFirst).
-       */
-      const checkBefore = (session: Live, initialized: unknown) =>
-        Effect.gen(function* () {
-          const status = yield* Effect.tryPromise(() => session.query.mcpServerStatus()).pipe(
-            Effect.timeout(statusLimit),
-            Effect.option,
-          )
-          if (Option.isSome(status)) {
-            const mcp = yield* Effect.exit(checkStatus(status.value, session.servers))
-            if (Exit.isFailure(mcp)) return problemsIn(mcp.cause)
-          }
-          const key = decodeAccountKey(initialized)
-          if (Result.isSuccess(key)) {
-            const source = key.success.account.apiKeySource
-            if (billedKey(options.account.billing, source)) return apiKeyProblem(source)
-          }
-          return undefined
         })
 
       /** Whether `session` is still its ticket's, Starting. */
@@ -557,7 +447,7 @@ export const layer = (
       /** Its first system/init checked, a Starting session is Open, or ends over a setup problem. */
       const born = (session: Live, init: SDKSystemMessage) =>
         Effect.gen(function* () {
-          const problem = yield* checkFirst(session, init)
+          const problem = yield* checks.first(init, session.servers)
           if (problem !== undefined) return yield* setupProblem(session, problem)
           yield* Effect.sync(() => {
             if (starting(session)) sessions.set(session.ticket, Lifecycle.Open({ session }))
@@ -570,24 +460,13 @@ export const layer = (
           if (message.type === "system" && message.subtype === "init") {
             for (const capability of capabilitiesOf(message)) session.capabilities.add(capability)
             if (starting(session)) yield* born(session, message)
-          } else if (
-            message.type === "result" &&
-            message.subtype !== "success" &&
-            message.startup_failure_reason !== undefined
-          ) {
-            yield* Deferred.succeed(session.startupFailure, message.startup_failure_reason)
-            yield* gone(session, message.startup_failure_reason)
+          } else {
+            const refused = startupFailureOf(message)
+            if (refused === undefined) return
+            yield* Deferred.succeed(session.startupFailure, refused)
+            yield* gone(session, refused)
           }
         })
-
-      /**
-       * A message `onMessage` died on, a CLI of another version sending a shape tutti didn't
-       * expect: written to the log and skipped, so the session reads on.
-       */
-      const skipped = (session: Live, defect: unknown) =>
-        log.write(
-          detail`${session.ticket}: a message tutti couldn't take in, skipped: ${messageOf(defect)}`,
-        )
 
       /**
        * Reads the session's stream to its end, a message that dies skipped; an end tutti didn't ask
@@ -597,7 +476,7 @@ export const layer = (
         Stream.fromAsyncIterable(session.query, (cause) => cause).pipe(
           Stream.runForEach((message) =>
             onMessage(session, message).pipe(
-              Effect.catchDefect((defect) => skipped(session, defect)),
+              Effect.catchDefect((defect) => log.write(skippedLine(session.ticket, defect))),
             ),
           ),
           Effect.exit,
@@ -820,7 +699,12 @@ export const layer = (
             for (const capability of capabilitiesOf(initialized.value)) {
               opened.capabilities.add(capability)
             }
-            return { opened, problem: yield* checkBefore(opened, initialized.value), notes }
+            const status = yield* Effect.tryPromise(() => opened.query.mcpServerStatus()).pipe(
+              Effect.timeout(statusLimit),
+              Effect.option,
+            )
+            const problem = yield* checks.before(initialized.value, status, servers)
+            return { opened, problem, notes }
           }
           // A startup failure's result comes just before the stream ends: the reader sees it.
           yield* Fiber.await(reader).pipe(Effect.timeout(closeLimit), Effect.ignore)
@@ -992,7 +876,3 @@ export const layer = (
       })
     }),
   )
-
-/** Whether a session with `source` as its API key source bills a key though `billing` says not. */
-export const billedKey = (billing: Billing, source: string | undefined): boolean =>
-  billing._tag === "Subscription" && source !== undefined && source !== noKey

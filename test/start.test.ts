@@ -364,7 +364,7 @@ describe("start", () => {
     expect(issue?.notes).toContain("tutti: t-1's worker didn't start")
     const path = join(root, "t-1")
     expectLog(ran, [
-      `  START_FAILED: t-1's worker didn't start: Claude Code exited (cwd_unavailable) -> deferred; worktree ${path} left as it is`,
+      `  START_FAILED: t-1's worker didn't start: Claude Code refused to start: cwd_unavailable -> deferred; worktree ${path} left as it is`,
     ])
     expectEvents(ran, ["phase", "deferred"])
     expect(ran.events.find((each) => each.kind === "deferred")).toMatchObject({

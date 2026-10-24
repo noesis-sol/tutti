@@ -15,6 +15,7 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import type { Attention } from "../src/agent/Attention.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
+import { cancelQueuedCapability } from "../src/agent/sessionChecks.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import type { WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
@@ -25,6 +26,7 @@ import {
   coalescedTurn,
   layer as hostLayer,
   init,
+  initialize,
   interruptedResult,
   type Options,
   Recording,
@@ -155,9 +157,9 @@ describe("the scripted AgentHost: an interrupt without cancelQueued", () => {
   })
 
   test("with cancelQueued, the receipt cancels them and no cancel_async_message is sent", async () => {
-    const done = await scripted({ "t-1": [interrupted] }, queueTwoAndInterrupt("Failed"), {
-      cancelQueued: true,
-    })
+    // The CLI lists the capability in its initialize answer.
+    const listing = [initialize({ capabilities: [cancelQueuedCapability] }), ...interrupted]
+    const done = await scripted({ "t-1": [listing] }, queueTwoAndInterrupt("Failed"))
     expect(done.receipt).toEqual({ stillQueued: [], cancelled: [done.b, done.c] })
     expect(done.sent.map(([tag]) => tag)).not.toContain("CancelAsync")
     expect(done.results).toEqual([[expect.any(String)]])

@@ -9,14 +9,19 @@
 // CLI starts by itself.
 //
 // Every message is recorded in Transcripts and folded into the worker's state as the live layer
-// does it (makeWorkers), and each send is recorded there as it is pushed. The layer speaks for the
+// does it (makeWorkers), and each send is recorded there as it is pushed. What the live layer reads
+// of a session beside that, it reads here with the same code (sessionChecks.ts): a scripted
+// initialize answer and the first system/init are checked as a run checks them, a setup problem
+// ending the worker Gone with `setup` and logged; the capabilities they list are the CLI's; a
+// result with a startup_failure_reason ends the worker; and a message tutti dies taking in is
+// logged and skipped. Hooks are called through the callbacks a worker gets (activityHooks). The layer speaks for the
 // CLI where a script can't know the uuids: each send gets its command_lifecycle (`queued` when
 // pushed, `started` when a Wait takes it, `completed` after the result of the turn that took it), a
 // result lists in `user_message_uuids` the sends taken since the last result unless the script
 // lists them itself, and an `idle` is held back while a send waits untaken, as the CLI sends `idle`
 // only after the last queued turn. An interrupt cancels the sends still queued (§ 4.8): in its
-// receipt, as `interrupt({ cancelQueued: true })` does, or one by one with `cancel_async_message`,
-// as on a CLI without `interrupt_cancel_queued_v1`. Everything the layer is sent is recorded, in
+// receipt, as `interrupt({ cancelQueued: true })` does where the session's initialize answer or a
+// system/init lists `interrupt_cancel_queued_v1`, else one by one with `cancel_async_message`. Everything the layer is sent is recorded, in
 // order: starts, resumes, messages as the SDK would get them (client_composed or origin human),
 // interrupts and their receipts, cancel_async_message requests and their answers, the answers to
 // permission requests and elicitations, closes and ends. Recording reads them back.
@@ -41,6 +46,7 @@ import {
   Ref,
   Semaphore,
 } from "effect"
+import type { Billing, PermissionModeInEffect } from "../agent/Account.ts"
 import {
   AgentGone,
   AgentHost,
@@ -53,14 +59,27 @@ import {
   type WorkerEntry,
 } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
+import { activityHooks, type Hooks } from "../agent/hooks.ts"
+import { serverName } from "../agent/interviewTools.ts"
+import { type ChosenServers, inProcess, noServers } from "../agent/mcp.ts"
+import {
+  cancelQueuedCapability,
+  capabilitiesOf,
+  makeChecks,
+  setupLine,
+  skippedLine,
+  startFailure,
+  startupFailureOf,
+} from "../agent/sessionChecks.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import { WorkerEvent } from "../agent/WorkerState.ts"
+import { Log } from "../run/log.ts"
 
 /** A step of a scripted session. */
 export type Step = Data.TaggedEnum<{
   /** The session sends `message`; its `session_id` is the session's. */
   Emit: { readonly message: SDKMessage }
-  /** An in-process hook callback is called with `input`. */
+  /** The worker's in-process hook callbacks for `input`'s event, and its tool's, are called with it. */
   Hook: { readonly input: HookInput }
   /** The session's canUseTool is called, through Attention; the step waits for the answer. */
   CanUseTool: {
@@ -94,8 +113,19 @@ export type Step = Data.TaggedEnum<{
    * problem its first system/init showed, as the live layer's check does (§ 4.1).
    */
   Gone: { readonly why: string; readonly setup?: true }
-  /** As the first step: the session doesn't start, and start or resume fails. */
+  /**
+   * As the first step: the session doesn't start, and start or resume fails, `reason` what failed
+   * its initialize; worded as the live layer words it (startFailure), as Claude Code refusing to
+   * start when it sent a `startupFailureReason`.
+   */
   FailStart: { readonly reason: string; readonly startupFailureReason?: string }
+  /**
+   * As the first step: the session's initialize answer, `answer`, and its mcpServerStatus()
+   * answer, `status`, when it gave one, checked before it is sent anything as the live layer
+   * checks them (§ 4.1). The capabilities `answer` lists are the CLI's; a setup problem they show
+   * stops the session as StopAtStart does.
+   */
+  Initialize: { readonly answer: unknown; readonly status?: unknown }
   /**
    * As the first step: a setup problem the live layer finds as the session starts, before its first
    * turn (§ 4.1): start or resume succeeds, sends nothing, and the worker is Gone with `setup`.
@@ -161,6 +191,14 @@ export class Recording extends Context.Service<
 interface Running {
   readonly sessionId: string
   readonly entry: WorkerEntry
+  /** The MCP servers it was given, which its first system/init is checked against. */
+  readonly servers: ChosenServers
+  /** Its worker's hook callbacks, made as the live layer makes them (activityHooks). */
+  readonly hooks: Hooks
+  /** The CLI's capabilities, from its initialize answer and each system/init. */
+  readonly capabilities: Set<string>
+  /** Whether its first system/init has come, and been checked. */
+  initialized: boolean
   readonly inbox: Queue.Queue<SDKUserMessage>
   /** A message taken from the inbox and left for a later turn: the next to be taken. */
   readonly putBack: Array<SDKUserMessage>
@@ -187,15 +225,15 @@ const uuidOf = (n: number): SDKUserMessage["uuid"] & string =>
 export interface Options {
   /** The project's check commands: tool calls running them are `testing`. */
   readonly checks?: ReadonlyArray<string>
+  /** The MCP servers workers get, which their first system/init is checked against: none. */
+  readonly servers?: ChosenServers
+  /** The permission mode workers ask for, which system/init's is checked against: auto. */
+  readonly permissionMode?: PermissionModeInEffect["requested"]
+  /** How workers are billed, which their API key source is checked against: the subscription. */
+  readonly billing?: Billing
   /**
-   * Whether an interrupt cancels the queued messages, as `interrupt({ cancelQueued: true })` does
-   * where the CLI advertises `interrupt_cancel_queued_v1` (§ 4.8): the receipt lists them under
-   * `cancelled`, not `still_queued`, and they never run. False by default: the host cancels each
-   * one with `cancel_async_message` instead, answered as `cancelAsync` says.
-   */
-  readonly cancelQueued?: boolean
-  /**
-   * How the CLI answers `cancel_async_message`: by default it drops the message (`cancelled:
+   * How the CLI answers `cancel_async_message`, which an interrupt sends for each message still
+   * queued where the session's CLI doesn't list `interrupt_cancel_queued_v1` (§ 4.8): by default it drops the message (`cancelled:
    * true`), which never runs; "refuse" fails the request, and "notQueued" answers `cancelled:
    * false`, as for a message its turn has already taken. A message not dropped stays queued and runs.
    */
@@ -216,11 +254,18 @@ export interface Options {
 export const layer = (
   scripts: Readonly<Record<string, Script>>,
   options: Options = {},
-): Layer.Layer<AgentHost | Recording, never, Attention | Transcripts> =>
+): Layer.Layer<AgentHost | Recording, never, Attention | Transcripts | Log> =>
   Layer.effectContext(
     Effect.gen(function* () {
       const attention = yield* Attention
+      const log = yield* Log
       const workers = yield* makeWorkers(options.checks)
+      const checks = yield* makeChecks({
+        log,
+        permissionMode: options.permissionMode ?? "auto",
+        billing: options.billing ?? { _tag: "Subscription", keyUnused: false },
+      })
+      const servers = options.servers ?? noServers
       const scope = yield* Effect.scope
       const left = new Map(Object.entries(scripts).map(([ticket, script]) => [ticket, [...script]]))
       const running = new Map<string, Running>()
@@ -248,6 +293,10 @@ export const layer = (
           )
         }).pipe(one.withPermit)
 
+      // The worker ends over a setup problem, logged as the live layer logs it.
+      const setupProblem = (ticket: string, session: Running, problem: string) =>
+        Effect.andThen(log.write(setupLine(ticket, problem)), gone(ticket, session, problem, true))
+
       const emitIn = (session: Running, message: object) =>
         workers.emit(session.entry, session.sessionId, {
           ...message,
@@ -273,6 +322,36 @@ export const layer = (
             message.state === "idle" &&
             (yield* Ref.get(session.queued)).length > 0
           if (!held) yield* emitIn(session, message)
+        })
+
+      // A scripted message, sent and read as the live layer reads it (see the header).
+      const onMessage = (ticket: string, session: Running, message: SDKMessage) =>
+        Effect.gen(function* () {
+          yield* emitScripted(session, message)
+          if (message.type === "system" && message.subtype === "init") {
+            for (const capability of capabilitiesOf(message)) session.capabilities.add(capability)
+            if (session.initialized) return
+            session.initialized = true
+            const problem = yield* checks.first(message, session.servers)
+            if (problem !== undefined) yield* setupProblem(ticket, session, problem)
+            return
+          }
+          const refused = startupFailureOf(message)
+          if (refused !== undefined) yield* gone(ticket, session, refused)
+        }).pipe(Effect.catchDefect((defect) => log.write(skippedLine(ticket, defect))))
+
+      // Calls the worker's hook callbacks for `input`: its event's, all of them or its tool's.
+      const callHooks = (session: Running, input: HookInput) =>
+        Effect.gen(function* () {
+          const { signal } = yield* Ref.get(session.controller)
+          const toolName = "tool_name" in input ? input.tool_name : undefined
+          const toolUseId = "tool_use_id" in input ? input.tool_use_id : undefined
+          for (const matcher of session.hooks[input.hook_event_name] ?? []) {
+            if (matcher.matcher !== undefined && matcher.matcher !== toolName) continue
+            for (const callback of matcher.hooks) {
+              yield* Effect.promise(() => callback(input, toolUseId, { signal }))
+            }
+          }
         })
 
       // The next message not cancelled, waiting for one.
@@ -312,15 +391,8 @@ export const layer = (
 
       const play = (ticket: string, session: Running, step: Step): Effect.Effect<void> =>
         Step.$match(step, {
-          Emit: ({ message }) => emitScripted(session, message),
-          // As the live host's hook callbacks do, a PreCompact is a compaction too.
-          Hook: ({ input }) =>
-            Effect.andThen(
-              workers.fold(session.entry, WorkerEvent.Hook({ session: session.sessionId, input })),
-              input.hook_event_name === "PreCompact"
-                ? workers.compacted(session.entry, input.trigger)
-                : Effect.void,
-            ),
+          Emit: ({ message }) => onMessage(ticket, session, message),
+          Hook: ({ input }) => callHooks(session, input),
           CanUseTool: ({ toolName, input, options }) =>
             Effect.gen(function* () {
               const callback = yield* attention.request(ticket)
@@ -372,10 +444,12 @@ export const layer = (
           AwaitInterrupt: () => Queue.take(session.interrupts),
           Sleep: ({ duration }) => Effect.sleep(duration),
           Do: ({ effect }) => effect,
-          Gone: ({ why, setup }) => gone(ticket, session, why, setup),
+          Gone: ({ why, setup }) =>
+            setup === true ? setupProblem(ticket, session, why) : gone(ticket, session, why),
           // Only a session's first step can fail its start; later, it does nothing.
           FailStart: () => Effect.void,
           StopAtStart: () => Effect.void,
+          Initialize: () => Effect.void,
         })
 
       // Pushes a message into the session's inbox; its uuid.
@@ -409,28 +483,50 @@ export const layer = (
           const entry = yield* workers.open(ticket, session.sessionId, sentAs._tag === "Resumed")
           const first = steps[0]
           if (first?._tag === "FailStart") {
+            const refused = first.startupFailureReason
+            const reason = startFailure(refused, first.reason, "")
             yield* workers.fold(
               entry,
-              WorkerEvent.Ended({ session: session.sessionId, why: first.reason }),
+              WorkerEvent.Ended({ session: session.sessionId, why: reason }),
             )
             return yield* new AgentStartFailed({
               ticket,
-              reason: first.reason,
-              ...(first.startupFailureReason === undefined
-                ? {}
-                : { startupFailureReason: first.startupFailureReason }),
+              reason,
+              ...(refused === undefined ? {} : { startupFailureReason: refused }),
             })
           }
-          if (first?._tag === "StopAtStart") {
+          const given =
+            session.interview !== undefined
+              ? inProcess(serverName, session.interview.server, servers.chrome === true)
+              : session.probe === true
+                ? noServers
+                : servers
+          const problem =
+            first?._tag === "StopAtStart"
+              ? first.why
+              : first?._tag === "Initialize"
+                ? yield* checks.before(first.answer, Option.fromUndefinedOr(first.status), given)
+                : undefined
+          if (problem !== undefined) {
+            yield* log.write(setupLine(ticket, problem))
             yield* workers.fold(
               entry,
-              WorkerEvent.Ended({ session: session.sessionId, why: first.why, setup: true }),
+              WorkerEvent.Ended({ session: session.sessionId, why: problem, setup: true }),
             )
             return undefined
           }
+          const hooks = yield* activityHooks(ticket, {
+            activity: (input) =>
+              workers.fold(entry, WorkerEvent.Hook({ session: session.sessionId, input })),
+            compaction: (input) => workers.compacted(entry, input.trigger),
+          })
           const playing: Running = {
             sessionId: session.sessionId,
             entry,
+            servers: given,
+            hooks,
+            capabilities: new Set(first?._tag === "Initialize" ? capabilitiesOf(first.answer) : []),
+            initialized: false,
             inbox: yield* Queue.unbounded<SDKUserMessage>(),
             putBack: [],
             queued: yield* Ref.make<ReadonlyArray<string>>([]),
@@ -494,7 +590,7 @@ export const layer = (
             const playing = yield* session(ticket)
             const queued = yield* Ref.get(playing.queued)
             const withdrawn: Array<string> = []
-            if (options.cancelQueued === true) withdrawn.push(...queued)
+            if (playing.capabilities.has(cancelQueuedCapability)) withdrawn.push(...queued)
             else {
               for (const uuid of queued) {
                 const cancelled =
@@ -583,6 +679,12 @@ export const gone = (why: string): Step => Step.Gone({ why })
 export const setupProblem = (why: string): Step => Step.Gone({ why, setup: true })
 /** The session is stopped over a setup problem as it starts, as the live layer's checkBefore does. */
 export const stopAtStart = (why: string): Step => Step.StopAtStart({ why })
+/**
+ * The session's initialize answer, as the live layer reads it (`account`, `capabilities`), and its
+ * mcpServerStatus() answer, `status`, when it gave one.
+ */
+export const initialize = (answer: object = {}, status?: unknown): Step =>
+  Step.Initialize({ answer, ...(status === undefined ? {} : { status }) })
 export const failStart = (reason: string, startupFailureReason?: string): Step =>
   Step.FailStart({
     reason,

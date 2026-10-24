@@ -3,6 +3,7 @@ import { Deferred, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost, type SessionMessage, userMessage } from "../src/agent/AgentHost.ts"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
+import { cancelQueuedCapability } from "../src/agent/sessionChecks.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
@@ -307,6 +308,8 @@ describe("scripted cases", () => {
   })
 
   test("a start that fails: AgentStartFailed with the startup failure reason, and Gone", async () => {
+    // Worded as the live host words it: Claude Code refused to start, for its reason.
+    const refused = "Claude Code refused to start: cwd_unavailable"
     const done = await run(
       { "t-1": [[failStart("the worktree is gone", "cwd_unavailable")]] },
       Effect.gen(function* () {
@@ -319,11 +322,11 @@ describe("scripted cases", () => {
     expect(done.started._tag).toBe("AgentStartFailed")
     expect(done.started).toMatchObject({
       ticket: "t-1",
-      reason: "the worktree is gone",
+      reason: refused,
       startupFailureReason: "cwd_unavailable",
     })
     expect(done.again.reason).toBe("the script has no more sessions")
-    expect(done.now).toEqual(WorkerState.Gone({ why: "the worktree is gone" }))
+    expect(done.now).toEqual(WorkerState.Gone({ why: refused }))
   })
 
   test("a second start while a session is open fails", async () => {
@@ -382,9 +385,10 @@ describe("what it was sent", () => {
   })
 
   test("an interrupt withdraws the open request and its receipt cancels what is queued", async () => {
+    // The CLI lists interrupt_cancel_queued_v1 in its system/init.
     const script = [
       wait,
-      init(),
+      init({ capabilities: [cancelQueuedCapability] }),
       sessionState("running"),
       canUseTool("Bash", { command: "sleep 60" }),
       awaitInterrupt,
@@ -420,8 +424,6 @@ describe("what it was sent", () => {
           sent: yield* (yield* Recording).sentTo("t-1"),
         }
       }),
-      waitForTest,
-      { cancelQueued: true },
     )
     // Cancelled, the queued message is no longer outstanding: the interrupted worker settles.
     expect(done.receipt).toEqual({ stillQueued: [], cancelled: [done.queued] })

@@ -12,13 +12,14 @@ import { Duration, Effect, Exit, Layer, Option, Stream } from "effect"
 import fc from "fast-check"
 import type { Billing } from "../src/agent/Account.ts"
 import { AgentHost } from "../src/agent/AgentHost.ts"
-import { apiKeyProblem, layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import {
   type ChosenServers,
   checkStatus,
   noServersNote,
   notGivenProblem,
 } from "../src/agent/mcp.ts"
+import { apiKeyProblem } from "../src/agent/sessionChecks.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"

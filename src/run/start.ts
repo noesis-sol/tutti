@@ -266,9 +266,12 @@ export const startFailed = (id: string, worktree: string, reason: string): Aside
   instead: `worktree ${worktree} left as it is`,
 })
 
-/** Why a session didn't start, with the CLI's startup_failure_reason when it gave one. */
+/**
+ * Why a session didn't start, with the CLI's startup_failure_reason when it gave one and the
+ * reason doesn't already say it, as the live host's does (startFailure).
+ */
 const notStarted = (error: AgentStartFailed): string =>
-  error.startupFailureReason === undefined
+  error.startupFailureReason === undefined || error.reason.includes(error.startupFailureReason)
     ? error.reason
     : `${error.reason} (${error.startupFailureReason})`
 

@@ -12,7 +12,7 @@ import { expect } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Layer, type Scope } from "effect"
 import { TestClock } from "effect/testing"
-import type { Account, AccountProbeFailed, Initialization } from "../src/agent/Account.ts"
+import type { Account, AccountProbeFailed, Billing, Initialization } from "../src/agent/Account.ts"
 import type { AgentHost } from "../src/agent/AgentHost.ts"
 import type { Attention, Policy } from "../src/agent/Attention.ts"
 import { AttentionPoll } from "../src/agent/attentionFiles.ts"
@@ -37,7 +37,7 @@ import type { RunLock } from "../src/services/RunLock.ts"
 import type { State, Store } from "../src/services/Store.ts"
 import type { Tty, TtyValue } from "../src/services/Tty.ts"
 import type { Worktrees } from "../src/services/Worktrees.ts"
-import { layer as accountLayer } from "../src/testing/Account.ts"
+import { layer as accountLayer, accountProbe, initialization } from "../src/testing/Account.ts"
 import {
   checkCommand,
   layer as hostLayer,
@@ -188,6 +188,19 @@ export class Leaked extends Error {
   }
 }
 
+/** How the account probe finds workers billed from `found` under `config`; none where it fails. */
+const billingOf = (
+  config: AppConfigValue,
+  found: Initialization | AccountProbeFailed,
+): Billing | undefined => {
+  if ("_tag" in found) return undefined
+  try {
+    return accountProbe(config, found).billing
+  } catch {
+    return undefined
+  }
+}
+
 /** Every test layer, set up as `setup` says, under TestClock. */
 export const environment = (
   setup: Setup = {},
@@ -202,8 +215,13 @@ export const environment = (
     checkCommand,
   ].flatMap((command) => (command === null ? [] : [command]))
   const scripts = setup.scripts ?? {}
+  // Its sessions' starts are checked against the run's permission mode and the billing the account
+  // probe finds, where it finds one.
+  const billing = billingOf(config, setup.account ?? initialization())
   const hostOptions = {
     checks,
+    permissionMode: config.settings.workers.permission_mode,
+    ...(billing === undefined ? {} : { billing }),
     ...(setup.processes === undefined ? {} : { processes: setup.processes }),
     ...(setup.closeTakes === undefined ? {} : { closeTakes: setup.closeTakes }),
   }
