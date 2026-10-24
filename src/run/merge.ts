@@ -13,6 +13,9 @@
 //   orchestra 0.8.5 has it; one whose commits change nothing needs none. A rebase interrupted is aborted, putting
 //   the branch back; a setup or check interrupted is killed. The commit checked is the branch's as
 //   its setup starts: one made meanwhile, as its worker's, is checked too before the merge goes on.
+//   A setup or check that passes but leaves uncommitted changes to tracked files (a lockfile
+//   rewritten, files formatted) sets the ticket aside, DIRTY_WORKTREE: it passed on files that
+//   won't merge, and git would refuse to remove the worktree after the merge.
 // - fastForward, the step from the fast-forward to the end of its notes, which the merge queue runs
 //   protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE, GIT_FAILED), the base
 //   fast-forwarded to the commit checked, the branch still at it (MERGE_FAILED; Moved, prepared
@@ -508,23 +511,23 @@ export const baseSince = (
 
 /**
  * Sets the ticket aside, DIRTY_WORKTREE, when its worktree has uncommitted changes to tracked files,
- * `text` saying so of them: neither a rebase nor a check can go on with them there, as only the
- * branch's commits reach the base. A status git can't read, asked gitTries times, can't show them
- * not there: the ticket is set aside, GIT_FAILED, the other merges going on. True when it did.
+ * `text` saying so of them, `why` in short: neither a rebase nor a check can go on with them there,
+ * as only the branch's commits reach the base. A status git can't read, asked gitTries times, can't
+ * show them not there: the ticket is set aside, GIT_FAILED, the other merges going on. True when it
+ * did.
  */
-const setAsideDirty = (ticket: FinishedTicket, text: (files: ReadonlyArray<string>) => Line) =>
+const setAsideDirty = (
+  ticket: FinishedTicket,
+  text: (files: ReadonlyArray<string>) => Line,
+  why = "uncommitted changes in its worktree",
+) =>
   Effect.gen(function* () {
     const status = yield* worktreeStatus(ticket.worktree)
     switch (status._tag) {
       case "Clean":
         return false
       case "Dirty":
-        yield* aside(
-          ticket,
-          Tag.dirtyWorktree,
-          "uncommitted changes in its worktree",
-          text(status.files),
-        )
+        yield* aside(ticket, Tag.dirtyWorktree, why, text(status.files))
         return true
       case "Unknown":
         yield* aside(
@@ -538,6 +541,23 @@ const setAsideDirty = (ticket: FinishedTicket, text: (files: ReadonlyArray<strin
         return true
     }
   })
+
+/**
+ * Sets the ticket aside, DIRTY_WORKTREE, when its setup or check, having passed, left uncommitted
+ * changes to tracked files in its worktree, as an install that rewrites its lockfile or a check that
+ * formats files does: the check passed on files that won't merge, and git would refuse to remove the
+ * worktree after the merge (CLEANUP_FAILED). True when it did, or when git couldn't read the
+ * status (GIT_FAILED), as setAsideDirty has it.
+ */
+const setAsideLeftDirty = (ticket: FinishedTicket) =>
+  setAsideDirty(
+    ticket,
+    (files) =>
+      ticketLine(
+        Tag.dirtyWorktree,
+      )`${ticket.id} closed, but its setup or check left uncommitted changes to ${files} in ${ticket.worktree}, so ${ticket.branch} passed with changes that would not merge; worktree left for review (have the setup and check leave tracked files as they are, as a frozen-lockfile install does; undo the changes, check, merge)`,
+    "its setup or check changed tracked files",
+  )
 
 /**
  * What came of a rebase, setup and check in a merge's pass: the ticket set aside or blocked, the
@@ -749,7 +769,10 @@ const setUpAndCheck = (
     // A ticket checked once more after a failed check (recheck.ts) has its check recorded so.
     const rechecking = (yield* ledger.current).tickets.get(id)?.rechecking === true
     const checked = yield* runMergeCheck(ticket, rechecking ? "recheck" : "merge")
-    yield* ends(checked._tag !== "Failed")
+    // What merges is the commit checked: changes the setup or check left would pass unmerged.
+    const dirty = checked._tag !== "Failed" && (yield* setAsideLeftDirty(ticket))
+    yield* ends(checked._tag !== "Failed" && !dirty)
+    if (dirty) return setAsideOutcome
     switch (checked._tag) {
       case "Unchecked":
         yield* log.write(
@@ -998,7 +1021,11 @@ export const prepare = (
           const at = yield* Effect.result(steering(git.revParse(repo, branch)))
           if (Result.isFailure(at)) return yield* lost(at.failure)
           const head = at.success
-          if (command === null || (yield* memory.passes.at(id)) === head) {
+          if (command === null) return { _tag: "Ready", onto, at: head } satisfies Prepared
+          // That check, ahead of its turn (mergetrain.ts) or on its worker's fix or resolution
+          // (checkback.ts, handback.ts), ran in its worktree too.
+          if ((yield* memory.passes.at(id)) === head) {
+            if (yield* setAsideLeftDirty(ticket)) return { _tag: "Over" } satisfies Prepared
             return { _tag: "Ready", onto, at: head } satisfies Prepared
           }
           if (yield* setAsideDirty(ticket, dirty)) return { _tag: "Over" } satisfies Prepared
