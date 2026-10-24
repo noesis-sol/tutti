@@ -41,6 +41,7 @@ import { chromeServer, definedServers } from "../agent/mcp.ts"
 import { AppConfig, type AppConfigValue, type SetupProblem } from "../cli/AppConfig.ts"
 import type { Scouting } from "../organs/scout.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
+import { setIn } from "../project/jsonText.ts"
 import { builtInWorkerPrompt, withSuites } from "../project/prompt.ts"
 import { maxConcurrent, Settings, settingsFile } from "../project/settings.ts"
 import settingsTemplate from "../project/templates/settings.json" with { type: "json" }
@@ -360,10 +361,13 @@ const writeSettings = (
     const fs = yield* FileSystem.FileSystem
     const json: Json = structuredClone(existing.json ?? (settingsTemplate as Json))
     const changed: Array<string> = []
+    // The project's file is edited where it changes, its own formatting kept; the template is new.
+    let text = existing.text
     const set = (holder: Json, key: string, value: unknown, name: string) => {
       if (JSON.stringify(holder[key]) === JSON.stringify(value)) return
       holder[key] = value
       changed.push(name)
+      if (text !== null) text = setIn(text, name.split("."), value)
     }
     if (changes.concurrent !== null) set(json, "concurrent", changes.concurrent, "concurrent")
     if (changes.mcp !== null) {
@@ -413,7 +417,7 @@ const writeSettings = (
       return { settings, step: step("kept", "settings", `${settingsFile} is there; left as it is`) }
     }
     yield* fs.makeDirectory(join(repo, ".tutti"), { recursive: true })
-    yield* writeFileAtomic(file, `${JSON.stringify(json, null, 2)}\n`)
+    yield* writeFileAtomic(file, text ?? `${JSON.stringify(json, null, 2)}\n`)
     return {
       settings,
       step:

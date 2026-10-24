@@ -8,6 +8,7 @@
 // that no run starts in a tree it writes into.
 import { join } from "node:path"
 import { Clock, Effect, FileSystem } from "effect"
+import { setIn } from "../project/jsonText.ts"
 import { settingsFile } from "../project/settings.ts"
 import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
 import { RunLock } from "../services/RunLock.ts"
@@ -97,14 +98,18 @@ const planUpdate = (repo: string) =>
       recorded.verifier !== now.verifier ||
       recorded.check_suite_skill !== now.check_suite_skill
     ) {
-      const json = structuredClone(read.json ?? {})
-      json.templates = {
+      const templates = {
         worker_prompt: now.worker_prompt,
         ...(now.verifier === 0 ? {} : { verifier: now.verifier }),
         ...(now.check_suite_skill === 0 ? {} : { check_suite_skill: now.check_suite_skill }),
       }
+      // The project's file keeps its own formatting but for the templates' section.
+      const text =
+        read.text === null
+          ? `${JSON.stringify({ templates }, null, 2)}\n`
+          : setIn(read.text, ["templates"], templates)
       yield* fs.makeDirectory(join(repo, ".tutti"), { recursive: true })
-      yield* writeFileAtomic(join(repo, settingsFile), `${JSON.stringify(json, null, 2)}\n`)
+      yield* writeFileAtomic(join(repo, settingsFile), text)
       const versions = [
         `worker prompt ${now.worker_prompt}`,
         ...(now.verifier === 0 ? [] : [`verifier ${now.verifier}`]),
