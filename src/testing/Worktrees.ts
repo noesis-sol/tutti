@@ -2,7 +2,7 @@
 // <root>/<id>, with no git in it: reused when it is there already, with what the script says an
 // earlier attempt left. A detached worktree is a new folder under <root>, its name starting with
 // its prefix. IDs are checked, and run files opened through the symlink guard, as live.
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
@@ -65,6 +65,15 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
           calls.push({ op: "removeDetached", path })
           rmSync(path, { recursive: true, force: true })
         }),
+      leftDetached: (prefix) =>
+        Effect.sync(() =>
+          existsSync(root)
+            ? readdirSync(root)
+                .filter((name) => name.startsWith(prefix))
+                .sort()
+                .map((name) => join(root, name))
+            : [],
+        ),
       openRunFile,
       checkRunFolder,
       writeRunFile,

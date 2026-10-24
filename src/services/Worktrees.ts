@@ -279,6 +279,12 @@ export class Worktrees extends Context.Service<
      * folder is deleted, then git's worktrees are pruned.
      */
     removeDetached(path: string): Effect.Effect<void, GitError | PlatformError>
+    /**
+     * The folders under the worktrees' folder whose names start with `prefix`, absolute: the
+     * worktrees addDetached made that were never removed, a run killed before it could, in order of
+     * name. A ticket's worktree, on its branch, is not one, whatever its name.
+     */
+    leftDetached(prefix: string): Effect.Effect<ReadonlyArray<string>, GitError | PlatformError>
     /** Opens a file under a worktree's .tutti/run/ (see openRunFile). */
     openRunFile(
       worktree: string,
@@ -383,11 +389,27 @@ export class Worktrees extends Context.Service<
             git.pruneWorktrees(repo),
           )
 
+        const leftDetached = (prefix: string) =>
+          Effect.gen(function* () {
+            if (!(yield* fs.exists(root))) return []
+            const names = (yield* fs.readDirectory(root))
+              .filter((name) => name.startsWith(prefix))
+              .sort()
+            if (names.length === 0) return []
+            const branches = new Set(
+              (yield* git.worktrees(repo)).map((worktree) => worktree.branch),
+            )
+            return names
+              .filter((name) => !branches.has(branchOf(name)))
+              .map((name) => join(root, name))
+          })
+
         return Worktrees.of({
           prepare,
           remove,
           addDetached,
           removeDetached,
+          leftDetached,
           openRunFile,
           checkRunFolder,
           writeRunFile,

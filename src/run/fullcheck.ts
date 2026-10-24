@@ -18,6 +18,7 @@
 import { readSync, writeSync } from "node:fs"
 import { join } from "node:path"
 import { Clock, Duration, Effect, Result, type Scope } from "effect"
+import type { PlatformError } from "effect/PlatformError"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -29,7 +30,7 @@ import {
   type RunOptions,
   setupLogName,
 } from "../services/Checks.ts"
-import { Git } from "../services/Git.ts"
+import { Git, type GitError } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import { recorded, saidOf } from "./check.ts"
@@ -210,6 +211,50 @@ const copyTo = (from: number, to: number): void => {
   }
 }
 
+/** Why git or the file system failed, for a line. */
+const worktreeWhy = (error: GitError | PlatformError): string =>
+  error._tag === "GitFailed" || error._tag === "GitTimedOut" ? gitWhy(error) : error.message
+
+/** CLEANUP_FAILED: the full check's worktree at `path` is left, as `error` says. */
+const leftWarning = (
+  path: string,
+  error: GitError | PlatformError,
+): Effect.Effect<void, never, Log | EventStream> =>
+  Effect.gen(function* () {
+    const text = ticketLine(
+      Tag.cleanupFailed,
+    )`the full check's worktree ${path} is left (${worktreeWhy(error)}); git worktree remove --force ${path} removes it`
+    yield* (yield* Log).writeWith([text], (yield* EventStream).emit({ kind: "warn", text }))
+  })
+
+/**
+ * Removes the full check's worktrees a killed run left, as a run starts: a run killed while its
+ * full check ran (kill -9, a crash) never removed its worktree, nor what the setup installed in it,
+ * and git worktree prune keeps one while its folder is there. Each removed is a detail line; one
+ * that can't be, a CLEANUP_FAILED warning, as at the end of a full check. It never fails.
+ */
+export const removeLeftFullChecks: Effect.Effect<void, never, Worktrees | Log | EventStream> =
+  Effect.gen(function* () {
+    const worktrees = yield* Worktrees
+    const logs = yield* Log
+    const left = yield* Effect.result(worktrees.leftDetached(fullCheckFolderPrefix))
+    if (Result.isFailure(left)) {
+      const text = ticketLine(
+        Tag.cleanupFailed,
+      )`could not look for the full check's worktrees a killed run left (${worktreeWhy(left.failure)})`
+      yield* logs.writeWith([text], (yield* EventStream).emit({ kind: "warn", text }))
+      return
+    }
+    for (const path of left.success) {
+      const removed = yield* Effect.result(worktrees.removeDetached(path))
+      if (Result.isFailure(removed)) yield* leftWarning(path, removed.failure)
+      else
+        yield* logs.write(
+          detail`removed the full check's worktree ${path}, which a killed run left`,
+        )
+    }
+  })
+
 type Env = AppConfig | Beads | Checks | Git | Worktrees | Log | EventStream
 
 /** The run the full check comes at the end of. */
@@ -257,8 +302,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       : Result.fail(head.failure)
     if (Result.isFailure(made)) {
       const error = made.failure
-      const why =
-        error._tag === "GitFailed" || error._tag === "GitTimedOut" ? gitWhy(error) : error.message
+      const why = error._tag === "ExcludeUnwritable" ? error.message : worktreeWhy(error)
       const text = ticketLine(
         Tag.fullCheckNotRun,
       )`'${command}' could not run on ${base}: no worktree for it (${why})`
@@ -322,18 +366,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
 
     return yield* Effect.ensuring(
       run,
-      Effect.catch(worktrees.removeDetached(path), (error) =>
-        Effect.gen(function* () {
-          const why =
-            error._tag === "GitFailed" || error._tag === "GitTimedOut"
-              ? gitWhy(error)
-              : error.message
-          const text = ticketLine(
-            Tag.cleanupFailed,
-          )`the full check's worktree ${path} is left (${why}); git worktree remove --force ${path} removes it`
-          yield* logs.writeWith([text], events.emit({ kind: "warn", text }))
-        }),
-      ),
+      Effect.catch(worktrees.removeDetached(path), (error) => leftWarning(path, error)),
     )
   })
 

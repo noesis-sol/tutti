@@ -116,7 +116,13 @@ import { make as makeEnvironmentHold } from "./environment.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { fileTicket } from "./fileTicket.ts"
-import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
+import {
+  fullCheck,
+  fullCheckDue,
+  fullCheckEvidence,
+  fullCheckReport,
+  removeLeftFullChecks,
+} from "./fullcheck.ts"
 import {
   blockedAt,
   blockedLifted,
@@ -890,6 +896,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // tickets are carried over to merge (mergetrain.ts). One cut short by a quit keeps its mark in
     // state.json, for the next run to put back.
     yield* untilQuit(putBackLeft(config.repo, setUps), undefined)
+
+    // The full check's worktrees a run killed while its full check ran left, removed (fullcheck.ts).
+    yield* untilQuit(removeLeftFullChecks, undefined)
 
     // The workers the last run left (carry.ts), taken up before the first dispatch: each resumed
     // takes a slot, counting toward no limit, its ticket limit counted afresh; one with no slot
