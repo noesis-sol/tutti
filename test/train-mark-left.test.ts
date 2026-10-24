@@ -1,6 +1,6 @@
 // A branch still marked as rebased by a train onto the branch ahead (mergetrain.ts's checked_ahead)
 // as its turn comes, git having failed to put it back on a quit or as the run started: its merge
-// (merge.ts's prepare) sets it aside as REBASE_FAILED, rather than merge the commits of the branch
+// (merge.ts's Enter step) sets it aside as REBASE_FAILED, rather than merge the commits of the branch
 // ahead with its own. One back where its worker left it merges, its mark cleared.
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, type Schema } from "effect"

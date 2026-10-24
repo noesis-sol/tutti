@@ -27,7 +27,7 @@
 // worker left it, and then with the commit it was rebased to; boarding the train or putting the
 // branch back clears the mark. As the next run starts (putBackLeft), a branch still marked and at
 // the commit it was rebased to is put back as its worker left it. One git could not put back, on a
-// quit or as the run starts, keeps its mark, and its turn sets it aside (merge.ts's prepare).
+// quit or as the run starts, keeps its mark, and its turn sets it aside (merge.ts's Enter step).
 import {
   Data,
   Effect,
@@ -464,15 +464,11 @@ export const make = (
         )
         const setting = yield* save({ ...rebased, step: Step.Checking({ head, setUp: true }) })
         yield* mark(setting)
-        const setup = yield* setUp(
-          setting.ticket,
-          options,
-          memory.setUps,
-          setting.fork === "" ? setting.onto : setting.fork,
-          setting.onto,
-          undefined,
-          true,
-        )
+        const setup = yield* setUp(setting.ticket, options, memory.setUps, {
+          fork: setting.fork === "" ? setting.onto : setting.fork,
+          onto: setting.onto,
+          ahead: true,
+        })
         const ranSetUp = setup._tag !== "Unneeded"
         const checking = ranSetUp
           ? setting

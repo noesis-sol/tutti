@@ -267,6 +267,16 @@ export interface Fix {
   readonly from: string
 }
 
+/** Where setUp finds a ticket's branch, and what its caller knows of it (setUp says each). */
+export interface SetUpOf {
+  readonly fork: string
+  readonly onto: string
+  readonly fix?: Fix | undefined
+  readonly ahead?: boolean
+  readonly at?: string | undefined
+  readonly before?: ReadonlyArray<StatusEntry> | undefined
+}
+
 /**
  * Runs the setup command in the ticket's worktree, its branch just rebased onto the base at `onto`
  * from `fork`, when the base's commits since its dependencies were last set up change a file
@@ -281,12 +291,7 @@ export const setUp = (
   ticket: FinishedTicket,
   options: MergeTarget,
   setUps: SetUps,
-  fork: string,
-  onto: string,
-  fix?: Fix,
-  ahead = false,
-  at?: string,
-  before?: ReadonlyArray<StatusEntry>,
+  { fork, onto, fix, ahead = false, at, before }: SetUpOf,
 ): Effect.Effect<SetUp, never, Checks | Git | Worktrees | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now

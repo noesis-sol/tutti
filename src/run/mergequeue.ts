@@ -45,7 +45,6 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
-import { absurd } from "effect/Function"
 import { Git } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
 import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from "./checkback.ts"
@@ -64,14 +63,11 @@ import { Ledger } from "./ledger.ts"
 import {
   closeUnchanged,
   type FinishedTicket,
-  fastForward,
   type GivenMergeOptions,
-  keptChanging,
   type MergeEnv,
   type MergeOptions,
   type MergeStop,
-  maxPasses,
-  prepare,
+  mergeTurn,
 } from "./merge.ts"
 import { type CheckAhead, make as makeTrain } from "./mergetrain.ts"
 import { Cause, Detail, type InvalidTransition, type TicketPhase } from "./phase.ts"
@@ -410,57 +406,24 @@ export const make = (
           const boarded = yield* restore(train.board(ticket)).pipe(
             Effect.onError(() => backInLine(ticket)),
           )
-          const prepareIt = restore(prepare(ticket, options, memory)).pipe(
-            Effect.onError(() => backInLine(ticket)),
-          )
-          let prepared = boarded ?? (yield* prepareIt)
-          let stop: MergeStop | undefined
-          // How many times it was prepared again, its branch or the base having moved on before
-          // its fast-forward: each prepare counts its own passes from nothing.
-          let again = 0
-          for (;;) {
-            const handingBack = prepared._tag === "HandBack" || prepared._tag === "FixBack"
-            if (handingBack && (yield* Ref.get(held))) return yield* backInLine(ticket)
-            if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
-            if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
-            if (prepared._tag === "Unchanged") yield* closeUnchanged(ticket, options, prepared)
-            if (prepared._tag !== "Ready") {
-              stop = prepared._tag === "Over" ? prepared.stop : undefined
-              break
-            }
-            const ended = yield* fastForward(ticket, options, prepared.onto, prepared.at)
-            switch (ended._tag) {
-              case "Merged":
-                break
-              case "Stopped":
-                stop = ended.stop
-                break
-              // Its branch moved on after its check passed, or the base before it merged: the
-              // commit it is at now is checked first, on the base as it is now, up to maxPasses
-              // times; then it is blocked, over with no stop.
-              case "Moved":
-              case "BaseMoved":
-                if (again === maxPasses) {
-                  const what = ended._tag === "Moved" ? ticket.branch : options.base
-                  prepared = yield* keptChanging(ticket, `${what} kept changing`)
-                  continue
-                }
-                again++
-                prepared = yield* prepareIt
-                continue
-              default:
-                return absurd(ended)
-            }
-            break
-          }
+          // Each step but the fast-forward may be interrupted, putting it back in line.
+          const prepared =
+            boarded ??
+            (yield* mergeTurn(ticket, options, memory, (step) =>
+              restore(step).pipe(Effect.onError(() => backInLine(ticket))),
+            ))
+          const handingBack = prepared._tag === "HandBack" || prepared._tag === "FixBack"
+          if (handingBack && (yield* Ref.get(held))) return yield* backInLine(ticket)
+          if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
+          if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
+          if (prepared._tag === "Unchanged") yield* closeUnchanged(ticket, options, prepared)
+          const stop = prepared._tag === "Over" ? prepared.stop : undefined
           // A merge that changed .tutti/settings.json may set the setup the run uses from now on.
           // The fast-forward put the base at the commit checked, `at`: it isn't read again.
-          if (stop === undefined && prepared._tag === "Ready") {
-            yield* takeSettings(ticket.id, options, setUps, prepared.onto, prepared.at)
-          }
           // A merge moves the base on, which may be what a ticket's failed check waits for: the
           // tickets it puts back are in line before this merge is over, so `settled` waits for them.
-          if (stop === undefined && prepared._tag === "Ready") {
+          if (prepared._tag === "Merged") {
+            yield* takeSettings(ticket.id, options, setUps, prepared.onto, prepared.at)
             yield* Effect.exit(restore(recheckFrom(prepared.at)))
           }
           yield* heldMessages.over(ticket.id)

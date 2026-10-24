@@ -6,7 +6,7 @@ import { AppConfig } from "../src/cli/AppConfig.ts"
 import { gitAgainAfter, gitTries } from "../src/run/branch.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
-import { type FinishedTicket, type MergeStop, maxPasses } from "../src/run/merge.ts"
+import { budgets, type FinishedTicket, type MergeStop } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
@@ -636,7 +636,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
     expect(resultOf(ran).phases.a).toEqual(
       expect.objectContaining({ _tag: "Blocked", why: "MERGE_CONFLICT" }),
     )
-    expect(n).toBe(maxPasses)
+    expect(n).toBe(budgets.baseDuringCheck + 1)
     expectLog(ran, [
       /^ {2}MERGE_CONFLICT: a closed, but main kept changing while its checks ran \(commits made by hand\?\)/,
     ])

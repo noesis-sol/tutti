@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit, type Scope } from "effect"
 import { Ledger } from "../src/run/ledger.ts"
-import { type FinishedTicket, maxPasses } from "../src/run/merge.ts"
+import { budgets, type FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
@@ -145,7 +145,7 @@ describe("a commit made on the branch while its merge check runs", () => {
     )
     const { phase, main } = resultOf(ran)
     expect(phase).toEqual(expect.objectContaining({ _tag: "Blocked", why: "MERGE_CONFLICT" }))
-    expect(heads).toHaveLength(maxPasses + 1)
+    expect(heads).toHaveLength(budgets.branchDuringCheck + 1)
     expect(main.get("a.txt")).toBeUndefined()
     expectLog(ran, [
       /^ {2}MERGE_CONFLICT: a closed, but tutti\/a kept changing while its checks ran \(commits made by hand\?\)/,

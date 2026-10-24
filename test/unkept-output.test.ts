@@ -80,8 +80,7 @@ for (const linked of [false, true]) {
             { id: "a", title: "a", branch: "tutti/a", worktree },
             { repo: folder("repo"), base: "main" },
             setUps,
-            "fork",
-            "onto",
+            { fork: "fork", onto: "onto" },
           )
         }).pipe(Effect.provide(Ledger.layer)),
       )

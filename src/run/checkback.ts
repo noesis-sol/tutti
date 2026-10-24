@@ -402,16 +402,13 @@ export const setAside = (
         appendNotes: line`tutti: ${failedHow(stop.error)} on ${branchOn(branch, base, onTop)} (output is in ${stop.output}); it was ${tried}; so ${id} was set aside for review.`,
       }),
     )
-    yield* checksFailed(
-      stop.ticket,
-      options,
-      memory.rechecks,
-      stop.onto,
-      stop.error,
-      stop.output,
-      `, after it was handed back to its worker to fix ${times(tries.length)} (see its notes)`,
+    yield* checksFailed(stop.ticket, options, memory.rechecks, {
+      onto: stop.onto,
+      error: stop.error,
+      output: stop.output,
+      tried: `, after it was handed back to its worker to fix ${times(tries.length)} (see its notes)`,
       onTop,
-    )
+    })
   })
 
 /**

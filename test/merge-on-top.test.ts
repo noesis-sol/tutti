@@ -1,5 +1,5 @@
 // A finished ticket whose branch is on top of the base already, nothing having merged while it ran,
-// is checked before it merges as a rebased one is (merge.ts's prepare, orchestra 0.8.5): no ticket
+// is checked before it merges as a rebased one is (merge.ts's Locate step, orchestra 0.8.5): no ticket
 // reaches the base unchecked. Each scenario is a whole run under TestClock.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"

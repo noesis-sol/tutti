@@ -1,11 +1,10 @@
 // A ticket whose branch, or base, moves on between its check and every fast-forward, as by commits
-// made by hand each time, is prepared and checked again up to maxPasses times, then blocked,
-// MERGE_CONFLICT, its branch or the base having kept changing: each prepare counts its own passes
-// from nothing, so the merge queue counts the times it prepares the ticket again.
+// made by hand each time, is prepared and checked again up to budgets.beforeFastForward times, then
+// blocked, MERGE_CONFLICT, its branch or the base having kept changing.
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit } from "effect"
 import { Ledger } from "../src/run/ledger.ts"
-import { type FinishedTicket, maxPasses } from "../src/run/merge.ts"
+import { budgets, type FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
@@ -32,7 +31,7 @@ const setup = {
 }
 
 /** At most this many commits by hand, so that a merge loop without a limit still ends. */
-const most = 3 * maxPasses
+const most = 3 * budgets.beforeFastForward
 
 /** Ticket a, finished on top of main: a.txt committed on tutti/a, closed, Working. */
 const finished = Effect.gen(function* () {
@@ -108,15 +107,15 @@ const resultOf = <A>(ran: Ran<A>): A => {
 }
 
 describe("a branch moved on after every check passed, before its fast-forward", () => {
-  test(`is checked again ${maxPasses} times, then blocked, MERGE_CONFLICT, unmerged`, async () => {
+  test(`is checked again ${budgets.beforeFastForward} times, then blocked, MERGE_CONFLICT, unmerged`, async () => {
     const ran = await merge("branch")
     const merged = resultOf(ran)
     expect(merged.phase).toEqual(
       expect.objectContaining({ _tag: "Blocked", why: "MERGE_CONFLICT" }),
     )
     expect(merged.stop).toBeUndefined()
-    expect(merged.commits).toBe(maxPasses + 1)
-    expect(ran.checkRuns).toHaveLength(maxPasses + 1)
+    expect(merged.commits).toBe(budgets.beforeFastForward + 1)
+    expect(ran.checkRuns).toHaveLength(budgets.beforeFastForward + 1)
     expect(merged.main.get("a.txt")).toBeUndefined()
     expectLog(ran, [
       /^ {2}MERGE_CONFLICT: a closed, but tutti\/a kept changing while its checks ran \(commits made by hand\?\)/,
@@ -125,15 +124,15 @@ describe("a branch moved on after every check passed, before its fast-forward", 
 })
 
 describe("a base moved on before every fast-forward", () => {
-  test(`is rebased and checked again ${maxPasses} times, then blocked, MERGE_CONFLICT`, async () => {
+  test(`is rebased and checked again ${budgets.beforeFastForward} times, then blocked, MERGE_CONFLICT`, async () => {
     const ran = await merge("base")
     const merged = resultOf(ran)
     expect(merged.phase).toEqual(
       expect.objectContaining({ _tag: "Blocked", why: "MERGE_CONFLICT" }),
     )
     expect(merged.stop).toBeUndefined()
-    expect(merged.commits).toBe(maxPasses + 1)
-    expect(ran.checkRuns).toHaveLength(maxPasses + 1)
+    expect(merged.commits).toBe(budgets.beforeFastForward + 1)
+    expect(ran.checkRuns).toHaveLength(budgets.beforeFastForward + 1)
     expect(merged.main.get("a.txt")).toBeUndefined()
     expectLog(ran, [
       /^ {2}MERGE_CONFLICT: a closed, but main kept changing while its checks ran \(commits made by hand\?\)/,

@@ -1,6 +1,6 @@
 // The mark a merge train leaves on a ticket whose branch it rebased onto the branch ahead
 // (mergetrain.ts), in state.json: while it is there, the branch may have the commits of the branch
-// ahead, so its merge (merge.ts's prepare) sets aside one not put back as its worker left it.
+// ahead, so its merge (merge.ts's Enter step) sets aside one not put back as its worker left it.
 import { Effect, Predicate, type Schema } from "effect"
 import { isHash } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"

@@ -886,7 +886,11 @@ export const checkWithFix = (
 ): Effect.Effect<{ readonly at: string; readonly checked: SetUp | Checked }, never, MergeEnv> =>
   Effect.gen(function* () {
     const at = yield* branchHead(stop.ticket, options)
-    const setup = yield* setUp(stop.ticket, options, memory.setUps, stop.fork, stop.onto, fix)
+    const setup = yield* setUp(stop.ticket, options, memory.setUps, {
+      fork: stop.fork,
+      onto: stop.onto,
+      fix,
+    })
     const checked =
       setup._tag === "Failed"
         ? setup
