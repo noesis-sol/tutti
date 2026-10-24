@@ -274,6 +274,9 @@ type Lifecycle = Data.TaggedEnum<{
 
 const Lifecycle = Data.taggedEnum<Lifecycle>()
 
+/** What Effect.uninterruptibleMask gives: runs an effect as interruptible as its caller was. */
+type Restore = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
+
 /** The scope of a session not yet Closing. */
 const scopeOf = (lifecycle: Lifecycle): Scope.Closeable | undefined =>
   lifecycle._tag === "Starting"
@@ -419,7 +422,9 @@ export const layer = (
        * Moves the ticket's session, if `of` is still its scope, to Closing: closed on purpose when
        * `why` is undefined, else gone for `why` (over a setup problem when `setup`), as its worker's
        * state says from now on. The effect that then closes it, its scope and with it Claude Code,
-       * and ends it: undefined when the ticket's session is another or is Closing already.
+       * and ends it: undefined when the ticket's session is another or is Closing already. Its
+       * caller runs that close uninterruptibly from this on: a session moved to Closing that never
+       * closes holds a start waiting for its end for ever.
        */
       const closing = (
         ticket: string,
@@ -457,7 +462,7 @@ export const layer = (
             Deferred.succeed(done, undefined),
           )
           return Effect.uninterruptible(Effect.ensuring(Scope.close(of, Exit.void), ended))
-        })
+        }).pipe(Effect.uninterruptible)
 
       /**
        * The session's end, without tutti closing it on purpose: the worker is Gone and the
@@ -468,7 +473,7 @@ export const layer = (
         Effect.gen(function* () {
           const close = yield* closing(session.ticket, session.scope, why, setup)
           if (close !== undefined) yield* Effect.forkIn(close, scope)
-        })
+        }).pipe(Effect.uninterruptible)
 
       /**
        * Ends the worker over a setup problem, before it does anything: Gone with `setup`, its process
@@ -615,16 +620,22 @@ export const layer = (
 
       /**
        * The ticket's session `sessionId`, Starting in a scope of its own, once the ticket has no
-       * other: a Closing one's end is waited for, and one Starting or Open fails it.
+       * other: a Closing one's end is waited for, and one Starting or Open fails it. Run
+       * uninterruptibly, so that nothing comes between it and what closes the scope it gives;
+       * it waits for a Closing one's end in `restore`.
        */
       const reserve = (
         ticket: string,
         sessionId: string,
+        restore: Restore,
       ): Effect.Effect<Scope.Closeable, AgentStartFailed> =>
         Effect.suspend(() => {
           const current = sessions.get(ticket)
           if (current?._tag === "Closing") {
-            return Effect.andThen(Deferred.await(current.done), reserve(ticket, sessionId))
+            return Effect.andThen(
+              restore(Deferred.await(current.done)),
+              reserve(ticket, sessionId, restore),
+            )
           }
           if (current !== undefined) {
             return Effect.fail(
@@ -641,22 +652,38 @@ export const layer = (
        * gone for `why`, and waits for its end.
        */
       const closeIn = (ticket: string, of: Scope.Closeable, why: string | undefined) =>
-        Effect.flatMap(closing(ticket, of, why), (close) => close ?? Effect.void)
+        Effect.uninterruptible(
+          Effect.flatMap(closing(ticket, of, why), (close) => close ?? Effect.void),
+        )
 
       /**
        * Starts (or resumes) the ticket's session; it is open once Claude Code has answered. The
        * start runs in the session's scope, so closing the session while it starts cancels it. A
        * setup problem found as it starts (checkBefore) doesn't fail it: its worker is Gone with
        * `setup`, as one its first system/init shows makes it, and `problem` says what it was; the
-       * caller sends it nothing.
+       * caller sends it nothing. Interrupted once its session is reserved, it closes it: the
+       * reserving, the forking and the closing on interrupt are uninterruptible together, so an
+       * interrupt can't leave the ticket Starting with nothing to close it.
        */
       const begin = (ticket: string, session: Session, how: SessionStart) =>
+        Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const of = yield* reserve(ticket, session.sessionId, restore)
+            const started = yield* Effect.forkIn(make(ticket, session, how, of), of)
+            return yield* restore(settle(ticket, of, started)).pipe(
+              Effect.onInterrupt(() => closeIn(ticket, of, undefined)),
+            )
+          }),
+        )
+
+      /** Waits for the start `started` in the session's scope `of`, and settles what it ended in. */
+      const settle = <A extends { readonly opened: Live; readonly problem: string | undefined }, E>(
+        ticket: string,
+        of: Scope.Closeable,
+        started: Fiber.Fiber<A, E>,
+      ) =>
         Effect.gen(function* () {
-          const of = yield* reserve(ticket, session.sessionId)
-          const started = yield* Effect.forkIn(make(ticket, session, how, of), of)
-          const exit = yield* Fiber.await(started).pipe(
-            Effect.onInterrupt(() => closeIn(ticket, of, undefined)),
-          )
+          const exit = yield* Fiber.await(started)
           if (Exit.isSuccess(exit)) {
             // Here, not in the start, which runs in the session's scope that this closes.
             const { opened, problem } = exit.value
@@ -833,12 +860,14 @@ export const layer = (
           if (current === undefined) return Effect.void
           if (current._tag === "Closing") return Deferred.await(current.done)
           const of = current._tag === "Starting" ? current.scope : current.session.scope
-          return Effect.flatMap(closing(ticket, of, undefined), (closed) => {
-            if (closed !== undefined) return closed
-            // It went meanwhile.
-            const now = sessions.get(ticket)
-            return now?._tag === "Closing" ? Deferred.await(now.done) : Effect.void
-          })
+          return Effect.uninterruptibleMask((restore) =>
+            Effect.flatMap(closing(ticket, of, undefined), (closed) => {
+              if (closed !== undefined) return closed
+              // It went meanwhile.
+              const now = sessions.get(ticket)
+              return now?._tag === "Closing" ? restore(Deferred.await(now.done)) : Effect.void
+            }),
+          )
         })
 
       /** Interrupts the session's turn and cancels the messages queued behind it: its receipt. */
