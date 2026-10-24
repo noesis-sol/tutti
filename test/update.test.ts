@@ -288,7 +288,11 @@ describe("the daily check", () => {
     const cache = mkdtempSync(join(tmpdir(), "tutti-update-cache-"))
     const { releases, asked } = await fixture({ tag: "v0.9.1" })
     const at = (now: number) =>
-      Effect.runPromise(newerRelease({ releases, current: "0.9.0", cache, now: () => now }))
+      Effect.runPromise(
+        newerRelease({ releases, current: "0.9.0", cache, now: () => now }).pipe(
+          Effect.provide(BunServices.layer),
+        ),
+      )
     const start = Date.UTC(2026, 9, 20, 9)
     expect(await at(start)).toEqual(Option.some("v0.9.1"))
     expect(asked).toHaveLength(1)
@@ -312,7 +316,11 @@ describe("the daily check", () => {
     const failing = await fixture({ tag: "v0.9.1", status: 403 })
     const start = Date.UTC(2026, 9, 20, 9)
     const at = (releases: Releases, now: number) =>
-      Effect.runPromise(newerRelease({ releases, current: "0.9.0", cache, now: () => now }))
+      Effect.runPromise(
+        newerRelease({ releases, current: "0.9.0", cache, now: () => now }).pipe(
+          Effect.provide(BunServices.layer),
+        ),
+      )
     expect(await at(failing.releases, start)).toEqual(Option.none())
     expect(await at(failing.releases, start + 1000)).toEqual(Option.none())
     expect(failing.asked).toHaveLength(1)
@@ -323,7 +331,9 @@ describe("the daily check", () => {
     writeFileSync(join(cache, cacheName), "{not json")
     const { releases, asked } = await fixture({ tag: "v0.9.0" })
     const found = await Effect.runPromise(
-      newerRelease({ releases, current: "0.9.0", cache, now: () => Date.UTC(2026, 9, 20) }),
+      newerRelease({ releases, current: "0.9.0", cache, now: () => Date.UTC(2026, 9, 20) }).pipe(
+        Effect.provide(BunServices.layer),
+      ),
     )
     expect(found).toEqual(Option.none())
     expect(asked).toHaveLength(1)
@@ -333,7 +343,9 @@ describe("the daily check", () => {
     const cache = join(mkdtempSync(join(tmpdir(), "tutti-update-cache-")), "a", "tutti")
     const { releases } = await fixture({ tag: "v0.9.1" })
     await Effect.runPromise(
-      newerRelease({ releases, current: "0.9.0", cache, now: () => Date.UTC(2026, 9, 20) }),
+      newerRelease({ releases, current: "0.9.0", cache, now: () => Date.UTC(2026, 9, 20) }).pipe(
+        Effect.provide(BunServices.layer),
+      ),
     )
     expect(JSON.parse(readFileSync(join(cache, cacheName), "utf8")).latest).toBe("v0.9.1")
   })

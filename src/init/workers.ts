@@ -9,7 +9,17 @@
 // sets `projects["<main checkout>"].hasTrustDialogAccepted` in the user's .claude.json, only once
 // you say yes, re-reading the file just before and replacing it atomically, then probes again.
 import { basename, dirname, join } from "node:path"
-import { Cause, Duration, Effect, Exit, FileSystem, Option } from "effect"
+import {
+  Cause,
+  Duration,
+  Effect,
+  Exit,
+  FileSystem,
+  Option,
+  Predicate,
+  Result,
+  Schema,
+} from "effect"
 import {
   type AccountError,
   type AccountProbe,
@@ -22,8 +32,9 @@ import { accountLine } from "../cli/login.ts"
 import { unmergedLabel } from "../run/scope.ts"
 import { memoryEstimate } from "../run/startup.ts"
 import { writeFileAtomic } from "../services/atomicFile.ts"
-import { Beads, beadsWhy } from "../services/Beads.ts"
+import { Beads, bdPayload, beadsWhy } from "../services/Beads.ts"
 import { TimeLimit } from "../services/exec.ts"
+import { lenientKey } from "../services/lenient.ts"
 import { stateFile } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import type { PrefixQuestion } from "./checks.ts"
@@ -461,27 +472,29 @@ export interface PrefixPlan {
   readonly tickets: number
 }
 
-/** The payload of bd's JSON output, out of its envelope ({schema_version, data}) when it has one. */
-const bdPayload = (text: string): unknown => {
-  const json: unknown = JSON.parse(text)
-  return typeof json === "object" && json !== null && "schema_version" in json && "data" in json
-    ? json.data
-    : json
-}
+/** What tutti reads of the last run's state.json: the tickets it left. */
+const CarriedState = Schema.fromJsonString(
+  Schema.Struct({ tickets: lenientKey(Schema.Record(Schema.String, Schema.Unknown)) }),
+)
+
+/** What tutti reads of bd config get's payload: the setting's value, where it is text. */
+const ConfigValue = Schema.Struct({ value: lenientKey(Schema.String) })
 
 /** The ticket prefix of the Beads set up in `repo`. */
 const beadsPrefix = (machine: Machine, repo: string) =>
   Effect.flatMap(
     machine.run("bd", ["config", "get", "issue_prefix", "--json"], repo, TimeLimit.read),
     (out) =>
-      Effect.try({
-        try: () => {
-          const data = bdPayload(out)
-          const value =
-            typeof data === "object" && data !== null && "value" in data ? data.value : undefined
-          return typeof value === "string" ? value.trim() : ""
-        },
-        catch: () => `bd config get issue_prefix said what tutti can't read: ${out.trim()}`,
+      Result.match(bdPayload(out), {
+        onFailure: () =>
+          Effect.fail(`bd config get issue_prefix said what tutti can't read: ${out.trim()}`),
+        onSuccess: (data) =>
+          Effect.succeed(
+            Option.match(Schema.decodeUnknownOption(ConfigValue)(data), {
+              onNone: () => "",
+              onSome: ({ value }) => value?.trim() ?? "",
+            }),
+          ),
       }),
   )
 
@@ -517,16 +530,10 @@ export const prefixRefusal = (machine: Machine, repo: string) =>
     const state = yield* fs
       .readFileString(join(repo, stateFile))
       .pipe(Effect.orElseSucceed(() => ""))
-    const carried = (() => {
-      try {
-        const json: unknown = JSON.parse(state)
-        const tickets =
-          typeof json === "object" && json !== null && "tickets" in json ? json.tickets : null
-        return typeof tickets === "object" && tickets !== null && Object.keys(tickets).length > 0
-      } catch {
-        return false
-      }
-    })()
+    const carried = Option.exists(
+      Schema.decodeUnknownOption(CarriedState)(state),
+      (read) => Object.keys(read.tickets ?? {}).length > 0,
+    )
     if (carried) {
       reasons.push(`the last run left workers in ${stateFile}, which the next run carries on with`)
     }
@@ -779,6 +786,9 @@ export const trustExplanation = (checkout: string): string =>
 export const trustDeclined = (checkout: string): string =>
   `not trusted: run claude once in ${checkout} and accept the trust dialog`
 
+/** JSON text, any value. */
+const JsonText = Schema.fromJsonString(Schema.Unknown)
+
 /**
  * Sets `projects[checkout].hasTrustDialogAccepted` to true in Claude Code's user config `file`,
  * re-reading it just before, changing that one key and leaving everything else, and replacing it
@@ -795,27 +805,18 @@ export const markTrusted = (file: string, checkout: string) =>
           : Effect.fail(`${file} can't be read: ${error.message}`),
       ),
     )
-    const json: unknown = Option.isNone(text)
+    const config = Option.isNone(text)
       ? {}
-      : yield* Effect.try({
-          try: (): unknown => JSON.parse(text.value),
-          catch: () => `${file} isn't valid JSON; it was left as it is`,
+      : yield* Option.match(Schema.decodeUnknownOption(JsonText)(text.value), {
+          onNone: () => Effect.fail(`${file} isn't valid JSON; it was left as it is`),
+          onSome: Effect.succeed,
         })
-    if (typeof json !== "object" || json === null || Array.isArray(json)) {
+    if (!Predicate.isObject(config)) {
       return yield* Effect.fail(`${file} isn't a JSON object; it was left as it is`)
     }
-    const config = json as Record<string, unknown>
-    const projects =
-      typeof config.projects === "object" &&
-      config.projects !== null &&
-      !Array.isArray(config.projects)
-        ? (config.projects as Record<string, unknown>)
-        : {}
+    const projects = Predicate.isObject(config.projects) ? config.projects : {}
     const entry = projects[checkout]
-    const project =
-      typeof entry === "object" && entry !== null && !Array.isArray(entry)
-        ? (entry as Record<string, unknown>)
-        : {}
+    const project = Predicate.isObject(entry) ? entry : {}
     const changed = {
       ...config,
       projects: { ...projects, [checkout]: { ...project, hasTrustDialogAccepted: true } },

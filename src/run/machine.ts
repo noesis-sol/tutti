@@ -14,10 +14,22 @@
 // read holds no run, and one removed under the runs (a cache cleaner) is made again as the run next
 // writes.
 import { isAbsolute, join } from "node:path"
-import { Context, Duration, Effect, FileSystem, Layer, Ref, type Scope, Semaphore } from "effect"
+import {
+  Context,
+  Duration,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Ref,
+  Schema,
+  type Scope,
+  Semaphore,
+} from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { writeFileAtomic } from "../services/atomicFile.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
+import { lenientKey, Positive } from "../services/lenient.ts"
 import { processAlive } from "../services/processTree.ts"
 import { detail, type Line, Tag, tagged } from "./log.ts"
 
@@ -76,32 +88,37 @@ export interface Registration {
 /** A registration's name ends so; one being written ends in `.tmp` until it is renamed. */
 const registrationExt = ".json"
 
-const count = (value: unknown): number =>
-  typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : 0
+/** A registration's fields: each with the right type, as Go's decoding would read it. */
+const RegistrationFile = Schema.fromJsonString(
+  Schema.Struct({
+    pid: lenientKey(Positive),
+    repo: lenientKey(Schema.String),
+    concurrent: lenientKey(Positive),
+    started: lenientKey(Schema.String),
+    running: lenientKey(Positive),
+    tool: lenientKey(Schema.Literal("tutti")),
+  }),
+)
+
+const decodeRegistration = Schema.decodeUnknownOption(RegistrationFile)
 
 /**
  * The registration `text` holds, or undefined when it isn't one: not JSON, without a PID, or with
  * a start that isn't a time. Missing counts are 0, as Go's decoding leaves them.
  */
 export const readRegistration = (text: string): Registration | undefined => {
-  let value: unknown
-  try {
-    value = JSON.parse(text)
-  } catch {
-    return undefined
-  }
-  if (typeof value !== "object" || value === null) return undefined
-  const fields = value as Record<string, unknown>
-  const pid = count(fields.pid)
-  const started = typeof fields.started === "string" ? Date.parse(fields.started) : Number.NaN
-  if (pid === 0 || Number.isNaN(started)) return undefined
+  const decoded = decodeRegistration(text)
+  if (Option.isNone(decoded)) return undefined
+  const fields = decoded.value
+  const started = fields.started === undefined ? Number.NaN : Date.parse(fields.started)
+  if (fields.pid === undefined || Number.isNaN(started)) return undefined
   return {
-    pid,
-    repo: typeof fields.repo === "string" ? fields.repo : "",
-    concurrent: count(fields.concurrent),
+    pid: fields.pid,
+    repo: fields.repo ?? "",
+    concurrent: fields.concurrent ?? 0,
     started,
-    running: count(fields.running),
-    tool: fields.tool === "tutti" ? "tutti" : "orchestra",
+    running: fields.running ?? 0,
+    tool: fields.tool ?? "orchestra",
   }
 }
 

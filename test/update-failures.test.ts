@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Option, Result } from "effect"
+import { BunServices } from "@effect/platform-bun"
+import { Effect, type FileSystem, Option, Result } from "effect"
 import fc from "fast-check"
 import {
   cacheName,
@@ -176,7 +177,11 @@ describe("the daily check, with a cache it can't write", () => {
   const unwritable = async (cache: string) => {
     const { releases, asked } = await fixture({ tag: "v0.9.1" })
     const at = (now: number) =>
-      Effect.runPromise(newerRelease({ releases, current: "0.9.0", cache, now: () => now }))
+      Effect.runPromise(
+        newerRelease({ releases, current: "0.9.0", cache, now: () => now }).pipe(
+          Effect.provide(BunServices.layer),
+        ),
+      )
     // It still answers, and, having recorded nothing, asks again next time.
     expect(await at(start)).toEqual(Option.some("v0.9.1"))
     expect(await at(start + 1000)).toEqual(Option.some("v0.9.1"))
@@ -203,6 +208,9 @@ describe("the daily check, with a cache it can't write", () => {
 })
 
 describe("startCheck", () => {
+  const runWithFiles = <A>(effect: Effect.Effect<A, never, FileSystem.FileSystem>) =>
+    Effect.runPromise(Effect.provide(effect, BunServices.layer))
+
   const start = Date.UTC(2026, 9, 20, 9)
 
   /** Releases whose latest-release request waits for `answer`, or fails once aborted. */
@@ -236,7 +244,7 @@ describe("startCheck", () => {
   test("gives none while the check runs, and the newer tag once it has found one", async () => {
     const cache = mkdtempSync(join(tmpdir(), "tutti-update-cache-"))
     const check = held((await fixture({ tag: "v0.9.1" })).releases)
-    const seen = await Effect.runPromise(
+    const seen = await runWithFiles(
       Effect.scoped(
         Effect.gen(function* () {
           const newer = yield* startCheck({
@@ -265,7 +273,7 @@ describe("startCheck", () => {
   test("leaves nothing running once its scope closes, and records nothing", async () => {
     const cache = mkdtempSync(join(tmpdir(), "tutti-update-cache-"))
     const check = held((await fixture({ tag: "v0.9.1" })).releases)
-    const newer = await Effect.runPromise(
+    const newer = await runWithFiles(
       Effect.scoped(
         Effect.gen(function* () {
           const newer = yield* startCheck({

@@ -24,9 +24,7 @@ import {
   chmodSync,
   closeSync,
   fsyncSync,
-  mkdirSync,
   openSync,
-  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -34,10 +32,12 @@ import {
   writeSync,
 } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
-import { Duration, Effect, Option, Predicate, Result, Schema, type Scope } from "effect"
+import { Duration, Effect, FileSystem, Option, Predicate, Result, Schema, type Scope } from "effect"
 import { onOff } from "../cli/flags.ts"
 import { homeFolder } from "../project/userConfig.ts"
+import { writeFileAtomic } from "../services/atomicFile.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
+import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { parsePublicKey, type ReleaseKey } from "./keys.ts"
 
@@ -681,34 +681,33 @@ interface Cached {
   readonly checked: number
 }
 
-const readCache = (dir: string): Cached => {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(join(dir, cacheName), "utf8"))
-    if (typeof parsed !== "object" || parsed === null) return { checked: 0 }
-    const checked = "checked" in parsed && typeof parsed.checked === "number" ? parsed.checked : 0
-    const latest =
-      "latest" in parsed && typeof parsed.latest === "string" ? parsed.latest : undefined
-    return latest === undefined ? { checked } : { latest, checked }
-  } catch {
-    return { checked: 0 }
-  }
-}
+/** The cache file's text: each field where its value has the right type. */
+const CacheFile = Schema.fromJsonString(
+  Schema.Struct({ latest: lenientKey(Schema.String), checked: lenientKey(Schema.Number) }),
+)
 
-// Replaces the cache through a file renamed over it, so that a run reading it never sees half of it.
-// A cache that can't be written is asked about again next run.
-const writeCache = (dir: string, cached: Cached) => {
-  const temporary = join(dir, `.${cacheName}-${process.pid}`)
-  try {
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(temporary, JSON.stringify(cached))
-    renameSync(temporary, join(dir, cacheName))
-  } catch {
-    // Where the folder is a file, removing the file in it fails too (ENOTDIR).
-    try {
-      rmSync(temporary, { force: true })
-    } catch {}
-  }
-}
+const decodeCache = Schema.decodeUnknownOption(CacheFile)
+
+const readCache = (dir: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const text = yield* fs.readFileString(join(dir, cacheName)).pipe(Effect.orElseSucceed(() => ""))
+    const { latest, checked = 0 } = Option.getOrElse(
+      decodeCache(text),
+      (): Schema.Schema.Type<typeof CacheFile> => ({}),
+    )
+    const cached: Cached = latest === undefined ? { checked } : { latest, checked }
+    return cached
+  })
+
+// Replaces the cache whole (writeFileAtomic), so that a run reading it never sees half of it. A
+// cache that can't be written is asked about again next run.
+const writeCache = (dir: string, cached: Cached) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    yield* fs.makeDirectory(dir, { recursive: true })
+    yield* writeFileAtomic(join(dir, cacheName), JSON.stringify(cached))
+  }).pipe(Effect.ignore)
 
 /**
  * The latest release's tag when it is newer than `current` (package.json's version), from the
@@ -721,17 +720,17 @@ export const newerRelease = (options: {
   readonly current: string
   readonly cache: string
   readonly now: () => number
-}): Effect.Effect<Option.Option<string>> =>
+}): Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const now = options.now()
-    let last = readCache(options.cache)
+    let last = yield* readCache(options.cache)
     const age = now - last.checked
     if (age < 0 || age >= Duration.toMillis(checkEvery)) {
       const asked = yield* Effect.result(latestRelease(options.releases, limits.check))
       last = Result.isSuccess(asked)
         ? { latest: asked.success.tag, checked: now }
         : { ...last, checked: now }
-      writeCache(options.cache, last)
+      yield* writeCache(options.cache, last)
     }
     const latest = last.latest
     return latest !== undefined && Option.contains(compareVersions(options.current, latest), -1)
@@ -745,7 +744,11 @@ export const newerRelease = (options: {
  */
 export const startCheck = (
   options: Parameters<typeof newerRelease>[0],
-): Effect.Effect<Effect.Effect<Option.Option<string>>, never, Scope.Scope> =>
+): Effect.Effect<
+  Effect.Effect<Option.Option<string>>,
+  never,
+  Scope.Scope | FileSystem.FileSystem
+> =>
   Effect.gen(function* () {
     let found = Option.none<string>()
     yield* Effect.forkScoped(

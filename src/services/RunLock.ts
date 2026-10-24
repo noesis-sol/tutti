@@ -21,7 +21,7 @@
 // shared flock for a moment, as orchestra's plan takes, which a run's retries get past.
 import { fstatSync, ftruncateSync, readSync, writeSync } from "node:fs"
 import { join } from "node:path"
-import { Context, Effect, Exit, Layer, Schema, Scope } from "effect"
+import { Context, Effect, Exit, Layer, Option, Schema, Scope, Struct } from "effect"
 import {
   close,
   flockExclusiveNonBlocking,
@@ -33,6 +33,7 @@ import {
 } from "../native/libc.ts"
 import { clock } from "../run/localTime.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { lenientKey, Positive } from "./lenient.ts"
 
 /** The two programs whose lock files a run takes. */
 export type Program = "tutti" | "orchestra"
@@ -63,15 +64,17 @@ export type Holder = Schema.Schema.Type<typeof Holder>
  * What a held lock file says of its holder: each field it has with the right type. A holder that
  * has just taken the lock may not have written yet, and orchestra's file has fields of its own.
  */
-export const SeenHolder = Schema.Struct({
-  pid: Schema.optionalKey(Schema.Number),
-  started: Schema.optionalKey(Schema.String),
-  version: Schema.optionalKey(Schema.String),
-  branch: Schema.optionalKey(Schema.String),
-  scope: Schema.optionalKey(Schema.String),
-  feature: Schema.optionalKey(Schema.String),
-  init: Schema.optionalKey(Schema.Literal(true)),
-})
+const seenFields = {
+  pid: Positive,
+  started: Schema.String,
+  version: Schema.String,
+  branch: Schema.String,
+  scope: Schema.String,
+  feature: Schema.String,
+  init: Schema.Literal(true),
+}
+
+export const SeenHolder = Schema.Struct(Struct.map(seenFields, Schema.optionalKey))
 
 export type SeenHolder = Schema.Schema.Type<typeof SeenHolder>
 
@@ -126,31 +129,14 @@ export interface LockRequest {
   readonly holder: Holder
 }
 
-const has = <K extends string>(o: object, key: K): o is Record<K, unknown> => Object.hasOwn(o, key)
+/** A held lock file's text: each field SeenHolder has, where its value has the right type. */
+const SeenHolderFile = Schema.fromJsonString(Schema.Struct(Struct.map(seenFields, lenientKey)))
+
+const decodeHolder = Schema.decodeUnknownOption(SeenHolderFile)
 
 /** Reads what a held lock file says of its holder; text that isn't a JSON object says nothing. */
-export const parseHolder = (text: string): SeenHolder => {
-  let json: unknown
-  try {
-    json = JSON.parse(text)
-  } catch {
-    return {}
-  }
-  if (typeof json !== "object" || json === null || Array.isArray(json)) return {}
-  const stringField = (key: "started" | "version" | "branch" | "scope" | "feature") =>
-    has(json, key) && typeof json[key] === "string" ? { [key]: json[key] } : {}
-  return {
-    ...(has(json, "pid") && Number.isSafeInteger(json.pid) && (json.pid as number) > 0
-      ? { pid: json.pid as number }
-      : {}),
-    ...stringField("started"),
-    ...stringField("version"),
-    ...stringField("branch"),
-    ...stringField("scope"),
-    ...stringField("feature"),
-    ...(has(json, "init") && json.init === true ? { init: true as const } : {}),
-  }
-}
+export const parseHolder = (text: string): SeenHolder =>
+  Option.getOrElse(decodeHolder(text), () => ({}))
 
 /** The JSON tutti.lock holds for `holder`. */
 export const tuttiLockText = (holder: Holder): string =>

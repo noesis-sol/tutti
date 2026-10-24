@@ -37,6 +37,7 @@ import { retiredIn, settingsFile } from "../project/settings.ts"
 import { Beads, type BeadsError, HumanLabel } from "../services/Beads.ts"
 import { Git, gitTooOld } from "../services/Git.ts"
 import { checkoutChanges } from "../services/gitStatus.ts"
+import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { type Line, start, Tag } from "./log.ts"
@@ -340,6 +341,19 @@ const setUp = (repo: string) =>
     fs.exists(join(repo, settingsFile)).pipe(Effect.orElseSucceed(() => true)),
   )
 
+/** What tutti reads of orchestra's run state: its workers' tickets, a worker it can't read without. */
+const OrchestraState = Schema.fromJsonString(
+  Schema.Struct({
+    workers: lenientKey(
+      Schema.Array(
+        Schema.Struct({ ticket: lenientKey(Schema.String) }).pipe(
+          Schema.catchDecoding(() => Effect.succeedSome({})),
+        ),
+      ),
+    ),
+  }),
+)
+
 /**
  * The tickets of the workers orchestra's run state names in `repo`: none when it has no state, or
  * one tutti can't read, since the file is orchestra's.
@@ -350,22 +364,11 @@ export const orchestraWorkers = (repo: string) =>
     const text = yield* fs
       .readFileString(join(repo, orchestraStateFile))
       .pipe(Effect.orElseSucceed(() => ""))
-    let state: unknown
-    try {
-      state = JSON.parse(text)
-    } catch {
-      return []
-    }
-    const workers =
-      typeof state === "object" && state !== null ? (state as { workers?: unknown }).workers : []
-    if (!Array.isArray(workers)) return []
-    const tickets = workers.flatMap((worker: unknown) => {
-      const ticket =
-        typeof worker === "object" && worker !== null
-          ? (worker as { ticket?: unknown }).ticket
-          : undefined
-      return typeof ticket === "string" && ticket !== "" ? [sanitizeLine(ticket)] : []
-    })
+    const state = Schema.decodeUnknownOption(OrchestraState)(text)
+    const workers = Option.isSome(state) ? (state.value.workers ?? []) : []
+    const tickets = workers.flatMap(({ ticket }) =>
+      ticket === undefined || ticket === "" ? [] : [sanitizeLine(ticket)],
+    )
     return [...new Set(tickets)]
   })
 

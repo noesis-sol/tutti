@@ -254,7 +254,7 @@ const clip = (value: string, max: number): string =>
   value.length > max ? `${value.slice(0, max)}…` : value
 
 /** The payload of bd's output: the JSON, out of its envelope when it has one. */
-const payload = (stdout: string): Result.Result<unknown, string> =>
+export const bdPayload = (stdout: string): Result.Result<unknown, string> =>
   Result.map(
     Result.mapError(Schema.decodeUnknownResult(Json)(stdout), () => "not JSON"),
     (json) =>
@@ -267,7 +267,7 @@ const payload = (stdout: string): Result.Result<unknown, string> =>
 const decodeWith =
   <A>(schema: Schema.Decoder<A>, what: string) =>
   (command: string, stdout: string): Effect.Effect<A, BeadsUnreadable> => {
-    const decoded = Result.flatMap(payload(stdout), (data) =>
+    const decoded = Result.flatMap(bdPayload(stdout), (data) =>
       Result.mapError(Schema.decodeUnknownResult(schema)(data), (error) => error.message),
     )
     return Result.isSuccess(decoded)
