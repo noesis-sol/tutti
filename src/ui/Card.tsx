@@ -17,7 +17,7 @@
 import { memo, useCallback, useMemo } from "react"
 import { pad } from "../run/localTime.ts"
 import type { Card } from "../run/runView.ts"
-import { AttentionLines, attentionInside, attentionLines } from "./AttentionCard.tsx"
+import { attentionInside, attentionLines } from "./AttentionCard.tsx"
 import { clickable } from "./click.ts"
 import { workerMemory } from "./LoadLine.tsx"
 import {
@@ -559,7 +559,8 @@ const CardBox = memo(
           width={width}
           border={highlighted ? "heavy" : "rounded"}
         />
-        {grows(card) ? <AttentionLines lines={below} press={pressed} /> : <Lines lines={below} />}
+        {/* Only an attention card's buttons have targets to press. */}
+        <Lines lines={below} press={pressed} />
       </box>
     )
   },

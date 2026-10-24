@@ -7,7 +7,7 @@ import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { renderMarkdown } from "../src/print/markdown.ts"
 import { boxed, cut, fit, type Segments, seg, tabWidth, widthOf, wrap } from "../src/ui/line.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
-import { PanelBox, panelParts } from "../src/ui/WorkerView.tsx"
+import { PanelBox, panelParts } from "../src/ui/worker/Panel.tsx"
 import { renderFrame } from "./render.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })

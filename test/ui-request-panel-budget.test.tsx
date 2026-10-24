@@ -25,7 +25,7 @@ import {
   windowOf,
 } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { inputLines, type PanelParts, panelRooms } from "../src/ui/WorkerView.tsx"
+import { inputLines, type PanelParts, panelRooms } from "../src/ui/worker/Panel.tsx"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>

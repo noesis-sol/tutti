@@ -6,7 +6,7 @@ import { TextAttributes } from "@opentui/core"
 import { useSyncExternalStore } from "react"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
-import { ruleWidth, useSyntaxStyles } from "../src/ui/WorkerView.tsx"
+import { ruleWidth, useSyntaxStyles } from "../src/ui/worker/Looks.tsx"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })

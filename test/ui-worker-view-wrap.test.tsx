@@ -18,7 +18,8 @@ import { type Segments, seg, widthOf, wrap } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { atBottom, entriesOf, type ToolEntry, transcriptFeed } from "../src/ui/transcriptItems.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
-import { entryId, itemLines, toolLines } from "../src/ui/WorkerView.tsx"
+import { entryId } from "../src/ui/WorkerView.tsx"
+import { itemLines, toolLines } from "../src/ui/worker/Story.tsx"
 import { type Frame, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>

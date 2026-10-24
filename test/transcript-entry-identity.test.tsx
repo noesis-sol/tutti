@@ -34,7 +34,7 @@ import {
   withLive,
 } from "../src/ui/transcriptItems.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
-import { EntryView } from "../src/ui/WorkerView.tsx"
+import { EntryView } from "../src/ui/worker/Story.tsx"
 import { type Rendered, withRender } from "./render.ts"
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()

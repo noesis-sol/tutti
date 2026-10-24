@@ -7,7 +7,7 @@ import { useState } from "react"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import type { Segments } from "../src/ui/line.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
-import { PanelBox, panelInput, panelParts, usePanelParts } from "../src/ui/WorkerView.tsx"
+import { PanelBox, panelInput, panelParts, usePanelParts } from "../src/ui/worker/Panel.tsx"
 import { withRender } from "./render.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })

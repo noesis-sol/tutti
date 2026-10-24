@@ -10,7 +10,7 @@ import { type Item, type Live, transcriptVersion } from "../src/agent/Transcript
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { entriesOf } from "../src/ui/transcriptItems.ts"
 import { external, type Settable } from "../src/ui/useRunView.ts"
-import { useSyntaxStyles } from "../src/ui/WorkerView.tsx"
+import { useSyntaxStyles } from "../src/ui/worker/Looks.tsx"
 import { type Frame, withRender } from "./render.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })

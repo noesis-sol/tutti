@@ -93,8 +93,11 @@ describe("a box's keys", () => {
     ]
     expect(choiceRows(keys, seg(" · "), 20)).toEqual([
       [
-        { choice: 0, segments: keys[0] ?? [] },
-        { choice: 1, segments: [seg(" · "), ...(keys[1] ?? [])] },
+        seg("s", null, 0),
+        seg(" stop", null, 0),
+        seg(" · ", null, 1),
+        seg("q", null, 1),
+        seg(" quit", null, 1),
       ],
     ])
   })
@@ -108,17 +111,16 @@ describe("a box's keys", () => {
         (choices, width) => {
           const keys = choices.map(([name, does]) => [seg(name), seg(` ${does}`)])
           const rows = choiceRows(keys, seg(" · "), width)
-          const pieces = rows.flat()
-          for (const row of rows) {
-            expect(widthOf(row.flatMap((piece) => piece.segments))).toBeLessThanOrEqual(width)
-          }
-          const order = pieces.map((piece) => piece.choice)
+          for (const row of rows) expect(widthOf(row)).toBeLessThanOrEqual(width)
+          // A wrapped key's indent is no key's.
+          const pieces = rows.flat().filter((each) => each.target !== undefined)
+          const order = pieces.map((piece) => piece.target ?? -1)
           expect(order).toEqual([...order].sort((a, b) => a - b))
           expect([...new Set(order)]).toEqual(choices.map((_, i) => i))
           choices.forEach(([name, does], i) => {
             const text = pieces
-              .filter((piece) => piece.choice === i)
-              .flatMap((piece) => piece.segments.map((each) => each.text))
+              .filter((piece) => piece.target === i)
+              .map((each) => each.text)
               .join(" ")
               .replace(" · ", "")
             expect(text.replace(/\s+/g, "")).toBe(`${name}${does}`.replace(/\s+/g, ""))

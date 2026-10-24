@@ -43,19 +43,11 @@ import {
   useTranscriptWindow,
 } from "./transcriptView.ts"
 import { type External, useCommand, useRunViewPart, useTheme } from "./useRunView.ts"
-import {
-  LooksContext,
-  panelBudget,
-  RequestPanel,
-  TranscriptPane,
-  TranscriptSection,
-  usePanelRooms,
-  useSyntaxStyles,
-  type ViewChrome,
-  ViewHead,
-  ViewHint,
-  viewLayout,
-} from "./WorkerView.tsx"
+import { panelBudget, type ViewChrome, ViewHint, viewLayout } from "./WorkerView.tsx"
+import { ViewHead } from "./worker/Head.tsx"
+import { LooksContext, useSyntaxStyles } from "./worker/Looks.tsx"
+import { RequestPanel, usePanelRooms } from "./worker/Panel.tsx"
+import { TranscriptPane, TranscriptSection } from "./worker/Story.tsx"
 
 /** What the Interview view reads besides the shell: the description, and what has been filed. */
 export interface InterviewValue {

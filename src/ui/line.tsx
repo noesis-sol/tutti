@@ -3,6 +3,7 @@
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
 import { RGBA } from "@opentui/core"
 import { createContext, memo, type ReactNode, useContext } from "react"
+import { clickable } from "./click.ts"
 import { oneLine } from "./oneLine.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import { orchestra, rgbaOf, type Style, type Theme } from "./theme.ts"
@@ -18,8 +19,9 @@ export type Segment = Piece<Look | null>
 
 export type Segments = ReadonlyArray<Segment>
 
-/** `text` in `look`. */
-export const seg = (text: string, look: Look | null = null): Segment => ({ text, look })
+/** `text` in `look`, a click on it pressing `target` where it has one (Line's `press`). */
+export const seg = (text: string, look: Look | null = null, target?: number): Segment =>
+  target === undefined ? { text, look } : { text, look, target }
 
 /**
  * The terminal's own text colour, for text no role colours (§ 7.11's "default text colour"). Left
@@ -38,6 +40,12 @@ export const styled = (look: Look) => ({
 export interface Piece<L> {
   readonly text: string
   readonly look: L
+  /**
+   * The click target it is part of, an id that the line drawing it hands to its `press` (Line):
+   * an id, not a closure, so that a line worked out once is still the same line. Kept through
+   * `cut`, `wrap` and `padded`; printed text has none.
+   */
+  readonly target?: number
 }
 
 /**
@@ -93,16 +101,17 @@ export const cut = <L,>(
       text += segment
       room -= g
     }
-    kept.push({ text: `${text}…`, look: each.look })
+    kept.push({ ...each, text: `${text}…` })
     break
   }
   return kept
 }
 
-/** A grapheme of a segment's text, in its look, and the columns it takes. */
+/** A grapheme of a segment's text, in its look and its target, and the columns it takes. */
 interface Cell<L> {
   readonly text: string
   readonly look: L
+  readonly target: number | undefined
   readonly width: number
 }
 
@@ -112,22 +121,26 @@ interface Cell<L> {
  */
 function* cellsOf<L>(segments: ReadonlyArray<Piece<L>>): Generator<Cell<L>> {
   for (const each of segments) {
+    const { look, target } = each
     for (const { segment } of graphemes.segment(each.text)) {
       if (segment === "\t") {
-        for (let i = 0; i < tabWidth; i++) yield { text: " ", look: each.look, width: 1 }
-      } else yield { text: segment, look: each.look, width: Bun.stringWidth(segment) }
+        for (let i = 0; i < tabWidth; i++) yield { text: " ", look, target, width: 1 }
+      } else yield { text: segment, look, target, width: Bun.stringWidth(segment) }
     }
   }
 }
 
-/** Cells as segments, a segment a run of one look. */
+/** Cells as segments, a segment a run of one look and one target. */
 const segmentsOf = <L,>(cells: ReadonlyArray<Cell<L>>): ReadonlyArray<Piece<L>> => {
   const out: Array<Piece<L>> = []
   for (const cell of cells) {
     const last = out.at(-1)
-    if (last !== undefined && last.look === cell.look) {
-      out[out.length - 1] = { text: last.text + cell.text, look: last.look }
-    } else out.push({ text: cell.text, look: cell.look })
+    if (last !== undefined && last.look === cell.look && last.target === cell.target) {
+      out[out.length - 1] = { ...last, text: last.text + cell.text }
+    } else {
+      const { text, look, target } = cell
+      out.push(target === undefined ? { text, look } : { text, look, target })
+    }
   }
   return out
 }
@@ -311,34 +324,98 @@ export const selectionLookOf = (theme: Theme): SelectionColours => {
 /** The selection colours of the lines drawn under it; OpenTUI's own outside it. */
 export const SelectionLook = createContext<SelectionColours>({})
 
+/** Presses a line's click target: the `target` of the segments clicked. */
+export type Press = (target: number) => void
+
+/** Whether any of `segments` is part of a click target. */
+const targeted = (segments: Segments): boolean => segments.some((each) => each.target !== undefined)
+
+/** `segments` in runs, each the segments next to one another of one target, or of none. */
+const runsOf = (segments: Segments): ReadonlyArray<Segments> => {
+  const runs: Array<Array<Segment>> = []
+  for (const each of segments) {
+    const run = runs.at(-1)
+    if (run !== undefined && run[0]?.target === each.target) run.push(each)
+    else runs.push([each])
+  }
+  return runs
+}
+
+/** A line's segments as the spans of a <text>. */
+const spans = (segments: Segments) =>
+  segments.map((each, i) =>
+    each.look === null ? (
+      // biome-ignore lint/suspicious/noArrayIndexKey: a line's segments are drawn anew in order
+      <span key={i}>{each.text}</span>
+    ) : (
+      // biome-ignore lint/suspicious/noArrayIndexKey: a line's segments are drawn anew in order
+      <span key={i} {...styled(each.look)}>
+        {each.text}
+      </span>
+    ),
+  )
+
 /**
- * One line, never wrapped: what doesn't fit the box is clipped. Drawn anew only when its segments
- * are other segments: a line worked out once keeps them, and isn't drawn again with the lines
- * around it.
+ * One line, never wrapped: what doesn't fit the box is clipped. With `press`, a click on segments
+ * with a `target` presses it: a button, a control such as `▾ whole ticket  t`, each run of a target
+ * its own click target. Drawn anew only when its segments are other segments, or, where they have
+ * targets, `press` is another function: a line worked out once keeps them, and isn't drawn again
+ * with the lines around it.
  */
-export const Line = memo(({ segments }: { readonly segments: Segments }) => (
-  <text wrapMode="none" height={1} fg={plainFg} {...useContext(SelectionLook)}>
-    {segments.map((each, i) =>
-      each.look === null ? (
-        // biome-ignore lint/suspicious/noArrayIndexKey: a line's segments are drawn anew in order
-        <span key={i}>{each.text}</span>
+export const Line = memo(
+  ({ segments, press }: { readonly segments: Segments; readonly press?: Press }) => {
+    const selection = useContext(SelectionLook)
+    if (press === undefined || !targeted(segments)) {
+      return (
+        <text wrapMode="none" height={1} fg={plainFg} {...selection}>
+          {spans(segments)}
+        </text>
+      )
+    }
+    return (
+      <box flexDirection="row" height={1} flexShrink={0}>
+        {runsOf(segments).map((run, i) => {
+          const target = run[0]?.target
+          return (
+            <text
+              // biome-ignore lint/suspicious/noArrayIndexKey: a line's runs are drawn anew in order
+              key={i}
+              wrapMode="none"
+              height={1}
+              fg={plainFg}
+              {...selection}
+              {...(target === undefined ? {} : clickable(() => press(target)))}
+            >
+              {spans(run)}
+            </text>
+          )
+        })}
+      </box>
+    )
+  },
+  (before, after) =>
+    before.segments === after.segments &&
+    (before.press === after.press || !targeted(after.segments)),
+)
+
+/** Lines one under the other, as tall as they are; with `press`, their targets are pressed (Line). */
+export const Lines = ({
+  lines,
+  press,
+}: {
+  readonly lines: ReadonlyArray<Segments>
+  readonly press?: Press
+}) => (
+  <box flexDirection="column" height={lines.length} flexShrink={0}>
+    {lines.map((segments, i) =>
+      press === undefined ? (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
+        <Line key={i} segments={segments} />
       ) : (
-        // biome-ignore lint/suspicious/noArrayIndexKey: a line's segments are drawn anew in order
-        <span key={i} {...styled(each.look)}>
-          {each.text}
-        </span>
+        // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
+        <Line key={i} segments={segments} press={press} />
       ),
     )}
-  </text>
-))
-
-/** Lines one under the other, as tall as they are. */
-export const Lines = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => (
-  <box flexDirection="column" height={lines.length} flexShrink={0}>
-    {lines.map((segments, i) => (
-      // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
-      <Line key={i} segments={segments} />
-    ))}
   </box>
 )
 
@@ -400,20 +477,42 @@ export const boxed = (
   width: number,
   frame: Look,
   border: Border = "rounded",
-): ReadonlyArray<Segments> => {
-  const c = corners[border]
-  const look = borderLook(frame, border)
-  const rule = c.h.repeat(Math.max(width - 2, 0))
-  return [
-    [seg(c.tl + rule + c.tr, look)],
-    ...boxSides(lines, width, frame, border),
-    [seg(c.bl + rule + c.br, look)],
-  ]
-}
+): ReadonlyArray<Segments> => [
+  frameEdge("top", width, frame, border),
+  ...boxSides(lines, width, frame, border),
+  frameEdge("bottom", width, frame, border),
+]
 
 /** A frame's look: heavy is bold as well. */
 const borderLook = (frame: Look, border: Border): Look =>
   border === "heavy" ? frame.bold() : frame
+
+/**
+ * The top or bottom of boxed's frame, `width` wide, with `label` in it at its right, a space each
+ * side of it and the frame's `─` after it: `╭──── ▴ less  t · Esc ─╮`. A label wider than the frame
+ * holds is cut with `…`; its segments keep their looks and their targets.
+ */
+export const frameEdge = (
+  edge: "top" | "bottom",
+  width: number,
+  frame: Look,
+  border: Border = "rounded",
+  label: Segments = [],
+): Segments => {
+  const c = corners[border]
+  const look = borderLook(frame, border)
+  const [left, right] = edge === "top" ? [c.tl, c.tr] : [c.bl, c.br]
+  const shown = cut(label, Math.max(width - 5, 0))
+  if (shown.length === 0) return [seg(left + c.h.repeat(Math.max(width - 2, 0)) + right, look)]
+  const fill = Math.max(width - widthOf(shown) - 5, 0)
+  return [seg(`${left}${c.h.repeat(fill)} `, look), ...shown, seg(` ${c.h}${right}`, look)]
+}
+
+/** The left and right of boxed's frame, a space inside each: `│ ` and ` │`. */
+export const frameSides = (frame: Look, border: Border = "rounded") => {
+  const side = seg(corners[border].v, borderLook(frame, border))
+  return { left: [side, seg(" ")] as Segments, right: [seg(" "), side] as Segments }
+}
 
 /**
  * `lines` between the sides of boxed's frame, `width` wide, without its top and bottom: for a box
@@ -425,7 +524,42 @@ export const boxSides = (
   frame: Look,
   border: Border = "rounded",
 ): ReadonlyArray<Segments> => {
-  const side = seg(corners[border].v, borderLook(frame, border))
+  const { left, right } = frameSides(frame, border)
   const inner = Math.max(width - 4, 0)
-  return lines.map((line) => [side, seg(" "), ...padded(cut(line, inner), inner), seg(" "), side])
+  return lines.map((line) => [...left, ...padded(cut(line, inner), inner), ...right])
+}
+
+/**
+ * `lines` rows of boxed's frame `width` wide, its sides drawn as boxSides draws them, around
+ * `children`, which take the `width - 4` columns between: for what isn't segments, such as a field
+ * or a scrollbox, in a frame whose other rows are boxed's.
+ */
+export const FrameRow = ({
+  width,
+  frame,
+  border = "rounded",
+  lines = 1,
+  children,
+}: {
+  readonly width: number
+  readonly frame: Look
+  readonly border?: Border
+  readonly lines?: number
+  readonly children: ReactNode
+}) => {
+  const { left, right } = frameSides(frame, border)
+  const rows = Math.max(lines, 0)
+  return (
+    <box flexDirection="row" height={rows} flexShrink={0}>
+      <box width={widthOf(left)} flexShrink={0}>
+        <Lines lines={Array.from({ length: rows }, () => left)} />
+      </box>
+      <box width={Math.max(width - 4, 0)} height={rows} flexShrink={0} flexDirection="column">
+        {children}
+      </box>
+      <box width={widthOf(right)} flexShrink={0}>
+        <Lines lines={Array.from({ length: rows }, () => right)} />
+      </box>
+    </box>
+  )
 }

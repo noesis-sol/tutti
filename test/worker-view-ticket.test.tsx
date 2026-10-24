@@ -24,6 +24,7 @@ import {
   descriptionLimit,
   descriptionLines,
   inlineSegments,
+  moreControl,
   panelCap,
   proseOf,
   wholeTicket,
@@ -529,14 +530,17 @@ describe("the description's and the whole ticket's text", () => {
         fc.boolean(),
         (written, width, limit, notes) => {
           const issue = ticketText(issueOf({ description: written, notes: notes ? "n" : "" }))
-          const { lines, control } = descriptionLines(issue, theme, width, limit)
+          const { lines, more } = descriptionLines(issue, theme, width, limit)
           expect(lines.length).toBeLessThanOrEqual(limit)
-          for (const line of lines) {
-            expect(
-              widthOf(line) + (line === lines.at(-1) ? widthOf(control ?? []) : 0),
-            ).toBeLessThanOrEqual(width)
+          for (const line of lines) expect(widthOf(line)).toBeLessThanOrEqual(width)
+          if (notes && limit > 0) expect(more).toBe(true)
+          // The control, a click target, ends the last line; no other line has a target.
+          const targets = lines.map((line) => line.filter((each) => each.target !== undefined))
+          expect(targets.slice(0, -1).flat()).toEqual([])
+          if (more) {
+            const last = lines.at(-1) ?? []
+            expect(last.slice(-(targets.at(-1)?.length ?? 0))).toEqual([...moreControl(theme)])
           }
-          if (notes && limit > 0) expect(control).not.toBeNull()
         },
       ),
     )

@@ -14,7 +14,7 @@ import { ManualClock, MockTreeSitterClient, type TestRendererSetup } from "@open
 import { testRender } from "@opentui/react/test-utils"
 import { act, createElement, type ReactNode } from "react"
 import { escapeHold } from "../src/ui/keys.ts"
-import { HighlighterContext } from "../src/ui/WorkerView.tsx"
+import { HighlighterContext } from "../src/ui/worker/Looks.tsx"
 
 export type Size = { readonly width: number; readonly height: number }
 

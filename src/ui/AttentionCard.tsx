@@ -22,44 +22,30 @@ import {
   useAnswering,
   useSendAnswer,
 } from "./attentionKeys.ts"
-import { clickable } from "./click.ts"
 import { hintSegments } from "./Hint.tsx"
 import { type Command, hintOf, useCommands } from "./keyCommands.ts"
 import { useInput, useLayer } from "./keys.ts"
 import {
   type Border,
   boxed,
-  cut,
+  FrameRow,
   Line,
+  Lines,
   type Look,
-  padded,
-  plainFg,
-  type Segment,
   type Segments,
   seg,
-  styled,
 } from "./line.tsx"
 import { Backdrop, modalMaxWidth } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
 import { useLatestRunView, useRunViewPart, useTheme } from "./useRunView.ts"
-
-/** A segment that draws button `button`, a click target. */
-export interface ButtonSegment extends Segment {
-  readonly button: number
-}
-
-const isButton = (segment: Segment): segment is ButtonSegment => "button" in segment
 
 /** The lines inside an attention card besides its head and title: its request's and its buttons'. */
 const requestLines = (card: Card, theme: Theme, focus: number | null): ReadonlyArray<Segments> => {
   const request = card.requests[0]
   if (request === undefined) return []
   const text = requestText(request)
-  const button = (label: string, index: number): ButtonSegment => ({
-    text: `[ ${label} ]`,
-    look: index === focus ? theme.form.focusedButton : theme.form.button,
-    button: index,
-  })
+  const button = (label: string, index: number) =>
+    seg(`[ ${label} ]`, index === focus ? theme.form.focusedButton : theme.form.button, index)
   const buttons = buttonsOf(request).map((each, i) => button(each.label, i))
   const rows: Array<Segments> = picksOptions(request)
     ? buttons.map((each) => [seg("  "), each])
@@ -84,8 +70,8 @@ export const attentionInside = (card: Card): number => {
 
 /**
  * An attention card's lines `width` wide, framed `needsYou`, heavy when it is highlighted: `head`
- * (its first line and its title), then its request with `focus` the focused button. A button's
- * segments are ButtonSegments while the card's width holds them whole.
+ * (its first line and its title), then its request with `focus` the focused button. A button is a
+ * segment whose target is its index, while the card's width holds it whole.
  */
 export const attentionLines = (
   card: Card,
@@ -105,49 +91,6 @@ export const attentionLines = (
     border,
   )
 }
-
-/** A line, its buttons click targets that `press` presses. */
-const ButtonLine = ({
-  segments,
-  press,
-}: {
-  readonly segments: Segments
-  readonly press: (index: number) => void
-}) => {
-  if (!segments.some(isButton)) return <Line segments={segments} />
-  return (
-    <box flexDirection="row" height={1}>
-      {segments.map((each, i) => (
-        <text
-          // biome-ignore lint/suspicious/noArrayIndexKey: a line's segments are drawn anew in order
-          key={i}
-          wrapMode="none"
-          height={1}
-          fg={plainFg}
-          {...(isButton(each) ? clickable(() => press(each.button)) : {})}
-        >
-          <span {...(each.look === null ? {} : styled(each.look))}>{each.text}</span>
-        </text>
-      ))}
-    </box>
-  )
-}
-
-/** An attention card's lines, its buttons pressed by a click. */
-export const AttentionLines = ({
-  lines,
-  press,
-}: {
-  readonly lines: ReadonlyArray<Segments>
-  readonly press: (index: number) => void
-}) => (
-  <box flexDirection="column" height={lines.length} flexShrink={0}>
-    {lines.map((segments, i) => (
-      // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
-      <ButtonLine key={i} segments={segments} press={press} />
-    ))}
-  </box>
-)
 
 /** The keys that answer a card's request, for the view's or the Answer box's layer. */
 export const answerBindings = (answering: Answering, card: () => Card | undefined) => {
@@ -249,14 +192,11 @@ export const AnswerBox = () => {
         // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
         backgroundColor={RGBA.defaultBackground()}
       >
-        <AttentionLines lines={lines} press={(index) => answering.press(card, index)} />
+        <Lines lines={lines} press={(index) => answering.press(card, index)} />
       </box>
     </>
   )
 }
-
-/** The reason box's lines: its frame, its question, the field and the keys, with blank lines. */
-const reasonBoxLines = 7
 
 /** What the reason box asks. */
 export const reasonQuestion = (ticket: string): string => `Deny ${ticket}'s request, saying why:`
@@ -308,15 +248,20 @@ export const ReasonBox = ({
   const frame: Look = theme.look("needsYou")
   const outer = Math.max(Math.min(width - 4, modalMaxWidth), 12)
   const inner = outer - 4
-  const bar = seg("│", frame)
-  const row = (segments: Segments): Segments => [
-    bar,
-    seg(" "),
-    ...padded(cut(segments, inner), inner),
-    seg(" "),
-    bar,
-  ]
-  const rule = "─".repeat(outer - 2)
+  // The box's rows: its question, a blank line, the field's row, which a FrameRow draws in its
+  // place, a blank line and the keys.
+  const framed = boxed(
+    [
+      [seg(reasonQuestion(label), frame.bold())],
+      [],
+      [],
+      [],
+      hintSegments(hintOf(reasonCommands(close)), theme, inner + 2).slice(1),
+    ],
+    outer,
+    frame,
+  )
+  const [above, below] = [framed.slice(0, 3), framed.slice(4)]
   return (
     <>
       <Backdrop />
@@ -324,38 +269,33 @@ export const ReasonBox = ({
         position="absolute"
         zIndex={10}
         left={Math.max(Math.floor((width - outer) / 2), 0)}
-        top={Math.max(Math.floor((height - reasonBoxLines) / 2), 0)}
+        top={Math.max(Math.floor((height - framed.length) / 2), 0)}
         width={outer}
-        height={reasonBoxLines}
+        height={framed.length}
         // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
         backgroundColor={RGBA.defaultBackground()}
         flexDirection="column"
       >
-        <Line segments={[seg(`╭${rule}╮`, frame)]} />
-        <Line segments={row([seg(reasonQuestion(label), frame.bold())])} />
-        <Line segments={row([])} />
-        <box flexDirection="row" height={1}>
-          <Line segments={[bar, seg(" "), seg("> ", theme.form.selector)]} />
-          <input
-            focused
-            width={Math.max(inner - 2, 1)}
-            ref={field}
-            onSubmit={() => submit(field.current?.value ?? "")}
-            placeholder="what the worker is told"
-            {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
-            {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
-            {...(form.placeholder.fg === undefined
-              ? {}
-              : { placeholderColor: form.placeholder.fg })}
-            {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
-          />
-          <Line segments={[seg(" "), bar]} />
-        </box>
-        <Line segments={row([])} />
-        <Line
-          segments={row(hintSegments(hintOf(reasonCommands(close)), theme, inner + 2).slice(1))}
-        />
-        <Line segments={[seg(`╰${rule}╯`, frame)]} />
+        <Lines lines={above} />
+        <FrameRow width={outer} frame={frame}>
+          <box flexDirection="row" height={1}>
+            <Line segments={[seg("> ", theme.form.selector)]} />
+            <input
+              focused
+              width={Math.max(inner - 2, 1)}
+              ref={field}
+              onSubmit={() => submit(field.current?.value ?? "")}
+              placeholder="what the worker is told"
+              {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
+              {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
+              {...(form.placeholder.fg === undefined
+                ? {}
+                : { placeholderColor: form.placeholder.fg })}
+              {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
+            />
+          </box>
+        </FrameRow>
+        <Lines lines={below} />
       </box>
     </>
   )

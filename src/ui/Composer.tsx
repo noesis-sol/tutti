@@ -22,7 +22,6 @@ import type { BoxRenderable, TextareaRenderable } from "@opentui/core"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "../agent/Transcripts.ts"
 import { asRecord } from "../agent/untrusted.ts"
-import { AttentionLines, type ButtonSegment } from "./AttentionCard.tsx"
 import type { Command } from "./keyCommands.ts"
 import { cut, Line, padded, type Segments, seg, widthOf } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
@@ -66,7 +65,7 @@ export const fileWords = {
 export const finishedLine = (theme: Theme, ticket: string, width: number): Segments => {
   const words = finishedWords(ticket)
   // Its key, Ctrl+T, is the hint's: beside the button, it would cut the words in 80 columns.
-  const button: ButtonSegment = { text: fileWords.button, look: theme.form.button, button: 0 }
+  const button = seg(fileWords.button, theme.form.button, 0)
   const room = Math.max(width - widthOf([button]) - 2, 0)
   const said: Segments = [
     seg("  "),
@@ -87,7 +86,7 @@ export const FinishedLine = ({
   readonly ticket: string
   readonly width: number
   readonly file: () => void
-}) => <AttentionLines lines={[finishedLine(theme, ticket, width)]} press={file} />
+}) => <Line segments={finishedLine(theme, ticket, width)} press={file} />
 
 /** What the held line says while `ticket` waits to merge (`merging` false) or merges. */
 export const heldWords = (ticket: string, merging: boolean) => ({
@@ -223,7 +222,7 @@ export const queuedLines = (
 
 /** The steered line, `width` wide: what steering means, and the Release button (§ 4.3). */
 export const steeredLine = (theme: Theme, width: number): Segments => {
-  const button: ButtonSegment = { text: "[ Release ]", look: theme.form.button, button: 0 }
+  const button = seg("[ Release ]", theme.form.button, 0)
   const keys: Segments = [seg("  "), seg("Ctrl+R", theme.styles.key)]
   const room = Math.max(width - widthOf([button, ...keys]) - 2, 0)
   const words: Segments = [
@@ -243,7 +242,7 @@ export const SteeredLine = ({
   readonly theme: Theme
   readonly width: number
   readonly release: () => void
-}) => <AttentionLines lines={[steeredLine(theme, width)]} press={release} />
+}) => <Line segments={steeredLine(theme, width)} press={release} />
 
 /** The queued messages, one a line. */
 export const QueuedLines = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => (
