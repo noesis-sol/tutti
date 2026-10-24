@@ -12,7 +12,9 @@
 // footprinted from what its branch changes, its files metadata and its area labels
 // (`branchFootprint`). A running ticket's footprint also grows with the files its worktree has
 // changed (§ 5). Two tickets whose footprints overlap don't run side by side; a file both name holds
-// them apart only when one of them is to change it (`sharedFile`).
+// them apart only when one of them is to change it (`sharedFile`), and never when the settings'
+// `queue.shared_files` name it (`RepoFiles.shared`), though it stays in their footprints: their
+// worktrees both changing it still warns LIKELY_CONFLICT, and a rebase conflict in it is handed back.
 //
 // The text is read with text.ts's heuristics, the names resolved with repoFiles.ts, the globs
 // matched with glob.ts; whether two footprints overlap is overlap.ts's.

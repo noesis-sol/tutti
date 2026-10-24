@@ -498,7 +498,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // ticket about to start waits while the workers across them are at that cap.
     const machine = yield* makeMachineGate({ holds, status, wakeUp })
     // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
-    // the checks' scripts count as no ticket's. A ticket works in the worktree the Store saved for
+    // the checks' scripts count as no ticket's, and the queue's shared files hold none apart. A ticket works in the worktree the Store saved for
     // it, wherever git had it (a reused one, or one an earlier run's --worktrees put elsewhere), or
     // else in <worktrees>/<id>.
     const footprints = config.settings.queue.footprint
@@ -506,6 +506,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           repo: config.repo,
           base,
           checkCommands: checkCommands(config.settings),
+          sharedFiles: config.settings.queue.shared_files,
           worktree: (ticket) =>
             Effect.map(
               store.ticket(ticket),

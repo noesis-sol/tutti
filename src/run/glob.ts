@@ -1,7 +1,8 @@
 // Globs (§ 5 item 5, footprint.ts): the files metadata's globs, matched against the repository's
 // paths part by part as Go's path.Match matches them, ** matching any number of folders; and
 // whether a glob holds a path, or two globs can match one file, for the footprints' overlap.
-// .tutti/settings.json's setup globs are matched here too (setup.ts).
+// .tutti/settings.json's globs are matched here too: the setup's (setup.ts) and the queue's shared
+// files (repoFiles.ts).
 
 /** A name in NFC, the Unicode form names are compared in. */
 export const nfc = (name: string): string => name.normalize("NFC")
@@ -123,6 +124,15 @@ export const globMatch = (
 // A glob with each run of **s as one, which matches the same paths: a/**/**/b as a/**/b.
 export const collapseAny = (glob: string): string =>
   glob.replace(/(^|\/)\*\*(?:\/\*\*)+(?=\/|$)/g, "$1**")
+
+/**
+ * Whether a glob of .tutti/settings.json matches a file: by its name, or by its path from the
+ * repository's top when the glob has a slash (a leading one aside), as orchestra matches them.
+ */
+export const settingsGlobMatch = (glob: string, file: string): boolean =>
+  glob.includes("/")
+    ? globMatch((glob.startsWith("/") ? glob.slice(1) : glob).split("/"), file.split("/"))
+    : globMatch([glob], [file.slice(file.lastIndexOf("/") + 1)])
 
 /** Whether a files metadata entry is a glob: it has a *, a ? or a [. */
 export const isGlob = (name: string): boolean => /[*?[]/.test(name)

@@ -3,7 +3,8 @@
 // higher-priority ticket first. Tickets are linked when they name the same function, or work on the
 // same small file and aren't compared on it by function, read from their footprints (footprint.ts):
 // a ticket with commits on its branch is footprinted from what the branch changes, as a run does,
-// and the files git merges by union link nothing.
+// and the files git merges by union and the queue's shared files (.tutti/settings.json) link
+// nothing.
 // Without --apply the proposal is only printed; with it each link is added with bd dep add, after a
 // warning when a run holds the repository's lock. A stop (Ctrl+C, SIGTERM: an interruption) as it
 // reads says it changed nothing, and one during --apply stops it between two links, saying which it
@@ -137,7 +138,8 @@ const planShared = (
  * the older one, then the lower ID by compareIds) goes first. `source` gives a repository file's
  * contents, for its line count and the functions it mentions; a file it hasn't (one not written
  * yet) is small and mentions none. Area labels, predicted files, the files git merges by union and
- * the files the check commands name, unless a ticket's files metadata lists them, don't link
+ * the queue's shared files (`RepoFiles.shared`), and the files the check commands name, unless a
+ * ticket's files metadata lists them, don't link
  * tickets, nor does a file neither ticket is to change (one both only cite), and a pair already
  * ordered by `existing` links, directly or through other tickets, gets none. Each ticket is linked
  * to the nearest one before it first, so tickets touching one function form a chain. `branches`
@@ -162,7 +164,7 @@ export const planLinks = (
   }
   const mentions = mentionsIn(contents)
   const small = (file: string) =>
-    (contents.get(file)?.split("\n").length ?? 1) - 1 <= smallFileLines
+    !repo.shared(file) && (contents.get(file)?.split("\n").length ?? 1) - 1 <= smallFileLines
   const after = new Map<string, Array<string>>()
   const link = (blocker: string, blocked: string) =>
     after.set(blocker, [...(after.get(blocker) ?? []), blocked])
@@ -295,10 +297,10 @@ const proposal = (
       Effect.flatMap((files) =>
         git.mergedByUnion(repo, files).pipe(
           Effect.orElseSucceed((): ReadonlyArray<string> => []),
-          Effect.map((union) => repoFiles(files, checks, union)),
+          Effect.map((union) => repoFiles(files, checks, union, settings.queue.shared_files)),
         ),
       ),
-      Effect.orElseSucceed(() => repoFiles(undefined, checks)),
+      Effect.orElseSucceed(() => repoFiles(undefined, checks, [], settings.queue.shared_files)),
     )
     const branches = yield* branchChanges(repo, open)
     const sources = yield* readSources(

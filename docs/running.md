@@ -326,6 +326,13 @@ from its text, which names what it read and was told as well.
 The files the checks' commands name are left out, unless the `files` metadata lists them: nearly every
 ticket says "`scripts/check-fast.sh` passes" without changing it. The files git merges by union
 (`CHANGELOG.md merge=union` in `.gitattributes`) are always left out: git keeps both tickets' lines.
+A file nearly every ticket edits in place, whose conflicts are cheap to resolve, goes in the
+settings' `queue.shared_files` instead (`["test/FEATURES.md"]`, paths or globs, a name without a
+slash matching in any folder): it stays in the footprints, but holds no two tickets apart, so two
+that share only it run side by side, and the second to merge has its rebase's conflict there handed
+back to its worker (`merge.resolve_conflicts`). Union merging wouldn't fit such a file: it keeps both
+the old and the new version of a line changed in place. `tutti init` lists the features map the
+create-check-suite skill writes as it files the test work.
 The log shows each ticket's footprint as it is dispatched: `<id> footprint: Loop.merge,
 src/run/merge.ts, area:run`, the predicted files marked `(predicted)`, a branch's `(from its
 branch)`, or `nothing named`. Two tickets overlap when they share an area label, a function or a file;
@@ -335,7 +342,7 @@ its text names it, a document (`.md`, `.txt`) only in a sentence asking to chang
 docs/guide.md", not "per CLAUDE.md"); or its worktree has changed it.
 A ticket that overlaps a running one is skipped, not waited for:
 `skipping <id>: touches merge.ts, like running <other>`. When two running workers change the same
-file anyway, the log warns: `LIKELY_CONFLICT: <a> and <b> both edit <file>; the second to merge may
+file anyway, a shared file among them, the log warns: `LIKELY_CONFLICT: <a> and <b> both edit <file>; the second to merge may
 conflict`. `"queue": { "footprint": false }` in the settings turns all of this off.
 
 ### Ordering tickets ahead of time

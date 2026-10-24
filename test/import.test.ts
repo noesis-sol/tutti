@@ -343,7 +343,11 @@ describe("init's import", () => {
     expect(Duration.toMinutes(settings.checks.full.timeout)).toBe(90)
     expect(settings.checks.setup).toEqual({ command: "npm ci", files: ["package-lock.json"] })
     expect(settings.workers.mcp_servers).toEqual(["postgres"])
-    expect(settings.queue).toEqual({ exclude_types: ["epic", "chore"], footprint: false })
+    expect(settings.queue).toEqual({
+      exclude_types: ["epic", "chore"],
+      footprint: false,
+      shared_files: [],
+    })
     expect(settings.merge.check_hand_backs).toBe(1)
     expect(settings.environment_hold.count).toBe(3)
     expect(read(project, ".tutti/worker-prompt.md")).toBe(fixturePrompt)

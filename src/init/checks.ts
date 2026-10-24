@@ -535,6 +535,38 @@ export const applySkill = (repo: string, choice: ChecksChoice | undefined, repla
     ]
   })
 
+/** The features map the skill writes, in the main test folder or at the repository's top. */
+export const featuresMap = "FEATURES.md"
+
+/** The folders the skill writes the features map in, in the order it names them, then the top. */
+const featuresMapFolders = ["tests", "test", "e2e", ""]
+
+/**
+ * Where the project's features map is (`there`), or will be: the first of the skill's folders that
+ * has it, else the first that exists (test/FEATURES.md), else its bare name, which matches it in
+ * any folder as a shared file (`queue.shared_files`).
+ */
+export const findFeaturesMap = (repo: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const exists = (path: string) =>
+      fs.exists(join(repo, path)).pipe(Effect.orElseSucceed(() => false))
+    for (const folder of featuresMapFolders) {
+      const path = folder === "" ? featuresMap : `${folder}/${featuresMap}`
+      if (yield* exists(path)) return { path, there: true }
+    }
+    for (const folder of featuresMapFolders) {
+      if (folder !== "" && (yield* exists(folder))) {
+        return { path: `${folder}/${featuresMap}`, there: false }
+      }
+    }
+    return { path: featuresMap, there: false }
+  }) satisfies Effect.Effect<
+    { readonly path: string; readonly there: boolean },
+    never,
+    FileSystem.FileSystem
+  >
+
 // --- The verifier ---
 
 /** The verifier subagent, from the project's top: committed, as a worktree has only that. */

@@ -46,6 +46,7 @@ import { builtInWorkerPrompt, withSuites } from "../project/prompt.ts"
 import { maxConcurrent, Settings, settingsFile } from "../project/settings.ts"
 import settingsTemplate from "../project/templates/settings.json" with { type: "json" }
 import gitignoreTemplate from "../project/templates/tutti-gitignore" with { type: "text" }
+import { settingsGlobMatch } from "../run/glob.ts"
 import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { RunLock } from "../services/RunLock.ts"
@@ -58,7 +59,9 @@ import {
   asksChecks,
   type ChecksAnswers,
   type ChecksQuestions,
+  filesTestWork,
   fileTestWork,
+  findFeaturesMap,
   findSetup,
   runnersDiffer,
   setupSteps,
@@ -329,6 +332,12 @@ const importedSettings = (repo: string, imported: Json) =>
     return { json, text: null, settings: decoded.value }
   })
 
+/** Whether the settings there have `queue.shared_files`, even an empty list. */
+const hasSharedFiles = (json: Json | null): boolean => {
+  const queue = json?.queue
+  return Predicate.isObject(queue) && Object.hasOwn(queue, "shared_files")
+}
+
 /** What init changes in the settings: each absent where it keeps what is there. */
 interface SettingsChanges {
   readonly concurrent: number | null
@@ -336,6 +345,8 @@ interface SettingsChanges {
   readonly checkFastTimeout?: Duration.Duration
   readonly checkFullTimeout?: Duration.Duration
   readonly setup?: string
+  /** The features map, added to `queue.shared_files` where none of them matches it. */
+  readonly sharedFile?: string
   /** --check-fast or --check-full was given: the runner is the check. */
   readonly fastRunnerChecks: boolean
   readonly fullRunnerChecks: boolean
@@ -393,6 +404,16 @@ const writeSettings = (
     if (changes.setup !== undefined) {
       const setup = section(checks, "setup")
       set(setup, "command", changes.setup === "" ? null : changes.setup, "checks.setup.command")
+    }
+    if (changes.sharedFile !== undefined) {
+      const queue = section(json, "queue")
+      const listed: ReadonlyArray<unknown> = Array.isArray(queue.shared_files)
+        ? queue.shared_files
+        : []
+      const file = changes.sharedFile
+      if (!listed.some((glob) => typeof glob === "string" && settingsGlobMatch(glob, file))) {
+        set(queue, "shared_files", [...listed, file], "queue.shared_files")
+      }
     }
     if (changes.fromTemplates.prompt) {
       const templates = section(json, "templates")
@@ -959,6 +980,13 @@ const initWork = <R>(options: InitOptions<R>) =>
         checked.stack ?? [],
       )
       steps.push(...verifier)
+      // The features map the skill writes is a shared file: added as the test work is filed, and
+      // where the project has one and its settings name no shared files yet.
+      const map = yield* findFeaturesMap(repo)
+      const sharedFile =
+        filesTestWork(choice) || (map.there && !hasSharedFiles(existing.json))
+          ? map.path
+          : undefined
       const fromTemplates = {
         prompt: prompt.fromTemplate,
         verifier: verifier.some((each) => each.commit?.includes(verifierPath) === true),
@@ -974,6 +1002,7 @@ const initWork = <R>(options: InitOptions<R>) =>
           ? {}
           : { checkFullTimeout: flags.checkFullTimeout }),
         ...(setup === undefined ? {} : { setup: setup.trim() }),
+        ...(sharedFile === undefined ? {} : { sharedFile }),
         fastRunnerChecks: flags.checkFast !== undefined || fastPlan.suites !== null,
         fullRunnerChecks: flags.checkFull !== undefined || fullPlan.suites !== null,
         fromTemplates,

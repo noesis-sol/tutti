@@ -250,6 +250,17 @@ export const Settings = Schema.Struct({
     exclude_types: Schema.Array(IssueType).pipe(withDefault(["epic"])),
     /** false starts tickets side by side even when their footprints overlap. */
     footprint: Schema.Boolean.pipe(withDefault(true)),
+    /**
+     * The files whose overlap doesn't hold two tickets apart, as paths or globs (a name without a
+     * slash matches in any folder): those nearly every ticket edits in place, whose conflicts are
+     * cheap to resolve, as the features map. None by default.
+     */
+    shared_files: Schema.Array(Text)
+      .annotate({
+        description:
+          "files whose overlap doesn't hold two tickets apart: paths or globs, a name without a slash matching in any folder",
+      })
+      .pipe(withDefault([])),
   }).pipe(withDefault({})),
   merge: Schema.Struct({
     /** false sets a finished ticket whose rebase conflicts aside at once. */

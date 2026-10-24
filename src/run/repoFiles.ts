@@ -2,7 +2,7 @@
 // tell a path a ticket names from other words, to find the files a bare name, a partial path, a
 // folder or a glob means, and the files the check commands name and git merges by union.
 import { posix } from "node:path"
-import { collapseAny, globMatch, isGlob, nfc } from "./glob.ts"
+import { collapseAny, globMatch, isGlob, nfc, settingsGlobMatch } from "./glob.ts"
 import { eachPathToken, setOf, sourceExtensions } from "./text.ts"
 
 // A name whose brackets, single or double, each close around a name within a part of its path, as
@@ -96,17 +96,25 @@ export interface RepoFiles {
    * it can't conflict, as git keeps both, so it never holds them apart. A folder is merged by none.
    */
   unioned(file: string): boolean
+  /**
+   * Whether the settings' `queue.shared_files` name the file, or a footprint's glob as written: a
+   * file nearly every ticket edits in place, whose conflicts are cheap to resolve, so that it holds
+   * no two tickets apart, though it stays in their footprints. A folder is shared by none.
+   */
+  shared(file: string): boolean
 }
 
 /**
  * Indexes the files git tracks (undefined when git couldn't list them) and finds those the check
  * commands (`scripts/check-fast.sh`, `bun test && sh scripts/lint.sh`) name among them. `union`
- * holds the files git merges by union (`Git.mergedByUnion`), as git lists them.
+ * holds the files git merges by union (`Git.mergedByUnion`), as git lists them; `sharedFiles` the
+ * settings' `queue.shared_files`, paths and globs.
  */
 export const repoFiles = (
   tracked: ReadonlyArray<string> | undefined,
   checkCommands: ReadonlyArray<string> = [],
   union: Iterable<string> = [],
+  sharedFiles: ReadonlyArray<string> = [],
 ): RepoFiles => {
   // The files as git lists them, by their NFC form: two whose names differ only in form are both meant.
   const files = new Map<string, Array<string>>()
@@ -245,5 +253,7 @@ export const repoFiles = (
     checks: (f) => check.has(f),
     bare,
     unioned: (f) => !f.endsWith("/") && unions.has(f),
+    shared: (f) =>
+      !f.endsWith("/") && sharedFiles.some((glob) => settingsGlobMatch(nfc(glob), nfc(f))),
   }
 }

@@ -176,15 +176,17 @@ export const waitsOnLinks = (issue: Pick<Issue, "dependencies">): boolean =>
 
 /**
  * What holds a ticket with footprint `fp` back for a running ticket's (`running`, by ID): the first,
- * by ID, whose footprint it overlaps. Undefined when it overlaps none, or names nothing.
+ * by ID, whose footprint it overlaps. Undefined when it overlaps none, or names nothing. A file
+ * `apart` says no to (one of the settings' shared files) holds none back.
  */
 export const overlapHold = (
   fp: Footprint,
   running: ReadonlyMap<string, Footprint>,
   mentions?: Mentions,
+  apart?: (file: string) => boolean,
 ): Held | undefined => {
   for (const id of [...running.keys()].sort()) {
-    const what = shared(fp, running.get(id) as Footprint, mentions)
+    const what = shared(fp, running.get(id) as Footprint, mentions, apart)
     if (what !== "") return { why: "overlap", text: `touches ${what}, like running ${id}` }
   }
   return undefined

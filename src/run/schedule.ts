@@ -122,17 +122,20 @@ export interface Footprints {
  * The footprints of the checkout at `repo`: its files from git, those git merges by union among
  * them, each running ticket's changes from its worktree (`worktree` gives its folder) against
  * `base`, each ticket's branch's against `base`, and its files' contents. git failing leaves names
- * judged by their look, none merged by union, and a ticket's changes unknown.
+ * judged by their look, none merged by union, and a ticket's changes unknown. `sharedFiles`, the
+ * settings' `queue.shared_files`, hold no tickets apart (`RepoFiles.shared`).
  */
 export const footprintsOf = (options: {
   readonly repo: string
   readonly base: string
   readonly checkCommands: ReadonlyArray<string>
+  readonly sharedFiles?: ReadonlyArray<string>
   readonly worktree: (ticket: string) => Effect.Effect<string>
 }): Effect.Effect<Footprints, never, Git | FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<Git | FileSystem.FileSystem>()
     const git = yield* Git
+    const sharedFiles = options.sharedFiles ?? []
     // The files but those git merges by union, as dir's .gitattributes say; all when git can't say.
     const withoutUnion = (dir: string, files: ReadonlyArray<string>) =>
       git.mergedByUnion(dir, files).pipe(
@@ -148,7 +151,7 @@ export const footprintsOf = (options: {
       Effect.flatMap((files) =>
         git.mergedByUnion(options.repo, files).pipe(
           Effect.orElseSucceed((): ReadonlyArray<string> => []),
-          Effect.map((union) => repoFiles(files, options.checkCommands, union)),
+          Effect.map((union) => repoFiles(files, options.checkCommands, union, sharedFiles)),
         ),
       ),
     )
@@ -160,7 +163,9 @@ export const footprintsOf = (options: {
         const files = yield* read
         if (at !== "") yield* Ref.set(listed, { at, files })
         return files
-      }).pipe(Effect.orElseSucceed(() => repoFiles(undefined, options.checkCommands))),
+      }).pipe(
+        Effect.orElseSucceed(() => repoFiles(undefined, options.checkCommands, [], sharedFiles)),
+      ),
       changed: (ticket) =>
         Effect.flatMap(options.worktree(ticket), (path) =>
           Effect.flatMap(worktreeChanges(path, options.base), (files) => withoutUnion(path, files)),
@@ -925,7 +930,12 @@ export const make = (
             )
             const mentions = yield* footprints.mentions(pairs, sources)
             for (const issue of asked) {
-              const held = overlapHold(mine.get(issue.id) as Footprint, running, mentions)
+              const held = overlapHold(
+                mine.get(issue.id) as Footprint,
+                running,
+                mentions,
+                (file) => !repo.shared(file),
+              )
               if (skipSaid.changed(issue.id, held?.text ?? "")) {
                 yield* logs.write(skippingLine(issue.id, held?.text ?? ""))
               }

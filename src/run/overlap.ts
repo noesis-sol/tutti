@@ -207,14 +207,27 @@ export const sharedFile = (
 /**
  * What two footprints share, for the log's `skipping <id>: touches <what>, like running <other>`:
  * an area label, a function (Loop.merge and merge meet, Loop.merge and Git.merge don't), or a file
- * or folder (see sharedFile); "" when nothing. mentions places their functions in files.
+ * or folder for which keep holds (see sharedFile); "" when nothing. mentions places their functions
+ * in files.
  */
-export const shared = (a: Footprint, b: Footprint, mentions?: Mentions): string => {
+export const shared = (
+  a: Footprint,
+  b: Footprint,
+  mentions?: Mentions,
+  keep?: (file: string) => boolean,
+): string => {
   const area = a.areas.find((x) => b.areas.includes(x))
   if (area !== undefined) return area
-  return sharedFunc(a, b) || sharedFile(a, b, mentions)
+  return sharedFunc(a, b) || sharedFile(a, b, mentions, keep)
 }
 
-/** Whether two footprints share a file, folder, function or area: their tickets don't run side by side. */
-export const overlaps = (a: Footprint, b: Footprint, mentions?: Mentions): boolean =>
-  shared(a, b, mentions) !== ""
+/**
+ * Whether two footprints share a file or folder for which keep holds, a function or an area: their
+ * tickets don't run side by side.
+ */
+export const overlaps = (
+  a: Footprint,
+  b: Footprint,
+  mentions?: Mentions,
+  keep?: (file: string) => boolean,
+): boolean => shared(a, b, mentions, keep) !== ""

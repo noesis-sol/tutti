@@ -34,7 +34,7 @@
 // from then on (takeSettings), and one that changes its requires list has the run check the new
 // list before the next ticket starts (requires.ts).
 import { unlinkSync } from "node:fs"
-import { basename, join } from "node:path"
+import { join } from "node:path"
 import { Effect, Option, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -55,7 +55,7 @@ import {
 import { outputTo, recorded } from "./check.ts"
 import { noteWritten } from "./checkWrote.ts"
 import { EventStream } from "./eventstream.ts"
-import { globMatch } from "./glob.ts"
+import { settingsGlobMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, type FinishedTicket, type MergeOptions } from "./merge.ts"
@@ -227,21 +227,12 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
   } satisfies SetUps
 })
 
-/**
- * The files of `files` that one of `globs` matches: by its name, or by its path from the
- * repository's top when the glob has a slash (a leading one aside), as orchestra matches them.
- */
+/** The files of `files` that one of `globs` matches (settingsGlobMatch). */
 export const setupFilesIn = (
   files: ReadonlyArray<string>,
   globs: ReadonlyArray<string>,
 ): ReadonlyArray<string> =>
-  files.filter((file) =>
-    globs.some((glob) =>
-      glob.includes("/")
-        ? globMatch((glob.startsWith("/") ? glob.slice(1) : glob).split("/"), file.split("/"))
-        : globMatch([glob], [basename(file)]),
-    ),
-  )
+  files.filter((file) => globs.some((glob) => settingsGlobMatch(glob, file)))
 
 /** The most files a line names of those the rebase changed. */
 export const maxFilesNamed = 5

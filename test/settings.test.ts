@@ -38,7 +38,7 @@ const example = {
   },
   templates: { worker_prompt: 5, verifier: 2, check_suite_skill: 1 },
   organs: { effort: null, model: null, triage: true, review: true },
-  queue: { exclude_types: ["epic"], footprint: true },
+  queue: { exclude_types: ["epic"], footprint: true, shared_files: [] },
   merge: { resolve_conflicts: true, resolve_timeout: "20m", check_hand_backs: 2 },
   environment_hold: { count: 2, window: "2m", probe: "10m" },
   ui: { colour_scheme: "orchestra" },
@@ -106,7 +106,7 @@ describe("settings", () => {
       },
       templates: { worker_prompt: 5, verifier: 2, check_suite_skill: 1 },
       organs: { effort: null, model: null, triage: true, review: true },
-      queue: { exclude_types: ["epic"], footprint: true },
+      queue: { exclude_types: ["epic"], footprint: true, shared_files: [] },
       merge: {
         resolve_conflicts: true,
         resolve_timeout: minutes(20),
@@ -138,7 +138,7 @@ describe("settings", () => {
     },
     templates: { worker_prompt: 0, verifier: 0, check_suite_skill: 0 },
     organs: { effort: null, model: null, triage: true, review: true },
-    queue: { exclude_types: ["epic"], footprint: true },
+    queue: { exclude_types: ["epic"], footprint: true, shared_files: [] },
     merge: {
       resolve_conflicts: true,
       resolve_timeout: minutes(20),

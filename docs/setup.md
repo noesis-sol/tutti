@@ -203,6 +203,10 @@ lines; `Ctrl+D` cancels.
     skill (which it writes to `.claude/skills/create-check-suite/`).
   - **Manual**: the one command `scripts/check-fast.sh` runs.
 
+  Where it files the test work, `init` lists the features map the skill writes (`test/FEATURES.md`,
+  or where the project has it) in the settings' `queue.shared_files`, as nearly every ticket keeps
+  it current: two tickets touching only it run side by side. It lists a map already there too, while
+  the settings name no shared files.
   A runner already there that differs from the choice is kept unless you say to replace it.
   With the suites found, the worker prompt `init` writes lists each suite with how to run it on part
   of the project, as the scout found it (`go test ./<package>/...`, `bun test <files>`), or whole
@@ -455,7 +459,7 @@ for a project that sets them all; the table below gives each one's default:
   },
   "templates": { "worker_prompt": 6, "verifier": 2, "check_suite_skill": 1 },
   "organs": { "effort": null, "model": null, "triage": true, "review": true },
-  "queue": { "exclude_types": ["epic"], "footprint": true },
+  "queue": { "exclude_types": ["epic"], "footprint": true, "shared_files": ["test/FEATURES.md"] },
   "merge": {
     "resolve_conflicts": true,
     "resolve_timeout": "20m",
@@ -492,6 +496,7 @@ for a project that sets them all; the table below gives each one's default:
 | `organs.review` | `true` | the run report; `--review` for a run |
 | `queue.exclude_types` | `["epic"]` | issue types a run never takes; epics never run whatever it says |
 | `queue.footprint` | `true` | keep tickets that touch the same code apart; [Footprints](running.md#footprints) |
+| `queue.shared_files` | `[]` | files whose overlap doesn't hold two tickets apart, paths or globs (a name without a slash matches in any folder), as the features map `init` lists as it files the test work; [Footprints](running.md#footprints) |
 | `merge.resolve_conflicts` | `true` | hand a rebase's conflicts back to the ticket's worker; `--resolve-conflicts` for a run |
 | `merge.resolve_timeout` | `"20m"` | how long the worker has for a hand-back |
 | `merge.check_hand_backs` | `2` | how often a check failing on the rebased branch is handed back; `0` for never |

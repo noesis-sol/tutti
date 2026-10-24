@@ -381,6 +381,15 @@
         "footprint": {
           "type": "boolean",
           "default": true
+        },
+        "shared_files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "files whose overlap doesn't hold two tickets apart: paths or globs, a name without a slash matching in any folder",
+          "default": []
         }
       },
       "additionalProperties": false,
