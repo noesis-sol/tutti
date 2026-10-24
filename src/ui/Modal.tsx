@@ -1,6 +1,7 @@
 // A box over the middle of the view, as orchestra draws its stop question: a rounded frame, its
 // paragraphs wrapped to its width, then the keys it answers to, named as the hint names its own (each key `emphasis` bold,
-// its words faint, ` · ` faint). Each key's words are a click target too, a single click (D9).
+// its words faint, ` · ` faint) and wrapped as the hint wraps (Hint.tsx hintLines). Each key's
+// words are a click target too, a single click (D9).
 // The box's keys are bound in the box layer apart from it (keys.ts useLayer), from before it opens.
 // Under it, a backdrop over the whole screen takes the mouse: a click beside the box doesn't reach
 // the view under it (tutti-por).
@@ -53,6 +54,46 @@ export const Backdrop = () => {
 /** The widest a box gets, its frame included. */
 export const modalMaxWidth = 64
 
+/** Part of a row of a box's keys: the words of the key at `choice`, or a line of them. */
+export interface ChoicePiece {
+  readonly choice: number
+  readonly segments: Segments
+}
+
+/**
+ * A box's keys, each its segments, on as many rows `width` wide as it takes to show every
+ * one: a row breaks between two keys, and inside one only when it is wider than a row, between
+ * its words, as hintLines breaks the hint.
+ */
+export const choiceRows = (
+  keys: ReadonlyArray<Segments>,
+  separator: Segment,
+  width: number,
+): ReadonlyArray<ReadonlyArray<ChoicePiece>> => {
+  const rows: Array<ReadonlyArray<ChoicePiece>> = []
+  let row: Array<ChoicePiece> = []
+  keys.forEach((segments, choice) => {
+    if (row.length > 0) {
+      const joined = [separator, ...segments]
+      if (widthOf(row.flatMap((each) => each.segments)) + widthOf(joined) <= width) {
+        row.push({ choice, segments: joined })
+        return
+      }
+      rows.push(row)
+      row = []
+    }
+    if (widthOf(segments) <= width) {
+      row = [{ choice, segments }]
+      return
+    }
+    for (const line of wrap(segments, width, { indent: 2, long: "line" })) {
+      rows.push([{ choice, segments: line }])
+    }
+  })
+  if (row.length > 0) rows.push(row)
+  return rows
+}
+
 export const Modal = ({
   frame,
   paragraphs,
@@ -68,7 +109,6 @@ export const Modal = ({
   const outer = Math.max(Math.min(width - 4, modalMaxWidth), 8)
   const inner = outer - 4
   const lines = paragraphs.flatMap((paragraph) => wrap([paragraph], inner, { long: "line" }))
-  const tall = lines.length + 4
   const bar = seg("│", frame)
   const row = (segments: Segments): Segments => [
     bar,
@@ -77,12 +117,15 @@ export const Modal = ({
     seg(" "),
     bar,
   ]
-  const keys = choices.map((choice, i) => [
-    ...(i === 0 ? [] : [seg(" · ", theme.styles.dim)]),
-    seg(choice.name, theme.styles.key),
-    seg(` ${choice.does}`, theme.styles.dim),
-  ])
-  const rest = Math.max(inner - widthOf(keys.flat()), 0)
+  const keys = choiceRows(
+    choices.map((choice) => [
+      seg(choice.name, theme.styles.key),
+      seg(` ${choice.does}`, theme.styles.dim),
+    ]),
+    seg(" · ", theme.styles.dim),
+    inner,
+  )
+  const tall = lines.length + keys.length + 3
   return (
     <>
       <Backdrop />
@@ -103,26 +146,37 @@ export const Modal = ({
           <Line key={i} segments={row(segments)} />
         ))}
         <Line segments={row([])} />
-        <box flexDirection="row" height={1}>
-          <Line segments={[bar, seg(" ")]} />
-          {choices.map((choice, i) => (
-            <text
-              key={choice.name}
-              wrapMode="none"
-              height={1}
-              fg={plainFg}
-              {...clickable(choice.run)}
-            >
-              {(keys[i] ?? []).map((each, j) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: a key's segments are drawn anew in order
-                <span key={j} {...(each.look === null ? {} : styled(each.look))}>
-                  {each.text}
-                </span>
-              ))}
-            </text>
-          ))}
-          <Line segments={[seg(" ".repeat(rest)), seg(" "), bar]} />
-        </box>
+        {keys.map((pieces, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the rows are drawn anew in order
+          <box key={i} flexDirection="row" height={1}>
+            <Line segments={[bar, seg(" ")]} />
+            {pieces.map((piece) => (
+              <text
+                key={piece.choice}
+                wrapMode="none"
+                height={1}
+                fg={plainFg}
+                {...clickable(choices[piece.choice]?.run ?? (() => {}))}
+              >
+                {piece.segments.map((each, j) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a key's segments are drawn anew in order
+                  <span key={j} {...(each.look === null ? {} : styled(each.look))}>
+                    {each.text}
+                  </span>
+                ))}
+              </text>
+            ))}
+            <Line
+              segments={[
+                seg(
+                  " ".repeat(Math.max(inner - widthOf(pieces.flatMap((each) => each.segments)), 0)),
+                ),
+                seg(" "),
+                bar,
+              ]}
+            />
+          </box>
+        ))}
         <Line segments={[seg(`╰${"─".repeat(outer - 2)}╯`, frame)]} />
       </box>
     </>
