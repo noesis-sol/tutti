@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { BunFileSystem } from "@effect/platform-bun"
 import { Clock, Duration, Effect, Layer } from "effect"
 import { AttentionPoll, pollEvery, serve } from "../src/agent/attentionFiles.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
@@ -46,7 +47,9 @@ const firstPoll = (
       }),
     ).pipe(
       Effect.provide(
-        attentionLayer().pipe(Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer()))),
+        attentionLayer().pipe(
+          Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer(), BunFileSystem.layer)),
+        ),
       ),
     ),
   )

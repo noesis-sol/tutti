@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { CanUseTool, PermissionResult, PermissionUpdate } from "@anthropic-ai/claude-agent-sdk"
-import { BunServices } from "@effect/platform-bun"
+import { BunFileSystem, BunServices } from "@effect/platform-bun"
 import { Console, Effect, Exit, Layer, Result, Stream } from "effect"
 import { Command } from "effect/cli"
 import fc from "fast-check"
@@ -84,7 +84,9 @@ const run = <A, E>(
       }),
     ).pipe(
       Effect.provide(
-        attentionLayer().pipe(Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer()))),
+        attentionLayer().pipe(
+          Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer(), BunFileSystem.layer)),
+        ),
       ),
     ),
   )

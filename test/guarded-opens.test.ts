@@ -16,7 +16,7 @@ import {
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { BunServices } from "@effect/platform-bun"
+import { BunFileSystem, BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Layer } from "effect"
 import { answerFile, attentionFolder, refusedFile, serve } from "../src/agent/attentionFiles.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
@@ -219,7 +219,9 @@ describe("a named pipe at an answer file's path", () => {
         }),
       ).pipe(
         Effect.provide(
-          attentionLayer().pipe(Layer.provideMerge(Layer.mergeAll(TestLog.layer(), eventsLayer()))),
+          attentionLayer().pipe(
+            Layer.provideMerge(Layer.mergeAll(TestLog.layer(), eventsLayer(), BunFileSystem.layer)),
+          ),
         ),
       ),
     )

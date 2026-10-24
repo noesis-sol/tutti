@@ -539,7 +539,7 @@ tutti keeps those rules (tool name and rule content) for the run. A later reques
 - **The request file** (mode 0600) holds the ticket, the kind, the sanitised display fields, the options, the two flags and the creation time. It is removed once answered or cancelled.
 - **`tutti answer`** lists open requests; `--json` for scripts and agents.
 - **`tutti answer <request-id> allow|deny|allow-run [--reason "…"] [--choice "<label>" …]`** writes `<request-id>.answer.json` (created exclusively, mode 0600). It then waits up to 10 seconds for the run to take it, and reports whether it did. Allowing a `defaultToNo` request also needs `--confirm`.
-- **The run watches the folder** (`fs.watch`, plus a 2-second poll in case events are missed). Before accepting an answer file, it checks:
+- **The run watches the folder** (the FileSystem service's watch merged with a 2-second poll, in case events are missed or the watch fails). Before accepting an answer file, it checks:
   - it isn't a symlink
   - it belongs to the run's user
   - the request is still open

@@ -8,6 +8,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
+import { BunFileSystem } from "@effect/platform-bun"
 import { Effect, Exit, Layer, Stream } from "effect"
 import {
   Attention,
@@ -46,7 +47,7 @@ const run = <A, E>(
     ).pipe(
       Effect.provide(
         attentionLayer(options.policy).pipe(
-          Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer())),
+          Layer.provideMerge(Layer.mergeAll(logLayer(), eventsLayer(), BunFileSystem.layer)),
         ),
       ),
     ),

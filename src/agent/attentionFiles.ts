@@ -2,7 +2,7 @@
 // .tutti/run/attention/ in the main checkout, and `tutti answer` answers one by writing an answer
 // file beside it. The run's side is here: `serve` keeps one `<request-id>.json` per open request,
 // created exclusively with mode 0600 and removed once the request is answered or withdrawn, and
-// watches the folder (fs.watch, plus a poll in case events are missed) for
+// watches the folder (FileSystem's watch, merged with a poll in case events are missed) for
 // `<request-id>.answer.json`.
 //
 // An answer file is taken only when it isn't a symbolic link, belongs to the run's user, answers a
@@ -15,21 +15,14 @@
 // command (src/answer/answer.ts), so it refuses locally what the run would refuse.
 
 import { randomBytes } from "node:crypto"
-import {
-  fstatSync,
-  watch as fsWatch,
-  linkSync,
-  readdirSync,
-  readSync,
-  unlinkSync,
-  writeSync,
-} from "node:fs"
+import { fstatSync, linkSync, readdirSync, readSync, unlinkSync, writeSync } from "node:fs"
 import { constants as osConstants } from "node:os"
 import { join } from "node:path"
 import {
   Context,
   Duration,
   Effect,
+  FileSystem,
   Layer,
   Queue,
   Ref,
@@ -464,10 +457,11 @@ const reasonOf = (error: unknown): string =>
  */
 export const serve = (
   options: ServeOptions,
-): Effect.Effect<void, never, Attention | Log | Scope.Scope> =>
+): Effect.Effect<void, never, Attention | Log | FileSystem.FileSystem | Scope.Scope> =>
   Effect.gen(function* () {
     const attention = yield* Attention
     const logs = yield* Log
+    const fs = yield* FileSystem.FileSystem
     const repo = options.repo
     const uid = options.uid ?? process.getuid?.() ?? 0
     const poll = options.poll ?? (yield* AttentionPoll)
@@ -569,31 +563,23 @@ export const serve = (
       sync(requests).pipe(one.withPermit),
     ).pipe(Effect.forkScoped)
 
-    // fs.watch's events wake the scan; the poll catches what they miss.
-    const kicks = yield* Queue.sliding<void>(1)
-    yield* Effect.acquireRelease(
-      Effect.sync(() => {
-        try {
-          const watcher = fsWatch(folder, () => {
-            Queue.offerUnsafe(kicks, undefined)
-          })
-          watcher.on("error", () => {})
-          return watcher
-        } catch {
-          return undefined
-        }
-      }),
-      (watcher) => Effect.sync(() => watcher?.close()),
-    )
-    yield* scan.pipe(
-      Effect.andThen(Effect.raceFirst(Queue.take(kicks), Effect.sleep(poll))),
-      Effect.forever,
+    // The folder's events wake the scan, and the poll, from the start, catches what they miss: a
+    // watch that fails, or ends as the folder goes, leaves the poll. A burst of events wakes one
+    // scan after the one under way.
+    yield* Stream.merge(
+      fs.watch(folder).pipe(Stream.ignore({ log: false })),
+      Stream.tick(poll),
+    ).pipe(
+      Stream.buffer({ capacity: 1, strategy: "sliding" }),
+      Stream.runForEach(() => scan),
       Effect.forkScoped,
     )
   })
 
 /** `serve` for the run's scope, as a layer. */
-export const layer = (options: ServeOptions): Layer.Layer<never, never, Attention | Log> =>
+export const layer = (
+  options: ServeOptions,
+): Layer.Layer<never, never, Attention | Log | FileSystem.FileSystem> =>
   Layer.effectDiscard(serve(options))
 
 /** What the run said about its refusal of the request's answer, if it did; the file is removed. */
