@@ -707,6 +707,7 @@ describe("the lines", () => {
       ]),
       solo: null,
       shared: 0,
+      keepAwake: false,
     }
     const text = titleSegments(title, [], 0, theme, 120)
       .map((segment) => segment.text)

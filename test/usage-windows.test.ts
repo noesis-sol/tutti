@@ -153,6 +153,7 @@ const title: TitleView = {
   quitting: null,
   solo: null,
   shared: 0,
+  keepAwake: false,
 }
 
 const windows: Banner = {

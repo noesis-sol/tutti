@@ -31,6 +31,7 @@ const title: TitleView = {
   quitting: null,
   solo: null,
   shared: 0,
+  keepAwake: false,
 }
 
 /** The title line's text `width` columns wide, the run's time at 0. */

@@ -61,6 +61,12 @@
         "pillText": {
           "$ref": "#/$defs/RoleColour"
         },
+        "keepAwake": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "keepAwakeText": {
+          "$ref": "#/$defs/RoleColour"
+        },
         "heading1": {
           "$ref": "#/$defs/RoleColour"
         },

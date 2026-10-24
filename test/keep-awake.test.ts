@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Effect, Exit, Option, Result } from "effect"
+import { Effect, Exit, Option, Result, SubscriptionRef } from "effect"
 import { defaultSettings, defaultUserConfig, resolve, type Sources } from "../src/cli/AppConfig.ts"
 import { noFlags } from "../src/cli/flags.ts"
 import { decodeConfig } from "../src/project/configFile.ts"
@@ -153,9 +153,11 @@ describe("keepAwake", () => {
       Effect.gen(function* () {
         yield* Effect.scoped(
           Effect.gen(function* () {
-            yield* keepAwake(awake, dir)
+            const holding = yield* SubscriptionRef.make(false)
+            yield* keepAwake(awake, dir, holding)
             yield* until(() => read(file).startsWith("started"), "the command's start")
             expect(groups.size).toBe(1)
+            expect(yield* SubscriptionRef.get(holding)).toBe(true)
           }),
         )
         return yield* texts
@@ -166,23 +168,26 @@ describe("keepAwake", () => {
     expect(groups.size).toBe(0)
   })
 
-  test("a command that ends by itself while the run goes is a line in the log", async () => {
+  test("a command that ends by itself while the run goes is a line in the log, and no longer holds", async () => {
     const awake: AwakeCommand = { command: "sh", args: ["-c", "echo gone >&2; exit 3"] }
     const ended = "sh ended (exit status 3: gone): nothing keeps the machine awake"
+    const holding = Effect.runSync(SubscriptionRef.make(false))
     const exit = await runWith(
       new Set(),
-      Effect.scoped(Effect.andThen(keepAwake(awake, tempDir()), logged(ended))),
+      Effect.scoped(Effect.andThen(keepAwake(awake, tempDir(), holding), logged(ended))),
     )
     expect(Exit.isSuccess(exit) && exit.value).toEqual([keepingAwakeLine(awake), ended])
+    expect(SubscriptionRef.getUnsafe(holding)).toBe(false)
   })
 
   test("a command that can't start is a line in the log, and the run goes on", async () => {
     const awake: AwakeCommand = { command: "tutti-no-such-keep-awake", args: ["-i"] }
+    const holding = Effect.runSync(SubscriptionRef.make(false))
     const exit = await runWith(
       new Set(),
       Effect.scoped(
         Effect.andThen(
-          keepAwake(awake, tempDir()),
+          keepAwake(awake, tempDir(), holding),
           Effect.gen(function* () {
             for (let tries = 0; tries < 500; tries++) {
               const lines = yield* texts
@@ -199,6 +204,7 @@ describe("keepAwake", () => {
     expect(lines[1]).toMatch(
       /^tutti-no-such-keep-awake ended \(.+\): nothing keeps the machine awake$/u,
     )
+    expect(SubscriptionRef.getUnsafe(holding)).toBe(false)
   })
 })
 

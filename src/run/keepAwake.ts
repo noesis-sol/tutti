@@ -4,8 +4,8 @@
 // closes, after the report's organs (src/main.ts). It goes through exec, in a process group of its
 // own that the scope kills; given the PID, it also ends by itself should tutti end some other way.
 // Where the system has none, or it isn't on the PATH, the START block warns once (`keepAwakePlan`),
-// and the run goes on all the same.
-import { Duration, Effect } from "effect"
+// and the run goes on all the same. While the command holds, the title line says so (§ 7.2).
+import { Duration, Effect, SubscriptionRef } from "effect"
 import { type Command, exec, showCommand } from "../services/exec.ts"
 import { type Line, Log, line } from "./log.ts"
 
@@ -85,11 +85,18 @@ export const keepingAwakeLine = (awake: AwakeCommand): Line =>
 /**
  * Keeps the machine awake with `awake`, run in `cwd`, until the scope closes, which stops it. The
  * command ending by itself while the scope is open, or not starting, is a line in the log.
+ * `holding` says whether it holds, for the title line's badge: true as it starts, false once it
+ * has ended.
  */
-export const keepAwake = (awake: AwakeCommand, cwd: string) =>
+export const keepAwake = (
+  awake: AwakeCommand,
+  cwd: string,
+  holding: SubscriptionRef.SubscriptionRef<boolean>,
+) =>
   Effect.gen(function* () {
     const logs = yield* Log
     yield* logs.write(keepingAwakeLine(awake))
+    yield* SubscriptionRef.set(holding, true)
     yield* exec({
       ...awake,
       cwd,
@@ -104,7 +111,10 @@ export const keepAwake = (awake: AwakeCommand, cwd: string) =>
         onFailure: (error) => (error._tag === "CommandNotRun" ? error.reason : error.message),
       }),
       Effect.flatMap((why) =>
-        logs.write(line`${awake.command} ended (${why}): nothing keeps the machine awake`),
+        Effect.andThen(
+          SubscriptionRef.set(holding, false),
+          logs.write(line`${awake.command} ended (${why}): nothing keeps the machine awake`),
+        ),
       ),
       Effect.forkScoped,
     )

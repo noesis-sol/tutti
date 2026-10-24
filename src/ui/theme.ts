@@ -28,6 +28,8 @@ export const roles = [
   "emphasis",
   "pill",
   "pillText",
+  "keepAwake",
+  "keepAwakeText",
   "heading1",
   "heading2",
   "heading3",
@@ -60,6 +62,7 @@ export type Role = typeof Role.Type
 /** The roles drawn as a background, whose `default` is the terminal's default background. */
 export const backgroundRoles: ReadonlySet<Role> = new Set<Role>([
   "pill",
+  "keepAwake",
   "formAccent",
   "formButton",
   "selection",
@@ -517,6 +520,7 @@ export const styleNames = [
   "tickets",
   "dim",
   "title",
+  "keepAwake",
 ] as const
 
 export type StyleName = (typeof styleNames)[number]
@@ -563,6 +567,7 @@ export const styleSpecs: { readonly [S in StyleName]: StyleSpec } = {
   tickets: spec("emphasis", { bold: true }),
   dim: spec(null, { faint: true }),
   title: spec("pillText", { bg: "pill", bold: true }),
+  keepAwake: spec("keepAwakeText", { bg: "keepAwake" }),
 }
 
 /** The form styles' names, as `huh`'s Charm theme draws its fields (§ 7.11's form roles). */

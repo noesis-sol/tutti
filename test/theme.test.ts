@@ -43,6 +43,8 @@ const orchestraTable: Record<Role, readonly [string, string]> = {
   emphasis: ["#374151", "#E5E7EB"],
   pill: ["#7D56F4", "#7D56F4"],
   pillText: ["#FAFAFA", "#FAFAFA"],
+  keepAwake: ["#B45309", "#F59E0B"],
+  keepAwakeText: ["#FFFBEB", "#1C1917"],
   heading1: ["#6D28D9", "#A78BFA"],
   heading2: ["#0E7490", "#22D3EE"],
   heading3: ["#374151", "#E5E7EB"],
@@ -474,6 +476,7 @@ describe("styles", () => {
       ["tickets", "emphasis", bold],
       ["dim", null, TextAttributes.DIM],
       ["title", "pillText", bold],
+      ["keepAwake", "keepAwakeText", 0],
     ]
     for (const [name, role, attributes] of table) {
       for (const [theme, at] of [

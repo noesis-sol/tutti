@@ -56,6 +56,8 @@ const orchestraColours: { readonly [R in Role]: readonly [light: string, dark: s
   emphasis: ["#374151", "#E5E7EB"],
   pill: ["#7D56F4", "#7D56F4"],
   pillText: ["#FAFAFA", "#FAFAFA"],
+  keepAwake: ["#B45309", "#F59E0B"],
+  keepAwakeText: ["#FFFBEB", "#1C1917"],
   heading1: ["#6D28D9", "#A78BFA"],
   heading2: ["#0E7490", "#22D3EE"],
   heading3: ["#374151", "#E5E7EB"],

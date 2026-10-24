@@ -16,6 +16,8 @@
     "emphasis": { "light": "#374151", "dark": "#E5E7EB" },
     "pill": "#7D56F4",
     "pillText": "#FAFAFA",
+    "keepAwake": { "light": "#B45309", "dark": "#F59E0B" },
+    "keepAwakeText": { "light": "#FFFBEB", "dark": "#1C1917" },
     "heading1": { "light": "#6D28D9", "dark": "#A78BFA" },
     "heading2": { "light": "#0E7490", "dark": "#22D3EE" },
     "heading3": { "light": "#374151", "dark": "#E5E7EB" },

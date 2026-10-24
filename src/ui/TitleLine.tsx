@@ -1,8 +1,9 @@
-// The dashboard's title line (§ 7.2, § 7.11), under a blank line: the tutti pill, the version, and
-// whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next,
+// The dashboard's title line (§ 7.2, § 7.11), under a blank line: the tutti pill, the version, the
+// ` keep awake ` badge while --keep-awake holds the machine awake, and whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next,
 // and how many other runs share the machine; then, faint, the branch, the run's time and a scoped run's ticket; and on the right tutti's
 // banners, the usage (or, short of a limit, the account's windows) and the holds. A narrow pane
-// drops the branch and the time first, then shortens the usage, and keeps the holds' words longest.
+// drops the badge first, then the branch and the time, then shortens the usage, and keeps the holds'
+// words longest.
 import { runTime } from "../print/summary.ts"
 import { resetLabel } from "../run/localTime.ts"
 import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
@@ -118,9 +119,10 @@ const bannerSegments = (banner: Banner, theme: Theme, now: number, form: Form): 
 
 /**
  * The title line's segments `width` columns wide, the run's time taken at `now`. A pane too narrow
- * for all of it gives up the least needed first: the branch and the time, cut then dropped; then the
- * usage banner, shortened then dropped; then the states, cut from their end; then what the holds say
- * beyond their words. A hold's word is cut only where the pill and the words alone are wider.
+ * for all of it gives up the least needed first: the keep-awake badge; then the branch and the time,
+ * cut then dropped; then the usage banner, shortened then dropped; then the states, cut from their
+ * end; then what the holds say beyond their words. A hold's word is cut only where the pill and the
+ * words alone are wider.
  */
 export const titleSegments = (
   title: TitleView,
@@ -129,9 +131,31 @@ export const titleSegments = (
   theme: Theme,
   width: number,
 ): Segments => {
+  // The badge says nothing that changes during the run, so it gives way first: it is shown only
+  // where the whole line fits with it, nothing cut or shortened.
+  if (title.keepAwake) {
+    const badged = laidOut(title, banners, now, theme, width, true)
+    if (badged !== null) return badged
+  }
+  return laidOut(title, banners, now, theme, width, false) ?? []
+}
+
+/**
+ * The title line `width` columns wide. With `badge`, the ` keep awake ` badge after the version,
+ * and only the whole line: null where it doesn't fit.
+ */
+const laidOut = (
+  title: TitleView,
+  banners: ReadonlyArray<Banner>,
+  now: number,
+  theme: Theme,
+  width: number,
+  badge: boolean,
+): Segments | null => {
   const { styles } = theme
   const left: Array<Segment> = [seg(" tutti ", styles.title)]
   if (title.version !== "") left.push(seg(" "), seg(title.version, styles.dim))
+  if (badge) left.push(seg(" "), seg(" keep awake ", styles.keepAwake))
   if (title.quitting !== null) left.push(seg(`  · ${title.quitting}`, styles.stop))
   else if (title.stopping) left.push(seg("  · stopping", styles.stop))
   if (title.solo !== null) {
@@ -171,6 +195,11 @@ export const titleSegments = (
   }
   const full = right("full", "full")
   const room = width - widthOf(left) - 3 - (full.length === 0 ? 0 : widthOf(full) + 2)
+  if (badge) {
+    return room >= widthOf([seg(where)])
+      ? laid([...left, seg("   "), seg(where, styles.dim)], full)
+      : null
+  }
   if (room >= minWhere) {
     const line = laid([...left, seg("   "), ...cut([seg(where, styles.dim)], room)], full)
     if (line !== null) return line

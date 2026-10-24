@@ -19,7 +19,18 @@
 // A compiled build starts from its target's entry instead (src/entries/<target>.ts), which embeds
 // its Claude Code and then calls `main`; the npm bundle from src/npm.ts, which detects musl first.
 import { BunServices } from "@effect/platform-bun"
-import { Clock, Console, Effect, Layer, ManagedRuntime, Option, Queue, Result, Scope } from "effect"
+import {
+  Clock,
+  Console,
+  Effect,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Queue,
+  Result,
+  Scope,
+  SubscriptionRef,
+} from "effect"
 import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
@@ -369,6 +380,10 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       })
       const count = asks === "no" ? TicketCount.Unknown() : yield* ticketCount(nothingOptions())
 
+      // Whether the keep-awake command holds the machine awake, for the title line's badge.
+      const keepingAwake = yield* SubscriptionRef.make(false)
+      const awakeOption =
+        awake._tag === "Command" ? { keepingAwake: SubscriptionRef.changes(keepingAwake) } : {}
       /**
        * The run begins on `work`: the machine kept awake until the run's scope closes, the feature
        * chosen named in the lock, and the start event.
@@ -376,7 +391,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       const begin = (work: Work) =>
         Effect.gen(function* () {
           if (awake._tag === "Command") {
-            yield* keepAwake(awake.command, config.repo).pipe(Scope.provide(runScope))
+            yield* keepAwake(awake.command, config.repo, keepingAwake).pipe(Scope.provide(runScope))
           }
           const feature = work._tag === "Feature" ? work.description : config.feature
           // The lock is held all the same if its holder can't be rewritten.
@@ -487,6 +502,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               start: start(),
               drains,
               quits,
+              ...awakeOption,
               exitNow: exitNow(),
               endLater: true,
             }),
@@ -564,6 +580,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
                 start: start(),
                 drains,
                 quits,
+                ...awakeOption,
                 exitNow: exitNow(destroy),
                 dashboard: dashboard(shell, themeOf, desktop),
                 endLater: true,

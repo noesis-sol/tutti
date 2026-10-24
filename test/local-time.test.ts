@@ -159,6 +159,7 @@ describe("where the reset is shown", () => {
     quitting: null,
     solo: null,
     shared: 0,
+    keepAwake: false,
   }
   const banner = (banners: Parameters<typeof titleSegments>[1], now: number) =>
     titleSegments(title, banners, now, theme, 140)

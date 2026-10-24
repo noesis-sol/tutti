@@ -188,6 +188,11 @@ export interface RunOptions {
   /** The dashboard to show when Tty says the terminal can draw one; the run is plain without it. */
   readonly dashboard?: Dashboard
   /**
+   * Whether the --keep-awake command holds the machine awake (keepAwake.ts), as it changes: the
+   * title line's badge. None for a run that doesn't keep the machine awake.
+   */
+  readonly keepingAwake?: Stream.Stream<boolean>
+  /**
    * Leaves the report and the end record to `finish`, run once the dashboard's renderer is gone,
    * so that they follow the summary on the main screen (§ 5 item 14 "Then", § 7.1).
    */
@@ -548,6 +553,16 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           panicked("the run", stopFor("PANIC", `the run's fiber: ${firstLine(defect)}`), defect),
         ),
       )
+    // The title line's badge while the --keep-awake command holds the machine awake.
+    if (options.keepingAwake !== undefined) {
+      yield* watch(
+        Stream.runForEach(options.keepingAwake, (keepAwake) =>
+          SubscriptionRef.update(status, (now) =>
+            now.keepAwake === keepAwake ? now : { ...now, keepAwake },
+          ),
+        ),
+      )
+    }
 
     // Requests to quit (quitting.ts): the first quits, the second says what is under way and how to
     // abandon it, and the third ends tutti at once, saving the workers not merged or dropped.

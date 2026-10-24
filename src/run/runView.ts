@@ -104,6 +104,8 @@ export interface Status {
   readonly solo: Solo | null
   /** How many other tutti and orchestra runs share the machine, as the last look found them. */
   readonly shared: number
+  /** The run's --keep-awake command holds the machine awake (keepAwake.ts): its title line's badge. */
+  readonly keepAwake: boolean
   /** The machine's load, as the run last read it (load.ts); null until it has, or when it doesn't. */
   readonly load: Reading | null
   /** The tickets not closed that the queue draws from (`9 of 16`); null until the run says. */
@@ -132,6 +134,7 @@ export const emptyStatus: Status = {
   endOfRun: null,
   solo: null,
   shared: 0,
+  keepAwake: false,
   load: null,
   unclosed: null,
   verdicts: new Map(),
@@ -291,6 +294,8 @@ export interface TitleView {
   readonly solo: Solo | null
   /** How many other runs share the machine: `· shared with 2 runs` when any. */
   readonly shared: number
+  /** The machine is kept awake for the run (--keep-awake): the ` keep awake ` badge. */
+  readonly keepAwake: boolean
 }
 
 /** What the load line says of the machine (load.ts's Reading), the memory summed. */
@@ -354,6 +359,7 @@ export const emptyView: RunView = {
     quitting: null,
     solo: null,
     shared: 0,
+    keepAwake: false,
   },
   load: null,
   totals: {
@@ -864,6 +870,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         ? null
         : { ticket: sanitizeLine(status.solo.ticket), running: status.solo.running },
     shared: status.shared,
+    keepAwake: status.keepAwake,
   }
   const warnings = [...new Set(status.warnings.map(sanitizeLine))]
   const load = status.load === null ? null : loadView(status.load)

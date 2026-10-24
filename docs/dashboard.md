@@ -45,6 +45,10 @@ has gone, and the scope of a `--ticket` or feature run (`· ticket tut-8f2`). It
 `· stopping` while something holds the run, `Quitting…` while it quits, and
 `· solo <id> running` or `· solo <id> next` around a ticket labelled `solo`.
 
+A run started with `--keep-awake` shows ` keep awake ` after the version, a warm amber pill, while
+its keep-awake command holds the machine awake (`--keep-awake`, see [Running](running.md)). Where the machine has
+no such command, or it isn't on the PATH, the START block warns instead, and there is no badge.
+
 On the right, the banners:
 
 - **The account's windows**, faint, all the time on a subscription login, once a worker's session
@@ -58,8 +62,9 @@ On the right, the banners:
   `USAGE_LIMIT · resets 14:05` while the usage limit does, with `· in 1h12m` while the run has
   nothing else to do but wait for it (see [The usage limit](running.md#the-usage-limit)).
 
-In a narrow pane the line gives up the least needed first: the branch and the time, then the usage
-banner's detail (`usage 85% · resets 14:05`, then `usage 85%`, then nothing), or the windows' (the
+In a narrow pane the line gives up the least needed first: the keep-awake badge, then the branch and
+the time, then the usage banner's detail (`usage 85% · resets 14:05`, then `usage 85%`, then
+nothing), or the windows' (the
 tighter first without the gauge, `week 41% · 5h 17%`, then `week 41%`, then nothing), then the states, cut
 from their end, then what the holds say beyond their words. A hold's word, such as `BLOCKED`, stays
 whole.
