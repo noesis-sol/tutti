@@ -164,6 +164,151 @@ const revisions = (
 export const logFormat = "--format=%H%x00%s%x00%B"
 
 /**
+ * Each command's arguments, by the Git operation that runs it: the live layer gives them to git,
+ * and the test layer shows them in GitFailed and GitTimedOut as the live layer would.
+ */
+export const gitArgs = {
+  addWorktree: (path: string, worktree: WorktreeOptions): ReadonlyArray<string> =>
+    worktree.base === undefined
+      ? ["worktree", "add", "--quiet", path, ...revisions([worktree.branch])]
+      : ["worktree", "add", "--quiet", "-b", worktree.branch, path, ...revisions([worktree.base])],
+  addDetachedWorktree: (path: string, commit: string): ReadonlyArray<string> => [
+    "worktree",
+    "add",
+    "--quiet",
+    "--detach",
+    path,
+    ...revisions([commit]),
+  ],
+  removeWorktree: (path: string, force = false): ReadonlyArray<string> => [
+    "worktree",
+    "remove",
+    ...(force ? ["--force"] : []),
+    path,
+  ],
+  worktrees: (): ReadonlyArray<string> => ["worktree", "list", "--porcelain", "-z"],
+  pruneWorktrees: (): ReadonlyArray<string> => ["worktree", "prune"],
+  createBranch: (branch: string, start: string): ReadonlyArray<string> => [
+    "branch",
+    ...revisions([branch, start]),
+  ],
+  // Deleting a ref takes packed-refs.lock, which a worker's commit in its worktree takes for a
+  // moment too; git gives up after a second, too soon on a loaded machine, so it waits longer.
+  deleteBranch: (branch: string, force = false): ReadonlyArray<string> => [
+    "-c",
+    "core.packedRefsTimeout=10000",
+    "branch",
+    force ? "-D" : "-d",
+    ...revisions([branch]),
+  ],
+  // --no-update-refs: with the user's rebase.updateRefs set, git would move every other branch
+  // that points into the rebased range (a backup, orchestra's wt/<id>) along with this one, and
+  // putting the branch back resets only this one.
+  rebase: (onto: string): ReadonlyArray<string> => [
+    "rebase",
+    "--no-autostash",
+    "--no-update-refs",
+    ...revisions([onto]),
+  ],
+  abortRebase: (): ReadonlyArray<string> => ["rebase", "--abort"],
+  /** Where a rebase keeps its state, `rebase-merge` or `rebase-apply`, while one is under way. */
+  gitPath: (name: string): ReadonlyArray<string> => [
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-path",
+    name,
+  ],
+  // The hash, as resetTo gives it: git reset before 2.44 keeps --end-of-options among its
+  // arguments and takes it for a revision.
+  reset: (hash: string): ReadonlyArray<string> => ["reset", "--hard", "--quiet", hash, "--"],
+  mergeBase: (a: string, b: string): ReadonlyArray<string> => ["merge-base", ...revisions([a, b])],
+  holds: (base: string, branch: string): ReadonlyArray<string> => [
+    "merge-tree",
+    "--write-tree",
+    ...revisions([base, branch]),
+  ],
+  fastForward: (branch: string): ReadonlyArray<string> => [
+    "merge",
+    "--ff-only",
+    "--quiet",
+    ...revisions([branch]),
+  ],
+  log: (base: string, head: string): ReadonlyArray<string> => [
+    "log",
+    "-z",
+    "--no-show-signature",
+    logFormat,
+    ...revisions([`${base}..${head}`], []),
+  ],
+  status: (paths: ReadonlyArray<string>): ReadonlyArray<string> => [
+    "status",
+    "--porcelain",
+    "-z",
+    "--untracked-files=all",
+    "--",
+    ...paths,
+  ],
+  changedFiles: (base: string, head: string): ReadonlyArray<string> => [
+    "diff",
+    "--no-renames",
+    "--name-only",
+    "-z",
+    ...revisions([`${base}...${head}`], []),
+  ],
+  filesBetween: (from: string, to: string): ReadonlyArray<string> => [
+    "diff",
+    "--no-renames",
+    "--name-only",
+    "-z",
+    ...revisions([from, to], []),
+  ],
+  fileAt: (commit: string, path: string): ReadonlyArray<string> => [
+    "show",
+    ...revisions([`${commit}:${path}`]),
+  ],
+  trackedFiles: (): ReadonlyArray<string> => ["ls-files", "-z"],
+  // The paths go in on stdin, NUL-separated, so a repository of any size fits; -z gives back a
+  // path, the attribute and its value for each.
+  mergedByUnion: (): ReadonlyArray<string> => ["check-attr", "-z", "--stdin", "merge"],
+  // --verify: without it, git prints back a rev it can't find as if it named a commit.
+  revParse: (rev: string): ReadonlyArray<string> => [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    ...revisions([rev]),
+  ],
+  branchExists: (branch: string): ReadonlyArray<string> => [
+    "show-ref",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branch}`,
+  ],
+  commonDir: (): ReadonlyArray<string> => [
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  ],
+  topLevel: (): ReadonlyArray<string> => ["rev-parse", "--show-toplevel"],
+  // --quiet: exit 1, saying nothing, is HEAD naming no branch.
+  currentBranch: (): ReadonlyArray<string> => ["symbolic-ref", "--quiet", "--short", "HEAD"],
+  version: (): ReadonlyArray<string> => ["--version"],
+} as const
+
+/**
+ * git reset --hard to `to`, as resetBranch does it: rev-parse first, then reset to the hash `to`
+ * names, which no option or path can be taken for, as the one writer throughout. The live and test
+ * layers each give their own revParse and reset steps.
+ */
+export const resetTo =
+  <E1, E2>(
+    writer: GitWriter["Service"],
+    revParse: (dir: string, rev: string) => Effect.Effect<string, E1>,
+    reset: (dir: string, hash: string) => Effect.Effect<void, E2>,
+  ) =>
+  (worktree: string, to: string): Effect.Effect<void, E1 | E2> =>
+    writer.withLock(Effect.flatMap(revParse(worktree, to), (hash) => reset(worktree, hash)))
+
+/**
  * Reads `git log -z` in `logFormat`: three fields to a commit. A commit message can't hold a NUL
  * (git refuses one), so the fields are the commits' own.
  */
@@ -432,44 +577,28 @@ export class Git extends Context.Service<
           writer.withLock(Effect.flatMap(git(op, dir, args, limits.write), succeeded(op)))
 
         const abortRebase = (worktree: string) =>
-          Effect.asVoid(write("rebase --abort", worktree, ["rebase", "--abort"]))
+          Effect.asVoid(write("rebase --abort", worktree, gitArgs.abortRebase()))
 
-        // --verify: without it, git prints back a rev it can't find as if it named a commit.
         const revParse = (dir: string, rev: string) =>
-          Effect.map(
-            read("rev-parse", dir, ["rev-parse", "--verify", "--quiet", ...revisions([rev])]),
-            (out) => out.trim(),
-          )
+          Effect.map(read("rev-parse", dir, gitArgs.revParse(rev)), (out) => out.trim())
 
         const branchExists = (repo: string, branch: string) =>
           Effect.flatMap(
-            gitRead("show-ref", repo, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]),
+            gitRead("show-ref", repo, gitArgs.branchExists(branch)),
             ({ shown, output }) =>
               output.exitCode === 0 || output.exitCode === 1
                 ? Effect.succeed(output.exitCode === 0)
                 : Effect.fail(failed("show-ref", shown, output)),
           )
 
-        // git reset before 2.44 keeps --end-of-options among its arguments and takes it for a
-        // revision, so it is given the hash `to` names, which no option or path can be taken for.
-        const resetBranch = (worktree: string, to: string) =>
-          writer.withLock(
-            Effect.flatMap(revParse(worktree, to), (hash) =>
-              Effect.asVoid(
-                write("reset --hard", worktree, ["reset", "--hard", "--quiet", hash, "--"]),
-              ),
-            ),
-          )
+        const resetBranch = resetTo(writer, revParse, (worktree, hash) =>
+          Effect.asVoid(write("reset --hard", worktree, gitArgs.reset(hash))),
+        )
 
         const rebaseInProgress = (worktree: string) =>
           Effect.gen(function* () {
             for (const name of ["rebase-merge", "rebase-apply"]) {
-              const path = yield* read("rev-parse --git-path", worktree, [
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-path",
-                name,
-              ])
+              const path = yield* read("rev-parse --git-path", worktree, gitArgs.gitPath(name))
               // A folder that can't be shown to be gone counts: the rebase can't be shown to be over.
               const exists = yield* fs.exists(path.trim()).pipe(Effect.orElseSucceed(() => true))
               if (exists) return true
@@ -485,16 +614,13 @@ export class Git extends Context.Service<
             Effect.ignore,
           )
 
-        // --no-update-refs: with the user's rebase.updateRefs set, git would move every other branch
-        // that points into the rebased range (a backup, orchestra's wt/<id>) along with this one,
-        // and putting the branch back resets only this one.
         const rebase = (worktree: string, onto: string) =>
           writer.withLock(
             Effect.gen(function* () {
               const { shown, output } = yield* git(
                 "rebase",
                 worktree,
-                ["rebase", "--no-autostash", "--no-update-refs", ...revisions([onto])],
+                gitArgs.rebase(onto),
                 limits.write,
               ).pipe(Effect.tapError(() => abandonRebase(worktree)))
               if (output.exitCode === 0) return
@@ -516,79 +642,34 @@ export class Git extends Context.Service<
 
         return Git.of({
           addWorktree: (repo, path, worktree) =>
-            Effect.asVoid(
-              write(
-                "worktree add",
-                repo,
-                worktree.base === undefined
-                  ? ["worktree", "add", "--quiet", path, ...revisions([worktree.branch])]
-                  : [
-                      "worktree",
-                      "add",
-                      "--quiet",
-                      "-b",
-                      worktree.branch,
-                      path,
-                      ...revisions([worktree.base]),
-                    ],
-              ),
-            ),
+            Effect.asVoid(write("worktree add", repo, gitArgs.addWorktree(path, worktree))),
           addDetachedWorktree: (repo, path, commit) =>
-            Effect.asVoid(
-              write("worktree add", repo, [
-                "worktree",
-                "add",
-                "--quiet",
-                "--detach",
-                path,
-                ...revisions([commit]),
-              ]),
-            ),
+            Effect.asVoid(write("worktree add", repo, gitArgs.addDetachedWorktree(path, commit))),
           removeWorktree: (repo, path, remove = {}) =>
             Effect.asVoid(
-              write("worktree remove", repo, [
-                "worktree",
-                "remove",
-                ...(remove.force ? ["--force"] : []),
-                path,
-              ]),
+              write("worktree remove", repo, gitArgs.removeWorktree(path, remove.force)),
             ),
           worktrees: (repo) =>
-            Effect.map(
-              read("worktree list", repo, ["worktree", "list", "--porcelain", "-z"]),
-              parseWorktrees,
-            ),
+            Effect.map(read("worktree list", repo, gitArgs.worktrees()), parseWorktrees),
           pruneWorktrees: (repo) =>
-            Effect.asVoid(write("worktree prune", repo, ["worktree", "prune"])),
+            Effect.asVoid(write("worktree prune", repo, gitArgs.pruneWorktrees())),
           createBranch: (repo, branch, start) =>
-            Effect.asVoid(write("branch", repo, ["branch", ...revisions([branch, start])])),
-          // Deleting a ref takes packed-refs.lock, which a worker's commit in its worktree takes for a
-          // moment too; git gives up after a second, too soon on a loaded machine, so it waits longer.
+            Effect.asVoid(write("branch", repo, gitArgs.createBranch(branch, start))),
           deleteBranch: (repo, branch, remove = {}) =>
-            Effect.asVoid(
-              write("branch -d", repo, [
-                "-c",
-                "core.packedRefsTimeout=10000",
-                "branch",
-                remove.force ? "-D" : "-d",
-                ...revisions([branch]),
-              ]),
-            ),
+            Effect.asVoid(write("branch -d", repo, gitArgs.deleteBranch(branch, remove.force))),
           rebase,
           abortRebase,
           rebaseInProgress,
           resetBranch,
           mergeBase: (repo, a, b) =>
-            Effect.map(read("merge-base", repo, ["merge-base", ...revisions([a, b])]), (out) =>
-              out.trim(),
-            ),
+            Effect.map(read("merge-base", repo, gitArgs.mergeBase(a, b)), (out) => out.trim()),
           holds: (repo, base, branch) =>
             Effect.gen(function* () {
-              const { shown, output } = yield* gitRead("merge-tree", repo, [
+              const { shown, output } = yield* gitRead(
                 "merge-tree",
-                "--write-tree",
-                ...revisions([base, branch]),
-              ])
+                repo,
+                gitArgs.holds(base, branch),
+              )
               // The merged tree's hash is its first line; exit 1 is conflicts, a merge that changes base.
               if (output.exitCode === 1) return false
               if (output.exitCode !== 0) return yield* failed("merge-tree", shown, output)
@@ -596,64 +677,18 @@ export class Git extends Context.Service<
               return (output.stdout.split("\n")[0] ?? "").trim() === tree.trim()
             }),
           fastForward: (repo, branch) =>
-            Effect.asVoid(
-              write("merge --ff-only", repo, [
-                "merge",
-                "--ff-only",
-                "--quiet",
-                ...revisions([branch]),
-              ]),
-            ),
+            Effect.asVoid(write("merge --ff-only", repo, gitArgs.fastForward(branch))),
           log: (repo, base, head = "HEAD") =>
-            Effect.map(
-              read("log", repo, [
-                "log",
-                "-z",
-                "--no-show-signature",
-                logFormat,
-                ...revisions([`${base}..${head}`], []),
-              ]),
-              parseLog,
-            ),
+            Effect.map(read("log", repo, gitArgs.log(base, head)), parseLog),
           status: (dir, paths = []) =>
-            Effect.map(
-              read("status", dir, [
-                "status",
-                "--porcelain",
-                "-z",
-                "--untracked-files=all",
-                "--",
-                ...paths,
-              ]),
-              parseStatus,
-            ),
+            Effect.map(read("status", dir, gitArgs.status(paths)), parseStatus),
           changedFiles: (dir, base, head = "HEAD") =>
-            Effect.map(
-              read("diff --name-only", dir, [
-                "diff",
-                "--no-renames",
-                "--name-only",
-                "-z",
-                ...revisions([`${base}...${head}`], []),
-              ]),
-              splitNul,
-            ),
+            Effect.map(read("diff --name-only", dir, gitArgs.changedFiles(base, head)), splitNul),
           filesBetween: (dir, from, to) =>
-            Effect.map(
-              read("diff --name-only", dir, [
-                "diff",
-                "--no-renames",
-                "--name-only",
-                "-z",
-                ...revisions([from, to], []),
-              ]),
-              splitNul,
-            ),
-          fileAt: (dir, commit, path) =>
-            read("show", dir, ["show", ...revisions([`${commit}:${path}`])]),
-          trackedFiles: (dir) => Effect.map(read("ls-files", dir, ["ls-files", "-z"]), splitNul),
-          // The paths go in on stdin, NUL-separated, so a repository of any size fits; -z gives
-          // back a path, the attribute and its value for each.
+            Effect.map(read("diff --name-only", dir, gitArgs.filesBetween(from, to)), splitNul),
+          fileAt: (dir, commit, path) => read("show", dir, gitArgs.fileAt(commit, path)),
+          trackedFiles: (dir) =>
+            Effect.map(read("ls-files", dir, gitArgs.trackedFiles()), splitNul),
           mergedByUnion: (dir, paths) =>
             paths.length === 0
               ? Effect.succeed([])
@@ -661,7 +696,7 @@ export class Git extends Context.Service<
                   read(
                     "check-attr",
                     dir,
-                    ["check-attr", "-z", "--stdin", "merge"],
+                    gitArgs.mergedByUnion(),
                     paths.map((path) => `${path}\0`).join(""),
                   ),
                   parseUnion,
@@ -669,31 +704,25 @@ export class Git extends Context.Service<
           revParse,
           branchExists,
           commonDir: (dir) =>
-            Effect.map(
-              read("rev-parse --git-common-dir", dir, [
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-              ]),
-              (out) => out.trim(),
+            Effect.map(read("rev-parse --git-common-dir", dir, gitArgs.commonDir()), (out) =>
+              out.trim(),
             ),
           topLevel: (dir) =>
-            Effect.map(
-              read("rev-parse --show-toplevel", dir, ["rev-parse", "--show-toplevel"]),
-              (out) => out.trim(),
+            Effect.map(read("rev-parse --show-toplevel", dir, gitArgs.topLevel()), (out) =>
+              out.trim(),
             ),
           currentBranch: (dir) =>
             Effect.flatMap(
-              gitRead("symbolic-ref", dir, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
+              gitRead("symbolic-ref", dir, gitArgs.currentBranch()),
               ({ shown, output }) =>
-                // --quiet: exit 1, saying nothing, is HEAD naming no branch.
                 output.exitCode === 0
                   ? Effect.succeed(Option.some(output.stdout.trim()))
                   : output.exitCode === 1 && output.stderr.trim() === ""
                     ? Effect.succeed(Option.none())
                     : Effect.fail(failed("symbolic-ref", shown, output)),
             ),
-          version: (dir) => Effect.map(read("--version", dir, ["--version"]), (out) => out.trim()),
+          version: (dir) =>
+            Effect.map(read("--version", dir, gitArgs.version()), (out) => out.trim()),
         })
       }),
     )

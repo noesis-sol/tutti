@@ -20,7 +20,9 @@ import {
   GitFailed,
   GitTimedOut,
   GitWriter,
+  gitArgs,
   RebaseConflict,
+  resetTo,
   type StatusEntry,
   type Worktree,
 } from "../services/Git.ts"
@@ -489,7 +491,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
       }
 
       const rebase = (worktree: string, onto: string) =>
-        operation("write", "rebase", worktree, ["rebase", "--no-autostash", onto], (refuse) =>
+        operation("write", "rebase", worktree, gitArgs.rebase(onto), (refuse) =>
           Effect.gen(function* () {
             const checkout = yield* inRepo(refuse, worktree)
             if (checkout.rebase !== undefined) {
@@ -543,7 +545,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
         )
 
       const abortRebase = (worktree: string) =>
-        operation("write", "rebase --abort", worktree, ["rebase", "--abort"], (refuse) =>
+        operation("write", "rebase --abort", worktree, gitArgs.abortRebase(), (refuse) =>
           Effect.gen(function* () {
             const checkout = yield* inRepo(refuse, worktree)
             const rebasing = checkout.rebase
@@ -558,54 +560,58 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
         )
 
       const fastForward = (repo: string, branch: string) =>
-        operation(
-          "write",
-          "merge --ff-only",
-          repo,
-          ["merge", "--ff-only", "--quiet", branch],
-          (refuse) =>
-            Effect.gen(function* () {
-              const checkout = yield* inRepo(refuse, repo)
-              const target = resolve(checkout, branch)
-              if (target === undefined) {
-                return yield* refuse(1, `merge: ${branch} - not something we can merge`)
-              }
-              if (checkout.conflicts.size > 0) {
-                return yield* refuse(
-                  128,
-                  "error: Merging is not possible because you have unmerged files.",
-                )
-              }
-              const head = headOf(checkout)
-              if (isAncestor(target, head)) return
-              if (!isAncestor(head, target)) {
-                return yield* refuse(128, "fatal: Not possible to fast-forward, aborting.")
-              }
-              const changed = changedPaths(treeOf(head), treeOf(target))
-              const { unstaged, staged } = changes(checkout)
-              const local = [...new Set([...unstaged, ...staged])].filter((path) =>
-                changed.includes(path),
+        operation("write", "merge --ff-only", repo, gitArgs.fastForward(branch), (refuse) =>
+          Effect.gen(function* () {
+            const checkout = yield* inRepo(refuse, repo)
+            const target = resolve(checkout, branch)
+            if (target === undefined) {
+              return yield* refuse(1, `merge: ${branch} - not something we can merge`)
+            }
+            if (checkout.conflicts.size > 0) {
+              return yield* refuse(
+                128,
+                "error: Merging is not possible because you have unmerged files.",
               )
-              if (local.length > 0) {
-                return yield* refuse(
-                  1,
-                  `error: Your local changes to the following files would be overwritten by merge:\n${local.map((path) => `\t${path}\n`).join("")}Please commit your changes or stash them before you merge.\nAborting`,
-                )
-              }
-              const overwritten = untracked(checkout).filter((path) => treeOf(target).has(path))
-              if (overwritten.length > 0) {
-                return yield* refuse(
-                  1,
-                  `error: The following untracked working tree files would be overwritten by merge:\n${overwritten.map((path) => `\t${path}\n`).join("")}Please move or remove them before you merge.\nAborting`,
-                )
-              }
-              if ("branch" in checkout.head) branches.set(checkout.head.branch, target)
-              else checkout.head = { detached: target }
-              for (const path of changed) {
-                setFile(checkout.index, path, treeOf(target).get(path))
-                setFile(checkout.work, path, treeOf(target).get(path))
-              }
-            }),
+            }
+            const head = headOf(checkout)
+            if (isAncestor(target, head)) return
+            if (!isAncestor(head, target)) {
+              return yield* refuse(128, "fatal: Not possible to fast-forward, aborting.")
+            }
+            const changed = changedPaths(treeOf(head), treeOf(target))
+            const { unstaged, staged } = changes(checkout)
+            const local = [...new Set([...unstaged, ...staged])].filter((path) =>
+              changed.includes(path),
+            )
+            if (local.length > 0) {
+              return yield* refuse(
+                1,
+                `error: Your local changes to the following files would be overwritten by merge:\n${local.map((path) => `\t${path}\n`).join("")}Please commit your changes or stash them before you merge.\nAborting`,
+              )
+            }
+            const overwritten = untracked(checkout).filter((path) => treeOf(target).has(path))
+            if (overwritten.length > 0) {
+              return yield* refuse(
+                1,
+                `error: The following untracked working tree files would be overwritten by merge:\n${overwritten.map((path) => `\t${path}\n`).join("")}Please move or remove them before you merge.\nAborting`,
+              )
+            }
+            if ("branch" in checkout.head) branches.set(checkout.head.branch, target)
+            else checkout.head = { detached: target }
+            for (const path of changed) {
+              setFile(checkout.index, path, treeOf(target).get(path))
+              setFile(checkout.work, path, treeOf(target).get(path))
+            }
+          }),
+        )
+
+      // --verify --quiet: a rev that names nothing fails with exit 1, saying nothing.
+      const revParse = (dir: string, rev: string) =>
+        operation("read", "rev-parse", dir, gitArgs.revParse(rev), (refuse) =>
+          Effect.gen(function* () {
+            const hash = resolve(yield* inRepo(refuse, dir), rev)
+            return hash === undefined ? yield* refuse(1, "") : hash
+          }),
         )
 
       /** The worktree that has the branch checked out, or is rebasing it. */
@@ -618,73 +624,66 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
 
       const git = Git.of({
         addWorktree: (repo, path, options) =>
-          operation(
-            "write",
-            "worktree add",
-            repo,
-            options.base === undefined
-              ? ["worktree", "add", "--quiet", path, options.branch]
-              : ["worktree", "add", "--quiet", "-b", options.branch, path, options.base],
-            (refuse) =>
-              Effect.gen(function* () {
-                const checkout = yield* inRepo(refuse, repo)
-                const where = normalize(path)
-                const existing = checkouts.get(where)
-                if (existing?.gone) {
+          operation("write", "worktree add", repo, gitArgs.addWorktree(path, options), (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, repo)
+              const where = normalize(path)
+              const existing = checkouts.get(where)
+              if (existing?.gone) {
+                return yield* refuse(
+                  128,
+                  `fatal: '${where}' is a missing but already registered worktree;\nuse 'add -f' to override, or 'prune' or 'remove' to clear`,
+                )
+              }
+              if (existing !== undefined || locate(where) !== undefined) {
+                return yield* refuse(128, `fatal: '${where}' already exists`)
+              }
+              let start: string
+              if (options.base === undefined) {
+                const tip = branches.get(options.branch)
+                if (tip === undefined) {
+                  return yield* refuse(128, `fatal: invalid reference: ${options.branch}`)
+                }
+                const holder = holderOf(options.branch)
+                if (holder !== undefined) {
                   return yield* refuse(
                     128,
-                    `fatal: '${where}' is a missing but already registered worktree;\nuse 'add -f' to override, or 'prune' or 'remove' to clear`,
+                    `fatal: '${options.branch}' is already used by worktree at '${holder.path}'`,
                   )
                 }
-                if (existing !== undefined || locate(where) !== undefined) {
-                  return yield* refuse(128, `fatal: '${where}' already exists`)
+                start = tip
+              } else {
+                if (branches.has(options.branch)) {
+                  return yield* refuse(
+                    128,
+                    `fatal: a branch named '${options.branch}' already exists`,
+                  )
                 }
-                let start: string
-                if (options.base === undefined) {
-                  const tip = branches.get(options.branch)
-                  if (tip === undefined) {
-                    return yield* refuse(128, `fatal: invalid reference: ${options.branch}`)
-                  }
-                  const holder = holderOf(options.branch)
-                  if (holder !== undefined) {
-                    return yield* refuse(
-                      128,
-                      `fatal: '${options.branch}' is already used by worktree at '${holder.path}'`,
-                    )
-                  }
-                  start = tip
-                } else {
-                  if (branches.has(options.branch)) {
-                    return yield* refuse(
-                      128,
-                      `fatal: a branch named '${options.branch}' already exists`,
-                    )
-                  }
-                  const base = resolve(checkout, options.base)
-                  if (base === undefined) {
-                    return yield* refuse(128, `fatal: invalid reference: ${options.base}`)
-                  }
-                  branches.set(options.branch, base)
-                  start = base
+                const base = resolve(checkout, options.base)
+                if (base === undefined) {
+                  return yield* refuse(128, `fatal: invalid reference: ${options.base}`)
                 }
-                seq += 1
-                checkouts.set(where, {
-                  path: where,
-                  seq,
-                  head: { branch: options.branch },
-                  index: new Map(treeOf(start)),
-                  work: new Map(treeOf(start)),
-                  conflicts: new Map(),
-                  gone: false,
-                })
-              }),
+                branches.set(options.branch, base)
+                start = base
+              }
+              seq += 1
+              checkouts.set(where, {
+                path: where,
+                seq,
+                head: { branch: options.branch },
+                index: new Map(treeOf(start)),
+                work: new Map(treeOf(start)),
+                conflicts: new Map(),
+                gone: false,
+              })
+            }),
           ),
         addDetachedWorktree: (repo, path, commit) =>
           operation(
             "write",
             "worktree add",
             repo,
-            ["worktree", "add", "--quiet", "--detach", path, "--end-of-options", commit],
+            gitArgs.addDetachedWorktree(path, commit),
             (refuse) =>
               Effect.gen(function* () {
                 const checkout = yield* inRepo(refuse, repo)
@@ -713,7 +712,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             "write",
             "worktree remove",
             repo,
-            ["worktree", "remove", ...(options.force ? ["--force"] : []), path],
+            gitArgs.removeWorktree(path, options.force),
             (refuse) =>
               Effect.gen(function* () {
                 yield* inRepo(refuse, repo)
@@ -735,35 +734,30 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               }),
           ),
         worktrees: (repo) =>
-          operation(
-            "read",
-            "worktree list",
-            repo,
-            ["worktree", "list", "--porcelain", "-z"],
-            (refuse) =>
-              Effect.map(inRepo(refuse, repo), () =>
-                [...checkouts.values()]
-                  .sort((a, b) => a.seq - b.seq)
-                  .map(
-                    (each): Worktree => ({
-                      path: each.path,
-                      head: headOf(each),
-                      ...("branch" in each.head && each.rebase === undefined
-                        ? { branch: each.head.branch }
-                        : {}),
-                      prunable: each.gone,
-                    }),
-                  ),
-              ),
+          operation("read", "worktree list", repo, gitArgs.worktrees(), (refuse) =>
+            Effect.map(inRepo(refuse, repo), () =>
+              [...checkouts.values()]
+                .sort((a, b) => a.seq - b.seq)
+                .map(
+                  (each): Worktree => ({
+                    path: each.path,
+                    head: headOf(each),
+                    ...("branch" in each.head && each.rebase === undefined
+                      ? { branch: each.head.branch }
+                      : {}),
+                    prunable: each.gone,
+                  }),
+                ),
+            ),
           ),
         pruneWorktrees: (repo) =>
-          operation("write", "worktree prune", repo, ["worktree", "prune"], (refuse) =>
+          operation("write", "worktree prune", repo, gitArgs.pruneWorktrees(), (refuse) =>
             Effect.map(inRepo(refuse, repo), () => {
               for (const [path, each] of checkouts) if (each.gone) checkouts.delete(path)
             }),
           ),
         createBranch: (repo, branch, start) =>
-          operation("write", "branch", repo, ["branch", branch, start], (refuse) =>
+          operation("write", "branch", repo, gitArgs.createBranch(branch, start), (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, repo)
               if (branch === "" || /[\s~^:?*[\\]|\.\.|^-|\/$|\.lock$/.test(branch)) {
@@ -784,7 +778,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             "write",
             "branch -d",
             repo,
-            ["-c", "core.packedRefsTimeout=10000", "branch", options.force ? "-D" : "-d", branch],
+            gitArgs.deleteBranch(branch, options.force),
             (refuse) =>
               Effect.gen(function* () {
                 const checkout = yield* inRepo(refuse, repo)
@@ -811,30 +805,22 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             "read",
             "rev-parse --git-path",
             worktree,
-            ["rev-parse", "--path-format=absolute", "--git-path", "rebase-merge"],
+            gitArgs.gitPath("rebase-merge"),
             (refuse) =>
               Effect.map(inRepo(refuse, worktree), (checkout) => checkout.rebase !== undefined),
           ),
-        resetBranch: (worktree, to) =>
-          operation(
-            "write",
-            "reset --hard",
-            worktree,
-            ["reset", "--hard", "--quiet", to],
-            (refuse) =>
-              Effect.gen(function* () {
-                const checkout = yield* inRepo(refuse, worktree)
-                const target = resolve(checkout, to)
-                if (target === undefined) {
-                  return yield* refuse(128, `fatal: ambiguous argument '${to}': unknown revision`)
-                }
-                if ("branch" in checkout.head) branches.set(checkout.head.branch, target)
-                else checkout.head = { detached: target }
-                switchTo(checkout, treeOf(target))
-              }),
+        // rev-parse first, which fails on a rev that names nothing, then reset to its hash, as live.
+        resetBranch: resetTo(writer, revParse, (worktree, hash) =>
+          operation("write", "reset --hard", worktree, gitArgs.reset(hash), (refuse) =>
+            Effect.map(inRepo(refuse, worktree), (checkout) => {
+              if ("branch" in checkout.head) branches.set(checkout.head.branch, hash)
+              else checkout.head = { detached: hash }
+              switchTo(checkout, treeOf(hash))
+            }),
           ),
+        ),
         mergeBase: (repo, a, b) =>
-          operation("read", "merge-base", repo, ["merge-base", a, b], (refuse) =>
+          operation("read", "merge-base", repo, gitArgs.mergeBase(a, b), (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, repo)
               const [x, y] = [resolve(checkout, a), resolve(checkout, b)]
@@ -849,197 +835,136 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             }),
           ),
         holds: (repo, base, branch) =>
-          operation(
-            "read",
-            "merge-tree",
-            repo,
-            ["merge-tree", "--write-tree", "--end-of-options", base, branch],
-            (refuse) =>
-              Effect.gen(function* () {
-                const checkout = yield* inRepo(refuse, repo)
-                const [ours, theirs] = [resolve(checkout, base), resolve(checkout, branch)]
-                if (ours === undefined || theirs === undefined) {
-                  return yield* refuse(
-                    128,
-                    `fatal: ${ours === undefined ? base : branch} - not something we can merge`,
-                  )
-                }
-                const since = mergeBaseOf(ours, theirs)
-                if (since === undefined)
-                  return yield* refuse(128, "fatal: refusing to merge unrelated histories")
-                // Merging changes nothing when base has each file as the branch changed it.
-                const kept = treeOf(ours)
-                const changed = treeOf(theirs)
-                return changedPaths(treeOf(since), changed).every(
-                  (path) => kept.get(path) === changed.get(path),
+          operation("read", "merge-tree", repo, gitArgs.holds(base, branch), (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, repo)
+              const [ours, theirs] = [resolve(checkout, base), resolve(checkout, branch)]
+              if (ours === undefined || theirs === undefined) {
+                return yield* refuse(
+                  128,
+                  `fatal: ${ours === undefined ? base : branch} - not something we can merge`,
                 )
-              }),
+              }
+              const since = mergeBaseOf(ours, theirs)
+              if (since === undefined)
+                return yield* refuse(128, "fatal: refusing to merge unrelated histories")
+              // Merging changes nothing when base has each file as the branch changed it.
+              const kept = treeOf(ours)
+              const changed = treeOf(theirs)
+              return changedPaths(treeOf(since), changed).every(
+                (path) => kept.get(path) === changed.get(path),
+              )
+            }),
           ),
         fastForward,
         log: (repo, base, head = "HEAD") =>
-          operation(
-            "read",
-            "log",
-            repo,
-            [
-              "log",
-              "-z",
-              "--no-show-signature",
-              "--format=%H%x00%s%x00%B",
-              `${base}..${head}`,
-              "--",
-            ],
-            (refuse) =>
-              Effect.gen(function* () {
-                const checkout = yield* inRepo(refuse, repo)
-                const [from, to] = [resolve(checkout, base), resolve(checkout, head)]
-                if (from === undefined || to === undefined) {
-                  return yield* refuse(
-                    128,
-                    `fatal: ambiguous argument '${base}..${head}': unknown revision or path not in the working tree.`,
-                  )
-                }
-                const excluded = ancestors(from)
-                return [...ancestors(to)]
-                  .filter((hash) => !excluded.has(hash))
-                  .map(commitOf)
-                  .sort((a, b) => b.seq - a.seq)
-                  .map(
-                    (commit): Commit => ({
-                      hash: commit.hash,
-                      subject: subjectOf(commit.message),
-                      message: commit.message,
-                    }),
-                  )
-              }),
-          ),
-        status: (dir, paths = []) =>
-          operation(
-            "read",
-            "status",
-            dir,
-            ["status", "--porcelain", "-z", "--untracked-files=all", "--", ...paths],
-            (refuse) => Effect.map(inRepo(refuse, dir), (checkout) => status(checkout, paths)),
-          ),
-        changedFiles: (dir, base, head = "HEAD") =>
-          operation(
-            "read",
-            "diff --name-only",
-            dir,
-            ["diff", "--no-renames", "--name-only", "-z", `${base}...${head}`, "--"],
-            (refuse) =>
-              Effect.gen(function* () {
-                const checkout = yield* inRepo(refuse, dir)
-                const [from, to] = [resolve(checkout, base), resolve(checkout, head)]
-                if (from === undefined || to === undefined) {
-                  return yield* refuse(
-                    128,
-                    `fatal: ambiguous argument '${base}...${head}': unknown revision or path not in the working tree.`,
-                  )
-                }
-                const since = mergeBaseOf(from, to)
-                if (since === undefined) {
-                  return yield* refuse(128, `fatal: ${base}...${head}: no merge base`)
-                }
-                return changedPaths(treeOf(since), treeOf(to))
-              }),
-          ),
-        filesBetween: (dir, from, to) =>
-          operation(
-            "read",
-            "diff --name-only",
-            dir,
-            ["diff", "--no-renames", "--name-only", "-z", "--end-of-options", from, to, "--"],
-            (refuse) =>
-              Effect.gen(function* () {
-                const checkout = yield* inRepo(refuse, dir)
-                const [a, b] = [resolve(checkout, from), resolve(checkout, to)]
-                if (a === undefined || b === undefined) {
-                  return yield* refuse(
-                    128,
-                    `fatal: ambiguous argument '${a === undefined ? from : to}': unknown revision or path not in the working tree.`,
-                  )
-                }
-                return changedPaths(treeOf(a), treeOf(b))
-              }),
-          ),
-        fileAt: (dir, commit, path) =>
-          operation(
-            "read",
-            "show",
-            dir,
-            ["show", "--end-of-options", `${commit}:${path}`],
-            (refuse) =>
-              Effect.gen(function* () {
-                const hash = resolve(yield* inRepo(refuse, dir), commit)
-                const text = hash === undefined ? undefined : treeOf(hash).get(path)
-                return text === undefined
-                  ? yield* refuse(128, `fatal: path '${path}' does not exist in '${commit}'`)
-                  : text
-              }),
-          ),
-        trackedFiles: (dir) =>
-          operation("read", "ls-files", dir, ["ls-files", "-z"], (refuse) =>
-            Effect.map(inRepo(refuse, dir), (checkout) => [...checkout.index.keys()].sort()),
-          ),
-        mergedByUnion: (dir, paths) =>
-          operation("read", "check-attr", dir, ["check-attr", "-z", "--stdin", "merge"], (refuse) =>
-            Effect.map(inRepo(refuse, dir), (checkout) => {
-              const merge = mergeAttribute(checkout.work.get(".gitattributes") ?? "")
-              return paths.filter((path) => merge(path) === "union")
+          operation("read", "log", repo, gitArgs.log(base, head), (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, repo)
+              const [from, to] = [resolve(checkout, base), resolve(checkout, head)]
+              if (from === undefined || to === undefined) {
+                return yield* refuse(
+                  128,
+                  `fatal: ambiguous argument '${base}..${head}': unknown revision or path not in the working tree.`,
+                )
+              }
+              const excluded = ancestors(from)
+              return [...ancestors(to)]
+                .filter((hash) => !excluded.has(hash))
+                .map(commitOf)
+                .sort((a, b) => b.seq - a.seq)
+                .map(
+                  (commit): Commit => ({
+                    hash: commit.hash,
+                    subject: subjectOf(commit.message),
+                    message: commit.message,
+                  }),
+                )
             }),
           ),
-        revParse: (dir, rev) =>
-          operation(
-            "read",
-            "rev-parse",
-            dir,
-            ["rev-parse", "--verify", "--quiet", "--end-of-options", rev],
-            (refuse) =>
-              Effect.gen(function* () {
-                const hash = resolve(yield* inRepo(refuse, dir), rev)
-                return hash === undefined ? yield* refuse(1, "") : hash
-              }),
+        status: (dir, paths = []) =>
+          operation("read", "status", dir, gitArgs.status(paths), (refuse) =>
+            Effect.map(inRepo(refuse, dir), (checkout) => status(checkout, paths)),
           ),
+        changedFiles: (dir, base, head = "HEAD") =>
+          operation("read", "diff --name-only", dir, gitArgs.changedFiles(base, head), (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, dir)
+              const [from, to] = [resolve(checkout, base), resolve(checkout, head)]
+              if (from === undefined || to === undefined) {
+                return yield* refuse(
+                  128,
+                  `fatal: ambiguous argument '${base}...${head}': unknown revision or path not in the working tree.`,
+                )
+              }
+              const since = mergeBaseOf(from, to)
+              if (since === undefined) {
+                return yield* refuse(128, `fatal: ${base}...${head}: no merge base`)
+              }
+              return changedPaths(treeOf(since), treeOf(to))
+            }),
+          ),
+        filesBetween: (dir, from, to) =>
+          operation("read", "diff --name-only", dir, gitArgs.filesBetween(from, to), (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, dir)
+              const [a, b] = [resolve(checkout, from), resolve(checkout, to)]
+              if (a === undefined || b === undefined) {
+                return yield* refuse(
+                  128,
+                  `fatal: ambiguous argument '${a === undefined ? from : to}': unknown revision or path not in the working tree.`,
+                )
+              }
+              return changedPaths(treeOf(a), treeOf(b))
+            }),
+          ),
+        fileAt: (dir, commit, path) =>
+          operation("read", "show", dir, gitArgs.fileAt(commit, path), (refuse) =>
+            Effect.gen(function* () {
+              const hash = resolve(yield* inRepo(refuse, dir), commit)
+              const text = hash === undefined ? undefined : treeOf(hash).get(path)
+              return text === undefined
+                ? yield* refuse(128, `fatal: path '${path}' does not exist in '${commit}'`)
+                : text
+            }),
+          ),
+        trackedFiles: (dir) =>
+          operation("read", "ls-files", dir, gitArgs.trackedFiles(), (refuse) =>
+            Effect.map(inRepo(refuse, dir), (checkout) => [...checkout.index.keys()].sort()),
+          ),
+        // No paths runs no git, as live.
+        mergedByUnion: (dir, paths) =>
+          paths.length === 0
+            ? Effect.succeed([])
+            : operation("read", "check-attr", dir, gitArgs.mergedByUnion(), (refuse) =>
+                Effect.map(inRepo(refuse, dir), (checkout) => {
+                  const merge = mergeAttribute(checkout.work.get(".gitattributes") ?? "")
+                  return paths.filter((path) => merge(path) === "union")
+                }),
+              ),
+        revParse,
         branchExists: (repo, branch) =>
-          operation(
-            "read",
-            "show-ref",
-            repo,
-            ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
-            (refuse) => Effect.map(inRepo(refuse, repo), () => branches.has(branch)),
+          operation("read", "show-ref", repo, gitArgs.branchExists(branch), (refuse) =>
+            Effect.map(inRepo(refuse, repo), () => branches.has(branch)),
           ),
         commonDir: (dir) =>
-          operation(
-            "read",
-            "rev-parse --git-common-dir",
-            dir,
-            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-            (refuse) => Effect.map(inRepo(refuse, dir), () => posix.join(main, ".git")),
+          operation("read", "rev-parse --git-common-dir", dir, gitArgs.commonDir(), (refuse) =>
+            Effect.map(inRepo(refuse, dir), () => posix.join(main, ".git")),
           ),
         topLevel: (dir) =>
-          operation(
-            "read",
-            "rev-parse --show-toplevel",
-            dir,
-            ["rev-parse", "--show-toplevel"],
-            (refuse) => Effect.map(inRepo(refuse, dir), (checkout) => checkout.path),
+          operation("read", "rev-parse --show-toplevel", dir, gitArgs.topLevel(), (refuse) =>
+            Effect.map(inRepo(refuse, dir), (checkout) => checkout.path),
           ),
         currentBranch: (dir) =>
-          operation(
-            "read",
-            "symbolic-ref",
-            dir,
-            ["symbolic-ref", "--quiet", "--short", "HEAD"],
-            (refuse) =>
-              Effect.map(inRepo(refuse, dir), (checkout) =>
-                "branch" in checkout.head && checkout.rebase === undefined
-                  ? Option.some(checkout.head.branch)
-                  : Option.none(),
-              ),
+          operation("read", "symbolic-ref", dir, gitArgs.currentBranch(), (refuse) =>
+            Effect.map(inRepo(refuse, dir), (checkout) =>
+              "branch" in checkout.head && checkout.rebase === undefined
+                ? Option.some(checkout.head.branch)
+                : Option.none(),
+            ),
           ),
         version: (dir) =>
-          operation("read", "--version", dir, ["--version"], () =>
+          operation("read", "--version", dir, gitArgs.version(), () =>
             Effect.succeed(seed.version ?? "git version 2.47.1"),
           ),
       })
