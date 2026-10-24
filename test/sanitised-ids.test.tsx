@@ -36,14 +36,14 @@ import { type Frame, type Rendered, withRender } from "./render.ts"
 
 // An ID a worker filed with a colour escape, a window-title OSC and a bidi override in it; drawn,
 // it reads t-1. A renderer that dropped only the ESC would show the escapes' tails, as [31m.
-const evil = "t-\x1b[31m1\x1b]0;pwned\x07‮"
+const evil = "t-\x1b[31m1\x1b]0;pwned\x07\u202e"
 const shown = "t-1"
 
 // What a line drawn or printed must not hold: C0 controls but newline, DEL, C1 controls, bidi
 // overrides and isolates, and an escape's tail.
 const unsafe = (text: string): boolean =>
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is sought
-  /[\x00-\x09\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]|\[31m|pwned/.test(text)
+  /[\x00-\x09\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]|\[31m|pwned/.test(text)
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })

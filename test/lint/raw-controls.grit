@@ -1,0 +1,34 @@
+// A raw bidi control (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069), C1 control
+// (U+0080 to U+009F) or line or paragraph separator (U+2028, U+2029) in the source (biome.json): it
+// is invisible in review, and a bidi control can make code read other than it runs (Trojan Source).
+// Write it as a \u escape. An agent's Write and Edit decode a \u escape in their input into the raw
+// character (tutti-hgdi), so an agent writes the escape with a script, or builds the character with
+// String.fromCharCode.
+//
+// It flags each literal that holds one: a string, template, regex, JSX text or key. Comments are no
+// node of their own, so a file with one in a comment and none in a literal is flagged whole. A
+// comment before a file's first code or after its last is outside the file's text here:
+// test/raw-controls-lint.test.ts scans the source for those. The file is matched first, so that
+// the literals are searched only in a file that holds such a character.
+language js
+
+file($body) where {
+  $body <: r"(?s).*[\x{80}-\x{9F}\x{061C}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2066}-\x{2069}].*",
+  or {
+    $body <: contains bubble or {
+      JsStringLiteralExpression(),
+      JsTemplateChunkElement(),
+      JsRegexLiteralExpression(),
+      JsxText(),
+      JsxString(),
+      JsLiteralMemberName(),
+      JsModuleSource(),
+      JsDirective(),
+      TsStringLiteralType()
+    } as $literal where {
+      $literal <: r"(?s).*[\x{80}-\x{9F}\x{061C}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2066}-\x{2069}].*",
+      register_diagnostic(span=$literal, message="A raw bidi control, C1 control or line or paragraph separator: invisible in review (Trojan Source). Write it as an escape of its code point (see test/lint/raw-controls.grit).")
+    },
+    register_diagnostic(span=$body, message="A raw bidi control, C1 control or line or paragraph separator in a comment in this file: invisible in review (Trojan Source). Write it as U+ and its code (see test/lint/raw-controls.grit).")
+  }
+}

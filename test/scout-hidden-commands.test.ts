@@ -90,7 +90,17 @@ describe("a command with a newline or a control character", () => {
   })
 
   test("C0 and C1 controls, DEL and bidi overrides are hidden; printable text is not", () => {
-    for (const c of ["\n", "\r", "\t", "\u0000", "\u001b", "\u007f", "\u0085", "‮", "⁦"]) {
+    for (const c of [
+      "\n",
+      "\r",
+      "\t",
+      "\u0000",
+      "\u001b",
+      "\u007f",
+      "\u0085",
+      "\u202e",
+      "\u2066",
+    ]) {
       expect(hasHiddenCharacter(`npm test${c}x`)).toBe(true)
     }
     expect(hasHiddenCharacter("go test ./<package>/... && echo 'ünïcode ✓'")).toBe(false)

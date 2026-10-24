@@ -27,6 +27,7 @@
       "preset": "recommended"
     }
   },
+  "plugins": ["./test/lint/raw-controls.grit"],
   "overrides": [
     {
       "includes": ["test/**", "!test/env.ts", "!test/contract/**", "!test/fixtures/**"],

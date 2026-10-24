@@ -280,14 +280,14 @@ describe("attention files: the request files", () => {
           "tut-1",
           "Bash",
           { command: "echo \u001b[31mred\u001b[0m" },
-          sdkOptions({ title: "Claude wants \u001b]0;pwned\u0007to run‮ it" }),
+          sdkOptions({ title: "Claude wants \u001b]0;pwned\u0007to run\u202e it" }),
         )
         yield* until("the request file", present(repo, requestFile(request.id)))
         return readFileSync(join(repo, requestFile(request.id)), "utf8")
       }),
     )
     expect(file).not.toContain("\\u001b")
-    expect(file).not.toContain("‮")
+    expect(file).not.toContain("\u202e")
     expect(JSON.parse(file).title).toBe("Claude wants to run it")
     expect(JSON.parse(file).summary).toBe("echo red")
   })

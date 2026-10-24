@@ -18,12 +18,12 @@ setDefaultTimeout(60_000)
 const main = join(import.meta.dir, "..", "src", "main.ts")
 
 /** A title-setting OSC, a colour, a bell, a bidi override and a carriage return. */
-const hostile = "\u001b]0;pwned\u0007\u001b[31mred\u001b[0m\u0007 ‮evil\r over"
+const hostile = "\u001b]0;pwned\u0007\u001b[31mred\u001b[0m\u0007 \u202eevil\r over"
 
 /** Whether `text` has a character a terminal acts on, newline aside. */
 const controls = (text: string): boolean =>
   // biome-ignore lint/suspicious/noControlCharactersInRegex: the controls are what it looks for
-  /[\u0000-\u0009\u000b-\u001f\u007f-\u009f‪-‮⁦-⁩]/.test(text)
+  /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(text)
 
 describe("a step's plain line", () => {
   test("its label and detail sanitised, on one line", () => {

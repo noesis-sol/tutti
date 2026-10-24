@@ -312,7 +312,7 @@ describe("Notifier", () => {
 
   test("a notice that is empty once sanitised shows nothing", async () => {
     const { ran, environment } = recording(where())
-    await notifyAll(environment, ["", `  ${ESC}[2J‮ `])
+    await notifyAll(environment, ["", `  ${ESC}[2J\u202e `])
     expect(ran).toEqual([])
   })
 

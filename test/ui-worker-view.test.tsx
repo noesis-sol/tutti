@@ -260,7 +260,7 @@ describe("transcript items", () => {
         )
         for (const text of texts) {
           // biome-ignore lint/suspicious/noControlCharactersInRegex: what sanitising removes
-          expect(text).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f‪-‮]/)
+          expect(text).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e]/)
         }
       }),
     )

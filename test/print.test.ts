@@ -29,7 +29,7 @@ const colour = (role: Parameters<Theme["ansi"]>[0]): string => theme.ansi(role, 
 /** Whether `text`, its SGR sequences left out, holds what a terminal would act on. */
 const unsafe = (text: string): boolean =>
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is sought
-  /[\x00-\x08\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]/.test(text.replace(sgr, ""))
+  /[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/.test(text.replace(sgr, ""))
 
 const row = (ticket: string, mark: string, word: string, note: string): Row => ({
   ticket,
@@ -403,7 +403,7 @@ describe("untrusted text", () => {
   const hostile = fc.string({
     unit: fc.oneof(
       fc.constantFrom(
-        ...["\x1b", "[", "]", "\\", "\x07", "\x9b", "\x9c", "\r", "\n", "\t", "\x00", "‮"],
+        ...["\x1b", "[", "]", "\\", "\x07", "\x9b", "\x9c", "\r", "\n", "\t", "\x00", "\u202e"],
         ...["&#x1b;", "&#27;", "&#x9b;", "&#8238;", "&#0;", "*", "_", "`", "#", ">", "- ", "|"],
         ...["[a](", ")", "~~", "a", " ", "é", "31m"],
       ),

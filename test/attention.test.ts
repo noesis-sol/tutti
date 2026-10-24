@@ -304,7 +304,7 @@ describe("Attention: several requests per worker", () => {
             agentID: "agent-7",
             title: "Claude wants to \u001b[31mremove\u001b[0m files",
             displayName: "Bash",
-            description: "Remove the‮ target",
+            description: "Remove the\u202e target",
             decisionReason: "Dangerous rm operation",
             blockedPath: "/work/a\tb",
             defaultToNo: true,

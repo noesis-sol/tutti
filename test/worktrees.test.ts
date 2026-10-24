@@ -80,9 +80,9 @@ describe("ticket IDs", () => {
       ["x\t1", "branch"],
       ["x\u007f1", "branch"],
       ["x-\u009b1", "control"],
-      ["x-‮1", "control"],
+      ["x-\u202e1", "control"],
       ["x- 1", "control"],
-      ["x- 1", "control"],
+      ["x-\u20281", "control"],
       ["x-\ud8001", "control"],
     ]
     for (const [id, kind] of refused) expect(ticketIdProblem(id)).toContain(kind)
@@ -103,7 +103,7 @@ describe("ticket IDs", () => {
   })
 
   test("an ID holding a path character, `..`, a control or invisible character is refused", () => {
-    const bad = fc.constantFrom("/", "\\", "..", "\u0000", "\n", "\u009b", "​", "‮")
+    const bad = fc.constantFrom("/", "\\", "..", "\u0000", "\n", "\u009b", "\u200b", "\u202e")
     fc.assert(
       fc.property(fc.string(), bad, fc.string(), (before, inserted, after) => {
         expect(ticketIdProblem(`${before}${inserted}${after}`)).toBeDefined()

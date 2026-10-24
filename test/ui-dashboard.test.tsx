@@ -519,7 +519,7 @@ describe("the tickets table", () => {
 
 describe("untrusted text", () => {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is sought
-  const control = /[\x00-\x1f\x7f-\x9f‪-‮⁦-⁩]/
+  const control = /[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/
 
   test("titles, IDs, verdicts, scopes and warnings stay on their line, in its width", () => {
     fc.assert(

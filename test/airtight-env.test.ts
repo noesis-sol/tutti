@@ -190,8 +190,7 @@ describe("the lint on the tests' environment", () => {
   const lint = (): string => {
     const dir = folder("lint")
     cpSync(join(root, "biome.json"), join(dir, "biome.json"))
-    mkdirSync(join(dir, "test/lint"), { recursive: true })
-    cpSync(join(root, "test/lint/bun-which.grit"), join(dir, "test/lint/bun-which.grit"))
+    cpSync(join(root, "test/lint"), join(dir, "test/lint"), { recursive: true })
     const probe = 'export const a = process.env.X\nexport const b = Bun.which("x")\n'
     for (const file of [
       "test/probe.test.ts",

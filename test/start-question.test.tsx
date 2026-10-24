@@ -358,14 +358,16 @@ describe("the plan's lines", () => {
   test("are sanitised and each on one line", () => {
     const hostile: Plan = {
       epic: { title: "a\nb\x1b]52;c;aGk=\x07", description: "" },
-      tickets: [{ key: "k‮", type: "task", priority: 2, title: "t\x1b[2J", files: [], after: [] }],
+      tickets: [
+        { key: "k\u202e", type: "task", priority: 2, title: "t\x1b[2J", files: [], after: [] },
+      ],
       notes: [],
     }
     const text = planLines(hostile, dark).map((line) => line.map((s) => s.text).join(""))
     expect(text[0]).toBe("Epic: a b")
     for (const line of text) {
       expect(line).not.toContain("\x1b")
-      expect(line).not.toContain("‮")
+      expect(line).not.toContain("\u202e")
       expect(line).not.toContain("\n")
     }
   })

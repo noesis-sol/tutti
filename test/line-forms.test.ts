@@ -263,7 +263,7 @@ describe("the plan confirmation as lines", () => {
           ).map((line) => unstyled(paintLine(line)))
           for (const line of lines) {
             // biome-ignore lint/suspicious/noControlCharactersInRegex: what must not be there
-            expect(line).not.toMatch(/[\x00-\x1f\x7f-\x9f‪-‮⁦-⁩]/)
+            expect(line).not.toMatch(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/)
           }
         },
       ),
