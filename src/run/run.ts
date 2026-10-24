@@ -144,7 +144,7 @@ import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
 import { watchSleeps } from "./slept.ts"
-import { endRecord } from "./spending.ts"
+import { endRecord, Spending } from "./spending.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold } from "./usageLimit.ts"
@@ -308,6 +308,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       scope: config.ticket,
       began: begun,
       concurrency: config.settings.concurrent,
+      subscription: options.subscription ?? false,
       warnings: notices,
     })
     const dashboard = options.dashboard
@@ -364,6 +365,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // The account's windows on the title line all the time, each figure recorded (usageWindows.ts).
     yield* watchUsageWindows({
       show: showOn(status, "windows"),
+      rise: showOn(status, "rise"),
     })
 
     // Triage in the background, when the run has organs: each verdict wakes the run, which doesn't
@@ -682,6 +684,15 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     yield* watch(Stream.runForEach(queue.checksAhead, showOn(status, "checksAhead", Object.is)))
     // The environment probe's session shows as a card while it runs.
     yield* watch(Stream.runForEach(environment.probing, showOn(status, "probe")))
+    // What each worker consumes, for its view's resource line (§ 7.5): its tokens and dollars after
+    // each result, and how full its context is after each finished turn.
+    if (screen !== null) {
+      const spending = yield* Effect.serviceOption(Spending)
+      if (Option.isSome(spending)) {
+        yield* watch(Stream.runForEach(spending.value.sums, showOn(status, "spending", Object.is)))
+      }
+      yield* watch(Stream.runForEach(host.contexts, showOn(status, "contexts", Object.is)))
+    }
     // With the dashboard shown, the machine's load (load.ts), for its load line and each worker's
     // memory in Current. A reading that fails stops the reading, not the run: the line stays as it
     // was last read.

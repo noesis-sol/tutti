@@ -197,6 +197,7 @@ export const InterviewView = () => {
   const [headLines, setHeadLines] = useState(1)
   const chrome = (question: boolean): ViewChrome => ({
     head: headLines,
+    resources: 0,
     handBack: 0,
     held: 0,
     line: 0,

@@ -145,9 +145,9 @@ describe("the request panel's height", () => {
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
          ← Dashboard   • t-1  permission — waiting for you (2)  1m07s   Title of t-1
+          1m07s  0 tokens  $0.00
         ────────────────────────────────────────────────────────────────────────────────
           Two commands to run.
-
 
 
 

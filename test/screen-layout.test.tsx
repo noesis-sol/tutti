@@ -195,6 +195,7 @@ describe("dashboardLayout", () => {
 /** A transcript view's chrome: up to 12 lines a part, as a narrow pane and a long message make. */
 const chromeArb: fc.Arbitrary<ViewChrome> = fc.record({
   head: fc.integer({ min: 1, max: 4 }),
+  resources: fc.integer({ min: 0, max: 1 }),
   handBack: fc.constantFrom(0, 5),
   held: fc.integer({ min: 0, max: 1 }),
   line: fc.integer({ min: 0, max: 1 }),
@@ -214,6 +215,7 @@ describe("viewLayout", () => {
           const laid = viewLayout(height, chrome, panel)
           const parts = [
             laid.head,
+            laid.resources,
             laid.rules[0],
             laid.transcript,
             laid.handBack,

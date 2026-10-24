@@ -20,6 +20,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
+import type { ContextUsage } from "../agent/contextUsage.ts"
 import type { LatestAction } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -37,7 +38,9 @@ import {
   TicketPhase,
   type WindDownMark,
 } from "./phase.ts"
+import { noSums, type Resources, resourcesOf } from "./resources.ts"
 import { keep, keepAll, same } from "./same.ts"
+import type { Sums } from "./spending.ts"
 
 /** A hold on the run, for its banner: `BLOCKED`, `USAGE_LIMIT` with its reset, … */
 export interface RunHold {
@@ -91,6 +94,17 @@ export interface Status {
   readonly usage: Usage | null
   /** The account's windows, in the order the SDK first gave them; none until it has. */
   readonly windows: ReadonlyArray<UsageWindow>
+  /**
+   * How much the five-hour window has risen over the run, 0 to 1 (usageWindows.ts); null until the
+   * run has heard it.
+   */
+  readonly rise: number | null
+  /** Workers bill a subscription login, whose dollars are API-price estimates (§ 4.13). */
+  readonly subscription: boolean
+  /** What each ticket's workers' turns and all of them spent so far (spending.ts). */
+  readonly spending: Sums
+  /** How full each worker's context window is, by ticket, as its session last said. */
+  readonly contexts: ReadonlyMap<string, ContextUsage>
   /** Something stopped the run, and the running tickets are finishing. */
   readonly stopping: boolean
   /** The run is quitting (§ 4.8): `Quitting… waiting for t-1's worker`; null when it isn't. */
@@ -129,6 +143,10 @@ export const emptyStatus: Status = {
   holds: [],
   usage: null,
   windows: [],
+  rise: null,
+  subscription: false,
+  spending: noSums,
+  contexts: new Map(),
   stopping: false,
   quitting: null,
   endOfRun: null,
@@ -355,6 +373,8 @@ export interface RunView {
   readonly rows: ReadonlyArray<Row>
   /** In their workers' number order. */
   readonly cards: ReadonlyArray<Card>
+  /** What each card's worker consumes, for its view's resource line (§ 7.5); the probe has none. */
+  readonly resources: ReadonlyArray<Resources>
   readonly requests: ReadonlyArray<ShownRequest>
   /** The usage, or else the account's windows, first; then each hold. */
   readonly banners: ReadonlyArray<Banner>
@@ -394,6 +414,7 @@ export const emptyView: RunView = {
   },
   rows: [],
   cards: [],
+  resources: [],
   requests: [],
   banners: [],
   windDown: null,
@@ -751,6 +772,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   const needsYou = new Set(requestsOf.keys())
   const rows: Array<{ readonly at: number; readonly row: Row }> = []
   const cards: Array<Card> = []
+  const resources: Array<Resources> = []
   for (const entry of ledger.tickets.values()) {
     const state = workers.get(entry.ticket)
     const open = requestsOf.get(entry.ticket) ?? none
@@ -796,6 +818,17 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         requests: open,
         ...memoryOf(status.load, entry.ticket),
       })
+      resources.push(
+        resourcesOf({
+          ticket: entry.ticket,
+          took: entry.account?.took ?? entry.since,
+          compactions: entry.tallies.compactions,
+          sums: status.spending,
+          subscription: status.subscription,
+          rise: status.rise,
+          context: status.contexts.get(entry.ticket),
+        }),
+      )
     }
   }
   if (status.probe !== null)
@@ -866,6 +899,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
       (row) => row.ticket,
     ),
     cards: keepAll(previous.cards, cards, (card) => card.ticket),
+    resources: keepAll(previous.resources, resources, (each) => each.ticket),
     requests: keepAll(previous.requests, requests, (request) => request.id),
     banners: keep(previous.banners, banners),
     windDown: keep(previous.windDown, windDown),

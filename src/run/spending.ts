@@ -1,6 +1,7 @@
 // Spending (§ 10): what the workers' turns cost and used, from the SDK's own result messages. Each
 // result gives a `turn` record, and is added to its ticket's sums and the run's, which the records
-// that end a ticket's part in the run (ledger.ts) and the run's `end` record give.
+// that end a ticket's part in the run (ledger.ts) and the run's `end` record give. The sums are
+// published as they change, for the worker view's resource line (§ 7.5).
 //
 // A result's total_cost_usd and modelUsage are running totals, not the turn's own: the SDK (0.3.x,
 // sdk.d.ts) documents them as cumulative across a query()'s turns, and a resumed session as going
@@ -11,7 +12,7 @@
 // gives, is a turn that spent nothing and leaves the session's totals as they were. num_turns,
 // duration_ms and duration_api_ms are the turn's own.
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Context, Effect, Layer, Option, Predicate, Ref } from "effect"
+import { Context, Effect, Layer, Option, Predicate, Stream, SubscriptionRef } from "effect"
 import { noCost, OrganCost } from "../organs/OrganCost.ts"
 import type { Event, Tokens, TokensByModel } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
@@ -28,6 +29,12 @@ export interface Spent {
 }
 
 export const nothingSpent: Spent = { costUsd: 0, turns: 0, results: 0, tokens: {} }
+
+/** What each ticket's workers' turns spent in the run so far, and every worker's together. */
+export interface Sums {
+  readonly tickets: ReadonlyMap<string, Spent>
+  readonly total: Spent
+}
 
 /** A session's running totals, as its last result gave them. */
 export interface Totals {
@@ -170,6 +177,8 @@ export class Spending extends Context.Service<
     ofTicket(ticket: string): Effect.Effect<Spent>
     /** What every worker's turns spent in the run so far. */
     readonly total: Effect.Effect<Spent>
+    /** What each ticket's and every worker's turns spent so far: now, then after each result. */
+    readonly sums: Stream.Stream<Sums>
   }
 >()("tutti/run/Spending") {
   /** The run's spending, its turn records written to the EventStream, its sums in memory. */
@@ -177,7 +186,7 @@ export class Spending extends Context.Service<
     Spending,
     Effect.gen(function* () {
       const events = yield* EventStream
-      const state = yield* Ref.make<{
+      const state = yield* SubscriptionRef.make<{
         readonly sessions: ReadonlyMap<string, Totals>
         readonly tickets: ReadonlyMap<string, Spent>
         readonly total: Spent
@@ -189,7 +198,7 @@ export class Spending extends Context.Service<
           const r = message as unknown as ResultFields
           const now = totalsOf(r)
           const turns = whole(r.num_turns)
-          const share = yield* Ref.modify(state, (s) => {
+          const share = yield* SubscriptionRef.modify(state, (s) => {
             const share = shareOf(s.sessions.get(session), now)
             const sessions = zeroed(now) ? s.sessions : new Map(s.sessions).set(session, now)
             const tickets = new Map(s.tickets).set(
@@ -214,16 +223,21 @@ export class Spending extends Context.Service<
 
       return Spending.of({
         message,
-        knows: (session) => Effect.map(Ref.get(state), (s) => s.sessions.has(session)),
+        knows: (session) => Effect.map(SubscriptionRef.get(state), (s) => s.sessions.has(session)),
         seed: (session, result) =>
-          Ref.update(state, (s) => {
+          SubscriptionRef.update(state, (s) => {
             if (result.type !== "result" || s.sessions.has(session)) return s
             const totals = totalsOf(result as unknown as ResultFields)
             return zeroed(totals) ? s : { ...s, sessions: new Map(s.sessions).set(session, totals) }
           }),
         ofTicket: (ticket) =>
-          Effect.map(Ref.get(state), (s) => s.tickets.get(ticket) ?? nothingSpent),
-        total: Effect.map(Ref.get(state), (s) => s.total),
+          Effect.map(SubscriptionRef.get(state), (s) => s.tickets.get(ticket) ?? nothingSpent),
+        total: Effect.map(SubscriptionRef.get(state), (s) => s.total),
+        // A seed changes no sum: each is passed on once.
+        sums: SubscriptionRef.changes(state).pipe(
+          Stream.map((s): Sums => ({ tickets: s.tickets, total: s.total })),
+          Stream.changesWith((a, b) => a.tickets === b.tickets && a.total === b.total),
+        ),
       })
     }),
   )

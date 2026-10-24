@@ -1187,6 +1187,7 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
 
 ```
  ← Dashboard   ⣾ tut-zq4  testing  1m07s   Add an undo stack for property edits
+  6m53s  1.2M tokens  5h window ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  0.8 GB
 ─────────────────────────────────────────────────────────────────────────────────
   Read  internal/history/undo.ts
   Edit  internal/history/undo.ts                                       +42 −3
@@ -1207,6 +1208,16 @@ Opened by selecting a card. Full-screen, with orchestra-style chrome:
   - `Enter` on a selected item, or a click, expands it: an edit's diff (`<diff>`), a command's output (`<code>`), a read's range, a message's whole text.
   - Subagent work (forwarded with `forwardSubagentText`) is nested under its Agent call by `parent_tool_use_id`, collapsed by default.
   - Thinking is hidden.
+- **The resource line**, under the head: what the worker is consuming (worker-view design D2, tutti-cxgo.2). A departure from orchestra's worker view, which has none, on purpose: you should know, on entering the view, what the worker costs and how near its context is to compacting. In order, two spaces between parts:
+  - its time on the ticket, from when the run took it up, plain (no `⏱`: it has an emoji form);
+  - its tokens, all of them (input, cache writes, cache reads, output, every model's), from Spending's sums (§10), `1.2M tokens`;
+  - on an API key, its dollars, the SDK's `total_cost_usd`, in the text's colour: money spent. On a subscription login the SDK's figure is an API-price estimate, not money spent, so the line has no dollars there; it has the ticket's estimated share of the account's five-hour window instead, `5h window ≈1% (estimate)`, the figure and its word `(estimate)` in `estimate` italics (§7.11), which the word keeps under `NO_COLOR`. Claude Code reports the account's windows, not a session's, so the share is an estimate: the five-hour window's rise over the run (each `unifiedWindows` figure's rise from the last, a reset counting the next window's figure from 0) shared among the run's workers in proportion to each one's dollars at API prices, which weigh the model and the cache's reads roughly as the limits do. It overstates while the account is used beside the run, which tutti can't see; the organs' calls are left out, as the summary's Spent leaves them. Until the run has heard the window, the line has no share;
+  - its context window, against the window Claude Code compacts at (the SDK's `maxTokens`, its resolved autocompact window: 200k on a 1M-token model), as amounts, `context ▰▰▰▰▰▰▱▱▱▱  126k of 200k`: faint below 70%, `notice` from 70%, `needsYou` from 90%. The host asks the session (`getContextUsage`, from the last response's usage, no token-count calls) after each finished turn, not on a timer; until it has answered, the line has no gauge;
+  - its compactions, once there has been one, `↻ 2 compactions` (the ledger's tallies);
+  - its processes' memory, as its card shows it;
+  - near or at a usage limit (`allowed_warning`, `rejected`), the account's figure as a warning, `⚠ 5h window 92% · resets 14:20`, `notice`, bold once reached, so you know why the worker may stop.
+  
+  Each part, and a gauge and its figure, are segments of their own two spaces apart, so cutting the line never joins them. A narrow pane drops the memory, then the warning's reset time, then the compactions, then whole parts from the end: a gauge never loses its figure, nor the estimate its word. A short pane gives the line up before the request panel's lines. A click on the line opens the breakdown, **Spent**, over the view: the tokens by model with the cache's share of the input, the model calls (the results' `num_turns`, summed by Spending), the dollars (on a subscription at API prices, in `estimate` italics with `(estimate)`), how the window's share is made (the window's rise, the ticket's dollars and the run's), the context's percentage and its split by kind, the compactions, and the ticket's share of the run's tokens; `Esc` or a click closes it. It is a box of its own until the whole-ticket panel (D1, tutti-cxgo.1) has a `Spent` section to take it.
 - **A narrow pane.** The header wraps the ticket's whole title onto lines under it, and the hint every key onto as many lines as it takes, breaking between words and between keys: neither is cut. Both are outside the transcript's `scrollbox`, so their height doesn't touch #1514.
 - **Attention.** Open requests show as a panel above the composer, with the same buttons and rules as the card, and each request's whole input, wrapped to the pane's width and drawn by its tool (§4.5). A pending hand-back for a steered worker shows there too (§4.3).
 - **The composer** sends your message into the worker's inbox (§4.1). The worker becomes steered.
@@ -1296,7 +1307,7 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `toMerge` | blue | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | pink | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`, bold) |
 | `emphasis` | chalk | `#374151` | `#E5E7EB` | emphasis near the text's own colour: keys to press, the `Tickets` label, tool names, `steered` |
-| `estimate` | sand | `#8A6D3B` | `#D4B483` | an estimate, in italics beside its word `(estimate)`: dollars at API prices on a subscription login. tutti's own, apart from the status colours (worker-view design, tutti-cxgo D2) |
+| `estimate` | sand | `#8A6D3B` | `#D4B483` | an estimate, in italics beside its word `(estimate)`: dollars at API prices on a subscription login, a ticket's share of the five-hour window. tutti's own, apart from the status colours (worker-view design, tutti-cxgo D2) |
 | `pill` | Charm purple | `#7D56F4` | `#7D56F4` | the title pill's background and init's **Next** frame: the Charm purple of the Bubble Tea and Lip Gloss examples |
 | `pillText` | | `#FAFAFA` | `#FAFAFA` | text on the pill |
 | `keepAwake` | | `#B45309` | `#F59E0B` | the keep-awake badge's background (§7.2): tutti's own, a warm amber, set apart from `notice`'s yellow and `windingDown`'s orange text by being a fill |
@@ -1380,6 +1391,7 @@ As orchestra draws it:
 - **The wind-down line**: one `■` per ticket, `windingDown` while it runs, `done` once merged, `needsYou` (not bold) once set aside or waiting on you; `Winding down` `windingDown` bold; the rest faint.
 - **The stop question**: framed `notice`; the question `notice` bold; `y` and `n` `emphasis` bold; `/` faint.
 - **The hint**: each key `emphasis` bold, its words faint, ` · ` faint. A warning line above it, ` ! …`, `notice`.
+- **The worker view's resource line** (§7.5): the figures in the text's own colour, their words (`tokens`, `context`, `of`, `5h window`, `compactions`) and the memory faint; the window's share and its `(estimate)` `estimate` italic; the context gauge faint, `notice` with its figure from 70%, `needsYou` from 90%; the warning `notice`, bold once the limit is reached. Its breakdown: framed `frame`, `Spent` `emphasis` bold, the labels faint, the API-price dollars and the share `estimate` italic.
 - **Nothing to run**:
   - `✓ All done`: framed `done`; `✓` `done` bold, `All done` bold
   - `○ Nothing ready to run`: framed `frame`; `○` faint, the heading bold

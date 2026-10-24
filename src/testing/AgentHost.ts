@@ -59,6 +59,7 @@ import {
   type WorkerEntry,
 } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
+import { readContextUsage } from "../agent/contextUsage.ts"
 import { activityHooks, type Hooks } from "../agent/hooks.ts"
 import { serverName } from "../agent/interviewTools.ts"
 import { type ChosenServers, inProcess, noServers } from "../agent/mcp.ts"
@@ -105,6 +106,11 @@ export type Step = Data.TaggedEnum<{
   /** Waits for an interrupt not yet waited for. */
   AwaitInterrupt: Record<never, never>
   Sleep: { readonly duration: Duration.Input }
+  /**
+   * The session answers getContextUsage() with `answer`, as the live layer asks it after each
+   * finished turn: read as the live layer reads it, and kept as the worker's context (§ 7.5).
+   */
+  Context: { readonly answer: unknown }
   /** Runs `effect`: what the worker does outside the session, to an in-memory Beads or Git. */
   Do: { readonly effect: Effect.Effect<void> }
   /**
@@ -444,6 +450,10 @@ export const layer = (
             }),
           AwaitInterrupt: () => Queue.take(session.interrupts),
           Sleep: ({ duration }) => Effect.sleep(duration),
+          Context: ({ answer }) => {
+            const usage = readContextUsage(answer)
+            return usage === undefined ? Effect.void : workers.measured(session.entry, usage)
+          },
           Do: ({ effect }) => effect,
           Gone: ({ why, setup }) =>
             setup === true ? setupProblem(ticket, session, why) : gone(ticket, session, why),
@@ -635,6 +645,7 @@ export const layer = (
         answered: workers.answered,
         workers: workers.workers,
         compactions: workers.compactions,
+        contexts: workers.contexts,
         processes: Effect.sync(
           () =>
             new Map(
@@ -673,6 +684,7 @@ export const fold: Step = Step.Fold()
 export const coalesce: Step = Step.Coalesce()
 export const awaitInterrupt: Step = Step.AwaitInterrupt()
 export const sleep = (duration: Duration.Input): Step => Step.Sleep({ duration })
+export const context = (answer: object): Step => Step.Context({ answer })
 export const run = (effect: Effect.Effect<void>): Step => Step.Do({ effect })
 export const gone = (why: string): Step => Step.Gone({ why })
 /** The session ends over a setup problem its first system/init showed, as the live layer ends it. */

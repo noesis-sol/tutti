@@ -65,6 +65,8 @@ interface Scenario {
   readonly mcpStatus?: ReadonlyArray<Record<string, unknown>>
   /** The get_settings control request's answer, in place of `{}`. */
   readonly settings?: Record<string, unknown>
+  /** The get_context_usage control request's answer, in place of `{}`. */
+  readonly contextUsage?: Record<string, unknown>
   /**
    * Starts a process of its own that runs until killed, in the fake's process group, and logs
    * `{ descendant: <pid> }`.
@@ -466,6 +468,10 @@ const control = async (id: string, request: Record<string, unknown>) => {
     }
     case "get_settings": {
       await answer(scenario.settings ?? {})
+      return
+    }
+    case "get_context_usage": {
+      await answer(scenario.contextUsage ?? {})
       return
     }
     default:

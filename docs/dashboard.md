@@ -251,6 +251,7 @@ When the run ends, the dashboard closes and the main screen gets:
 
 ```
  ← Dashboard   2 ⣾  tut-zq4  testing  1m07s   Add an undo stack for property edits
+  6m53s  1.2M tokens  5h window ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  0.8 GB
 ─────────────────────────────────────────────────────────────────────────────────
   Read  src/history/undo.ts                                                    ✓
   Edit  src/history/undo.ts                                               +42 −3
@@ -262,6 +263,17 @@ When the run ends, the dashboard closes and the main screen gets:
  Esc dashboard · i write · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
 ```
 
+- **What it consumes.** The line under the head: the worker's time on the ticket, its tokens, its
+  dollars on an API key, how full its context window is against the point Claude Code compacts at
+  (yellow from 70%, red from 90%), its compactions once it has had one, and its memory. On a
+  subscription login there are no dollars to spend: the line shows instead the ticket's share of
+  your five-hour window, `5h window ≈1% (estimate)`, in italic sand. Claude Code reports only the
+  account's window, so tutti estimates it: the window's rise over the run, shared among the workers
+  by what each would cost at API prices. It counts what you use beside the run too. Near a usage
+  limit, the line ends with the account's figure, `⚠ 5h window 92% · resets 14:20`. A click on the
+  line shows the breakdown, **Spent**: tokens by model and how many came from the cache, model calls,
+  dollars, how the share is made, what fills the context, and the ticket's share of the run's tokens.
+  `Esc` or a click closes it.
 - **The transcript.** What the worker writes is drawn as Markdown. Each tool call is one line, its
   result at the right: `✓`, an error's first line, or `+N −M` for an edit. Selected with the arrows
   and opened with `Enter` or a click, a call shows an edit's diff, a command's output (400 lines at

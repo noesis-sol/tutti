@@ -45,6 +45,7 @@ import {
 import { detail, Log } from "../run/log.ts"
 import { Spending } from "../run/spending.ts"
 import { Attention } from "./Attention.ts"
+import type { ContextUsage } from "./contextUsage.ts"
 import { type Call, type Reading, read } from "./reading.ts"
 import { Transcripts } from "./Transcripts.ts"
 import { UsageLimits } from "./UsageLimits.ts"
@@ -223,6 +224,11 @@ export class AgentHost extends Context.Service<
     /** Every worker's compactions, from now on, as their PreCompact hooks report them (§ 4.2). */
     readonly compactions: Stream.Stream<Compaction>
     /**
+     * How full each worker's context window is, by ticket, as its session last said after a finished
+     * turn (§ 7.5): now, then on each change. A worker ended is left out.
+     */
+    readonly contexts: Stream.Stream<ReadonlyMap<string, ContextUsage>>
+    /**
      * The process of each open session's Claude Code, by ticket: the leader of a process group of
      * its own (§ 3.2), for its memory on the dashboard's load line (src/run/load.ts).
      */
@@ -305,6 +311,10 @@ export interface Workers {
   readonly compacted: (entry: WorkerEntry, trigger: string) => Effect.Effect<void>
   /** Every worker's compactions, from now on. */
   readonly compactions: Stream.Stream<Compaction>
+  /** How full the worker's context window is, as its session said after a finished turn. */
+  readonly measured: (entry: WorkerEntry, usage: ContextUsage) => Effect.Effect<void>
+  /** How full each worker's context window is, by ticket: now, then on each change. */
+  readonly contexts: Stream.Stream<ReadonlyMap<string, ContextUsage>>
   /** Waits until the worker's state counts every one of its open attention requests. */
   readonly counted: (entry: WorkerEntry) => Effect.Effect<void>
   /** Forgets the worker: its streams end, and its transcript's memory and files are let go of. */
@@ -335,6 +345,7 @@ export const makeWorkers = (
     // Folds are serialised, so the state set last is the one the last fold gave.
     const one = yield* Semaphore.make(1)
     const compactions = yield* PubSub.unbounded<Compaction>()
+    const contexts = yield* SubscriptionRef.make<ReadonlyMap<string, ContextUsage>>(new Map())
     const log = yield* Effect.serviceOption(Log)
     const usage = yield* Effect.serviceOption(UsageLimits)
     const spending = yield* Effect.serviceOption(Spending)
@@ -450,9 +461,19 @@ export const makeWorkers = (
         }
       })
 
+    const forgetContext = (ticket: string) =>
+      SubscriptionRef.updateSome(contexts, (all) => {
+        if (!all.has(ticket)) return Option.none()
+        const left = new Map(all)
+        left.delete(ticket)
+        return Option.some(left)
+      })
+
     const open = (ticket: string, session: string, resumed: boolean) =>
       Effect.gen(function* () {
         if (resumed) yield* seedSpending(ticket, session)
+        // A new session's context starts empty: the last one's figure is no longer its.
+        else yield* forgetContext(ticket)
         const found = known.get(ticket)
         if (found === undefined) {
           const entry = yield* make(ticket, session)
@@ -529,6 +550,13 @@ export const makeWorkers = (
       compacted: (entry, trigger) =>
         Effect.asVoid(PubSub.publish(compactions, { ticket: entry.ticket, trigger })),
       compactions: Stream.fromPubSub(compactions),
+      measured: (entry, usage) =>
+        Effect.suspend(() =>
+          known.get(entry.ticket) === entry
+            ? SubscriptionRef.update(contexts, (all) => new Map(all).set(entry.ticket, usage))
+            : Effect.void,
+        ),
+      contexts: SubscriptionRef.changes(contexts),
       counted: (entry) =>
         Effect.gen(function* () {
           const open = yield* openCount(entry.ticket)
@@ -544,6 +572,7 @@ export const makeWorkers = (
           if (found === undefined) return
           known.delete(ticket)
           yield* SubscriptionRef.set(knownTickets, new Set(known.keys()))
+          yield* forgetContext(ticket)
           if (Option.isSome(usage)) yield* usage.value.limited(ticket, undefined)
           yield* Deferred.succeed(found.ended, undefined)
         }),

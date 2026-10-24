@@ -509,6 +509,7 @@ describe("the worker view", () => {
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
          ← Dashboard   • t-1  done  1m07s   Title of t-1
+          1m07s  0 tokens  $0.00
         ────────────────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
@@ -538,6 +539,7 @@ describe("the worker view", () => {
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
          ← Dashboard   • t-1  done  1m07s   Title of t-1
+          1m07s  0 tokens  $0.00
         ────────────────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
@@ -578,7 +580,7 @@ describe("the worker view", () => {
       async ({ rendered }) => {
         // Collapsed, its first lines, the last ending ` …`.
         const collapsed = await until(rendered, has("Step 5."))
-        expect(linesOf(collapsed).slice(2, 9)).toEqual([
+        expect(linesOf(collapsed).slice(3, 10)).toEqual([
           "  › Work on tut-zq4.",
           "    Step 1.",
           "    Step 2.",
@@ -590,7 +592,7 @@ describe("the worker view", () => {
         expect(collapsed.chars).not.toContain("Step 6.")
         await press(rendered, "up", "enter")
         const frame = await until(rendered, has("Step 8."))
-        expect(linesOf(frame).slice(2, 12)).toEqual([
+        expect(linesOf(frame).slice(3, 13)).toEqual([
           "▸ › Work on tut-zq4.",
           ...steps.map((step) => `    ${step}`),
           "",
@@ -615,6 +617,7 @@ describe("the worker view", () => {
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
          ← Dashboard   • t-1  done  1m07s   Title of t-1
+          1m07s  0 tokens  $0.00
         ────────────────────────────────────────────────────────────────────────────────
         ▸ Agent  Find the callers                                                      ✓
           │   Looking for callers.
@@ -712,6 +715,7 @@ describe("the attention panel", () => {
         expect(shownOf(frame)).toMatchInlineSnapshot(`
           "
            ← Dashboard   • t-1  permission — waiting for you  1m07s   Title of t-1
+            1m07s  0 tokens  $0.00
           ────────────────────────────────────────────────────────────────────────────────
             I'll clean the build.
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓

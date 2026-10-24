@@ -39,6 +39,9 @@
 // resume waits for a Closing session's end, so two Claude Codes never share a session; the start
 // itself runs in the session's scope, so closing a Starting session cancels it.
 //
+// After each finished turn the host asks the session how full its context window is
+// (getContextUsage), for the worker view's resource line (§ 7.5).
+//
 // A resumed session keeps the system prompt it recorded as it began (`snapshot: true`, § 4.1), so
 // the standing rules' notes that can change, the requires list's and the check's (changingNotes),
 // reach it in the resume's message instead (resumedNotes): when they differ from those its session
@@ -96,6 +99,7 @@ import {
 } from "./AgentHost.ts"
 import type { Attention } from "./Attention.ts"
 import { queryThrew } from "./claudeBinary.ts"
+import { readContextUsage } from "./contextUsage.ts"
 import { coreShare, workerEnv } from "./env.ts"
 import { serverName } from "./interviewTools.ts"
 import { type ChosenServers, inProcess, noServers, withOwn } from "./mcp.ts"
@@ -467,8 +471,24 @@ export const layer = (
             const refused = reading.startupFailure
             yield* Deferred.succeed(session.startupFailure, refused)
             yield* gone(session, refused)
+          } else if (reading._tag === "Result") {
+            yield* Effect.forkIn(measure(session), session.scope)
           }
         })
+
+      /**
+       * How full the session's context window is once a turn has finished, for the worker view
+       * (§ 7.5): asked of the CLI beside the reader, from the last response's usage (`summary`, no
+       * token-count calls). An answer that doesn't come, or can't be read, leaves the last figure.
+       */
+      const measure = (session: Live) =>
+        Effect.tryPromise(() => session.query.getContextUsage({ detail: "summary" })).pipe(
+          Effect.flatMap((answer) => {
+            const usage = readContextUsage(answer)
+            return usage === undefined ? Effect.void : workers.measured(session.entry, usage)
+          }),
+          Effect.ignore,
+        )
 
       /**
        * Reads the session's stream to its end, a message that dies skipped; an end tutti didn't ask
@@ -865,6 +885,7 @@ export const layer = (
         answered: workers.answered,
         workers: workers.workers,
         compactions: workers.compactions,
+        contexts: workers.contexts,
         processes: Effect.sync(() => {
           const pids = new Map<string, number>()
           for (const [ticket, lifecycle] of sessions) {

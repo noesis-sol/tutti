@@ -124,6 +124,7 @@ describe("the worker view in a narrow pane", () => {
         "
          ← Dashboard   • t-1  done  1m07s   Add tools/lint.sh to run
             Biome and shellcheck on the files a branch changed
+          1m07s  0 tokens  $0.00
         ────────────────────────────────────────────────────────────
           Reading the scripts.
         ────────────────────────────────────────────────────────────
@@ -146,6 +147,7 @@ describe("the worker view in a narrow pane", () => {
             tools/lint.sh to run Biome and
             shellcheck on the files a branch
             changed
+          1m07s  0 tokens  $0.00
         ────────────────────────────────────────
           Reading the scripts.
         ────────────────────────────────────────

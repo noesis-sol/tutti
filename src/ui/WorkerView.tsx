@@ -1,6 +1,7 @@
 // The worker view (§ 7.5, § 7.3, § 7.11): tutti's transcript of one worker, drawn by tutti, under
 // orchestra-style chrome: `← Dashboard`, then the worker's card head (number, mark, ticket, status,
-// elapsed time) and its title, wrapped onto more lines in a narrow pane, over a rule. Below the
+// elapsed time) and its title, wrapped onto more lines in a narrow pane, then the resource line
+// (ResourceLine.tsx: what the worker consumes; a click opens what it spent), over a rule. Below the
 // transcript, the attention panel shows the worker's open requests with the card's buttons and
 // rules (attentionKeys.ts), each with its description, its reason and its whole input, and a
 // conflict hand-back waiting for a steered worker (§ 4.3) as a notice with Hand it the conflict
@@ -98,6 +99,7 @@ import {
   widthOf,
   wrap,
 } from "./line.tsx"
+import { ResourceLine, SpentBox } from "./ResourceLine.tsx"
 import { requestInputLines } from "./requestInput.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import { useHintHeight } from "./Toasts.tsx"
@@ -155,6 +157,11 @@ export const transcriptRows = 3
  */
 export interface ViewChrome {
   readonly head: number
+  /**
+   * The worker view's resource line under the head (ResourceLine.tsx), none in the Interview view:
+   * a short pane gives it up before the request panel's lines, so it is left out of panelBudget.
+   */
+  readonly resources: number
   readonly handBack: number
   readonly held: number
   readonly line: number
@@ -178,19 +185,23 @@ const ruleLines = 2
  * The lines the request panel may take in a pane `height` tall: what `chrome`, the rules and the
  * transcript's `transcriptRows` leave it (tutti-7nzv).
  */
-export const panelBudget = (height: number, chrome: ViewChrome): number =>
-  height -
-  ruleLines -
-  transcriptRows -
-  Object.values(chrome).reduce((sum: number, lines: number) => sum + lines, 0)
+export const panelBudget = (height: number, chrome: ViewChrome): number => {
+  const { resources: _, ...rest } = chrome
+  return (
+    height -
+    ruleLines -
+    transcriptRows -
+    Object.values(rest).reduce((sum: number, lines: number) => sum + lines, 0)
+  )
+}
 
 /**
  * A transcript view's lines in a pane `height` tall, handed out in priority order, each part as
  * many as it needs of what is left, so that they add up to `height`: the hint, the head, the
  * rules, the composer, the finished or steered line, the held line, the queued messages and the
  * hand-back notice, then the transcript's `transcriptRows`, then the `panel` lines the request
- * panel takes (panelBudget's at most, but for one request too tall for it), and the transcript the
- * rest.
+ * panel takes (panelBudget's at most, but for one request too tall for it), then the resource line,
+ * and the transcript the rest.
  */
 export const viewLayout = (height: number, chrome: ViewChrome, panel: number): ViewLayout => {
   let rest = Math.max(height, 0)
@@ -209,9 +220,11 @@ export const viewLayout = (height: number, chrome: ViewChrome, panel: number): V
   const handBack = take(chrome.handBack)
   const kept = take(transcriptRows)
   const panelLines = take(panel)
+  const resources = take(chrome.resources)
   const transcript = kept + take(rest)
   return {
     head,
+    resources,
     handBack,
     held,
     line,
@@ -914,6 +927,12 @@ export const workerViewCommands = (
       run: nothing,
       help: ["Esc, Tab, Enter", "switch workers, by way of the dashboard"],
     },
+    // A click on the resource line opens what the worker spent (ResourceLine.tsx).
+    {
+      keys: [],
+      run: nothing,
+      help: ["a click on resources", "what the worker spent: tokens, calls, dollars, context"],
+    },
     { ...keys.write, hint: named(viewing, "i", "write"), help: writeRow },
     { ...keys.deny, hint: named(viewing && at.requests, "d", "deny"), help: denyRow },
     { ...keys.denyWithReason, help: denyRow },
@@ -1241,6 +1260,13 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   if (found !== undefined) ended.current = undefined
   const card = found ?? last.current
   const ticket = card?.ticket
+  // What its worker consumes, the last seen kept as its card is (ResourceLine.tsx).
+  const foundResources = useRunViewPart((view) =>
+    view.resources.find((each) => each.ticket === viewed),
+  )
+  const lastResources = useRef(foundResources)
+  if (foundResources !== undefined) lastResources.current = foundResources
+  const resources = foundResources ?? lastResources.current
   // While its ticket waits to merge or merges, the run holds your messages (held.ts).
   const holding = found !== undefined && holdsMessages(found.phase)
   const transcript = useTranscriptWindow(
@@ -1265,6 +1291,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const steered = card?.steered === true
   const chrome = (requests: boolean): ViewChrome => ({
     head: headLines,
+    resources: resources === undefined ? 0 : 1,
     handBack: handBack ? handBackLines(theme, { width: panelWidth, selected: false }).length : 0,
     held: holding ? 1 : 0,
     line: finished || steered ? 1 : 0,
@@ -1342,11 +1369,23 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     ),
     "Interrupt",
   )
-  // The view draws its Interrupt box and binds its keys: unmounted with it open, nothing would, and the
-  // box would hold the keys of the view after it (tutti-por).
+  // A click on the resource line opens what the worker spent, over the view; Esc or a click closes it.
+  const openSpent = () => {
+    composer.blur()
+    input.box.set(Box.Spent({ ticket: viewed }))
+  }
+  const closeSpent = () => {
+    if (input.box.get()?._tag !== "Spent") return
+    input.box.set(null)
+    composer.refocus()
+  }
+  useCommands("box", [{ keys: ["escape"], run: closeSpent }], "Spent")
+  // The view draws its Interrupt and Spent boxes and binds their keys: unmounted with one open,
+  // nothing would, and the box would hold the keys of the view after it (tutti-por).
   useEffect(
     () => () => {
-      if (input.box.get()?._tag === "Interrupt") input.box.set(null)
+      const open = input.box.get()?._tag
+      if (open === "Interrupt" || open === "Spent") input.box.set(null)
     },
     [input],
   )
@@ -1408,6 +1447,17 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
             counted={setHeadLines}
           />
         </Section>
+        <Section lines={laid.resources}>
+          {resources === undefined ? null : (
+            <ResourceLine
+              resources={resources}
+              memory={card?.memory}
+              finished={finished}
+              width={inner}
+              open={openSpent}
+            />
+          )}
+        </Section>
         <Section lines={laid.rules[0]}>
           <Line segments={rule} />
         </Section>
@@ -1463,6 +1513,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           <ViewHint keys={keys.hint} width={inner} />
         </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
+        {box?._tag === "Spent" ? <SpentBox ticket={box.ticket} close={closeSpent} /> : null}
         {box?._tag === "Interrupt" ? (
           <InterruptQuestion
             theme={theme}
