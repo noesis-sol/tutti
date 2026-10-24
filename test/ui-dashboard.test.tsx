@@ -8,7 +8,7 @@ import fc from "fast-check"
 import { act } from "react"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
-import { type Activity, Outcome, TicketPhase } from "../src/run/phase.ts"
+import { type Activity, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
@@ -393,7 +393,12 @@ describe("the tickets table", () => {
     ["✓ done", merged("abc1234def"), "abc1234 merged into batch/2026-10-20", "closed"],
     ["✓ done", TicketPhase.Done({ outcome: Outcome.NoChange() }), "no change to merge", "closed"],
     ["? for you", TicketPhase.Asked({ question: "q-1" }), "The ticket's title", "stop"],
-    ["◷ waiting", TicketPhase.Waiting({ for: "tut-2" }), "The ticket's title", "dim"],
+    [
+      "◷ waiting",
+      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-2"] }) }),
+      "The ticket's title",
+      "dim",
+    ],
     [
       "↷ deferred",
       TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
@@ -413,7 +418,11 @@ describe("the tickets table", () => {
 
   test("a finished ticket's note is faint, a live one's title is not", async () => {
     looksLike((await rowOf(merged("abc1234def"))).frame, "abc1234 merged", "dim")
-    looksLike((await rowOf(TicketPhase.Waiting({ for: "x" }))).frame, "The ticket's", "dim")
+    looksLike(
+      (await rowOf(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }))).frame,
+      "The ticket's",
+      "dim",
+    )
     const live = spanOf((await rowOf(working("editing"))).frame, "The ticket's")
     expect(live.attributes & TextAttributes.DIM).toBe(0)
   })
@@ -446,7 +455,7 @@ describe("the tickets table", () => {
           tickets([
             TicketPhase.Merging({ step: "check" }),
             merged("abc1234def"),
-            TicketPhase.Waiting({ for: "tut-1" }),
+            TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-1"] }) }),
           ]),
         ),
       )

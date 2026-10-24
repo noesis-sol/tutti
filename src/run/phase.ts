@@ -16,6 +16,40 @@ export type Hold = (typeof holds)[number]
 /** A merge's steps, in order. */
 export type MergeStep = (typeof mergeSteps)[number]
 
+/** What a Waiting ticket waits for. */
+export type WaitFor = Data.TaggedEnum<{
+  /** Its blockers to merge: their IDs. Its worker stopped with nothing done, having linked them. */
+  Blockers: { readonly ids: ReadonlyArray<string> }
+  /** A ticket to merge, or the probe to pass: its worktree's setup failed before its worker started. */
+  Setup: Empty
+  /** The environment probe to pass: an environment hold reopened it. */
+  Probe: Empty
+  /** The next run, the setup fixed: a setup problem stopped its worker (SETUP_PROBLEM). */
+  SetupProblem: Empty
+}>
+
+export const WaitFor = Data.taggedEnum<WaitFor>()
+
+/** WaitFor's Schema, for TicketPhaseSchema. */
+export const WaitForSchema = Schema.TaggedUnion({
+  Blockers: { ids: Schema.Array(Schema.String) },
+  Setup: {},
+  Probe: {},
+  SetupProblem: {},
+})
+
+/**
+ * What a Waiting ticket waits for, as the event stream's `why` gives it: its blockers' IDs, joined
+ * with `, `, or `setup`, `probe` or `setup problem`.
+ */
+export const waitShown = (wait: WaitFor): string =>
+  WaitFor.$match(wait, {
+    Blockers: ({ ids }) => ids.join(", "),
+    Setup: () => "setup",
+    Probe: () => "probe",
+    SetupProblem: () => "setup problem",
+  })
+
 /**
  * What a Working ticket's row shows: `▶ working`, the worker's activity (`▶ editing`, …), `■ allow?`
  * for a permission request, `■ answer?` for a question it asked, `◷ limit` for a usage limit.
@@ -62,12 +96,8 @@ export type TicketPhase = Data.TaggedEnum<{
   Done: { readonly outcome: Outcome }
   /** Waits on a question ticket for you: the question's ID. */
   Asked: { readonly question: string }
-  /**
-   * Back in the queue until `for` merges, until the environment probe passes (`probe`), or, its
-   * worktree's setup failed before its worker started (`setup`), until a ticket merges or a probe
-   * passes; or, its worker stopped by a setup problem (`setup problem`), until the next run.
-   */
-  Waiting: { readonly for: string }
+  /** Back in the queue until what it waits for comes: its blockers' merge, a probe, the next run. */
+  Waiting: { readonly for: WaitFor }
   /** Set aside: deferred by its worker or by tutti. */
   Deferred: { readonly why: string }
   /** Left for review: `CHECKS_FAILED`, `DIRTY_WORKTREE`, `REBASE_FAILED`, `OFF_BRANCH`, … */
@@ -97,7 +127,7 @@ export const TicketPhaseSchema = Schema.TaggedUnion({
     outcome: Schema.TaggedUnion({ Merged: { commit: Schema.String }, NoChange: {} }),
   },
   Asked: { question: Schema.String },
-  Waiting: { for: Schema.String },
+  Waiting: { for: WaitForSchema },
   Deferred: { why: Schema.String },
   Review: { why: Schema.String },
   Blocked: { why: Schema.String },
@@ -131,7 +161,7 @@ export type Cause = Data.TaggedEnum<{
   /** Its worker filed a question ticket that blocks it, then settled. */
   FiledQuestion: { readonly question: string }
   /** Its worker stopped with nothing done, having linked a blocker that hasn't merged. */
-  WaitsForMerge: { readonly for: string }
+  WaitsForMerge: { readonly blockers: ReadonlyArray<string> }
   /** The setup failed in its worktree before its worker could start (SETUP_FAILED). */
   SetupFailed: Empty
   /** Its worker's first system/init showed a setup problem, which stopped the run (SETUP_PROBLEM). */
@@ -226,17 +256,6 @@ const row = <const F extends From, const C extends CauseTag, const T extends To>
 
 const working = () => TicketPhase.Working({ activity: "starting" })
 
-/** What a Waiting ticket whose worktree's setup failed waits for: a merge, or a probe. */
-export const setupWait = "setup"
-
-/** What a Waiting ticket an environment hold reopened waits for: the probe. */
-export const probeWait = "probe"
-
-/**
- * What a Waiting ticket whose worker a setup problem stopped (SETUP_PROBLEM) waits for: the next
- * run, the setup fixed. It stays out of this run, which the problem stops.
- */
-export const setupProblemWait = "setup problem"
 const aside = { kinds: ["warn"], detail: "aside" } as const
 const blocked = { kinds: ["warn"], detail: "blocked" } as const
 
@@ -314,21 +333,21 @@ export const transitions: ReadonlyArray<Transition> = [
     when: "WaitsForMerge",
     to: "Waiting",
     recorded: { kinds: ["waits"] },
-    next: (_, cause) => TicketPhase.Waiting({ for: cause.for }),
+    next: (_, { blockers }) => TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: blockers }) }),
   }),
   row({
     from: "Working",
     when: "SetupFailed",
     to: "Waiting",
     recorded: { kinds: ["warn"], log: "SETUP_FAILED" },
-    next: () => TicketPhase.Waiting({ for: setupWait }),
+    next: () => TicketPhase.Waiting({ for: WaitFor.Setup() }),
   }),
   row({
     from: "Working",
     when: "SetupProblem",
     to: "Waiting",
     recorded: { kinds: ["stop"], log: "SETUP_PROBLEM" },
-    next: () => TicketPhase.Waiting({ for: setupProblemWait }),
+    next: () => TicketPhase.Waiting({ for: WaitFor.SetupProblem() }),
   }),
   row({
     from: "Working",
@@ -377,7 +396,7 @@ export const transitions: ReadonlyArray<Transition> = [
     when: "Reopened",
     to: "Waiting",
     recorded: { kinds: ["reopened"] },
-    next: () => TicketPhase.Waiting({ for: probeWait }),
+    next: () => TicketPhase.Waiting({ for: WaitFor.Probe() }),
   }),
   row({
     from: "Deferred",
@@ -754,7 +773,7 @@ export const counting: { readonly [T in PhaseTag]: Counting<T> } = {
   },
   Waiting: {
     // Only one whose setup failed counts, apart in In queue, as it waits for a merge or a probe.
-    totals: (phase) => (phase.for === setupWait ? ["setupFailed"] : []),
+    totals: (phase) => (phase.for._tag === "Setup" ? ["setupFailed"] : []),
     notice: null,
     report: "setAside",
     windDown: "faint",

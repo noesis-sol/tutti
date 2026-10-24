@@ -38,7 +38,7 @@ import { type Entry, Ledger } from "./ledger.ts"
 import { clock, clockFrom, reportName, span } from "./localTime.ts"
 import * as log from "./log.ts"
 import { causeWhy, filed, type Kept, type Line, Log, line, Tag, tagged } from "./log.ts"
-import { counting, type ReportSection, type TicketPhase } from "./phase.ts"
+import { counting, type ReportSection, type TicketPhase, WaitFor } from "./phase.ts"
 
 /** Where the reports go, below the repository. */
 export const reportsDir = ".tutti/reports"
@@ -129,6 +129,16 @@ export const steeredInRun = (entry: Entry, logLines: ReadonlyArray<Kept>): boole
   entry.tallies.messages > 0 ||
   logLines.some((each) => each.tag === Tag.steered && each.ticket === entry.ticket)
 
+/** What a Waiting ticket waits for, as the reviewer reads it. */
+const waitSaid = (wait: WaitFor): string =>
+  WaitFor.$match(wait, {
+    Blockers: ({ ids }) => `back in the queue until ${ids.join(", ")} merges`,
+    Setup: () =>
+      "its worktree's setup failed; back in the queue until a ticket merges or a probe passes",
+    Probe: () => "back in the queue until the environment probe passes",
+    SetupProblem: () => "a setup problem stopped its worker; back in the next run",
+  })
+
 /** A phase as the reviewer reads it: `Review (CHECKS_FAILED)`, `Done (merged in abc123)`. */
 export const phaseSaid = (phase: TicketPhase): string => {
   switch (phase._tag) {
@@ -139,7 +149,7 @@ export const phaseSaid = (phase: TicketPhase): string => {
     case "Asked":
       return `Asked (waits on question ${phase.question})`
     case "Waiting":
-      return `Waiting (back in the queue until ${phase.for} merges)`
+      return `Waiting (${waitSaid(phase.for)})`
     case "HeldBack":
     case "Deferred":
     case "Review":

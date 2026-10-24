@@ -44,6 +44,7 @@ import {
   refine as refinePhase,
   type TicketPhase,
   transition as transitionPhase,
+  waitShown,
 } from "./phase.ts"
 import { nothingSpent, Spending, type Spent } from "./spending.ts"
 
@@ -217,7 +218,7 @@ export const ending = (
     phase._tag === "Asked"
       ? phase.question
       : phase._tag === "Waiting"
-        ? phase.for
+        ? waitShown(phase.for)
         : "why" in phase
           ? (phase.why as string)
           : undefined

@@ -12,7 +12,7 @@ import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
-import { Cause, type TicketPhase } from "../src/run/phase.ts"
+import { Cause, type TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import { answers, idleGrace, namesTicket, nudgeText, untilSettled } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
@@ -394,7 +394,9 @@ describe("the outcome of a settled worker", () => {
           expect((yield* (yield* Ledger).current).tickets.get(id)?.phase._tag).toBe("Queued")
         }),
     )
-    expect(phaseOf(ran)).toEqual(expect.objectContaining({ _tag: "Waiting", for: "t-0" }))
+    expect(phaseOf(ran)).toEqual(
+      expect.objectContaining({ _tag: "Waiting", for: WaitFor.Blockers({ ids: ["t-0"] }) }),
+    )
     expect(moves(ran).slice(2)).toEqual(["Working → Waiting", "Waiting → Queued"])
     expect(ran.issues.find((issue) => issue.id === id)?.status).toBe("open")
     expect(ran.worktreeCalls).toContainEqual({ op: "remove", id, force: false })

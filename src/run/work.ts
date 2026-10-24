@@ -37,7 +37,7 @@ import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
-import { Cause, probeWait, setupProblemWait, setupWait, type TicketPhase } from "./phase.ts"
+import { Cause, type TicketPhase } from "./phase.ts"
 import { fit, workerGone } from "./sessions.ts"
 import {
   idleGrace,
@@ -170,7 +170,7 @@ const waitsForMerge = (
     const text = ticketLine(
       Tag.waitsForMerge,
     )`${id} waits for ${list} to merge; its worker stopped with nothing done, so it is back in the queue until ${does}; ${left}`
-    yield* ledger.transition(id, Cause.WaitsForMerge({ for: list }), {
+    yield* ledger.transition(id, Cause.WaitsForMerge({ blockers }), {
       beside: [{ kind: "waits", ticket: id, title: ticket.title, detail: list, text }],
       lines: [text],
     })
@@ -523,14 +523,7 @@ export const requeueWaiting = (
     const back: Array<string> = []
     for (const entry of (yield* ledger.current).tickets.values()) {
       const { phase } = entry
-      if (
-        phase._tag !== "Waiting" ||
-        phase.for === probeWait ||
-        phase.for === setupWait ||
-        phase.for === setupProblemWait
-      ) {
-        continue
-      }
+      if (phase._tag !== "Waiting" || phase.for._tag !== "Blockers") continue
       const issue = yield* Effect.result(beads.show(entry.ticket))
       if (Result.isFailure(issue)) continue
       const state = yield* ledger.current
@@ -541,7 +534,7 @@ export const requeueWaiting = (
           .length + 1
       const moved = yield* ledger.transition(entry.ticket, Cause.Requeued(), {
         beside: [{ kind: "queue", queued }],
-        lines: [detail`${entry.ticket}: ${phase.for} merged; back in the queue`],
+        lines: [detail`${entry.ticket}: ${named(phase.for.ids)} merged; back in the queue`],
       })
       if (Result.isFailure(moved)) continue
       back.push(entry.ticket)

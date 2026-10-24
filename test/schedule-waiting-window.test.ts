@@ -52,7 +52,7 @@ const scheduler = (options: { readonly concurrent: number; readonly limit: numbe
           Effect.gen(function* () {
             const before = yield* Ref.getAndUpdate(starts, (all) => [...all, issue.id])
             if (before.length > 0) return yield* Deferred.await(forever)
-            yield* ledger.transition(issue.id, Cause.WaitsForMerge({ for: "t-0" }))
+            yield* ledger.transition(issue.id, Cause.WaitsForMerge({ blockers: ["t-0"] }))
             yield* Deferred.await(window)
           }),
       },

@@ -83,7 +83,7 @@ import {
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
-import { Cause, type Hold, type PhaseTag, probeWait, setupWait, TicketPhase } from "./phase.ts"
+import { Cause, type Hold, type PhaseTag, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import type { Solo } from "./runView.ts"
 import { ready, unclosedIn, unmergedLabel } from "./scope.ts"
@@ -365,7 +365,7 @@ export const slotsTaken = (running: number, merging: number, concurrent: number)
 /** Whether the ticket is back in the queue as its worktree's setup failed, Waiting{setup}. */
 const setupFailed = (state: State, id: string): boolean => {
   const phase = state.tickets.get(id)?.phase
-  return phase?._tag === "Waiting" && phase.for === setupWait
+  return phase?._tag === "Waiting" && phase.for._tag === "Setup"
 }
 
 /** Whether the ledger lets the run take `id` from bd ready: not taken up yet, or still waiting. */
@@ -399,7 +399,7 @@ const counts = (
     if (phase?._tag === "Queued") queued++
     if (phase?._tag === "HeldBack") by[phase.why] = (by[phase.why] ?? 0) + 1
     // Back in the queue as its setup failed, it is held back until a ticket merges or a probe.
-    if (phase?._tag === "Waiting" && phase.for === setupWait) by.setup = (by.setup ?? 0) + 1
+    if (phase?._tag === "Waiting" && phase.for._tag === "Setup") by.setup = (by.setup ?? 0) + 1
   }
   const held = Object.values(by).reduce((sum, n) => sum + n, 0)
   return {
@@ -528,7 +528,7 @@ export const make = (
     const requeued = (state: State, ticket: string) => {
       const phase = state.tickets.get(ticket)?.phase
       if (phase === undefined) return true
-      return phase._tag === "Waiting" ? phase.for !== probeWait : waiting(state, ticket)
+      return phase._tag === "Waiting" ? phase.for._tag !== "Probe" : waiting(state, ticket)
     }
 
     const occupy = (ticket: string, work: Effect.Effect<void>, issue?: Issue, counted = false) =>

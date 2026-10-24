@@ -54,7 +54,7 @@ import { type StopReason, type Stops, stopFor } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, Log, Tag, tagged, ticketLine } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
-import { Cause, probeWait, setupWait } from "./phase.ts"
+import { Cause } from "./phase.ts"
 import type { Settled } from "./settle.ts"
 
 /**
@@ -407,7 +407,10 @@ export const make = (options: {
     const requeue = Effect.gen(function* () {
       for (const entry of (yield* ledger.current).tickets.values()) {
         const { phase } = entry
-        if (phase._tag !== "Waiting" || (phase.for !== probeWait && phase.for !== setupWait)) {
+        if (
+          phase._tag !== "Waiting" ||
+          (phase.for._tag !== "Probe" && phase.for._tag !== "Setup")
+        ) {
           continue
         }
         const queued =

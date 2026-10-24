@@ -108,7 +108,7 @@ describe("totals", () => {
         yield* go("deferred", ...dispatched, Cause.Defer({ why: "BAD_TICKET_ID" }))
         yield* go("review", ...dispatched, Cause.Aside({ why: "OFF_BRANCH" }))
         yield* go("stopped", ...dispatched, Cause.StopRun({ why: "PAUSED" }))
-        yield* go("waiting", ...dispatched, Cause.WaitsForMerge({ for: "x-1" }))
+        yield* go("waiting", ...dispatched, Cause.WaitsForMerge({ blockers: ["x-1"] }))
         yield* go("fixing", ...merging, Cause.CheckHandedBack({ attempt: 1 }))
         // asking has two open requests; needs's worker waits on you without one.
         return project(
@@ -172,7 +172,7 @@ describe("totals", () => {
         yield* go("c", ...dispatched)
         const ledger = yield* Ledger
         yield* ledger.transition("b", Cause.Dispatched())
-        yield* ledger.transition("a", Cause.WaitsForMerge({ for: "c" }))
+        yield* ledger.transition("a", Cause.WaitsForMerge({ blockers: ["c"] }))
         yield* ledger.transition("a", Cause.Requeued())
         return project(inputs(yield* current))
       }),
@@ -448,7 +448,7 @@ describe("wind-down and hint", () => {
         const before = project(inputs(yield* current, { requests: [permission("r1", "c", true)] }))
         yield* ledger.windDown
         yield* ledger.transition("a", Cause.NoChange())
-        yield* ledger.transition("b", Cause.WaitsForMerge({ for: "x" }))
+        yield* ledger.transition("b", Cause.WaitsForMerge({ blockers: ["x"] }))
         const during = project(inputs(yield* current))
         yield* ledger.windUp
         const after = project(inputs(yield* current), during)

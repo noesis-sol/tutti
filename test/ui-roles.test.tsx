@@ -15,7 +15,7 @@ import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, type WindDown } from "../src/run/ledger.ts"
-import { hasCard, Outcome, type PhaseTag, TicketPhase } from "../src/run/phase.ts"
+import { hasCard, Outcome, type PhaseTag, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { App, Root } from "../src/ui/App.tsx"
@@ -640,7 +640,7 @@ const scenes: ReadonlyArray<Scene> = [
       TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
       TicketPhase.Done({ outcome: Outcome.NoChange() }),
       TicketPhase.Asked({ question: "q-1" }),
-      TicketPhase.Waiting({ for: "tut-1" }),
+      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-1"] }) }),
       TicketPhase.Review({ why: "OFF_BRANCH" }),
       TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
       TicketPhase.Stopped({ why: "PAUSED" }),
@@ -775,7 +775,7 @@ const scenes: ReadonlyArray<Scene> = [
         { ticket: "a", phase: working("working"), worker: 1 },
         { ticket: "b", phase: merged("abc1234") },
         { ticket: "c", phase: TicketPhase.Review({ why: "OFF_BRANCH" }) },
-        { ticket: "d", phase: TicketPhase.Waiting({ for: "x" }) },
+        { ticket: "d", phase: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }) },
       ],
       {
         windDown: { since: began, tickets: ["a", "b", "c", "d"] },
@@ -1496,7 +1496,7 @@ const phaseExamples: { readonly [T in PhaseTag]: readonly [TicketPhase, WorkerSt
   Fixing: [TicketPhase.Fixing({ attempt: 2, afterResolution: false }), null],
   Done: [merged("ffd6ce4a1b2c3"), null],
   Asked: [TicketPhase.Asked({ question: "tut-q9" }), null],
-  Waiting: [TicketPhase.Waiting({ for: "tut-2" }), null],
+  Waiting: [TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-2"] }) }), null],
   Deferred: [TicketPhase.Deferred({ why: "BAD_TICKET_ID" }), null],
   Review: [TicketPhase.Review({ why: "OFF_BRANCH" }), null],
   Blocked: [TicketPhase.Blocked({ why: "MERGE_CONFLICT" }), null],

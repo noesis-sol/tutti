@@ -13,6 +13,7 @@ import {
   Outcome,
   type PhaseTag,
   TicketPhase,
+  WaitFor,
 } from "../src/run/phase.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -28,7 +29,7 @@ const samples: { readonly [T in PhaseTag]: TicketPhase } = {
   Fixing: TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
   Done: TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) }),
   Asked: TicketPhase.Asked({ question: "q-1" }),
-  Waiting: TicketPhase.Waiting({ for: "x-1" }),
+  Waiting: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x-1"] }) }),
   Deferred: TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
   Review: TicketPhase.Review({ why: "CHECKS_FAILED" }),
   Blocked: TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),

@@ -12,7 +12,7 @@ import { Transcripts } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies, Ledger, type WindDown } from "../src/run/ledger.ts"
-import { Cause, Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Cause, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { type Card, emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { actionPoll, latestActions, Screen } from "../src/run/screen.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
@@ -628,7 +628,11 @@ describe("the wind-down line", () => {
           worker: null,
         },
         { ticket: "d", phase: TicketPhase.Review({ why: "OFF_BRANCH" }), worker: null },
-        { ticket: "e", phase: TicketPhase.Waiting({ for: "x" }), worker: null },
+        {
+          ticket: "e",
+          phase: TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }),
+          worker: null,
+        },
       ],
       { windDown: { since: began, tickets: ["a", "b", "c", "d", "e"] } },
     )

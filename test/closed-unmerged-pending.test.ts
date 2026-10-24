@@ -172,7 +172,7 @@ describe("WAITS_FOR_MERGE on a blocker closed by hand, its branch not merged", (
         const path = yield* offMain(where.repo)
         yield* ledger.transition("t-2", Cause.Ready(), { title: "t-2" })
         yield* ledger.transition("t-2", Cause.Dispatched())
-        yield* ledger.transition("t-2", Cause.WaitsForMerge({ for: "t-1" }))
+        yield* ledger.transition("t-2", Cause.WaitsForMerge({ blockers: ["t-1"] }))
         const branches = yield* closedBranches(where)
         const held = yield* requeueWaiting(branches)
         yield* deleteBranch(where.repo, path, "tutti/t-1")

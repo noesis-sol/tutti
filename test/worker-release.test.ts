@@ -252,7 +252,7 @@ describe("fit, as a ticket's part in the run ends", () => {
 
   const back: ReadonlyArray<readonly [string, Cause]> = [
     ["asked", Cause.FiledQuestion({ question: "t-2" })],
-    ["waiting for a merge", Cause.WaitsForMerge({ for: "t-0" })],
+    ["waiting for a merge", Cause.WaitsForMerge({ blockers: ["t-0"] })],
   ]
   for (const [what, cause] of back) {
     test(`${what}: its session closed, its worker kept for the resume`, async () => {

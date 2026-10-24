@@ -21,7 +21,7 @@ import { Effect, Fiber } from "effect"
 import { probeFile, probeWorker } from "../src/run/environment.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
-import { Cause, countsUnder, TicketPhase } from "../src/run/phase.ts"
+import { Cause, countsUnder, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { emptyView } from "../src/run/runView.ts"
 import {
@@ -452,8 +452,10 @@ describe("leaving a ticket whose setup failed", () => {
           yield* leaveSetupFailed({ id, title: id, status: "in_progress" }, path, failed, setUps)
         }
         const state = yield* ledger.current
-        expect(state.tickets.get("a")?.phase).toEqual(TicketPhase.Waiting({ for: "setup" }))
-        expect(state.tickets.get("gone")?.phase).toEqual(TicketPhase.Waiting({ for: "setup" }))
+        expect(state.tickets.get("a")?.phase).toEqual(TicketPhase.Waiting({ for: WaitFor.Setup() }))
+        expect(state.tickets.get("gone")?.phase).toEqual(
+          TicketPhase.Waiting({ for: WaitFor.Setup() }),
+        )
         const failures = yield* setUps.failures
         expect(failures.get("a")).toMatchObject({ notReopened: false })
         expect(failures.get("gone")).toMatchObject({ notReopened: true })
@@ -750,9 +752,11 @@ describe("a conflict handed back", () => {
 
 describe("the dashboard", () => {
   test("counts a ticket whose setup failed apart in In queue", () => {
-    expect(countsUnder(TicketPhase.Waiting({ for: "setup" }))).toEqual(["setupFailed"])
-    expect(countsUnder(TicketPhase.Waiting({ for: "probe" }))).toEqual([])
-    expect(countsUnder(TicketPhase.Waiting({ for: "tut-b1" }))).toEqual([])
+    expect(countsUnder(TicketPhase.Waiting({ for: WaitFor.Setup() }))).toEqual(["setupFailed"])
+    expect(countsUnder(TicketPhase.Waiting({ for: WaitFor.Probe() }))).toEqual([])
+    expect(
+      countsUnder(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) })),
+    ).toEqual([])
     const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
     const totals = { ...emptyView.totals, slots: 2, queued: 1, unclosed: 3, setupFailed: 1 }
     const segments = totalsLine(totals, theme, 80)

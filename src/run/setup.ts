@@ -58,7 +58,7 @@ import { globMatch } from "./footprint.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { beadsWhy, type FinishedTicket, type MergeOptions } from "./merge.ts"
-import { Cause, Detail, setupWait } from "./phase.ts"
+import { Cause, Detail } from "./phase.ts"
 import { sameRequires } from "./requires.ts"
 
 /** The run's setup: its command (null: none), and the globs of the files it reads. */
@@ -540,7 +540,7 @@ export const retrySetups = (
     const back: Array<string> = []
     for (const entry of (yield* ledger.current).tickets.values()) {
       const { phase } = entry
-      if (phase._tag !== "Waiting" || phase.for !== setupWait) continue
+      if (phase._tag !== "Waiting" || phase.for._tag !== "Setup") continue
       const state = yield* ledger.current
       if (mergedCount(state) <= (failures.get(entry.ticket)?.merged ?? -1)) continue
       const queued = [...state.tickets.values()].filter((each) => each.phase._tag === "Queued")
@@ -565,7 +565,7 @@ export const setupWaiting = (
   [...state.tickets.values()].flatMap((entry) => {
     const failed = failures.get(entry.ticket)
     return entry.phase._tag === "Waiting" &&
-      entry.phase.for === setupWait &&
+      entry.phase.for._tag === "Setup" &&
       failed !== undefined &&
       !failed.notReopened
       ? [[entry.ticket, failed.output] as const]

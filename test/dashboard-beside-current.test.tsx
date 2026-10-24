@@ -15,7 +15,7 @@ import { makeCommands } from "../src/run/commands.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { type Entry, emptyTallies, Ledger, type State } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
-import { Cause, Outcome, TicketPhase } from "../src/run/phase.ts"
+import { Cause, Outcome, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, type RunView, rowStatus, type Status } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { Captured } from "../src/testing/EventStream.ts"
@@ -187,7 +187,7 @@ describe("the tickets table beside Current", () => {
         yield* go("tut-b2", ...dispatched)
         yield* go("tut-c3", ...dispatched)
         yield* go("tut-b2", Cause.Defer({ why: "BAD_TICKET_ID" }))
-        yield* go("tut-a1", Cause.WaitsForMerge({ for: "tut-c3" }))
+        yield* go("tut-a1", Cause.WaitsForMerge({ blockers: ["tut-c3"] }))
         return viewOf(yield* (yield* Ledger).current)
       }),
     )
@@ -208,7 +208,7 @@ describe("the tickets table beside Current", () => {
       TicketPhase.Resolving({ attempt: 1 }),
       TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
       TicketPhase.Done({ outcome: Outcome.Merged({ commit: "abc1234" }) }),
-      TicketPhase.Waiting({ for: "x" }),
+      TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["x"] }) }),
       TicketPhase.Deferred({ why: "BAD_TICKET_ID" }),
       TicketPhase.Review({ why: "CHECKS_FAILED" }),
       TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
@@ -392,7 +392,9 @@ describe("the square for a ticket to merge", () => {
     const join = (status: { readonly mark: string; readonly word: string }) =>
       `${status.mark} ${status.word}`
     expect(join(rowStatus(TicketPhase.ToMerge({ place: 1 })))).toBe("◼ to merge")
-    expect(join(rowStatus(TicketPhase.Waiting({ for: "tut-a1" })))).toBe("◷ waiting")
+    expect(
+      join(rowStatus(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-a1"] }) }))),
+    ).toBe("◷ waiting")
     const entry: Entry = {
       ticket: "tut-a1",
       title: "Open the property model",
