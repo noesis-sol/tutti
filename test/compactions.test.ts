@@ -34,6 +34,7 @@ import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { testEnv } from "./env.ts"
 import { backlog, expectLog, scenario, type World } from "./harness.ts"
+import { workersIn } from "./workerEnv.ts"
 
 const folder = (name: string) =>
   realpathSync(mkdtempSync(join(tmpdir(), `tutti-compactions-${name}-`)))
@@ -85,8 +86,7 @@ describe("the live host's PreCompact callback", () => {
     const host = liveLayer({
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: { servers: [], note: noServersNote },
-      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
+      account: { billing: { _tag: "Subscription", keyUnused: false } },
     })
     const config = appConfig({ claude: fake, settings: defaultSettings }, dir)
     const seen = await Effect.runPromise(
@@ -122,7 +122,11 @@ describe("the live host's PreCompact callback", () => {
               Layer.mergeAll(
                 attentionLayer(waitForTest),
                 transcriptsLayer(),
-                ClaudeCode.layer,
+                ClaudeCode.layer.pipe(
+                  Layer.provide(
+                    workersIn({ ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) }),
+                  ),
+                ),
                 Ledger.layer,
               ),
             ),

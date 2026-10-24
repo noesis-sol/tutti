@@ -40,6 +40,7 @@ import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { Asleep, layer as asleepLayer } from "../src/testing/Wake.ts"
 import { testEnv } from "./env.ts"
 import { backlog, expectExitCode, expectPhases, scenario, type World } from "./harness.ts"
+import { workersIn } from "./workerEnv.ts"
 
 const minutes = (n: number) => n * 60_000
 
@@ -273,21 +274,25 @@ describe("commands and sessions across a sleep", () => {
     const host = hostLayer({
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: { servers: [], note: noServersNote },
-      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: {
-        ...testEnv,
-        FAKE_CLAUDE_SCENARIO: JSON.stringify({
-          turns: [[{ hang: true }]],
-          interrupt: "unanswered",
-          log: join(dir, "fake.jsonl"),
-        }),
-      },
+      account: { billing: { _tag: "Subscription", keyUnused: false } },
       interruptLimit: Duration.millis(500),
     })
+    const env = {
+      ...testEnv,
+      FAKE_CLAUDE_SCENARIO: JSON.stringify({
+        turns: [[{ hang: true }]],
+        interrupt: "unanswered",
+        log: join(dir, "fake.jsonl"),
+      }),
+    }
     const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
     const layer = host.pipe(
       Layer.provideMerge(
-        Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+        Layer.mergeAll(
+          attentionLayer(waitForTest),
+          transcriptsLayer(),
+          ClaudeCode.layer.pipe(Layer.provide(workersIn(env))),
+        ),
       ),
       Layer.provideMerge(
         Layer.mergeAll(

@@ -4,7 +4,8 @@
 // says what its session is (a SessionSpec: the SDK's options without the launch's concerns), what
 // it is sent, and how it is billed; the adapter does the rest the same way for all of them:
 //
-// - the environment, workerEnv's (or probeEnv's, for the login probe) from tutti's own (§ 4.13);
+// - the environment, the run's WorkerEnv with a worker's share (or probeEnv's from tutti's own, for
+//   the login probe) (§ 4.13);
 // - the Claude Code to run (--claude, AppConfig's `claude`);
 // - the spawn into a process group of its own, its stderr kept for the reason a session failed
 //   (withSessionProcess, § 3.2);
@@ -41,7 +42,7 @@ import {
 } from "effect"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import { queryThrew } from "./claudeBinary.ts"
-import { probeEnv, workerEnv } from "./env.ts"
+import { probeEnv, sharedEnv, WorkerEnv } from "./env.ts"
 import { stderrKept, withSessionProcess, withStderr } from "./sessionProcess.ts"
 
 /**
@@ -56,10 +57,11 @@ export type SessionSpec = Omit<
 /** How a session is billed, which decides whether ANTHROPIC_API_KEY is in its environment (§ 4.13). */
 export type BilledAs = Data.TaggedEnum<{
   /**
-   * As workers are, from what the account probe found: the key removed beside a subscription
-   * login unless the run's billing is api. Organs and the usage probe are billed so too.
+   * As workers are, in the run's WorkerEnv: the key removed beside the subscription login the
+   * account probe found unless the run's billing is api. Organs and the usage probe are billed so
+   * too.
    */
-  Workers: { readonly subscription: boolean }
+  Workers: Record<never, never>
   /** Never with the key: the login probe's, to find a subscription login the key would hide. */
   LoginProbe: Record<never, never>
 }>
@@ -83,7 +85,7 @@ export interface Launch {
    */
   readonly prompt?: string | AsyncIterable<SDKUserMessage>
   readonly billedAs: BilledAs
-  /** tutti's environment, the session's is made from; process.env when left out. */
+  /** tutti's environment, the login probe's is made from; process.env when left out. */
   readonly env?: Readonly<Record<string, string | undefined>>
   /** A worker's share of the machine; none for a session that runs no checks. */
   readonly share?: WorkerShare
@@ -171,7 +173,9 @@ export class ClaudeCode extends Context.Service<
       ClaudeCode,
       Effect.gen(function* () {
         const config = yield* AppConfig
-        return ClaudeCode.of({ open: opener(open, config) })
+        // Resolved once, as the run starts (main.ts).
+        const workers = yield* WorkerEnv
+        return ClaudeCode.of({ open: opener(open, config, workers) })
       }),
     )
 
@@ -199,28 +203,25 @@ export const queuedControls = (query: Query): QueuedControls => query as unknown
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
 
-/** The session's environment: workerEnv's, or probeEnv's for the login probe (§ 4.13). */
+/**
+ * The session's environment (§ 4.13): `workers`, the run's WorkerEnv, with the worker's share if it
+ * has one; or probeEnv's, from tutti's own, for the login probe.
+ */
 export const launchEnv = (
   launch: Pick<Launch, "billedAs" | "env" | "share">,
-  billing: AppConfigValue["billing"],
-): Record<string, string> => {
-  const env = launch.env === undefined ? {} : { env: launch.env }
-  return BilledAs.$match(launch.billedAs, {
-    LoginProbe: () => probeEnv(env),
-    Workers: ({ subscription }) =>
-      workerEnv({
-        subscription,
-        billing,
-        ...env,
-        ...(launch.share === undefined
-          ? {}
-          : { checkTimeout: launch.share.checkTimeout, cores: launch.share.cores }),
-      }),
+  workers: Readonly<Record<string, string>>,
+): Record<string, string> =>
+  BilledAs.$match(launch.billedAs, {
+    LoginProbe: () => probeEnv(launch.env === undefined ? {} : { env: launch.env }),
+    Workers: () => (launch.share === undefined ? { ...workers } : sharedEnv(workers, launch.share)),
   })
-}
 
 const opener =
-  (open: typeof query, config: Pick<AppConfigValue, "billing" | "claude">) =>
+  (
+    open: typeof query,
+    config: Pick<AppConfigValue, "claude">,
+    workers: Readonly<Record<string, string>>,
+  ) =>
   (launch: Launch): Effect.Effect<ClaudeSession, LaunchFailed, Scope.Scope> =>
     Effect.gen(function* () {
       const abort = new AbortController()
@@ -228,7 +229,7 @@ const opener =
       if (launch.prompt !== undefined) yield* Queue.end(inbox)
       const { options, process } = withSessionProcess({
         ...launch.options,
-        env: launchEnv(launch, config.billing),
+        env: launchEnv(launch, workers),
         ...(launch.onStderr === undefined ? {} : { stderr: launch.onStderr }),
         ...(config.claude === null ? {} : { pathToClaudeCodeExecutable: config.claude }),
         abortController: abort,

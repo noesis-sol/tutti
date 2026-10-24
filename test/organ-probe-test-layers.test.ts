@@ -31,6 +31,7 @@ import {
   result,
 } from "../src/testing/Organs.ts"
 import { layer as probeLayer, type Scripted } from "../src/testing/UsageProbe.ts"
+import { workersIn } from "./workerEnv.ts"
 
 const Verdict = Schema.Struct({ cause: Schema.String })
 
@@ -182,9 +183,11 @@ describe("the test layers and the live ones", () => {
     await fc.assert(
       fc.asyncProperty(anyTurn, async (turn) => {
         const live = await generate(
-          liveLayer({ account: { subscription: true }, env: {} }).pipe(
+          liveLayer.pipe(
             Layer.provideMerge(OrganCost.layer),
-            Layer.provide(ClaudeCode.layerWith(scriptedQuery(turn))),
+            Layer.provide(
+              ClaudeCode.layerWith(scriptedQuery(turn)).pipe(Layer.provide(workersIn({}))),
+            ),
             Layer.provide(Layer.mergeAll(configLayer(appConfig()), BunServices.layer)),
           ),
         )
@@ -204,9 +207,11 @@ describe("the test layers and the live ones", () => {
             return { answer, log: yield* texts }
           }).pipe(Effect.provide(layer.pipe(Layer.provideMerge(logLayer()))), Effect.runPromise)
         const live = await probing(
-          UsageProbe.layer({ account: { subscription: true }, env: {} }).pipe(
+          UsageProbe.layer.pipe(
             Layer.provideMerge(OrganCost.layer),
-            Layer.provide(ClaudeCode.layerWith(scriptedQuery(turn))),
+            Layer.provide(
+              ClaudeCode.layerWith(scriptedQuery(turn)).pipe(Layer.provide(workersIn({}))),
+            ),
             Layer.provide(Layer.mergeAll(configLayer(appConfig()), BunServices.layer)),
           ),
         )

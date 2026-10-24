@@ -44,6 +44,7 @@ import {
   scenario,
   type World,
 } from "./harness.ts"
+import { workersIn } from "./workerEnv.ts"
 
 setDefaultTimeout(30_000)
 
@@ -149,8 +150,8 @@ describe("the live probe", () => {
       return { answer, log: yield* texts }
     }).pipe(
       Effect.provide(
-        UsageProbe.layer({ account: { subscription: true }, env: {} }).pipe(
-          Layer.provideMerge(ClaudeCode.layerWith(open)),
+        UsageProbe.layer.pipe(
+          Layer.provideMerge(ClaudeCode.layerWith(open).pipe(Layer.provide(workersIn({})))),
           Layer.provideMerge(Layer.mergeAll(configLayer(), organCostLayer(), BunServices.layer)),
         ),
       ),

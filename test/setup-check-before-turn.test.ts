@@ -29,6 +29,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 // The tests start the fake Claude Code as a process: bun's 5 s default fails them when other checks
 // run beside this one.
@@ -72,15 +73,25 @@ const run = <A, E>(
   const host = liveLayer({
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers,
-    account: { billing, subscription: billing._tag === "Subscription" },
-    env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log }) },
+    account: { billing },
   })
   return Effect.runPromise(
     effect(dir, log).pipe(
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer.pipe(
+                Layer.provide(
+                  workersIn(
+                    { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log }) },
+                    billing._tag === "Subscription",
+                  ),
+                ),
+              ),
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),

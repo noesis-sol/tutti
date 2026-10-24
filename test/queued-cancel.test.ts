@@ -41,6 +41,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 type Env = AgentHost | Attention | Transcripts | Files | Log | EventStream
 
@@ -205,15 +206,25 @@ const overFake = <A, E>(
   const host = liveLayer({
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers: { servers: [], note: noServersNote },
-    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-    env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log }) },
+    account: { billing: { _tag: "Subscription", keyUnused: false } },
   })
   return Effect.runPromise(
     effect(log).pipe(
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer.pipe(
+                Layer.provide(
+                  workersIn({
+                    ...testEnv,
+                    FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log }),
+                  }),
+                ),
+              ),
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(

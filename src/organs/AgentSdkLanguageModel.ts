@@ -47,7 +47,6 @@ import {
   type Prompt,
   type Response,
 } from "effect/ai"
-import type { AccountProbe } from "../agent/Account.ts"
 import { BilledAs, ClaudeCode, type SessionSpec } from "../agent/ClaudeCode.ts"
 import { chromeArgs } from "../agent/mcp.ts"
 import { turnLimit } from "../agent/reading.ts"
@@ -604,71 +603,62 @@ export const make = (
     })
   })
 
-/** What the live layer takes beside its services. */
-export interface LiveOptions {
-  /** What the account probe found: whether there's a subscription login (§ 4.13). */
-  readonly account: Pick<AccountProbe, "subscription">
-  /** tutti's environment, organs' is made from; process.env by default. */
-  readonly env?: Readonly<Record<string, string | undefined>>
-}
-
-/** The live LanguageModel over Claude Code, its costs recorded in OrganCost. */
-export const layer = (
-  options: LiveOptions,
-): Layer.Layer<
+/**
+ * The live LanguageModel over Claude Code, billed as workers are, in the run's WorkerEnv, its costs
+ * recorded in OrganCost.
+ */
+export const layer: Layer.Layer<
   LanguageModel.LanguageModel,
   never,
   ClaudeCode | OrganCost | FileSystem.FileSystem
-> =>
-  Layer.effect(
-    LanguageModel.LanguageModel,
-    Effect.gen(function* () {
-      const claudeCode = yield* ClaudeCode
-      const fs = yield* FileSystem.FileSystem
+> = Layer.effect(
+  LanguageModel.LanguageModel,
+  Effect.gen(function* () {
+    const claudeCode = yield* ClaudeCode
+    const fs = yield* FileSystem.FileSystem
 
-      /**
-       * One Claude Code session of the turn, in a fresh private temp folder, or the one the organ
-       * reads. Its end aborts the session if the turn isn't over, and removes its folder.
-       */
-      const session: Session = ({ method, turn, jsonSchema, call, partial, ended }) =>
-        Effect.gen(function* () {
-          const cwd =
-            call.reads?.cwd ??
-            (yield* fs
-              .makeTempDirectoryScoped({ prefix: "tutti-organ-" })
-              .pipe(
-                Effect.mapError((error) =>
-                  fail(method, new AiError.UnknownError({ description: messageOf(error) })),
-                ),
-              ))
-          // No Claude Code for the platform fails the call. The call ends once its Claude Code
-          // has exited, before its folder goes.
-          const claude = yield* claudeCode
-            .open({
-              options: organOptions({ turn, jsonSchema, call, cwd, partial }),
-              prompt: (async function* () {
-                yield userMessage(turn.userText)
-              })(),
-              billedAs: BilledAs.Workers({ subscription: options.account.subscription }),
-              ...(options.env === undefined ? {} : { env: options.env }),
-              closeLimit: organCloseLimit,
-            })
+    /**
+     * One Claude Code session of the turn, in a fresh private temp folder, or the one the organ
+     * reads. Its end aborts the session if the turn isn't over, and removes its folder.
+     */
+    const session: Session = ({ method, turn, jsonSchema, call, partial, ended }) =>
+      Effect.gen(function* () {
+        const cwd =
+          call.reads?.cwd ??
+          (yield* fs
+            .makeTempDirectoryScoped({ prefix: "tutti-organ-" })
             .pipe(
               Effect.mapError((error) =>
-                fail(method, new AiError.UnknownError({ description: error.reason })),
+                fail(method, new AiError.UnknownError({ description: messageOf(error) })),
               ),
-            )
-          // A turn not over is unwanted: its Claude Code is killed at once, not given the SDK's
-          // grace.
-          yield* Effect.addFinalizer(() => (ended() ? Effect.void : claude.kill))
-          // What Claude Code last wrote to stderr says why, where the SDK says only its exit code.
-          return claude.messages.pipe(
-            Stream.mapError((error) =>
-              fail(method, new AiError.UnknownError({ description: error.quoted() })),
+            ))
+        // No Claude Code for the platform fails the call. The call ends once its Claude Code
+        // has exited, before its folder goes.
+        const claude = yield* claudeCode
+          .open({
+            options: organOptions({ turn, jsonSchema, call, cwd, partial }),
+            prompt: (async function* () {
+              yield userMessage(turn.userText)
+            })(),
+            billedAs: BilledAs.Workers(),
+            closeLimit: organCloseLimit,
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              fail(method, new AiError.UnknownError({ description: error.reason })),
             ),
           )
-        })
+        // A turn not over is unwanted: its Claude Code is killed at once, not given the SDK's
+        // grace.
+        yield* Effect.addFinalizer(() => (ended() ? Effect.void : claude.kill))
+        // What Claude Code last wrote to stderr says why, where the SDK says only its exit code.
+        return claude.messages.pipe(
+          Stream.mapError((error) =>
+            fail(method, new AiError.UnknownError({ description: error.quoted() })),
+          ),
+        )
+      })
 
-      return yield* make(session)
-    }),
-  )
+    return yield* make(session)
+  }),
+)

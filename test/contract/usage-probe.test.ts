@@ -12,6 +12,7 @@ import { layer as configLayer } from "../../src/testing/AppConfig.ts"
 import { texts } from "../../src/testing/Log.ts"
 import { layer as organCostLayer } from "../../src/testing/OrganCost.ts"
 import { live } from "../gates.ts"
+import { workersIn } from "../workerEnv.ts"
 
 const testLimit = 120_000
 
@@ -33,8 +34,8 @@ live.describe("the usage probe", () => {
         return { answer, log: yield* texts }
       }).pipe(
         Effect.provide(
-          UsageProbe.layer({ account: { subscription: true }, env: hostEnv() }).pipe(
-            Layer.provideMerge(ClaudeCode.layer),
+          UsageProbe.layer.pipe(
+            Layer.provideMerge(ClaudeCode.layer.pipe(Layer.provide(workersIn(hostEnv())))),
             Layer.provideMerge(Layer.mergeAll(configLayer(), organCostLayer(), BunServices.layer)),
           ),
         ),

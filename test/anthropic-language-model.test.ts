@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Cause, Effect, Exit, Layer, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, Result, Schema, Stream } from "effect"
 import { LanguageModel } from "effect/ai"
 import { FetchHttpClient, type HttpClient } from "effect/http"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
@@ -16,6 +16,7 @@ import {
   chosenLayer,
   defaultModel,
   maxTokens,
+  organProvider,
   providerVariable,
 } from "../src/organs/AnthropicProvider.ts"
 import { section } from "../src/organs/evidence.ts"
@@ -192,7 +193,7 @@ const configWith = (organs: { readonly model?: string; readonly effort?: "max" }
 const provider = (config = configWith()) =>
   Organs.layer.pipe(
     Layer.provideMerge(
-      chosenLayer({ account: { subscription: true }, env: anthropic, http: toFake }),
+      chosenLayer({ provider: Result.getOrThrow(organProvider(anthropic)), http: toFake }),
     ),
     Layer.provideMerge(ClaudeCode.layer),
     Layer.provideMerge(

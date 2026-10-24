@@ -27,6 +27,7 @@ import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 type Env = AgentHost | Attention | Transcripts | Ledger | Log | EventStream
 
@@ -58,11 +59,7 @@ const overFake = <A, E>(
   const host = liveLayer({
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers: { servers: [], note: noServersNote },
-    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-    env: {
-      ...testEnv,
-      FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log: join(dir, "fake.jsonl") }),
-    },
+    account: { billing: { _tag: "Subscription", keyUnused: false } },
     interruptLimit: limit,
   })
   return Effect.runPromise(
@@ -70,7 +67,21 @@ const overFake = <A, E>(
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer.pipe(
+                Layer.provide(
+                  workersIn({
+                    ...testEnv,
+                    FAKE_CLAUDE_SCENARIO: JSON.stringify({
+                      ...scenario,
+                      log: join(dir, "fake.jsonl"),
+                    }),
+                  }),
+                ),
+              ),
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(

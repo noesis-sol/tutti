@@ -17,6 +17,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
@@ -29,15 +30,18 @@ const run = <A, E>(effect: (dir: string) => Effect.Effect<A, E, AgentHost>): Pro
   const host = liveLayer({
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers: { servers: [], note: noServersNote },
-    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-    env: testEnv,
+    account: { billing: { _tag: "Subscription", keyUnused: false } },
   })
   return Effect.runPromise(
     effect(dir).pipe(
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer.pipe(Layer.provide(workersIn(testEnv))),
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),

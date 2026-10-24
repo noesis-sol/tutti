@@ -38,6 +38,7 @@ import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 /** The safety check's reason for a held removal, as the spike saw it. */
 const heldReason =
@@ -334,8 +335,7 @@ describe("the live host", () => {
     const host = liveLayer({
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: { servers: [], note: noServersNote },
-      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
+      account: { billing: { _tag: "Subscription", keyUnused: false } },
     })
     const config = appConfig({ claude: fake, settings: defaultSettings }, dir)
     const seen = await Effect.runPromise(
@@ -358,7 +358,15 @@ describe("the live host", () => {
         Effect.provide(
           host.pipe(
             Layer.provideMerge(
-              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+              Layer.mergeAll(
+                attentionLayer(waitForTest),
+                transcriptsLayer(),
+                ClaudeCode.layer.pipe(
+                  Layer.provide(
+                    workersIn({ ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) }),
+                  ),
+                ),
+              ),
             ),
             Layer.provideMerge(
               Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),

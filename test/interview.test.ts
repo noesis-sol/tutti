@@ -68,6 +68,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
 import { openFibers } from "./fibers.ts"
+import { workersIn } from "./workerEnv.ts"
 
 /** A new folder, its real path: the main checkout, where .tutti/run/ is written. */
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-interview-")))
@@ -740,8 +741,7 @@ describe("the interview's session, with the live host over the fake Claude Code"
     const host = liveLayer({
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: noServers,
-      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
+      account: { billing: { _tag: "Subscription", keyUnused: false } },
     })
     const lines = () =>
       existsSync(log)
@@ -780,7 +780,15 @@ describe("the interview's session, with the live host over the fake Claude Code"
         Effect.provide(
           host.pipe(
             Layer.provideMerge(
-              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+              Layer.mergeAll(
+                attentionLayer(waitForTest),
+                transcriptsLayer(),
+                ClaudeCode.layer.pipe(
+                  Layer.provide(
+                    workersIn({ ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) }),
+                  ),
+                ),
+              ),
             ),
             Layer.provideMerge(
               Layer.mergeAll(

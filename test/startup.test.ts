@@ -540,7 +540,7 @@ describe("the START block", () => {
     prompt: { text: "Work on TICKET_ID.", file: null },
     mcp: { servers: [], note: noServersNote },
     account: TestAccount.accountProbe(),
-    organs: "AgentSdk",
+    organs: { _tag: "AgentSdk" },
     warnings: [],
     ...overrides,
   })

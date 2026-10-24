@@ -45,6 +45,7 @@ import {
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { testEnv } from "./env.ts"
 import { type Rendered, withRender } from "./render.ts"
+import { workersIn } from "./workerEnv.ts"
 
 const sdk = (message: Record<string, unknown>): SDKMessage => message as unknown as SDKMessage
 
@@ -140,11 +141,7 @@ describe("the live host records what it sends", () => {
     const host = liveLayer({
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: { servers: [], note: noServersNote },
-      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: {
-        ...testEnv,
-        FAKE_CLAUDE_SCENARIO: JSON.stringify({ log: join(dir, "fake.jsonl") }),
-      },
+      account: { billing: { _tag: "Subscription", keyUnused: false } },
     })
     const sessionId = "11111111-1111-4111-8111-111111111111"
     const idle = Effect.gen(function* () {
@@ -168,7 +165,18 @@ describe("the live host records what it sends", () => {
         Effect.provide(
           host.pipe(
             Layer.provideMerge(
-              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+              Layer.mergeAll(
+                attentionLayer(waitForTest),
+                transcriptsLayer(),
+                ClaudeCode.layer.pipe(
+                  Layer.provide(
+                    workersIn({
+                      ...testEnv,
+                      FAKE_CLAUDE_SCENARIO: JSON.stringify({ log: join(dir, "fake.jsonl") }),
+                    }),
+                  ),
+                ),
+              ),
             ),
             Layer.provideMerge(
               Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),

@@ -25,7 +25,8 @@ import { make, type Organ, Organs } from "../src/organs/Organs.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
-import { testEnv } from "./env.ts"
+import { testEnv, withVariable } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
@@ -104,15 +105,18 @@ const ask = Effect.flatMap(Organs, (organs) =>
 
 const dir = () => mkdtempSync(join(tmpdir(), "tutti-anthropic-provider-test-"))
 
-/** Organs over the provider `env` chooses, the Messages API faked with `http`. */
+/**
+ * Organs over the provider `env` chooses, as the run's start reads it, the Messages API faked with
+ * `http`, the Agent SDK's sessions in workers' environment made from `env`.
+ */
 const organsWith = (
   env: Record<string, string | undefined>,
   http: Layer.Layer<HttpClient.HttpClient>,
   config = appConfig({ claude: fake }, dir()),
 ) =>
   Organs.layer.pipe(
-    Layer.provideMerge(chosenLayer({ account: { subscription: true }, env, http })),
-    Layer.provideMerge(ClaudeCode.layer),
+    Layer.provideMerge(chosenLayer({ provider: Result.getOrThrow(organProvider(env)), http })),
+    Layer.provideMerge(ClaudeCode.layer.pipe(Layer.provide(workersIn(env)))),
     Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
   )
 
@@ -274,11 +278,32 @@ describe("chosenLayer", () => {
     expect(sent).toHaveLength(0)
   })
 
-  test("a choice that can't be used fails the layer with the setup problem", async () => {
-    const exit = await Effect.runPromiseExit(
-      ask.pipe(Effect.provide(organsWith({ [providerVariable]: "anthropic" }, fakeApi([])))),
+  test("the provider is the one the run's start read: tutti's environment isn't read again", async () => {
+    const sent: Array<Sent> = []
+    const scenario = {
+      turns: [[{ result: { structured_output: answer, result: JSON.stringify(answer) } }]],
+      eofAfterTurn: true,
+    }
+    const env = { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) }
+    const organs = Organs.layer.pipe(
+      Layer.provideMerge(chosenLayer({ provider: { _tag: "AgentSdk" }, http: fakeApi(sent) })),
+      Layer.provideMerge(ClaudeCode.layer.pipe(Layer.provide(workersIn(env)))),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          costLayer(),
+          configLayer(appConfig({ claude: fake }, dir())),
+          BunServices.layer,
+        ),
+      ),
     )
-    expect(failures(exit).map((e) => (e as { _tag: string })._tag)).toEqual(["SetupProblem"])
+    const exit = await withVariable(providerVariable, "anthropic", () =>
+      withVariable("ANTHROPIC_API_KEY", "sk-ant-test", () =>
+        Effect.runPromiseExit(ask.pipe(Effect.provide(organs))),
+      ),
+    )
+    if (Exit.isFailure(exit)) throw new Error(String(exit.cause))
+    expect(exit.value).toEqual(answer)
+    expect(sent).toHaveLength(0)
   })
 })
 

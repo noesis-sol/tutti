@@ -216,6 +216,30 @@ export const workerEnv = (options: WorkerEnvOptions): Record<string, string> => 
   return result
 }
 
+/**
+ * The environment every Claude Code session billed as workers are starts from (workers', organs'
+ * and the usage probe's), workerEnv's for the run's account and billing without a worker's share:
+ * the run sets it once, as it starts (main.ts), and ClaudeCode's adapter lays a worker's share over
+ * it (sharedEnv). Without a run, no login is known and the key is kept.
+ */
+export const WorkerEnv = Context.Reference<Readonly<Record<string, string>>>(
+  "tutti/agent/env/WorkerEnv",
+  { defaultValue: () => workerEnv({ subscription: false, billing: "subscription" }) },
+)
+
+/**
+ * `env`, a WorkerEnv, with a worker's share of the machine: Bash's timeouts for its merge check's
+ * `checkTimeout`, and its `cores` (coreVariables, after `env`'s GOFLAGS).
+ */
+export const sharedEnv = (
+  env: Readonly<Record<string, string>>,
+  share: { readonly checkTimeout: Duration.Duration; readonly cores: number },
+): Record<string, string> => ({
+  ...env,
+  ...bashTimeouts(share.checkTimeout),
+  ...coreVariables(share.cores, env.GOFLAGS),
+})
+
 /** The account probe's environment: a worker's, always without the key, to find the login (§ 4.13). */
 export const probeEnv = (
   options: Omit<WorkerEnvOptions, "subscription" | "billing" | "checkTimeout" | "cores">,

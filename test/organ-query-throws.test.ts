@@ -15,6 +15,7 @@ import { OrganCost } from "../src/organs/OrganCost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 /** What the SDK's query() throws when it finds no platform package. */
 const noBinary = new Error(
@@ -39,8 +40,10 @@ const run = (error: unknown) => {
   return Effect.runPromise(
     Effect.all([call, Effect.flatMap(OrganCost, (costs) => costs.total)]).pipe(
       Effect.provide(
-        layer({ account: { subscription: true }, env: testEnv }).pipe(
-          Layer.provideMerge(ClaudeCode.layerWith(throwing(error))),
+        layer.pipe(
+          Layer.provideMerge(
+            ClaudeCode.layerWith(throwing(error)).pipe(Layer.provide(workersIn(testEnv))),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(costLayer(), configLayer(appConfig({}, dir)), BunServices.layer),
           ),

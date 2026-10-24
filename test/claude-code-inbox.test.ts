@@ -23,7 +23,7 @@ const keeping = () => {
 
 const launch = (fields: Partial<Launch> = {}): Launch => ({
   options: { cwd: "/work/project" },
-  billedAs: BilledAs.Workers({ subscription: true }),
+  billedAs: BilledAs.Workers(),
   env: { PATH: "/usr/bin" },
   closeLimit: Duration.seconds(1),
   ...fields,

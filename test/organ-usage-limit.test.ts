@@ -32,6 +32,7 @@ import {
   scenario,
   type World,
 } from "./harness.ts"
+import { workersIn } from "./workerEnv.ts"
 
 // The model's tests start the fake as a Claude Code process, and whole runs wait out a hold: bun's
 // 5 s default fails them when other checks run beside this one.
@@ -65,11 +66,14 @@ describe("AgentSdkLanguageModel on the usage limit", () => {
       LanguageModel.generateObject({ prompt, schema: Verdict }).pipe(
         Effect.provideService(OrganCall, { organ: "triage" }),
         Effect.provide(
-          layer({
-            account: { subscription: true },
-            env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(fakeScenario) },
-          }).pipe(
-            Layer.provideMerge(ClaudeCode.layer),
+          layer.pipe(
+            Layer.provideMerge(
+              ClaudeCode.layer.pipe(
+                Layer.provide(
+                  workersIn({ ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(fakeScenario) }),
+                ),
+              ),
+            ),
             Layer.provideMerge(
               Layer.mergeAll(
                 costLayer(),

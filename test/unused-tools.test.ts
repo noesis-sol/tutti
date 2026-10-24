@@ -23,6 +23,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 // The live host's test starts the fake Claude Code as a process.
 setDefaultTimeout(30_000)
@@ -202,8 +203,7 @@ const workerArgs = (dir: string): Promise<ReadonlyArray<string>> => {
   const host = liveLayer({
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers: noServers,
-    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-    env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ log }) },
+    account: { billing: { _tag: "Subscription", keyUnused: false } },
   })
   const started = Effect.gen(function* () {
     const agents = yield* AgentHost
@@ -230,7 +230,15 @@ const workerArgs = (dir: string): Promise<ReadonlyArray<string>> => {
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer.pipe(
+                Layer.provide(
+                  workersIn({ ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ log }) }),
+                ),
+              ),
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(

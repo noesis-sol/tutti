@@ -27,6 +27,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 setDefaultTimeout(30_000)
 
@@ -146,15 +147,18 @@ const withHost = <A, E>(
   const host = liveLayer({
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers: noServers,
-    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-    env,
+    account: { billing: { _tag: "Subscription", keyUnused: false } },
   })
   return Effect.runPromiseExit(
     effect(dir).pipe(
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer.pipe(Layer.provide(workersIn(env))),
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
@@ -240,8 +244,8 @@ describe("an organ's or the usage probe's turn cut short", () => {
           ),
         ),
         Effect.provide(
-          organLayer({ account: { subscription: true }, env }).pipe(
-            Layer.provideMerge(ClaudeCode.layer),
+          organLayer.pipe(
+            Layer.provideMerge(ClaudeCode.layer.pipe(Layer.provide(workersIn(env)))),
             Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
           ),
         ),
@@ -271,8 +275,8 @@ describe("an organ's or the usage probe's turn cut short", () => {
           ),
         ),
         Effect.provide(
-          UsageProbe.layer({ account: { subscription: true }, env }).pipe(
-            Layer.provideMerge(ClaudeCode.layer),
+          UsageProbe.layer.pipe(
+            Layer.provideMerge(ClaudeCode.layer.pipe(Layer.provide(workersIn(env)))),
             Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
           ),
         ),

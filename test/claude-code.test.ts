@@ -20,6 +20,7 @@ import {
   SessionFailed,
 } from "../src/agent/ClaudeCode.ts"
 import { queryThrew } from "../src/agent/claudeBinary.ts"
+import { WorkerEnv, workerEnv } from "../src/agent/env.ts"
 import { withStderr } from "../src/agent/sessionProcess.ts"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -27,46 +28,45 @@ import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 const key = "sk-ant-test"
 const tutti = { PATH: "/usr/bin", ANTHROPIC_API_KEY: key, HERDR_PANE: "p-1" }
 
+/** The run's WorkerEnv over tutti's environment `tutti`, with a subscription login. */
+const workers = workerEnv({ subscription: true, billing: "subscription", env: tutti })
+
 describe("launchEnv", () => {
-  test("billed as workers, the key goes beside a subscription login unless billing is api", () => {
-    const login = BilledAs.Workers({ subscription: true })
-    expect(launchEnv({ billedAs: login, env: tutti }, "subscription")).not.toHaveProperty(
-      "ANTHROPIC_API_KEY",
-    )
-    expect(launchEnv({ billedAs: login, env: tutti }, "api").ANTHROPIC_API_KEY).toBe(key)
-    const keyOnly = BilledAs.Workers({ subscription: false })
-    expect(launchEnv({ billedAs: keyOnly, env: tutti }, "subscription").ANTHROPIC_API_KEY).toBe(key)
+  test("billed as workers, the run's WorkerEnv, which holds the key back beside a login", () => {
+    const env = launchEnv({ billedAs: BilledAs.Workers() }, workers)
+    expect(env).toEqual(workers)
+    expect(env).not.toHaveProperty("ANTHROPIC_API_KEY")
+    expect(env).not.toHaveProperty("HERDR_PANE")
+    expect(env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe("1")
+    const api = workerEnv({ subscription: true, billing: "api", env: tutti })
+    expect(launchEnv({ billedAs: BilledAs.Workers() }, api).ANTHROPIC_API_KEY).toBe(key)
   })
 
-  test("billed as the login probe, never the key, whatever the billing", () => {
-    for (const billing of ["subscription", "api"] as const) {
-      const env = launchEnv({ billedAs: BilledAs.LoginProbe(), env: tutti }, billing)
-      expect(env).not.toHaveProperty("ANTHROPIC_API_KEY")
-      expect(env.PATH).toBe("/usr/bin")
-      expect(env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe("1")
-    }
+  test("billed as workers, the launch's own environment isn't read", () => {
+    const elsewhere = { PATH: "/opt/bin", ANTHROPIC_API_KEY: "sk-ant-other" }
+    expect(launchEnv({ billedAs: BilledAs.Workers(), env: elsewhere }, workers)).toEqual(workers)
   })
 
-  test("tutti's variables over its environment, without the pane's; a worker's share too", () => {
-    const organ = launchEnv(
-      { billedAs: BilledAs.Workers({ subscription: true }), env: tutti },
-      "api",
-    )
-    expect(organ).not.toHaveProperty("HERDR_PANE")
-    expect(organ.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe("1")
+  test("billed as the login probe, never the key, from tutti's environment", () => {
+    const api = workerEnv({ subscription: true, billing: "api", env: tutti })
+    const env = launchEnv({ billedAs: BilledAs.LoginProbe(), env: tutti }, api)
+    expect(env).not.toHaveProperty("ANTHROPIC_API_KEY")
+    expect(env.PATH).toBe("/usr/bin")
+    expect(env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe("1")
+  })
+
+  test("a worker's share laid over WorkerEnv; none without one", () => {
+    const organ = launchEnv({ billedAs: BilledAs.Workers() }, workers)
     expect(organ).not.toHaveProperty("TUTTI_CORES")
     expect(organ).not.toHaveProperty("BASH_DEFAULT_TIMEOUT_MS")
     const worker = launchEnv(
-      {
-        billedAs: BilledAs.Workers({ subscription: true }),
-        env: tutti,
-        share: { checkTimeout: Duration.minutes(20), cores: 3 },
-      },
-      "subscription",
+      { billedAs: BilledAs.Workers(), share: { checkTimeout: Duration.minutes(20), cores: 3 } },
+      workers,
     )
     expect(worker.TUTTI_CORES).toBe("3")
     expect(worker.GOFLAGS).toBe("-p=3")
     expect(worker.BASH_DEFAULT_TIMEOUT_MS).toBe(String(20 * 60 * 1000))
+    expect(worker.PATH).toBe("/usr/bin")
   })
 })
 
@@ -120,8 +120,7 @@ const standIn = (
 const launch = (fields: Partial<Launch> = {}): Launch => ({
   options: { cwd: "/work/project", persistSession: false },
   prompt: "Hello.",
-  billedAs: BilledAs.Workers({ subscription: true }),
-  env: tutti,
+  billedAs: BilledAs.Workers(),
   closeLimit: Duration.seconds(1),
   ...fields,
 })
@@ -139,7 +138,11 @@ const opened = <A, E>(
       return yield* use(session)
     }).pipe(
       Effect.scoped,
-      Effect.provide(ClaudeCode.layerWith(open).pipe(Layer.provide(configLayer(config)))),
+      Effect.provide(
+        ClaudeCode.layerWith(open).pipe(
+          Layer.provide(Layer.mergeAll(configLayer(config), Layer.succeed(WorkerEnv, workers))),
+        ),
+      ),
     ),
   )
 
@@ -158,9 +161,7 @@ describe("ClaudeCode's adapter", () => {
     expect(options?.cwd).toBe("/work/project")
     expect(options?.persistSession).toBe(false)
     expect(options?.pathToClaudeCodeExecutable).toBe("/opt/claude/bin/claude")
-    expect(options?.env).toEqual(
-      launchEnv({ billedAs: BilledAs.Workers({ subscription: true }), env: tutti }, "subscription"),
-    )
+    expect(options?.env).toEqual(workers)
     expect(options?.abortController).toBeInstanceOf(AbortController)
     expect(typeof options?.spawnClaudeCodeProcess).toBe("function")
     // Claude Code's stderr reaches onStderr through the spawn's stderr callback.

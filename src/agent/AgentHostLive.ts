@@ -180,10 +180,11 @@ export interface LiveOptions {
     worktree: string,
     fibers: SessionFibers,
   ) => Effect.Effect<McpSdkServerConfigWithInstance>
-  /** What the account probe found: how workers are billed, and whether there's a subscription login. */
-  readonly account: Pick<AccountProbe, "billing" | "subscription">
-  /** tutti's environment, workers' is made from; process.env by default. */
-  readonly env?: Readonly<Record<string, string | undefined>>
+  /**
+   * What the account probe found: how workers are billed, which the sessions' checks hold them to.
+   * Their environment is the run's WorkerEnv, which ClaudeCode's adapter gives them.
+   */
+  readonly account: Pick<AccountProbe, "billing">
   /**
    * The machine's cores, divided among the run's workers and the other runs' (coreShare,
    * OtherWorkers) as each session starts; availableParallelism().
@@ -695,8 +696,7 @@ export const layer = (
               const claude = yield* claudeCode
                 .open({
                   options: spec,
-                  billedAs: BilledAs.Workers({ subscription: options.account.subscription }),
-                  ...(options.env === undefined ? {} : { env: options.env }),
+                  billedAs: BilledAs.Workers(),
                   share,
                   onStderr: callbacks.stderr,
                   closeLimit,

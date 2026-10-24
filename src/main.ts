@@ -36,7 +36,7 @@ import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
 import { ClaudeCode } from "./agent/ClaudeCode.ts"
-import { BranchEnv, branchEnv } from "./agent/env.ts"
+import { BranchEnv, branchEnv, WorkerEnv, workerEnv } from "./agent/env.ts"
 import { requiresServerFor } from "./agent/requiresTools.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
@@ -152,6 +152,12 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
       BranchEnv,
       branchEnv({ subscription: started.account.subscription, billing: config.billing }),
     ),
+    // The environment workers', organs' and the usage probe's sessions start from (§ 4.13),
+    // resolved once from the account the probe found.
+    Layer.succeed(
+      WorkerEnv,
+      workerEnv({ subscription: started.account.subscription, billing: config.billing }),
+    ),
   )
   const second = Layer.mergeAll(
     // The one port every Claude Code session tutti opens goes through: workers', organs' and the
@@ -174,16 +180,14 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
       }),
     ),
   )
-  // The organs, over the Agent SDK or, with TUTTI_ORGAN_PROVIDER=anthropic, the Messages API, their
-  // costs logged, skipped while the usage limit holds, as the report asks too. The startup checks
-  // reported a choice that can't be used.
+  // The organs, over the Agent SDK or, with TUTTI_ORGAN_PROVIDER=anthropic, the Messages API, as
+  // the startup checks read it, their costs logged, skipped while the usage limit holds, as the
+  // report asks too. The startup checks stopped the run on a choice that can't be used.
   // The usage-limit hold's probe of the account (§ 4.12) is billed and its cost logged as an
   // organ call's.
   const organs = Layer.mergeAll(
-    Organs.layer.pipe(
-      Layer.provideMerge(Layer.orDie(languageModelLayer({ account: started.account }))),
-    ),
-    UsageProbe.layer({ account: started.account }),
+    Organs.layer.pipe(Layer.provideMerge(languageModelLayer({ provider: started.organs }))),
+    UsageProbe.layer,
   ).pipe(Layer.provideMerge(OrganCost.layer), Layer.provideMerge(organHold))
   // Attention's records notify too: it is given the EventStream that notifies (notices.ts).
   return Layer.mergeAll(host, organs).pipe(

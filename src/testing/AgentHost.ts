@@ -180,10 +180,7 @@ export const layer = (
         liveLayer({
           prompt: { text: "Work on TICKET_ID.", file: null },
           servers: options.servers ?? noServers,
-          account: {
-            billing: options.billing ?? { _tag: "Subscription", keyUnused: false },
-            subscription: true,
-          },
+          account: { billing: options.billing ?? { _tag: "Subscription", keyUnused: false } },
         }).pipe(
           Layer.provide(
             Layer.mergeAll(

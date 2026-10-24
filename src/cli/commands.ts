@@ -10,6 +10,7 @@ import { Account } from "../agent/Account.ts"
 import { answerWords } from "../agent/attentionFiles.ts"
 import { ClaudeCode } from "../agent/ClaudeCode.ts"
 import { buildTarget, resolveClaude } from "../agent/claudeBinary.ts"
+import { WorkerEnv, workerEnv } from "../agent/env.ts"
 import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
 import { scoutCostSteps, scoutSearch } from "../init/checks.ts"
@@ -729,9 +730,15 @@ const runInit = (cwd: string, flags: InitFlags) =>
       return yield* scoutSearch(repo).pipe(
         Effect.provide(
           Organs.layer.pipe(
-            Layer.provideMerge(languageModelLayer({ account: probed })),
+            Layer.provideMerge(languageModelLayer),
             Layer.provideMerge(Layer.succeed(OrganCost, organCost)),
             Layer.provideMerge(ClaudeCode.layer),
+            Layer.provideMerge(
+              Layer.succeed(
+                WorkerEnv,
+                workerEnv({ subscription: probed.subscription, billing: config.billing }),
+              ),
+            ),
             Layer.provideMerge(Layer.mergeAll(withConfig, quietLog)),
           ),
         ),

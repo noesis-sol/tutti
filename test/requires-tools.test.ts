@@ -41,6 +41,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
 import { openFibers } from "./fibers.ts"
+import { workersIn } from "./workerEnv.ts"
 
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-requires-tools-")))
 
@@ -295,8 +296,7 @@ describe("the live AgentHost with ownServer", () => {
           calls.push({ worktree })
           return { type: "sdk", name: requiresServerName, instance: {} } as never
         }),
-      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: testEnv,
+      account: { billing: { _tag: "Subscription", keyUnused: false } },
     })
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -315,7 +315,7 @@ describe("the live AgentHost with ownServer", () => {
               Layer.mergeAll(
                 attentionLayer(waitForTest),
                 transcriptsLayer(),
-                ClaudeCode.layerWith(recording),
+                ClaudeCode.layerWith(recording).pipe(Layer.provide(workersIn(testEnv))),
               ),
             ),
             Layer.provideMerge(

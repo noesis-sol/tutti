@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Cause, ConfigProvider, Effect, Exit } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Redacted } from "effect"
 import { type Billing, billingLine } from "../src/agent/Account.ts"
 import { check, type Started, type StartupFailed, startBlock } from "../src/run/startup.ts"
 import * as TestAccount from "../src/testing/Account.ts"
@@ -118,7 +118,14 @@ describe("the startup checks of organs' provider", () => {
 
   test("TUTTI_ORGAN_PROVIDER=anthropic with the key: START says organs bill it", async () => {
     const started = passed(await run({ TUTTI_ORGAN_PROVIDER: "anthropic", ANTHROPIC_API_KEY: key }))
-    expect(started.organs).toBe("Anthropic")
+    // Read once, as the run starts: the provider and the key it bills, redacted.
+    expect(started.organs._tag).toBe("Anthropic")
+    expect(
+      started.organs._tag === "Anthropic" ? Redacted.value(started.organs.apiKey) : undefined,
+    ).toBe(key)
+    expect(String(started.organs._tag === "Anthropic" ? started.organs.apiKey : "")).not.toContain(
+      key,
+    )
     expect(billingOf(started)).toBe(
       "  billing: subscription for workers, ANTHROPIC_API_KEY for organs (TUTTI_ORGAN_PROVIDER=anthropic)",
     )
@@ -126,7 +133,7 @@ describe("the startup checks of organs' provider", () => {
 
   test("unset, organs use the Agent SDK and START says the key isn't used", async () => {
     const started = passed(await run({ ANTHROPIC_API_KEY: key }))
-    expect(started.organs).toBe("AgentSdk")
+    expect(started.organs).toEqual({ _tag: "AgentSdk" })
     expect(billingOf(started)).toBe(
       "  billing: subscription (ANTHROPIC_API_KEY is set but not used; --billing api uses it)",
     )

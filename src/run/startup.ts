@@ -78,8 +78,11 @@ export interface Started {
   readonly prompt: WorkerPrompt
   readonly mcp: ChosenServers
   readonly account: AccountProbe
-  /** The provider organs use (TUTTI_ORGAN_PROVIDER): the Anthropic one bills ANTHROPIC_API_KEY. */
-  readonly organs: OrganProvider["_tag"]
+  /**
+   * The provider organs use, read once from tutti's environment (TUTTI_ORGAN_PROVIDER): the
+   * Anthropic one with the ANTHROPIC_API_KEY it bills, redacted.
+   */
+  readonly organs: OrganProvider
   /** What the run says once as it starts, but doesn't stop it. */
   readonly warnings: ReadonlyArray<string>
 }
@@ -479,7 +482,7 @@ export const check = <R>(checking: Checking<R>) =>
       prompt: prompt.value.value,
       mcp: mcp.value.value,
       account: account.value.value,
-      organs: organs.success._tag,
+      organs: organs.success,
       warnings: [
         ...warnings,
         ...templates,
@@ -535,7 +538,7 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
       ...(servers.length === 0 ? [] : [["MCP servers", servers.join(", ")] as const]),
     ],
     notes: [
-      billingLine(started.account.billing, started.organs === "Anthropic"),
+      billingLine(started.account.billing, started.organs._tag === "Anthropic"),
       permissionModeLine(started.account.permissionMode),
       ...(started.mcp.note === null ? [] : [started.mcp.note]),
       ...(config.machineWorkers > 0 && concurrency > config.machineWorkers

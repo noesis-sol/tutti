@@ -65,6 +65,7 @@ import { layer as eventsLayer } from "../../src/testing/EventStream.ts"
 import { layer as logLayer } from "../../src/testing/Log.ts"
 import { Files, layer as transcriptsLayer } from "../../src/testing/Transcripts.ts"
 import { live } from "../gates.ts"
+import { workersIn } from "../workerEnv.ts"
 
 const ticket = "contract-1"
 
@@ -156,8 +157,7 @@ const run = <A, E>(
   const host = liveLayer({
     prompt: workerPrompt,
     servers: setup.servers ?? noServers,
-    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-    env: { ...hostEnv(), ...setup.env },
+    account: { billing: { _tag: "Subscription", keyUnused: false } },
   })
   return Effect.runPromise(
     effect.pipe(
@@ -167,7 +167,7 @@ const run = <A, E>(
             Layer.mergeAll(
               attentionLayer(setup.policy ?? waitForTest),
               transcriptsLayer(),
-              ClaudeCode.layer,
+              ClaudeCode.layer.pipe(Layer.provide(workersIn({ ...hostEnv(), ...setup.env }))),
             ),
           ),
           Layer.provideMerge(

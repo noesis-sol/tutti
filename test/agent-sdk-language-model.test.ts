@@ -21,6 +21,7 @@ import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
 
@@ -79,15 +80,18 @@ const run = async <A, E>(
   const exit = await Effect.runPromiseExit(
     (typeof effect === "function" ? effect(log) : effect).pipe(
       Effect.provide(
-        layer({
-          account: { subscription: true },
-          env: {
-            ...testEnv,
-            ANTHROPIC_API_KEY: "sk-ant-test",
-            FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario),
-          },
-        }).pipe(
-          Layer.provideMerge(ClaudeCode.layer),
+        layer.pipe(
+          Layer.provideMerge(
+            ClaudeCode.layer.pipe(
+              Layer.provide(
+                workersIn({
+                  ...testEnv,
+                  ANTHROPIC_API_KEY: "sk-ant-test",
+                  FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario),
+                }),
+              ),
+            ),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(
               costLayer(),

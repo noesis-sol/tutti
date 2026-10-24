@@ -31,6 +31,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
 import { advance, backlog, expectExitCode, expectPhases, scenario, type World } from "./harness.ts"
+import { workersIn } from "./workerEnv.ts"
 
 // The live host's test starts the fake Claude Code as a process: up to a second on an idle machine.
 setDefaultTimeout(30_000)
@@ -74,8 +75,7 @@ const sharesAsOthersRun = (others: readonly [number, number, number], machineWor
   const host = liveLayer({
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers: { servers: [], note: noServersNote },
-    account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-    env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ log, env: [coresVariable] }) },
+    account: { billing: { _tag: "Subscription", keyUnused: false } },
     cores: 12,
   })
   return Effect.runPromise(
@@ -92,7 +92,18 @@ const sharesAsOthersRun = (others: readonly [number, number, number], machineWor
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer.pipe(
+                Layer.provide(
+                  workersIn({
+                    ...testEnv,
+                    FAKE_CLAUDE_SCENARIO: JSON.stringify({ log, env: [coresVariable] }),
+                  }),
+                ),
+              ),
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(

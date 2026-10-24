@@ -141,7 +141,7 @@ describe("choosing Chrome in workers.mcp_servers", () => {
       prompt: { text: "Work on TICKET_ID.", file: null },
       mcp: { servers: [], chrome: true, note: null },
       account: TestAccount.accountProbe(),
-      organs: "AgentSdk",
+      organs: { _tag: "AgentSdk" },
       warnings: [],
     }
     expect(startBlock(started, "0.1.0").join("\n")).toContain(`MCP servers: ${chromeServer}`)

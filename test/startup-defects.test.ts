@@ -28,6 +28,7 @@ import * as TestGit from "../src/testing/Git.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 /** What the SDK's query() throws when it finds no platform package. */
 const noBinary = new Error(
@@ -177,8 +178,7 @@ describe("AgentHost live: query() throwing as the session starts", () => {
     const host = liveLayer({
       prompt: { text: "Work on TICKET_ID.", file: null },
       servers: { servers: [], note: noServersNote },
-      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
-      env: testEnv,
+      account: { billing: { _tag: "Subscription", keyUnused: false } },
     })
     const { exit, state } = await Effect.runPromise(
       Effect.gen(function* () {
@@ -194,7 +194,7 @@ describe("AgentHost live: query() throwing as the session starts", () => {
               Layer.mergeAll(
                 attentionLayer(waitForTest),
                 transcriptsLayer(),
-                ClaudeCode.layerWith(throwing(noBinary)),
+                ClaudeCode.layerWith(throwing(noBinary)).pipe(Layer.provide(workersIn(testEnv))),
               ),
             ),
             Layer.provideMerge(

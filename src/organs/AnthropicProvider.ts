@@ -3,7 +3,8 @@
 // @effect/ai-anthropic's over the Messages API instead of the Agent SDK's; the choice is a layer,
 // and organs don't change. Unset (or `agent-sdk`), organs use the Agent SDK.
 //
-// - The variable set to anything else, or `anthropic` with no key, is a setup problem.
+// - The variable set to anything else, or `anthropic` with no key, is a setup problem, which the
+//   run's start reports (organProvider); the layer takes the provider it read (chosenLayer).
 // - Each call takes OrganCall's model and effort as a request override: the model is
 //   defaultModel unless --organ-model names one, and an effort above `high` is sent as `high`, the
 //   most @effect/ai-anthropic's request config takes.
@@ -18,13 +19,7 @@ import { AiError, LanguageModel } from "effect/ai"
 import { FetchHttpClient, type HttpClient } from "effect/http"
 import type { ClaudeCode } from "../agent/ClaudeCode.ts"
 import { apiKeySet, apiKeyVariable } from "../agent/env.ts"
-import { SetupProblem } from "../cli/AppConfig.ts"
-import {
-  layer as agentSdkLayer,
-  type LiveOptions,
-  OrganCall,
-  type OrganCallConfig,
-} from "./AgentSdkLanguageModel.ts"
+import { layer as agentSdkLayer, OrganCall, type OrganCallConfig } from "./AgentSdkLanguageModel.ts"
 import { OrganCost } from "./OrganCost.ts"
 
 const module = "AnthropicProvider"
@@ -179,31 +174,24 @@ export const layer = (
     Layer.provide(AnthropicClient.layer({ apiKey })),
   )
 
-/** What the chosen provider's layer takes: the Agent SDK's options, and the HTTP client. */
-export interface ChosenOptions extends LiveOptions {
+/** What the chosen provider's layer takes: the provider, as the run's start chose it. */
+export interface ChosenOptions {
+  /** The provider organs use, which the run's start read from its environment (organProvider). */
+  readonly provider: OrganProvider
   /** The HTTP client the Messages API is called through; fetch by default. */
   readonly http?: Layer.Layer<HttpClient.HttpClient>
 }
 
 /**
- * Organs' LanguageModel, from the provider the environment chooses (options.env, else
- * process.env): the Agent SDK's, or the Messages API's. A choice that can't be used is a
- * SetupProblem.
+ * Organs' LanguageModel, from `provider`: the Agent SDK's, or the Messages API's, billed to its key.
  */
 export const chosenLayer = (
   options: ChosenOptions,
 ): Layer.Layer<
   LanguageModel.LanguageModel,
-  SetupProblem,
+  never,
   ClaudeCode | OrganCost | FileSystem.FileSystem
-> => {
-  const chosen = organProvider(options.env ?? process.env)
-  if (Result.isFailure(chosen)) {
-    return Layer.effect(
-      LanguageModel.LanguageModel,
-      Effect.fail(new SetupProblem({ problems: [chosen.failure] })),
-    )
-  }
-  if (chosen.success._tag === "AgentSdk") return agentSdkLayer(options)
-  return layer(chosen.success.apiKey).pipe(Layer.provide(options.http ?? FetchHttpClient.layer))
-}
+> =>
+  options.provider._tag === "AgentSdk"
+    ? agentSdkLayer
+    : layer(options.provider.apiKey).pipe(Layer.provide(options.http ?? FetchHttpClient.layer))

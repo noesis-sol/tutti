@@ -34,6 +34,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 /**
  * A repository and a folder beside it, both real paths: in the repository `src/a.ts`, `inner`
@@ -236,13 +237,14 @@ describe("the scout's options", () => {
       scoutChecks(root).pipe(
         Effect.provide(
           Organs.layer.pipe(
+            Layer.provideMerge(liveModel),
             Layer.provideMerge(
-              liveModel({
-                account: { subscription: true },
-                env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
-              }),
+              ClaudeCode.layer.pipe(
+                Layer.provide(
+                  workersIn({ ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) }),
+                ),
+              ),
             ),
-            Layer.provideMerge(ClaudeCode.layer),
             Layer.provideMerge(
               Layer.mergeAll(
                 costLayer(),

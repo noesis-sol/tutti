@@ -22,6 +22,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { workersIn } from "./workerEnv.ts"
 
 // The live tests start the fake Claude Code as a process: bun's 5 s default fails them when other
 // checks run beside this one.
@@ -133,11 +134,7 @@ const settle = async (
   const host = liveLayer({
     prompt: { text: "Work on TICKET_ID.", file: null },
     servers: { servers: [], note: noServersNote },
-    account: { billing, subscription: billing._tag === "Subscription" },
-    env: {
-      ...testEnv,
-      FAKE_CLAUDE_SCENARIO: JSON.stringify({ log: join(dir, "fake.jsonl") }),
-    },
+    account: { billing },
   })
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -164,7 +161,17 @@ const settle = async (
             Layer.mergeAll(
               attentionLayer(waitForTest),
               transcriptsLayer(),
-              ClaudeCode.layerWith(without(fields)),
+              ClaudeCode.layerWith(without(fields)).pipe(
+                Layer.provide(
+                  workersIn(
+                    {
+                      ...testEnv,
+                      FAKE_CLAUDE_SCENARIO: JSON.stringify({ log: join(dir, "fake.jsonl") }),
+                    },
+                    billing._tag === "Subscription",
+                  ),
+                ),
+              ),
             ),
           ),
           Layer.provideMerge(
