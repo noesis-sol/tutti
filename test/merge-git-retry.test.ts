@@ -17,7 +17,7 @@ import {
 import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
-import { Git, GitFailed, GitTimedOut } from "../src/services/Git.ts"
+import { Git, GitFailed, type GitOp, GitTimedOut } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { type Fault, Repository, type Tree } from "../src/testing/Git.ts"
@@ -107,7 +107,7 @@ const resultOf = <A>(ran: Ran<A>): A => {
 }
 
 /** Makes the next calls of `op` fail as `fault` says. */
-const failing = (op: string, fault: Fault) =>
+const failing = (op: GitOp, fault: Fault) =>
   Effect.flatMap(Repository, (repository) => repository.fail(op, fault))
 
 describe("a read failed once is asked again, and the merges go on", () => {

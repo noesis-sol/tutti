@@ -11,6 +11,7 @@ import { formatDuration } from "../src/project/configFile.ts"
 import { builtInWorkerPrompt } from "../src/project/prompt.ts"
 import { check, report, type Started, type StartupFailed } from "../src/run/startup.ts"
 import { TimeLimit } from "../src/services/exec.ts"
+import type { GitOp } from "../src/services/Git.ts"
 import * as TestAccount from "../src/testing/Account.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import * as TestBeads from "../src/testing/Beads.ts"
@@ -29,14 +30,16 @@ const project = () => {
 }
 
 /**
- * The startup checks in a fresh repository, the next call of git's `op` failing with `fault`; the
+ * The startup checks in a fresh repository, the next call of git's `op` failing with `fault` (none without one); the
  * repository's main checkout, and how they ended.
  */
-const runIn = (op: string, fault: Fault = {}) => {
+const runIn = (op: GitOp | undefined, fault: Fault = {}) => {
   const repo = project()
   const exit = Effect.runPromise(
     Effect.gen(function* () {
-      yield* Effect.flatMap(Repository, (repository) => repository.fail(op, fault))
+      if (op !== undefined) {
+        yield* Effect.flatMap(Repository, (repository) => repository.fail(op, fault))
+      }
       return yield* Effect.exit(
         check({
           cwd: repo,
@@ -59,7 +62,7 @@ const runIn = (op: string, fault: Fault = {}) => {
 }
 
 /** How the startup checks ended, the next call of git's `op` failing with `fault`. */
-const run = (op: string, fault: Fault = {}) => runIn(op, fault).exit
+const run = (op: GitOp | undefined, fault: Fault = {}) => runIn(op, fault).exit
 
 /** The checks' StartupFailed, which they must have failed with. */
 const failed = (exit: Exit.Exit<Started, StartupFailed>): StartupFailed => {
@@ -73,7 +76,7 @@ const readLimit = formatDuration(TimeLimit.read)
 
 describe("the startup checks when git fails", () => {
   test("the checks pass with no fault", async () => {
-    const exit = await run("nothing")
+    const exit = await run(undefined)
     expect(Exit.isSuccess(exit)).toBe(true)
   })
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer } from "effect"
-import { Git, GitFailed, GitWriter } from "../src/services/Git.ts"
+import { Git, GitFailed, type GitOp, GitWriter, gitCall, gitOps } from "../src/services/Git.ts"
 import { layer as memoryLayer, Repository } from "../src/testing/Git.ts"
 
 const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
@@ -17,45 +17,159 @@ const missingGit = Git.layer({ command: "/nonexistent/tutti-test/git" }).pipe(
   Layer.provide(BunServices.layer),
 )
 
-/** Each operation, the op of the first git command it runs, and a call of it. */
+/**
+ * Each operation, the op and command line of the first git command it runs, and a call of it. The
+ * command lines are written out here, not built from gitOps, so that a change to one shows.
+ */
 const calls: ReadonlyArray<{
-  readonly op: string
+  readonly op: GitOp
+  readonly command: string
   readonly call: (git: Git["Service"], dir: string) => Effect.Effect<unknown, unknown>
 }> = [
   {
     op: "worktree add",
+    command: "git worktree add --quiet -b tutti/t-1 /wt --end-of-options main",
     call: (git, dir) => git.addWorktree(dir, "/wt", { branch: "tutti/t-1", base: "main" }),
   },
-  { op: "worktree add", call: (git, dir) => git.addWorktree(dir, "/wt", { branch: "main" }) },
-  { op: "worktree add", call: (git, dir) => git.addDetachedWorktree(dir, "/wt", "main") },
-  { op: "worktree remove", call: (git, dir) => git.removeWorktree(dir, "/wt", { force: true }) },
-  { op: "worktree remove", call: (git, dir) => git.removeWorktree(dir, "/wt") },
-  { op: "worktree list", call: (git, dir) => git.worktrees(dir) },
-  { op: "worktree prune", call: (git, dir) => git.pruneWorktrees(dir) },
-  { op: "branch", call: (git, dir) => git.createBranch(dir, "b", "main") },
-  { op: "branch -d", call: (git, dir) => git.deleteBranch(dir, "b") },
-  { op: "branch -d", call: (git, dir) => git.deleteBranch(dir, "b", { force: true }) },
-  { op: "rebase", call: (git, dir) => git.rebase(dir, "main") },
-  { op: "rebase --abort", call: (git, dir) => git.abortRebase(dir) },
-  { op: "rev-parse --git-path", call: (git, dir) => git.rebaseInProgress(dir) },
-  { op: "rev-parse", call: (git, dir) => git.resetBranch(dir, "main") },
-  { op: "merge-base", call: (git, dir) => git.mergeBase(dir, "main", "HEAD") },
-  { op: "merge-tree", call: (git, dir) => git.holds(dir, "main", "b") },
-  { op: "merge --ff-only", call: (git, dir) => git.fastForward(dir, "b") },
-  { op: "log", call: (git, dir) => git.log(dir, "main") },
-  { op: "status", call: (git, dir) => git.status(dir) },
-  { op: "status", call: (git, dir) => git.status(dir, ["src", "-x"]) },
-  { op: "diff --name-only", call: (git, dir) => git.changedFiles(dir, "main") },
-  { op: "diff --name-only", call: (git, dir) => git.filesBetween(dir, "main", "HEAD") },
-  { op: "show", call: (git, dir) => git.fileAt(dir, "main", "README.md") },
-  { op: "ls-files", call: (git, dir) => git.trackedFiles(dir) },
-  { op: "check-attr", call: (git, dir) => git.mergedByUnion(dir, ["CHANGELOG.md"]) },
-  { op: "rev-parse", call: (git, dir) => git.revParse(dir, "main") },
-  { op: "show-ref", call: (git, dir) => git.branchExists(dir, "b") },
-  { op: "rev-parse --git-common-dir", call: (git, dir) => git.commonDir(dir) },
-  { op: "rev-parse --show-toplevel", call: (git, dir) => git.topLevel(dir) },
-  { op: "symbolic-ref", call: (git, dir) => git.currentBranch(dir) },
-  { op: "--version", call: (git, dir) => git.version(dir) },
+  {
+    op: "worktree add",
+    command: "git worktree add --quiet /wt --end-of-options main",
+    call: (git, dir) => git.addWorktree(dir, "/wt", { branch: "main" }),
+  },
+  {
+    op: "worktree add",
+    command: "git worktree add --quiet --detach /wt --end-of-options main",
+    call: (git, dir) => git.addDetachedWorktree(dir, "/wt", "main"),
+  },
+  {
+    op: "worktree remove",
+    command: "git worktree remove --force /wt",
+    call: (git, dir) => git.removeWorktree(dir, "/wt", { force: true }),
+  },
+  {
+    op: "worktree remove",
+    command: "git worktree remove /wt",
+    call: (git, dir) => git.removeWorktree(dir, "/wt"),
+  },
+  {
+    op: "worktree list",
+    command: "git worktree list --porcelain -z",
+    call: (git, dir) => git.worktrees(dir),
+  },
+  {
+    op: "worktree prune",
+    command: "git worktree prune",
+    call: (git, dir) => git.pruneWorktrees(dir),
+  },
+  {
+    op: "branch",
+    command: "git branch --end-of-options b main",
+    call: (git, dir) => git.createBranch(dir, "b", "main"),
+  },
+  {
+    op: "branch -d",
+    command: "git -c core.packedRefsTimeout=10000 branch -d --end-of-options b",
+    call: (git, dir) => git.deleteBranch(dir, "b"),
+  },
+  {
+    op: "branch -d",
+    command: "git -c core.packedRefsTimeout=10000 branch -D --end-of-options b",
+    call: (git, dir) => git.deleteBranch(dir, "b", { force: true }),
+  },
+  {
+    op: "rebase",
+    command: "git rebase --no-autostash --no-update-refs --end-of-options main",
+    call: (git, dir) => git.rebase(dir, "main"),
+  },
+  { op: "rebase --abort", command: "git rebase --abort", call: (git, dir) => git.abortRebase(dir) },
+  {
+    op: "rev-parse --git-path",
+    command: "git rev-parse --path-format=absolute --git-path rebase-merge --git-path rebase-apply",
+    call: (git, dir) => git.rebaseInProgress(dir),
+  },
+  {
+    op: "rev-parse",
+    command: "git rev-parse --verify --quiet --end-of-options main",
+    call: (git, dir) => git.resetBranch(dir, "main"),
+  },
+  {
+    op: "merge-base",
+    command: "git merge-base --end-of-options main HEAD",
+    call: (git, dir) => git.mergeBase(dir, "main", "HEAD"),
+  },
+  {
+    op: "merge-tree",
+    command: "git merge-tree --write-tree --end-of-options main b",
+    call: (git, dir) => git.holds(dir, "main", "b"),
+  },
+  {
+    op: "merge --ff-only",
+    command: "git merge --ff-only --quiet --end-of-options b",
+    call: (git, dir) => git.fastForward(dir, "b"),
+  },
+  {
+    op: "log",
+    command:
+      "git log -z --no-show-signature --format=%H%x00%s%x00%B --end-of-options main..HEAD --",
+    call: (git, dir) => git.log(dir, "main"),
+  },
+  {
+    op: "status",
+    command: "git status --porcelain -z --untracked-files=all --",
+    call: (git, dir) => git.status(dir),
+  },
+  {
+    op: "status",
+    command: "git status --porcelain -z --untracked-files=all -- src -x",
+    call: (git, dir) => git.status(dir, ["src", "-x"]),
+  },
+  {
+    op: "diff --name-only",
+    command: "git diff --no-renames --name-only -z --end-of-options main...HEAD --",
+    call: (git, dir) => git.changedFiles(dir, "main"),
+  },
+  {
+    op: "diff --name-only",
+    command: "git diff --no-renames --name-only -z --end-of-options main HEAD --",
+    call: (git, dir) => git.filesBetween(dir, "main", "HEAD"),
+  },
+  {
+    op: "show",
+    command: "git show --end-of-options main:README.md",
+    call: (git, dir) => git.fileAt(dir, "main", "README.md"),
+  },
+  { op: "ls-files", command: "git ls-files -z", call: (git, dir) => git.trackedFiles(dir) },
+  {
+    op: "check-attr",
+    command: "git check-attr -z --stdin merge",
+    call: (git, dir) => git.mergedByUnion(dir, ["CHANGELOG.md"]),
+  },
+  {
+    op: "rev-parse",
+    command: "git rev-parse --verify --quiet --end-of-options main",
+    call: (git, dir) => git.revParse(dir, "main"),
+  },
+  {
+    op: "show-ref",
+    command: "git show-ref --verify --quiet refs/heads/b",
+    call: (git, dir) => git.branchExists(dir, "b"),
+  },
+  {
+    op: "rev-parse --git-common-dir",
+    command: "git rev-parse --path-format=absolute --git-common-dir",
+    call: (git, dir) => git.commonDir(dir),
+  },
+  {
+    op: "rev-parse --show-toplevel",
+    command: "git rev-parse --show-toplevel",
+    call: (git, dir) => git.topLevel(dir),
+  },
+  {
+    op: "symbolic-ref",
+    command: "git symbolic-ref --quiet --short HEAD",
+    call: (git, dir) => git.currentBranch(dir),
+  },
+  { op: "--version", command: "git --version", call: (git, dir) => git.version(dir) },
 ]
 
 const shown = (error: unknown) => {
@@ -65,8 +179,8 @@ const shown = (error: unknown) => {
 }
 
 describe("the Git test layer's commands", () => {
-  test("a fault fails each operation with the op and command the live layer's failure has", async () => {
-    for (const { op, call } of calls) {
+  test("a fault fails each operation with its op and command line, in both layers", async () => {
+    for (const { op, command, call } of calls) {
       const live = await Effect.runPromise(
         Effect.exit(Effect.flatMap(Effect.service(Git), (git) => call(git, import.meta.dir))).pipe(
           Effect.provide(missingGit),
@@ -79,8 +193,29 @@ describe("the Git test layer's commands", () => {
           return yield* Effect.exit(call(yield* Git, repository.dir))
         }).pipe(Effect.provide(memoryLayer())),
       )
-      expect(shown(failure(memory))).toEqual(shown(failure(live)))
+      expect(shown(failure(live))).toEqual({ op, command })
+      expect(shown(failure(memory))).toEqual({ op, command })
     }
+  })
+
+  test("the rebase's read of its conflicted files, which the test layer doesn't run", () => {
+    expect(gitCall(gitOps.conflicted)).toEqual({
+      op: "diff --diff-filter=U",
+      kind: "read",
+      args: ["diff", "--name-only", "-z", "--diff-filter=U"],
+    })
+  })
+
+  test("a fault names an operation gitOps has", async () => {
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const repository = yield* Repository
+        // @ts-expect-error: no operation is named "merge --ff"; a typo is a type error.
+        yield* repository.fail("merge --ff")
+        return yield* Effect.exit((yield* Git).fastForward(repository.dir, "main"))
+      }).pipe(Effect.provide(memoryLayer())),
+    )
+    expect(Exit.isSuccess(exit)).toBe(true)
   })
 
   test("resetBranch reads the rev's hash first, and resets to the hash", async () => {

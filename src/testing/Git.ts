@@ -17,11 +17,15 @@ import { showCommand, TimeLimit } from "../services/exec.ts"
 import {
   type Commit,
   Git,
+  type GitCall,
   GitFailed,
+  type GitOp,
   GitTimedOut,
   GitWriter,
-  gitArgs,
+  gitCall,
+  gitOps,
   RebaseConflict,
+  rebaseFolders,
   resetTo,
   type StatusEntry,
   type Worktree,
@@ -47,7 +51,7 @@ export interface Fault {
 
 /** A call made to the Git service: its operation, as GitFailed names it, and its folder. */
 export interface Call {
-  readonly op: string
+  readonly op: GitOp
   readonly dir: string
 }
 
@@ -81,7 +85,7 @@ export class Repository extends Context.Service<
     /** Makes the branch's next rebase that has a commit to replay stop on conflicts in these files. */
     conflict(branch: string, files: ReadonlyArray<string>): Effect.Effect<void>
     /** Makes the next call of op (`rebase`, `merge --ff-only`, `status`, …) fail. */
-    fail(op: string, fault?: Fault): Effect.Effect<void>
+    fail(op: GitOp, fault?: Fault): Effect.Effect<void>
     /** The full hash rev names, in dir (the main checkout by default). */
     head(rev?: string, dir?: string): Effect.Effect<string>
     /** The files of the commit rev names. */
@@ -217,7 +221,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
       const branches = new Map<string, string>()
       const checkouts = new Map<string, Checkout>()
       const forced = new Map<string, ReadonlyArray<string>>()
-      const faults: Array<{ op: string; fault: Fault; left: number }> = []
+      const faults: Array<{ op: GitOp; fault: Fault; left: number }> = []
       const calls: Array<Call> = []
       let seq = 0
 
@@ -441,7 +445,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
 
       type Refuse = (exitCode: number, stderr: string) => GitFailed
 
-      const takeFault = (op: string, dir: string) => {
+      const takeFault = (op: GitOp, dir: string) => {
         const checkout = locate(dir)
         const found = faults.find(
           (each) =>
@@ -457,10 +461,8 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
       }
 
       const operation = <A, E>(
-        kind: "read" | "write",
-        op: string,
+        { op, kind, args }: GitCall,
         dir: string,
-        args: ReadonlyArray<string>,
         body: (refuse: Refuse) => Effect.Effect<A, E | GitFailed>,
       ): Effect.Effect<A, E | GitFailed | GitTimedOut> => {
         const command = showCommand({ command: "git", args })
@@ -491,7 +493,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
       }
 
       const rebase = (worktree: string, onto: string) =>
-        operation("write", "rebase", worktree, gitArgs.rebase(onto), (refuse) =>
+        operation(gitCall(gitOps.rebase, onto), worktree, (refuse) =>
           Effect.gen(function* () {
             const checkout = yield* inRepo(refuse, worktree)
             if (checkout.rebase !== undefined) {
@@ -545,7 +547,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
         )
 
       const abortRebase = (worktree: string) =>
-        operation("write", "rebase --abort", worktree, gitArgs.abortRebase(), (refuse) =>
+        operation(gitCall(gitOps.abortRebase), worktree, (refuse) =>
           Effect.gen(function* () {
             const checkout = yield* inRepo(refuse, worktree)
             const rebasing = checkout.rebase
@@ -560,7 +562,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
         )
 
       const fastForward = (repo: string, branch: string) =>
-        operation("write", "merge --ff-only", repo, gitArgs.fastForward(branch), (refuse) =>
+        operation(gitCall(gitOps.fastForward, branch), repo, (refuse) =>
           Effect.gen(function* () {
             const checkout = yield* inRepo(refuse, repo)
             const target = resolve(checkout, branch)
@@ -607,7 +609,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
 
       // --verify --quiet: a rev that names nothing fails with exit 1, saying nothing.
       const revParse = (dir: string, rev: string) =>
-        operation("read", "rev-parse", dir, gitArgs.revParse(rev), (refuse) =>
+        operation(gitCall(gitOps.revParse, rev), dir, (refuse) =>
           Effect.gen(function* () {
             const hash = resolve(yield* inRepo(refuse, dir), rev)
             return hash === undefined ? yield* refuse(1, "") : hash
@@ -624,7 +626,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
 
       const git = Git.of({
         addWorktree: (repo, path, options) =>
-          operation("write", "worktree add", repo, gitArgs.addWorktree(path, options), (refuse) =>
+          operation(gitCall(gitOps.addWorktree, path, options), repo, (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, repo)
               const where = normalize(path)
@@ -679,62 +681,52 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             }),
           ),
         addDetachedWorktree: (repo, path, commit) =>
-          operation(
-            "write",
-            "worktree add",
-            repo,
-            gitArgs.addDetachedWorktree(path, commit),
-            (refuse) =>
-              Effect.gen(function* () {
-                const checkout = yield* inRepo(refuse, repo)
-                const where = normalize(path)
-                if (checkouts.has(where) || locate(where) !== undefined) {
-                  return yield* refuse(128, `fatal: '${where}' already exists`)
-                }
-                const hash = resolve(checkout, commit)
-                if (hash === undefined) {
-                  return yield* refuse(128, `fatal: invalid reference: ${commit}`)
-                }
-                seq += 1
-                checkouts.set(where, {
-                  path: where,
-                  seq,
-                  head: { detached: hash },
-                  index: new Map(treeOf(hash)),
-                  work: new Map(treeOf(hash)),
-                  conflicts: new Map(),
-                  gone: false,
-                })
-              }),
+          operation(gitCall(gitOps.addDetachedWorktree, path, commit), repo, (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, repo)
+              const where = normalize(path)
+              if (checkouts.has(where) || locate(where) !== undefined) {
+                return yield* refuse(128, `fatal: '${where}' already exists`)
+              }
+              const hash = resolve(checkout, commit)
+              if (hash === undefined) {
+                return yield* refuse(128, `fatal: invalid reference: ${commit}`)
+              }
+              seq += 1
+              checkouts.set(where, {
+                path: where,
+                seq,
+                head: { detached: hash },
+                index: new Map(treeOf(hash)),
+                work: new Map(treeOf(hash)),
+                conflicts: new Map(),
+                gone: false,
+              })
+            }),
           ),
         removeWorktree: (repo, path, options = {}) =>
-          operation(
-            "write",
-            "worktree remove",
-            repo,
-            gitArgs.removeWorktree(path, options.force),
-            (refuse) =>
-              Effect.gen(function* () {
-                yield* inRepo(refuse, repo)
-                const where = normalize(path)
-                const checkout = checkouts.get(where)
-                if (checkout === undefined) {
-                  return yield* refuse(128, `fatal: '${where}' is not a working tree`)
-                }
-                if (where === main) {
-                  return yield* refuse(128, `fatal: '${where}' is a main working tree`)
-                }
-                if (!checkout.gone && !options.force && status(checkout, []).length > 0) {
-                  return yield* refuse(
-                    128,
-                    `fatal: '${where}' contains modified or untracked files, use --force to delete it`,
-                  )
-                }
-                checkouts.delete(where)
-              }),
+          operation(gitCall(gitOps.removeWorktree, path, options.force), repo, (refuse) =>
+            Effect.gen(function* () {
+              yield* inRepo(refuse, repo)
+              const where = normalize(path)
+              const checkout = checkouts.get(where)
+              if (checkout === undefined) {
+                return yield* refuse(128, `fatal: '${where}' is not a working tree`)
+              }
+              if (where === main) {
+                return yield* refuse(128, `fatal: '${where}' is a main working tree`)
+              }
+              if (!checkout.gone && !options.force && status(checkout, []).length > 0) {
+                return yield* refuse(
+                  128,
+                  `fatal: '${where}' contains modified or untracked files, use --force to delete it`,
+                )
+              }
+              checkouts.delete(where)
+            }),
           ),
         worktrees: (repo) =>
-          operation("read", "worktree list", repo, gitArgs.worktrees(), (refuse) =>
+          operation(gitCall(gitOps.worktrees), repo, (refuse) =>
             Effect.map(inRepo(refuse, repo), () =>
               [...checkouts.values()]
                 .sort((a, b) => a.seq - b.seq)
@@ -751,13 +743,13 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             ),
           ),
         pruneWorktrees: (repo) =>
-          operation("write", "worktree prune", repo, gitArgs.pruneWorktrees(), (refuse) =>
+          operation(gitCall(gitOps.pruneWorktrees), repo, (refuse) =>
             Effect.map(inRepo(refuse, repo), () => {
               for (const [path, each] of checkouts) if (each.gone) checkouts.delete(path)
             }),
           ),
         createBranch: (repo, branch, start) =>
-          operation("write", "branch", repo, gitArgs.createBranch(branch, start), (refuse) =>
+          operation(gitCall(gitOps.createBranch, branch, start), repo, (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, repo)
               if (branch === "" || /[\s~^:?*[\\]|\.\.|^-|\/$|\.lock$/.test(branch)) {
@@ -774,44 +766,33 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             }),
           ),
         deleteBranch: (repo, branch, options = {}) =>
-          operation(
-            "write",
-            "branch -d",
-            repo,
-            gitArgs.deleteBranch(branch, options.force),
-            (refuse) =>
-              Effect.gen(function* () {
-                const checkout = yield* inRepo(refuse, repo)
-                const tip = branches.get(branch)
-                if (tip === undefined)
-                  return yield* refuse(1, `error: branch '${branch}' not found`)
-                const holder = holderOf(branch)
-                if (holder !== undefined) {
-                  return yield* refuse(
-                    1,
-                    `error: cannot delete branch '${branch}' used by worktree at '${holder.path}'`,
-                  )
-                }
-                if (!options.force && !isAncestor(tip, headOf(checkout))) {
-                  return yield* refuse(1, `error: the branch '${branch}' is not fully merged`)
-                }
-                branches.delete(branch)
-              }),
+          operation(gitCall(gitOps.deleteBranch, branch, options.force), repo, (refuse) =>
+            Effect.gen(function* () {
+              const checkout = yield* inRepo(refuse, repo)
+              const tip = branches.get(branch)
+              if (tip === undefined) return yield* refuse(1, `error: branch '${branch}' not found`)
+              const holder = holderOf(branch)
+              if (holder !== undefined) {
+                return yield* refuse(
+                  1,
+                  `error: cannot delete branch '${branch}' used by worktree at '${holder.path}'`,
+                )
+              }
+              if (!options.force && !isAncestor(tip, headOf(checkout))) {
+                return yield* refuse(1, `error: the branch '${branch}' is not fully merged`)
+              }
+              branches.delete(branch)
+            }),
           ),
         rebase,
         abortRebase,
         rebaseInProgress: (worktree) =>
-          operation(
-            "read",
-            "rev-parse --git-path",
-            worktree,
-            gitArgs.gitPath("rebase-merge"),
-            (refuse) =>
-              Effect.map(inRepo(refuse, worktree), (checkout) => checkout.rebase !== undefined),
+          operation(gitCall(gitOps.gitPaths, rebaseFolders), worktree, (refuse) =>
+            Effect.map(inRepo(refuse, worktree), (checkout) => checkout.rebase !== undefined),
           ),
         // rev-parse first, which fails on a rev that names nothing, then reset to its hash, as live.
         resetBranch: resetTo(writer, revParse, (worktree, hash) =>
-          operation("write", "reset --hard", worktree, gitArgs.reset(hash), (refuse) =>
+          operation(gitCall(gitOps.reset, hash), worktree, (refuse) =>
             Effect.map(inRepo(refuse, worktree), (checkout) => {
               if ("branch" in checkout.head) branches.set(checkout.head.branch, hash)
               else checkout.head = { detached: hash }
@@ -820,7 +801,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           ),
         ),
         mergeBase: (repo, a, b) =>
-          operation("read", "merge-base", repo, gitArgs.mergeBase(a, b), (refuse) =>
+          operation(gitCall(gitOps.mergeBase, a, b), repo, (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, repo)
               const [x, y] = [resolve(checkout, a), resolve(checkout, b)]
@@ -835,7 +816,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             }),
           ),
         holds: (repo, base, branch) =>
-          operation("read", "merge-tree", repo, gitArgs.holds(base, branch), (refuse) =>
+          operation(gitCall(gitOps.holds, base, branch), repo, (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, repo)
               const [ours, theirs] = [resolve(checkout, base), resolve(checkout, branch)]
@@ -858,7 +839,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
           ),
         fastForward,
         log: (repo, base, head = "HEAD") =>
-          operation("read", "log", repo, gitArgs.log(base, head), (refuse) =>
+          operation(gitCall(gitOps.log, base, head), repo, (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, repo)
               const [from, to] = [resolve(checkout, base), resolve(checkout, head)]
@@ -883,11 +864,11 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             }),
           ),
         status: (dir, paths = []) =>
-          operation("read", "status", dir, gitArgs.status(paths), (refuse) =>
+          operation(gitCall(gitOps.status, paths), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => status(checkout, paths)),
           ),
         changedFiles: (dir, base, head = "HEAD") =>
-          operation("read", "diff --name-only", dir, gitArgs.changedFiles(base, head), (refuse) =>
+          operation(gitCall(gitOps.changedFiles, base, head), dir, (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, dir)
               const [from, to] = [resolve(checkout, base), resolve(checkout, head)]
@@ -905,7 +886,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             }),
           ),
         filesBetween: (dir, from, to) =>
-          operation("read", "diff --name-only", dir, gitArgs.filesBetween(from, to), (refuse) =>
+          operation(gitCall(gitOps.filesBetween, from, to), dir, (refuse) =>
             Effect.gen(function* () {
               const checkout = yield* inRepo(refuse, dir)
               const [a, b] = [resolve(checkout, from), resolve(checkout, to)]
@@ -919,7 +900,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             }),
           ),
         fileAt: (dir, commit, path) =>
-          operation("read", "show", dir, gitArgs.fileAt(commit, path), (refuse) =>
+          operation(gitCall(gitOps.fileAt, commit, path), dir, (refuse) =>
             Effect.gen(function* () {
               const hash = resolve(yield* inRepo(refuse, dir), commit)
               const text = hash === undefined ? undefined : treeOf(hash).get(path)
@@ -929,14 +910,14 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             }),
           ),
         trackedFiles: (dir) =>
-          operation("read", "ls-files", dir, gitArgs.trackedFiles(), (refuse) =>
+          operation(gitCall(gitOps.trackedFiles), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => [...checkout.index.keys()].sort()),
           ),
         // No paths runs no git, as live.
         mergedByUnion: (dir, paths) =>
           paths.length === 0
             ? Effect.succeed([])
-            : operation("read", "check-attr", dir, gitArgs.mergedByUnion(), (refuse) =>
+            : operation(gitCall(gitOps.mergedByUnion), dir, (refuse) =>
                 Effect.map(inRepo(refuse, dir), (checkout) => {
                   const merge = mergeAttribute(checkout.work.get(".gitattributes") ?? "")
                   return paths.filter((path) => merge(path) === "union")
@@ -944,19 +925,19 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               ),
         revParse,
         branchExists: (repo, branch) =>
-          operation("read", "show-ref", repo, gitArgs.branchExists(branch), (refuse) =>
+          operation(gitCall(gitOps.branchExists, branch), repo, (refuse) =>
             Effect.map(inRepo(refuse, repo), () => branches.has(branch)),
           ),
         commonDir: (dir) =>
-          operation("read", "rev-parse --git-common-dir", dir, gitArgs.commonDir(), (refuse) =>
+          operation(gitCall(gitOps.commonDir), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), () => posix.join(main, ".git")),
           ),
         topLevel: (dir) =>
-          operation("read", "rev-parse --show-toplevel", dir, gitArgs.topLevel(), (refuse) =>
+          operation(gitCall(gitOps.topLevel), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) => checkout.path),
           ),
         currentBranch: (dir) =>
-          operation("read", "symbolic-ref", dir, gitArgs.currentBranch(), (refuse) =>
+          operation(gitCall(gitOps.currentBranch), dir, (refuse) =>
             Effect.map(inRepo(refuse, dir), (checkout) =>
               "branch" in checkout.head && checkout.rebase === undefined
                 ? Option.some(checkout.head.branch)
@@ -964,7 +945,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
             ),
           ),
         version: (dir) =>
-          operation("read", "--version", dir, gitArgs.version(), () =>
+          operation(gitCall(gitOps.version), dir, () =>
             Effect.succeed(seed.version ?? "git version 2.47.1"),
           ),
       })
