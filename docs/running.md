@@ -637,7 +637,7 @@ how the checks did, without opening [DuckDB](analytics.md):
   Time    63% queued · 19% held back (overlap 15%) · 14% working · 2% merging
   Checks  merge 31 of 32 passed, 1 timed out (mnemos-gts.16, 34m32s) · setup 32 of 32 · full passed
   Spent   53M tokens (94% from the cache) · $44.75 (estimate) · $1.24 a ticket (median)
-  Usage   5h 11% → 17% · week 40% → 41%
+  Usage   Current usage 11% → 17% · This week 40% → 41%
 ```
 
 tutti adds them up from the run's own [event records](events.md) as it writes them, so they are what
