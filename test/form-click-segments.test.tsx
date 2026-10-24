@@ -73,7 +73,8 @@ describe("the start question on a narrow screen", () => {
         cancel={() => {}}
       />
     )
-    await withRender(node, { width: 40, height: 16 }, async (rendered) => {
+    // Tall enough for the select under the description, which a shorter screen leaves out.
+    await withRender(node, { width: 40, height: 30 }, async (rendered) => {
       const lines = linesOf(await rendered.capture())
       const y = lines.findIndex((line) => line.includes("New feature"))
       expect(y).toBeGreaterThan(0)

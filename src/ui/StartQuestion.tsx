@@ -7,11 +7,12 @@
 // started yet. A click on an option chooses it, as Enter on it does (D9, § 7.3); one on the
 // description focuses it, as the renderer focuses what is clicked.
 import type { KeyBinding, TextareaRenderable } from "@opentui/core"
+import { useTerminalDimensions } from "@opentui/react"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
-import { type Answers, ask, Field, Hint, Targets } from "./Form.tsx"
+import { type Answers, ask, Field, formHintSegments, targetLines } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
-import { seg, styled } from "./line.tsx"
+import { Lines, type Look, seg, wrap } from "./line.tsx"
 import {
   describeDescription,
   describeTitle,
@@ -92,6 +93,12 @@ export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
 /** How many lines the description's textarea shows, as orchestra's. */
 const descriptionLines = 6
 
+/** The columns a field's text is in from the screen's edges: the form's padding, and the bar's. */
+const fieldInset = 4
+
+/** The columns the hint is in from the screen's edges: the form's padding. */
+const hintInset = 2
+
 export const StartQuestion = ({
   theme,
   count,
@@ -137,30 +144,68 @@ export const StartQuestion = ({
     else answer(Work.Feature({ description: text }))
   }
 
+  // Each part as tall as its lines, wrapped by tutti's wrap, and the select given the lines left
+  // above the description, cut from its top; none where none are left. Left to Yoga, a screen too
+  // short for the form shrank its texts, which drew their lines over each other, and OpenTUI cuts
+  // nothing of what a box with no height draws (tutti-lfii).
+  const { width, height } = useTerminalDimensions()
+  const room = Math.max(width - fieldInset, 1)
+  const paragraph = (text: string, look: Look) => wrap([seg(text, look)], room)
+  const heading = [
+    ...paragraph(startTitle, form.fieldTitle),
+    ...paragraph(startDescription, form.description),
+  ]
+  const choices = targetLines(
+    options.map((option, at) =>
+      at === highlighted
+        ? [seg("> ", form.selector), seg(option, form.selected)]
+        : [seg(`  ${option}`, form.option)],
+    ),
+    room,
+  )
+  const describing = [
+    ...paragraph(describeTitle, form.fieldTitle),
+    ...paragraph(`${describeDescription} ${newLineHint}`, form.description),
+  ]
+  const errorLines = error === null ? [] : paragraph(error, form.error)
+  const hintLines = wrap(formHintSegments(hint, theme), Math.max(width - hintInset, 1))
+  const below =
+    step === "describe" ? 1 + describing.length + descriptionLines + errorLines.length : 0
+  const left = height - 1 - below - 1 - hintLines.length
+  // The select, while it is the field answered, keeps its options.
+  const shown = Math.min(
+    heading.length + choices.length,
+    Math.max(left, step === "choose" ? choices.length : 0),
+  )
+
   return (
     <box flexDirection="column" paddingX={1} paddingTop={1}>
-      <Field theme={theme} focused={step === "choose"}>
-        <text {...styled(form.fieldTitle)}>{startTitle}</text>
-        <text {...styled(form.description)}>{startDescription}</text>
-        <Targets
-          // The form's padding and the field's bar.
-          inset={4}
-          each={options.map((option, at) =>
-            at === highlighted
-              ? [seg("> ", form.selector), seg(option, form.selected)]
-              : [seg(`  ${option}`, form.option)],
-          )}
-          press={(at) => {
-            setHighlighted(() => at)
-            choose(at)
-          }}
-        />
-      </Field>
+      {shown <= 0 ? null : (
+        <box
+          flexDirection="column"
+          height={shown}
+          flexShrink={0}
+          overflow="hidden"
+          justifyContent="flex-end"
+        >
+          <box flexDirection="column" flexShrink={0}>
+            <Field theme={theme} focused={step === "choose"}>
+              <Lines lines={heading} />
+              <Lines
+                lines={choices}
+                press={(at) => {
+                  setHighlighted(() => at)
+                  choose(at)
+                }}
+              />
+            </Field>
+          </box>
+        </box>
+      )}
       {/* Mounted while hidden, so that the keys of the read that chose New feature reach it. */}
-      <box flexDirection="column" paddingTop={1} visible={step === "describe"}>
+      <box flexDirection="column" paddingTop={1} visible={step === "describe"} flexShrink={0}>
         <Field theme={theme} focused>
-          <text {...styled(form.fieldTitle)}>{describeTitle}</text>
-          <text {...styled(form.description)}>{`${describeDescription} ${newLineHint}`}</text>
+          <Lines lines={describing} />
           <textarea
             ref={description}
             focused={step === "describe"}
@@ -176,11 +221,11 @@ export const StartQuestion = ({
               : { placeholderColor: form.placeholder.fg })}
             {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
           />
-          {error === null ? null : <text {...styled(form.error)}>{error}</text>}
+          <Lines lines={errorLines} />
         </Field>
       </box>
-      <box paddingTop={1}>
-        <Hint theme={theme} keys={hint} />
+      <box flexDirection="column" paddingTop={1} flexShrink={0}>
+        <Lines lines={hintLines} />
       </box>
     </box>
   )

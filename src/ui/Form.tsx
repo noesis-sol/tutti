@@ -70,13 +70,15 @@ export const Targets = ({
   readonly press: Press
 }) => {
   const { width } = useTerminalDimensions()
-  const room = Math.max(width - inset, 1)
+  return <Lines lines={targetLines(each, Math.max(width - inset, 1))} press={press} />
+}
+
+/** The lines Targets draws `each` on, `room` columns wide: target `index`'s lines press `index`. */
+export const targetLines = (each: ReadonlyArray<Segments>, room: number): ReadonlyArray<Segments> =>
   // Each line to the field's edge, so that a click past its text lands on it, as on a row.
-  const lines = each.flatMap((segments, index) =>
+  each.flatMap((segments, index) =>
     wrap(segments, room).map((line) => targeting(padded(line, room), index)),
   )
-  return <Lines lines={lines} press={press} />
-}
 
 /**
  * The keys there are, under a form, as bubbles' help draws them for huh: each key in helpKey, its
