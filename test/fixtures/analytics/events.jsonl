@@ -58,7 +58,7 @@
 {"v":1,"time":"2026-10-20T09:41:00.120+03:00","run":"2026-10-20T06:00:00.000Z","kind":"usage_window","window":"five_hour","utilization":0.03,"resets_at":"2026-10-20T14:40:00.000+03:00"}
 {"v":1,"time":"2026-10-20T09:44:00.120+03:00","run":"2026-10-20T06:00:00.000Z","kind":"turn","ticket":"proj-a3","session":"s-a3","subtype":"success","cost_usd":0.55,"turns":18,"duration_ms":400000,"api_ms":300000,"tokens":{"claude-opus-5-5":{"input":700,"output":12000,"cache_write":40000,"cache_read":260000}}}
 {"v":1,"time":"2026-10-20T09:44:01.120+03:00","run":"2026-10-20T06:00:00.000Z","kind":"phase","ticket":"proj-a3","from":"Working","to":"Asked","cause":"FiledQuestion"}
-{"v":1,"time":"2026-10-20T09:44:01.120+03:00","run":"2026-10-20T06:00:00.000Z","kind":"asked","ticket":"proj-a3","title":"Ticket proj-a3","detail":"proj-q1 Which storage?","text":"  proj-a3 asked proj-q1: Which storage?"}
+{"v":1,"time":"2026-10-20T09:44:01.120+03:00","run":"2026-10-20T06:00:00.000Z","kind":"asked","ticket":"proj-a3","title":"Ticket proj-a3","detail":"proj-q1: Which storage?","text":"  proj-a3 asked proj-q1: Which storage?"}
 {"v":1,"time":"2026-10-20T09:44:01.120+03:00","run":"2026-10-20T06:00:00.000Z","kind":"ticket_end","ticket":"proj-a3","outcome":"needs_you","phase":"Asked","why":"proj-q1","seconds":2638.0,"turns":18,"phases":{"working":2638.0},"hand_backs":{"resolve":0,"fix":0},"tokens":{"claude-opus-5-5":{"input":700,"output":12000,"cache_write":40000,"cache_read":260000}},"cost_usd":0.55}
 {"v":1,"time":"2026-10-20T09:44:02.120+03:00","run":"2026-10-20T06:00:00.000Z","kind":"organ","organ":"reviewer","outcome":"answered","cost_usd":0.05,"turns":2,"session":"o-1","duration_ms":9000}
 {"v":1,"time":"2026-10-20T09:44:02.120+03:00","run":"2026-10-20T06:00:00.000Z","kind":"check","suite":"full","command":"scripts/check-full.sh","seconds":600.0,"result":"passed"}
@@ -74,7 +74,7 @@
 {"v":1,"time":"2026-10-21T09:18:14.040+03:00","run":"2026-10-21T06:18:11.587Z","kind":"dispatch","ticket":"proj-b1","title":"Ticket proj-b1","n":1,"limit":40,"queued":0,"text":"[1/40] proj-b1 dispatching: Ticket proj-b1"}
 {"v":1,"time":"2026-10-21T09:18:30.040+03:00","run":"2026-10-21T06:18:11.587Z","kind":"usage_window","window":"five_hour","utilization":0.1,"resets_at":"2026-10-21T13:00:00.000+03:00"}
 {"v":1,"time":"2026-10-21T09:18:30.040+03:00","run":"2026-10-21T06:18:11.587Z","kind":"usage_window","window":"seven_day","utilization":0.38,"resets_at":"2026-10-24T12:00:00.000+03:00"}
-{"v":1,"time":"2026-10-21T09:19:12.040+03:00","run":"2026-10-21T06:18:11.587Z","kind":"answered","ticket":"proj-a3","title":"Ticket proj-a3","detail":"proj-q1 Which storage?","text":"  proj-a3 answered: proj-q1"}
+{"v":1,"time":"2026-10-21T09:19:12.040+03:00","run":"2026-10-21T06:18:11.587Z","kind":"answered","ticket":"proj-a3","title":"Ticket proj-a3","detail":"proj-q1: Which storage?","text":"  proj-a3 answered: proj-q1"}
 {"v":1,"time":"2026-10-21T09:19:12.040+03:00","run":"2026-10-21T06:18:11.587Z","kind":"phase","ticket":"proj-a3","from":"Asked","to":"Working","cause":"Answered"}
 {"v":1,"time":"2026-10-21T09:19:12.040+03:00","run":"2026-10-21T06:18:11.587Z","kind":"resumed","ticket":"proj-a3","session":"s-a3","why":"answered","text":"proj-a3 resumed"}
 {"v":1,"time":"2026-10-21T09:19:12.040+03:00","run":"2026-10-21T06:18:11.587Z","kind":"dispatch","ticket":"proj-a3","title":"Ticket proj-a3","n":2,"limit":40,"queued":0,"text":"[2/40] proj-a3 dispatching: Ticket proj-a3"}

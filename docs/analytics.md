@@ -383,10 +383,10 @@ may be a later run's. A question not answered yet has no `answered`.
 
 ```sql
 WITH asked AS (
-  SELECT ticket, split_part(detail, ' ', 1) AS question, min(time) AS asked
+  SELECT ticket, split_part(detail, ':', 1) AS question, min(time) AS asked
   FROM events('.tutti/run/events.jsonl') WHERE kind = 'asked' GROUP BY ALL
 ), answered AS (
-  SELECT ticket, split_part(detail, ' ', 1) AS question, min(time) AS answered
+  SELECT ticket, split_part(detail, ':', 1) AS question, min(time) AS answered
   FROM events('.tutti/run/events.jsonl') WHERE kind = 'answered' GROUP BY ALL
 )
 SELECT ticket, question, asked, answered,
