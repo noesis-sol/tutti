@@ -51,9 +51,9 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
 import type { CheckError, Checks } from "../services/Checks.ts"
 import { Git, type GitError, gitWhy, type StatusEntry } from "../services/Git.ts"
-import { checkoutChanges } from "../services/gitStatus.ts"
+import { allChanges, checkoutChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
-import { Worktrees } from "../services/Worktrees.ts"
+import { type BadTicketId, cleanupWhy, Worktrees } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
 import { aheadKey, clearAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
@@ -983,56 +983,161 @@ export const prepare = (
   })
 
 /**
- * Removes the worktree and branch of a ticket merged, or closed with no change, as Effect.result
- * gives it: the worktree with --force when its only changes are untracked files tutti's setups or
- * checks wrote there (checkWrote.ts), as git refuses it otherwise (CLEANUP_FAILED), a detail line
- * naming them once they are gone.
+ * What removing a done ticket's worktree and branch came to (removeMerged): both gone (Removed);
+ * left as they are, as its worktree has uncommitted changes to `files` (Changed) or git can't say
+ * whether it has (Unreadable), which only `leaveChanged` asks; or git, or the ticket's ID, kept
+ * them (Failed, CLEANUP_FAILED).
  */
-const removeMerged = (ticket: FinishedTicket) =>
+export type Cleanup = Data.TaggedEnum<{
+  Removed: Record<never, never>
+  Changed: { readonly files: ReadonlyArray<string> }
+  Unreadable: { readonly error: GitError }
+  Failed: { readonly error: BadTicketId | GitError }
+}>
+
+export const Cleanup = Data.taggedEnum<Cleanup>()
+
+/** A ticket done, as retire takes it: `worktree` is undefined when git has none on its branch. */
+export interface DoneTicket {
+  readonly id: string
+  readonly title: string
+  readonly branch: string
+  readonly worktree: string | undefined
+}
+
+/**
+ * Removes the worktree and branch of a ticket done, its work on the base or none of its own left:
+ * the worktree with --force when its only changes are untracked files tutti's setups or checks
+ * wrote there (checkWrote.ts), as git refuses it otherwise (CLEANUP_FAILED), a detail line naming
+ * them once they are gone. `moveToBase`: the branch moved to the base first, so that git deletes it
+ * as merged when the base holds its changes without its commits (its reflog keeps them); "ahead"
+ * when it has commits beyond the base, or git can't say. `leaveChanged`: a worktree with any
+ * changes, tutti's files too, or one git can't read, is left with its branch rather than handed to
+ * git, as one a person may be working in. Without a worktree, only the branch is removed.
+ */
+export const removeMerged = (
+  ticket: Omit<DoneTicket, "title">,
+  options: MergeOptions,
+  how: { readonly moveToBase: boolean | "ahead"; readonly leaveChanged?: boolean },
+): Effect.Effect<Cleanup, never, Git | Worktrees | Log> =>
   Effect.gen(function* () {
-    const { worktrees, log } = yield* services
-    const written = yield* writtenOnly(ticket.worktree)
-    const at = ticket.worktree
-    if (written === undefined) return yield* Effect.result(worktrees.remove(ticket.id, { at }))
-    const removed = yield* Effect.result(worktrees.remove(ticket.id, { at, untracked: true }))
-    if (Result.isSuccess(removed)) {
-      yield* log.write(
-        detail`${ticket.id}: its setup or check left ${fileList(written)} untracked in ${ticket.worktree}, removed with it`,
+    const git = yield* Git
+    const worktrees = yield* Worktrees
+    const { id, branch, worktree: at } = ticket
+    const failed = (error: BadTicketId | GitError) => Cleanup.Failed({ error })
+    if (at === undefined) {
+      return yield* Effect.match(worktrees.remove(id), {
+        onSuccess: () => Cleanup.Removed(),
+        onFailure: failed,
+      })
+    }
+    const status = yield* Effect.result(git.status(at))
+    const written = Result.isSuccess(status) ? yield* writtenOnly(at, status.success) : undefined
+    if (how.leaveChanged === true) {
+      if (Result.isFailure(status)) return Cleanup.Unreadable({ error: status.failure })
+      const files = allChanges(status.success)
+      if (files.length > 0) return Cleanup.Changed({ files })
+    }
+    const ahead =
+      how.moveToBase === "ahead"
+        ? Effect.map(
+            Effect.result(git.log(options.repo, options.base, branch)),
+            (commits) => Result.isFailure(commits) || commits.success.length > 0,
+          )
+        : Effect.succeed(how.moveToBase)
+    if (yield* ahead) yield* restoreBranch({ branch, worktree: at }, options.base, 1)
+    const removal = written === undefined ? { at } : { at, untracked: true }
+    const removed = yield* Effect.result(worktrees.remove(id, removal))
+    if (Result.isFailure(removed)) return failed(removed.failure)
+    if (written !== undefined) {
+      yield* (yield* Log).write(
+        detail`${id}: its setup or check left ${fileList(written)} untracked in ${at}, removed with it`,
       )
     }
-    return removed
+    return Cleanup.Removed()
   })
 
 /**
- * The protected step for a ticket with nothing of its own left to merge, as `unchanged` says: its
- * worktree and branch removed (a branch with commits of its own moved to the base first, so git
- * deletes it as merged; its reflog keeps them), the ticket Done{noChange} and forgotten in
- * state.json, the `unmerged` label an earlier run gave it removed, and the epics above it closed.
+ * `CLEANUP_FAILED for <worktree> / <branch>: <why>`, of a done ticket whose worktree and branch are
+ * left: what git said, or the changes in its worktree that kept them.
+ */
+export const cleanupFailed = (
+  ticket: Pick<DoneTicket, "branch" | "worktree">,
+  cleanup: Exclude<Cleanup, { readonly _tag: "Removed" }>,
+): Line => {
+  const what =
+    ticket.worktree === undefined ? ticket.branch : `${ticket.worktree} / ${ticket.branch}`
+  const why =
+    cleanup._tag === "Failed"
+      ? cleanupWhy(cleanup.error)
+      : cleanup._tag === "Changed"
+        ? line`its worktree has uncommitted changes to ${cleanup.files}`
+        : line`git can't say whether its worktree has uncommitted changes: ${gitWhy(cleanup.error)}`
+  return line`${Tag.cleanupFailed} for ${what}: ${why}`
+}
+
+/**
+ * A done ticket retired, as `how.cause` says it is done (merged, closed with no change, merged by
+ * hand): its worktree and branch removed as removeMerged does it, as `how` asks, the `unmerged`
+ * label an earlier run gave it removed (a carried-over ticket keeps it until it merges, closeEpics
+ * taking a labelled subticket for one not merged), Done with the `closed` record `how.closed` makes
+ * of what came of them, forgotten in state.json, its marks with it, and the epics above it closed.
+ * `how.issue`: what bd showed of it just before, if its caller asked; bd is asked here without it.
+ */
+export const retire = (
+  ticket: DoneTicket,
+  options: MergeOptions,
+  how: {
+    readonly cause: Cause
+    readonly moveToBase: boolean | "ahead"
+    readonly leaveChanged?: boolean
+    readonly issue?: Issue
+    /** The closed record's `detail` and line, of what came of the cleanup and the label. */
+    readonly closed: (
+      cleanup: Cleanup,
+      unlabelled: boolean,
+    ) => { readonly detail: string; readonly text: Line }
+  },
+): Effect.Effect<void, never, MergeEnv> =>
+  Effect.gen(function* () {
+    const { beads, ledger } = yield* services
+    const { id, title } = ticket
+    const cleanup = yield* removeMerged(ticket, options, how)
+    const shown =
+      how.issue === undefined ? yield* Effect.result(beads.show(id)) : Result.succeed(how.issue)
+    const labelled = Result.isSuccess(shown) && shown.success.labels.includes(unmergedLabel)
+    const unlabelled = labelled && (yield* unlabel(id))
+    const said = how.closed(cleanup, unlabelled)
+    yield* ledger.transition(id, how.cause, {
+      said: [{ kind: "closed", ticket: id, title, ...said }],
+    })
+    // Done, it has nothing left for a later run.
+    yield* Effect.ignore((yield* Store).remove(id))
+    yield* closeEpics(id, shown)
+  })
+
+/**
+ * The protected step for a ticket with nothing of its own left to merge, as `unchanged` says: the
+ * ticket retired, Done{noChange}, a branch with commits of its own moved to the base first.
  */
 export const closeUnchanged = (
   ticket: FinishedTicket,
   options: MergeOptions,
   unchanged: Unchanged,
 ): Effect.Effect<void, never, MergeEnv> =>
-  Effect.gen(function* () {
-    const { beads, ledger } = yield* services
-    const { id, title, branch, worktree } = ticket
-    if (unchanged.own) yield* restoreBranch(ticket, options.base, 1)
-    const cleanup = yield* removeMerged(ticket)
-    const left = Result.isSuccess(cleanup)
-      ? line`worktree and branch removed`
-      : line`but ${Tag.cleanupFailed} for ${worktree} / ${branch}: ${
-          cleanup.failure._tag === "BadTicketId" ? cleanup.failure.why : gitWhy(cleanup.failure)
-        }`
-    const text = detail`${id} closed with no change: ${unchanged.why}, so there is nothing to merge; ${left}`
-    yield* ledger.transition(id, Cause.NoChange(), {
-      said: [{ kind: "closed", ticket: id, title, detail: "no change to merge", text }],
-    })
-    // Done, it has nothing left for a later run: its record in state.json goes, its marks with it.
-    yield* Effect.ignore((yield* Store).remove(id))
-    const shown = yield* Effect.result(beads.show(id))
-    if (Result.isSuccess(shown) && shown.success.labels.includes(unmergedLabel)) yield* unlabel(id)
-    yield* closeEpics(id, shown)
+  retire(ticket, options, {
+    cause: Cause.NoChange(),
+    moveToBase: unchanged.own,
+    closed: (cleanup) => {
+      const left =
+        cleanup._tag === "Removed"
+          ? line`worktree and branch removed`
+          : line`but ${cleanupFailed(ticket, cleanup)}`
+      return {
+        detail: "no change to merge",
+        text: detail`${ticket.id} closed with no change: ${unchanged.why}, so there is nothing to merge; ${left}`,
+      }
+    },
   })
 
 /**
@@ -1139,9 +1244,8 @@ export const diagnose = (
 
 /**
  * The protected step: the base fast-forwarded to `at`, the commit the ticket's merge check passed
- * on, its branch on top of the base at `onto`, in the main checkout, then the worktree and branch
- * removed, the ticket Done and forgotten in state.json, the `unmerged` label an earlier run gave it
- * removed, and the epics above it closed. Merged when it merged; Stopped, with the stop, when the
+ * on, its branch on top of the base at `onto`, in the main checkout, then the ticket retired
+ * (retire), Done. Merged when it merged; Stopped, with the stop, when the
  * main checkout or git kept it from merging; Moved, nothing merged, when its branch is no longer at
  * `at`, as when its worker committed after its check passed: the merge checks it again. A
  * fast-forward git refuses is diagnosed (Refused): BaseMoved when the base is no longer at `onto`
@@ -1156,8 +1260,8 @@ export const fastForward = (
   at: string,
 ): Effect.Effect<FastForward, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, beads, ledger, log } = yield* services
-    const { id, title, branch, worktree } = ticket
+    const { git, ledger, log } = yield* services
+    const { id, branch, worktree } = ticket
     const { repo, base } = options
     yield* ledger.refine(id, Detail.Step({ step: "fast-forward" }))
     const left = line`${branch} is not merged, its worktree ${worktree} left for review`
@@ -1267,31 +1371,19 @@ export const fastForward = (
     }
     const short = hash.slice(0, 7)
     const named = commit === undefined ? short : line`${short} ${commit.subject}`
-    const cleanup = yield* removeMerged(ticket)
-    const text = Result.isSuccess(cleanup)
-      ? detail`${id} closed (${named}); merged into ${base}, worktree and branch removed`
-      : detail`${id} closed (${named}); merged into ${base}, but ${Tag.cleanupFailed} for ${worktree} / ${branch}: ${
-          cleanup.failure._tag === "BadTicketId" ? cleanup.failure.why : gitWhy(cleanup.failure)
-        }`
-    yield* ledger.transition(id, Cause.FastForwarded({ commit: hash }), {
-      said: [
-        {
-          kind: "closed",
-          ticket: id,
-          title,
-          detail: Result.isSuccess(cleanup)
-            ? `${short} merged into ${base}`
-            : `${short} merged; cleanup failed`,
-          text,
-        },
-      ],
+    yield* retire(ticket, options, {
+      cause: Cause.FastForwarded({ commit: hash }),
+      moveToBase: false,
+      closed: (cleanup) =>
+        cleanup._tag === "Removed"
+          ? {
+              detail: `${short} merged into ${base}`,
+              text: detail`${id} closed (${named}); merged into ${base}, worktree and branch removed`,
+            }
+          : {
+              detail: `${short} merged; cleanup failed`,
+              text: detail`${id} closed (${named}); merged into ${base}, but ${cleanupFailed(ticket, cleanup)}`,
+            },
     })
-    // Done, it has nothing left for a later run: its record in state.json goes.
-    yield* Effect.ignore((yield* Store).remove(id))
-    // A carried-over ticket keeps its label until it merges: closeEpics takes a labelled
-    // subticket for one not merged.
-    const shown = yield* Effect.result(beads.show(id))
-    if (Result.isSuccess(shown) && shown.success.labels.includes(unmergedLabel)) yield* unlabel(id)
-    yield* closeEpics(id, shown)
     return FastForward.Merged()
   })

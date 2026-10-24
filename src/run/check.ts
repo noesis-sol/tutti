@@ -29,7 +29,7 @@ import {
   OutputBounds,
   type RunOptions,
 } from "../services/Checks.ts"
-import type { Git, StatusEntry } from "../services/Git.ts"
+import { type Git, isHash, type StatusEntry } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { noteWritten } from "./checkWrote.ts"
@@ -186,7 +186,7 @@ export const uncheckedOf = (value: Schema.Json | undefined): Unchecked | undefin
   const fields: Readonly<Record<string, unknown>> = Predicate.isObject(value) ? value : {}
   const hash = (key: string) => {
     const field = Object.hasOwn(fields, key) ? fields[key] : undefined
-    return typeof field === "string" && /^[0-9a-f]{7,64}$/.test(field) ? field : ""
+    return typeof field === "string" && isHash(field) ? field : ""
   }
   return { fork: hash("fork"), head: hash("head") }
 }

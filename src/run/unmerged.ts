@@ -13,11 +13,11 @@
 // merged is handed back, for carry-over to bring back ToMerge. git that can't tell keeps the label.
 import { Effect, Result } from "effect"
 import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
-import { type Commit, Git } from "../services/Git.ts"
+import { type Commit, Git, isHash, shortHash } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
-import { detail, type Log, line, Tag, ticketLine } from "./log.ts"
+import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import type { MergeOptions } from "./merge.ts"
 import { info, warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
@@ -30,12 +30,6 @@ export const forkKey = "unmerged_fork"
 
 /** The branch orchestra's worker commits on (§ 11): a ticket orchestra labelled has its work there. */
 export const orchestraBranchOf = (id: string): string => `wt/${id}`
-
-/**
- * Whether `text` is a commit hash, abbreviated or whole, and so a revision git can't take for an
- * option or a range.
- */
-export const isHash = (text: string): boolean => /^[0-9a-f]{7,64}$/.test(text)
 
 /**
  * The commit the ticket's `unmerged_fork` holds, or undefined when it holds none, or something
@@ -153,7 +147,8 @@ export const stillUnmerged = (
   })
 
 /** `<hash> <subject>`, the hash cut to 7, as the log names a commit. */
-const named = (commit: Commit) => line`${commit.hash.slice(0, 7)} ${commit.subject}`
+export const namedCommit = (commit: Commit): Line =>
+  line`${shortHash(commit.hash)} ${commit.subject}`
 
 /**
  * Removes the ticket's label, warning with LABEL_FAILED when bd can't: as the run starts, for one
@@ -189,7 +184,7 @@ export const loadUnmerged = (
       const { id } = issue
       const found = yield* mergedSince(issue, options)
       if (found.merged !== undefined) {
-        const text = detail`${id}, left unmerged by an earlier run, is on ${base} now (${named(found.merged)}); its '${unmergedLabel}' label is removed`
+        const text = detail`${id}, left unmerged by an earlier run, is on ${base} now (${namedCommit(found.merged)}); its '${unmergedLabel}' label is removed`
         yield* info(text, id)
         yield* unlabel(id)
         continue

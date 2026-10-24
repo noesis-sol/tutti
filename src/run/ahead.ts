@@ -2,6 +2,7 @@
 // (mergetrain.ts), in state.json: while it is there, the branch may have the commits of the branch
 // ahead, so its merge (merge.ts's prepare) sets aside one not put back as its worker left it.
 import { Effect, Predicate, type Schema } from "effect"
+import { isHash } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 
 /** The Store metadata key marking a ticket's branch as rebased by its train onto the branch ahead. */
@@ -31,7 +32,7 @@ export const rebasedAheadOf = (value: Schema.Json | undefined): RebasedAhead | u
   const field = (key: string) => (Object.hasOwn(fields, key) ? fields[key] : undefined)
   const hash = (key: string) => {
     const it = field(key)
-    return typeof it === "string" && /^[0-9a-f]{7,64}$/.test(it) ? it : ""
+    return typeof it === "string" && isHash(it) ? it : ""
   }
   const orig = hash("orig")
   if (orig === "") return undefined

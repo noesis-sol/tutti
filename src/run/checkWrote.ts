@@ -70,15 +70,17 @@ export const noteWritten = <A, E, R>(
  * The untracked files in the worktree, when they are its only changes and tutti's setups or checks
  * wrote every one of them (noteWritten): git worktree remove --force then loses nothing of its
  * worker's. Undefined when it has none, has changes to tracked files or untracked files tutti didn't
- * write, or git can't read it.
+ * write, or git can't read it. `read`: its status as git read it just before; it is read here
+ * without it.
  */
 export const writtenOnly = (
   worktree: string,
+  read?: ReadonlyArray<StatusEntry>,
 ): Effect.Effect<ReadonlyArray<string> | undefined, never, Git> =>
   Effect.gen(function* () {
-    const status = yield* Effect.result((yield* Git).status(worktree))
-    if (Result.isFailure(status) || trackedChanges(status.success).length > 0) return undefined
-    const untracked = untrackedFiles(status.success)
+    const status = read ?? (yield* statusIn(worktree))
+    if (status === undefined || trackedChanges(status).length > 0) return undefined
+    const untracked = untrackedFiles(status)
     if (untracked.length === 0) return undefined
     const wrote = yield* listed(worktree)
     return untracked.every((file) => wrote.has(file)) ? untracked : undefined

@@ -872,16 +872,16 @@ describe("an interrupt", () => {
           return yield* Effect.provideService(queue, Git, {
             ...git,
             // The first abort hangs, as git killed partway would never finish it.
-            abortRebase: (dir) =>
+            abandonRebase: (dir) =>
               first
                 ? Effect.sync(() => {
                     first = false
                   }).pipe(
                     Effect.andThen(Deferred.succeed(aborting, undefined)),
                     Effect.andThen(Deferred.await(gate)),
-                    Effect.andThen(git.abortRebase(dir)),
+                    Effect.andThen(git.abandonRebase(dir)),
                   )
-                : git.abortRebase(dir),
+                : git.abandonRebase(dir),
           })
         }),
     )

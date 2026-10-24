@@ -27,7 +27,7 @@ import {
   SymlinkRefused,
 } from "../native/libc.ts"
 import { writeFileAtomic } from "./atomicFile.ts"
-import { type Commit, Git, type GitError, GitWriter, type StatusEntry } from "./Git.ts"
+import { type Commit, Git, type GitError, GitWriter, gitWhy, type StatusEntry } from "./Git.ts"
 
 /** A ticket ID that can't name a worktree folder and a branch; `why` says what is wrong with it. */
 export class BadTicketId extends Schema.TaggedError<BadTicketId>()("BadTicketId", {
@@ -38,6 +38,10 @@ export class BadTicketId extends Schema.TaggedError<BadTicketId>()("BadTicketId"
     return `${this.why}: ${JSON.stringify(this.id)}`
   }
 }
+
+/** What kept a ticket's worktree and branch from being removed, in a few words. */
+export const cleanupWhy = (error: BadTicketId | GitError): string =>
+  error._tag === "BadTicketId" ? error.why : gitWhy(error)
 
 /** A symbolic link stands at `path` (relative to the worktree) on the way to a run file. */
 export class RunFilesOutside extends Schema.TaggedError<RunFilesOutside>()("RunFilesOutside", {

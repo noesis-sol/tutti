@@ -15,9 +15,8 @@
 // nothing there is left to review. Its lines say so (nothingLeft) in place of `left open`.
 import { Effect, Result } from "effect"
 import { Beads, beadsWhy } from "../services/Beads.ts"
-import { gitWhy } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
-import { Worktrees } from "../services/Worktrees.ts"
+import { cleanupWhy, Worktrees } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import type { Line, Log } from "./log.ts"
@@ -134,8 +133,6 @@ export const dropNothingDone = (worktree: {
     const { id, path, branch } = worktree
     const removed = yield* Effect.result((yield* Worktrees).remove(id))
     if (Result.isSuccess(removed)) return
-    const why =
-      removed.failure._tag === "BadTicketId" ? removed.failure.why : gitWhy(removed.failure)
-    const text = log.detail`${log.Tag.cleanupFailed} for ${path} / ${branch}: ${why}`
+    const text = log.detail`${log.Tag.cleanupFailed} for ${path} / ${branch}: ${cleanupWhy(removed.failure)}`
     yield* warn(text, id)
   })

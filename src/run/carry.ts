@@ -10,7 +10,7 @@
 //   (abortLeftRebase): in line, ToMerge (§ 5.1's Unmerged), or dropped when its
 //   branch is on the base already, merged by hand (unmerged.ts's mergedSince), its worktree and
 //   branch removed as after a merge, unless the worktree has uncommitted changes
-//   (handMerged.ts's removeMerged);
+//   (merge.ts's removeMerged, as handMerged.ts's byHand says);
 // - one deferred meanwhile is shown as deferred, and dropped: undeferred, it comes back through bd
 //   ready, its worktree reused;
 // - one waiting on a question, or asked as the last run ended, comes back Asked (§ 5.1's StillAsked);
@@ -49,9 +49,10 @@ import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees
 import { retrying } from "./again.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
 import { handedBackOf, uncheckedKey, uncheckedOf } from "./check.ts"
-import { removeMerged } from "./handMerged.ts"
+import { byHand, removedText } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
+import { removeMerged } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { info } from "./say.ts"
 import { readAgain } from "./schedule.ts"
@@ -59,7 +60,7 @@ import { descendants } from "./scope.ts"
 import { resume, workerGone } from "./sessions.ts"
 import { openQuestion } from "./settle.ts"
 import { runFacts, type StartedWorker } from "./start.ts"
-import { mergedSince } from "./unmerged.ts"
+import { mergedSince, namedCommit } from "./unmerged.ts"
 import { follow, type WorkEnv } from "./work.ts"
 
 /** The metadata key holding the question an asked ticket waited on as the run ended. */
@@ -384,13 +385,14 @@ const takeUp = (
         const found = yield* mergedSince(issue, { repo: config.repo, base })
         if (found.merged !== undefined) {
           const commit = found.merged
-          const removed = yield* removeMerged(id, worktree, branch, { repo: config.repo, base })
+          const ticket = { id, branch, worktree }
+          const removed = yield* removeMerged(ticket, { repo: config.repo, base }, byHand)
           yield* dropped(
             id,
             "merged",
             carriedLine(
               id,
-              line`is dropped: ${branch} is on ${base} already (${commit.hash.slice(0, 7)} ${commit.subject})${removed.text}`,
+              line`is dropped: ${branch} is on ${base} already (${namedCommit(commit)})${removedText(ticket, removed)}`,
             ),
           )
           continue

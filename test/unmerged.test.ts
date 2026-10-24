@@ -8,14 +8,13 @@ import { unmergedLabel } from "../src/run/scope.ts"
 import {
   forkKey,
   forkOf,
-  isHash,
   labelAtEnd,
   loadUnmerged,
   mergedSince,
   namesTicket,
 } from "../src/run/unmerged.ts"
 import { Beads, BeadsFailed, type Issue } from "../src/services/Beads.ts"
-import { Git, GitWriter } from "../src/services/Git.ts"
+import { Git, GitWriter, isHash } from "../src/services/Git.ts"
 import { layer as backlogLayer, type Seed } from "../src/testing/Beads.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import { slow } from "./gates.ts"

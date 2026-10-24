@@ -4,106 +4,78 @@
 // has moved on, before the tickets set aside for a failed check are checked once more, and once more
 // as the run ends, the run asks git of each such ticket, as loadUnmerged does as the run starts
 // (unmerged.ts's mergedSince). One on the base now is Done, merged by hand: it isn't checked again,
-// its session is closed, its worktree and branch are removed as after a merge (removeMerged), its
-// `unmerged` label is removed, and the epics above it close; the tickets it blocks start, and the
-// end line and the report count it closed rather than set aside. One left `unmerged` by an earlier
-// run loses its label. A ticket being merged, handed back, or blocked on a conflict whose hand-back
-// waits for its steered worker, is left to its merge.
+// its session is closed, and it is retired as after a merge (merge.ts's retire): its worktree and
+// branch removed (removeMerged, as byHand says), its `unmerged` label removed, and the epics above it
+// closed; the tickets it blocks start, and the end line and the report count it closed rather than
+// set aside. One left `unmerged` by an earlier run loses its label. A ticket being merged, handed
+// back, or blocked on a conflict whose hand-back waits for its steered worker, is left to its merge.
 //
-// removeMerged is also the cleanup of a carried-over ticket dropped as merged by hand (carry.ts).
+// byHand and removedText are also the cleanup of a carried-over ticket dropped as merged by hand
+// (carry.ts).
 import { Effect, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
-import { type Commit, Git, gitWhy } from "../services/Git.ts"
-import { allChanges } from "../services/gitStatus.ts"
-import { Store } from "../services/Store.ts"
-import { branchOf, Worktrees } from "../services/Worktrees.ts"
-import { restoreBranch } from "./branch.ts"
+import { type Commit, Git, gitWhy, shortHash } from "../services/Git.ts"
+import { branchOf } from "../services/Worktrees.ts"
 import type { HandBacks } from "./handback.ts"
 import { handBackWaits, Ledger } from "./ledger.ts"
-import { detail, type Line, line, Tag } from "./log.ts"
-import { closeEpics, type MergeEnv, type MergeOptions } from "./merge.ts"
+import { detail, type Line, line } from "./log.ts"
+import {
+  type Cleanup,
+  cleanupFailed,
+  type DoneTicket,
+  type MergeEnv,
+  type MergeOptions,
+  retire,
+} from "./merge.ts"
 import { Cause } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
 import { info } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
-import { mergedSince, unlabel } from "./unmerged.ts"
+import { mergedSince, namedCommit as named, unlabel } from "./unmerged.ts"
 
-/** `<hash> <subject>`, the hash cut to 7, as the log names a commit. */
-const named = (commit: Commit) => line`${commit.hash.slice(0, 7)} ${commit.subject}`
-
-/** What removeMerged did with a ticket's worktree and branch, as its line goes on to say. */
-export interface Removed {
-  /** Whether both are gone. */
-  readonly removed: boolean
-  /** The rest of the line: `; worktree and branch removed`, or why they are left. */
-  readonly text: Line
+/**
+ * What removeMerged did with the worktree and branch of a ticket merged by hand, as its line goes
+ * on to say it: `; worktree and branch removed`, or why they are left.
+ */
+export const removedText = (
+  ticket: Pick<DoneTicket, "branch" | "worktree">,
+  cleanup: Cleanup,
+): Line => {
+  const { branch } = ticket
+  const worktree = ticket.worktree ?? ""
+  switch (cleanup._tag) {
+    case "Removed":
+      return ticket.worktree === undefined
+        ? line`; ${branch} removed`
+        : line`; worktree and branch removed`
+    case "Unreadable":
+      return line`; worktree ${worktree} and ${branch} left as they are, as git can't say whether ${worktree} has uncommitted changes: ${gitWhy(cleanup.error)}`
+    case "Changed":
+      return line`; worktree ${worktree} has uncommitted changes (${cleanup.files}), so it and ${branch} are left as they are (commit or remove them, then remove it)`
+    case "Failed":
+      return line`, but ${cleanupFailed(ticket, cleanup)}`
+  }
 }
 
 /**
- * Removes the worktree and branch of ticket `id`, its work on the base already, merged by hand, as
- * after a merge: the branch moved to the base first when the base holds its changes without its
- * commits (squash-merged), so that git deletes it as merged (its reflog keeps them). A worktree with
- * uncommitted changes is left, with its branch, as is one git can't say is clean. Without a
- * worktree, only the branch is removed.
+ * How the worktree and branch of a ticket merged by hand are removed (removeMerged): the branch
+ * moved to the base first when it has commits beyond it, as when the base holds its changes
+ * without its commits (squash-merged); a worktree with uncommitted changes left, with its branch,
+ * as is one git can't say is clean.
  */
-export const removeMerged = (
-  id: string,
-  worktree: string | undefined,
-  branch: string,
-  options: MergeOptions,
-): Effect.Effect<Removed, never, Git | Worktrees> =>
-  Effect.gen(function* () {
-    const git = yield* Git
-    const worktrees = yield* Worktrees
-    if (worktree !== undefined) {
-      const status = yield* Effect.result(git.status(worktree))
-      if (Result.isFailure(status)) {
-        return {
-          removed: false,
-          text: line`; worktree ${worktree} and ${branch} left as they are, as git can't say whether ${worktree} has uncommitted changes: ${gitWhy(status.failure)}`,
-        }
-      }
-      const dirty = allChanges(status.success)
-      if (dirty.length > 0) {
-        return {
-          removed: false,
-          text: line`; worktree ${worktree} has uncommitted changes (${dirty}), so it and ${branch} are left as they are (commit or remove them, then remove it)`,
-        }
-      }
-      const ahead = yield* Effect.result(git.log(options.repo, options.base, branch))
-      if (Result.isFailure(ahead) || ahead.success.length > 0) {
-        yield* restoreBranch({ branch, worktree }, options.base, 1)
-      }
-    }
-    const cleanup = yield* Effect.result(worktrees.remove(id))
-    if (Result.isSuccess(cleanup)) {
-      return {
-        removed: true,
-        text:
-          worktree === undefined ? line`; ${branch} removed` : line`; worktree and branch removed`,
-      }
-    }
-    const why =
-      cleanup.failure._tag === "BadTicketId" ? cleanup.failure.why : gitWhy(cleanup.failure)
-    const what = worktree === undefined ? branch : `${worktree} / ${branch}`
-    return { removed: false, text: line`, but ${Tag.cleanupFailed} for ${what}: ${why}` }
-  })
+export const byHand = { moveToBase: "ahead", leaveChanged: true } as const
 
-/** `; its 'unmerged' label is removed` once bd removed it; nothing for a ticket without it. */
-const unlabelled = (issue: Issue) =>
-  Effect.gen(function* () {
-    if (!issue.labels.includes(unmergedLabel)) return ""
-    return (yield* unlabel(issue.id)) ? line`; its '${unmergedLabel}' label is removed` : ""
-  })
+/** `; its 'unmerged' label is removed` once bd removed it. */
+const unlabelled = (removed: boolean) =>
+  removed ? line`; its '${unmergedLabel}' label is removed` : ""
 
 /** What a ticket of the run, set aside or blocked, was until it was merged by hand. */
 const wasOf = (phase: "Review" | "Blocked") => (phase === "Review" ? "set aside" : "blocked")
 
 /**
  * Takes the ticket of the run, set aside or blocked, as merged by hand with `commit` (see above):
- * Done, its session closed, its worktree and branch removed, its record in state.json forgotten,
- * its label removed and the epics above it closed.
+ * its session closed, then retired (merge.ts's retire), Done.
  */
 const takeAsMerged = (
   issue: Issue,
@@ -114,36 +86,27 @@ const takeAsMerged = (
 ) =>
   Effect.gen(function* () {
     const git = yield* Git
-    const ledger = yield* Ledger
-    const store = yield* Store
     const { id } = issue
     yield* rechecks.drop(id)
     // Its part in the run is over: its worker is ended, as sessions.ts's fit ends a merged one's.
     yield* (yield* AgentHost).end(id)
-    // Its worktree, as git has it on its branch.
+    // Its worktree, as git has it on its branch, removed there without looking for it again.
     const branch = branchOf(id)
     const listed = yield* Effect.result(git.worktrees(options.repo))
     const worktree = Result.isSuccess(listed)
       ? listed.success.find((each) => each.branch === branch && !each.prunable)?.path
       : undefined
-    const removed = yield* removeMerged(id, worktree, branch, options)
-    const label = yield* unlabelled(issue)
     const was = wasOf(phase)
-    const text = detail`${id}, ${was} in this run, is on ${options.base} now (${named(commit)}): merged by hand, so no longer ${was}${removed.text}${label}`
-    yield* ledger.transition(id, Cause.MergedByHand({ commit: commit.hash }), {
-      said: [
-        {
-          kind: "closed",
-          ticket: id,
-          title: issue.title,
-          detail: `${commit.hash.slice(0, 7)} merged by hand`,
-          text,
-        },
-      ],
+    const ticket = { id, title: issue.title, branch, worktree }
+    yield* retire(ticket, options, {
+      ...byHand,
+      cause: Cause.MergedByHand({ commit: commit.hash }),
+      issue,
+      closed: (cleanup, removed) => ({
+        detail: `${shortHash(commit.hash)} merged by hand`,
+        text: detail`${id}, ${was} in this run, is on ${options.base} now (${named(commit)}): merged by hand, so no longer ${was}${removedText(ticket, cleanup)}${unlabelled(removed)}`,
+      }),
     })
-    // Done, it has nothing left for a later run: its record in state.json goes.
-    yield* Effect.ignore(store.remove(id))
-    yield* closeEpics(id)
   })
 
 /**
@@ -201,8 +164,7 @@ export const mergedByHand = (
       if (state.tickets.has(issue.id) || found.includes(issue.id)) continue
       const merged = (yield* mergedSince(issue, options)).merged
       if (merged === undefined) continue
-      const removed = yield* unlabel(issue.id)
-      const label = removed ? line`; its '${unmergedLabel}' label is removed` : ""
+      const label = unlabelled(yield* unlabel(issue.id))
       const text = detail`${issue.id}, left unmerged by an earlier run, is on ${base} now (${named(merged)}): merged by hand${label}`
       yield* info(text, issue.id)
       found.push(issue.id)
