@@ -322,11 +322,11 @@ export interface Workers {
 /**
  * The workers of a host whose project's check commands are `checks` (they classify as testing).
  * Each worker's attention counter, and its wait for a finished task's report, runs in the scope. A
- * report that doesn't come is written to the Log, when there is one, else logged as a warning.
+ * report that doesn't come is written to the Log.
  */
 export const makeWorkers = (
   checks: ReadonlyArray<string> = [],
-): Effect.Effect<Workers, never, Attention | Transcripts | Scope.Scope> =>
+): Effect.Effect<Workers, never, Attention | Transcripts | Log | Scope.Scope> =>
   Effect.gen(function* () {
     const attention = yield* Attention
     const transcripts = yield* Transcripts
@@ -338,16 +338,13 @@ export const makeWorkers = (
     const one = yield* Semaphore.make(1)
     const compactions = yield* PubSub.unbounded<Compaction>()
     const contexts = yield* SubscriptionRef.make<ReadonlyMap<string, ContextUsage>>(new Map())
-    const log = yield* Effect.serviceOption(Log)
+    const log = yield* Log
     const usage = yield* Effect.serviceOption(UsageLimits)
     const spending = yield* Effect.serviceOption(Spending)
 
     const late = (ticket: string) => {
       const text = `a background task ended and no turn came to report it within ${reportWait}; not waiting for it`
-      return Option.match(log, {
-        onNone: () => Effect.logWarning(`${ticket}: ${text}`),
-        onSome: (each) => each.write(detail`${ticket}: ${text}`),
-      })
+      return log.write(detail`${ticket}: ${text}`)
     }
 
     const fold = (entry: WorkerEntry, event: WorkerEvent): Effect.Effect<void> =>
@@ -396,10 +393,7 @@ export const makeWorkers = (
       { kind, why }: Data.TaggedEnum.Value<Reading, "Unreadable">,
     ) => {
       const text = `a ${kind} message it couldn't read, left out of its state: ${why}`
-      return Option.match(log, {
-        onNone: () => Effect.logWarning(`${ticket}: ${text}`),
-        onSome: (each) => each.write(detail`${ticket}: ${text}`),
-      })
+      return log.write(detail`${ticket}: ${text}`)
     }
 
     const openCount = (ticket: string) =>

@@ -223,7 +223,6 @@ describe("AgentSdkLanguageModel", () => {
       jsonSchema: { type: "object" },
       call: { organ: "plan" },
       cwd: "/tmp/x",
-      partial: false,
     })
     expect(options).toMatchObject({
       systemPrompt: "S",
@@ -247,30 +246,14 @@ describe("AgentSdkLanguageModel", () => {
     expect(value(exit).text).toBe("Plain words.")
   })
 
-  const delta = (text: string) => ({
-    message: {
-      type: "stream_event",
-      event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
-      parent_tool_use_id: null,
-      uuid: crypto.randomUUID(),
-    },
-  })
-
-  test("streamText gives the text deltas, then the finish", async () => {
+  test("streamText fails: organs don't stream", async () => {
     const { exit } = await run(
-      [delta("Hel"), delta("lo"), { text: "Hello" }],
+      answered,
       LanguageModel.streamText({ prompt: "Say hello." }).pipe(Stream.runCollect),
     )
-    const parts = value(exit)
-    expect(parts.flatMap((p) => (p.type === "text-delta" ? [p.delta] : []))).toEqual(["Hel", "lo"])
-    expect(parts.map((p) => p.type)).toEqual([
-      "text-start",
-      "text-delta",
-      "text-delta",
-      "text-end",
-      "response-metadata",
-      "finish",
-    ])
+    const error = aiError(exit)
+    expect(error.reason._tag).toBe("InvalidUserInputError")
+    expect(error.message).toContain("Organs don't stream")
   })
 
   describe("refusals", () => {
@@ -317,43 +300,10 @@ describe("AgentSdkLanguageModel", () => {
         uuid: crypto.randomUUID(),
       },
     }
-    /** The refused attempt's end, as its stream says it. */
-    const refused = {
-      message: {
-        type: "stream_event",
-        event: { type: "message_delta", delta: { stop_reason: "refusal", stop_sequence: null } },
-        parent_tool_use_id: null,
-        uuid: crypto.randomUUID(),
-      },
-    }
 
     test("model_refusal_fallback isn't one: the fallback model's answer is the answer", async () => {
       const { exit } = await run([fallback, ...answered], verdict)
       expect(value(exit).value).toMatchObject({ verdict: "hand-back" })
-    })
-
-    test("streamText answers with the fallback's text when the refusal streamed none", async () => {
-      const { exit } = await run(
-        [refused, delta("Hel"), delta("lo"), { text: "Hello" }, fallback],
-        LanguageModel.streamText({ prompt: "Say hello." }).pipe(Stream.runCollect),
-      )
-      const parts = value(exit)
-      expect(parts.flatMap((p) => (p.type === "text-delta" ? [p.delta] : []))).toEqual([
-        "Hel",
-        "lo",
-      ])
-      expect(parts.at(-1)?.type).toBe("finish")
-    })
-
-    test("streamText fails a fallback after the refused attempt's text streamed", async () => {
-      const { exit } = await run(
-        [delta("I can"), refused, delta("Hello"), { text: "Hello" }, fallback],
-        LanguageModel.streamText({ prompt: "Say hello." }).pipe(Stream.runCollect),
-      )
-      const error = aiError(exit)
-      expect(error.reason._tag).toBe("UnknownError")
-      expect(error.message).toContain("model_refusal_fallback")
-      expect(error.message).toContain("retried on claude-other")
     })
   })
 

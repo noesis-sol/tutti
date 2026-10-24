@@ -39,7 +39,6 @@ interface Sent {
 /** How the fake answers the next requests. */
 type Answer =
   | { readonly _tag: "Message"; readonly text: string }
-  | { readonly _tag: "Stream"; readonly deltas: ReadonlyArray<string> }
   | {
       readonly _tag: "Error"
       readonly status: number
@@ -71,34 +70,6 @@ const message = (model: string, text: string) => ({
   context_management: null,
 })
 
-/** The Messages API's stream of events for one text block of `deltas`, as SSE. */
-const events = (model: string, deltas: ReadonlyArray<string>): string =>
-  [
-    { type: "message_start", message: message(model, "") },
-    { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-    ...deltas.map((text) => ({
-      type: "content_block_delta",
-      index: 0,
-      delta: { type: "text_delta", text },
-    })),
-    { type: "content_block_stop", index: 0 },
-    {
-      type: "message_delta",
-      delta: { stop_reason: "end_turn", stop_sequence: null, container: null },
-      usage: {
-        input_tokens: null,
-        output_tokens: 30,
-        cache_creation_input_tokens: null,
-        cache_read_input_tokens: null,
-        server_tool_use: null,
-      },
-      context_management: null,
-    },
-    { type: "message_stop" },
-  ]
-    .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
-    .join("")
-
 /** How long the fake takes to answer, so a call's recorded time has something to measure. */
 const answerAfterMs = 30
 
@@ -121,10 +92,6 @@ const server = Bun.serve({
     switch (next._tag) {
       case "Message":
         return Response.json(message(model, next.text))
-      case "Stream":
-        return new Response(events(model, next.deltas), {
-          headers: { "content-type": "text/event-stream" },
-        })
       case "Error":
         return Response.json(
           { type: "error", error: { type: next.type, message: next.message } },
@@ -306,75 +273,18 @@ describe("an organ over the Messages API", () => {
   })
 })
 
-/** The text of a stream's text deltas. */
-const streamed = (stream: Stream.Stream<unknown, unknown>) =>
-  Effect.map(Stream.runCollect(stream), (parts) =>
-    Array.from(parts)
-      .flatMap((part) => {
-        const each = part as { type: string; delta?: string }
-        return each.type === "text-delta" && each.delta !== undefined ? [each.delta] : []
-      })
-      .join(""),
-  )
-
-/** streamText over the provider, as the organ in OrganCall. */
-const stream = (call: typeof OrganCall.Service) =>
-  Effect.flatMap(LanguageModel.LanguageModel, (model) =>
-    streamed(
-      model
-        .streamText({ prompt: [{ role: "user", content: "Say so." }] })
-        .pipe(Stream.provideService(OrganCall, call)),
-    ),
-  )
-
 describe("streamText over the Messages API", () => {
-  test("streams the fake's text, with the call's model and effort", async () => {
-    next = { _tag: "Stream", deltas: ["The tests ", "fail."] }
-    const call = {
-      organ: "reviewer",
-      ticket: "tut-2",
-      model: "claude-opus-5-5",
-      effort: "xhigh",
-    } as const
-    const { result, records, total } = await run(stream(call))
-    if (Exit.isFailure(result)) throw new Error(String(result.cause))
-    expect(result.value).toBe("The tests fail.")
-    expect(sent[0]?.body).toMatchObject({
-      stream: true,
-      model: "claude-opus-5-5",
-      max_tokens: maxTokens,
-      output_config: { effort: "high" },
-    })
-    expect(total).toMatchObject({ calls: 1, costUsd: 0, unknown: 1 })
-    expect(organRecord(records)).toMatchObject({
-      organ: "reviewer",
-      ticket: "tut-2",
-      outcome: "unpriced",
-    })
-  })
-
-  test("no model or effort in the call: the default model, and no effort sent", async () => {
-    next = { _tag: "Stream", deltas: ["ok"] }
-    const { result } = await run(stream({ organ: "screen" }))
-    expect(Exit.isSuccess(result)).toBe(true)
-    expect(sent[0]?.body.model).toBe(defaultModel)
-    expect(sent[0]?.body.output_config).toBeUndefined()
-  })
-
-  test("an error response fails the stream, a call of unknown cost with no result", async () => {
-    next = { _tag: "Error", status: 400, type: "invalid_request_error", message: "bad stream" }
-    const { result, records, logged } = await run(stream({ organ: "reviewer" }))
-    const [failure] = failures(result)
-    expect(failure).toMatchObject({ _tag: "AiError" })
-    expect(String(failure)).toContain("bad stream")
-    expect(organRecord(records)).toMatchObject({ organ: "reviewer", outcome: "no_result" })
-    expect(logged.some((l) => /^ORGAN reviewer: cost unknown, no result after/.test(l))).toBe(true)
-  })
-
-  test("an organ that reads with Claude Code's tools is refused before any request", async () => {
-    const reads = { tools: ["Read"], cwd: "/work/project", hooks: {}, maxBudgetUsd: 1 }
-    const { result, records } = await run(stream({ organ: "scout", reads }))
-    expect(String(failures(result)[0])).toContain("Claude Code's tools")
+  test("fails before any request: organs don't stream", async () => {
+    const { result, records } = await run(
+      Effect.flatMap(LanguageModel.LanguageModel, (model) =>
+        Stream.runCollect(
+          model
+            .streamText({ prompt: [{ role: "user", content: "Say so." }] })
+            .pipe(Stream.provideService(OrganCall, { organ: "reviewer" })),
+        ),
+      ),
+    )
+    expect(String(failures(result)[0])).toContain("Organs don't stream")
     expect(sent).toHaveLength(0)
     expect(records).toHaveLength(0)
   })

@@ -13,13 +13,19 @@
 //   with no Claude Code: its call fails with InvalidUserInputError.
 // - Cost: the Messages API reports a response's usage but no price, so each call goes to OrganCost
 //   as a call of unknown cost, with the time it ran: answered, or ended with no result.
+// - streamText fails, as the Agent SDK's does: organs don't stream.
 import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic"
 import { Clock, Effect, Exit, type FileSystem, Layer, Redacted, Result, Stream } from "effect"
 import { AiError, LanguageModel } from "effect/ai"
 import { FetchHttpClient, type HttpClient } from "effect/http"
 import type { ClaudeCode } from "../agent/ClaudeCode.ts"
 import { apiKeySet, apiKeyVariable } from "../agent/env.ts"
-import { layer as agentSdkLayer, OrganCall, type OrganCallConfig } from "./AgentSdkLanguageModel.ts"
+import {
+  layer as agentSdkLayer,
+  OrganCall,
+  type OrganCallConfig,
+  streamRefused,
+} from "./AgentSdkLanguageModel.ts"
 import { OrganCost } from "./OrganCost.ts"
 
 const module = "AnthropicProvider"
@@ -135,34 +141,13 @@ export const languageModel: Effect.Effect<
   type Untyped<A> = (options: unknown) => A
   const generateText = model.generateText as unknown as Untyped<Effect.Effect<unknown, unknown>>
   const generateObject = model.generateObject as unknown as Untyped<Effect.Effect<unknown, unknown>>
-  const streamText = model.streamText as unknown as Untyped<Stream.Stream<unknown, unknown>>
   return LanguageModel.LanguageModel.of({
     ...model,
     generateText: ((options: unknown) =>
       asOrgan("generateText", generateText(options))) as unknown as typeof model.generateText,
     generateObject: ((options: unknown) =>
       asOrgan("generateObject", generateObject(options))) as unknown as typeof model.generateObject,
-    streamText: ((options: unknown) =>
-      Stream.unwrap(
-        Effect.gen(function* () {
-          const call = yield* OrganCall
-          if (call.reads !== undefined) return Stream.fail(readsRefused("streamText", call))
-          const startedAt = yield* Clock.currentTimeMillis
-          return streamText(options).pipe(
-            Stream.provideService(AnthropicLanguageModel.Config, callConfig(call)),
-            Stream.onExit((exit) =>
-              Effect.flatMap(Clock.currentTimeMillis, (endedAt) =>
-                costs.recordUnknown({
-                  organ: call.organ,
-                  ...(call.ticket === undefined ? {} : { ticket: call.ticket }),
-                  durationMs: endedAt - startedAt,
-                  ...(Exit.isSuccess(exit) ? { unpriced: true as const } : {}),
-                }),
-              ),
-            ),
-          )
-        }),
-      )) as unknown as typeof model.streamText,
+    streamText: (() => Stream.fail(streamRefused(module))) as unknown as typeof model.streamText,
   })
 })
 

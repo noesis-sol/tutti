@@ -118,7 +118,6 @@ export class UsageProbe extends Context.Service<
                 jsonSchema: undefined,
                 call: { organ: probeOrgan, model: probeModel(limit) },
                 cwd,
-                partial: false,
               }),
               maxTurns: 1,
             },

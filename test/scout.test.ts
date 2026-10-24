@@ -184,7 +184,6 @@ describe("the scout's options", () => {
       jsonSchema: { type: "object" },
       call: { organ: "scout", ...(organ.reads === undefined ? {} : { reads: organ.reads }) },
       cwd: root,
-      partial: false,
     })
     expect(options).toMatchObject({
       tools: ["Read", "Glob", "Grep"],

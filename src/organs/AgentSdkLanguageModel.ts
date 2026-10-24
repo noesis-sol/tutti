@@ -13,8 +13,9 @@
 // - A refusal, from the SDK's model_refusal_no_fallback message or the result's stop_reason, fails
 //   with ContentPolicyError (organs see OrganRefused), even when the result says success. A
 //   model_refusal_fallback is not one: the turn was retried on the fallback model, and the result
-//   is its answer. streamText fails such a turn whose refused attempt had streamed text, as that
-//   text can't be taken back.
+//   is its answer.
+// - Organs call generateObject, which goes through generateText: streamText fails, with
+//   InvalidUserInputError (streamRefused).
 // - The session is isolated: no tools, no MCP servers, no settings, no prompts, no transcript, a
 //   fresh private temp folder removed afterwards, and a worker's environment (§ 4.13). An organ
 //   that reads the repository (the scout, § 6.3) names its read-only tools, the folder it reads,
@@ -141,8 +142,6 @@ export interface OrganOptionsInput {
   readonly call: OrganCallConfig
   /** The folder the session runs in: a fresh private temp folder, or `call.reads`'s. */
   readonly cwd: string
-  /** Partial messages, for streamText. */
-  readonly partial: boolean
 }
 
 /**
@@ -162,7 +161,6 @@ export const organOptions = (input: OrganOptionsInput): SessionSpec => ({
   permissionPrompts: "none",
   persistSession: false,
   cwd: input.cwd,
-  includePartialMessages: input.partial,
   ...(input.call.model === undefined ? {} : { model: input.call.model }),
   ...(input.call.effort === undefined ? {} : { effort: input.call.effort }),
   ...(input.jsonSchema === undefined
@@ -181,6 +179,16 @@ const userMessage = (texts: ReadonlyArray<string>): SDKUserMessage => ({
 
 const fail = (method: string, reason: AiError.AiErrorReason) =>
   AiError.make({ module, method, reason })
+
+/** The failure of a streamText call, which organs don't make, in the provider `module`. */
+export const streamRefused = (module: string): AiError.AiError =>
+  AiError.make({
+    module,
+    method: "streamText",
+    reason: new AiError.InvalidUserInputError({
+      description: "Organs don't stream: they answer with generateText or generateObject",
+    }),
+  })
 
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
@@ -255,16 +263,6 @@ const refusalOf = (messages: ReadonlyArray<SDKMessage>): string | undefined => {
   for (const m of messages) {
     if (m.type === "system" && m.subtype === "model_refusal_no_fallback") {
       return `${m.subtype}: ${m.api_refusal_category ?? "no category"}: ${m.content}`
-    }
-  }
-  return undefined
-}
-
-/** The turn's retry on the fallback model after a refusal, as a phrase, if it had one. */
-const fallbackOf = (messages: ReadonlyArray<SDKMessage>): string | undefined => {
-  for (const m of messages) {
-    if (m.type === "system" && m.subtype === "model_refusal_fallback") {
-      return `${m.subtype}: ${m.original_model} refused (${m.api_refusal_category ?? "no category"}), retried on ${m.fallback_model}`
     }
   }
   return undefined
@@ -422,8 +420,6 @@ export interface SessionTurn {
   /** The JSON Schema of a JSON response; undefined for text. */
   readonly jsonSchema: Record<string, unknown> | undefined
   readonly call: OrganCallConfig
-  /** Partial messages, for streamText. */
-  readonly partial: boolean
   /** Whether the turn's result has come: a session closed before it is a turn not over. */
   readonly ended: () => boolean
 }
@@ -484,7 +480,6 @@ export const make = (
       method: string,
       turn: Turn,
       jsonSchema: Record<string, unknown> | undefined,
-      partial: boolean,
     ): Stream.Stream<SDKMessage, AiError.AiError> =>
       Stream.unwrap(
         Effect.gen(function* () {
@@ -509,7 +504,6 @@ export const make = (
             turn,
             jsonSchema,
             call,
-            partial,
             ended: () => ended,
           })
           return played.pipe(
@@ -529,7 +523,7 @@ export const make = (
       generateText: (provider) =>
         Effect.gen(function* () {
           const { turn, jsonSchema } = yield* prepare("generateText", provider)
-          const all = yield* Stream.runCollect(messages("generateText", turn, jsonSchema, false))
+          const all = yield* Stream.runCollect(messages("generateText", turn, jsonSchema))
           const result = yield* outcome("generateText", all)
           const json = jsonSchema !== undefined
           const text = yield* answerText("generateText", result, json)
@@ -541,65 +535,7 @@ export const make = (
           return parts
         }),
 
-      // With partial messages, the turn's text_delta events become text-delta parts, and the
-      // result becomes the finish part, or the error. A JSON answer comes as one text part. An
-      // attempt that streamed text and then ended on a refusal, retried on the fallback model,
-      // left text in the stream the answer doesn't have: the turn fails rather than answer both.
-      streamText: (provider) =>
-        Stream.unwrap(
-          Effect.map(prepare("streamText", provider), ({ turn, jsonSchema }) => {
-            const seen: Array<SDKMessage> = []
-            const json = jsonSchema !== undefined
-            const id = "text-0"
-            let open = false
-            let refusedAfterText = false
-            return messages("streamText", turn, jsonSchema, !json).pipe(
-              Stream.mapEffect((m) => {
-                seen.push(m)
-                const out: Array<Response.StreamPartEncoded> = []
-                if (m.type === "stream_event" && m.parent_tool_use_id === null) {
-                  const event = m.event
-                  if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-                    if (!open) out.push({ type: "text-start", id })
-                    open = true
-                    out.push({ type: "text-delta", id, delta: event.delta.text })
-                  }
-                  if (event.type === "message_delta" && event.delta.stop_reason === "refusal") {
-                    refusedAfterText ||= open
-                  }
-                  return Effect.succeed(out)
-                }
-                if (m.type !== "result") return Effect.succeed(out)
-                return Effect.gen(function* () {
-                  const result = yield* outcome("streamText", seen)
-                  const fallback = fallbackOf(seen)
-                  if (refusedAfterText && fallback !== undefined) {
-                    return yield* fail(
-                      "streamText",
-                      new AiError.UnknownError({
-                        description: `${fallback}, after the refused attempt's text was streamed`,
-                        metadata: resultMetadata(result),
-                      }),
-                    )
-                  }
-                  if (json) {
-                    const text = yield* answerText("streamText", result, json)
-                    out.push(
-                      { type: "text-start", id },
-                      { type: "text-delta", id, delta: text },
-                      { type: "text-end", id },
-                    )
-                  } else if (open) {
-                    out.push({ type: "text-end", id })
-                  }
-                  out.push(metadataPart(seen, result), finishPart(result, json))
-                  return out
-                })
-              }),
-              Stream.flatMap((parts) => Stream.fromIterable(parts)),
-            )
-          }),
-        ),
+      streamText: () => Stream.fail(streamRefused(module)),
     })
   })
 
@@ -621,7 +557,7 @@ export const layer: Layer.Layer<
      * One Claude Code session of the turn, in a fresh private temp folder, or the one the organ
      * reads. Its end aborts the session if the turn isn't over, and removes its folder.
      */
-    const session: Session = ({ method, turn, jsonSchema, call, partial, ended }) =>
+    const session: Session = ({ method, turn, jsonSchema, call, ended }) =>
       Effect.gen(function* () {
         const cwd =
           call.reads?.cwd ??
@@ -636,7 +572,7 @@ export const layer: Layer.Layer<
         // has exited, before its folder goes.
         const claude = yield* claudeCode
           .open({
-            options: organOptions({ turn, jsonSchema, call, cwd, partial }),
+            options: organOptions({ turn, jsonSchema, call, cwd }),
             prompt: (async function* () {
               yield userMessage(turn.userText)
             })(),

@@ -88,7 +88,6 @@ describe("Chrome's arguments", () => {
       jsonSchema: undefined,
       call: { organ: "triage" },
       cwd: "/tmp",
-      partial: false,
     })
     expect(organ.extraArgs).toEqual(off)
   })
