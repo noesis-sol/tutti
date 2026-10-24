@@ -258,7 +258,12 @@ export const loginCommand = <E, R>(repo: Effect.Effect<string, E, R>) =>
         const top = yield* Effect.orElseSucceed(repo, () => process.cwd())
         // The login reads --claude (TUTTI_CLAUDE) and the billing: no other variable, and the
         // settings' problems only leave their defaults, so a project's setup never stops it.
-        const read = yield* loadLenient({ ...noFlags, claude: given.claude }, top, loginVariables)
+        const read = yield* loadLenient(
+          { ...noFlags, claude: given.claude },
+          top,
+          loginVariables,
+          process.cwd(),
+        )
         for (const problem of read.userProblems) yield* Console.error(`tutti login: ${problem}`)
         const configured =
           read.problems.length === 0

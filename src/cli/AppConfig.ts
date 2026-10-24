@@ -5,6 +5,10 @@
 //
 // A variable's problem counts only when no flag overrides it, as in orchestra: a flag fixes a bad
 // standing choice for one run. An empty variable is unset.
+//
+// A relative path in a flag (--prompt, --worktrees, --claude) is taken from the folder tutti was
+// started in, as a shell's completion offers it; in a variable, which stands for every run of the
+// project, it is taken from the main checkout's top level, as the settings' are.
 import { availableParallelism } from "node:os"
 import {
   basename,
@@ -118,7 +122,8 @@ export interface AppConfigValue {
   readonly billing: (typeof billings)[number]
   readonly usageLimitWait: Duration.Duration
   /**
-   * The Claude Code sessions run (--claude): as given, until the startup checks resolve it
+   * The Claude Code sessions run (--claude): a command name as given, a path made absolute, until
+   * the startup checks resolve it
    * (src/agent/claudeBinary.ts) into the executable they pass as `pathToClaudeCodeExecutable`, the
    * embedded one extracted in a compiled build; null for the SDK's own.
    */
@@ -142,6 +147,8 @@ export class AppConfig extends Context.Service<AppConfig, AppConfigValue>()(
 /** What a run's configuration is resolved from. */
 export interface Sources {
   readonly repo: string
+  /** The folder tutti was started in, which a flag's relative path is taken from; `repo` if not given. */
+  readonly cwd?: string
   readonly flags: RunFlags
   /** An environment variable's value, undefined when it is unset. */
   readonly env: (name: string) => string | undefined
@@ -268,9 +275,15 @@ export const resolveAll = (
     Option.getOrElse(orchestraMachine, () => defaultMachineWorkers(cores)),
   )
 
+  /** A path setting absolute: a flag's from the folder tutti was started in, else from `repo`. */
+  const pathOf = (key: RunFlagName, path: string) =>
+    resolvePath(flagGiven(key) ? (sources.cwd ?? repo) : repo, path)
+
   const prompt = pick("prompt", workerPromptFile)
   const worktrees = pick("worktrees", null)
-  const worktreesPath = worktrees === null ? defaultWorktrees(repo) : resolvePath(repo, worktrees)
+  const worktreesPath = worktrees === null ? defaultWorktrees(repo) : pathOf("worktrees", worktrees)
+  // A --claude with no `/` is a command name, which the startup checks look up on PATH.
+  const claude = pick("claude", null)
   if (within(worktreesPath, repo)) {
     problems.push(
       `--worktrees (or TUTTI_WORKTREES) (${worktreesPath}) must be outside the repository, or git sees the worktrees as untracked files.`,
@@ -324,7 +337,7 @@ export const resolveAll = (
     notify: pick("notify", user.notify),
     plain: pick("plain", false),
     mouse: !pick("noMouse", !user.mouse),
-    prompt: resolvePath(repo, prompt),
+    prompt: pathOf("prompt", prompt),
     worktrees: worktreesPath,
     runs: runsDir(env),
     machineWorkers,
@@ -332,7 +345,7 @@ export const resolveAll = (
     keepAwake: pick("keepAwake", false),
     billing: pick("billing", user.billing),
     usageLimitWait: pick("usageLimitWait", defaultUsageLimitWait),
-    claude: pick("claude", null),
+    claude: claude === null || !claude.includes("/") ? claude : pathOf("claude", claude),
     // § 7.11: the flag, TUTTI_COLOUR_SCHEME, the user config, the settings, orchestra. The
     // settings' own default is orchestra too.
     colourScheme: pick("colourScheme", user.colour_scheme ?? settings.ui.colour_scheme),
@@ -387,12 +400,13 @@ const readVariables = Effect.gen(function* () {
 
 /**
  * Reads the TUTTI_* variables, the user config and the project's settings, and resolves them under
- * `flags` for the project at `repo`, the main checkout's top level. Then it loads the colour
- * scheme, which never fails: one that can't be used gives orchestra and says why.
+ * `flags` for the project at `repo`, the main checkout's top level, a flag's relative path taken
+ * from `cwd`. Then it loads the colour scheme, which never fails: one that can't be used gives
+ * orchestra and says why.
  */
-export const load = (flags: RunFlags, repo: string) =>
+export const load = (flags: RunFlags, repo: string, cwd: string = repo) =>
   Effect.gen(function* () {
-    const read = yield* loadLenient(flags, repo)
+    const read = yield* loadLenient(flags, repo, undefined, cwd)
     const problems = [...read.problems, ...read.userProblems, ...read.settingsProblems]
     if (problems.length === 0) return yield* withScheme(read.value)
     return yield* new SetupProblem({ problems })
@@ -402,9 +416,15 @@ export const load = (flags: RunFlags, repo: string) =>
  * The configuration `load` reads, without failing, beside its problems: the flags' and variables'
  * (`problems`), the user config's (`userProblems`) and the settings' (`settingsProblems`), a
  * file with problems giving its defaults. With `only`, it reads only those variables, as though
- * the others were unset. It leaves the colour scheme orchestra; `withScheme` loads it.
+ * the others were unset. A flag's relative path is taken from `cwd`. It leaves the colour scheme
+ * orchestra; `withScheme` loads it.
  */
-export const loadLenient = (flags: RunFlags, repo: string, only?: ReadonlyArray<string>) =>
+export const loadLenient = (
+  flags: RunFlags,
+  repo: string,
+  only?: ReadonlyArray<string>,
+  cwd: string = repo,
+) =>
   Effect.gen(function* () {
     const userProblems: Array<string> = []
     const settingsProblems: Array<string> = []
@@ -417,7 +437,7 @@ export const loadLenient = (flags: RunFlags, repo: string, only?: ReadonlyArray<
     )
     const env = (name: string) =>
       only === undefined || only.includes(name) ? variables.get(name) : undefined
-    const { value, problems } = resolveAll({ repo, flags, env, user, settings })
+    const { value, problems } = resolveAll({ repo, cwd, flags, env, user, settings })
     return {
       value,
       problems,
@@ -437,5 +457,9 @@ export const withScheme = (config: AppConfigValue) =>
     return { ...config, scheme }
   })
 
-/** The live layer: the configuration of the run `flags` start in the project at `repo`. */
-export const layer = (flags: RunFlags, repo: string) => Layer.effect(AppConfig, load(flags, repo))
+/**
+ * The live layer: the configuration of the run `flags` start in the project at `repo`, from the
+ * folder `cwd`.
+ */
+export const layer = (flags: RunFlags, repo: string, cwd: string = repo) =>
+  Layer.effect(AppConfig, load(flags, repo, cwd))

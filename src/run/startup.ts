@@ -490,7 +490,7 @@ export const live = (cwd: string, flags: RunFlags) =>
   ({
     cwd,
     env: process.env,
-    config: (repo) => load(flags, repo),
+    config: (repo) => load(flags, repo, cwd),
     beads: (repo) => Beads.layer({ cwd: repo }),
     claude: (given) => resolveClaude(given, cwd),
     account: Account.layer,

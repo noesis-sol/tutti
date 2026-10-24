@@ -1523,6 +1523,8 @@ The flags are orchestra's, minus those for terminals and agent kinds:
 
 Flags are parsed with `effect/cli`. Each has a `TUTTI_*` variable (`TUTTI_CONCURRENT`, `TUTTI_TICKET`, …), read the way orchestra reads its on-or-off variables: `1`, `true`, `yes` or `on`; `0`, `false`, `no` or `off`; anything else is a setup problem.
 
+A relative path in a flag (`--prompt`, `--worktrees`, `--claude`) is taken from the folder tutti was started in, as the shell completed it, so `cd repo/sub && tutti --prompt ./p.md` reads `repo/sub/p.md`, and `--prompt ../x.md` from a linked worktree reads beside that worktree (tutti-o6pv). In a variable (`TUTTI_PROMPT`, `TUTTI_WORKTREES`, `TUTTI_CLAUDE`), which stands for every run of the project, it is taken from the main checkout's top level, as the settings' paths are. A `--claude` with no `/` is a command name, looked up on PATH.
+
 orchestra's unprefixed `orchestrate.sh` variables (`LIMIT`, `NOTIFY`, `TRIAGE`, `REVIEW`, `DONE_SO_FAR`, `AGENT_KIND`, `WT_ROOT`, `WORKER_PROMPT`) are **not** read (D5). `DONE_SO_FAR` has no replacement, since `--limit` counts only the tickets each run starts.
 
 ### 8.3 `tutti init`
