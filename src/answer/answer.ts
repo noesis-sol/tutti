@@ -24,6 +24,7 @@ import {
   takeRefusal,
   writeExclusive,
 } from "../agent/attentionFiles.ts"
+import { terminalSafe } from "../run/events.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { answerWith } from "./answerWith.ts"
 
@@ -211,9 +212,12 @@ export const show = (requests: ReadonlyArray<RequestFile>): string => {
   return blocks.join("\n\n")
 }
 
-/** The open requests for scripts and agents: the files' contents, as one JSON array. */
+/**
+ * The open requests for scripts and agents: the files' contents, as one JSON array, with what a
+ * terminal may act on or reorder (C1 controls, bidi overrides) escaped, as events.jsonl has it.
+ */
 export const showJson = (requests: ReadonlyArray<RequestFile>): string =>
-  JSON.stringify(requests, null, 2)
+  terminalSafe(JSON.stringify(requests, null, 2))
 
 /** What the command prints once the run has taken an answer. */
 export const takenLine = (given: Given): string =>
