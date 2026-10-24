@@ -30,7 +30,7 @@ describe("init's checklist", () => {
     const asking: Asking = {
       _tag: "Checklist",
       id: 1,
-      field: { title: "Checks", options: ["tsc", long], ticked: [] },
+      field: { title: "Checks", description: "", options: ["tsc", long], ticked: [] },
       answer: (ticked) => said.push(ticked),
       cancel: () => {},
     }
@@ -163,7 +163,10 @@ describe("the answer form", () => {
       await rendered.input((setup) => setup.mockMouse.click(x + 2, buttons))
     })
     expect(Effect.runSync(Queue.clear(commands))).toEqual([
-      UiCommand.Answer({ requestId: "q1", answer: { _tag: "Choose", answers: ["Postgres", "tsc"] } }),
+      UiCommand.Answer({
+        requestId: "q1",
+        answer: { _tag: "Choose", answers: ["Postgres", "tsc"] },
+      }),
     ])
   })
 })
