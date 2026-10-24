@@ -169,11 +169,11 @@ const withProbes = async (
 }
 
 describe("the input layers", () => {
-  test("go always, field, box, view, global, highest first", () => {
+  test("go always, field, box, help, view, global, highest first", () => {
     const order = Object.entries(priorities)
       .sort(([, a], [, b]) => b - a)
       .map(([name]) => name)
-    expect(order).toEqual(["always", "field", "box", "view", "global"])
+    expect(order).toEqual(["always", "field", "box", "help", "view", "global"])
   })
 
   test("printable keys are those a text field types", () => {

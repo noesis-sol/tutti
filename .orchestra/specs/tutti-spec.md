@@ -1099,7 +1099,7 @@ The latest-action line uses tutti's own glyph (`▸`), not Claude Code's `⏺` (
 
 ### 7.3 Keys and mouse
 
-**Input layers.** The layers are the composer or another text field; then an open box (quit, stop, an answer form); then the view's keys; then global keys. A focused text field takes every printable key. Ctrl+C is always global. Use `@opentui/keymap` for the layers.
+**Input layers.** The layers are the composer or another text field; then an open box (quit, stop, an answer form); then the key help's, while it is open over the view (its scroll keys, §7.2); then the view's keys; then global keys. A focused text field takes every printable key. Ctrl+C is always global. Use `@opentui/keymap` for the layers.
 
 | Input | Dashboard | Worker view |
 |---|---|---|
