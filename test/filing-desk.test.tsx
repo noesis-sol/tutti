@@ -184,7 +184,8 @@ describe("a filing that outlives its view", () => {
       const uuid = filed(commands)[0]?.uuid ?? ""
       await leave(rendered, screen)
       await answer(rendered, filings, uuid, FileOutcome.Filed({ id: "t-9", title: followUp }))
-      await until(rendered, has(fileWords.filed("t-9", followUp)))
+      const away = await until(rendered, has(fileWords.filed("t-9", followUp)))
+      expect(away.chars).toContain(fileWords.filed("t-9", followUp))
 
       const frame = await reopen(rendered, screen)
       expect(frame.chars).not.toContain(` > ${followUp}`)
@@ -198,7 +199,8 @@ describe("a filing that outlives its view", () => {
       const uuid = filed(commands)[0]?.uuid ?? ""
       await leave(rendered, screen)
       await answer(rendered, filings, uuid, FileOutcome.NotFiled({ why: "bd is gone" }))
-      await until(rendered, has(fileWords.notFiled("bd is gone")))
+      const away = await until(rendered, has(fileWords.notFiled("bd is gone")))
+      expect(away.chars).toContain(fileWords.notFiled("bd is gone"))
 
       let frame = await reopen(rendered, screen)
       frame = await until(rendered, has(` > ${followUp}`))
@@ -226,6 +228,7 @@ describe("a filing that outlives its view", () => {
 
       await answer(rendered, filings, uuid, FileOutcome.Filed({ id: "t-9", title: followUp }))
       frame = await until(rendered, has(fileWords.filed("t-9", followUp)))
+      expect(frame.chars).toContain(fileWords.filed("t-9", followUp))
       expect(frame.chars).not.toContain(` > ${followUp}`)
     })
   })
