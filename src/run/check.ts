@@ -4,6 +4,8 @@
 // the worker left there can send it elsewhere. A passing check's FLAKY: lines are warnings naming the
 // ticket: it merges, but a test that passes only on a rerun is a bug nobody would see otherwise.
 // Interrupting the check kills its process group (Checks does), and nothing comes of it.
+// The untracked files a check writes in the worktree are noted there (checkWrote.ts), so the merge can
+// remove the worktree with them.
 //
 // A quit can cut that check short with the branch already rebased: the ticket stays waiting to
 // merge, for the next run (§ 4.8), but its branch is on top of the base then, so its merge would
@@ -27,8 +29,10 @@ import {
   OutputBounds,
   type RunOptions,
 } from "../services/Checks.ts"
+import type { Git } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
+import { noteWritten } from "./checkWrote.ts"
 import { type checkSuites, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { Log, line, Tag, ticketLine } from "./log.ts"
@@ -258,7 +262,7 @@ export const makePasses: Effect.Effect<Passes> = Effect.map(
 export const runMergeCheck = (
   ticket: CheckedTicket,
   suite: CheckSuite = "merge",
-): Effect.Effect<Checked, never, Checks | Worktrees | Store | Log | EventStream> =>
+): Effect.Effect<Checked, never, Checks | Git | Worktrees | Store | Log | EventStream> =>
   Effect.tap(checkOnce(ticket, { suite }), (checked) =>
     checked._tag === "Failed" ? Effect.void : clearUnchecked(ticket.id),
   )
@@ -271,7 +275,7 @@ export const runMergeCheck = (
 export const checkOnce = (
   ticket: CheckedTicket,
   how: { readonly suite: CheckSuite; readonly train?: boolean } = { suite: "merge" },
-): Effect.Effect<Checked, never, Checks | Worktrees | Log | EventStream> =>
+): Effect.Effect<Checked, never, Checks | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const checks = yield* Checks
     const log = yield* Log
@@ -282,7 +286,7 @@ export const checkOnce = (
         const ran = yield* recorded(
           how.suite,
           ticket.id,
-          checks.fast({ cwd: ticket.worktree, ...to }),
+          noteWritten(ticket.worktree, checks.fast({ cwd: ticket.worktree, ...to })),
           how.train === true ? { train: true } : {},
         )
         if (ran._tag === "Failure") {

@@ -280,11 +280,12 @@ export class Worktrees extends Context.Service<
     prepare(id: string): Effect.Effect<TicketWorktree, BadTicketId | GitError | ExcludeUnwritable>
     /**
      * Removes the ticket's worktree and then its branch, each when there is one. git refuses a
-     * worktree with changes and a branch the base doesn't have, unless forced.
+     * worktree with changes and a branch the base doesn't have, unless forced; `untracked` forces
+     * the worktree's removal only, as when its only changes are files its checks wrote.
      */
     remove(
       id: string,
-      options?: { readonly force?: boolean },
+      options?: { readonly force?: boolean; readonly untracked?: boolean },
     ): Effect.Effect<void, BadTicketId | GitError>
     /**
      * A new worktree in a folder of its own under the worktrees' folder, its name starting with
@@ -371,16 +372,20 @@ export class Worktrees extends Context.Service<
             )
           })
 
-        const remove = (id: string, removal: { readonly force?: boolean } = {}) =>
+        const remove = (
+          id: string,
+          removal: { readonly force?: boolean; readonly untracked?: boolean } = {},
+        ) =>
           Effect.gen(function* () {
             yield* checkTicketId(id)
             const branch = branchOf(id)
             const force = removal.force === true
+            const forceWorktree = force || removal.untracked === true
             yield* writer.withLock(
               Effect.gen(function* () {
                 const existing = yield* worktreeOf(branch)
                 if (existing !== undefined)
-                  yield* git.removeWorktree(repo, existing.path, { force })
+                  yield* git.removeWorktree(repo, existing.path, { force: forceWorktree })
                 yield* git.pruneWorktrees(repo)
                 if (yield* git.branchExists(repo, branch))
                   yield* git.deleteBranch(repo, branch, { force })

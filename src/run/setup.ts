@@ -53,6 +53,7 @@ import {
   writeRunFile,
 } from "../services/Worktrees.ts"
 import { outputTo, recorded } from "./check.ts"
+import { noteWritten } from "./checkWrote.ts"
 import { EventStream } from "./eventstream.ts"
 import { globMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
@@ -326,7 +327,10 @@ export const setUp = (
         const ran = yield* recorded(
           "setup",
           ticket.id,
-          checks.setup({ cwd: ticket.worktree, ...to, before: "fast", command }),
+          noteWritten(
+            ticket.worktree,
+            checks.setup({ cwd: ticket.worktree, ...to, before: "fast", command }),
+          ),
         )
         return { ran, output: to.outputFile }
       }),

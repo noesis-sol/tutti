@@ -15,13 +15,17 @@
 //   its setup starts: one made meanwhile, as its worker's, is checked too before the merge goes on.
 //   A setup or check that passes but leaves uncommitted changes to tracked files (a lockfile
 //   rewritten, files formatted) sets the ticket aside, DIRTY_WORKTREE: it passed on files that
-//   won't merge, and git would refuse to remove the worktree after the merge.
+//   won't merge, and git would refuse to remove the worktree after the merge. With no check command,
+//   a branch on top of the base merges unchecked, but a worktree with uncommitted changes is still
+//   set aside, DIRTY_WORKTREE.
 // - fastForward, the step from the fast-forward to the end of its notes, which the merge queue runs
 //   protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE, GIT_FAILED), the base
 //   fast-forwarded to the commit checked, the branch still at it (MERGE_FAILED; Moved, prepared
 //   and checked again, when it is not; BaseMoved, the same, when the base moved on before it: the
 //   merge queue prepares it again up to maxPasses times, then blocks it, keptChanging; a
-//   fast-forward git was kept from tried again, then GIT_FAILED), the worktree and branch removed, the epics the ticket was the last
+//   fast-forward git was kept from tried again, then GIT_FAILED), the worktree and branch removed
+//   (the worktree with --force when its only changes are untracked files tutti's setups and checks
+//   wrote there, checkWrote.ts), the epics the ticket was the last
 //   to merge under closed, up the tree. exec's time limits kill a command themselves, without
 //   interrupting its fiber, so each git command's limit holds in there too.
 // - closeUnchanged, its stand-in when the branch has no change of its own left to merge: git's
@@ -62,6 +66,7 @@ import {
   saidOf,
   uncheckedMark,
 } from "./check.ts"
+import { writtenOnly } from "./checkWrote.ts"
 import {
   type Carried,
   type CheckStop,
@@ -88,7 +93,7 @@ import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
 import { shownChanges } from "./settle.ts"
-import { type SetUps, setUp } from "./setup.ts"
+import { fileList, type SetUps, setUp } from "./setup.ts"
 import { unlabel } from "./unmerged.ts"
 
 /** A ticket its worker finished: closed, committed, its worktree clean and on its branch. */
@@ -1024,7 +1029,16 @@ export const prepare = (
           const at = yield* Effect.result(steering(git.revParse(repo, branch)))
           if (Result.isFailure(at)) return yield* lost(at.failure)
           const head = at.success
-          if (command === null) return { _tag: "Ready", onto, at: head } satisfies Prepared
+          if (command === null) {
+            // Unchecked, it merges as committed: changes left uncommitted would never reach the
+            // base, and git would refuse to remove the worktree after the merge.
+            const left = (files: ReadonlyArray<string>) =>
+              ticketLine(
+                Tag.dirtyWorktree,
+              )`${id} closed, but ${worktree} has uncommitted changes to ${files}, which would not merge with ${branch}; worktree left for review (commit or undo them, merge)`
+            if (yield* setAsideDirty(ticket, left)) return { _tag: "Over" } satisfies Prepared
+            return { _tag: "Ready", onto, at: head } satisfies Prepared
+          }
           // That check, ahead of its turn (mergetrain.ts) or on its worker's fix or resolution
           // (checkback.ts, handback.ts), ran in its worktree too.
           if ((yield* memory.passes.at(id)) === head) {
@@ -1060,6 +1074,26 @@ export const prepare = (
   })
 
 /**
+ * Removes the worktree and branch of a ticket merged, or closed with no change, as Effect.result
+ * gives it: the worktree with --force when its only changes are untracked files tutti's setups or
+ * checks wrote there (checkWrote.ts), as git refuses it otherwise (CLEANUP_FAILED), a detail line
+ * naming them once they are gone.
+ */
+const removeMerged = (ticket: FinishedTicket) =>
+  Effect.gen(function* () {
+    const { worktrees, log } = yield* services
+    const written = yield* writtenOnly(ticket.worktree)
+    if (written === undefined) return yield* Effect.result(worktrees.remove(ticket.id))
+    const removed = yield* Effect.result(worktrees.remove(ticket.id, { untracked: true }))
+    if (Result.isSuccess(removed)) {
+      yield* log.write(
+        detail`${ticket.id}: its setup or check left ${fileList(written)} untracked in ${ticket.worktree}, removed with it`,
+      )
+    }
+    return removed
+  })
+
+/**
  * The protected step for a ticket with nothing of its own left to merge, as `unchanged` says: its
  * worktree and branch removed (a branch with commits of its own moved to the base first, so git
  * deletes it as merged; its reflog keeps them), the ticket Done{noChange} and forgotten in
@@ -1074,7 +1108,7 @@ export const closeUnchanged = (
     const { worktrees, beads, ledger } = yield* services
     const { id, title, branch, worktree } = ticket
     if (unchanged.own) yield* restoreBranch(ticket, options.base, 1)
-    const cleanup = yield* Effect.result(worktrees.remove(id))
+    const cleanup = yield* removeMerged(ticket)
     const left = Result.isSuccess(cleanup)
       ? line`worktree and branch removed`
       : line`but ${Tag.cleanupFailed} for ${worktree} / ${branch}: ${
@@ -1277,7 +1311,7 @@ export const fastForward = (
     }
     const short = hash.slice(0, 7)
     const named = commit === undefined ? short : line`${short} ${commit.subject}`
-    const cleanup = yield* Effect.result(worktrees.remove(id))
+    const cleanup = yield* removeMerged(ticket)
     const text = Result.isSuccess(cleanup)
       ? detail`${id} closed (${named}); merged into ${base}, worktree and branch removed`
       : detail`${id} closed (${named}); merged into ${base}, but ${Tag.cleanupFailed} for ${worktree} / ${branch}: ${

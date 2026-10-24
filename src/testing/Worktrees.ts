@@ -22,7 +22,13 @@ import {
 /** A call the layer was asked for. */
 export type WorktreeCall =
   | { readonly op: "prepare"; readonly id: string }
-  | { readonly op: "remove"; readonly id: string; readonly force: boolean }
+  | {
+      readonly op: "remove"
+      readonly id: string
+      readonly force: boolean
+      /** Only when asked: the worktree removed with its untracked files. */
+      readonly untracked?: true
+    }
   | { readonly op: "addDetached"; readonly path: string; readonly commit: string }
   | { readonly op: "removeDetached"; readonly path: string }
 
@@ -54,7 +60,12 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
       remove: (id, removal = {}) =>
         Effect.flatMap(checkTicketId(id), () =>
           Effect.sync(() => {
-            calls.push({ op: "remove", id, force: removal.force === true })
+            calls.push({
+              op: "remove",
+              id,
+              force: removal.force === true,
+              ...(removal.untracked === true ? { untracked: true as const } : {}),
+            })
             rmSync(join(root, id), { recursive: true, force: true })
             branchesLeft.delete(id)
           }),
