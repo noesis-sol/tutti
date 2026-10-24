@@ -232,7 +232,8 @@ interface Putting {
  * a temporary file beside it (beside the file a link there points at), synced, with its mode (the one there where the write gives none), and
  * once all are written, each renamed over its own. Fails with SetupNotWritten where one can't be,
  * having taken back what it had written: the temporary files and the folders it made removed, and
- * the files it had replaced put back.
+ * the files it had replaced put back. It runs to its end uninterrupted, as it is bounded: an
+ * interrupt (Ctrl+C) part-way would leave its temporary files and a half-renamed set.
  */
 export const commitStaged = (
   real: FileSystem.FileSystem,
@@ -316,4 +317,4 @@ export const commitStaged = (
     for (const each of putting) {
       if (each.backup !== null) yield* Effect.ignore(real.remove(each.backup))
     }
-  })
+  }).pipe(Effect.uninterruptible)
