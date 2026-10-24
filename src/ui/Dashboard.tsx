@@ -40,6 +40,7 @@ import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useMemo } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { Card, Key, RunView } from "../run/runView.ts"
+import { allot } from "./allot.ts"
 import { type AnswerKey, keyAnswer, useAnswering } from "./attentionKeys.ts"
 import {
   Cards,
@@ -137,13 +138,8 @@ export const dashboardLayout = (
   height: number,
   highlighted: string | null = targetOf(view),
 ): DashboardLayout => {
-  let rest = Math.max(height, 0)
   // A section's lines: as many as it needs of those left.
-  const take = (lines: number): number => {
-    const got = Math.min(Math.max(lines, 0), rest)
-    rest -= got
-    return got
-  }
+  const { take, rest } = allot(height)
   const small = width < minWidth || height < minHeight
   const hintAt = (buttons: boolean) =>
     hintLines(dashboardHint(view, buttons, highlighted), theme, width)
@@ -155,7 +151,7 @@ export const dashboardLayout = (
     const totals = allTotals.slice(0, take(allTotals.length))
     const cards: CardsLayout = { _tag: "Compact" }
     const none = { title: 0, load: 0, gap: 0, table: 0, current: 0, windDown: 0 }
-    return { ...none, small, totals, cards, ending: null, spare: rest, warnings: [], hint }
+    return { ...none, small, totals, cards, ending: null, spare: rest(), warnings: [], hint }
   }
   const title = take(titleLines)
   const load = take(1)
@@ -173,11 +169,11 @@ export const dashboardLayout = (
   const kept = fewest + take(least - fewest)
   // The table is as tall as Current's kept lines leave it, the blank line over the load line
   // counted out, so that it stays put as workers come and go.
-  const tall = tableLines(rest + kept - 1, keptLines(width, slots, cards.length))
-  const fits = whole === null ? tall <= rest : Math.min(tall, rest) >= fewestTableLines
+  const tall = tableLines(rest() + kept - 1, keptLines(width, slots, cards.length))
+  const fits = whole === null ? tall <= rest() : Math.min(tall, rest()) >= fewestTableLines
   const table = fits ? take(tall) : 0
   const gap = take(1)
-  const room = kept + take(rest)
+  const room = kept + take(rest())
   const drawn = { small, title, load, gap, totals, table, windDown, warnings, hint }
   if (view.endOfRun !== null && whole !== null) {
     // The box keeps to the room left, naming fewer workers, but always saying what q does.

@@ -8,6 +8,7 @@ import { Duration } from "effect"
 import { formatDuration } from "../project/configFile.ts"
 import { resetLabel } from "../run/localTime.ts"
 import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
+import { firstFitting } from "./fit.ts"
 import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 import { useNow, useRunViewPart, useTheme } from "./useRunView.ts"
@@ -148,25 +149,26 @@ export const titleSegments = (
 ): Segments => {
   // The badge says nothing that changes during the run, so it gives way first: it is shown only
   // where the whole line fits with it, nothing cut or shortened.
-  if (title.keepAwake) {
-    const badged = laidOut(title, banners, now, theme, width, true)
-    if (badged !== null) return badged
+  const forms = function* () {
+    if (title.keepAwake) yield* titleForms(title, banners, now, theme, width, true)
+    yield* titleForms(title, banners, now, theme, width, false)
   }
-  return laidOut(title, banners, now, theme, width, false) ?? []
+  return firstFitting(forms(), (line) => line !== null) ?? []
 }
 
 /**
- * The title line `width` columns wide. With `badge`, the ` keep awake ` badge after the version,
- * and only the whole line: null where it doesn't fit.
+ * The title line's forms `width` columns wide, fullest first, null for one that doesn't fit; the
+ * last always does. With `badge`, the ` keep awake ` badge after the version, and only the whole
+ * line.
  */
-const laidOut = (
+function* titleForms(
   title: TitleView,
   banners: ReadonlyArray<Banner>,
   now: number,
   theme: Theme,
   width: number,
   badge: boolean,
-): Segments | null => {
+): Generator<Segments | null> {
   const { styles } = theme
   const left: Array<Segment> = [seg(" Tutti ", styles.title)]
   if (title.version !== "") left.push(seg(" "), seg(title.version, styles.dim))
@@ -211,25 +213,29 @@ const laidOut = (
   const full = right("full", "full")
   const room = width - widthOf(left) - 3 - (full.length === 0 ? 0 : widthOf(full) + 2)
   if (badge) {
-    return room >= widthOf([seg(where)])
+    yield room >= widthOf([seg(where)])
       ? laid([...left, seg("   "), seg(where, styles.dim)], full)
       : null
+    return
   }
-  if (room >= minWhere) {
-    const line = laid([...left, seg("   "), ...cut([seg(where, styles.dim)], room)], full)
-    if (line !== null) return line
-  }
+  if (room >= minWhere)
+    yield laid([...left, seg("   "), ...cut([seg(where, styles.dim)], room)], full)
   for (const usageForm of ["full", "reset", "short", null] as const) {
-    const line = laid(left, right(usageForm, "full"))
-    if (line !== null) return line
+    yield laid(left, right(usageForm, "full"))
   }
-  if (holds.length === 0) return cut(left, width)
+  if (holds.length === 0) {
+    yield cut(left, width)
+    return
+  }
   for (const holdForm of ["full", "word"] as const) {
     const side = right(null, holdForm)
     const states = width - widthOf(side) - 2
-    if (states >= widthOf(left.slice(0, 1))) return laid(cut(left, states), side) ?? []
+    if (states >= widthOf(left.slice(0, 1))) {
+      yield laid(cut(left, states), side) ?? []
+      return
+    }
   }
-  return cut([...left.slice(0, 1), seg("  "), ...right(null, "word")], width)
+  yield cut([...left.slice(0, 1), seg("  "), ...right(null, "word")], width)
 }
 
 /** The title line, a blank line above it. */

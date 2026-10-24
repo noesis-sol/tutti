@@ -5,7 +5,8 @@
 // narrow pane drops `, no new tickets`, then the count, then the words, then all but the squares.
 import type { WindDownMark } from "../run/phase.ts"
 import type { WindDownView } from "../run/runView.ts"
-import { Line, type Look, type Segments, seg, widthOf } from "./line.tsx"
+import { firstFit } from "./fit.ts"
+import { Line, type Look, type Segments, seg } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 const markLook = (mark: WindDownMark, theme: Theme): Look => {
@@ -39,14 +40,14 @@ export const windDownSegments = (view: WindDownView, theme: Theme, width: number
     view.running === 0
       ? ["nothing running, ending now"]
       : [`${view.running} running, no new tickets`, `${view.running} running`]
-  for (const rest of rests) {
-    const line = [...lead, words, seg(` · ${rest}`, theme.styles.dim)]
-    if (widthOf(line) <= width) return line
-  }
-  if (widthOf([...lead, words]) <= width) return [...lead, words]
-  // As many squares as fit, after the two spaces.
+  // As many squares as fit, after the two spaces, where not even the words do.
   const fit = Math.min(Math.floor((width - 1) / 2), squares.length)
-  return fit <= 0 ? [] : [seg("  "), ...spaced(fit)]
+  const forms = function* () {
+    for (const rest of rests) yield [...lead, words, seg(` · ${rest}`, theme.styles.dim)]
+    yield [...lead, words]
+    yield fit <= 0 ? [] : [seg("  "), ...spaced(fit)]
+  }
+  return firstFit(width, forms())
 }
 
 /** The wind-down line, as windDownSegments gives it. */

@@ -67,6 +67,7 @@ import { UiCommand } from "../run/commands.ts"
 import { holdsMessages } from "../run/held.ts"
 import type { Card, Key } from "../run/runView.ts"
 import { AttentionLines, type ButtonSegment } from "./AttentionCard.tsx"
+import { stack } from "./allot.ts"
 import { buttonsOf, picksOptions, requestText } from "./attentionKeys.ts"
 import { headOf, statusLook } from "./Card.tsx"
 import {
@@ -220,39 +221,26 @@ export const panelBudget = (height: number, chrome: ViewChrome): number => {
  * resource line, and the transcript the rest.
  */
 export const viewLayout = (height: number, chrome: ViewChrome, panel: number): ViewLayout => {
-  let rest = Math.max(height, 0)
-  const take = (lines: number): number => {
-    const got = Math.min(Math.max(lines, 0), rest)
-    rest -= got
-    return got
-  }
-  const hint = take(chrome.hint)
-  const head = take(chrome.head)
-  const rules = [take(1), take(1)] as const
-  const composer = take(chrome.composer)
-  const line = take(chrome.line)
-  const held = take(chrome.held)
-  const queued = take(chrome.queued)
-  const handBack = take(chrome.handBack)
-  const ticket = take(chrome.ticket)
-  const kept = take(transcriptRows)
-  const panelLines = take(panel)
-  const resources = take(chrome.resources)
-  const transcript = kept + take(rest)
-  return {
-    head,
-    resources,
-    ticket,
-    handBack,
-    held,
-    line,
-    queued,
-    composer,
-    hint,
-    rules,
-    transcript,
-    panel: panelLines,
-  }
+  const { ruleUnder, ruleOver, ...laid } = stack(
+    height,
+    [
+      ["hint", chrome.hint],
+      ["head", chrome.head],
+      ["ruleUnder", 1],
+      ["ruleOver", 1],
+      ["composer", chrome.composer],
+      ["line", chrome.line],
+      ["held", chrome.held],
+      ["queued", chrome.queued],
+      ["handBack", chrome.handBack],
+      ["ticket", chrome.ticket],
+      ["transcript", transcriptRows],
+      ["panel", panel],
+      ["resources", chrome.resources],
+    ],
+    "transcript",
+  )
+  return { ...laid, rules: [ruleUnder, ruleOver] }
 }
 
 /** The selection key of the hand-back notice. */

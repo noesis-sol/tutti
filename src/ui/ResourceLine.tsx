@@ -24,8 +24,9 @@ import { allTokens, type Resources } from "../run/resources.ts"
 import type { Usage } from "../run/runView.ts"
 import { elapsed } from "./Card.tsx"
 import { clickable } from "./click.ts"
+import { type FitPart, fitParts } from "./fit.ts"
 import { workerMemory } from "./LoadLine.tsx"
-import { cut, Line, type Look, type Segments, seg, widthOf, wrap } from "./line.tsx"
+import { Line, type Look, type Segments, seg, wrap } from "./line.tsx"
 import { sanitizeLine } from "./sanitize.ts"
 import { gauge } from "./TitleLine.tsx"
 import type { Theme } from "./theme.ts"
@@ -78,58 +79,62 @@ export interface LineInputs {
   readonly now: number
 }
 
-/** A part of the line: its segments, and what it shows in a narrow pane (`short`), if anything. */
-interface Part {
-  readonly name: "time" | "tokens" | "cost" | "context" | "compactions" | "memory" | "warning"
-  readonly segments: Segments
-  readonly short?: Segments
-}
+/**
+ * The ranks of the line's steps down in a narrow pane, the lowest first: the memory dropped, then
+ * the warning's reset time, then the compactions, then whole parts from the end of the line.
+ */
+const dropMemory = 0
+const shortWarning = 1
+const dropCompactions = 2
+const fromTheEnd = 3
 
-/** The line's parts, in order, at full length. */
-const partsOf = (r: Resources, inputs: LineInputs, theme: Theme): ReadonlyArray<Part> => {
+/** A part shown whole or left out, at `rank`. */
+const droppable = (segments: Segments, rank: number): FitPart => ({ forms: [segments, []], rank })
+
+/** The line's parts, in order, each in its forms for a narrow pane (fitParts). */
+const partsOf = (r: Resources, inputs: LineInputs, theme: Theme): ReadonlyArray<FitPart> => {
   const { styles } = theme
-  const parts: Array<Part> = [
-    { name: "time", segments: [seg(elapsed(inputs.now - r.took))] },
-    {
-      name: "tokens",
-      segments: [seg(tokenCount(allTokens(r.spent.tokens))), seg(" tokens", styles.dim)],
-    },
+  const parts: Array<FitPart> = [
+    // The time is never left out: it is cut last.
+    { forms: [[seg(elapsed(inputs.now - r.took))]], rank: fromTheEnd },
+    droppable([seg(tokenCount(allTokens(r.spent.tokens))), seg(" tokens", styles.dim)], fromTheEnd),
   ]
   if (!r.subscription) {
-    parts.push({ name: "cost", segments: [seg(dollarsText(r.spent.costUsd))] })
+    parts.push(droppable([seg(dollarsText(r.spent.costUsd))], fromTheEnd))
   } else if (r.window !== null) {
-    parts.push({
-      name: "cost",
-      segments: [
-        seg("5h window ", styles.dim),
-        seg(`${shareText(r.window.share)} (estimate)`, styles.estimate),
-      ],
-    })
+    parts.push(
+      droppable(
+        [
+          seg("5h window ", styles.dim),
+          seg(`${shareText(r.window.share)} (estimate)`, styles.estimate),
+        ],
+        fromTheEnd,
+      ),
+    )
   }
   if (r.context !== null) {
     const full = fullness(r.context)
     const look = contextLook(full, theme)
-    parts.push({
-      name: "context",
-      segments: [
-        seg("context ", styles.dim),
-        seg(gauge(full), look ?? styles.dim),
-        seg(gap),
-        seg(tokenCount(r.context.tokens), look),
-        seg(" of ", styles.dim),
-        seg(tokenCount(r.context.window)),
-      ],
-    })
+    parts.push(
+      droppable(
+        [
+          seg("context ", styles.dim),
+          seg(gauge(full), look ?? styles.dim),
+          seg(gap),
+          seg(tokenCount(r.context.tokens), look),
+          seg(" of ", styles.dim),
+          seg(tokenCount(r.context.window)),
+        ],
+        fromTheEnd,
+      ),
+    )
   }
   if (r.compactions > 0) {
     const word = r.compactions === 1 ? "compaction" : "compactions"
-    parts.push({
-      name: "compactions",
-      segments: [seg(`↻ ${r.compactions}`), seg(` ${word}`, styles.dim)],
-    })
+    parts.push(droppable([seg(`↻ ${r.compactions}`), seg(` ${word}`, styles.dim)], dropCompactions))
   }
   if (inputs.memory !== undefined) {
-    parts.push({ name: "memory", segments: [seg(workerMemory(inputs.memory), styles.dim)] })
+    parts.push(droppable([seg(workerMemory(inputs.memory), styles.dim)], dropMemory))
   }
   const usage = inputs.usage
   if (usage !== null) {
@@ -138,51 +143,24 @@ const partsOf = (r: Resources, inputs: LineInputs, theme: Theme): ReadonlyArray<
     const resets =
       usage.resetsAt === null ? "" : ` · resets ${resetLabel(usage.resetsAt, inputs.now)}`
     parts.push({
-      name: "warning",
-      segments: [seg(`${figure}${resets}`, look)],
-      short: [seg(figure, look)],
+      forms: [[seg(`${figure}${resets}`, look)], [seg(figure, look)], []],
+      rank: [shortWarning, fromTheEnd],
     })
   }
   return parts
 }
 
-/** `parts` on one line, two spaces apart. */
-const joined = (parts: ReadonlyArray<Part>): Segments =>
-  parts.flatMap((part, i) => (i === 0 ? part.segments : [seg(gap), ...part.segments]))
-
 /**
- * The resource line's segments, `width` wide. Where it doesn't fit, it drops the memory, then shows
- * the warning without its reset time, then drops the compactions, then whole parts from its end,
- * down to the time, which is cut last.
+ * The resource line's segments, `width` wide, its parts two spaces apart. Where it doesn't fit, it
+ * drops the memory, then shows the warning without its reset time, then drops the compactions, then
+ * whole parts from its end, down to the time, which is cut last.
  */
 export const resourceSegments = (
   r: Resources,
   inputs: LineInputs,
   theme: Theme,
   width: number,
-): Segments => {
-  let parts = partsOf(r, inputs, theme)
-  const fits = () => widthOf(joined(parts)) <= width
-  const steps: ReadonlyArray<() => void> = [
-    () => {
-      parts = parts.filter((part) => part.name !== "memory")
-    },
-    () => {
-      parts = parts.map((part) =>
-        part.short === undefined ? part : { ...part, segments: part.short },
-      )
-    },
-    () => {
-      parts = parts.filter((part) => part.name !== "compactions")
-    },
-  ]
-  for (const step of steps) {
-    if (fits()) return joined(parts)
-    step()
-  }
-  while (!fits() && parts.length > 1) parts = parts.slice(0, -1)
-  return cut(joined(parts), width)
-}
+): Segments => fitParts(partsOf(r, inputs, theme), width, [seg(gap)])
 
 /** The cache's share of the input of `t`: its reads of everything read in. */
 const cacheShare = (t: Tokens): number | null => {

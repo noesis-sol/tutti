@@ -11,7 +11,8 @@
 // run has read the machine's load the line has the workers alone.
 import { type Level, swappingPerMinute } from "../run/load.ts"
 import type { LoadView, Totals } from "../run/runView.ts"
-import { cut, Line, type Look, type Segments, seg, widthOf } from "./line.tsx"
+import { type FitPart, fitParts } from "./fit.ts"
+import { cut, Line, type Look, type Segments, seg } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /** A level's look: green `done`, amber `notice` (`windingDown` is for winding down only), red `stop`. */
@@ -84,23 +85,26 @@ export const loadSegments = (
 ): Segments => {
   const workers = workersPart(totals, theme)
   if (load === null) return cut([seg(" "), ...workers], width)
-  const dot = seg(" · ", theme.styles.dim)
   const { levels } = load
-  const levelled: ReadonlyArray<Segments> = [
-    [seg(pressurePart(load), levelLook(levels.pressure, theme))],
-    [seg(swappingPart(load), levelLook(levels.swapping, theme))],
-    [seg(cpuPart(load), levelLook(levels.cpu, theme))],
-  ]
-  const line = (memory: string): Segments => {
-    const parts = [[seg(memory)], ...levelled].filter((part) => part[0]?.text !== "")
-    return [seg(" "), ...workers, ...parts.flatMap((part) => [dot, ...part])]
-  }
-  let last: Segments = []
-  for (const memory of [memoryPart(load, true), memoryPart(load, false), ""]) {
-    last = line(memory)
-    if (widthOf(last) <= width) return last
-  }
-  return cut(last, width)
+  /** A part of the line that is always there, but for one that says nothing. */
+  const kept = (text: string, look: Look | null): FitPart => ({
+    forms: [text === "" ? [] : [seg(text, look)]],
+    rank: 0,
+  })
+  return fitParts(
+    [
+      { forms: [[seg(" "), ...workers]], rank: 0 },
+      {
+        forms: [[seg(memoryPart(load, true))], [seg(memoryPart(load, false))], []],
+        rank: 0,
+      },
+      kept(pressurePart(load), levelLook(levels.pressure, theme)),
+      kept(swappingPart(load), levelLook(levels.swapping, theme)),
+      kept(cpuPart(load), levelLook(levels.cpu, theme)),
+    ],
+    width,
+    [seg(" · ", theme.styles.dim)],
+  )
 }
 
 /** The load line, as loadSegments gives it. */

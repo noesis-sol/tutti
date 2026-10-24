@@ -6,6 +6,7 @@
 // The workers are on the load line above the strip (LoadLine.tsx), and on the one line, `▶ n/N`,
 // which is drawn without it.
 import type { Totals as TotalsView } from "../run/runView.ts"
+import { firstFitting } from "./fit.ts"
 import { cut, framed, Lines, type Look, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
@@ -91,12 +92,14 @@ export const totalsStrip = (
   width: number,
 ): ReadonlyArray<Segments> | null => {
   const bare = cells(t, theme, "none").slice(0, -1).map(widthOf)
-  for (const triage of ["full", "short", "none"] as const) {
-    const all = cells(t, theme, triage)
-    const widths = cellWidths(all.map(widthOf), bare, width)
-    if (widths !== null) return framed([all], widths, theme.look("frame"))
+  const forms = function* () {
+    for (const triage of ["full", "short", "none"] as const) {
+      const all = cells(t, theme, triage)
+      const widths = cellWidths(all.map(widthOf), bare, width)
+      yield widths === null ? null : framed([all], widths, theme.look("frame"))
+    }
   }
-  return null
+  return firstFitting(forms(), (strip) => strip !== null) ?? null
 }
 
 /**

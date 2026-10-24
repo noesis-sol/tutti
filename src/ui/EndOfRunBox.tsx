@@ -5,6 +5,7 @@
 // it keeps to the lines it is given: it names fewer workers, the rest as `+N more`, then leaves out
 // the hand-back's line, then the frame and its first words, and always keeps what `q` does.
 import { conflictWaits, type Waiting } from "../run/runView.ts"
+import { firstFitting } from "./fit.ts"
 import { boxed, cut, Lines, padded, type Segments, seg, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
@@ -61,15 +62,13 @@ export const endOfRunLines = (
       width,
       look,
     )
-  for (let named = waiting.length; named >= 0; named--) {
-    const lines = boxOf(named, true)
-    if (lines.length <= height) return lines
+  const forms = function* () {
+    for (let named = waiting.length; named >= 0; named--) yield boxOf(named, true)
+    yield boxOf(0, false)
+    yield boxed(about, width, look)
+    yield height >= 1 ? [padded(cut([seg(` ${endOfRunAbout}`, look)], width), width)] : []
   }
-  const unhanded = boxOf(0, false)
-  if (unhanded.length <= height) return unhanded
-  const aboutOnly = boxed(about, width, look)
-  if (aboutOnly.length <= height) return aboutOnly
-  return height >= 1 ? [padded(cut([seg(` ${endOfRunAbout}`, look)], width), width)] : []
+  return firstFitting(forms(), (lines) => lines.length <= height) ?? []
 }
 
 /** The box, as endOfRunLines gives it. */
