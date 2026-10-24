@@ -215,9 +215,7 @@ describe("the single writer", () => {
       ),
     )
     expect(state.tickets.counter?.metadata).toEqual({ count: tickets.length })
-    const read = value(
-      await Effect.runPromiseExit(readState(repo)),
-    )
+    const read = value(await Effect.runPromiseExit(readState(repo)))
     expect(read).toEqual(state)
     for (const id of tickets) expect(read.tickets[id]?.branch).toBe(`wt/${id}`)
   })
