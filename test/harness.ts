@@ -20,7 +20,7 @@ import type { Transcripts } from "../src/agent/Transcripts.ts"
 import type { UsageLimits } from "../src/agent/UsageLimits.ts"
 import type { UsageProbe } from "../src/agent/UsageProbe.ts"
 import type { AppConfig, AppConfigValue } from "../src/cli/AppConfig.ts"
-import type { OrganCost } from "../src/organs/OrganCost.ts"
+import { OrganCost } from "../src/organs/OrganCost.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { layer as fibersLayer, type Left, RunFibers } from "../src/run/fibers.ts"
@@ -248,6 +248,9 @@ export const environment = (
         spendingLayer(),
       ),
     ),
+    // One OrganCost, as the run's (main.ts): the probe's costs and those of the organs a scenario
+    // adds (testing/Organs.ts) add up in it.
+    Layer.provideMerge(OrganCost.layer),
     Layer.provideMerge(notifying),
     Layer.provideMerge(notifierLayer),
     Layer.provideMerge(

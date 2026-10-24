@@ -1,9 +1,9 @@
 // UsageProbe's test layer: the live probe (probeWith), its session playing scripted answers, in
 // order, in place of Claude Code, and Probed, to read back the limits each probe was asked about.
 // Everything else is the live code's: the answer read from the turn's messages (answerOf), its
-// cost in OrganCost, a session's failure and probeTimeout as Unanswered. Once the script runs out,
-// the account is under the limit (Allowed), as the hold's lifts on the clock assumed before the
-// probe.
+// cost in OrganCost (the context's, which the organs' share as in a run, or one of its own), a
+// session's failure and probeTimeout as Unanswered. Once the script runs out, the account is under
+// the limit (Allowed), as the hold's lifts on the clock assumed before the probe.
 //
 // A scripted answer is played as the turn that gives it (turnOf): Allowed as a clean result,
 // Refused as a rejected rate_limit_event and a 429, Unanswered as a session failing for its
@@ -12,8 +12,9 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Context, Effect, Layer, Ref, Stream } from "effect"
 import { ProbeAnswer, type ProbeSession, probeWith, UsageProbe } from "../agent/UsageProbe.ts"
-import { OrganCost } from "../organs/OrganCost.ts"
+import type { OrganCost } from "../organs/OrganCost.ts"
 import type { Log } from "../run/log.ts"
+import { shared } from "./OrganCost.ts"
 
 /** The probes asked of the test layer, for a test to look at. */
 export class Probed extends Context.Service<
@@ -67,8 +68,8 @@ export const turnOf = (answer: ProbeAnswer): Turn | string =>
   })
 
 /**
- * A UsageProbe answering `answers` in order, then Allowed, with the OrganCost its costs go to,
- * logged to the Log, and Probed, to read what it was asked.
+ * A UsageProbe answering `answers` in order, then Allowed, with the OrganCost its costs go to (the
+ * context's, or one logged to the Log), and Probed, to read what it was asked.
  */
 export const layer = (
   answers: ReadonlyArray<Scripted> = [],
@@ -91,7 +92,7 @@ export const layer = (
         Context.add(Probed, Probed.of({ limits: Ref.get(asked) })),
       )
     }),
-  ).pipe(Layer.provideMerge(OrganCost.layer))
+  ).pipe(Layer.provideMerge(shared))
 
 const play = (scripted: Scripted): Effect.Effect<ProbeAnswer | Turn> =>
   Effect.isEffect(scripted)

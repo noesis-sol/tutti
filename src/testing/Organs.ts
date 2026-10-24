@@ -12,15 +12,18 @@
 // - an Effect giving one of those, as a session that sleeps on the Clock or never ends, or failing
 //   with an AiError, as a session that fails before its result.
 //
-// Its costs go to the OrganCost it provides with it, over the test's Log: `ORGAN triage: $0.0000 in
-// 1 turn, 0.0s`, as the run's organs' do. Every call is recorded, with its system prompt as the SDK gets it, its input and how the organ
+// Its costs go to the OrganCost of the context it is built in, a scenario's, which the usage probe's
+// share as in a run, or else to one of its own over the test's Log, which it provides with it:
+// `ORGAN triage: $0.0000 in 1 turn, 0.0s`, as the run's organs' do.
+// Every call is recorded, with its system prompt as the SDK gets it, its input and how the organ
 // ran.
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Layer, Stream } from "effect"
 import { AiError, LanguageModel } from "effect/ai"
 import { make, type OrganCallConfig, type Session } from "../organs/AgentSdkLanguageModel.ts"
-import { OrganCost } from "../organs/OrganCost.ts"
+import type { OrganCost } from "../organs/OrganCost.ts"
 import type { Log } from "../run/log.ts"
+import { shared } from "./OrganCost.ts"
 
 /** A turn's SDK messages, played as a session would give them. */
 export class Messages {
@@ -102,8 +105,8 @@ const play = (
     : Effect.succeed(canned as Record<string, unknown> | Messages)
 
 /**
- * A LanguageModel playing `answers`, and the OrganCost its calls' costs go to, logged to the Log;
- * each call is pushed onto `calls`.
+ * A LanguageModel playing `answers`, and the OrganCost its calls' costs go to: the context's, or
+ * one logged to the Log; each call is pushed onto `calls`.
  */
 export const layer = (
   answers: Answers,
@@ -124,7 +127,5 @@ export const layer = (
       const played = yield* play(canned)
       return Stream.fromIterable((played instanceof Messages ? played : answered(played)).messages)
     })
-  return Layer.effect(LanguageModel.LanguageModel, make(session)).pipe(
-    Layer.provideMerge(OrganCost.layer),
-  )
+  return Layer.effect(LanguageModel.LanguageModel, make(session)).pipe(Layer.provideMerge(shared))
 }
