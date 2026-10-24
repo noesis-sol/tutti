@@ -102,7 +102,7 @@ import {
   widthOf,
   wrap,
 } from "./line.tsx"
-import { ResourceLine, SpentBox } from "./ResourceLine.tsx"
+import { ResourceLine, spentLines } from "./ResourceLine.tsx"
 import { requestInputLines } from "./requestInput.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import {
@@ -960,11 +960,11 @@ export const workerViewCommands = (
       run: nothing,
       help: ["Esc, Tab, Enter", "switch workers, by way of the dashboard"],
     },
-    // A click on the resource line opens what the worker spent (ResourceLine.tsx).
+    // A click on the resource line opens the whole ticket at what the worker spent (ResourceLine.tsx).
     {
       keys: [],
       run: nothing,
-      help: ["a click on resources", "what the worker spent: tokens, calls, dollars, context"],
+      help: ["a click on resources", "the whole ticket at Spent: tokens, calls, dollars, context"],
     },
     { ...keys.write, hint: named(viewing, "i", "write"), help: writeRow },
     {
@@ -1339,11 +1339,18 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
         : descriptionLines(issue, theme, ticketWidth, descriptionLimit(height)),
     [issue, theme, ticketWidth, height],
   )
+  // The whole ticket's last section: what its worker spent, which a click on the resource line
+  // opens the panel scrolled to.
+  const spent = useMemo(
+    () =>
+      resources === undefined ? null : spentLines(resources, theme, Math.max(ticketWidth - 4, 1)),
+    [resources, theme, ticketWidth],
+  )
   const ticketLines =
     card === undefined
       ? 0
       : ticketPanel.open
-        ? panelLines(issue, height, ticketWidth)
+        ? panelLines(issue, height, ticketWidth, spent?.length ?? 0)
         : (description?.lines.length ?? 0)
   const steered = card?.steered === true
   const chrome = (requests: boolean): ViewChrome => ({
@@ -1435,23 +1442,11 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     ),
     "Interrupt",
   )
-  // A click on the resource line opens what the worker spent, over the view; Esc or a click closes it.
-  const openSpent = () => {
-    composer.blur()
-    input.box.set(Box.Spent({ ticket: viewed }))
-  }
-  const closeSpent = () => {
-    if (input.box.get()?._tag !== "Spent") return
-    input.box.set(null)
-    composer.refocus()
-  }
-  useCommands("box", [{ keys: ["escape"], run: closeSpent }], "Spent")
-  // The view draws its Interrupt and Spent boxes and binds their keys: unmounted with one open,
-  // nothing would, and the box would hold the keys of the view after it (tutti-por).
+  // The view draws its Interrupt box and binds its keys: unmounted with it open, nothing would, and
+  // the box would hold the keys of the view after it (tutti-por).
   useEffect(
     () => () => {
-      const open = input.box.get()?._tag
-      if (open === "Interrupt" || open === "Spent") input.box.set(null)
+      if (input.box.get()?._tag === "Interrupt") input.box.set(null)
     },
     [input],
   )
@@ -1531,7 +1526,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
               memory={card?.memory}
               finished={finished}
               width={inner}
-              open={openSpent}
+              open={ticketPanel.openSpent}
             />
           )}
         </Section>
@@ -1540,6 +1535,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
             {ticketPanel.open ? (
               <TicketPanelView
                 issue={issue}
+                spent={spent}
                 panel={ticketPanel}
                 looks={looks}
                 width={ticketWidth}
@@ -1605,7 +1601,6 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           <ViewHint keys={keys.hint} width={inner} />
         </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
-        {box?._tag === "Spent" ? <SpentBox ticket={box.ticket} close={closeSpent} /> : null}
         {box?._tag === "Interrupt" ? (
           <InterruptQuestion
             theme={theme}

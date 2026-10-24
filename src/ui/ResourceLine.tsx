@@ -13,10 +13,8 @@
 //
 // A click on the line opens the breakdown, `Spent`: the tokens by model with the cache's share,
 // the model calls, the dollars (at API prices on a subscription, an estimate), how the window's
-// share is made, the context's split and the ticket's share of the run's tokens. It is a box over
-// the view until the whole-ticket panel (D1) has a `Spent` section to take it.
-import { RGBA } from "@opentui/core"
-import { useTerminalDimensions } from "@opentui/react"
+// share is made, the context's split and the ticket's share of the run's tokens. It is the
+// whole-ticket panel's last section (TicketHead.tsx), which the click opens scrolled to it.
 import { useRef } from "react"
 import type { ContextUsage } from "../agent/contextUsage.ts"
 import type { Tokens } from "../run/events.ts"
@@ -27,8 +25,7 @@ import type { Usage } from "../run/runView.ts"
 import { elapsed } from "./Card.tsx"
 import { clickable } from "./click.ts"
 import { workerMemory } from "./LoadLine.tsx"
-import { boxed, cut, Line, Lines, type Look, type Segments, seg, widthOf, wrap } from "./line.tsx"
-import { Backdrop } from "./Modal.tsx"
+import { cut, Line, type Look, type Segments, seg, widthOf, wrap } from "./line.tsx"
 import { sanitizeLine } from "./sanitize.ts"
 import { gauge } from "./TitleLine.tsx"
 import type { Theme } from "./theme.ts"
@@ -212,8 +209,8 @@ const summed = (r: Resources): Tokens =>
 const labelWidth = 12
 
 /**
- * The breakdown's lines (`Spent`), `width` wide within its frame: each row its label, faint, and its
- * figures, wrapped under them.
+ * The breakdown's lines (`Spent`), `width` wide within the whole-ticket panel's frame: each row its
+ * label, faint, and its figures, wrapped under them.
  */
 export const spentLines = (r: Resources, theme: Theme, width: number): ReadonlyArray<Segments> => {
   const { styles } = theme
@@ -302,50 +299,7 @@ export const spentLines = (r: Resources, theme: Theme, width: number): ReadonlyA
       seg(` of its ${tokenCount(r.runTokens)} tokens`, styles.dim),
     ]),
   )
-  lines.push([], [seg("Esc", styles.key), seg(" close", styles.dim)])
   return lines
-}
-
-/** The widest the breakdown's box gets, its frame included. */
-const spentWidth = 80
-
-/** The breakdown's box over the view, `ticket`'s: a click closes it, as Esc does (its view binds it). */
-export const SpentBox = ({
-  ticket,
-  close,
-}: {
-  readonly ticket: string
-  readonly close: () => void
-}) => {
-  const theme = useTheme()
-  const { width, height } = useTerminalDimensions()
-  const found = useRunViewPart((view) => view.resources.find((each) => each.ticket === ticket))
-  const last = useRef(found)
-  if (found !== undefined) last.current = found
-  const resources = found ?? last.current
-  if (resources === undefined) return null
-  const outer = Math.max(Math.min(width - 4, spentWidth), 12)
-  const lines = boxed(spentLines(resources, theme, outer - 4), outer, theme.look("frame")).slice(
-    0,
-    Math.max(height, 1),
-  )
-  return (
-    <>
-      <Backdrop />
-      <box
-        position="absolute"
-        zIndex={10}
-        left={Math.max(Math.floor((width - outer) / 2), 0)}
-        top={Math.max(Math.floor((height - lines.length) / 2), 0)}
-        width={outer}
-        height={lines.length}
-        backgroundColor={RGBA.defaultBackground()}
-        {...clickable(close)}
-      >
-        <Lines lines={lines} />
-      </box>
-    </>
-  )
 }
 
 /** The line's indent, under the head's link. */
@@ -353,7 +307,7 @@ const indent = "  "
 
 /**
  * The resource line of a worker, `resources`, `width` wide, its time stopped once `finished`; a
- * click opens the breakdown. The clock ticks here, in a leaf, so the view over it isn't drawn anew
+ * click opens the breakdown, in the whole-ticket panel. The clock ticks here, in a leaf, so the view over it isn't drawn anew
  * every second.
  */
 export const ResourceLine = ({

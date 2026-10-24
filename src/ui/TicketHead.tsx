@@ -7,11 +7,12 @@
 // checklist, notes, links and labels, drawn with <markdown>, up to 60% of the pane, scrolling with
 // PgUp/PgDn and the wheel, `↓ N more lines` in its bottom border while there is more. `t`, a click on
 // `▴ less` or Esc closes it. Opening it reads the ticket again with bd show (ReadTicket), so that
-// notes added during the run show.
+// notes added during the run show. Its last section is what the worker spent, `Spent`
+// (ResourceLine.tsx's spentLines), which a click on the resource line opens the panel scrolled to.
 //
 // All of it is text a ticket author or a worker wrote, sanitised where it enters RunView (§ 7.10,
 // runView.ts's ticketText); the links' IDs and the labels are escaped for the Markdown.
-import type { OptimizedBuffer, Renderable, ScrollBoxRenderable } from "@opentui/core"
+import type { BoxRenderable, OptimizedBuffer, Renderable, ScrollBoxRenderable } from "@opentui/core"
 import { type RefObject, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { TicketLink, TicketText } from "../run/runView.ts"
@@ -249,10 +250,17 @@ export interface TicketPanel {
   readonly open: boolean
   /** Opens it, reading the ticket again, or closes it. */
   readonly toggle: () => void
+  /** Opens it, or keeps it open, scrolled to its `Spent` section. */
+  readonly openSpent: () => void
   readonly close: () => void
   /** PgUp or PgDn: a page less a line. */
   readonly page: (step: 1 | -1) => void
   readonly scroll: RefObject<ScrollBoxRenderable | null>
+  /**
+   * Whether the panel is to show its `Spent` section at its top, and where it last put it there:
+   * kept, as the Markdown above it is laid out, until you scroll.
+   */
+  readonly toSpent: RefObject<{ readonly at?: number } | null>
 }
 
 /** The whole ticket of `ticket`'s worker view, closed as the view opens. */
@@ -260,11 +268,20 @@ export const useTicketPanel = (ticket: string): TicketPanel => {
   const command = useCommand()
   const [open, setOpen] = useState(false)
   const scroll = useRef<ScrollBoxRenderable>(null)
+  const toSpent = useRef<{ readonly at?: number } | null>(null)
   return {
     open,
     toggle: () => {
       if (!open) command(UiCommand.ReadTicket({ ticket }))
+      toSpent.current = null
       setOpen(!open)
+    },
+    openSpent: () => {
+      if (!open) command(UiCommand.ReadTicket({ ticket }))
+      toSpent.current = {}
+      setOpen(true)
+      // Open already, nothing else draws the panel anew for it to scroll.
+      scroll.current?.requestRender()
     },
     close: () => setOpen(false),
     page: (step) => {
@@ -272,15 +289,22 @@ export const useTicketPanel = (ticket: string): TicketPanel => {
       box?.scrollBy(step * Math.max(box.viewport.height - 1, 1))
     },
     scroll,
+    toSpent,
   }
 }
 
 /**
  * The lines the whole ticket takes in a pane `height` tall, `width` wide with its frame: its
  * Markdown's lines as written, wrapped within the frame, which its marks concealed take no more
- * of, and the frame's two; at most `panelCap`.
+ * of, its `Spent` section's `spent` lines and the line over them, and the frame's two; at most
+ * `panelCap`.
  */
-export const panelLines = (issue: TicketText | undefined, height: number, width: number) => {
+export const panelLines = (
+  issue: TicketText | undefined,
+  height: number,
+  width: number,
+  spent = 0,
+) => {
   const inner = Math.max(width - 4, 1)
   const content =
     issue === undefined
@@ -288,7 +312,7 @@ export const panelLines = (issue: TicketText | undefined, height: number, width:
       : wholeTicket(issue)
           .split("\n")
           .reduce((sum, line) => sum + wrapText(line, inner).length, 0)
-  return Math.min(panelCap(height), content + 2)
+  return Math.min(panelCap(height), content + (spent > 0 ? spent + 1 : 0) + 2)
 }
 
 /** The frame's top: `▴ less  t · Esc` at its right, which a click on closes the panel. */
@@ -320,18 +344,22 @@ export const bottomLine = (theme: Theme, width: number, more: number): Segments 
 
 /**
  * The whole ticket, `width` wide and `lines` tall with its frame: `issue` drawn with <markdown> in a
- * scrollbox, which the wheel scrolls; `Reading the ticket…` until the run has read it. The bottom
- * border counts the lines below as it is drawn, from the scrollbox as it is then, so that the
- * Markdown laid out and scrolled changes no state.
+ * scrollbox, which the wheel scrolls; `Reading the ticket…` until the run has read it; then `spent`,
+ * what its worker spent, `width - 4` wide, where it has one. The bottom border counts the lines
+ * below as it is drawn, from the scrollbox as it is then, so that the Markdown laid out and
+ * scrolled changes no state; so the scrollbox puts `Spent` at its top as it is drawn, while the
+ * panel was opened to it, until you scroll.
  */
 export const TicketPanelView = ({
   issue,
+  spent,
   panel,
   looks,
   width,
   lines,
 }: {
   readonly issue: TicketText | undefined
+  readonly spent: ReadonlyArray<Segments> | null
   readonly panel: TicketPanel
   readonly looks: Looks
   readonly width: number
@@ -339,6 +367,23 @@ export const TicketPanelView = ({
 }) => {
   const theme = useTheme()
   const inside = Math.max(lines - 2, 0)
+  const spentBox = useRef<BoxRenderable>(null)
+  const toSpent = function (this: ScrollBoxRenderable) {
+    const section = spentBox.current
+    const asked = panel.toSpent.current
+    if (section === null || asked === null) return
+    // A scroll since it was put there is yours: it stays where you put it.
+    if (asked.at !== undefined && this.scrollTop !== asked.at) {
+      panel.toSpent.current = null
+      return
+    }
+    const offset = Math.min(
+      section.y - this.content.y,
+      Math.max(this.scrollHeight - this.viewport.height, 0),
+    )
+    if (this.scrollTop !== offset) this.scrollTop = offset
+    panel.toSpent.current = { at: this.scrollTop }
+  }
   const top = topLines(theme, width)
   const bottom = function (this: Renderable, buffer: OptimizedBuffer) {
     const box = panel.scroll.current
@@ -371,6 +416,7 @@ export const TicketPanelView = ({
       >
         <scrollbox
           ref={panel.scroll}
+          renderBefore={toSpent}
           flexGrow={1}
           focusable={false}
           scrollbarOptions={{ visible: false }}
@@ -385,6 +431,11 @@ export const TicketPanelView = ({
               {...looks.highlighter}
               conceal
             />
+          )}
+          {spent === null ? null : (
+            <box ref={spentBox} flexDirection="column" flexShrink={0} marginTop={1}>
+              <Lines lines={spent} />
+            </box>
           )}
         </scrollbox>
       </box>

@@ -273,15 +273,15 @@ When the run ends, the dashboard closes and the main screen gets:
   account's window, so tutti estimates it: the window's rise over the run, shared among the workers
   by what each would cost at API prices. It counts what you use beside the run too. Near a usage
   limit, the line ends with the account's figure, `⚠ 5h window 92% · resets 14:20`. A click on the
-  line shows the breakdown, **Spent**: tokens by model and how many came from the cache, model calls,
-  dollars, how the share is made, what fills the context, and the ticket's share of the run's tokens.
-  `Esc` or a click closes it.
+  line opens the whole ticket (below) scrolled to its last section, **Spent**: tokens by model and
+  how many came from the cache, model calls, dollars, how the share is made, what fills the context,
+  and the ticket's share of the run's tokens.
 - **The ticket.** Line 1 has the ticket's type and priority and its title in bold. Under the
   resource line, the first lines of the ticket's description: 2, 3 on a pane of 40 rows or more, none at the minimum
   size. `▾ whole ticket  t` ends them when the ticket has more than shows. `t`, or a click on it,
   opens the whole ticket in their place: the description, design, acceptance criteria as a
-  checklist, notes, links and labels, in a frame up to 60% of the pane that `PgUp`, `PgDn` and the
-  wheel scroll, `↓ N more lines` at its foot while there is more. Opening it reads the ticket from
+  checklist, notes, links and labels, then **Spent**, in a frame up to 60% of the pane that `PgUp`,
+  `PgDn` and the wheel scroll, `↓ N more lines` at its foot while there is more. Opening it reads the ticket from
   bd again, so notes added during the run, and the tickets it blocks, show. `t`, a click on
   `▴ less`, or `Esc` closes it.
 - **The transcript.** What the worker writes is drawn as Markdown. Each tool call is one line, its
