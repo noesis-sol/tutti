@@ -212,5 +212,5 @@ export const probeWith = (
             ),
         }),
       )
-    return UsageProbe.of({ probe })
+    return UsageProbe.of({ probe: Effect.fn("UsageProbe.probe")(probe) })
   })

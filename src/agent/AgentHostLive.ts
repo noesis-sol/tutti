@@ -853,7 +853,7 @@ export const layer = (
         })
 
       return AgentHost.of({
-        start: (ticket, session) =>
+        start: Effect.fn("AgentHost.start")((ticket, session) =>
           Effect.map(
             begin(ticket, session, { _tag: "New", sessionId: session.sessionId }),
             ({ notes }) => {
@@ -861,10 +861,11 @@ export const layer = (
               else notesGiven.set(ticket, notes)
             },
           ),
+        ),
         // A session stopped over a setup problem as it resumed is sent nothing: the message's uuid
         // all the same, its worker Gone with `setup` for the caller to settle. One whose changing
         // notes may differ from those it recorded is told them first (resumedNotes).
-        resume: (ticket, session, message) =>
+        resume: Effect.fn("AgentHost.resume")((ticket, session, message) =>
           Effect.flatMap(
             begin(ticket, session, { _tag: "Resume", sessionId: session.sessionId }),
             ({ opened, problem, notes }) => {
@@ -887,11 +888,13 @@ export const layer = (
               )
             },
           ),
-        send: (ticket, text, from, uuid) =>
+        ),
+        send: Effect.fn("AgentHost.send")((ticket, text, from, uuid) =>
           Effect.flatMap(sessionOf(ticket), (session) =>
             push(workers, session, { text, from, ...(uuid === undefined ? {} : { uuid }) }),
           ),
-        interrupt: (ticket) =>
+        ),
+        interrupt: Effect.fn("AgentHost.interrupt")((ticket) =>
           Effect.flatMap(sessionOf(ticket), (session) =>
             interruptIn(session).pipe(
               timeoutAwake({
@@ -900,7 +903,8 @@ export const layer = (
               }),
             ),
           ),
-        close,
+        ),
+        close: Effect.fn("AgentHost.close")(close),
         end: (ticket) => Effect.andThen(close(ticket), workers.forget(ticket)),
         takeRequires: (names) => Ref.set(requires, names),
         current: workers.current,

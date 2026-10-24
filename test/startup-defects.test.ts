@@ -7,7 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { query } from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
-import { Cause, ConfigProvider, Effect, Exit, Layer } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
 import fc from "fast-check"
 import { Account, AccountProbeFailed, startProbeWith } from "../src/agent/Account.ts"
 import { AgentHost, AgentStartFailed } from "../src/agent/AgentHost.ts"
@@ -209,8 +209,8 @@ describe("AgentHost live: query() throwing as the session starts", () => {
         ),
       ),
     )
-    expect(exit).toEqual(
-      Exit.fail(new AgentStartFailed({ ticket: "t-1", reason: queryThrew(noBinary) })),
+    expect(Exit.findErrorOption(exit)).toEqual(
+      Option.some(new AgentStartFailed({ ticket: "t-1", reason: queryThrew(noBinary) })),
     )
     expect(state).toEqual(WorkerState.Gone({ why: queryThrew(noBinary) }))
   })

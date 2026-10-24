@@ -176,6 +176,7 @@ export class Organs extends Context.Service<
         const hold = yield* OrganHold
         const overrides = config.settings.organs
         return Organs.of({
+          // Named with a span, as Effect.fn names the other boundaries: Effect.fn would lose A.
           ask: <A>(
             organ: Organ<A>,
             input: ReadonlyArray<InputPart>,
@@ -219,7 +220,7 @@ export class Organs extends Context.Service<
                 }),
               )
               return response.value
-            }),
+            }).pipe(Effect.withSpan("Organs.ask", { attributes: { organ: organ.name } })),
         })
       }),
     )

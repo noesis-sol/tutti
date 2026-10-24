@@ -656,7 +656,7 @@ export class Beads extends Context.Service<
           )
 
         return Beads.of({
-          ready: (ready = {}) =>
+          ready: Effect.fn("Beads.ready")((ready = {}) =>
             read(
               [
                 "ready",
@@ -668,8 +668,9 @@ export class Beads extends Context.Service<
               ],
               decodeIssues,
             ),
-          show,
-          list: (list = {}) =>
+          ),
+          show: Effect.fn("Beads.show")(show),
+          list: Effect.fn("Beads.list")((list = {}) =>
             read(
               [
                 "list",
@@ -685,10 +686,12 @@ export class Beads extends Context.Service<
               ],
               decodeIssues,
             ),
-          update,
-          close: (id, reason) =>
+          ),
+          update: Effect.fn("Beads.update")(update),
+          close: Effect.fn("Beads.close")((id, reason) =>
             confirmed([id], writeIssue(["close", id, "--json", ...flag("reason", reason)])),
-          defer: (id, deferral = {}) =>
+          ),
+          defer: Effect.fn("Beads.defer")((id, deferral = {}) =>
             confirmed(
               [id],
               writeIssue([
@@ -699,16 +702,21 @@ export class Beads extends Context.Service<
                 ...flag("until", deferral.until),
               ]),
             ),
-          addLabel: (id, label) =>
+          ),
+          addLabel: Effect.fn("Beads.addLabel")((id, label) =>
             confirmed([id], Effect.asVoid(write(["label", "add", id, label, "--json"]))),
-          removeLabel: (id, label) =>
+          ),
+          removeLabel: Effect.fn("Beads.removeLabel")((id, label) =>
             confirmed([id], Effect.asVoid(write(["label", "remove", id, label, "--json"]))),
-          addDependency: (id, dependsOn, type = "blocks", options = {}) =>
-            confirmed(
-              options.checked ? [] : [id, dependsOn],
-              Effect.asVoid(write(["dep", "add", id, dependsOn, "--json", `--type=${type}`])),
-            ),
-          dependencies: (id, dependencies = {}) =>
+          ),
+          addDependency: Effect.fn("Beads.addDependency")(
+            (id, dependsOn, type = "blocks", options = {}) =>
+              confirmed(
+                options.checked ? [] : [id, dependsOn],
+                Effect.asVoid(write(["dep", "add", id, dependsOn, "--json", `--type=${type}`])),
+              ),
+          ),
+          dependencies: Effect.fn("Beads.dependencies")((id, dependencies = {}) =>
             confirmed(
               [id],
               read(
@@ -723,7 +731,8 @@ export class Beads extends Context.Service<
                 decodeDependencies,
               ),
             ),
-          create: (issue) =>
+          ),
+          create: Effect.fn("Beads.create")((issue) =>
             confirmed(
               issue.checked
                 ? []
@@ -752,11 +761,19 @@ export class Beads extends Context.Service<
                 ),
               ]),
             ),
-          questions: () => read(["human", "list", "--json"], decodeQuestions),
-          metadata: (id) => Effect.map(show(id), (issue) => issue.metadata),
-          setMetadata: (id, key, value) =>
+          ),
+          questions: Effect.fn("Beads.questions")(() =>
+            read(["human", "list", "--json"], decodeQuestions),
+          ),
+          metadata: Effect.fn("Beads.metadata")((id) =>
+            Effect.map(show(id), (issue) => issue.metadata),
+          ),
+          setMetadata: Effect.fn("Beads.setMetadata")((id, key, value) =>
             Effect.asVoid(update(id, { setMetadata: { [key]: value } })),
-          unsetMetadata: (id, key) => Effect.asVoid(update(id, { unsetMetadata: [key] })),
+          ),
+          unsetMetadata: Effect.fn("Beads.unsetMetadata")((id, key) =>
+            Effect.asVoid(update(id, { unsetMetadata: [key] })),
+          ),
         })
       }),
     )

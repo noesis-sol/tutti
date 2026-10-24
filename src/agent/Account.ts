@@ -431,7 +431,7 @@ export class Account extends Context.Service<
             checkout: config.repo,
           })
         })
-        return Account.of({ probe })
+        return Account.of({ probe: probe.pipe(Effect.withSpan("Account.probe")) })
       }),
     )
 

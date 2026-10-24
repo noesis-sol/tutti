@@ -422,7 +422,7 @@ export const makeStore = (
     state,
     previousRun,
     ticket,
-    update,
+    update: Effect.fn("Store.update")(update),
     updateTicket,
     saveSession: (id, start) =>
       updateTicket(id, ({ suspended: _, phase: __, ...ticket }) => ({ ...ticket, ...start })),

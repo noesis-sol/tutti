@@ -180,7 +180,9 @@ describe("AgentHost live: a session's lifecycle", () => {
         return { exit, state: yield* host.current("t-1"), waited, sent }
       }),
     )
-    expect(exit).toEqual(Exit.fail(new AgentStartFailed({ ticket: "t-1", reason: closedWhy })))
+    expect(Exit.findErrorOption(exit)).toEqual(
+      Option.some(new AgentStartFailed({ ticket: "t-1", reason: closedWhy })),
+    )
     expect(state).toEqual(WorkerState.Closed())
     expect(waited).toBeLessThan(10_000)
     expect(Exit.isFailure(sent)).toBe(true)
@@ -202,9 +204,13 @@ describe("AgentHost live: a session's lifecycle", () => {
         return { exit, known, again: yield* Fiber.await(again) }
       }),
     )
-    expect(exit).toEqual(Exit.fail(new AgentStartFailed({ ticket: "t-1", reason: closedWhy })))
+    expect(Exit.findErrorOption(exit)).toEqual(
+      Option.some(new AgentStartFailed({ ticket: "t-1", reason: closedWhy })),
+    )
     expect(Exit.isFailure(known)).toBe(true)
-    expect(again).toEqual(Exit.fail(new AgentStartFailed({ ticket: "t-1", reason: closedWhy })))
+    expect(Exit.findErrorOption(again)).toEqual(
+      Option.some(new AgentStartFailed({ ticket: "t-1", reason: closedWhy })),
+    )
   })
 })
 

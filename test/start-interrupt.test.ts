@@ -5,7 +5,7 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Duration, Effect, Exit, Fiber, Layer, Scheduler } from "effect"
+import { Duration, Effect, Exit, Fiber, Layer, Option, Scheduler } from "effect"
 import { AgentHost, AgentStartFailed } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
@@ -110,8 +110,10 @@ describe("AgentHost live: a start interrupted", () => {
     expect(refused).toEqual([])
     // The steps reach past the start's end: some starts were interrupted, and the last ran to it.
     expect(results.some(({ first }) => Exit.hasInterrupts(first))).toBe(true)
-    expect(results.at(-1)?.first).toEqual(
-      Exit.fail(new AgentStartFailed({ ticket: "t-60", reason: folderMissing(cwd) })),
+    const last = results.at(-1)?.first
+    // The failure, not the whole Exit: the cause also carries AgentHost.start's trace.
+    expect(last === undefined ? undefined : Exit.findErrorOption(last)).toEqual(
+      Option.some(new AgentStartFailed({ ticket: "t-60", reason: folderMissing(cwd) })),
     )
   }, 60_000)
 })

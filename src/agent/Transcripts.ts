@@ -571,9 +571,10 @@ export const makeTranscripts = (given: Storage): Effect.Effect<Transcripts["Serv
             updates: Stream.fromSubscription(subscription),
           }
         }),
-      page: (id, before) =>
+      page: Effect.fn("Transcripts.page")((id, before) =>
         Effect.sync(() => readBack(storage, id, before, pageSize).map(({ item }) => item)),
-      tail: (id, limits) =>
+      ),
+      tail: Effect.fn("Transcripts.tail")((id, limits) =>
         Effect.sync(() => {
           const found = readBack(storage, id, undefined, limits.items)
           let total = found.reduce((sum, { length }) => sum + length, 0)
@@ -584,6 +585,7 @@ export const makeTranscripts = (given: Storage): Effect.Effect<Transcripts["Serv
           }
           return found.slice(first).map(({ item }) => item)
         }),
+      ),
       // An open view keeps showing the worker: it is let go of as the last one closes.
       release: (id) =>
         Effect.sync(() => {
