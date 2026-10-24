@@ -91,6 +91,7 @@ import {
   type Session,
   userMessage,
   type WorkerEntry,
+  type Workers,
 } from "./AgentHost.ts"
 import type { Attention } from "./Attention.ts"
 import { queryThrew } from "./claudeBinary.ts"
@@ -266,6 +267,34 @@ const liveOf = (lifecycle: Lifecycle | undefined): Live | undefined =>
 
 /** Why a start fails when tutti closed or ended the session before it had started. */
 export const closedWhy = "it was closed while it started"
+
+/** Why a send fails when the session was closing as the message was pushed: it never went. */
+export const closingWhy = "its session was closing, so the message never went"
+
+/**
+ * Pushes a message into the session's inbox; its uuid. An inbox already ended, the session closing,
+ * takes nothing: the send is withdrawn, nothing recorded, and the worker gone.
+ */
+export const push = (
+  workers: Workers,
+  session: Pick<Live, "ticket" | "sessionId" | "entry" | "inbox">,
+  message: Message,
+): Effect.Effect<string, AgentGone> =>
+  Effect.gen(function* () {
+    const uuid = message.uuid ?? randomUUID()
+    // Outstanding before the CLI can see it, so its turn's result can't come first.
+    yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
+    const sdk = userMessage(message, uuid, session.sessionId)
+    if (!(yield* Queue.offer(session.inbox, sdk))) {
+      yield* workers.fold(
+        session.entry,
+        WorkerEvent.Cancelled({ session: session.sessionId, uuids: [uuid] }),
+      )
+      return yield* new AgentGone({ ticket: session.ticket, why: closingWhy })
+    }
+    yield* workers.sent(session.entry, session.sessionId, sdk)
+    return uuid
+  })
 
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
@@ -766,18 +795,6 @@ export const layer = (
             : Effect.succeed(found)
         })
 
-      /** Pushes a message into the session's inbox; its uuid. */
-      const push = (session: Live, message: Message) =>
-        Effect.gen(function* () {
-          const uuid = message.uuid ?? randomUUID()
-          // Outstanding before the CLI can see it, so its turn's result can't come first.
-          yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
-          const sdk = userMessage(message, uuid, session.sessionId)
-          yield* workers.sent(session.entry, session.sessionId, sdk)
-          yield* Queue.offer(session.inbox, sdk)
-          return uuid as string
-        })
-
       /** Closes the ticket's session on purpose, cancelling its start, or waits for its end. */
       const close = (ticket: string): Effect.Effect<void> =>
         Effect.suspend(() => {
@@ -855,12 +872,17 @@ export const layer = (
             begin(ticket, session, { _tag: "Resume", sessionId: session.sessionId }),
             ({ opened, problem }) =>
               problem === undefined
-                ? push(opened, message)
+                ? push(workers, opened, message).pipe(
+                    Effect.catchTag(
+                      "AgentGone",
+                      () => new AgentStartFailed({ ticket, reason: closedWhy }),
+                    ),
+                  )
                 : Effect.succeed(message.uuid ?? randomUUID()),
           ),
         send: (ticket, text, from, uuid) =>
           Effect.flatMap(sessionOf(ticket), (session) =>
-            push(session, { text, from, ...(uuid === undefined ? {} : { uuid }) }),
+            push(workers, session, { text, from, ...(uuid === undefined ? {} : { uuid }) }),
           ),
         interrupt: (ticket) =>
           Effect.flatMap(sessionOf(ticket), (session) =>

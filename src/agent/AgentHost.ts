@@ -183,7 +183,8 @@ export class AgentHost extends Context.Service<
     /**
      * Pushes a message into the worker's inbox: the CLI may fold it into the running turn or queue
      * it, alone or sharing a turn with another (§ 4.1). Its uuid, `uuid` when given, which the
-     * session's results and an interrupt's receipt name it by.
+     * session's results and an interrupt's receipt name it by. Fails when the worker has no open
+     * session, or it is closing: the message didn't go.
      */
     send(ticket: string, text: string, from: From, uuid?: string): Effect.Effect<string, AgentGone>
     /**
