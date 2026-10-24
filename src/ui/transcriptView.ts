@@ -18,9 +18,11 @@ import {
   type Entry,
   emptyTranscript,
   entriesOf,
+  keptEntries,
   mounted,
   type OpenTranscript,
   type TranscriptState,
+  withLive,
 } from "./transcriptItems.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { external, useRunView, useTranscripts } from "./useRunView.ts"
@@ -71,13 +73,24 @@ export const useTranscriptWindow = (
   const sends = useSends(ticket, window.latest, underWay, holding, finished)
   const queuedKey = sends.queued.map((send) => send.uuid).join(" ")
   const queued = useMemo(() => new Set(queuedKey === "" ? [] : queuedKey.split(" ")), [queuedKey])
-  const entries = useMemo(
-    () => entriesOf(window.items, state.live, queued),
-    [window.items, state.live, queued],
-  )
+  // The items' entries, worked out as the items change and each kept while it is the same; the
+  // partial messages laid over them as each token comes, the entries not along their way kept.
+  const keptItems = useRef<ReadonlyArray<Entry>>([])
+  const itemEntries = useMemo(() => {
+    keptItems.current = keptEntries(keptItems.current, entriesOf(window.items, [], queued))
+    return keptItems.current
+  }, [window.items, queued])
+  const keptLive = useRef<ReadonlyArray<Entry>>([])
+  const entries = useMemo(() => {
+    keptLive.current = keptEntries(keptLive.current, withLive(itemEntries, state.live))
+    return keptLive.current
+  }, [itemEntries, state.live])
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
-  const shown = bounded(entries, expanded, window.following)
-  const flat = mounted(shown, expanded)
+  const shown = useMemo(
+    () => bounded(entries, expanded, window.following),
+    [entries, expanded, window.following],
+  )
+  const flat = useMemo(() => mounted(shown, expanded), [shown, expanded])
   const toggle = useCallback(
     (key: string) =>
       setExpanded((open) => {

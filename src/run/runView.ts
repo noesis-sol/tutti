@@ -14,7 +14,6 @@ import {
   Effect,
   type Stream as EffectStream,
   Option,
-  Predicate,
   Queue,
   type Scope,
   Stream,
@@ -38,6 +37,7 @@ import {
   TicketPhase,
   type WindDownMark,
 } from "./phase.ts"
+import { keep, keepAll } from "./same.ts"
 
 /** A hold on the run, for its banner: `BLOCKED`, `USAGE_LIMIT` with its reset, … */
 export interface RunHold {
@@ -725,40 +725,6 @@ export const loadView = (reading: Reading): LoadView => {
     cores: kernel.cores,
     levels: reading.levels,
   }
-}
-
-/** Whether `a` and `b` are the same data: equal primitives, or arrays and objects of such. */
-export const same = (a: unknown, b: unknown): boolean => {
-  if (Object.is(a, b)) return true
-  if (!Predicate.isObjectOrArray(a) || !Predicate.isObjectOrArray(b)) return false
-  if (Array.isArray(a) !== Array.isArray(b)) return false
-  const keysA = Object.keys(a)
-  const keysB = Object.keys(b)
-  if (keysA.length !== keysB.length) return false
-  return keysA.every(
-    (key) =>
-      Object.hasOwn(b, key) &&
-      same((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
-  )
-}
-
-const keep = <A>(previous: A, next: A): A => (same(previous, next) ? previous : next)
-
-// next's items, each the previous one with its key where that is the same; the previous list
-// itself when every item is kept in the same order.
-const keepAll = <A>(
-  previous: ReadonlyArray<A>,
-  next: ReadonlyArray<A>,
-  key: (item: A) => string,
-): ReadonlyArray<A> => {
-  const before = new Map(previous.map((item) => [key(item), item]))
-  const kept = next.map((item) => {
-    const old = before.get(key(item))
-    return old !== undefined && same(old, item) ? old : item
-  })
-  return kept.length === previous.length && kept.every((item, i) => item === previous[i])
-    ? previous
-    : kept
 }
 
 /** RunView for `inputs`, keeping every part of `previous` that is unchanged, and `previous` itself

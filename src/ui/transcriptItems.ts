@@ -17,11 +17,13 @@ import { Effect, Fiber, Predicate, type Scope, Stream } from "effect"
 import {
   type Item,
   type Live,
+  type LiveBlock,
   pageSize,
   ringSize,
   type Transcripts,
   toolSummary,
 } from "../agent/Transcripts.ts"
+import { keepAll } from "../run/same.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import { type External, external } from "./useRunView.ts"
 
@@ -103,7 +105,7 @@ interface Building {
   readonly live: boolean
 }
 
-type Node = Exclude<Entry, ToolEntry> | Building
+type Node = Entry | Building
 
 const finish = (node: Node): Entry =>
   node._tag === "Tool"
@@ -176,8 +178,9 @@ export const entriesOf = (
     if (toolUseTypes.has(String(block.type))) {
       const tool = toolOf(block, false)
       if (tool === undefined || tools.has(tool.key)) return
-      tools.set(tool.key, tool)
+      // Placed before it is known, so that a call that names itself its parent isn't under itself.
       place(parent, tool)
+      tools.set(tool.key, tool)
     } else if (block.type === "text") {
       const text = sanitize(asString(block.text) ?? "")
       if (text.trim() !== "") place(parent, { _tag: "Text", key, text, live: false })
@@ -214,27 +217,114 @@ export const entriesOf = (
   }
   for (const message of live) {
     message.blocks.forEach((block, i) => {
-      const key = `live:${message.parent ?? ""}:${i}`
-      if (block === undefined || block.kind === "thinking") return
-      if (block.kind === "text") {
-        const text = sanitize(block.text)
-        if (text.trim() !== "") place(message.parent, { _tag: "Text", key, text, live: true })
-        return
-      }
-      place(message.parent, {
-        _tag: "Tool",
-        key,
-        name: sanitizeLine(block.name ?? "tool"),
-        summary: "",
-        input: {},
-        result: null,
-        children: [],
-        live: true,
-      })
+      const entry = liveEntry(message.parent, block, i)
+      if (entry !== undefined) place(message.parent, entry)
     })
   }
   return top.map(finish)
 }
+
+/** What block `i` of a live message under `parent` draws as: none for thinking or empty text. */
+const liveEntry = (
+  parent: string | null,
+  block: LiveBlock | undefined,
+  i: number,
+): Entry | undefined => {
+  const key = `live:${parent ?? ""}:${i}`
+  if (block === undefined || block.kind === "thinking") return undefined
+  if (block.kind === "text") {
+    const text = sanitize(block.text)
+    return text.trim() === "" ? undefined : { _tag: "Text", key, text, live: true }
+  }
+  return {
+    _tag: "Tool",
+    key,
+    name: sanitizeLine(block.name ?? "tool"),
+    summary: "",
+    input: {},
+    result: null,
+    children: [],
+    live: true,
+  }
+}
+
+/**
+ * `entries` with `entry` added at the end of the children of tool call `parent`, wherever it is
+ * nested; undefined when no call there has that ID. Only the entries along the way are new.
+ */
+const under = (
+  entries: ReadonlyArray<Entry>,
+  parent: string,
+  entry: Entry,
+): ReadonlyArray<Entry> | undefined => {
+  for (const [i, each] of entries.entries()) {
+    if (each._tag !== "Tool" && each._tag !== "Nested") continue
+    const children =
+      each._tag === "Tool" && each.key === parent
+        ? [...each.children, entry]
+        : under(each.children, parent, entry)
+    if (children !== undefined) return entries.with(i, { ...each, children })
+  }
+  return undefined
+}
+
+/**
+ * `settled` (the entries of the items alone, `entriesOf(items, [], queued)`) with `live` laid over
+ * them as entriesOf places it: at the end of the worker's own, or under its Agent call, or in the
+ * group of that call's subagent work when the call is older than the window. Only the entries along
+ * the way to each live one are new; the others are `settled`'s own, so that a streamed token
+ * redraws the entry it grows and the Agent calls it is under, not the transcript.
+ */
+export const withLive = (
+  settled: ReadonlyArray<Entry>,
+  live: ReadonlyArray<Live>,
+): ReadonlyArray<Entry> => {
+  let top = settled
+  for (const message of live) {
+    const parent = message.parent
+    message.blocks.forEach((block, i) => {
+      const entry = liveEntry(parent, block, i)
+      if (entry === undefined) return
+      if (parent === null) {
+        top = [...top, entry]
+        return
+      }
+      const placed = under(top, parent, entry)
+      if (placed !== undefined) {
+        top = placed
+        return
+      }
+      const key = `nested:${parent}`
+      const group = top.findIndex((each) => each._tag === "Nested" && each.key === key)
+      const nested = top[group]
+      top =
+        nested?._tag === "Nested"
+          ? top.with(group, { ...nested, children: [...nested.children, entry] })
+          : [...top, { _tag: "Nested", key, children: [entry] }]
+    })
+  }
+  return top
+}
+
+/**
+ * `next` with each entry that is the same as `previous`' with its key kept by identity, and the
+ * children of a call or group that changed kept likewise; `previous` itself when nothing changed.
+ * Entries kept are what memo(EntryView) holds on.
+ */
+export const keptEntries = (
+  previous: ReadonlyArray<Entry>,
+  next: ReadonlyArray<Entry>,
+): ReadonlyArray<Entry> =>
+  keepAll(
+    previous,
+    next,
+    (entry) => entry.key,
+    (old, entry) =>
+      (entry._tag === "Tool" && old._tag === "Tool") ||
+      (entry._tag === "Nested" && old._tag === "Nested")
+        ? { ...entry, children: keptEntries(old.children, entry.children) }
+        : entry,
+  )
 
 /** Whether `entry` is a tool call (or a group) whose children are drawn under it when expanded. */
 export const nests = (entry: Entry): boolean =>
@@ -254,6 +344,12 @@ export const mounted = (
       ? mounted(entry.children, expanded)
       : []),
   ])
+
+/** How many entries `mounted` gives for `entry` alone. */
+const mountedCount = (entry: Entry, expanded: ReadonlySet<string>): number =>
+  (entry._tag === "Tool" || entry._tag === "Nested") && expanded.has(entry.key)
+    ? entry.children.reduce((sum, child) => sum + mountedCount(child, expanded), 1)
+    : 1
 
 /** An edit's change: the file, the lines added and removed, and the unified diff of them. */
 export interface EditChange {
@@ -585,7 +681,7 @@ export const emptyTranscript: TranscriptState = {
 }
 
 /** The live messages once `update` changed the one for its parent. */
-const withLive = (
+const liveWith = (
   live: ReadonlyArray<Live>,
   parent: string | null,
   next: Live | undefined,
@@ -618,7 +714,7 @@ export const transcriptFeed = (
                   update((state) =>
                     change._tag === "Appended"
                       ? { ...state, window: appended(state.window, change.item) }
-                      : { ...state, live: withLive(state.live, change.parent, change.live) },
+                      : { ...state, live: liveWith(state.live, change.parent, change.live) },
                   ),
                 ),
               )
@@ -668,9 +764,12 @@ export const bounded = (
   following: boolean,
   limit: number = mountLimit,
 ): ReadonlyArray<Entry> => {
-  let kept = entries
-  while (kept.length > 0 && mounted(kept, expanded).length > limit) {
-    kept = following ? kept.slice(1) : kept.slice(0, -1)
+  const sizes = entries.map((entry) => mountedCount(entry, expanded))
+  let total = sizes.reduce((sum, size) => sum + size, 0)
+  let from = 0
+  let to = entries.length
+  while (to > from && total > limit) {
+    total -= (following ? sizes[from++] : sizes[--to]) ?? 0
   }
-  return kept
+  return from === 0 && to === entries.length ? entries : entries.slice(from, to)
 }

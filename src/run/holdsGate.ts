@@ -9,7 +9,8 @@ import { type Holds, noHolds, raiseStop, type StopReason, type Stops, shownHolds
 import { Ledger, type State } from "./ledger.ts"
 import { hold, Log } from "./log.ts"
 import type { PhaseTag, TicketPhase } from "./phase.ts"
-import { type Status, same } from "./runView.ts"
+import type { Status } from "./runView.ts"
+import { same } from "./same.ts"
 
 /** The phases of a ticket the run is still at: the HOLD line counts them as running. */
 const running: ReadonlySet<PhaseTag> = new Set([

@@ -101,7 +101,14 @@ import { requestInputLines } from "./requestInput.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import { useHintHeight } from "./Toasts.tsx"
 import type { Role, Theme } from "./theme.ts"
-import { type Entry, expansionOf, type Mark, markOf, type ToolEntry } from "./transcriptItems.ts"
+import {
+  type Entry,
+  expansionOf,
+  type Mark,
+  markOf,
+  nests,
+  type ToolEntry,
+} from "./transcriptItems.ts"
 import {
   entryId,
   type Panel,
@@ -413,15 +420,35 @@ const promptLines = (
   })
 }
 
-/** What an entry is drawn with besides itself. */
-interface EntryProps {
-  readonly entry: Entry
+/** What a list of entries is drawn with besides them. */
+interface ListProps {
   readonly width: number
+  /** The key selected, if any. */
   readonly selected: string | null
+  /** The keys of the entries open. */
   readonly expanded: ReadonlySet<string>
   /** Selects the entry, and expands or collapses it, as a click does. */
   readonly click: (key: string) => void
 }
+
+/**
+ * What an entry is drawn with: only what concerns it, so that memo(EntryView) holds while the
+ * selection moves or another entry opens elsewhere.
+ */
+interface EntryProps extends ListProps {
+  readonly entry: Entry
+  /** Whether it is open. */
+  readonly open: boolean
+}
+
+/** The expanded set of an entry with no children to open. */
+const noneOpen: ReadonlySet<string> = new Set()
+
+/** Whether `key` is `entry`'s, or one of the entries under it. */
+const holds = (entry: Entry, key: string): boolean =>
+  entry.key === key ||
+  ((entry._tag === "Tool" || entry._tag === "Nested") &&
+    entry.children.some((child) => holds(child, key)))
 
 /**
  * Rows of a fixed height, as many as its lines, that a click selects and expands: lines wrapped
@@ -442,14 +469,26 @@ const ClickLines = ({
   </box>
 )
 
-/** Entries one under the other, `width` wide. */
+/**
+ * Entries one under the other, `width` wide, each given the selection only when it is in it, and
+ * the expanded set only when it nests.
+ */
 export const EntryList = ({
   entries,
+  selected,
+  expanded,
   ...props
-}: Omit<EntryProps, "entry"> & { readonly entries: ReadonlyArray<Entry> }) => (
+}: ListProps & { readonly entries: ReadonlyArray<Entry> }) => (
   <>
     {entries.map((entry) => (
-      <EntryView key={entry.key} entry={entry} {...props} />
+      <EntryView
+        key={entry.key}
+        entry={entry}
+        open={expanded.has(entry.key)}
+        selected={selected !== null && holds(entry, selected) ? selected : null}
+        expanded={nests(entry) ? expanded : noneOpen}
+        {...props}
+      />
     ))}
   </>
 )
@@ -459,7 +498,7 @@ const Children = ({
   entries,
   width,
   ...props
-}: Omit<EntryProps, "entry"> & { readonly entries: ReadonlyArray<Entry> }) => {
+}: ListProps & { readonly entries: ReadonlyArray<Entry> }) => {
   const { theme } = useLooks()
   return (
     <box
@@ -499,7 +538,7 @@ const capped = (text: string, limit: number): { readonly text: string; readonly 
 }
 
 /** What an expanded tool call shows under its line. */
-const Expanded = ({ tool, ...props }: Omit<EntryProps, "entry"> & { readonly tool: ToolEntry }) => {
+const Expanded = ({ tool, ...props }: ListProps & { readonly tool: ToolEntry }) => {
   const looks = useLooks()
   const { theme } = looks
   const expansion = expansionOf(tool)
@@ -568,11 +607,10 @@ const Expanded = ({ tool, ...props }: Omit<EntryProps, "entry"> & { readonly too
 }
 
 /** One entry of the transcript, and what it shows expanded. */
-const EntryView = memo(({ entry, ...props }: EntryProps) => {
+export const EntryView = memo(({ entry, open, ...props }: EntryProps) => {
   const looks = useLooks()
   const { theme } = looks
-  const { width, selected, expanded, click } = props
-  const open = expanded.has(entry.key)
+  const { width, selected, click } = props
   const isSelected = selected === entry.key
   switch (entry._tag) {
     case "Text":

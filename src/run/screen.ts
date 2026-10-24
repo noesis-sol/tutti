@@ -16,7 +16,8 @@ import type { WorkerState } from "../agent/WorkerState.ts"
 import { type Commands, makeCommands } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
 import { keepsWorker, Ledger } from "./ledger.ts"
-import { make as makeView, type RunView, type Sources, type Status, same } from "./runView.ts"
+import { make as makeView, type RunView, type Sources, type Status } from "./runView.ts"
+import { same } from "./same.ts"
 
 /** The screen the run shows. */
 export type Screen = Data.TaggedEnum<{
