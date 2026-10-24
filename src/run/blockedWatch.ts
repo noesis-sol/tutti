@@ -9,6 +9,7 @@ import { blockedAt, blockedLifted, blockedStop, blockedTickets, liftBlocked } fr
 import type { HoldsGate } from "./holdsGate.ts"
 import type { Log } from "./log.ts"
 import { sayer } from "./say.ts"
+import type { Wake } from "./wakes.ts"
 
 export interface BlockedWatch {
   /** Holds the run for each request now past blockedAfter, and lifts the holds of tickets with none. */
@@ -17,12 +18,13 @@ export interface BlockedWatch {
 
 /**
  * Watches the open requests in a fiber `watch` runs, holding the run on `holds` with BLOCKED as each
- * reaches its time, until the run has `ended`; each look wakes the run (`wakeUp`).
+ * reaches its time, until the run has `ended`; each change of the requests wakes the run
+ * (`wakeUp`), for an attention change, and each hold the look puts on or lifts for a hold.
  */
 export const make = (options: {
   readonly holds: HoldsGate
   readonly ended: Effect.Effect<boolean>
-  readonly wakeUp: Effect.Effect<unknown>
+  readonly wakeUp: (why: Wake) => Effect.Effect<unknown>
   readonly watch: (effect: Effect.Effect<void>) => Effect.Effect<unknown>
 }): Effect.Effect<BlockedWatch, never, Attention | Log | EventStream> =>
   Effect.gen(function* () {
@@ -43,7 +45,7 @@ export const make = (options: {
           yield* say({ kind: "hold", ticket, lifted: true, text })
         }
         for (const trip of trips) yield* holds.stopped(blockedStop(trip.ticket, trip.what))
-        yield* wakeUp
+        yield* wakeUp("hold")
       }),
     )
     // The requests whose time a fiber waits for.
@@ -59,7 +61,7 @@ export const make = (options: {
             yield* watch(Effect.andThen(Effect.sleep(Duration.millis(Math.max(0, left))), look))
           }
           yield* look
-          yield* wakeUp
+          yield* wakeUp("attention")
         }),
       ),
     )

@@ -149,6 +149,7 @@ import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold } from "./usageLimit.ts"
 import { make as watchUsageWindows } from "./usageWindows.ts"
+import { make as makeWakes, reads } from "./wakes.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -318,13 +319,14 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // act on the run until then (screenCommands.ts).
     const commands = yield* makeScreenCommands({ repo: config.repo, base })
 
-    // Wakes the run to look again: a merge, a stop, a drain request, the ready poll.
-    const wake = yield* Queue.sliding<void>(1)
-    const wakeUp = Queue.offer(wake, undefined)
+    // Wakes the run to look again, each wake for its reason (wakes.ts): a merge, a stop, a drain
+    // request, the ready poll.
+    const wakes = yield* makeWakes
+    const { wakeUp } = wakes
     // What holds the run (holdsGate.ts): its stops, the tickets past --ticket-limit, the machine's
     // hold and the usage limit's view, each shown on the dashboard as it comes. A stop holds the
     // run, said as it comes while tickets still run, and wakes it.
-    const holds = yield* makeHoldsGate({ status, notices, wakeUp })
+    const holds = yield* makeHoldsGate({ status, notices, wakeUp: wakeUp("hold") })
     const { changeHolds, currentStops, stopped } = holds
     // The first request to quit, or a panic, ends the loop below, and the run quits (quitting.ts).
     const quitting = yield* Deferred.make<Quitting>()
@@ -356,7 +358,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // The account's usage limit holds the run until it resets, without a stop (usageLimit.ts).
     const usage = yield* makeUsageHold({
       base,
-      wakeUp,
+      wakeUp: wakeUp("hold"),
       show: (view) => changeHolds((now) => showUsage(now, view)),
     })
     // The account's windows on the title line all the time, each figure recorded (usageWindows.ts).
@@ -369,7 +371,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const organs = yield* Effect.serviceOption(Organs)
     const triage = Option.isNone(organs)
       ? triageOff
-      : yield* makeTriage({ base, hold: environment, done: wakeUp }).pipe(
+      : yield* makeTriage({ base, hold: environment, done: wakeUp("verdict") }).pipe(
           Effect.provideService(Organs, organs.value),
         )
 
@@ -496,7 +498,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // The machine's other tutti and orchestra runs (machineGate.ts): with --machine-workers, the
     // ticket about to start waits while the workers across them are at that cap.
-    const machine = yield* makeMachineGate({ holds, status, wakeUp })
+    const machine = yield* makeMachineGate({ holds, status, wakeUp: wakeUp("hold") })
     // With the queue's footprint on (§ 8.4), a ticket overlapping a running one's files is held back:
     // the checks' scripts count as no ticket's, and the queue's shared files hold none apart. A ticket works in the worktree the Store saved for
     // it, wherever git had it (a reused one, or one an earlier run's --worktrees put elsewhere), or
@@ -710,12 +712,19 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // The screen's commands, and the hand-backs waiting on steered workers for their views' notices
     // (screenCommands.ts, § 4.3).
     if (screen !== null) {
-      yield* commands.listen(screen, { queue, hearQuit: quits.hearQuit, watch, wakeUp })
+      yield* commands.listen(screen, {
+        queue,
+        hearQuit: quits.hearQuit,
+        watch,
+        wakeUp: wakeUp("command"),
+      })
     }
     // The ready poll, the merge queue's changes and drain requests each wake the run.
-    yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp)))
+    yield* watch(Effect.forever(Effect.andThen(Effect.sleep(readyPoll), wakeUp("poll"))))
     yield* watch(
-      Stream.runForEach(queue.changes, (state) => Effect.andThen(mergeStop(state), wakeUp)),
+      Stream.runForEach(queue.changes, (state) =>
+        Effect.andThen(mergeStop(state), wakeUp("merge")),
+      ),
     )
     const drains = options.drains
     if (drains !== undefined) {
@@ -723,7 +732,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         Effect.forever(
           Effect.andThen(
             Effect.flatMap(Queue.take(drains), (request) => hear(request, queue.rechecks)),
-            wakeUp,
+            wakeUp("drain"),
           ),
         ),
       )
@@ -738,12 +747,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       const winding = (yield* ledger.current).windDown !== null
       return (yield* taking) && !winding && !(yield* scheduler.limitReached)
     })
-    // Fills the free slots, after the look's other effects, then reads what they left for the end's
-    // decision (runEnd.ts).
-    const nothingLeft = Effect.gen(function* () {
-      // A merge that ends during this look frees what it held back after the look has read it: the
-      // run is done only when nothing was merging as the look began, and its wake has it look again.
-      const mergedBefore = isSettled(yield* queue.state)
+    // The look's effects, which read bd and git: the tickets put back in the queue, the setups,
+    // checks and requires taken again, the carried and answered workers taken up, then the free
+    // slots filled.
+    const fill = Effect.gen(function* () {
       yield* machine.lookAround
       yield* requeueWaiting(branches)
       // A ticket merged, which may bring what a setup that failed in a ticket's worktree needed.
@@ -776,6 +783,17 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       }
       // For the other runs to count before this one next looks around.
       yield* machine.sayRunning
+    })
+    // Fills the free slots, after the look's other effects, then reads what they left for the end's
+    // decision (runEnd.ts). A look woken only for what bd and git can't have changed, an attention
+    // change, skips to the reading (wakes.ts).
+    const nothingLeft = Effect.gen(function* () {
+      // A merge that ends during this look frees what it held back after the look has read it: the
+      // run is done only when nothing was merging as the look began, and its wake has it look again.
+      const mergedBefore = isSettled(yield* queue.state)
+      const why = yield* wakes.take
+      yield* Effect.logDebug(`look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`)
+      if (reads(why)) yield* fill
       const look: Look = {
         mergedBefore,
         tickets: (yield* ledger.current).tickets,
@@ -836,7 +854,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         const endAsked = yield* commands.endAsked
         const end = decide({ ...look, held, usageHeld: yield* usage.held, endAsked })
         if (end._tag === "Done") return { limited: false, asked: end.asked, seen }
-        yield* Effect.raceFirst(Queue.take(wake), scheduler.freed)
+        yield* wakes.next(scheduler.freed)
       }
     })
     // Nothing left: a hold for the environment probes the machine, and goes on or ends the run. A
