@@ -1185,12 +1185,13 @@ describe("layouts", () => {
        tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
-       ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
+      ╭───────────────┬───────────────┬─────────────┬────────────────────────────────╮
+      │ ✓ 1 Completed │ ↷ 1 Set aside │ 1 Needs you │ 1 of 16 In queue · 1 held back │
+      ╰───────────────┴───────────────┴─────────────┴────────────────────────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
       │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                 │
       │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted        │
-      │             │         │                                                      │
       │             │         │                                                      │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────╯
         Current
@@ -1199,7 +1200,6 @@ describe("layouts", () => {
       │ ◆ tut-kco  merging   18m40s  Open the property model                         │
       ┃ • tut-9a1  ■ allow?  18m40s  Remove the build cache                          │
       ╰──────────────────────────────────────────────────────────────────────────────╯
-
 
 
 
