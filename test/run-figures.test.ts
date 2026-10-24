@@ -374,14 +374,16 @@ const [first, second] = [...runsOfFixture.values()]
 describe("the analytics fixture's runs", () => {
   test("their lines", () => {
     expect(first === undefined ? [] : texts(first)).toEqual([
-      "Time    71% working · 14% to merge · 10% merging · 4% fixing",
-      "Checks  merge 1 of 3 passed, 2 failed (proj-a1, proj-a2, 3m20s) · recheck 0 of 1 passed, 1 failed (proj-a2, 3m10s) · fix 1 of 1 · full passed",
+      "Time    53% working · 17% held back (merge 17%) · 11% to merge · 8% merging · 7% queued · 3% fixing",
+      "Checks  merge 1 of 3 passed, 2 failed (proj-a1, proj-a2, 3m20s) · recheck 0 of 1 passed, 1 timed out (proj-a2, 3m10s) · fix 1 of 1 · full passed",
       "Spent   2.3M tokens (91% from the cache) · $3.00 (estimate) · $0.80 a ticket (median)",
+      "Usage   Current usage 42% → 3% · This week 30% → 36%",
     ])
     expect(second === undefined ? [] : texts(second)).toEqual([
-      "Time    55% working · 20% merging · 13% to merge · 9% resolving · 3% asked",
+      "Time    38% working · 27% held back (overlap 27%) · 14% merging · 9% to merge · 7% resolving · 3% queued · 2% asked",
       "Checks  merge 2 of 2",
       "Spent   918k tokens (94% from the cache) · $1.20 (estimate) · $0.30 a ticket (median)",
+      "Usage   Current usage 10% → 25% · This week 38% → 40%",
     ])
   })
 })

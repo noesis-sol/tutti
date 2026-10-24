@@ -181,8 +181,10 @@ then ask the agent to "run tutti". See
 - [docs/organs.md](docs/organs.md): triage, the predictor, the reviewer and the run report, the
   screen, the plan and the scout
 - [docs/events.md](docs/events.md): the event stream for scripts and agents, with `jq` recipes
-- [docs/analytics.md](docs/analytics.md): ready-made DuckDB queries over the event stream: runs,
-  tickets, checks, requests, the usage limit, the prompt cache, every project, two runs compared
+- [docs/analytics.md](docs/analytics.md): ready-made DuckDB queries over the event stream, the
+  workers' transcripts and bd's export: runs, throughput and bottlenecks, tickets, checks and
+  quality, waiting on you, how workers work, the backlog, the usage limit, the prompt cache, every
+  project, two runs compared, trends
 - [docs/colour-schemes.md](docs/colour-schemes.md): colour schemes, writing one, light and dark
 - [Changelog](CHANGELOG.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
