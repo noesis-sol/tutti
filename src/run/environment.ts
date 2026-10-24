@@ -48,6 +48,7 @@ import { settled as isSettled, type WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
+import { sleepAwake } from "../services/Wake.ts"
 import { readRunFile, runFolder, writeRunFile } from "../services/Worktrees.ts"
 import { EventStream } from "./eventstream.ts"
 import { type StopReason, type Stops, stopFor } from "./holds.ts"
@@ -108,7 +109,7 @@ export const probeWorker = "tutti-probe"
 /** The run file, in the main checkout's .tutti/run/, the probe's command writes. */
 export const probeFile = "probe"
 
-/** How long the probe's session has to run its command, from its start (§ 4.9). */
+/** How long the probe's session has to run its command, from its start, awake (§ 4.9, Wake.ts). */
 export const probeLimit: Duration.Duration = Duration.minutes(5)
 
 const shellQuote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`
@@ -394,10 +395,7 @@ export const make = (options: {
       )
       return yield* Effect.raceFirst(
         outcome,
-        Effect.as(
-          Effect.sleep(probeLimit),
-          `it ran no command within ${formatDuration(probeLimit)}`,
-        ),
+        Effect.as(sleepAwake(probeLimit), `it ran no command within ${formatDuration(probeLimit)}`),
       )
     }).pipe(
       Effect.ensuring(Effect.andThen(host.end(probeWorker), SubscriptionRef.set(probing, null))),

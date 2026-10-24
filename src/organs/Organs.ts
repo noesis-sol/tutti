@@ -18,6 +18,7 @@ import { Context, DateTime, Duration, Effect, Layer, Schema } from "effect"
 import { type AiError, LanguageModel } from "effect/ai"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type Line, Log, line, Tag } from "../run/log.ts"
+import { timeoutAwake } from "../services/Wake.ts"
 import { limitOf, OrganCall, type OrganReads, subtypeOf } from "./AgentSdkLanguageModel.ts"
 import { evidenceId, fromTheRun, type InputPart, renderInput, systemPrompt } from "./evidence.ts"
 
@@ -209,7 +210,7 @@ export class Organs extends Context.Service<
                     : hold.refused(refusal)
                 }),
                 Effect.mapError((error) => organError(organ.name, error)),
-                Effect.timeoutOrElse({
+                timeoutAwake({
                   duration: organ.timeLimit,
                   orElse: () =>
                     Effect.fail(

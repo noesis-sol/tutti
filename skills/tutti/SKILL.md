@@ -311,6 +311,11 @@ other run on the machine; tell the user, as checks failing on time limits may co
 `--machine-workers N`, `HOLD: MACHINE: …` means a free slot waits until a worker in one of the runs
 finishes: it lifts by itself, within seconds. The records are `shared_machine` and `machine_hold`.
 
+`SLEPT: the machine slept 34m (14:03-14:37); checks and limits don't count it` (a `slept` record)
+means the machine went to sleep under the run: its time limits count only the time awake, so nothing
+failed for it, but the run made no progress meanwhile. Under the first, a run without `--keep-awake`
+says `run with --keep-awake to keep the machine awake`; suggest it for an unattended run.
+
 ## Quitting and resuming
 
 Quitting (SIGTERM, SIGINT or SIGHUP; `q` or a second Ctrl+C in the dashboard) stops scheduling,

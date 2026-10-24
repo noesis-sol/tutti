@@ -62,6 +62,7 @@ export const Tag = {
   reopenFailed: "REOPEN_FAILED",
   probe: "PROBE",
   probeOk: "PROBE_OK",
+  slept: "SLEPT",
   paused: "PAUSED",
   ticketLimit: "TICKET_LIMIT",
   longRunning: "LONG_RUNNING",

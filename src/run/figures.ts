@@ -9,7 +9,8 @@
 // - the tokens and dollars of the workers' turns, from the `turn` records, as Spending sums them,
 //   the cache's share as "The prompt cache" gives it, a ticket's dollars as "Each ticket" does;
 // - the usage windows, from the `usage_window` records: each window's first figure, as the run
-//   started, and its last.
+//   started, and its last;
+// - the time the machine slept, from the `slept` records.
 import { Duration } from "effect"
 import { formatDuration } from "../project/configFile.ts"
 import type { checkResults, checkSuites, Event, Tokens } from "./events.ts"
@@ -52,6 +53,8 @@ export interface Figures {
   readonly tickets: ReadonlyMap<string, number>
   /** Each usage window's first and last figure, 0 to 1, in the order first reported. */
   readonly windows: ReadonlyMap<string, { readonly first: number; readonly last: number }>
+  /** The time the machine slept while the run went, in milliseconds. */
+  readonly slept: number
 }
 
 export const noFigures: Figures = {
@@ -64,6 +67,7 @@ export const noFigures: Figures = {
   costUsd: 0,
   tickets: new Map(),
   windows: new Map(),
+  slept: 0,
 }
 
 const plus = <K>(map: ReadonlyMap<K, number>, key: K, n: number): ReadonlyMap<K, number> =>
@@ -131,6 +135,8 @@ export const addRecord = (figures: Figures, event: Event, at: number): Figures =
         tickets: plus(figures.tickets, event.ticket, event.cost_usd),
       }
     }
+    case "slept":
+      return { ...figures, slept: figures.slept + event.seconds * 1000 }
     case "usage_window": {
       const was = figures.windows.get(event.window)
       return {
@@ -173,9 +179,16 @@ const percent = (share: number): string => `${Math.round(share * 100)}%`
 
 /**
  * The Time line's parts: each phase's share of the tickets' time, largest first, those under 1%
- * left out; held back with its largest hold's share.
+ * left out; held back with its largest hold's share; then the time the machine slept, if it did.
  */
 const timeParts = (figures: Figures): ReadonlyArray<Part> => {
+  const slept: ReadonlyArray<Part> =
+    figures.slept > 0 ? [{ text: `machine asleep ${took(figures.slept / 1000)}` }] : []
+  return [...phaseParts(figures), ...slept]
+}
+
+/** Each phase's share of the tickets' time, as the Time line gives it. */
+const phaseParts = (figures: Figures): ReadonlyArray<Part> => {
   const total = [...figures.phases.values()].reduce((sum, ms) => sum + ms, 0)
   if (total <= 0) return []
   const largest = [...figures.holds].sort(([a, x], [b, y]) => y - x || a.localeCompare(b))[0]

@@ -29,6 +29,7 @@ import type { Beads } from "../services/Beads.ts"
 import type { Checks } from "../services/Checks.ts"
 import type { Commit, Git, GitError, StatusEntry } from "../services/Git.ts"
 import { Store, type StoreWriteFailed } from "../services/Store.ts"
+import { timeoutAwake } from "../services/Wake.ts"
 import {
   type Earlier,
   type ExcludeUnwritable,
@@ -286,7 +287,8 @@ class SetupStopped extends Data.TaggedError("SetupStopped")<{
 
 /**
  * How long a new session has to begin its first turn, its system/init, once it is sent its first
- * message: the CLI sends one as it takes the message, before it calls the model.
+ * message: the CLI sends one as it takes the message, before it calls the model. Counted awake
+ * (Wake.ts), as tutti's other limits are.
  */
 export const initLimit: Duration.Duration = Duration.minutes(1)
 
@@ -396,7 +398,7 @@ export const start = (
         Effect.asVoid(host.begun(id).pipe(Stream.filter(Boolean), Stream.runHead)),
         Effect.asVoid(ended),
       ).pipe(
-        Effect.timeoutOrElse({
+        timeoutAwake({
           duration: initLimit,
           orElse: () =>
             Effect.fail(

@@ -133,6 +133,24 @@ Most default to [the settings](setup.md#the-settings); the flag wins for its run
 Every `git` and `bd` command tutti runs has a time limit: 30 seconds for a read, 2 minutes for a git
 write or a `bd` update. A command still running then is stopped with everything it started.
 
+### When the machine sleeps
+
+tutti's time limits count the time the machine is awake: those of the
+commands and checks, `--ticket-limit` and `LONG_RUNNING`, the 10 minutes idle before `PAUSED`, a
+hand-back's and an organ's. A check that started a minute before the machine slept for half an hour
+isn't failed at the wake for not finishing within 30 minutes. The usage limit's reset times are the
+clock's, and stay so. Each time tutti notices the machine slept, the log says so, with a `slept`
+record ([Event records](events.md)):
+
+```
+SLEPT: the machine slept 34m (14:03-14:37); checks and limits don't count it
+  run with --keep-awake to keep the machine awake
+```
+
+The second line comes once, in a run without `--keep-awake`. tutti takes a gap of more than 15
+seconds in its own once-a-second look at the clock for a sleep, so tutti stopped as long (`kill
+-STOP`) reads as one too.
+
 ### One ticket and its subtickets
 
 ```
@@ -645,7 +663,8 @@ the [analytics queries](analytics.md) give over the same run:
 
 - **Time**: each phase's share of the tickets' time, largest first, those under 1% left out; held
   back with its largest reason (`overlap`, `parent`, `merge`, `solo`). A ticket's last phase counts
-  no time, as in "Time per phase".
+  no time, as in "Time per phase". If the machine slept while the run went, the line ends with how
+  long: `machine asleep 34m19s`.
 - **Checks**: each suite's checks passed of those run, then those that failed, timed out or couldn't
   run, with their tickets (up to three, then `+N more`) and the longest one's time. The full check is
   counted on the summary the dashboard leaves; a plain run's summary comes before it, and its

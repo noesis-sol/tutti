@@ -93,6 +93,7 @@ import { whichOnPath } from "./services/onPath.ts"
 import { type Holder, RunLock } from "./services/RunLock.ts"
 import { Store } from "./services/Store.ts"
 import { outputMode, plainReasonLine, Tty, layer as ttyLayer } from "./services/Tty.ts"
+import { wakeLayer } from "./services/Wake.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 import { dashboard, interviewScreen } from "./ui/App.tsx"
 import { liveClipboard } from "./ui/clipboard.ts"
@@ -186,6 +187,8 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Layer.provideMerge(notifying),
     Layer.provideMerge(second),
     Layer.provideMerge(first),
+    // The machine's sleeps, which every time limit of the run leaves out (src/services/Wake.ts).
+    Layer.provideMerge(wakeLayer),
     Layer.provideMerge(BunServices.layer),
   )
 }

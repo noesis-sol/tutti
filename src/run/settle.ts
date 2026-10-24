@@ -18,12 +18,13 @@
 // it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
 // worker carries on after the reset, rather than the ticket being set aside as deferred.
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Clock, Data, Duration, Effect, Option, Result, Schedule, Stream } from "effect"
+import { Data, Duration, Effect, Option, Result, Schedule, Stream } from "effect"
 import { AgentHost, type SessionMessage } from "../agent/AgentHost.ts"
 import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type Status } from "../services/Beads.ts"
 import { type Commit, Git, type GitError, type StatusEntry } from "../services/Git.ts"
 import { allChangeEntries, allChanges } from "../services/gitStatus.ts"
+import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
@@ -35,7 +36,10 @@ import type { StartedWorker } from "./start.ts"
 /** How many times a worker that left its ticket in progress is told to continue. */
 export const nudges = 2
 
-/** How long an idle worker, its ticket still in progress and its nudges used, may stay so. */
+/**
+ * How long an idle worker, its ticket still in progress and its nudges used, may stay so, the time
+ * the machine sleeps not counted (Wake.ts).
+ */
 export const idleGrace: Duration.Duration = Duration.minutes(10)
 
 /** The label of a ticket closed but not merged, which still holds the tickets it blocks (§ 4.8). */
@@ -398,12 +402,12 @@ const grace = (ticket: string, at: number) =>
     for (;;) {
       const entry = (yield* ledger.current).tickets.get(ticket)
       const from = Math.max(at, entry?.lastMessage ?? at)
-      const left = from + Duration.toMillis(idleGrace) - (yield* Clock.currentTimeMillis)
+      const left = Duration.toMillis(idleGrace) - (yield* awakeSince(from))
       if (left <= 0) return false
       const woke = yield* Effect.raceAll([
         going,
         ...(entry?.steered === true ? [released] : []),
-        Effect.as(Effect.sleep(left), false),
+        Effect.as(sleepAwake(left), false),
       ])
       if (woke) return true
     }

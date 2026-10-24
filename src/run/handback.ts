@@ -47,6 +47,7 @@ import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
+import { awakeSince } from "../services/Wake.ts"
 import { failedHow, markHandedBack, runMergeCheck } from "./check.ts"
 import { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
@@ -579,17 +580,20 @@ const clock = (
     let extra = 0
     let since = 0
     let spare = false
-    const count = (now: number) => {
-      const spent = Math.max(0, now - since)
+    // The time since `since` counts awake: the machine's sleep isn't the hand-back's (Wake.ts). Read
+    // before anything is set, so that an interruption leaves nothing counted twice.
+    const count = Effect.gen(function* () {
+      const spent = yield* awakeSince(since)
+      const now = yield* Clock.currentTimeMillis
       const added = spare ? Math.min(spent, most - extra) : 0
       extra += added
       left = Math.max(0, left - (spent - added))
       since = now
-    }
+    })
     // Until `left` runs out, the machine sampled every loadEvery.
     const runsOut = Effect.gen(function* () {
       for (;;) {
-        count(yield* Clock.currentTimeMillis)
+        yield* count
         if (left === 0) return
         spare = extra < most && (yield* loaded)
         yield* Effect.sleep(Duration.millis(Math.min(spare ? most - extra : left, every)))
@@ -603,7 +607,7 @@ const clock = (
         Effect.as(whenState(id, isLimited), true),
       )
       if (!limited) return { loaded: Duration.seconds(Math.round(extra / 1000)) }
-      count(yield* Clock.currentTimeMillis)
+      yield* count
       if (yield* handBack.done) {
         yield* logs.write(
           detail`${id}'s worker is at the usage limit, but ${doneWords(handBack.mode)}: ${branch} is taken as it is, without waiting for the limit to lift`,

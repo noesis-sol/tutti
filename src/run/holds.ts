@@ -16,6 +16,7 @@ import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type Dependency, type Issue } from "../services/Beads.ts"
+import { awakeSince, sleepAwake } from "../services/Wake.ts"
 import { EventStream } from "./eventstream.ts"
 import type { Footprint } from "./footprint.ts"
 import type { State } from "./ledger.ts"
@@ -543,9 +544,10 @@ export const shownHolds = (holds: Holds): ShownHolds => ({
 // dispatch holds the run with TICKET_LIMIT: it isn't interrupted and goes on, the run doesn't wait
 // for it to end, and the run's end suspends it (§ 4.8). Without a limit, one still going after
 // longRunning is said once, LONG_RUNNING. As orchestra's overTime, the time a worker waits for the
-// usage limit to reset (UsageLimited, § 4.12) doesn't count. An attention request unanswered for
-// Attention's blockedAfter holds the run with BLOCKED, for its ticket; once that ticket has no
-// request open, the hold is lifted, as what held the run is gone. run.ts keeps these stops.
+// usage limit to reset (UsageLimited, § 4.12) doesn't count, nor the time the machine sleeps
+// (Wake.ts). An attention request unanswered for Attention's blockedAfter holds the run with
+// BLOCKED, for its ticket; once that ticket has no request open, the hold is lifted, as what held
+// the run is gone. run.ts keeps these stops.
 
 /** How long a worker may go on, without a ticket limit, before the log says LONG_RUNNING. */
 export const longRunning: Duration.Duration = Duration.hours(2)
@@ -623,7 +625,7 @@ const until = (ticket: string, wanted: (state: WorkerState) => boolean) =>
 
 /**
  * Waits until `ticket`'s worker has gone on for `span` since `since`, the time it was UsageLimited
- * not counted.
+ * and the time the machine slept not counted.
  */
 export const goneOn = (
   ticket: string,
@@ -631,18 +633,18 @@ export const goneOn = (
   since: number,
 ): Effect.Effect<void, never, AgentHost> =>
   Effect.gen(function* () {
-    let left = Duration.toMillis(span) - ((yield* Clock.currentTimeMillis) - since)
+    let left = Duration.toMillis(span) - (yield* awakeSince(since))
     for (;;) {
       const from = yield* Clock.currentTimeMillis
       const limited = yield* Effect.raceFirst(
-        Effect.as(Effect.sleep(Duration.millis(Math.max(0, left))), false),
+        Effect.as(sleepAwake(Duration.millis(Math.max(0, left))), false),
         Effect.as(
           until(ticket, (state) => state._tag === "UsageLimited"),
           true,
         ),
       )
       if (!limited) return
-      left -= (yield* Clock.currentTimeMillis) - from
+      left -= yield* awakeSince(from)
       yield* until(ticket, (state) => state._tag !== "UsageLimited")
     }
   })

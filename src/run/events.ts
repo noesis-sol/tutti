@@ -240,6 +240,19 @@ export const SharedMachine = Schema.Struct({
 /** A ready ticket waits for a free slot across the machine (`HOLD: MACHINE: …`), once a hold. */
 export const MachineHold = lineRecord("machine_hold")
 
+/**
+ * The machine slept (`SLEPT: …`), from when the run last saw it awake to its wake: the run's time
+ * limits don't count the time.
+ */
+export const Slept = Schema.Struct({
+  ...head("slept"),
+  from: Timestamp,
+  to: Timestamp,
+  /** From `from` to `to`, to a tenth. */
+  seconds: Seconds,
+  text: Schema.String,
+})
+
 /** The words a stop's `detail` takes that are tutti's: orchestra's `TERMINAL_FAILED` is gone. */
 export const StopWord = { usageLimit: "USAGE_LIMIT" } as const
 
@@ -572,6 +585,7 @@ export const kinds = {
   probed: Probed,
   shared_machine: SharedMachine,
   machine_hold: MachineHold,
+  slept: Slept,
   stop: Stop,
   done: Done,
   full_check: FullCheck,

@@ -143,6 +143,7 @@ import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "
 import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
+import { watchSleeps } from "./slept.ts"
 import { endRecord } from "./spending.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
@@ -569,6 +570,9 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         ),
       )
     }
+
+    // Each sleep of the machine the run notices, said with its SLEPT line (slept.ts).
+    yield* watch(watchSleeps({ keepAwake: config.keepAwake }))
 
     // Requests to quit (quitting.ts): the first quits, the second says what is under way and how to
     // abandon it, and the third ends tutti at once, saving the workers not merged or dropped.

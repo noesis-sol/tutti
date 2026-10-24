@@ -3,7 +3,8 @@
 // terminal's signals reach tutti alone. Its scope kills the whole group (SIGTERM, then SIGKILL after
 // a grace) when it closes or the fiber is interrupted. Its time limit kills the group itself when
 // it expires: a fiber of its own sends the signals, so the limit holds even while the caller is
-// uninterruptible (§ 3.4). A kill -9 of tutti runs neither, so the group also has a reaper
+// uninterruptible (§ 3.4). The limit counts the time the machine is awake (Wake.ts), so a command
+// isn't killed at the wake for the time the machine slept. A kill -9 of tutti runs neither, so the group also has a reaper
 // (src/services/reaper.ts) that ends it then, with the same grace; the reaper goes with the group.
 // Bun's node:child_process can lose a command's exit and its output (tutti-cje): exec stops waiting
 // for them a grace after the group has gone, and fails with CommandNotRun. A process that left the
@@ -30,6 +31,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { withoutGitLocal } from "./gitEnv.ts"
 import { processAlive } from "./processTree.ts"
 import { startReaper, stopReaper } from "./reaper.ts"
+import { sleepAwake } from "./Wake.ts"
 
 /** orchestra's limits: 30 s for a read, 2 min for a git write or a `bd` update. Checks pass their own. */
 export const TimeLimit = {
@@ -300,7 +302,7 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
       // A leader still running at the limit has timed out, whatever code it exits with once killed.
       // One whose group has gone has ended, its exit lost.
       let timedOut = false
-      yield* Effect.interruptible(Effect.sleep(timeLimit)).pipe(
+      yield* Effect.interruptible(sleepAwake(timeLimit)).pipe(
         Effect.andThen(handle.isRunning),
         Effect.flatMap((running) => {
           timedOut = running && processAlive(-leader)
