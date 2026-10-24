@@ -232,8 +232,12 @@ describe("the rebased-and-unchecked mark", () => {
   })
 
   test("isn't there for a branch on top of the base tutti never rebased: it merges unchecked", async () => {
+    // With no check command, as nothing but the mark has it checked.
+    const settings = appConfig().settings
+    const fast = { ...settings.checks.fast, command: null }
+    const config = { settings: { ...settings, checks: { ...settings.checks, fast } } }
     const ran = await scenario(
-      { backlog: backlog().ticket("a").seeds },
+      { backlog: backlog().ticket("a").seeds, config },
       Effect.gen(function* () {
         const a = yield* finished("a", { "a.txt": "a\n" })
         return yield* nextRun(a)

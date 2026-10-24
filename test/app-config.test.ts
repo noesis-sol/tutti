@@ -593,6 +593,8 @@ describe("the live layer", () => {
       appConfig(
         {
           runs,
+          // appConfig's settings name a merge check; a project with no settings file names none.
+          settings: defaultSettings,
           machineWorkers: defaultMachineWorkers(cores),
           machineWorkersFrom: defaultMachineWorkersFrom(cores),
         },

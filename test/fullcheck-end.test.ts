@@ -211,11 +211,13 @@ describe("a failed full check's last 40 lines", () => {
     expect(report).toMatch(
       /\n## Full check\n\n`scripts\/check-full\.sh` did not run: the setup before it, `bun install`, failed; no ticket filed: it is not a suite's failure\. The whole output is in `[^`]+`\. Its end:\n\n```\nresolving\nerror: no left-pad\n```\n/,
     )
-    // The check records (§ 10): the setup in the ticket's worktree, then the full check's.
+    // The check records (§ 10): the setup in the ticket's worktree, its merge check, then the full
+    // check's setup.
     expect(
       ran.events.flatMap((r) => (r.kind === "check" ? [[r.suite, r.ticket, r.result]] : [])),
     ).toEqual([
       ["setup", "t-1", "passed"],
+      ["merge", "t-1", "passed"],
       ["setup", undefined, "failed"],
     ])
   })

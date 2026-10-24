@@ -94,7 +94,7 @@ describe("workerOptions", () => {
       systemPrompt: {
         type: "preset",
         preset: "claude_code",
-        append: `You work on tutti-abc.1. Close tutti-abc.1 when done.${requiresNote([], "", false)}${checkNote(null)}${usageLimitNote}`,
+        append: `You work on tutti-abc.1. Close tutti-abc.1 when done.${requiresNote([], "", false)}${checkNote("scripts/check-fast.sh")}${usageLimitNote}`,
         snapshot: true,
       },
       sessionId: "11111111-2222-4333-8444-555555555555",
@@ -204,7 +204,7 @@ describe("workerOptions", () => {
         expect(system.append).toBe(
           prompt.text.split("TICKET_ID").join(ticket) +
             requiresNote([], prompt.text, false) +
-            checkNote(null) +
+            checkNote("scripts/check-fast.sh") +
             usageLimitNote,
         )
       }),

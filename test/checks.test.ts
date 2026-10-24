@@ -413,10 +413,17 @@ describe("the test layer", () => {
       flaky: [],
       flakyCount: 0,
     })
+    const settings = TestAppConfig.appConfig().settings
+    const config = TestAppConfig.appConfig({
+      settings: {
+        ...settings,
+        checks: { ...settings.checks, setup: { command: "bun i", files: [] } },
+      },
+    })
     const layer = TestChecks.layer(
       { fast: [failed, TestChecks.passed("fast", { flaky: ["t"], flakyCount: 1 })] },
       runs,
-    )
+    ).pipe(Layer.provide(TestAppConfig.layer(config)))
     const wt = { cwd: "/wt", outputFile: "/wt/.tutti/run/check.log" }
     const exits = await Effect.runPromise(
       Effect.provide(

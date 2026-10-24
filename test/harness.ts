@@ -256,7 +256,7 @@ export const environment = (
         accountLayer(setup.account).pipe(Layer.provide(configLayer(config))),
         backlogLayer(setup.backlog),
         gitLayer(setup.git),
-        checksLayer(setup.checks, checkRuns),
+        checksLayer(setup.checks, checkRuns).pipe(Layer.provide(configLayer(config))),
         storeLayer(setup.state),
         logLayer(),
         eventsLayer(),

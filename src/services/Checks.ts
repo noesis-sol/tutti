@@ -13,6 +13,7 @@ import { Context, Duration, Effect, type FileSystem, Layer, Schema } from "effec
 import type { ChildProcessSpawner } from "effect/process"
 import { BranchEnv } from "../agent/env.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
+import type { Settings } from "../project/settings.ts"
 import { exec } from "./exec.ts"
 
 export const checkKinds = ["setup", "fast", "full"] as const
@@ -408,17 +409,36 @@ export interface SetupOptions extends RunOptions {
 }
 
 /**
+ * What a check that ran to its end gives: CheckPassed when it exited with 0, else CheckFailed, with
+ * what `output` said of what it printed. Takes the last lines printed without a newline first.
+ */
+export const resultOf = (
+  check: CheckKind,
+  command: string,
+  exitCode: number,
+  output: CheckOutput,
+  outputFile: string,
+): Effect.Effect<CheckPassed, CheckFailed> => {
+  output.end()
+  if (exitCode !== 0) {
+    return Effect.fail(
+      new CheckFailed({ check, command, exitCode, outputFile, ...output.summary() }),
+    )
+  }
+  return Effect.succeed({ _tag: "CheckPassed", check, command, ...output.summary() })
+}
+
+/**
  * Runs `command` with `sh -c` in `options.cwd` within `timeLimit`, in the environment of commands
  * run on a branch's behalf (BranchEnv), the whole output going to `options.outputFile` (or
- * `options.outputFd`, when given). Nothing runs when `command` is null.
+ * `options.outputFd`, when given).
  */
 export const runCheck = Effect.fn("runCheck")(function* (
   check: CheckKind,
-  command: string | null,
+  command: string,
   timeLimit: Duration.Input,
   options: RunOptions,
 ) {
-  if (command === null) return { _tag: "NoCheckCommand", check } satisfies NoCheckCommand
   const output = new CheckOutput()
   const ran = yield* exec({
     command: "sh",
@@ -449,18 +469,45 @@ export const runCheck = Effect.fn("runCheck")(function* (
         Effect.fail(new CheckNotRun({ check, command, reason: error.reason })),
     }),
   )
-  output.end()
-  if (ran.exitCode !== 0) {
-    return yield* new CheckFailed({
-      check,
-      command,
-      exitCode: ran.exitCode,
-      outputFile: options.outputFile,
-      ...output.summary(),
-    })
-  }
-  return { _tag: "CheckPassed", check, command, ...output.summary() } satisfies CheckPassed
+  return yield* resultOf(check, command, ran.exitCode, output, options.outputFile)
 })
+
+/** Runs a check's command within its time limit; the layers differ only here. */
+export type RunCommand = (
+  check: CheckKind,
+  command: string,
+  timeLimit: Duration.Input,
+  options: RunOptions | SetupOptions,
+) => Effect.Effect<CheckResult, CheckError>
+
+/**
+ * The Checks service of the settings' `checks`: each kind's command (a setup's own, when given) run
+ * through `run` within its time limit, a setup within that of the check it comes before; a null
+ * command runs nothing and gives NoCheckCommand.
+ */
+export const checksOf = (checks: Settings["checks"], run: RunCommand): Checks["Service"] => {
+  const limit = { fast: checks.fast.timeout, full: checks.full.timeout }
+  const start = (
+    check: CheckKind,
+    command: string | null,
+    timeLimit: Duration.Input,
+    options: RunOptions | SetupOptions,
+  ): Effect.Effect<CheckResult, CheckError> =>
+    command === null
+      ? Effect.succeed({ _tag: "NoCheckCommand", check })
+      : run(check, command, timeLimit, options)
+  return {
+    setup: (options) =>
+      start(
+        "setup",
+        options.command === undefined ? checks.setup.command : options.command,
+        limit[options.before],
+        options,
+      ),
+    fast: (options) => start("fast", checks.fast.command, limit.fast, options),
+    full: (options) => start("full", checks.full.command, limit.full, options),
+  }
+}
 
 export class Checks extends Context.Service<
   Checks,
@@ -481,25 +528,9 @@ export class Checks extends Context.Service<
       const context = yield* Effect.context<
         ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem
       >()
-      const { checks } = config.settings
-      const limit = { fast: checks.fast.timeout, full: checks.full.timeout }
-      return {
-        setup: (options) =>
-          runCheck(
-            "setup",
-            options.command === undefined ? checks.setup.command : options.command,
-            limit[options.before],
-            options,
-          ).pipe(Effect.provideContext(context)),
-        fast: (options) =>
-          runCheck("fast", checks.fast.command, limit.fast, options).pipe(
-            Effect.provideContext(context),
-          ),
-        full: (options) =>
-          runCheck("full", checks.full.command, limit.full, options).pipe(
-            Effect.provideContext(context),
-          ),
-      }
+      return checksOf(config.settings.checks, (check, command, timeLimit, options) =>
+        runCheck(check, command, timeLimit, options).pipe(Effect.provideContext(context)),
+      )
     }),
   )
 }

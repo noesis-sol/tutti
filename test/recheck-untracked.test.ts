@@ -72,7 +72,8 @@ const withQueue = (
 
 /**
  * `a` finishes after main moved and its check fails, `left` is written in its worktree, then `b`
- * finishes and merges on top of main, which puts `a` back to be checked once more if nothing stops it.
+ * finishes, is checked and merges on top of main, which puts `a` back to be checked once more if
+ * nothing stops it.
  */
 const leftInA = (left: Files, phases: Readonly<Record<string, PhaseTag>>) =>
   scenario(
@@ -100,12 +101,14 @@ describe("a ticket set aside as its check failed, a file left untracked in its w
       /^ {2}a is not checked again: \S+ has untracked files: a\/extra\.go; it stays set aside$/,
     ])
     expect(ran.log.some((line) => line.includes("RECHECK"))).toBe(false)
-    expect(ran.checkRuns).toHaveLength(1)
+    // a's check, then b's.
+    expect(ran.checkRuns).toHaveLength(2)
   })
 
   test("is checked once more when the only untracked file is under .tutti/run/", async () => {
     const ran = await leftInA({ ".tutti/run/worker-check.log": "ok\n" }, { a: "Done", b: "Done" })
     expectLog(ran, [/^ {2}RECHECK: a's check failed on main at [0-9a-f]{7}/])
-    expect(ran.checkRuns).toHaveLength(2)
+    // a's check, b's, then a's once more.
+    expect(ran.checkRuns).toHaveLength(3)
   })
 })

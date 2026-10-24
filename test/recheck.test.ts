@@ -11,6 +11,7 @@ import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
+import { passed } from "../src/testing/Checks.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import { backlog, type Env, expectLog, type Ran, scenario } from "./harness.ts"
 
@@ -111,7 +112,7 @@ const records = (ran: Ran<unknown>, kind: EventRecord["kind"]) =>
 
 /**
  * `a` finishes after main moved and its check fails as `checks` says, then `b` finishes and merges
- * on top of main; then `after` runs, before the scenario waits for `phases`.
+ * on top of main, its check passing; then `after` runs, before the scenario waits for `phases`.
  */
 const aThenB = (
   checks: ReadonlyArray<CheckFailed>,
@@ -123,7 +124,10 @@ const aThenB = (
   } = {},
 ) =>
   scenario(
-    { backlog: backlog().ticket("a").ticket("b").ticket("c").seeds, checks: { fast: checks } },
+    {
+      backlog: backlog().ticket("a").ticket("b").ticket("c").seeds,
+      checks: { fast: [...checks.slice(0, 1), passed("fast"), ...checks.slice(1)] },
+    },
     withQueue((queue) =>
       Effect.gen(function* () {
         const a = yield* finished("a", options.aFiles ?? { "a/a.go": "a\n" })
@@ -149,13 +153,14 @@ describe("a ticket set aside as its check failed", () => {
       /^ {2}RECHECK: a's check failed on main at [0-9a-f]{7}, which has moved on since; rebasing tutti\/a and checking it once more$/,
       /^ {2}a closed \([0-9a-f]{7} Do a \(a\)\); merged into main, worktree and branch removed$/,
     ])
-    // Its check ran twice; b, on top of main, merged unchecked.
-    expect(ran.checkRuns.map((run) => run.check)).toEqual(["fast", "fast"])
+    // Its check ran twice, b's, on top of main, once between.
+    expect(ran.checkRuns.map((run) => run.cwd.split("/").at(-1))).toEqual(["a", "b", "a"])
     // Its check records (§ 10): the merge check, then the check once more.
     expect(
       ran.events.flatMap((r) => (r.kind === "check" ? [[r.ticket, r.suite, r.result]] : [])),
     ).toEqual([
       ["a", "merge", "failed"],
+      ["b", "merge", "passed"],
       ["a", "recheck", "passed"],
     ])
     expect(records(ran, "phase")).toContainEqual(
@@ -186,7 +191,8 @@ describe("a ticket set aside as its check failed", () => {
       /^ {2}CHECKS_FAILED: .*; not checked again in this run, as it failed in a, which a's own commits change$/,
     ])
     expect(ran.log.some((line) => line.includes("RECHECK"))).toBe(false)
-    expect(ran.checkRuns).toHaveLength(1)
+    // a's check, then b's.
+    expect(ran.checkRuns).toHaveLength(2)
   })
 
   test("is checked again only once a run", async () => {
@@ -206,8 +212,8 @@ describe("a ticket set aside as its check failed", () => {
       /^ {2}CHECKS_FAILED: a closed, but 'scripts\/check-fast.sh' fails again on tutti\/a rebased onto main; not handed back to its worker: its worker has no session to resume; worktree .* left for review \(output is in .*\)$/,
     ])
     expect(ran.log.filter((line) => line.includes("RECHECK"))).toHaveLength(1)
-    // a's check, then once more; c, on top of main, merged unchecked.
-    expect(ran.checkRuns).toHaveLength(2)
+    // a's check, b's, a's once more, and c's, on top of main.
+    expect(ran.checkRuns).toHaveLength(4)
   })
 
   test("touched since, reopened, stays set aside and the log says why", async () => {
@@ -217,7 +223,8 @@ describe("a ticket set aside as its check failed", () => {
     const ran = await aThenB([elsewhere], { a: "Review", b: "Done" }, { between: reopen })
     expectLog(ran, ["  a is not checked again: it is open now; it stays set aside"])
     expect(ran.log.some((line) => line.includes("RECHECK"))).toBe(false)
-    expect(ran.checkRuns).toHaveLength(1)
+    // a's check, then b's.
+    expect(ran.checkRuns).toHaveLength(2)
   })
 })
 

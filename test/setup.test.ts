@@ -217,7 +217,7 @@ describe("the setup before the merge check", () => {
       ),
     )
     expect(resultOf(ran).phases.a?._tag).toBe("Done")
-    expect(ran.checkRuns).toEqual([])
+    expect(ran.checkRuns.map((run) => run.check)).toEqual(["fast"])
   })
 
   test("names at most five of the files that changed, then how many more", async () => {
@@ -316,8 +316,14 @@ describe("a setup that fails", () => {
       ),
     )
     expect(resultOf(ran).phases.a?._tag).toBe("Done")
-    // a's setup failed; b merged unchecked on top of main; a's setup ran again, then its check.
-    expect(ran.checkRuns.map((run) => run.check)).toEqual(["setup", "setup", "fast"])
+    // a's setup failed; b, on top of main, was checked and merged; a's setup ran again, then its
+    // check.
+    expect(ran.checkRuns.map((run) => [run.check, run.cwd.split("/").at(-1)])).toEqual([
+      ["setup", "a"],
+      ["fast", "b"],
+      ["setup", "a"],
+      ["fast", "a"],
+    ])
     expectLog(ran, [
       /^ {2}CHECKS_FAILED: a closed, but the setup .*; checked once more if main moves on in this run$/,
       /^ {2}RECHECK: a's check failed/,
@@ -372,7 +378,13 @@ describe("a setup that fails", () => {
       ),
     )
     expect(resultOf(ran).phases.a?._tag).toBe("Done")
-    expect(ran.checkRuns.map((run) => run.check)).toEqual(["setup", "fast", "fast"])
+    // a's setup and check; b's check, on top of main; a's check again, with no setup.
+    expect(ran.checkRuns.map((run) => [run.check, run.cwd.split("/").at(-1)])).toEqual([
+      ["setup", "a"],
+      ["fast", "a"],
+      ["fast", "b"],
+      ["fast", "a"],
+    ])
   })
 })
 

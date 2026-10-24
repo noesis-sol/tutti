@@ -26,6 +26,17 @@ import { advance, backlog, type Env, expectLog, type Ran, type Setup, scenario }
 
 const options = { repo: "/repo", base: "main" }
 
+const { settings } = appConfig()
+/** A project whose settings name no merge check. */
+const noCheck = {
+  settings: {
+    ...settings,
+    checks: { ...settings.checks, fast: { ...settings.checks.fast, command: null } },
+  },
+}
+/** A project that checks each ticket in its turn alone, none ahead of it. */
+const noTrain = { settings: { ...settings, merge: { ...settings.merge, train: 0 } } }
+
 /** What a merge scenario hands back: each ticket's phase, and the queue's stop. */
 interface Merged {
   readonly phases: Readonly<Record<string, TicketPhase>>
@@ -139,7 +150,7 @@ const failedCheck = new CheckFailed({
 
 describe("a clean merge", () => {
   test("a ticket on top of the base fast-forwards it, unchecked, and is cleaned up", async () => {
-    const ran = await mergeAll({ backlog: backlog().ticket("a").seeds }, [
+    const ran = await mergeAll({ backlog: backlog().ticket("a").seeds, config: noCheck }, [
       finished("a", { "a.txt": "a\n" }),
     ])
     const merged = resultOf(ran)
@@ -231,7 +242,7 @@ describe("a clean merge", () => {
     const ran = await mergeAll(
       {
         backlog: backlog().ticket("a").seeds,
-        checks: { fast: [{ _tag: "NoCheckCommand", check: "fast" }] },
+        config: noCheck,
       },
       [finished("a", { "a.txt": "a\n" })],
       moveMain(),
@@ -241,6 +252,7 @@ describe("a clean merge", () => {
       "  no check command in .tutti/settings.json: merging tutti/a without checking the rebased code",
       /^ {2}a closed/,
     ])
+    expect(ran.checkRuns).toEqual([])
   })
 })
 
@@ -268,7 +280,11 @@ describe("finishing order", () => {
     }
     const seen: Array<Record<string, string | undefined>> = []
     const ran = await scenario(
-      { backlog: backlog().ticket("a").ticket("b").ticket("c").seeds, checks: { fast: gated } },
+      {
+        backlog: backlog().ticket("a").ticket("b").ticket("c").seeds,
+        checks: { fast: gated },
+        config: noTrain,
+      },
       withQueue((queue) =>
         Effect.gen(function* () {
           const ledger = yield* Ledger
@@ -400,7 +416,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
     let tip = ""
     let worktree = ""
     const ran = await scenario(
-      { backlog: backlog().ticket("a").seeds },
+      { backlog: backlog().ticket("a").seeds, config: noCheck },
       withQueue((queue) =>
         Effect.gen(function* () {
           const git = yield* Git
