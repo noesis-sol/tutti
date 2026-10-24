@@ -26,7 +26,8 @@
 // a branch, the ticket is marked in state.json (`checked_ahead`) with the branch's commit as its
 // worker left it, and then with the commit it was rebased to; boarding the train or putting the
 // branch back clears the mark. As the next run starts (putBackLeft), a branch still marked and at
-// the commit it was rebased to is put back as its worker left it.
+// the commit it was rebased to is put back as its worker left it. One git could not put back, on a
+// quit or as the run starts, keeps its mark, and its turn sets it aside (merge.ts's prepare).
 import {
   Data,
   Effect,
@@ -35,7 +36,6 @@ import {
   FiberSet,
   Option,
   Result,
-  type Schema,
   type Scope,
   Semaphore,
   type Stream,
@@ -46,6 +46,7 @@ import { Git } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
+import { aheadKey, clearAhead, markAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
 import { checkOnce, clearUnchecked, failedHow } from "./check.ts"
 import { RunFibers } from "./fibers.ts"
@@ -65,6 +66,8 @@ import {
   stopOver,
 } from "./merge.ts"
 import { type SetUps, setUp } from "./setup.ts"
+
+export { aheadKey, type RebasedAhead, rebasedAheadOf } from "./ahead.ts"
 
 /**
  * How the check of a ticket ahead of its turn goes, for the dashboard (orchestra's
@@ -127,64 +130,6 @@ interface Run {
   fork: string
   step: Step
 }
-
-/** The Store metadata key marking a ticket's branch as rebased by its train onto the branch ahead. */
-export const aheadKey = "checked_ahead"
-
-/** Where a branch a train rebased onto the branch ahead was, and what it was rebased to. */
-export interface RebasedAhead {
-  /** Its commit as its worker left it. */
-  readonly orig: string
-  /** The commit it is rebased onto: the branch ahead as it was checked. */
-  readonly onto: string
-  /** Its commit once rebased; "" until the rebase is over, or when git couldn't say. */
-  readonly head: string
-  /** The branch ahead of it. */
-  readonly behind: string
-  /** The setup may have run in its worktree, on top of the branch ahead. */
-  readonly setUp: boolean
-}
-
-/**
- * The mark `value` holds, or undefined when it holds none, or none with the commit to put the
- * branch back to. state.json is anyone's to edit, so only a commit hash is taken for a commit.
- */
-export const rebasedAheadOf = (value: Schema.Json | undefined): RebasedAhead | undefined => {
-  if (value === undefined || value === null || typeof value !== "object" || Array.isArray(value)) {
-    return undefined
-  }
-  const fields = value as Readonly<Record<string, Schema.Json>>
-  const field = (key: string) => (Object.hasOwn(fields, key) ? fields[key] : undefined)
-  const hash = (key: string) => {
-    const it = field(key)
-    return typeof it === "string" && /^[0-9a-f]{7,64}$/.test(it) ? it : ""
-  }
-  const orig = hash("orig")
-  if (orig === "") return undefined
-  const behind = field("behind")
-  return {
-    orig,
-    onto: hash("onto"),
-    head: hash("head"),
-    behind: typeof behind === "string" && behind !== "" ? behind : "the branch ahead of it",
-    setUp: field("setUp") === true,
-  }
-}
-
-/** Marks the ticket's branch as rebased onto the branch ahead; a Store that can't be written doesn't. */
-const markAhead = (id: string, mark: RebasedAhead): Effect.Effect<void, never, Store> =>
-  Effect.gen(function* () {
-    const store = yield* Store
-    yield* Effect.ignore(store.setMetadata(id, aheadKey, { ...mark }))
-  })
-
-/** Clears the ticket's mark, its branch boarded or put back, if it has one. */
-const clearAhead = (id: string): Effect.Effect<void, never, Store> =>
-  Effect.gen(function* () {
-    const store = yield* Store
-    if (!Object.hasOwn(yield* store.metadata(id), aheadKey)) return
-    yield* Effect.ignore(store.unsetMetadata(id, aheadKey))
-  })
 
 /**
  * Why a branch the train rebased was not put back as restoreBranch says, for the lines that say so;

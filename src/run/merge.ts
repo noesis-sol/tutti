@@ -2,7 +2,8 @@
 // comes in two parts:
 //
 // - prepare, which may be interrupted: a worktree off its branch (OFF_BRANCH) is set aside before
-//   anything is done; when the base moved on while the ticket ran, a worktree with uncommitted
+//   anything is done, and so is a branch a merge train rebased onto the branch ahead and git could
+//   not put back as its worker left it (REBASE_FAILED, mergetrain.ts's checked_ahead); when the base moved on while the ticket ran, a worktree with uncommitted
 //   changes (DIRTY_WORKTREE) is set aside, and the branch is rebased (a refusal is REBASE_FAILED,
 //   conflicts MERGE_CONFLICT), set up when the rebase changed a dependency file (setup.ts), and
 //   checked again (CHECKS_FAILED, a failing setup too). A branch on top of the base already, as
@@ -47,6 +48,7 @@ import { Git, type GitError } from "../services/Git.ts"
 import { checkoutChanges, trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { Worktrees } from "../services/Worktrees.ts"
+import { aheadKey, clearAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
 import {
   failedHow,
@@ -902,6 +904,27 @@ export const prepare = (
         ),
         (stop) => ({ _tag: "Over", stop }) satisfies Prepared,
       )
+    // Still marked as rebased by a train onto the branch ahead, which git couldn't put back (as on
+    // a quit, or as the run started): it may have that branch's commits, and would merge them with
+    // its own. One back where its worker left it merges as any other.
+    const metadata = yield* (yield* Store).metadata(id)
+    const mark = rebasedAheadOf(Object.hasOwn(metadata, aheadKey) ? metadata[aheadKey] : undefined)
+    if (mark !== undefined) {
+      const at = yield* Effect.result(steering(git.revParse(repo, branch)))
+      if (Result.isFailure(at)) return yield* lost(at.failure)
+      if (at.success !== mark.orig) {
+        yield* aside(
+          ticket,
+          Tag.rebaseFailed,
+          "rebase failed",
+          ticketLine(
+            Tag.rebaseFailed,
+          )`${id} closed, but ${branch} was rebased onto ${mark.behind} to be checked ahead of its turn and could not be put back as its worker left it, at ${mark.orig.slice(0, 7)}, so it may have the commits of ${mark.behind}; worktree ${worktree} left for review`,
+        )
+        return { _tag: "Over" } satisfies Prepared
+      }
+    }
+    if (Object.hasOwn(metadata, aheadKey)) yield* clearAhead(id)
     // The commit checked in this merge, on top of the base: a mark found isn't checked again, even
     // when the Store kept it.
     let checked: string | undefined
