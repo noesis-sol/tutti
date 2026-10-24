@@ -1,5 +1,6 @@
 // Session lifetime (§ 4.8's Lifetime and Resume limits, § 4.7). A ticket's session's subprocess is
-// kept only while the ticket needs it, and lifetime() is § 4.8's table:
+// kept only while the ticket needs it, and lifetime() is § 4.8's table, as phase.ts's phaseFacts
+// gives it:
 //
 // - open while the ticket runs, waits to merge, merges or is handed back, and while it is blocked
 //   on a conflict whose hand-back waits for its steered worker (§ 4.3), which you may message,
@@ -36,40 +37,16 @@ import { EventStream } from "./eventstream.ts"
 import type { HandBacks } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, Log, line, Tag, ticketLine } from "./log.ts"
-import type { PhaseTag, TicketPhase } from "./phase.ts"
+import { factsOf, type Lifetime, type TicketPhase } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
-
-/**
- * What a ticket's session is in a phase (§ 4.8): open; closed, keeping its ID; open until the run
- * ends; or suspended as the run ends.
- */
-export type Lifetime = "open" | "closed" | "untilRunEnds" | "suspended"
 
 /**
  * What the ticket's session is while the ticket is in `phase`; `recheck` says whether a ticket set
  * aside after a failed check may be checked again, `handBackWaits` whether a ticket blocked on its
  * conflict has its hand-back waiting for its steered worker.
  */
-export const lifetime = (phase: TicketPhase, recheck = false, handBackWaits = false): Lifetime => {
-  switch (phase._tag) {
-    case "Working":
-    case "ToMerge":
-    case "Merging":
-    case "Resolving":
-    case "Fixing":
-      return "open"
-    case "Review":
-      return phase.why === Tag.checksFailed && recheck ? "untilRunEnds" : "closed"
-    case "Blocked":
-      return phase.why === Tag.mergeConflict && handBackWaits ? "open" : "closed"
-    case "Stopped":
-      return "suspended"
-  }
-  return "closed"
-}
-
-/** The phases that end a ticket's part in the run for good: its worker is ended there. */
-const over: ReadonlySet<PhaseTag> = new Set(["Done", "Deferred", "Review"])
+export const lifetime = (phase: TicketPhase, recheck = false, handBackWaits = false): Lifetime =>
+  factsOf(phase).session(phase, { recheck, handBackWaits })
 
 /**
  * Closes the ticket's session when its phase no longer needs it (§ 4.8), ending its worker when its
@@ -95,7 +72,7 @@ export const fit = (
       handBacks !== undefined &&
       (yield* handBacks.waiting).some((waiting) => waiting.ticket.id === ticket)
     if (lifetime(phase, recheck, waits) !== "closed") return
-    yield* over.has(phase._tag) ? host.end(ticket) : host.close(ticket)
+    yield* factsOf(phase).over ? host.end(ticket) : host.close(ticket)
   })
 
 /** Why a session is resumed, as the `resumed` record has it. */

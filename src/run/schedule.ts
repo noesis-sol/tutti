@@ -75,7 +75,7 @@ import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy } from "./merge.ts"
 import { type Mentions, readMentions, type Sources } from "./overlap.ts"
-import { Cause, type Hold, type PhaseTag, TicketPhase } from "./phase.ts"
+import { Cause, type Hold, phaseFacts, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
 import { type RepoFiles, repoFiles } from "./repoFiles.ts"
 import type { Solo } from "./runView.ts"
@@ -337,16 +337,13 @@ export const badTicketIdNote = (id: string, why: string): string =>
 /** Whether the ticket waits in the queue: Queued, or HeldBack. */
 const waiting = (state: State, id: string): boolean => {
   const tag = state.tickets.get(id)?.phase._tag
-  return tag === "Queued" || tag === "HeldBack"
+  return tag !== undefined && phaseFacts[tag].ready
 }
-
-/** The phases of a ticket past its work and not merged yet: from ToMerge to Merged. */
-const pastWork: ReadonlySet<PhaseTag> = new Set(["ToMerge", "Merging", "Resolving", "Fixing"])
 
 /** Whether the ticket is past its work and not merged yet: it waits to merge, merges, or is fixed. */
 const merging = (state: State, id: string): boolean => {
   const tag = state.tickets.get(id)?.phase._tag
-  return tag !== undefined && pastWork.has(tag)
+  return tag !== undefined && phaseFacts[tag].pastWork
 }
 
 /** The tickets past their work and not merged yet that hold no slot: those not `running`. */

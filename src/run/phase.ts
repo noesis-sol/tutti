@@ -4,7 +4,15 @@
 // queue, a merge's step), never its tag. The run loop drives the machine; the ledger, RunView, the
 // log, the event stream and the report read it.
 import { Data, Result, Schema } from "effect"
-import { type Kind, mergeSteps, phaseNames } from "./events.ts"
+import {
+  type endingPhases,
+  type Kind,
+  mergeSteps,
+  phaseNames,
+  type phaseSeconds,
+  type queuePhases,
+  type ticketOutcomes,
+} from "./events.ts"
 
 /** A variant with no fields. */
 type Empty = Record<never, never>
@@ -687,14 +695,6 @@ export const refine = (
   return Result.fail(new InvalidTransition({ from: phase._tag, to: phase._tag, when: detail._tag }))
 }
 
-/** The phases with work under way, which have a card. */
-export const hasCard = (phase: TicketPhase): boolean =>
-  phase._tag === "Working" ||
-  phase._tag === "Resolving" ||
-  phase._tag === "Fixing" ||
-  phase._tag === "ToMerge" ||
-  phase._tag === "Merging"
-
 /** The dashboard's totals (§ 7.2); `heldBack` is In queue's `held back`. */
 export type Total =
   | "completed"
@@ -714,101 +714,417 @@ export type ReportSection = "closed" | "setAside" | "inProgress"
 /** A ticket's `■` on the wind-down line (§ 5.1). */
 export type WindDownMark = "windingDown" | "done" | "needsYou" | "faint"
 
-/** What a ticket in a phase counts as, wherever the run counts its tickets. */
-export interface Counting<T extends PhaseTag> {
+/** One of orchestra's phases that a ticket's time counts in (§ 10). */
+export type PhaseSeconds = (typeof phaseSeconds)[number]
+
+/** How a ticket's part in the run ended, as its `ticket_end` says. */
+export type TicketOutcome = (typeof ticketOutcomes)[number]
+
+/** The phases that end a ticket's part in the run, for now or for good. */
+export type EndingPhase = (typeof endingPhases)[number]
+
+/** The phases in the queue, that a ticket the run took up may be left in as the run ends. */
+export type QueuePhase = (typeof queuePhases)[number]
+
+/**
+ * What a ticket's session is in a phase (§ 4.8): open; closed, keeping its ID; open until the run
+ * ends; or suspended as the run ends.
+ */
+export type Lifetime = "open" | "closed" | "untilRunEnds" | "suspended"
+
+/** What a session's lifetime turns on besides its ticket's phase (§ 4.8). */
+export interface SessionKeeps {
+  /** A ticket set aside after a failed check may be checked again. */
+  readonly recheck: boolean
+  /** A ticket blocked on its conflict has its hand-back waiting for its steered worker (§ 4.3). */
+  readonly handBackWaits: boolean
+}
+
+/** A ticket's mark and word in the tickets table: `▶ editing`, `◼ to merge`, … */
+export interface RowStatus {
+  readonly mark: string
+  readonly word: string
+}
+
+/**
+ * What is so of a ticket in a phase, wherever the run asks: what it counts as, where it is in the
+ * run, its session, its row. A phase without an entry, or an entry without a fact, doesn't compile.
+ */
+export interface Facts<T extends PhaseTag> {
   /**
    * The dashboard's totals it counts under (§ 5.1's Counts under): none, one, or for a Working
-   * ticket whose worker waits on you, both Workers and Needs you.
+   * ticket whose worker waits on you, both Workers and Needs you. The same array each call.
    */
-  readonly totals: (phase: TicketPhase & { readonly _tag: T }) => ReadonlyArray<Total>
+  totals(phase: PhaseOf<T>): ReadonlyArray<Total>
   /** What the run's end notice counts it as, as the dashboard does, or nothing. */
   readonly notice: EndNotice | null
   /** The reviewer's section it is in, or none. */
   readonly report: ReportSection | null
   /** Its mark on the wind-down line. */
   readonly windDown: WindDownMark
+  /** The run is still at it: the HOLD line counts it running, and the wind-down notes it. */
+  readonly running: boolean
+  /** Its work is under way, which has a card. */
+  readonly card: boolean
+  /** Its worker is at work, which the worker's state refines: Working, Resolving, Fixing. */
+  readonly atWork: boolean
+  /** Its worker runs or waits on a question: it hasn't merged, closed or not. */
+  readonly busy: boolean
+  /** Past its work and not merged yet: it waits to merge, merges, or is handed back. */
+  readonly pastWork: boolean
+  /** It may be closed and not merged: it holds back its parent and the tickets waiting on it. */
+  readonly unsettled: boolean
+  /**
+   * Ready, waiting for a slot: the run may take it from bd ready again, and it shows no row unless
+   * it had one before (§ 5.1).
+   */
+  readonly ready: boolean
+  /** In the queue: a ticket the run took up and left in it gets its `ticket_end` at the end. */
+  readonly inQueue: T extends QueuePhase ? true : false
+  /** How its part in the run ended, for the phases it may end in, as its `ticket_end` says. */
+  ends(phase: PhaseOf<T>): T extends EndingPhase | QueuePhase ? TicketOutcome : null
+  /** Its part in the run is over for good: its worker is ended as its session closes (§ 4.8). */
+  readonly over: boolean
+  /** The phase of orchestra's its time counts in (§ 10), or none. */
+  readonly orchestra: PhaseSeconds | null
+  /** Its session's lifetime (§ 4.8). */
+  session(phase: PhaseOf<T>, keeps: SessionKeeps): Lifetime
+  /** Its row's mark and word. */
+  row(phase: PhaseOf<T>): RowStatus
 }
 
-const uncounted = (): ReadonlyArray<Total> => []
+// The facts that are the same for every phase of a tag give the same value each call: the
+// dashboard reads them for every ticket on every frame.
+const always =
+  <A>(value: A) =>
+  (): A =>
+    value
+
+const none: ReadonlyArray<Total> = []
+const workers: ReadonlyArray<Total> = ["workers"]
+const workersAndYou: ReadonlyArray<Total> = ["workers", "needsYou"]
+const setupFailed: ReadonlyArray<Total> = ["setupFailed"]
+
+const shows = (mark: string, word: string) => always<RowStatus>({ mark, word })
+
+const activityRow = (activity: Activity): RowStatus =>
+  activity === "allow"
+    ? { mark: "■", word: "allow?" }
+    : activity === "answer"
+      ? { mark: "■", word: "answer?" }
+      : activity === "limit"
+        ? { mark: "◷", word: "limit" }
+        : { mark: "▶", word: activity }
+
+const activityRows = Object.fromEntries(
+  activities.map((activity) => [activity, activityRow(activity)]),
+) as { readonly [A in Activity]: RowStatus }
 
 /**
- * What each phase counts as: the dashboard's totals, the run's end notice, the reviewer's sections
- * and the wind-down line all read this table, so that they say the same of a ticket. A phase
- * without an entry doesn't compile.
+ * What is so of each phase: the dashboard's totals, the run's end notice, the reviewer's sections,
+ * the wind-down line, the ledger, the holds, the schedule, the sessions and the tickets table all
+ * read this table, so that they say the same of a ticket.
  */
-export const counting: { readonly [T in PhaseTag]: Counting<T> } = {
+export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
   // Ready but not taken up: the reviewer counts these from bd ready, not in a section.
-  Queued: { totals: () => ["inQueue"], notice: null, report: null, windDown: "faint" },
-  HeldBack: { totals: () => ["heldBack"], notice: null, report: null, windDown: "faint" },
+  Queued: {
+    totals: always(["inQueue"]),
+    notice: null,
+    report: null,
+    windDown: "faint",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: false,
+    pastWork: false,
+    unsettled: false,
+    ready: true,
+    inQueue: true,
+    ends: always("queued"),
+    over: false,
+    orchestra: null,
+    session: always("closed"),
+    row: shows("◷", "queued"),
+  },
+  HeldBack: {
+    totals: always(["heldBack"]),
+    notice: null,
+    report: null,
+    windDown: "faint",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: false,
+    pastWork: false,
+    unsettled: false,
+    ready: true,
+    inQueue: true,
+    ends: always("queued"),
+    over: false,
+    orchestra: null,
+    session: always("closed"),
+    row: shows("◷", "held back"),
+  },
   Working: {
     totals: (phase) =>
-      phase.activity === "allow" || phase.activity === "answer"
-        ? ["workers", "needsYou"]
-        : ["workers"],
+      phase.activity === "allow" || phase.activity === "answer" ? workersAndYou : workers,
     notice: null,
     report: "inProgress",
     windDown: "windingDown",
+    running: true,
+    card: true,
+    atWork: true,
+    busy: true,
+    pastWork: false,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always(null),
+    over: false,
+    orchestra: "working",
+    session: always("open"),
+    row: (phase) => activityRows[phase.activity],
   },
   // ToMerge and Merging count nowhere until they reach Done.
-  ToMerge: { totals: uncounted, notice: null, report: "inProgress", windDown: "windingDown" },
-  Merging: { totals: uncounted, notice: null, report: "inProgress", windDown: "windingDown" },
-  Resolving: {
-    totals: () => ["workers"],
+  ToMerge: {
+    totals: always(none),
     notice: null,
     report: "inProgress",
     windDown: "windingDown",
+    running: true,
+    card: true,
+    atWork: false,
+    busy: false,
+    pastWork: true,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always(null),
+    over: false,
+    orchestra: "waiting",
+    session: always("open"),
+    row: shows("◼", "to merge"),
+  },
+  Merging: {
+    totals: always(none),
+    notice: null,
+    report: "inProgress",
+    windDown: "windingDown",
+    running: true,
+    card: true,
+    atWork: false,
+    busy: false,
+    pastWork: true,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always(null),
+    over: false,
+    orchestra: "merging",
+    session: always("open"),
+    row: shows("◆", "merging"),
+  },
+  Resolving: {
+    totals: always(workers),
+    notice: null,
+    report: "inProgress",
+    windDown: "windingDown",
+    running: true,
+    card: true,
+    atWork: true,
+    busy: true,
+    pastWork: true,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always(null),
+    over: false,
+    orchestra: "resolving",
+    session: always("open"),
+    row: shows("⟳", "resolving"),
   },
   Fixing: {
-    totals: () => ["workers"],
+    totals: always(workers),
     notice: null,
     report: "inProgress",
     windDown: "windingDown",
+    running: true,
+    card: true,
+    atWork: true,
+    busy: true,
+    pastWork: true,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always(null),
+    over: false,
+    orchestra: "fixing",
+    session: always("open"),
+    row: shows("⟳", "fixing"),
   },
-  Done: { totals: () => ["completed"], notice: "closed", report: "closed", windDown: "done" },
+  Done: {
+    totals: always(["completed"]),
+    notice: "closed",
+    report: "closed",
+    windDown: "done",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: false,
+    pastWork: false,
+    unsettled: false,
+    ready: false,
+    inQueue: false,
+    ends: (phase) => (phase.outcome._tag === "Merged" ? "merged" : "no_change"),
+    over: true,
+    orchestra: null,
+    session: always("closed"),
+    row: shows("✓", "done"),
+  },
+  // Its worker settled before it filed the question: its session is closed until the answer.
   Asked: {
-    totals: () => ["needsYou"],
+    totals: always(["needsYou"]),
     notice: "needsYou",
     report: "setAside",
     windDown: "needsYou",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: true,
+    pastWork: false,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always("needs_you"),
+    over: false,
+    orchestra: null,
+    session: always("closed"),
+    row: shows("?", "for you"),
   },
   Waiting: {
     // Only one whose setup failed counts, apart in In queue, as it waits for a merge or a probe.
-    totals: (phase) => (phase.for._tag === "Setup" ? ["setupFailed"] : []),
+    totals: (phase) => (phase.for._tag === "Setup" ? setupFailed : none),
     notice: null,
     report: "setAside",
     windDown: "faint",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: false,
+    pastWork: false,
+    unsettled: false,
+    ready: false,
+    inQueue: true,
+    ends: always("queued"),
+    over: false,
+    orchestra: null,
+    session: always("closed"),
+    row: shows("◷", "waiting"),
   },
   Deferred: {
-    totals: () => ["setAside"],
+    totals: always(["setAside"]),
     notice: "setAside",
     report: "setAside",
     windDown: "needsYou",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: false,
+    pastWork: false,
+    unsettled: false,
+    ready: false,
+    inQueue: false,
+    ends: always("set_aside"),
+    over: true,
+    orchestra: null,
+    session: always("closed"),
+    row: shows("↷", "deferred"),
   },
   Review: {
-    totals: () => ["setAside"],
+    totals: always(["setAside"]),
     notice: "setAside",
     report: "setAside",
     windDown: "needsYou",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: false,
+    pastWork: false,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always("set_aside"),
+    over: true,
+    orchestra: null,
+    // A recheck may hand it a conflict.
+    session: (phase, { recheck }) =>
+      phase.why === "CHECKS_FAILED" && recheck ? "untilRunEnds" : "closed",
+    row: shows("!", "review"),
   },
   Blocked: {
-    totals: () => ["needsYou"],
+    totals: always(["needsYou"]),
     notice: "needsYou",
     report: "setAside",
     windDown: "needsYou",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: false,
+    pastWork: false,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always("needs_you"),
+    over: false,
+    orchestra: null,
+    // You may message, interrupt or release its steered worker while its hand-back waits (§ 4.3).
+    session: (phase, { handBackWaits }) =>
+      phase.why === "MERGE_CONFLICT" && handBackWaits ? "open" : "closed",
+    row: shows("■", "blocked"),
   },
-  Stopped: { totals: uncounted, notice: null, report: "inProgress", windDown: "needsYou" },
+  // The run's end suspends its session.
+  Stopped: {
+    totals: always(none),
+    notice: null,
+    report: "inProgress",
+    windDown: "needsYou",
+    running: false,
+    card: false,
+    atWork: false,
+    busy: false,
+    pastWork: false,
+    unsettled: true,
+    ready: false,
+    inQueue: false,
+    ends: always("stopped"),
+    over: false,
+    orchestra: null,
+    session: always("suspended"),
+    row: shows("■", "stopped"),
+  },
 }
+
+/** The facts of `phase`'s tag, for those that turn on its details. */
+export const factsOf = (phase: TicketPhase): Facts<PhaseTag> =>
+  phaseFacts[phase._tag] as Facts<PhaseTag>
 
 /** The totals a ticket in `phase` counts under, from the table. */
 export const countsUnder = (phase: TicketPhase): ReadonlyArray<Total> =>
-  (counting[phase._tag] as Counting<PhaseTag>).totals(phase)
+  factsOf(phase).totals(phase)
+
+/** The phases with work under way, which have a card. */
+export const hasCard = (phase: TicketPhase): boolean => phaseFacts[phase._tag].card
 
 /** Whether `phase` is final: only Done is. */
 export const isFinal = (phase: TicketPhase): boolean => phase._tag === "Done"
+
+// The phases the table moves to Stopped as the run ends.
+const stopping: ReadonlySet<From> = new Set(
+  transitions.filter((transition) => transition.when === "RunEnded").map(({ from }) => from),
+)
 
 /**
  * Whether a ticket in `phase` becomes Stopped as the run ends: Working, ToMerge, Resolving and
  * Fixing. A merge under way finishes its step first, and the other phases leave the run as they are.
  */
-export const stopsAtEnd = (phase: TicketPhase): boolean =>
-  transitions.some((transition) => transition.when === "RunEnded" && transition.from === phase._tag)
+export const stopsAtEnd = (phase: TicketPhase): boolean => stopping.has(phase._tag)

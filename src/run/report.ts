@@ -38,7 +38,7 @@ import { type Entry, Ledger } from "./ledger.ts"
 import { clock, clockFrom, reportName, span } from "./localTime.ts"
 import * as log from "./log.ts"
 import { causeWhy, filed, type Kept, type Line, Log, line, Tag, tagged } from "./log.ts"
-import { counting, type ReportSection, type TicketPhase, WaitFor } from "./phase.ts"
+import { phaseFacts, type ReportSection, type TicketPhase, WaitFor } from "./phase.ts"
 
 /** Where the reports go, below the repository. */
 export const reportsDir = ".tutti/reports"
@@ -159,7 +159,10 @@ export const phaseSaid = (phase: TicketPhase): string => {
     case "Fixing":
     case "Resolving":
       return `${phase._tag} (attempt ${phase.attempt})`
-    default:
+    case "Queued":
+    case "Working":
+    case "ToMerge":
+    case "Merging":
       return phase._tag
   }
 }
@@ -398,11 +401,11 @@ export const notesTail = (notes: string, width: number = notesWidth): string => 
   return `[the notes' first ${counted(cut, "character")} cut here; their end follows]\n${end}`
 }
 
-/** Whether `entry` is in the reviewer's `section` (phase.ts counting). */
+/** Whether `entry` is in the reviewer's `section` (phase.ts phaseFacts). */
 const inSection =
   (section: ReportSection) =>
   (entry: Entry): boolean =>
-    counting[entry.phase._tag].report === section
+    phaseFacts[entry.phase._tag].report === section
 
 /** What a failed bd or git call said, in a few words. */
 const failure = (error: BeadsError | GitError): string =>

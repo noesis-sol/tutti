@@ -13,10 +13,10 @@ import { dirname, join } from "node:path"
 import { BunFileSystem } from "@effect/platform-bun"
 import { Effect, Exit, type FileSystem, Layer, type Schema } from "effect"
 import fc from "fast-check"
+import { phaseNames } from "../src/run/events.ts"
 import {
   emptyState,
   parseState,
-  phaseNames,
   type RunStamp,
   readState,
   type State,

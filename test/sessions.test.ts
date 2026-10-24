@@ -11,16 +11,16 @@ import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
-import { Cause, Outcome, type PhaseTag, TicketPhase, WaitFor } from "../src/run/phase.ts"
-import { makeRechecks } from "../src/run/recheck.ts"
 import {
-  carryOnText,
-  GoneResume,
+  Cause,
   type Lifetime,
-  lifetime,
-  resume,
-  resumeGone,
-} from "../src/run/sessions.ts"
+  Outcome,
+  type PhaseTag,
+  TicketPhase,
+  WaitFor,
+} from "../src/run/phase.ts"
+import { makeRechecks } from "../src/run/recheck.ts"
+import { carryOnText, GoneResume, lifetime, resume, resumeGone } from "../src/run/sessions.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { type Worked, work } from "../src/run/work.ts"
 import { Beads } from "../src/services/Beads.ts"

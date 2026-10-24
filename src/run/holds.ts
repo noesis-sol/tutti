@@ -23,7 +23,7 @@ import type { State } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
 import { holdWord as machineWord } from "./machine.ts"
 import { type Mentions, shared } from "./overlap.ts"
-import type { Hold, PhaseTag } from "./phase.ts"
+import { type Hold, phaseFacts } from "./phase.ts"
 import type { RunHold, Usage } from "./runView.ts"
 import { warn } from "./say.ts"
 import { ledgerView } from "./scope.ts"
@@ -40,25 +40,12 @@ export interface Held {
   readonly text: string
 }
 
-/** The phases in which a ticket's worker runs or waits on a question: it hasn't merged, closed or not. */
-const busy: ReadonlySet<PhaseTag> = new Set(["Working", "Resolving", "Fixing", "Asked"])
-
-/** The phases of a ticket that may be closed and not merged, besides the busy ones. */
-const unsettled: ReadonlySet<PhaseTag> = new Set([
-  ...busy,
-  "ToMerge",
-  "Merging",
-  "Review",
-  "Blocked",
-  "Stopped",
-])
-
 /**
  * Whether a ticket of the run may not have merged: only then can a blocker, or the ticket a
  * follow-up was filed from, hold one back, and the ready tickets' links are read.
  */
 export const pending = (state: State): boolean =>
-  [...state.tickets.values()].some((entry) => unsettled.has(entry.phase._tag))
+  [...state.tickets.values()].some((entry) => phaseFacts[entry.phase._tag].unsettled)
 
 /**
  * The tickets bd has closed and labelled `unmerged` (left so by an earlier run) that this run hasn't
@@ -74,7 +61,7 @@ export const leftUnmerged = <I extends Pick<Issue, "id">>(
 /** The run's tickets that may not have merged, whose parents wait for them. */
 export const unmerged = (state: State): ReadonlyArray<string> =>
   [...state.tickets.values()]
-    .filter((entry) => unsettled.has(entry.phase._tag))
+    .filter((entry) => phaseFacts[entry.phase._tag].unsettled)
     .map((entry) => entry.ticket)
 
 /**
@@ -113,7 +100,7 @@ export const unreadableHold: Held = { why: "merge", text: "its dependencies coul
 export const asksGit = (state: State, link: Dependency): boolean => {
   if ((link.issue?.status ?? "closed") !== "closed") return false
   const phase = state.tickets.get(link.id)?.phase
-  if (phase !== undefined && (phase._tag === "Done" || busy.has(phase._tag))) return false
+  if (phase !== undefined && (phase._tag === "Done" || phaseFacts[phase._tag].busy)) return false
   return ledgerView(state).unmerged(link.issue ?? closedLink(link)) === undefined
 }
 
@@ -132,7 +119,7 @@ const notMerged = (
   branches: ReadonlyMap<string, string>,
 ): { readonly running: true } | { readonly closed: string } | undefined => {
   const phase = state.tickets.get(link.id)?.phase
-  if (phase !== undefined && busy.has(phase._tag)) return { running: true }
+  if (phase !== undefined && phaseFacts[phase._tag].busy) return { running: true }
   const why = ledgerView(state).unmerged(link.issue ?? closedLink(link))
   if (why !== undefined) return { closed: why }
   const off = asksGit(state, link) ? branches.get(link.id) : undefined

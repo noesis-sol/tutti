@@ -33,9 +33,10 @@ import { resetLabel } from "./localTime.ts"
 import type { CheckAhead } from "./mergetrain.ts"
 import {
   type Activity,
-  counting,
   countsUnder,
-  type PhaseTag,
+  factsOf,
+  phaseFacts,
+  type RowStatus,
   TicketPhase,
   type WindDownMark,
 } from "./phase.ts"
@@ -500,12 +501,6 @@ export const emptyView: RunView = {
  */
 export const interval = Duration.millis(33)
 
-// The phases a ticket is set aside in, whose note the triage organ's verdict replaces.
-const setAside: ReadonlySet<PhaseTag> = new Set(["Deferred", "Review"])
-
-// The phases in which a worker is at work, which its state refines.
-const atWork: ReadonlySet<PhaseTag> = new Set(["Working", "Resolving", "Fixing"])
-
 /**
  * What a Working ticket's worker is doing, for its row: what its open requests ask first, then its
  * state, then the phase's own activity.
@@ -565,46 +560,7 @@ export const countdown = (at: number, now: number): string =>
   formatDuration(Duration.minutes(Math.max(1, Math.ceil((at - now) / 60_000))))
 
 /** A row's mark and word for `phase`, as § 5.1's table gives them. */
-export const rowStatus = (phase: TicketPhase): { readonly mark: string; readonly word: string } => {
-  switch (phase._tag) {
-    case "Queued":
-      return { mark: "◷", word: "queued" }
-    case "HeldBack":
-      return { mark: "◷", word: "held back" }
-    case "Working":
-      switch (phase.activity) {
-        case "allow":
-          return { mark: "■", word: "allow?" }
-        case "answer":
-          return { mark: "■", word: "answer?" }
-        case "limit":
-          return { mark: "◷", word: "limit" }
-      }
-      return { mark: "▶", word: phase.activity }
-    case "ToMerge":
-      return { mark: "◼", word: "to merge" }
-    case "Merging":
-      return { mark: "◆", word: "merging" }
-    case "Resolving":
-      return { mark: "⟳", word: "resolving" }
-    case "Fixing":
-      return { mark: "⟳", word: "fixing" }
-    case "Done":
-      return { mark: "✓", word: "done" }
-    case "Asked":
-      return { mark: "?", word: "for you" }
-    case "Waiting":
-      return { mark: "◷", word: "waiting" }
-    case "Deferred":
-      return { mark: "↷", word: "deferred" }
-    case "Review":
-      return { mark: "!", word: "review" }
-    case "Blocked":
-      return { mark: "■", word: "blocked" }
-    case "Stopped":
-      return { mark: "■", word: "stopped" }
-  }
-}
+export const rowStatus = (phase: TicketPhase): RowStatus => factsOf(phase).row(phase)
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -849,7 +805,11 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     const open = requestsOf.get(entry.ticket) ?? none
     const phase = shown(entry.phase, state, open)
     const { label, title } = textsOf(entry)
-    const verdict = setAside.has(phase._tag) ? (status.verdicts.get(entry.ticket) ?? null) : null
+    // A ticket set aside has the triage organ's verdict in place of its note.
+    const verdict =
+      phaseFacts[phase._tag].notice === "setAside"
+        ? (status.verdicts.get(entry.ticket) ?? null)
+        : null
     for (const total of countsUnder(phase)) {
       if (total === "needsYou") needsYou.add(entry.ticket)
       else if (total === "setAside") {
@@ -879,7 +839,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
         title,
         worker: entry.worker,
         phase: entry.phase,
-        state: atWork.has(entry.phase._tag) ? (state ?? null) : null,
+        state: phaseFacts[entry.phase._tag].atWork ? (state ?? null) : null,
         status: waits ? handBackStatus : cardStatus(phase, state, open, inputs.now),
         motion: waits ? "•" : motionOf(entry.phase, state, open),
         since: entry.since,
@@ -916,7 +876,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
             const entry = ledger.tickets.get(ticket)
             return {
               ticket,
-              mark: entry === undefined ? "faint" : counting[entry.phase._tag].windDown,
+              mark: entry === undefined ? "faint" : phaseFacts[entry.phase._tag].windDown,
             }
           })
           return { marks, running: marks.filter((m) => m.mark === "windingDown").length }

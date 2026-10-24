@@ -33,6 +33,7 @@ import {
   type Refusal,
   writeFileUnder,
 } from "../native/libc.ts"
+import { phaseNames } from "../run/events.ts"
 
 /** The carry-over file, relative to the project's top (§ 9.1). */
 export const stateFile = join(".tutti", "run", "state.json")
@@ -55,24 +56,7 @@ export type SuspendedWhy =
   | "asked"
   | (string & {})
 
-/** The phases a ticket can be in (§ 5.1), by name: what state.json records of one. */
-export const phaseNames = [
-  "Queued",
-  "HeldBack",
-  "Working",
-  "ToMerge",
-  "Merging",
-  "Resolving",
-  "Fixing",
-  "Done",
-  "Asked",
-  "Waiting",
-  "Deferred",
-  "Review",
-  "Blocked",
-  "Stopped",
-] as const
-
+/** A phase a ticket can be in (§ 5.1), by name: what state.json records of one. */
 export type PhaseName = (typeof phaseNames)[number]
 
 /** The run that wrote the file. */

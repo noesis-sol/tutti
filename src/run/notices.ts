@@ -10,7 +10,7 @@ import { Notifier } from "../services/Notifier.ts"
 import { oneLine } from "../ui/oneLine.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
-import { counting, type PhaseTag } from "./phase.ts"
+import { type PhaseTag, phaseFacts } from "./phase.ts"
 
 /** How many characters of a title or reason a notice gives, cut with `…`: the log has the rest. */
 export const noticeWidth = 60
@@ -31,13 +31,13 @@ const closedCount = (n: number): string =>
 /**
  * The notice of a run that finished by itself, from its tickets' phases as it ends: `Finished the
  * run · 12 tickets closed · 2 set aside · 1 needs you`, counting each ticket as the dashboard's
- * totals do (phase.ts counting): set aside if deferred or left for review, needing you if blocked
+ * totals do (phase.ts phaseFacts): set aside if deferred or left for review, needing you if blocked
  * from merging or waiting on a question; not those reopened or merged since.
  */
 export const finished = (phases: Iterable<{ readonly _tag: PhaseTag }>): string => {
   const counts = { closed: 0, setAside: 0, needsYou: 0 }
   for (const phase of phases) {
-    const notice = counting[phase._tag].notice
+    const notice = phaseFacts[phase._tag].notice
     if (notice !== null) counts[notice]++
   }
   const aside = counts.setAside > 0 ? ` · ${counts.setAside} set aside` : ""

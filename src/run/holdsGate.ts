@@ -8,19 +8,10 @@ import type { EventStream } from "./eventstream.ts"
 import { type Holds, noHolds, raiseStop, type StopReason, type Stops, shownHolds } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { hold, type Log } from "./log.ts"
-import type { PhaseTag, TicketPhase } from "./phase.ts"
+import { phaseFacts, type TicketPhase } from "./phase.ts"
 import type { Status } from "./runView.ts"
 import { same } from "./same.ts"
 import { sayer } from "./say.ts"
-
-/** The phases of a ticket the run is still at: the HOLD line counts them as running. */
-const running: ReadonlySet<PhaseTag> = new Set([
-  "Working",
-  "ToMerge",
-  "Merging",
-  "Resolving",
-  "Fixing",
-])
 
 /**
  * Whether the ticket `entry` is one the run waits for: running, and not a worker it stopped for
@@ -29,7 +20,9 @@ const running: ReadonlySet<PhaseTag> = new Set([
 export const waitedFor = (
   entry: { readonly ticket: string; readonly phase: TicketPhase },
   over: ReadonlySet<string>,
-) => running.has(entry.phase._tag) && !(entry.phase._tag === "Working" && over.has(entry.ticket))
+) =>
+  phaseFacts[entry.phase._tag].running &&
+  !(entry.phase._tag === "Working" && over.has(entry.ticket))
 
 /** How many of the run's tickets are still running, those over their ticket limit left out. */
 const runningIn = (state: State, over: ReadonlySet<string>): number =>

@@ -22,26 +22,23 @@ import {
   SubscriptionRef,
 } from "effect"
 import type { Issue } from "../services/Beads.ts"
-import {
-  type Event,
-  type endingPhases,
-  type Phases,
-  type phaseSeconds,
-  type queuePhases,
-  type TokensByModel,
-  tenths,
-  type ticketOutcomes,
-} from "./events.ts"
+import { type Event, type Phases, type TokensByModel, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import * as log from "./log.ts"
 import { Log, Tag } from "./log.ts"
 import {
   type Cause,
   type Detail,
+  type EndingPhase,
+  factsOf,
   hasCard,
   InvalidTransition,
+  type Lifetime,
   type MergeStep,
+  type PhaseSeconds,
   type PhaseTag,
+  phaseFacts,
+  type QueuePhase,
   refine as refinePhase,
   type TicketPhase,
   transition as transitionPhase,
@@ -128,54 +125,14 @@ export const newAccount = (): Account => ({
   carried: false,
 })
 
-type PhaseSeconds = (typeof phaseSeconds)[number]
-
-/** The phase of orchestra's that each phase's time counts in (§ 10), for those it counts. */
-const countsIn: { readonly [P in PhaseTag]?: PhaseSeconds } = {
-  Working: "working",
-  ToMerge: "waiting",
-  Merging: "merging",
-  Resolving: "resolving",
-  Fixing: "fixing",
+/**
+ * Whether a ticket in `phase` ends its part in the run there, for now or for good: it has an
+ * outcome there, and isn't back in the queue.
+ */
+const endsPart = (phase: TicketPhase): boolean => {
+  const facts = factsOf(phase)
+  return !facts.inQueue && facts.ends(phase) !== null
 }
-
-type EndingPhase = (typeof endingPhases)[number]
-
-type QueuePhase = (typeof queuePhases)[number]
-
-/** How a ticket's part in the run ended, by the phase it ended in. */
-const outcomeOf = (phase: TicketPhase): (typeof ticketOutcomes)[number] | undefined => {
-  switch (phase._tag) {
-    case "Done":
-      return phase.outcome._tag === "Merged" ? "merged" : "no_change"
-    case "Deferred":
-    case "Review":
-      return "set_aside"
-    case "Asked":
-    case "Blocked":
-      return "needs_you"
-    case "Stopped":
-      return "stopped"
-    case "Waiting":
-    case "Queued":
-    case "HeldBack":
-      return "queued"
-  }
-  return undefined
-}
-
-/** The phases that end a ticket's part in the run, for now or for good. */
-const endsPart: ReadonlySet<PhaseTag> = new Set<EndingPhase>([
-  "Done",
-  "Asked",
-  "Deferred",
-  "Review",
-  "Blocked",
-  "Stopped",
-])
-
-/** The phases in the queue: a ticket the run took up and left in one gets its ticket_end at the end. */
-const inQueue: ReadonlySet<PhaseTag> = new Set<QueuePhase>(["Waiting", "Queued", "HeldBack"])
 
 /** The causes that bring a ticket carried over from an earlier run into this one. */
 const carriedIn: ReadonlySet<Cause["_tag"]> = new Set(["Resumed", "StillAsked", "Unmerged"])
@@ -218,8 +175,8 @@ export const ending = (
   spent: Spent,
   beside: ReadonlyArray<Event>,
 ): ReadonlyArray<Event> => {
-  const outcome = outcomeOf(phase)
-  if (outcome === undefined) return beside
+  const outcome = factsOf(phase).ends(phase)
+  if (outcome === null) return beside
   const fields = spentFields(entry, spent)
   const why =
     phase._tag === "Asked"
@@ -271,15 +228,18 @@ export interface State {
 
 export const emptyState: State = { tickets: new Map(), rows: 0, windDown: null, bugs: [] }
 
-/** The phases a ticket shows no row in, unless it had one before (§ 5.1). */
-const rowless: ReadonlySet<PhaseTag> = new Set(["Queued", "HeldBack"])
+// A session that is open, or open until the run ends, holds its worker's number.
+const holds = (lifetime: Lifetime): boolean => lifetime === "open" || lifetime === "untilRunEnds"
 
 /**
  * Whether a ticket in `phase` keeps its worker's number: while its session is open (§ 4.8), that
- * is, in the phases with a card, and set aside after a failed check that may be checked again.
+ * is, in the phases with a card, and set aside after a failed check that may be checked again. The
+ * merge queue's rechecks are not the ledger's to see, so it takes every ticket set aside after a
+ * failed check as one that may be: its number is kept until it leaves Review, though its session
+ * closes (sessions.ts fit) when it won't be checked again.
  */
 export const holdsWorker = (phase: TicketPhase): boolean =>
-  hasCard(phase) || (phase._tag === "Review" && phase.why === "CHECKS_FAILED")
+  holds(factsOf(phase).session(phase, { recheck: true, handBackWaits: false }))
 
 /** Whether `entry` is Blocked on a conflict whose hand-back waits for its steered worker (§ 4.3). */
 export const handBackWaits = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
@@ -290,7 +250,12 @@ export const handBackWaits = (entry: Pick<Entry, "phase" | "handBack">): boolean
  * hand-back waiting, its session open for it (§ 4.3, § 4.8).
  */
 export const keepsWorker = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
-  holdsWorker(entry.phase) || handBackWaits(entry)
+  holds(
+    factsOf(entry.phase).session(entry.phase, {
+      recheck: true,
+      handBackWaits: handBackWaits(entry),
+    }),
+  )
 
 /** Whether `entry` has a card: a phase with one, or Blocked with its hand-back waiting (§ 4.3). */
 export const showsCard = (entry: Pick<Entry, "phase" | "handBack">): boolean =>
@@ -325,8 +290,13 @@ const details = (
     case "Blocked":
     case "Stopped":
       return { why: phase.why }
+    case "Queued":
+    case "Working":
+    case "Done":
+    case "Asked":
+    case "Waiting":
+      return {}
   }
-  return {}
 }
 
 /**
@@ -360,7 +330,9 @@ const moved = (
   // tickets came to an end, and one leaving Current comes in under the others in the tickets table
   // beside it (§ 7.2).
   const leaves = entry.row !== null && showsCard(entry) && !showsCard({ phase, handBack })
-  const row = leaves ? state.rows : (entry.row ?? (rowless.has(phase._tag) ? null : state.rows))
+  const row = leaves
+    ? state.rows
+    : (entry.row ?? (phaseFacts[phase._tag].ready ? null : state.rows))
   const worker = keepsWorker({ phase, handBack })
     ? (entry.worker ?? lowestFree(state.tickets))
     : null
@@ -393,18 +365,18 @@ export const accounted = (entry: Entry, phase: TicketPhase, cause: Cause, now: n
   const fresh = entry.account === undefined
   const account = entry.account ?? newAccount()
   const spentIn = { ...account.spentIn }
-  const left = countsIn[entry.phase._tag]
-  if (left !== undefined && !fresh) {
+  const left = phaseFacts[entry.phase._tag].orchestra
+  if (left !== null && !fresh) {
     spentIn[left] = (spentIn[left] ?? 0) + Math.max(0, now - entry.since)
   }
-  const entered = countsIn[phase._tag]
-  if (entered !== undefined) spentIn[entered] = spentIn[entered] ?? 0
+  const entered = phaseFacts[phase._tag].orchestra
+  if (entered !== null) spentIn[entered] = spentIn[entered] ?? 0
   // A hand-back counts by its cause, as Fixing hands back to Fixing on a second failed check.
   const handedBack = (tag: Cause["_tag"]) => (cause._tag === tag ? 1 : 0)
   return {
     ...entry,
     account: {
-      took: account.took ?? (entered === undefined ? null : now),
+      took: account.took ?? (entered === null ? null : now),
       spentIn,
       handBacks: {
         resolve: account.handBacks.resolve + handedBack("ConflictsHandedBack"),
@@ -442,15 +414,6 @@ const changed = <P>(result: Result.Result<P, InvalidTransition>, state: State): 
   result,
   state,
 ]
-
-/** The phases a ticket still running when the wind-down begins is in. */
-const running: ReadonlySet<PhaseTag> = new Set([
-  "Working",
-  "ToMerge",
-  "Merging",
-  "Resolving",
-  "Fixing",
-])
 
 export class Ledger extends Context.Service<
   Ledger,
@@ -563,7 +526,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
             entry !== undefined &&
             next.success !== null &&
             next.success._tag !== entry.phase._tag &&
-            endsPart.has(next.success._tag)
+            endsPart(next.success)
           const said = options.said ?? []
           const given = [...said, ...(options.beside ?? [])]
           const beside =
@@ -683,7 +646,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
         for (const entry of state.tickets.values()) {
-          if (!inQueue.has(entry.phase._tag) || entry.account?.took == null) continue
+          if (!phaseFacts[entry.phase._tag].inQueue || entry.account?.took == null) continue
           const spent = Option.isSome(spending)
             ? yield* spending.value.ofTicket(entry.ticket)
             : nothingSpent
@@ -703,7 +666,7 @@ export const make: Effect.Effect<Ledger["Service"], never, Log | EventStream> = 
             windDown: {
               since,
               tickets: [...state.tickets.values()]
-                .filter((entry) => running.has(entry.phase._tag))
+                .filter((entry) => phaseFacts[entry.phase._tag].running)
                 .map((entry) => entry.ticket),
             },
           })),
