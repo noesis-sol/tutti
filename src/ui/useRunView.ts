@@ -17,13 +17,13 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react"
-import { frameInterval, spinnerFrames } from "../print/organLine.ts"
 import { type Commands, offer, type UiCommand } from "../run/commands.ts"
 import type { TicketFiling } from "../run/fileTicket.ts"
 import type { RunView } from "../run/runView.ts"
 import type { Screen } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
 import type { UrlOpener } from "./openUrl.ts"
+import { frameInterval, spinnerFrames } from "./spinner.ts"
 import type { Appearance, Theme } from "./theme.ts"
 import type { TranscriptFeed } from "./transcriptItems.ts"
 
@@ -210,7 +210,7 @@ export const ticker = (
   }
 }
 
-// The spinner, Bubbles' `Dot` (§ 7.11): its frames, the printer's, and how long each is shown.
+// The spinner, Bubbles' `Dot` (§ 7.11): its frames, the printer's too, and how long each is shown.
 export { spinnerFrames }
 export const spinnerTick = Duration.toMillis(frameInterval)
 

@@ -3,15 +3,10 @@ import { Effect } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { decodeReferences, renderMarkdown, ruleWidth } from "../src/print/markdown.ts"
-import {
-  eraseLine,
-  frameInterval,
-  makePrinter,
-  type Out,
-  spinnerFrames,
-} from "../src/print/organLine.ts"
+import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
 import { closing, Ending, printSummary, type Summary, summary } from "../src/print/summary.ts"
 import { emptyView, type Row } from "../src/run/runView.ts"
+import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })

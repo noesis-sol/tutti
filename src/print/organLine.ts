@@ -4,8 +4,9 @@
 // erase line) ten times a second until the step ends, then its final line, `◆ ` and the text with
 // how long it took. It is drawn from a fiber rather than by a renderer, so the terminal stays out
 // of raw mode and Ctrl+C comes as a signal. What is printed while it is drawn goes above it.
-import { Clock, Duration, Effect, Fiber } from "effect"
+import { Clock, Effect, Fiber } from "effect"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { frameInterval, spinnerFrames } from "../ui/spinner.ts"
 import type { Theme } from "../ui/theme.ts"
 
 /** Where the printer writes. */
@@ -47,12 +48,6 @@ export const stdout: Out = {
   columns: () => process.stdout.columns ?? 0,
   tty: process.stdout.isTTY === true,
 }
-
-/** The spinner, Bubbles' `Dot` (§ 7.11 "Glyphs and motion"). */
-export const spinnerFrames = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"] as const
-
-/** How often the spinner turns: ten times a second. */
-export const frameInterval = Duration.millis(100)
 
 /** Returns the cursor to the start of its line and erases the line. */
 export const eraseLine = "\r\x1b[2K"

@@ -6,44 +6,17 @@
 // bold or `♪ Almost ready: …` notice. In the renderer's form the title is drawn above the steps;
 // after it, once the renderer is gone, it heads the summary. Its faint parts are `formFaint`'s:
 // faint where it is `default`, else drawn in it, lighter on dark than faint text.
-import { homedir } from "node:os"
 import type { InitSummary } from "../init/init.ts"
 import { cancelledLine, signOff } from "../init/init.ts"
 import { marks, type Step, type StepKind } from "../init/steps.ts"
+import { initAbout, initTitle } from "../ui/initTitle.ts"
 import { boxed, paint, type Segments, seg, wrapText } from "../ui/line.tsx"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Style, Theme } from "../ui/theme.ts"
 
-/** `path` with the home folder as `~`. */
-export const tildify = (path: string, home: string = homedir()): string =>
-  home !== "" && (path === home || path.startsWith(`${home}/`))
-    ? `~${path.slice(home.length)}`
-    : path
-
-/** init's title: the pill, `init`, and the repository it sets up. */
-export const initTitle = (theme: Theme, repo: string): Segments => {
-  const { title, organ } = theme.styles
-  return [
-    seg(" Tutti ", title),
-    seg(" "),
-    seg("init", organ),
-    seg("  "),
-    seg(sanitizeLine(tildify(repo)), theme.form.faint),
-  ]
-}
-
-/** What init says under its title. */
-export const initAbout = " Sets this project up for tutti, in .tutti/."
-
 /** The title as the line forms and the summary print it: a blank line above, init's words under. */
 export const initHeader = (theme: Theme, repo: string): string =>
   ["", paint(initTitle(theme, repo)), theme.form.faint.paint(initAbout), ""].join("\n")
-
-/** How long the scout has looked, as its spinner says it: m:ss. */
-export const scoutClock = (millis: number): string => {
-  const seconds = Math.max(0, Math.floor(millis / 1000))
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
-}
 
 /** A step's label is padded to this width; its detail starts past it. */
 const labelWidth = 15
