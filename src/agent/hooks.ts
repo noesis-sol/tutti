@@ -1,5 +1,5 @@
-// A worker's in-process hook callbacks (§ 4.2): PreToolUse, PostToolUse, SubagentStart,
-// SubagentStop and PreCompact. They tell tutti what the worker is doing and when it compacts. They
+// A worker's in-process hook callbacks (§ 4.2): PreToolUse, PostToolUse, PostToolUseFailure,
+// PermissionDenied, SubagentStart, SubagentStop and PreCompact. They tell tutti what the worker is doing and when it compacts. They
 // run while the tool call waits, so each returns at once with no decision ({}), records in a fiber
 // of its own, and never fails: an error inside one, thrown or failed, is logged and swallowed, as
 // orchestra's hooks always exit 0.
@@ -24,6 +24,8 @@ import { Cause, Effect } from "effect"
 export const activityEvents = [
   "PreToolUse",
   "PostToolUse",
+  "PostToolUseFailure",
+  "PermissionDenied",
   "SubagentStart",
   "SubagentStop",
   "PreCompact",

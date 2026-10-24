@@ -373,7 +373,7 @@ tutti decodes these fields with a Schema rather than trusting the SDK's types, s
 
 **`queued_turn_count` isn't used.** It counts only queued messages sent without `client_composed`, and every message tutti composes is `client_composed` (§4.1). With SDK 0.3.301, two queued `client_composed` nudges left it 0 with another turn still to come, and a queued message you typed followed by a composed one gave 1, then 0 while the composed one was still queued (docs/spikes/01-sdk-session.md, items 1 and 4). Reading it would call a worker `Idle` with a nudge or hand-back still queued.
 
-**What `doing` is.** In-process hook callbacks (`PreToolUse`, `PostToolUse`, `SubagentStart`, `SubagentStop`, `PreCompact`) set it, classified as orchestra classifies them:
+**What `doing` is.** In-process hook callbacks (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionDenied`, `SubagentStart`, `SubagentStop`, `PreCompact`) set it, classified as orchestra classifies them. A call ends with `PostToolUse`, or with `PostToolUseFailure` when it fails (a check exiting non-zero) and `PermissionDenied` when it is denied; each puts `doing` back, so the card doesn't show the ended call while the worker reads its failure:
 
 - `testing`: Bash running the check command or a known test runner
 - `editing`: Edit or Write

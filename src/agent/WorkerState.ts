@@ -432,7 +432,10 @@ const onHook = (worker: Worker, input: HookInput): Worker => {
   switch (input.hook_event_name) {
     case "PreToolUse":
       return { ...worker, tool: classify(input.tool_name, input.tool_input, worker.checks) }
+    // A call that failed or was denied has ended as surely as one that succeeded.
     case "PostToolUse":
+    case "PostToolUseFailure":
+    case "PermissionDenied":
     case "PreCompact":
       return { ...worker, tool: null }
     case "SubagentStart":
