@@ -16,14 +16,14 @@ import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { type Asking, emptyScreen, InitView } from "../src/ui/InitForm.tsx"
-import { InputGuards } from "../src/ui/keys.ts"
+import { escapeHold, InputGuards } from "../src/ui/keys.ts"
 import { PlanConfirmation } from "../src/ui/PlanConfirmation.tsx"
 import { type Plan, TicketCount, Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptState } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { type Frame, type Rendered, withRender } from "./render.ts"
+import { type Frame, leap, parserWait, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -318,13 +318,17 @@ describe("the answer form takes clicks", () => {
 })
 
 describe("init's form taking the mouse", () => {
-  /** Sends `start`, then `rest` a read later, as a terminal can split a mouse report (#1661). */
+  /**
+   * Sends `start`, then `rest` a read later, as a terminal can split a mouse report (#1661): the
+   * read after the stdin parser's wait and within the Esc hold, then the hold out. Both are timers
+   * on the renderer's clock, which this leaps, so a loaded machine can't stretch the gap past them.
+   */
   const split = (rendered: Rendered, start: string, rest: string) =>
-    rendered.input(async (setup) => {
+    rendered.input((setup) => {
       setup.renderer.stdin.emit("data", Buffer.from(start))
-      await Bun.sleep(40)
+      leap(setup, parserWait)
       setup.renderer.stdin.emit("data", Buffer.from(rest))
-      await Bun.sleep(60)
+      leap(setup, escapeHold)
     })
 
   test("a mouse report split after its Esc doesn't cancel a confirm", async () => {

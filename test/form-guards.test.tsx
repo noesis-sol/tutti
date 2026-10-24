@@ -8,13 +8,14 @@ import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { createRoot } from "@opentui/react"
 import { Effect, Exit, Fiber } from "effect"
 import { act } from "react"
-import { guardInput, InputGuards } from "../src/ui/keys.ts"
+import { escapeHold, guardInput, InputGuards } from "../src/ui/keys.ts"
 import { askPlan } from "../src/ui/PlanConfirmation.tsx"
 import { type Plan, TicketCount, type Work } from "../src/ui/questions.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { askStart } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
+import { leap, parserWait, TestClock } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -28,6 +29,7 @@ const shellOf = async () => {
   const setup = await createTestRenderer({
     ...rendererConfig,
     ...size,
+    clock: new TestClock(),
     onDestroy: () => {
       actEnvironment.IS_REACT_ACT_ENVIRONMENT = false
     },
@@ -56,13 +58,18 @@ const input = async (setup: TestRendererSetup, drive: () => void | Promise<void>
   })
 }
 
-/** Sends `start`, then `rest` a read later, as a terminal can split a mouse report (#1661). */
+/**
+ * Sends `start`, then `rest` a read later, as a terminal can split a mouse report (#1661): the read
+ * after the stdin parser's wait and within the Esc hold, then the hold out. Both are timers on the
+ * renderer's clock, a TestClock, which this leaps, so a loaded machine can't stretch the gap past
+ * them.
+ */
 const split = (setup: TestRendererSetup, start: string, rest: string) =>
-  input(setup, async () => {
+  input(setup, () => {
     setup.renderer.stdin.emit("data", Buffer.from(start))
-    await Bun.sleep(40)
+    leap(setup, parserWait)
     setup.renderer.stdin.emit("data", Buffer.from(rest))
-    await Bun.sleep(60)
+    leap(setup, escapeHold)
   })
 
 /** The start question at its description, Feature chosen. */
