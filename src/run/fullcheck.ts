@@ -5,7 +5,9 @@
 // worktree of its own on no branch, so the main checkout stays as it is; the worktree is removed
 // afterwards, whatever the check left in it. Nothing is installed in a new worktree, so the setup
 // command (checks.setup.command, such as bun install) runs there first, within check_full's time
-// limit; a setup that fails is said as such and files no ticket: it is not a suite's failure.
+// limit; a setup that fails is said as such and files no ticket: it is not a suite's failure. Nor
+// is a command that couldn't be run (it didn't start, or its output couldn't be kept): that is
+// FULL_CHECK_NOT_RUN, and files none.
 //
 // A failure keeps the whole output in the main checkout's .tutti/run/check-full.log (§ 9.1), and
 // its last 40 lines go to the log, the reviewer and the run report, after the reviewer's text; it
@@ -68,7 +70,7 @@ export interface FullChecked {
   readonly took: number
   /** The suite it failed in; absent when it didn't, or when the setup before it failed. */
   readonly suite?: string
-  /** The setup command, when the full check failed in it. */
+  /** The setup command, when the full check failed in it or it could not be run. */
   readonly setup?: string
   /** Where its whole output is, when it failed. */
   readonly output?: string
@@ -430,7 +432,7 @@ const endLines = (end: ReadonlyArray<string>): ReadonlyArray<Line> =>
 
 /**
  * Says the full check failed with `error`, its whole output `name` in the worktree's .tutti/run/,
- * and files its ticket.
+ * and files its ticket; one that could not be run, or a failed setup, files none.
  */
 const failed = (
   options: FullCheckOptions,
@@ -446,9 +448,31 @@ const failed = (
     const events = yield* EventStream
     const { base } = options
     const command = config.settings.checks.full.command ?? ""
-    const outcome: FullCheckOutcome = error._tag === "CheckTimedOut" ? "timed out" : "failed"
-    const end = error._tag === "CheckNotRun" ? [] : error.lastLines.slice(-fullCheckEnd)
     const how = howFailed(error)
+    if (error._tag === "CheckNotRun") {
+      // A command that couldn't start, or whose output couldn't be kept, failed in the machine, not
+      // in a suite: no ticket, and check-full.log keeps the last failing check's output.
+      const filed = "no ticket filed: it is not a suite's failure"
+      const what =
+        error.check === "setup"
+          ? line`the setup '${error.command}', run before '${command}',`
+          : line`'${command}'`
+      const text = ticketLine(
+        Tag.fullCheckNotRun,
+      )`${what} ${how} on ${base} at ${short(at)}; ${filed}`
+      yield* logs.writeWith([text], events.emit({ kind: "full_check", detail: "not run", text }))
+      return {
+        outcome: "not run",
+        at,
+        took: ms,
+        ...(error.check === "setup" ? { setup: error.command } : {}),
+        end: [],
+        filed,
+        text,
+      } satisfies FullChecked
+    }
+    const outcome: FullCheckOutcome = error._tag === "CheckTimedOut" ? "timed out" : "failed"
+    const end = error.lastLines.slice(-fullCheckEnd)
     const output = yield* keepOutput(worktree, name)
     if (error.check === "setup") {
       const filed = "no ticket filed: it is not a suite's failure"
@@ -470,7 +494,7 @@ const failed = (
         text,
       } satisfies FullChecked
     }
-    const suite = (error._tag === "CheckNotRun" ? null : error.suite) ?? command
+    const suite = error.suite ?? command
     const filing = yield* file({ ...options, at, suite, how, output, said: saidOf(error) })
     const text = ticketLine(
       Tag.fullCheckFailed,

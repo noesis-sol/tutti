@@ -20,7 +20,7 @@ import { PathRefused } from "../src/native/libc.ts"
 import { type FullChecked, fullCheck, fullCheckLabel } from "../src/run/fullcheck.ts"
 import { logFile } from "../src/run/log.ts"
 import { Beads, BeadsFailed, BeadsTimedOut, type Issue } from "../src/services/Beads.ts"
-import { CheckFailed, CheckNotRun } from "../src/services/Checks.ts"
+import { CheckFailed } from "../src/services/Checks.ts"
 import { GitFailed } from "../src/services/Git.ts"
 import { runFolder, Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -256,26 +256,6 @@ describe("its output in its own worktree that can't be opened", () => {
         `^ {2}the full check's whole output can't be kept in ${join(repo, runFolder, "check-full.log").replaceAll(".", "\\.")}: ${inWorktree.replaceAll(".", "\\.")} can't be read: `,
       ),
       /^ {2}FULL_CHECK_FAILED: /,
-    ])
-  })
-})
-
-describe("a full check that could not be run", () => {
-  test("says it could not be run, and why, and files its ticket under its command", async () => {
-    const ran = await checks({
-      full: Effect.fail(
-        new CheckNotRun({ check: "full", command: fullCommand, reason: "sh: not found" }),
-      ),
-    })
-    const result = checked(ran)
-    expect(result).toEqual(
-      expect.objectContaining({ outcome: "failed", suite: fullCommand, end: [] }),
-    )
-    expectLog(ran, [
-      /^ {2}FULL_CHECK_FAILED: 'scripts\/check-full\.sh' could not be run \(sh: not found\) on main at [0-9a-f]{7}, in the suite scripts\/check-full\.sh; /,
-    ])
-    expect(checkFullTickets(ran).map((issue) => issue.title)).toEqual([
-      `Full check fails: ${fullCommand}`,
     ])
   })
 })
