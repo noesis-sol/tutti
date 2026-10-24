@@ -137,11 +137,18 @@ const unset = (key: string, value: unknown): boolean =>
   value === null || value === "" || (key === "concurrent" && value === 0)
 
 /**
- * The value tutti's key takes for orchestra's: its ticket limit "0" is no limit, tutti's null, and
- * its permission mode "manual" is Claude Code's new name for "default", the one tutti takes.
+ * A zero time as Go's time.ParseDuration reads it, which orchestra's settings are: "0", or zeros
+ * with Go's units ("0s", "0m", "0h0m", "0.0s", ".0ns"), signed or not.
+ */
+const goZeroDuration = /^[+-]?(?:0|(?:(?:0+(?:\.0*)?|\.0+)(?:ns|us|µs|μs|ms|s|m|h))+)$/
+
+/**
+ * The value tutti's key takes for orchestra's: its ticket limit of zero ("0", "0s", "0m", …) is no
+ * limit, tutti's null, and its permission mode "manual" is Claude Code's new name for "default",
+ * the one tutti takes.
  */
 const converted = (key: string, value: unknown): unknown => {
-  if (key === "ticket_limit" && value === "0") return null
+  if (key === "ticket_limit" && typeof value === "string" && goZeroDuration.test(value)) return null
   if (key === "worker_permission_mode" && value === "manual") return "default"
   return value
 }
