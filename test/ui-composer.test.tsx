@@ -76,7 +76,7 @@ const itemsOf = (messages: ReadonlyArray<SDKMessage>): ReadonlyArray<Item> =>
 const ledgerEntry = (ticket: string, worker: number, steered: boolean): LedgerEntry => ({
   ticket,
   title: `Title of ${ticket}`,
-  phase: TicketPhase.Working({ activity: "working" }),
+  phase: TicketPhase.Working(),
   since: began,
   worker,
   row: worker - 1,

@@ -29,7 +29,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const entryOf = (ticket: string, worker: number, row: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
-  phase: TicketPhase.Working({ activity: "working" }),
+  phase: TicketPhase.Working(),
   since: began,
   worker,
   row,

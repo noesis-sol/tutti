@@ -66,7 +66,7 @@ const entryOf = (t: Ticket, row: number): Entry => ({
   tallies: emptyTallies,
 })
 
-const working = TicketPhase.Working({ activity: "working" })
+const working = TicketPhase.Working()
 
 /**
  * RunView for `tickets`, with their workers' states, open requests and latest actions, the run

@@ -34,7 +34,7 @@ const request = (ticket: string): AttentionRequest => ({
   createdAt: 0,
 })
 
-const working = TicketPhase.Working({ activity: "working" })
+const working = TicketPhase.Working()
 const merged = TicketPhase.Done({ outcome: { _tag: "NoChange" } })
 
 /** What the stub parts read, changed by the test between the loop's waits. */

@@ -11,7 +11,7 @@ import { attentionSaid, talliesLine } from "../src/run/report.ts"
 const entry: Entry = {
   ticket: "t-1",
   title: "x",
-  phase: { _tag: "Working", activity: "working" } as Entry["phase"],
+  phase: { _tag: "Working" } as Entry["phase"],
   since: 0,
   worker: 1,
   row: 0,

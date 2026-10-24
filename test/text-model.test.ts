@@ -132,7 +132,7 @@ describe("the summary's tickets", () => {
   const rows = [
     row("tut-1", TicketPhase.Done({ outcome: Finished.NoChange() }), "abc1234 merged into main"),
     { ...row("tut-2", TicketPhase.Deferred({ why: "" }), "gave up"), verdict: "retry after tut-1" },
-    row("tut-3", TicketPhase.Working({ activity: "working" }), "Three"),
+    row("tut-3", TicketPhase.Working(), "Three"),
   ]
 
   test("are the dashboard's table, every row and no blank one", () => {

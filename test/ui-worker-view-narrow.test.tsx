@@ -39,7 +39,7 @@ const view: RunView = project({
         {
           ticket: "t-1",
           title,
-          phase: TicketPhase.Working({ activity: "working" }),
+          phase: TicketPhase.Working(),
           since: began,
           worker: 1,
           row: 0,

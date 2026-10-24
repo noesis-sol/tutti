@@ -82,7 +82,7 @@ const orDie = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<void> =>
 
 describe("lifetime: § 4.8's table, row by row", () => {
   const rows: ReadonlyArray<readonly [string, TicketPhase, Lifetime]> = [
-    ["running", TicketPhase.Working({ activity: "working" }), "open"],
+    ["running", TicketPhase.Working(), "open"],
     ["waiting to merge", TicketPhase.ToMerge({ place: 1 }), "open"],
     ["merging", TicketPhase.Merging({ step: "check" }), "open"],
     ["handed back its conflicts", TicketPhase.Resolving({ attempt: 1 }), "open"],

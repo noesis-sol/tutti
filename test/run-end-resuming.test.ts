@@ -27,7 +27,7 @@ const waitingOnYou = look({
   running: new Set(["b"]),
   tickets: new Map([
     ["a", { ticket: "a", phase: TicketPhase.Asked({ question: "q-1" }), handBack: false }],
-    ["b", { ticket: "b", phase: TicketPhase.Working({ activity: "allow" }), handBack: false }],
+    ["b", { ticket: "b", phase: TicketPhase.Working(), handBack: false }],
   ]),
   asking: ["b"],
 })

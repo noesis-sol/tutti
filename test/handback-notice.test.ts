@@ -121,7 +121,7 @@ describe("dashboard()", () => {
       const entry: Entry = {
         ticket: "t-1",
         title: "Title of t-1",
-        phase: TicketPhase.Working({ activity: "working" }),
+        phase: TicketPhase.Working(),
         since: 0,
         worker: 1,
         row: 0,

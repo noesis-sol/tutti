@@ -79,7 +79,7 @@ const cardArb = (i: number): fc.Arbitrary<Card> =>
       label: `t-${i}`,
       title,
       worker: i,
-      phase: TicketPhase.Working({ activity: "working" }),
+      phase: TicketPhase.Working(),
       state: null,
       status: "working",
       tone: motionTones[motion],
@@ -319,7 +319,7 @@ describe("drawn", () => {
             {
               ticket: "t-1",
               title: "Title of t-1",
-              phase: TicketPhase.Working({ activity: "working" }),
+              phase: TicketPhase.Working(),
               since: began,
               worker: 1,
               row: 0,

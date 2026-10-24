@@ -826,7 +826,7 @@ orchestra's dashboard already shows these phases (`▶ working`, `◼ to merge`,
 **Two layers:**
 
 - **The phase** says where the ticket is in the run. The run loop owns it, and changes it only through the transitions below.
-- **The worker's state** (§4.2) says what the ticket's worker is doing. It refines the phases in which a worker is at work (`Working`, `Resolving`, `Fixing`) and never changes the phase by itself. For example, a worker running the tests shows `▶ testing` while its ticket stays `Working`.
+- **The worker's state** (§4.2) says what the ticket's worker is doing. It refines the phases in which a worker is at work (`Working`, `Resolving`, `Fixing`) and never changes the phase by itself. For example, a worker running the tests shows `▶ testing` while its ticket stays `Working`. The phase doesn't carry it: RunView works a Working ticket's activity out from its worker's state and open requests each time it is projected (`src/run/runView.ts`'s `activityOf`), and the ledger keeps only the phase.
 
 **Beads keeps its own status**, separate from the phase. A worker claims its ticket (`in_progress`) and closes it (`closed`) before tutti merges it. So a ticket can be closed in Beads while its phase is `ToMerge`, `Merging`, `Resolving`, `Fixing` or `Blocked`. The phase is the run's truth, and Beads' status is one of the inputs that move it.
 
@@ -838,7 +838,7 @@ A ticket is finished when its phase is `Done`: closed in Beads, merged into the 
 |---|---|---|---|---|
 | `Queued` | ready, waiting for a free slot | none | none | In queue |
 | `HeldBack{why}` | ready, but waiting for something other than a slot. `why` is one of: `overlap` (its footprint overlaps a running ticket's), `parent` (its subtickets aren't all merged), `merge` (a blocker, or the ticket it was filed from, isn't merged yet), `solo` (a solo ticket runs or is next) | none | none | In queue's `held back` |
-| `Working{activity}` | picked up, with its worker at it | `▶ working`, or the worker's activity: `▶ editing`, `▶ reading`, `▶ testing`, `▶ subagent`, `▶ starting`, `▶ retrying`, `■ allow?` (a permission request), `■ answer?` (a question it asked), `◷ limit` (a usage limit) | the worker's state (§4.2) | Workers |
+| `Working` | picked up, with its worker at it | `▶ working`, or the worker's activity: `▶ editing`, `▶ reading`, `▶ testing`, `▶ subagent`, `▶ starting`, `▶ retrying`, `■ allow?` (a permission request), `■ answer?` (a question it asked), `◷ limit` (a usage limit) | the worker's state (§4.2) | Workers |
 | `ToMerge{place}` | its work verified, waiting for its turn in the merge queue. `place` 1 is next | `◼ to merge` | `to merge (2nd)` | not counted yet |
 | `Merging{step}` | its merge under way. `step` is `rebase`, `setup`, `check` or `fast-forward` | `◆ merging` | `merging`; the action line names the step (`running the check on main`) | not counted yet |
 | `Resolving{attempt}` | its rebase stopped on conflicts, which were handed back to its worker | `⟳ resolving` | `resolving` | Workers |

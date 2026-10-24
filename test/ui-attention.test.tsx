@@ -35,7 +35,7 @@ const theme = themeOf("dark")
 
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 
-const working = TicketPhase.Working({ activity: "working" })
+const working = TicketPhase.Working()
 
 const entryOf = (ticket: string, worker: number, row: number): Entry => ({
   ticket,

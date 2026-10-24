@@ -19,6 +19,7 @@ import { titleSegments } from "../src/ui/TitleLine.tsx"
 import { totalsLines } from "../src/ui/Totals.tsx"
 import { type Appearance, makeTheme, orchestra, type StyleName } from "../src/ui/theme.ts"
 import { external, type Settable, type ShellValue, tick } from "../src/ui/useRunView.ts"
+import { workersDoing } from "./activity.ts"
 import { type Frame, renderFrame, type Size, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
@@ -43,17 +44,25 @@ const entry = (ticket: string, title: string, phase: TicketPhase, row: number | 
   tallies: emptyTallies,
 })
 
-/** RunView for `entries`, taken up in that order, the run on batch/2026-10-20 with 3 workers. */
-const viewOf = (entries: ReadonlyArray<Entry>, status: Partial<Status> = {}): RunView =>
-  project({
+/**
+ * RunView for `entries`, taken up in that order, the run on batch/2026-10-20 with 3 workers, the
+ * Working tickets of `doing` at their workers' activities.
+ */
+const viewOf = (
+  entries: ReadonlyArray<Entry>,
+  status: Partial<Status> = {},
+  doing: ReadonlyArray<readonly [string, Activity]> = [],
+): RunView => {
+  const { workers, requests } = workersDoing(doing)
+  return project({
     ledger: {
       tickets: new Map(entries.map((each) => [each.ticket, each])),
       rows: entries.length,
       windDown: null,
       bugs: [],
     },
-    workers: new Map(),
-    requests: [],
+    workers: new Map(workers),
+    requests,
     status: {
       ...emptyStatus,
       version: "0.1.0",
@@ -63,6 +72,7 @@ const viewOf = (entries: ReadonlyArray<Entry>, status: Partial<Status> = {}): Ru
       ...status,
     },
   })
+}
 
 const value = (view: RunView | Settable<RunView>, clock: () => number = () => now): ShellValue => ({
   view: "get" in view ? view : external(view),
@@ -112,13 +122,8 @@ const illustrated = viewOf(
       TicketPhase.Merging({ step: "check" }),
       1,
     ),
-    entry(
-      "tut-zq4",
-      "Add an undo stack for property edits",
-      TicketPhase.Working({ activity: "testing" }),
-      2,
-    ),
-    entry("tut-9a1", "Remove the build cache", TicketPhase.Working({ activity: "allow" }), 3),
+    entry("tut-zq4", "Add an undo stack for property edits", TicketPhase.Working(), 2),
+    entry("tut-9a1", "Remove the build cache", TicketPhase.Working(), 3),
     entry("tut-vzg", "Animate the timeline", TicketPhase.Deferred({ why: "BAD_TICKET_ID" }), 4),
     entry("tut-q1", "A ticket in the queue", TicketPhase.Queued(), null),
     entry("tut-q2", "A ticket held back", TicketPhase.HeldBack({ why: "overlap" }), null),
@@ -129,6 +134,10 @@ const illustrated = viewOf(
     unclosed: 16,
     verdicts: new Map([["tut-vzg", "environment · high · prompt never submitted"]]),
   },
+  [
+    ["tut-zq4", "testing"],
+    ["tut-9a1", "allow"],
+  ],
 )
 
 describe("frames", () => {
@@ -361,26 +370,30 @@ describe("the totals strip", () => {
 })
 
 describe("the tickets table", () => {
-  const rowOf = async (phase: TicketPhase, status: Partial<Status> = {}) => {
-    const view = viewOf([entry("tut-1", "The ticket's title", phase, 0)], status)
+  // An activity is a Working ticket's worker's.
+  const rowOf = async (phase: TicketPhase | Activity, status: Partial<Status> = {}) => {
+    const view =
+      typeof phase === "string"
+        ? viewOf([entry("tut-1", "The ticket's title", TicketPhase.Working(), 0)], status, [
+            ["tut-1", phase],
+          ])
+        : viewOf([entry("tut-1", "The ticket's title", phase, 0)], status)
     const { frame, text } = await draw(view, { width: 80, height: 24 })
     const line = text.split("\n").find((each) => each.includes("tut-1")) ?? ""
     return { frame, line }
   }
 
-  const working = (activity: Activity) => TicketPhase.Working({ activity })
-
-  test.each<readonly [string, TicketPhase, string, StyleName]>([
-    ["▶ working", working("working"), "The ticket's title", "picked"],
-    ["▶ editing", working("editing"), "The ticket's title", "picked"],
-    ["▶ reading", working("reading"), "The ticket's title", "picked"],
-    ["▶ subagent", working("subagent"), "The ticket's title", "picked"],
-    ["▶ starting", working("starting"), "The ticket's title", "picked"],
-    ["▶ testing", working("testing"), "The ticket's title", "testing"],
-    ["▶ retrying", working("retrying"), "The ticket's title", "deferred"],
-    ["◷ limit", working("limit"), "The ticket's title", "deferred"],
-    ["■ allow?", working("allow"), "The ticket's title", "stop"],
-    ["■ answer?", working("answer"), "The ticket's title", "stop"],
+  test.each<readonly [string, TicketPhase | Activity, string, StyleName]>([
+    ["▶ working", "working", "The ticket's title", "picked"],
+    ["▶ editing", "editing", "The ticket's title", "picked"],
+    ["▶ reading", "reading", "The ticket's title", "picked"],
+    ["▶ subagent", "subagent", "The ticket's title", "picked"],
+    ["▶ starting", "starting", "The ticket's title", "picked"],
+    ["▶ testing", "testing", "The ticket's title", "testing"],
+    ["▶ retrying", "retrying", "The ticket's title", "deferred"],
+    ["◷ limit", "limit", "The ticket's title", "deferred"],
+    ["■ allow?", "allow", "The ticket's title", "stop"],
+    ["■ answer?", "answer", "The ticket's title", "stop"],
     ["◼ to merge", TicketPhase.ToMerge({ place: 2 }), "The ticket's title", "toMerge"],
     ["◆ merging", TicketPhase.Merging({ step: "rebase" }), "The ticket's title", "merging"],
     ["⟳ resolving", TicketPhase.Resolving({ attempt: 1 }), "The ticket's title", "deferred"],
@@ -423,7 +436,7 @@ describe("the tickets table", () => {
       "The ticket's",
       "dim",
     )
-    const live = spanOf((await rowOf(working("editing"))).frame, "The ticket's")
+    const live = spanOf((await rowOf("editing")).frame, "The ticket's")
     expect(live.attributes & TextAttributes.DIM).toBe(0)
   })
 
@@ -437,13 +450,15 @@ describe("the tickets table", () => {
       expect(line).toContain("│ ◆ environment · high")
       looksLike(frame, "◆ environment", "organ")
     }
-    expect((await rowOf(working("editing"), { verdicts })).line).toContain("The ticket's title")
+    expect((await rowOf("editing", { verdicts })).line).toContain("The ticket's title")
   })
 
   test("rows keep their place as phases change", async () => {
     const tickets = (phases: ReadonlyArray<TicketPhase>) =>
       viewOf(phases.map((phase, i) => entry(`tut-${i + 1}`, `Ticket ${i + 1}`, phase, i)))
-    const view = external(tickets([working("starting"), working("starting"), working("starting")]))
+    const view = external(
+      tickets([TicketPhase.Working(), TicketPhase.Working(), TicketPhase.Working()]),
+    )
     await withRender(<Root value={value(view)} />, { width: 80, height: 24 }, async (rendered) => {
       const rows = async () =>
         linesOf(await rendered.capture())
@@ -494,7 +509,7 @@ describe("the tickets table", () => {
       "tut-9",
     ])
     expect(lines[top + 8]).toStartWith("╰")
-    const few = await draw(viewOf([entry("tut-1", "One", working("editing"), 0)]), {
+    const few = await draw(viewOf([entry("tut-1", "One", TicketPhase.Working(), 0)]), {
       width: 80,
       height: 35,
     })
@@ -503,10 +518,10 @@ describe("the tickets table", () => {
   })
 
   test("a pane too short for it and a line a worker leaves it out", async () => {
-    const view = viewOf([entry("tut-1", "One", working("editing"), 0)])
+    const view = viewOf([entry("tut-1", "One", TicketPhase.Working(), 0)])
     expect((await draw(view, { width: 80, height: 19 })).text).not.toContain("Tickets")
     expect((await draw(view, { width: 80, height: 20 })).text).toContain("Tickets")
-    const more = viewOf([entry("tut-1", "One", working("editing"), 0)], { concurrency: 8 })
+    const more = viewOf([entry("tut-1", "One", TicketPhase.Working(), 0)], { concurrency: 8 })
     expect((await draw(more, { width: 80, height: 24 })).text).not.toContain("Tickets")
   })
 
@@ -533,7 +548,7 @@ describe("untrusted text", () => {
           const view = viewOf(
             [
               entry(id, text, TicketPhase.Deferred({ why: "BAD_TICKET_ID" }), 0),
-              entry(`${id}-2`, text, TicketPhase.Working({ activity: "editing" }), 1),
+              entry(`${id}-2`, text, TicketPhase.Working(), 1),
             ],
             {
               branch: text,

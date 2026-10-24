@@ -7,6 +7,7 @@ import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, Effect, Fiber, SubscriptionRef } from "effect"
+import { WorkerState } from "../src/agent/WorkerState.ts"
 import { makeCommands } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import {
@@ -175,7 +176,7 @@ const reading = (workers: ReadonlyMap<string, number>, kernel: Partial<Kernel> =
 const entry = (ticket: string, worker: number): Entry => ({
   ticket,
   title: `Title of ${ticket}`,
-  phase: TicketPhase.Working({ activity: "editing" }),
+  phase: TicketPhase.Working(),
   since: 0,
   worker,
   row: 0,
@@ -184,6 +185,12 @@ const entry = (ticket: string, worker: number): Entry => ({
   lastMessage: null,
   tallies: emptyTallies,
 })
+
+/** Both tickets' workers, editing. */
+const editing: ReadonlyMap<string, WorkerState> = new Map([
+  ["tut-1", WorkerState.Working({ doing: "editing" })],
+  ["tut-2", WorkerState.Working({ doing: "editing" })],
+])
 
 const viewOf = (load: Reading | null, status: Partial<Status> = {}): RunView =>
   project({
@@ -196,7 +203,7 @@ const viewOf = (load: Reading | null, status: Partial<Status> = {}): RunView =>
       windDown: null,
       bugs: [],
     },
-    workers: new Map(),
+    workers: editing,
     requests: [],
     status: { ...emptyStatus, version: "0.1.0", branch: "main", concurrency: 2, load, ...status },
   })
@@ -244,7 +251,7 @@ describe("RunView", () => {
           windDown: null,
           bugs: [],
         },
-        workers: new Map(),
+        workers: editing,
         requests: [],
         status: {
           ...emptyStatus,

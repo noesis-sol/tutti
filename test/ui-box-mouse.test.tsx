@@ -33,7 +33,7 @@ const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const ledgerEntry = (ticket: string, worker: number): LedgerEntry => ({
   ticket,
   title: `Title of ${ticket}`,
-  phase: TicketPhase.Working({ activity: "working" }),
+  phase: TicketPhase.Working(),
   since: began,
   worker,
   row: worker - 1,

@@ -8,6 +8,7 @@ import { endingPhases, phaseNames, queuePhases } from "../src/run/events.ts"
 import { holdsWorker, keepsWorker, Ledger } from "../src/run/ledger.ts"
 import { finished } from "../src/run/notices.ts"
 import {
+  type Activity,
   activities,
   countsUnder,
   Finished,
@@ -29,7 +30,7 @@ import { marks } from "../src/ui/marks.ts"
 const samples: { readonly [T in PhaseTag]: TicketPhase } = {
   Queued: TicketPhase.Queued(),
   HeldBack: TicketPhase.HeldBack({ why: "overlap" }),
-  Working: TicketPhase.Working({ activity: "editing" }),
+  Working: TicketPhase.Working(),
   ToMerge: TicketPhase.ToMerge({ place: 1 }),
   Merging: TicketPhase.Merging({ step: "check" }),
   Resolving: TicketPhase.Resolving({ attempt: 1 }),
@@ -120,8 +121,7 @@ describe("counting", () => {
 
 /** The phases of each tag whose facts turn on their details, and one of each other tag. */
 const variants: ReadonlyArray<TicketPhase> = [
-  ...phaseNames.filter((tag) => tag !== "Working").map((tag) => samples[tag]),
-  ...activities.map((activity) => TicketPhase.Working({ activity })),
+  ...phaseNames.map((tag) => samples[tag]),
   TicketPhase.Done({ outcome: Finished.NoChange() }),
   TicketPhase.Waiting({ for: WaitFor.Setup() }),
   TicketPhase.Waiting({ for: WaitFor.Probe() }),
@@ -129,6 +129,14 @@ const variants: ReadonlyArray<TicketPhase> = [
   TicketPhase.Review({ why: "OFF_BRANCH" }),
   TicketPhase.Blocked({ why: "DIRTY_TREE" }),
   TicketPhase.Fixing({ attempt: 2, afterResolution: true }),
+]
+
+/** The variants as rows show them: a Working ticket by each of its worker's activities. */
+const shownVariants: ReadonlyArray<readonly [TicketPhase, Activity]> = [
+  ...variants
+    .filter((phase) => phase._tag !== "Working")
+    .map((phase) => [phase, "starting"] as const),
+  ...activities.map((activity) => [TicketPhase.Working(), activity] as const),
 ]
 
 /** The tags whose `fact` is true. */
@@ -262,12 +270,17 @@ describe("the facts each phase.ts set and switch was", () => {
   })
 
   test("row: runView's rowStatus", () => {
-    const glyphs = (phase: TicketPhase): { readonly mark: string; readonly word: string } => {
-      const { mark, word } = rowStatus(phase)
+    const glyphs = (
+      phase: TicketPhase,
+      activity: Activity,
+    ): { readonly mark: string; readonly word: string } => {
+      const { mark, word } = rowStatus(phase, activity)
       return { mark: marks[mark], word }
     }
-    expect(variants.map((phase) => [phaseLabel(phase), glyphs(phase)])).toEqual(
-      variants.map((phase) => [phaseLabel(phase), rowBefore(phase)]),
+    expect(
+      shownVariants.map(([phase, activity]) => [phaseLabel(phase), glyphs(phase, activity)]),
+    ).toEqual(
+      shownVariants.map(([phase, activity]) => [phaseLabel(phase), rowBefore(phase, activity)]),
     )
   })
 
@@ -301,8 +314,10 @@ describe("the facts each phase.ts set and switch was", () => {
   })
 
   test("totals give the same array each call, as the dashboard reads them every frame", () => {
-    for (const phase of variants) expect(countsUnder(phase)).toBe(countsUnder(phase))
-    for (const phase of variants) expect(rowStatus(phase)).toBe(rowStatus(phase))
+    for (const [phase, activity] of shownVariants) {
+      expect(countsUnder(phase, activity)).toBe(countsUnder(phase, activity))
+      expect(rowStatus(phase, activity)).toBe(rowStatus(phase, activity))
+    }
   })
 })
 
@@ -350,14 +365,17 @@ const lifetimeBefore = (phase: TicketPhase, recheck: boolean, handBackWaits: boo
 }
 
 // runView's rowStatus before the table.
-const rowBefore = (phase: TicketPhase): { readonly mark: string; readonly word: string } => {
+const rowBefore = (
+  phase: TicketPhase,
+  activity: Activity,
+): { readonly mark: string; readonly word: string } => {
   switch (phase._tag) {
     case "Queued":
       return { mark: "◷", word: "queued" }
     case "HeldBack":
       return { mark: "◷", word: "held back" }
     case "Working":
-      switch (phase.activity) {
+      switch (activity) {
         case "allow":
           return { mark: "■", word: "allow?" }
         case "answer":
@@ -365,7 +383,7 @@ const rowBefore = (phase: TicketPhase): { readonly mark: string; readonly word: 
         case "limit":
           return { mark: "◷", word: "limit" }
       }
-      return { mark: "▶", word: phase.activity }
+      return { mark: "▶", word: activity }
     case "ToMerge":
       return { mark: "◼", word: "to merge" }
     case "Merging":

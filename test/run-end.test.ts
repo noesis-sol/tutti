@@ -12,8 +12,8 @@ const phases: ReadonlyArray<TicketPhase> = [
   TicketPhase.Queued(),
   TicketPhase.HeldBack({ why: "overlap" }),
   TicketPhase.HeldBack({ why: "solo" }),
-  TicketPhase.Working({ activity: "working" }),
-  TicketPhase.Working({ activity: "answer" }),
+  TicketPhase.Working(),
+  TicketPhase.Working(),
   TicketPhase.ToMerge({ place: 1 }),
   TicketPhase.Resolving({ attempt: 1 }),
   TicketPhase.Done({ outcome: { _tag: "NoChange" } }),
@@ -77,7 +77,7 @@ const tickets = (...entries: ReadonlyArray<[string, TicketPhase, boolean?]>) =>
     ]),
   )
 
-const working = TicketPhase.Working({ activity: "answer" })
+const working = TicketPhase.Working()
 
 describe("decide", () => {
   test("a busy look is never an end", () => {

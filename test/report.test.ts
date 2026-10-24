@@ -338,7 +338,7 @@ describe("steering and tallies", () => {
   const entry = {
     ticket: "t-1",
     title: "x",
-    phase: { _tag: "Working", activity: "working" },
+    phase: { _tag: "Working" },
     since: 0,
     worker: 1,
     row: 0,

@@ -739,7 +739,7 @@ export const make = (
           : soloState(s, (yield* Ref.get(memo)).soloNext)
         const queue = yield* recorded(yield* ledger.current, ids, solo, [
           issue.id,
-          TicketPhase.Working({ activity: "starting" }),
+          TicketPhase.Working(),
         ])
         const record: SaidRecord = {
           kind: "dispatch",

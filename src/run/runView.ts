@@ -501,15 +501,13 @@ export const emptyView: RunView = {
 export const interval = Duration.millis(33)
 
 /**
- * What a Working ticket's worker is doing, for its row: what its open requests ask first, then its
- * state, then the phase's own activity.
+ * What a Working ticket's worker is doing, for its row, its card and the totals: what its open
+ * requests ask first, then its state; `starting` while neither says. The ledger doesn't keep it.
  */
 export const activityOf = (
-  phase: TicketPhase,
   state: WorkerState | undefined,
   requests: ReadonlyArray<AttentionRequest>,
-): Activity | null => {
-  if (phase._tag !== "Working") return null
+): Activity => {
   const first = requests[0]
   if (first !== undefined) return first.kind._tag === "Question" ? "answer" : "allow"
   switch (state?._tag) {
@@ -524,19 +522,7 @@ export const activityOf = (
     case "UsageLimited":
       return "limit"
   }
-  return phase.activity
-}
-
-/** The phase a row and the totals show: a Working ticket with its worker's activity. */
-const shown = (
-  phase: TicketPhase,
-  state: WorkerState | undefined,
-  requests: ReadonlyArray<AttentionRequest>,
-): TicketPhase => {
-  const activity = activityOf(phase, state, requests)
-  return activity === null || phase._tag !== "Working" || activity === phase.activity
-    ? phase
-    : TicketPhase.Working({ activity })
+  return "starting"
 }
 
 /** `n` as an English ordinal: 1st, 2nd, 3rd, 4th, 11th, 21st. */
@@ -558,8 +544,12 @@ export const ordinal = (n: number): string => {
 export const countdown = (at: number, now: number): string =>
   formatDuration(Duration.minutes(Math.max(1, Math.ceil((at - now) / 60_000))))
 
-/** A row's mark, word and tone for `phase`, as § 5.1's table gives them. */
-export const rowStatus = (phase: TicketPhase): Shown => factsOf(phase).row(phase)
+/**
+ * A row's mark, word and tone for `phase`, as § 5.1's table gives them; `activity` is a Working
+ * ticket's worker's (activityOf).
+ */
+export const rowStatus = (phase: TicketPhase, activity: Activity = "starting"): Shown =>
+  factsOf(phase).row(phase, activity)
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -631,13 +621,14 @@ export const stateStatus = (
 
 const cardStatus = (
   phase: TicketPhase,
+  activity: Activity,
   state: WorkerState | undefined,
   requests: ReadonlyArray<AttentionRequest>,
   now: number | undefined,
 ): string => {
   switch (phase._tag) {
     case "Working":
-      return stateStatus(state, requests, phase.activity, now)
+      return stateStatus(state, requests, activity, now)
     case "Resolving":
       return "resolving"
     case "Fixing":
@@ -647,7 +638,7 @@ const cardStatus = (
     case "Merging":
       return "merging"
   }
-  return rowStatus(phase).word
+  return rowStatus(phase, activity).word
 }
 
 /** The status of a Blocked ticket's card while its conflict hand-back waits for you (§ 4.3). */
@@ -656,12 +647,13 @@ export const handBackStatus = "conflict waits for you"
 /**
  * The tone of a card's status (§ 7.11's Statuses), for a ticket in `phase` whose worker is in
  * `state` with `requests` open: `stop` while it waits for you, whether by a request, the CLI or a
- * conflict hand-back; else the phase's, the worker's state's, or the activity's.
+ * conflict hand-back; else the phase's, the worker's state's, or a Working ticket's `activity`.
  */
 export const statusTone = (
   phase: TicketPhase,
   state: WorkerState | null,
   requests: ReadonlyArray<AttentionRequest>,
+  activity: Activity = "starting",
 ): Tone => {
   if (requests.length > 0 || state?._tag === "NeedsYou" || phase._tag === "Blocked") return "stop"
   switch (phase._tag) {
@@ -691,7 +683,7 @@ export const statusTone = (
   }
   if (phase._tag !== "Working") return "dim"
   // A card's `starting` is faint, where its row's is `picked`.
-  return phase.activity === "starting" ? "dim" : activityRows[phase.activity].tone
+  return activity === "starting" ? "dim" : activityRows[activity].tone
 }
 
 /** Whether a worker in `state` with `requests` open is at work, so its card's spinner turns. */
@@ -719,7 +711,7 @@ const probeCard = (
   load: Reading | null,
   now: number | undefined,
 ): Card => {
-  const phase = TicketPhase.Working({ activity: "working" })
+  const phase = TicketPhase.Working()
   return {
     ticket: probeLabel,
     label: probeLabel,
@@ -727,8 +719,8 @@ const probeCard = (
     worker: 0,
     phase,
     state: state ?? null,
-    status: cardStatus(phase, state, [], now),
-    tone: statusTone(phase, state ?? null, []),
+    status: cardStatus(phase, "working", state, [], now),
+    tone: statusTone(phase, state ?? null, [], "working"),
     motion: motionOf(phase, state, []),
     since: probe.since,
     action: "checking that commands run on this machine",
@@ -844,14 +836,15 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
   for (const entry of ledger.tickets.values()) {
     const state = workers.get(entry.ticket)
     const open = requestsOf.get(entry.ticket) ?? none
-    const phase = shown(entry.phase, state, open)
+    const phase = entry.phase
+    const activity = activityOf(state, open)
     const { label, title } = textsOf(entry)
     // A ticket set aside has the triage organ's verdict in place of its note.
     const verdict =
       phaseFacts[phase._tag].notice === "setAside"
         ? (status.verdicts.get(entry.ticket) ?? null)
         : null
-    for (const total of countsUnder(phase)) {
+    for (const total of countsUnder(phase, activity)) {
       if (total === "needsYou") needsYou.add(entry.ticket)
       else if (total === "setAside") {
         totals[phase._tag === "Review" ? "review" : "deferred"]++
@@ -866,7 +859,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
           ticket: entry.ticket,
           label,
           title,
-          ...rowStatus(phase),
+          ...rowStatus(phase, activity),
           note: noteOf(entry, title, branch),
           verdict: verdict === null ? null : sanitizeLine(verdict),
         },
@@ -874,17 +867,17 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     }
     if (showsCard(entry) && entry.worker !== null) {
       const waits = handBackWaits(entry)
-      const atWork = phaseFacts[entry.phase._tag].atWork ? (state ?? null) : null
+      const atWork = phaseFacts[phase._tag].atWork ? (state ?? null) : null
       cards.push({
         ticket: entry.ticket,
         label,
         title,
         worker: entry.worker,
-        phase: entry.phase,
+        phase,
         state: atWork,
-        status: waits ? handBackStatus : cardStatus(phase, state, open, inputs.now),
-        tone: statusTone(entry.phase, atWork, open),
-        motion: waits ? "idle" : motionOf(entry.phase, state, open),
+        status: waits ? handBackStatus : cardStatus(phase, activity, state, open, inputs.now),
+        tone: statusTone(phase, atWork, open, activity),
+        motion: waits ? "idle" : motionOf(phase, state, open),
         since: entry.since,
         action: actionOf(entry, branch, status.checksAhead.get(entry.ticket)),
         latest: latestOf(actions.get(entry.ticket)),

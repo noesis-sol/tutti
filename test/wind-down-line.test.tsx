@@ -23,7 +23,7 @@ const theme = themeOf("dark")
 const began = new Date(2026, 9, 20, 13, 0, 0).getTime()
 const now = began + 67_000
 
-const working = TicketPhase.Working({ activity: "working" })
+const working = TicketPhase.Working()
 const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) })
 
 const entryOf = (ticket: string, phase: TicketPhase, row: number): Entry => ({

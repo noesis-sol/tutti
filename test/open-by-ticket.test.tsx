@@ -4,6 +4,7 @@
 // one's place in the order.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
+import { WorkerState } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, UiCommand } from "../src/run/commands.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
 import { Finished, TicketPhase } from "../src/run/phase.ts"
@@ -19,7 +20,7 @@ const themeOf = (appearance: Appearance) =>
 
 const began = new Date(2026, 9, 22, 13, 0, 0).getTime()
 const now = began + 67_000
-const working = TicketPhase.Working({ activity: "working" })
+const working = TicketPhase.Working()
 const merged = TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) })
 
 /** RunView for tickets, each `[ticket, its worker's number or null, its phase]`. */
@@ -50,7 +51,12 @@ const viewOf = (
       windDown: null,
       bugs: [],
     },
-    workers: new Map(),
+    // A Working ticket's worker is at work.
+    workers: new Map(
+      tickets.flatMap(([ticket, , phase]) =>
+        phase === undefined ? [[ticket, WorkerState.Working({ doing: "working" })] as const] : [],
+      ),
+    ),
     requests: [],
     status: { ...emptyStatus, version: "0.1.0", branch: "main", began, concurrency },
     actions: new Map(),

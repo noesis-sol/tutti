@@ -290,7 +290,7 @@ const themeOf = (appearance: Appearance) =>
 const ledgerEntry = (ticket: string, worker: number): LedgerEntry => ({
   ticket,
   title: `Title of ${ticket}`,
-  phase: TicketPhase.Working({ activity: "working" }),
+  phase: TicketPhase.Working(),
   since: began,
   worker,
   row: worker - 1,

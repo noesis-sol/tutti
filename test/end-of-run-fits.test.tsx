@@ -69,7 +69,7 @@ const viewOf = (): RunView =>
         ]),
         ...waiters.map((ticket, i): [string, Entry] => [
           ticket,
-          entryOf(ticket, i + 1, TicketPhase.Working({ activity: "working" }), done.length + i),
+          entryOf(ticket, i + 1, TicketPhase.Working(), done.length + i),
         ]),
       ]),
       rows: done.length + waiters.length,

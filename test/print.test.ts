@@ -443,7 +443,7 @@ describe("untrusted text", () => {
       fc.property(hostile, hostile, hostile, (ticket, note, text) => {
         const out = summary(
           {
-            ...ended([row(ticket, TicketPhase.Working({ activity: "working" }), note)]),
+            ...ended([row(ticket, TicketPhase.Working(), note)]),
             branch: text,
             scope: ticket,
           },

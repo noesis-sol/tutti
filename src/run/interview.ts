@@ -89,7 +89,7 @@ export const interviewCard = (
   now?: number,
 ): Card => {
   const requests = open.map(shownRequest)
-  const phase = TicketPhase.Working({ activity: requests.length > 0 ? "answer" : "working" })
+  const phase = TicketPhase.Working()
   return {
     ticket: interviewWorker,
     label: interviewWorker,
@@ -98,7 +98,7 @@ export const interviewCard = (
     phase,
     state,
     status: interviewStatus(state, requests, now),
-    tone: statusTone(phase, state, requests),
+    tone: statusTone(phase, state, requests, "working"),
     motion:
       state === null ||
       state._tag === "Starting" ||

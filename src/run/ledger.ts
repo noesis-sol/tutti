@@ -396,7 +396,6 @@ const newEntry = (ticket: string, title: string, phase: TicketPhase): Entry => (
 
 /** The phases a refinement belongs to, for a PHASE_BUG about a ticket the run hasn't taken up. */
 const refines: Record<Detail["_tag"], PhaseTag> = {
-  Activity: "Working",
   Place: "ToMerge",
   Step: "Merging",
 }
@@ -431,7 +430,7 @@ export class Ledger extends Context.Service<
         readonly lines?: ReadonlyArray<log.Line>
       },
     ): Effect.Effect<Result.Result<TicketPhase | null, InvalidTransition>>
-    /** Changes a detail of `ticket`'s phase (its activity, place or step), not the phase. */
+    /** Changes a detail of `ticket`'s phase (its place or step), not the phase. */
     refine(
       ticket: string,
       detail: Detail,

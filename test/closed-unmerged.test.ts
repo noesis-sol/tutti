@@ -73,7 +73,7 @@ describe("asksGit and mergeHold", () => {
   const state = stateWith({
     done: TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
     merging: TicketPhase.ToMerge({ place: 1 }),
-    working: TicketPhase.Working({ activity: "starting" }),
+    working: TicketPhase.Working(),
     deferred: TicketPhase.Deferred({ why: "needs a design" }),
   })
 

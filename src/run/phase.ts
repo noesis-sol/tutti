@@ -1,7 +1,8 @@
 // The ticket state machine (§ 5.1): the phases a ticket the run takes up moves through, the moves
 // that take it from one to the next, and the transition table, as data. transition() is the one way
-// to change a ticket's phase; refine() changes only a phase's details (the worker's activity, a
-// place in the merge queue, a merge's step), never its tag. The run loop drives the machine; the
+// to change a ticket's phase; refine() changes only a phase's details (a place in the merge queue,
+// a merge's step), never its tag. What a Working ticket's worker is doing is RunView's, read from
+// the worker, not a detail of the phase. The run loop drives the machine; the
 // ledger, RunView, the log, the event stream and the report read it.
 import { Data, Result, Schema } from "effect"
 import type { Mark, Shown, Tone } from "../ui/marks.ts"
@@ -91,8 +92,8 @@ export type TicketPhase = Data.TaggedEnum<{
   Queued: Empty
   /** Ready, but waiting for something other than a slot. */
   HeldBack: { readonly why: HoldBack }
-  /** Picked up, with its worker at it. */
-  Working: { readonly activity: Activity }
+  /** Picked up, with its worker at it; what the worker is doing is RunView's (activityOf). */
+  Working: Empty
   /** Its work verified, waiting for its turn in the merge queue; place 1 is next. */
   ToMerge: { readonly place: number }
   /** Its merge under way. */
@@ -127,7 +128,7 @@ const Ordinal = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
 export const TicketPhaseSchema = Schema.TaggedUnion({
   Queued: {},
   HeldBack: { why: Schema.Literals(holdBacks) },
-  Working: { activity: Schema.Literals(activities) },
+  Working: {},
   ToMerge: { place: Ordinal },
   Merging: { step: Schema.Literals(mergeSteps) },
   Resolving: { attempt: Ordinal },
@@ -259,7 +260,7 @@ const row = <const F extends From, const C extends MoveTag, const T extends To>(
   transition: Transition<F, C, T>,
 ): Transition => transition as unknown as Transition
 
-const working = () => TicketPhase.Working({ activity: "starting" })
+const working = () => TicketPhase.Working()
 
 const aside = { kinds: ["warn"], detail: "aside" } as const
 const blocked = { kinds: ["warn"], detail: "blocked" } as const
@@ -665,8 +666,6 @@ export const transition = (
 
 /** A change of a phase's details that leaves its tag as it is. */
 export type Detail = Data.TaggedEnum<{
-  /** A Working ticket's worker is doing something else. */
-  Activity: { readonly activity: Activity }
   /** A ToMerge ticket moved up the merge queue. */
   Place: { readonly place: number }
   /** A Merging ticket's merge went on to its next step. */
@@ -680,9 +679,6 @@ export const refine = (
   phase: TicketPhase,
   detail: Detail,
 ): Result.Result<TicketPhase, InvalidTransition> => {
-  if (phase._tag === "Working" && detail._tag === "Activity") {
-    return Result.succeed(TicketPhase.Working({ activity: detail.activity }))
-  }
   if (phase._tag === "ToMerge" && detail._tag === "Place") {
     return Result.succeed(TicketPhase.ToMerge({ place: detail.place }))
   }
@@ -744,9 +740,10 @@ export interface SessionKeeps {
 export interface Facts<T extends PhaseTag> {
   /**
    * The dashboard's totals it counts under (§ 5.1's Counts under): none, one, or for a Working
-   * ticket whose worker waits on you, both Workers and Needs you. The same array each call.
+   * ticket whose worker waits on you (its `activity`), both Workers and Needs you. The same array
+   * each call.
    */
-  totals(phase: PhaseOf<T>): ReadonlyArray<Total>
+  totals(phase: PhaseOf<T>, activity: Activity): ReadonlyArray<Total>
   /** What the run's end notice counts it as, as the dashboard does, or nothing. */
   readonly notice: EndNotice | null
   /** The reviewer's section it is in, or none. */
@@ -780,8 +777,11 @@ export interface Facts<T extends PhaseTag> {
   readonly orchestra: PhaseSeconds | null
   /** Its session's lifetime (§ 4.8). */
   session(phase: PhaseOf<T>, keeps: SessionKeeps): Lifetime
-  /** Its row's mark, word and tone: `▶ editing`, `◼ to merge`, … The same object each call. */
-  row(phase: PhaseOf<T>): Shown
+  /**
+   * Its row's mark, word and tone: `▶ editing` by a Working ticket's worker's `activity`,
+   * `◼ to merge`, … The same object each call.
+   */
+  row(phase: PhaseOf<T>, activity: Activity): Shown
 }
 
 // The facts that are the same for every phase of a tag give the same value each call: the
@@ -866,8 +866,8 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     row: shows("queued", "held back", "dim", true),
   },
   Working: {
-    totals: (phase) =>
-      phase.activity === "allow" || phase.activity === "answer" ? workersAndYou : workers,
+    totals: (_, activity) =>
+      activity === "allow" || activity === "answer" ? workersAndYou : workers,
     notice: null,
     report: "inProgress",
     windDown: "windingDown",
@@ -883,7 +883,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: "working",
     session: always("open"),
-    row: (phase) => activityRows[phase.activity],
+    row: (_, activity) => activityRows[activity],
   },
   // ToMerge and Merging count nowhere until they reach Done.
   ToMerge: {
@@ -1108,9 +1108,14 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
 export const factsOf = (phase: TicketPhase): Facts<PhaseTag> =>
   phaseFacts[phase._tag] as Facts<PhaseTag>
 
-/** The totals a ticket in `phase` counts under, from the table. */
-export const countsUnder = (phase: TicketPhase): ReadonlyArray<Total> =>
-  factsOf(phase).totals(phase)
+/**
+ * The totals a ticket in `phase` counts under, from the table; `activity` is a Working ticket's
+ * worker's, `starting` while nothing says.
+ */
+export const countsUnder = (
+  phase: TicketPhase,
+  activity: Activity = "starting",
+): ReadonlyArray<Total> => factsOf(phase).totals(phase, activity)
 
 /** The phases with work under way, which have a card. */
 export const hasCard = (phase: TicketPhase): boolean => phaseFacts[phase._tag].card

@@ -159,7 +159,7 @@ const workerView = (request: AttentionRequest): RunView =>
           {
             ticket: "t-1",
             title: "Title of t-1",
-            phase: TicketPhase.Working({ activity: "working" }),
+            phase: TicketPhase.Working(),
             since: began,
             worker: 1,
             row: 0,

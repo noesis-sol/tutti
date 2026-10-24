@@ -77,7 +77,7 @@ const viewOf = (issue: Issue | undefined): RunView => {
     ticket: "t-1",
     title,
     ...(issue === undefined ? {} : { issue }),
-    phase: TicketPhase.Working({ activity: "working" }),
+    phase: TicketPhase.Working(),
     since: began,
     worker: 1,
     row: 0,

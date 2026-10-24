@@ -54,7 +54,7 @@ const viewOf = (
 ): RunView => {
   const entries = [
     ...Array.from({ length: working }, (_, i) =>
-      entryOf(`tut-w${i + 1}`, TicketPhase.Working({ activity: "working" }), i + 1, i),
+      entryOf(`tut-w${i + 1}`, TicketPhase.Working(), i + 1, i),
     ),
     ...Array.from({ length: merging }, (_, i) =>
       entryOf(

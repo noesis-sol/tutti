@@ -3,11 +3,13 @@
 // known exceptions until the curated set of the worker-view design (tutti-cxgo D7) replaces them;
 // a new mark must not add to them. Not tested: shapes that differ but look alike, ■ and ◼.
 import { describe, expect, test } from "bun:test"
+import { WorkerState } from "../src/agent/WorkerState.ts"
 import { type Entry, emptyTallies, type State } from "../src/run/ledger.ts"
-import { activities, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
+import { type Activity, activities, Finished, TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
 import { lookOf, type Mark, marks, motionTones } from "../src/ui/marks.ts"
 import { makeTheme, orchestra, type StyleName } from "../src/ui/theme.ts"
+import { workersDoing } from "./activity.ts"
 
 const all = Object.entries(marks) as ReadonlyArray<readonly [Mark, string]>
 
@@ -84,21 +86,25 @@ const looksBefore: Readonly<Record<string, readonly [StyleName, boolean]>> = {
   "held back": ["dim", true],
 }
 
-const phases: ReadonlyArray<TicketPhase> = [
-  TicketPhase.Queued(),
-  TicketPhase.HeldBack({ why: "overlap" }),
-  ...activities.map((activity) => TicketPhase.Working({ activity })),
-  TicketPhase.ToMerge({ place: 1 }),
-  TicketPhase.Merging({ step: "check" }),
-  TicketPhase.Resolving({ attempt: 1 }),
-  TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
-  TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
-  TicketPhase.Asked({ question: "q-1" }),
-  TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["t-0"] }) }),
-  TicketPhase.Deferred({ why: "gave up" }),
-  TicketPhase.Review({ why: "CHECKS_FAILED" }),
-  TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
-  TicketPhase.Stopped({ why: "PAUSED" }),
+const atStart = (phase: TicketPhase) => [phase, "starting"] as const
+
+/** Each phase, a Working ticket's by each of its worker's activities; the others' is `starting`. */
+const phases: ReadonlyArray<readonly [TicketPhase, Activity]> = [
+  ...[TicketPhase.Queued(), TicketPhase.HeldBack({ why: "overlap" })].map(atStart),
+  ...activities.map((activity) => [TicketPhase.Working(), activity] as const),
+  ...[
+    TicketPhase.ToMerge({ place: 1 }),
+    TicketPhase.Merging({ step: "check" }),
+    TicketPhase.Resolving({ attempt: 1 }),
+    TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
+    TicketPhase.Done({ outcome: Finished.Merged({ commit: "abc1234" }) }),
+    TicketPhase.Asked({ question: "q-1" }),
+    TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["t-0"] }) }),
+    TicketPhase.Deferred({ why: "gave up" }),
+    TicketPhase.Review({ why: "CHECKS_FAILED" }),
+    TicketPhase.Blocked({ why: "MERGE_CONFLICT" }),
+    TicketPhase.Stopped({ why: "PAUSED" }),
+  ].map(atStart),
 ]
 
 const entry = (ticket: string, phase: TicketPhase, row: number): Entry => ({
@@ -123,23 +129,28 @@ const ledgerOf = (entries: ReadonlyArray<Entry>): State => ({
 
 describe("a row's status", () => {
   test("each phase's tone and faintness are the look its word had before the table", () => {
-    for (const phase of phases) {
-      const { word, tone, faint } = rowStatus(phase)
+    for (const [phase, activity] of phases) {
+      const { word, tone, faint } = rowStatus(phase, activity)
       expect([word, tone, faint]).toEqual([word, ...(looksBefore[word] ?? ["none", false])])
     }
   })
 
   test("is the table's own, worked out as RunView is projected and kept while unchanged", () => {
-    const entries = phases.map((phase, i) => entry(`t-${i}`, phase, i))
+    const entries = phases.map(([phase], i) => entry(`t-${i}`, phase, i))
+    const { workers, requests } = workersDoing(
+      phases.flatMap(([phase, activity], i) =>
+        phase._tag === "Working" ? [[`t-${i}`, activity] as const] : [],
+      ),
+    )
     const view = project({
       ledger: ledgerOf(entries),
-      workers: new Map(),
-      requests: [],
+      workers: new Map(workers),
+      requests,
       status: emptyStatus,
     })
-    for (const [i, phase] of phases.entries()) {
+    for (const [i, [phase, activity]] of phases.entries()) {
       const row = view.rows.find((each) => each.ticket === `t-${i}`)
-      const { mark, word, tone, faint } = rowStatus(phase)
+      const { mark, word, tone, faint } = rowStatus(phase, activity)
       expect(row && { mark: row.mark, word: row.word, tone: row.tone, faint: row.faint }).toEqual({
         mark,
         word,
@@ -149,10 +160,14 @@ describe("a row's status", () => {
     }
     // Another ticket's change leaves the others' rows as they were.
     const moved = entries.map((each, i) =>
-      i === 0 ? { ...each, phase: TicketPhase.Working({ activity: "testing" }) } : each,
+      i === 0 ? { ...each, phase: TicketPhase.Working() } : each,
     )
+    const testing = new Map([
+      ...workers,
+      ["t-0", WorkerState.Working({ doing: "testing" })] as const,
+    ])
     const next = project(
-      { ledger: ledgerOf(moved), workers: new Map(), requests: [], status: emptyStatus },
+      { ledger: ledgerOf(moved), workers: testing, requests, status: emptyStatus },
       view,
     )
     expect(next.rows.slice(1).every((row, i) => row === view.rows[i + 1])).toBe(true)
@@ -161,7 +176,10 @@ describe("a row's status", () => {
 
   test("every tone is a look of the theme's", () => {
     const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: false })
-    const tones = [...phases.map((phase) => rowStatus(phase).tone), ...Object.values(motionTones)]
+    const tones = [
+      ...phases.map(([phase, activity]) => rowStatus(phase, activity).tone),
+      ...Object.values(motionTones),
+    ]
     for (const tone of tones) expect(lookOf(tone, theme)).toBeDefined()
     expect(lookOf("failed", theme)).toBe(theme.look("needsYou"))
   })

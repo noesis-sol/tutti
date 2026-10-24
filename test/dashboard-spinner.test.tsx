@@ -27,7 +27,7 @@ const viewOf = (state: WorkerState, waiting: ReadonlyArray<Waiting> | null = nul
           {
             ticket: "t-1",
             title: "Title of t-1",
-            phase: TicketPhase.Working({ activity: "working" }),
+            phase: TicketPhase.Working(),
             since: began,
             worker: 1,
             row: 0,

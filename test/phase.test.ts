@@ -3,7 +3,6 @@ import { Result, Schema } from "effect"
 import fc from "fast-check"
 import { phaseNames } from "../src/run/events.ts"
 import {
-  activities,
   countsUnder,
   Detail,
   Finished,
@@ -65,73 +64,48 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Move, TicketPha
   ["HeldBack → Queued", HeldBack({ why: "solo" }), Move.Released(), Queued()],
   ["Queued → gone from bd ready", Queued(), Move.Unready(), null],
   ["HeldBack → gone from bd ready", HeldBack({ why: "merge" }), Move.Unready(), null],
-  ["Queued → Working", Queued(), Move.Dispatched(), Working({ activity: "starting" })],
-  [
-    "Working → ToMerge",
-    Working({ activity: "editing" }),
-    Move.Verified({ place: 2 }),
-    ToMerge({ place: 2 }),
-  ],
-  [
-    "Working → Done{noChange}",
-    Working({ activity: "working" }),
-    Move.NoChange(),
-    Done({ outcome: Finished.NoChange() }),
-  ],
+  ["Queued → Working", Queued(), Move.Dispatched(), Working()],
+  ["Working → ToMerge", Working(), Move.Verified({ place: 2 }), ToMerge({ place: 2 })],
+  ["Working → Done{noChange}", Working(), Move.NoChange(), Done({ outcome: Finished.NoChange() })],
   [
     "Working → Asked",
-    Working({ activity: "working" }),
+    Working(),
     Move.FiledQuestion({ question: "tut-q1" }),
     Asked({ question: "tut-q1" }),
   ],
   [
     "Working → Waiting",
-    Working({ activity: "working" }),
+    Working(),
     Move.WaitsForMerge({ blockers: ["tut-b1"] }),
     Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) }),
   ],
-  [
-    "Working → Waiting{setup}",
-    Working({ activity: "starting" }),
-    Move.SetupFailed(),
-    Waiting({ for: WaitFor.Setup() }),
-  ],
+  ["Working → Waiting{setup}", Working(), Move.SetupFailed(), Waiting({ for: WaitFor.Setup() })],
   [
     "Working → Waiting{setup problem}",
-    Working({ activity: "starting" }),
+    Working(),
     Move.SetupProblem(),
     Waiting({ for: WaitFor.SetupProblem() }),
   ],
   [
     "Working → Deferred",
-    Working({ activity: "working" }),
+    Working(),
     Move.Defer({ why: "BAD_TICKET_ID" }),
     Deferred({ why: "BAD_TICKET_ID" }),
   ],
-  [
-    "Working → Review",
-    Working({ activity: "working" }),
-    Move.Aside({ why: "OFF_BRANCH" }),
-    Review({ why: "OFF_BRANCH" }),
-  ],
+  ["Working → Review", Working(), Move.Aside({ why: "OFF_BRANCH" }), Review({ why: "OFF_BRANCH" })],
   [
     "Working → Stopped (it stopped the run)",
-    Working({ activity: "working" }),
+    Working(),
     Move.StopRun({ why: "PAUSED" }),
     Stopped({ why: "PAUSED" }),
   ],
   [
     "Working → Stopped (the run ended)",
-    Working({ activity: "testing" }),
+    Working(),
     Move.RunEnded({ why: "INTERRUPTED" }),
     Stopped({ why: "INTERRUPTED" }),
   ],
-  [
-    "Asked → Working",
-    Asked({ question: "tut-q1" }),
-    Move.Answered(),
-    Working({ activity: "starting" }),
-  ],
+  ["Asked → Working", Asked({ question: "tut-q1" }), Move.Answered(), Working()],
   [
     "Waiting → Queued",
     Waiting({ for: WaitFor.Blockers({ ids: ["tut-b1"] }) }),
@@ -285,7 +259,7 @@ const table: ReadonlyArray<readonly [string, TicketPhase | null, Move, TicketPha
     Move.MergedByHand({ commit: "abc" }),
     Done({ outcome: Finished.Merged({ commit: "abc" }) }),
   ],
-  ["carried over: → Working", null, Move.Resumed(), Working({ activity: "starting" })],
+  ["carried over: → Working", null, Move.Resumed(), Working()],
   [
     "carried over: → Asked",
     null,
@@ -303,8 +277,8 @@ const phases: ReadonlyArray<TicketPhase | null> = [
   null,
   Queued(),
   ...holdBacks.map((why) => HeldBack({ why })),
-  Working({ activity: "working" }),
-  Working({ activity: "allow" }),
+  Working(),
+  Working(),
   ToMerge({ place: 1 }),
   Merging({ step: "rebase" }),
   Merging({ step: "fast-forward" }),
@@ -409,7 +383,7 @@ describe("transition", () => {
     expect(rejected(transition(null, Move.Dispatched())).phaseBug("tut-9a1")).toBe(
       "PHASE_BUG: tut-9a1 outside → Working (Dispatched)",
     )
-    expect(rejected(transition(Working({ activity: "working" }), Move.Unready())).message).toBe(
+    expect(rejected(transition(Working(), Move.Unready())).message).toBe(
       "Working → outside (Unready)",
     )
   })
@@ -435,7 +409,7 @@ const ordinal = fc.integer({ min: 1, max: 9 })
 const phaseArb: fc.Arbitrary<TicketPhase> = fc.oneof(
   fc.constant(Queued()),
   fc.constantFrom(...holdBacks).map((why) => HeldBack({ why })),
-  fc.constantFrom(...activities).map((activity) => Working({ activity })),
+  fc.constant(Working()),
   ordinal.map((place) => ToMerge({ place })),
   fc
     .constantFrom("rebase", "setup", "check", "fast-forward" as const)
@@ -528,9 +502,6 @@ describe("transition, driven by random moves", () => {
 
 describe("refine", () => {
   test("changes a phase's details and keeps its tag", () => {
-    expect(
-      ok(refine(Working({ activity: "starting" }), Detail.Activity({ activity: "allow" }))),
-    ).toEqual(Working({ activity: "allow" }))
     expect(ok(refine(ToMerge({ place: 2 }), Detail.Place({ place: 1 })))).toEqual(
       ToMerge({ place: 1 }),
     )
@@ -587,9 +558,10 @@ describe("what the UI and totals read", () => {
   })
 
   test("a Working ticket whose worker waits on you counts under Needs you too", () => {
-    expect(countsUnder(Working({ activity: "allow" }))).toEqual(["workers", "needsYou"])
-    expect(countsUnder(Working({ activity: "answer" }))).toEqual(["workers", "needsYou"])
-    expect(countsUnder(Working({ activity: "limit" }))).toEqual(["workers"])
+    expect(countsUnder(Working(), "allow")).toEqual(["workers", "needsYou"])
+    expect(countsUnder(Working(), "answer")).toEqual(["workers", "needsYou"])
+    expect(countsUnder(Working(), "limit")).toEqual(["workers"])
+    expect(countsUnder(Working())).toEqual(["workers"])
   })
 
   test("only Done is final", () => {

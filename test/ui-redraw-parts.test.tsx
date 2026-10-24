@@ -41,7 +41,7 @@ const inputsOf = (titles: readonly [string, string], state: WorkerState): Inputs
         {
           ticket: `t-${i + 1}`,
           title,
-          phase: TicketPhase.Working({ activity: "working" }),
+          phase: TicketPhase.Working(),
           since: began,
           worker: i + 1,
           row: i,

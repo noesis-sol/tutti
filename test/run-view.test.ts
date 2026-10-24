@@ -194,7 +194,7 @@ describe("totals", () => {
         const entry = {
           ticket: "t",
           title,
-          phase: { _tag: "Working", activity: "working" } as TicketPhase,
+          phase: { _tag: "Working" } as TicketPhase,
           since: 0,
           worker: 1,
           row: 0,
@@ -251,15 +251,20 @@ describe("identity", () => {
   test("unchanged parts keep their identity", async () => {
     const result = await run(
       Effect.gen(function* () {
-        const ledger = yield* Ledger
         yield* go("a", ...dispatched)
         yield* go("b", ...dispatched)
         yield* go("c", ...merging, Move.FastForwarded({ commit: "abc1234" }))
         const first = project(inputs(yield* current))
         const again = project(inputs(yield* current), first)
-        yield* ledger.refine("a", Detail.Activity({ activity: "editing" }))
-        const second = project(inputs(yield* current), first)
-        const working = new Map([["b", WorkerState.Working({ doing: "testing" })]])
+        const editing = WorkerState.Working({ doing: "editing" })
+        const second = project(
+          inputs(yield* current, { workers: new Map([["a", editing]]) }),
+          first,
+        )
+        const working = new Map([
+          ["a", editing],
+          ["b", WorkerState.Working({ doing: "testing" })],
+        ])
         const third = project(inputs(yield* current, { workers: working }), second)
         return { first, again, second, third }
       }),
@@ -317,9 +322,12 @@ describe("the 30 Hz throttle", () => {
         const ledger = yield* Ledger
         yield* go("a", ...dispatched)
         const status = yield* SubscriptionRef.make<Status>({ ...emptyStatus, concurrency: 2 })
+        const workers = yield* SubscriptionRef.make<ReadonlyMap<string, WorkerState>>(new Map())
+        const doing = (activity: "editing" | "reading" | "testing") =>
+          SubscriptionRef.set(workers, new Map([["a", WorkerState.Working({ doing: activity })]]))
         const view = yield* make({
           ledger: ledger.changes,
-          workers: Stream.make(new Map()),
+          workers: SubscriptionRef.changes(workers),
           requests: Stream.make([]),
           status: SubscriptionRef.changes(status),
         })
@@ -331,9 +339,7 @@ describe("the 30 Hz throttle", () => {
         yield* flush
         const atOnce = (yield* Ref.get(seen)).length
         const activities = ["editing", "reading", "testing", "editing", "reading"] as const
-        for (const activity of activities) {
-          yield* ledger.refine("a", Detail.Activity({ activity }))
-        }
+        for (const activity of activities) yield* doing(activity)
         yield* flush
         const duringBurst = (yield* Ref.get(seen)).length
         yield* TestClock.adjust(interval)
@@ -341,13 +347,10 @@ describe("the 30 Hz throttle", () => {
         const afterBurst = yield* Ref.get(seen)
         // A change every 10 ms for a second renders at most 30 times, and the last change shows.
         for (let i = 0; i < 100; i++) {
-          yield* ledger.refine(
-            "a",
-            Detail.Activity({ activity: i % 2 === 0 ? "reading" : "editing" }),
-          )
+          yield* doing(i % 2 === 0 ? "reading" : "editing")
           yield* TestClock.adjust("10 millis")
         }
-        yield* ledger.refine("a", Detail.Activity({ activity: "testing" }))
+        yield* doing("testing")
         yield* TestClock.adjust("1 second")
         yield* flush
         const all = yield* Ref.get(seen)

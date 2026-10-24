@@ -26,7 +26,7 @@ describe("what a Waiting ticket waits for", () => {
 
   test("its worker's blockers, each of them", () => {
     const moved = transition(
-      TicketPhase.Working({ activity: "working" }),
+      TicketPhase.Working(),
       Move.WaitsForMerge({ blockers: ["tut-b1", "tut-b2"] }),
     )
     expect(Result.isSuccess(moved) && moved.success).toEqual(

@@ -320,7 +320,7 @@ describe("the window", () => {
   })
 })
 
-const working = TicketPhase.Working({ activity: "working" })
+const working = TicketPhase.Working()
 
 const ledgerEntry = (ticket: string, worker: number, steered = false): LedgerEntry => ({
   ticket,

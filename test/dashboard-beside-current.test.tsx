@@ -202,8 +202,8 @@ describe("the tickets table beside Current", () => {
 
   test("leaves out every ticket with a card, and keeps every other, whatever the phases", () => {
     const phases: ReadonlyArray<TicketPhase> = [
-      TicketPhase.Working({ activity: "working" }),
-      TicketPhase.Working({ activity: "allow" }),
+      TicketPhase.Working(),
+      TicketPhase.Working(),
       TicketPhase.ToMerge({ place: 1 }),
       TicketPhase.Merging({ step: "check" }),
       TicketPhase.Resolving({ attempt: 1 }),
@@ -293,9 +293,9 @@ describe("the compact Current list's columns", () => {
     })
     const entries = [
       entry("tut-kco", 1, TicketPhase.Merging({ step: "check" }), 42_000),
-      entry("tut-zq4b", 2, TicketPhase.Working({ activity: "working" }), 391_000),
+      entry("tut-zq4b", 2, TicketPhase.Working(), 391_000),
       entry("tut-9a1", 3, TicketPhase.ToMerge({ place: 2 }), 3_900_000),
-      entry("t-1", 12, TicketPhase.Working({ activity: "working" }), 5_000),
+      entry("t-1", 12, TicketPhase.Working(), 5_000),
     ]
     const view = viewOf(
       { tickets: new Map(entries.map((e) => [e.ticket, e])), rows: 13, windDown: null, bugs: [] },
@@ -334,7 +334,7 @@ describe("the compact Current list's columns", () => {
             worker: fc.integer({ min: 1, max: 16 }),
             ago: fc.integer({ min: 0, max: 20 * 3_600_000 }),
             phase: fc.constantFrom(
-              TicketPhase.Working({ activity: "working" }),
+              TicketPhase.Working(),
               TicketPhase.ToMerge({ place: 3 }),
               TicketPhase.Merging({ step: "rebase" }),
               TicketPhase.Fixing({ attempt: 1, afterResolution: false }),
