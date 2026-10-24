@@ -40,14 +40,14 @@ import type { InitForm } from "../init/init.ts"
 import { serverLabel } from "../init/workers.ts"
 import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
-import { clickable, Field, Hint, Targets, Themed } from "./Form.tsx"
+import { clickable, Field, formHintSegments, Themed, targetLines } from "./Form.tsx"
 import { initAbout, initTitle, scoutClock } from "./initTitle.ts"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { InputGuards } from "./keys.ts"
-import { Line, type Segments, seg, styled, wrap } from "./line.tsx"
+import { Line, Lines, type Segments, seg, styled, wrap } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
-import type { Appearance, Style, Theme } from "./theme.ts"
+import type { Appearance, Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { external, type Settable, spinnerAt, spinnerTick } from "./useRunView.ts"
 
@@ -191,70 +191,58 @@ export const scoutCommands = (
   { keys: ["ctrl+c"], run: asking.cancel, hint: { keys: "Ctrl+C", does: "cancel" } },
 ]
 
-/** The keys under a field: those its commands there now name, as a form draws them. */
-const FieldHint = ({
-  theme,
-  keys,
-}: {
-  readonly theme: Theme
-  readonly keys: ReadonlyArray<Key>
-}) =>
-  keys.length === 0 ? null : (
-    <box paddingTop={1}>
-      <Hint theme={theme} keys={keys} />
-    </box>
-  )
-
 /** The columns a field's text is in from the screen's edges: the form's padding, and the bar's. */
 const fieldInset = 4
 
-/**
- * `text` in `style`, wrapped between words by tutti's wrap to the screen's width less `inset`
- * columns: OpenTUI's word mode breaks after a `.`, `-` or `/` too, which splits a path such as
- * `.orchestra/` after its dot.
- */
-const Paragraph = ({
-  text,
-  style,
-  inset,
-}: {
-  readonly text: string
-  readonly style: Style
-  readonly inset: number
-}) => {
-  const { width } = useTerminalDimensions()
-  const lines = wrap([seg(text)], Math.max(width - inset, 1))
-  return (
-    <text wrapMode="none" {...styled(style)}>
-      {lines.map((line) => line.map((each) => each.text).join("")).join("\n")}
-    </text>
-  )
-}
+/** The columns the form's own lines are in from the screen's edges: its padding. */
+const formInset = 2
 
-/** The text of a field's title and description, as huh draws them. */
-const Heading = ({
-  theme,
-  title,
-  description,
-}: {
-  readonly theme: Theme
-  readonly title: string
-  readonly description: string | undefined
-}) => (
-  <>
-    <text {...styled(theme.form.fieldTitle)}>{title}</text>
-    {description === undefined || description === "" ? null : (
-      <Paragraph text={description} style={theme.form.description} inset={fieldInset} />
-    )}
-  </>
-)
+/**
+ * The lines under a field `width` columns wide: a blank one, and the keys its commands there now
+ * name, as a form draws them; none where they name none.
+ */
+const hintLines = (
+  theme: Theme,
+  keys: ReadonlyArray<Key>,
+  width: number,
+): ReadonlyArray<Segments> =>
+  keys.length === 0
+    ? []
+    : [[], ...wrap(formHintSegments(keys, theme), Math.max(width - formInset, 1))]
+
+/** A field's title and description, as huh draws them, wrapped by tutti's wrap to `room` columns. */
+const headingLines = (
+  theme: Theme,
+  title: string,
+  description: string | undefined,
+  room: number,
+): ReadonlyArray<Segments> => [
+  ...wrap([seg(title, theme.form.fieldTitle)], room),
+  ...(description === undefined || description === ""
+    ? []
+    : wrap([seg(description, theme.form.description)], room)),
+]
+
+/**
+ * Draws the form's screen around a field `used` lines tall, which `field` draws: the field whole,
+ * and above it what is left room for (InitView).
+ */
+type Page = (used: number, field: ReactNode) => ReactNode
+
+/** The columns a field's text has, and the lines its keys take under it. */
+const useFieldRoom = () => {
+  const { width } = useTerminalDimensions()
+  return { width, room: Math.max(width - fieldInset, 1) }
+}
 
 const ConfirmView = ({
   theme,
   asking,
+  page,
 }: {
   readonly theme: Theme
   readonly asking: Extract<Asking, { _tag: "Confirm" }>
+  readonly page: Page
 }) => {
   const [yes, setYes, yesNow] = useKeyState(() => asking.field.initial ?? false)
   const hint = useFormCommands(
@@ -264,14 +252,14 @@ const ConfirmView = ({
     }),
   )
   const { form } = theme
-  return (
+  const { width, room } = useFieldRoom()
+  const heading = headingLines(theme, asking.field.question, asking.field.description, room)
+  const under = hintLines(theme, hint, width)
+  return page(
+    heading.length + 1 + under.length,
     <>
       <Field theme={theme} focused>
-        <Heading
-          theme={theme}
-          title={asking.field.question}
-          description={asking.field.description}
-        />
+        <Lines lines={heading} />
         <Line
           segments={[
             seg("  Yes  ", yes ? form.focusedButton : form.button, 0),
@@ -281,17 +269,19 @@ const ConfirmView = ({
           press={(target) => asking.answer(target === 0)}
         />
       </Field>
-      <FieldHint theme={theme} keys={hint} />
-    </>
+      <Lines lines={under} />
+    </>,
   )
 }
 
 const SelectView = ({
   theme,
   asking,
+  page,
 }: {
   readonly theme: Theme
   readonly asking: Extract<Asking, { _tag: "Select" }>
+  readonly page: Page
 }) => {
   const { options } = asking.field
   const [at, setAt, atNow] = useKeyState(() => asking.field.initial ?? 0)
@@ -302,34 +292,43 @@ const SelectView = ({
     }),
   )
   const { form } = theme
-  return (
+  const { width, room } = useFieldRoom()
+  const heading = headingLines(theme, asking.field.title, asking.field.description, room)
+  const choices = targetLines(
+    options.map((option, index) =>
+      index === at
+        ? [seg("> ", form.selector), seg(option, form.selected)]
+        : [seg(`  ${option}`, form.option)],
+    ),
+    room,
+  )
+  const under = hintLines(theme, hint, width)
+  return page(
+    heading.length + choices.length + under.length,
     <>
       <Field theme={theme} focused>
-        <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-        <Targets
-          inset={fieldInset}
-          each={options.map((option, index) =>
-            index === at
-              ? [seg("> ", form.selector), seg(option, form.selected)]
-              : [seg(`  ${option}`, form.option)],
-          )}
+        <Lines lines={heading} />
+        <Lines
+          lines={choices}
           press={(index) => {
             setAt(() => index)
             asking.answer(index)
           }}
         />
       </Field>
-      <FieldHint theme={theme} keys={hint} />
-    </>
+      <Lines lines={under} />
+    </>,
   )
 }
 
 const TextView = ({
   theme,
   asking,
+  page,
 }: {
   readonly theme: Theme
   readonly asking: Extract<Asking, { _tag: "Text" }>
+  readonly page: Page
 }) => {
   const [error, setError] = useState<string | null>(null)
   const input = useRef<InputRenderable>(null)
@@ -341,11 +340,21 @@ const TextView = ({
     else setError(problem)
   }
   const { form } = theme
-  return (
+  const { width, room } = useFieldRoom()
+  const heading = headingLines(theme, asking.field.title, asking.field.description, room)
+  const errorLines = error === null ? [] : wrap([seg(error, form.error)], room)
+  const under = hintLines(theme, hint, width)
+  return page(
+    heading.length + 1 + errorLines.length + under.length,
     <>
       <Field theme={theme} focused>
-        <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-        <box flexDirection="row" {...clickable(() => input.current?.focus())}>
+        <Lines lines={heading} />
+        <box
+          flexDirection="row"
+          height={1}
+          flexShrink={0}
+          {...clickable(() => input.current?.focus())}
+        >
           <text {...styled(form.selector)}>{"> "}</text>
           <input
             ref={input}
@@ -362,19 +371,21 @@ const TextView = ({
             {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
           />
         </box>
-        {error === null ? null : <text {...styled(form.error)}>{error}</text>}
+        <Lines lines={errorLines} />
       </Field>
-      <FieldHint theme={theme} keys={hint} />
-    </>
+      <Lines lines={under} />
+    </>,
   )
 }
 
 const ChecklistView = ({
   theme,
   asking,
+  page,
 }: {
   readonly theme: Theme
   readonly asking: Extract<Asking, { _tag: "Checklist" }>
+  readonly page: Page
 }) => {
   const { options } = asking.field
   const [state, setState, stateNow] = useKeyState(() => ({
@@ -399,23 +410,27 @@ const ChecklistView = ({
     }),
   )
   const { form } = theme
-  return (
+  const { width, room } = useFieldRoom()
+  const heading = headingLines(theme, asking.field.title, asking.field.description, room)
+  const choices = targetLines(
+    options.map((option, index) => [
+      seg(index === at ? "> " : "  ", form.selector),
+      ...(ticked.has(index)
+        ? [seg("✓ ", form.selectedMark), seg(option, form.selected)]
+        : [seg("• ", form.description), seg(option, form.option)]),
+    ]),
+    room,
+  )
+  const under = hintLines(theme, hint, width)
+  return page(
+    heading.length + choices.length + under.length,
     <>
       <Field theme={theme} focused>
-        <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-        <Targets
-          inset={fieldInset}
-          each={options.map((option, index) => [
-            seg(index === at ? "> " : "  ", form.selector),
-            ...(ticked.has(index)
-              ? [seg("✓ ", form.selectedMark), seg(option, form.selected)]
-              : [seg("• ", form.description), seg(option, form.option)]),
-          ])}
-          press={toggle}
-        />
+        <Lines lines={heading} />
+        <Lines lines={choices} press={toggle} />
       </Field>
-      <FieldHint theme={theme} keys={hint} />
-    </>
+      <Lines lines={under} />
+    </>,
   )
 }
 
@@ -423,49 +438,44 @@ const ScoutView = ({
   theme,
   asking,
   now,
+  page,
 }: {
   readonly theme: Theme
   readonly asking: Extract<Asking, { _tag: "Scout" }>
   readonly now: number
+  readonly page: Page
 }) => {
   const hint = useFormCommands(scoutCommands(asking))
   const { form, styles } = theme
-  return (
+  const { width, room } = useFieldRoom()
+  const heading = [
+    ...wrap(
+      [
+        seg(spinnerAt(now), styles.picked),
+        seg(" "),
+        seg("Looking for the project's suites", form.fieldTitle),
+        seg(` ${scoutClock(now - asking.since)} (up to 5 minutes)`, form.faint),
+      ],
+      room,
+    ),
+    ...wrap([seg("Its tests, lints, type checks and builds.", form.description)], room),
+  ]
+  const skip = targetLines(
+    [[seg("Esc", styles.key), seg(": skip and type a check yourself", form.description)]],
+    room,
+  )
+  const under = hintLines(theme, hint, width)
+  return page(
+    heading.length + skip.length + under.length,
     <>
       <Field theme={theme} focused>
-        <text>
-          <span {...styled(styles.picked)}>{spinnerAt(now)}</span>
-          <span> </span>
-          <span {...styled(form.fieldTitle)}>Looking for the project's suites</span>
-          <span
-            {...styled(form.faint)}
-          >{` ${scoutClock(now - asking.since)} (up to 5 minutes)`}</span>
-        </text>
-        <text {...styled(form.description)}>Its tests, lints, type checks and builds.</text>
-        <Targets
-          inset={fieldInset}
-          each={[
-            [seg("Esc", styles.key), seg(": skip and type a check yourself", form.description)],
-          ]}
-          press={asking.skip}
-        />
+        <Lines lines={heading} />
+        <Lines lines={skip} press={asking.skip} />
       </Field>
-      <FieldHint theme={theme} keys={hint} />
-    </>
+      <Lines lines={under} />
+    </>,
   )
 }
-
-/** init's title: the pill, `init` and the repository. */
-const Title = ({ theme, repo }: { readonly theme: Theme; readonly repo: string }) => (
-  <text>
-    {initTitle(theme, repo).map((part, at) => (
-      // biome-ignore lint/suspicious/noArrayIndexKey: the parts are fixed
-      <span key={at} {...(part.look === null ? {} : styled(part.look))}>
-        {part.text}
-      </span>
-    ))}
-  </text>
-)
 
 /** The stepper: each step ✓ done, ● now or ○ to come, joined by lines green once reached. */
 export const stepperParts = (
@@ -486,16 +496,26 @@ export const stepperParts = (
   ])
 }
 
-const DoneLine = ({ theme, done }: { readonly theme: Theme; readonly done: Done }) =>
-  done._tag === "Note" ? (
-    <Paragraph text={done.text} style={theme.form.description} inset={fieldInset} />
-  ) : (
-    <text>
-      <span {...styled(theme.form.description)}>{done.title}</span>
-      <span>{"  "}</span>
-      <span {...styled(theme.form.option)}>{done.answer}</span>
-    </text>
-  )
+/** What `done` says above the field asked. */
+const doneSegments = (theme: Theme, done: Done): Segments =>
+  done._tag === "Note"
+    ? [seg(done.text, theme.form.description)]
+    : [seg(done.title, theme.form.description), seg("  "), seg(done.answer, theme.form.option)]
+
+/**
+ * The lines above a field, given `left` lines: `head` (the title, init's words and the stepper),
+ * a blank line, and `done`'s lines with a blank line under them. Where there isn't room for them
+ * all, `done` gives up its top lines first, then `head`, and nothing is drawn where nothing fits.
+ */
+export const aboveField = (
+  head: ReadonlyArray<Segments>,
+  done: ReadonlyArray<Segments>,
+  left: number,
+): ReadonlyArray<Segments> => {
+  const kept = Math.min(done.length, Math.max(left - head.length - 2, 0))
+  const lines = [...head, [], ...(kept === 0 ? [] : [...done.slice(done.length - kept), []])]
+  return lines.slice(Math.max(lines.length - Math.max(left, 0), 0))
+}
 
 /**
  * init working between questions, its spinner at `now`: Ctrl+C calls `stop` where there is one, and
@@ -506,11 +526,13 @@ const WorkingView = ({
   now,
   stop,
   cancel,
+  page,
 }: {
   readonly theme: Theme
   readonly now: number
   readonly stop: (() => void) | undefined
   readonly cancel: (() => void) | undefined
+  readonly page: Page
 }) => {
   const [stopping, setStopping] = useState(false)
   useFormCommands([
@@ -526,15 +548,19 @@ const WorkingView = ({
       },
     },
   ])
-  return (
-    <box paddingLeft={2}>
-      <text>
-        <span {...styled(theme.styles.picked)}>{spinnerAt(now)}</span>
-        <span {...styled(theme.form.faint)}>
-          {stopping ? " Stopping after this step…" : " Setting the project up…"}
-        </span>
-      </text>
-    </box>
+  const { room } = useFieldRoom()
+  const lines = wrap(
+    [
+      seg(spinnerAt(now), theme.styles.picked),
+      seg(stopping ? " Stopping after this step…" : " Setting the project up…", theme.form.faint),
+    ],
+    room,
+  )
+  return page(
+    lines.length,
+    <box paddingLeft={2} flexShrink={0}>
+      <Lines lines={lines} />
+    </box>,
   )
 }
 
@@ -551,63 +577,52 @@ export const InitView = ({
   readonly now: number
 }) => {
   const { asking } = screen
-  let field: ReactNode
-  if (asking === null) {
-    field = <WorkingView theme={theme} now={now} stop={screen.stop} cancel={screen.cancel} />
-  } else {
-    switch (asking._tag) {
-      case "Confirm":
-        field = <ConfirmView key={asking.id} theme={theme} asking={asking} />
-        break
-      case "Select":
-        field = <SelectView key={asking.id} theme={theme} asking={asking} />
-        break
-      case "Text":
-        field = <TextView key={asking.id} theme={theme} asking={asking} />
-        break
-      case "Checklist":
-        field = <ChecklistView key={asking.id} theme={theme} asking={asking} />
-        break
-      case "Scout":
-        field = <ScoutView key={asking.id} theme={theme} asking={asking} now={now} />
-        break
-    }
-  }
-  return (
-    <box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
-      <Title theme={theme} repo={repo} />
-      <Paragraph text={initAbout} style={theme.form.faint} inset={2} />
-      {screen.at === null ? null : (
-        <box paddingTop={1}>
-          <text>
-            {stepperParts(theme, screen.steps, screen.at).map((part, at) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: the parts are fixed for the step
-              <span key={at} {...(part.look === null ? {} : styled(part.look))}>
-                {part.text}
-              </span>
-            ))}
-          </text>
-        </box>
-      )}
-      <box
-        flexDirection="column"
-        paddingTop={1}
-        flexShrink={1}
-        overflow="hidden"
-        justifyContent="flex-end"
-      >
-        {screen.done.map((done, at) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: what is done is only added to
-          <box key={at} paddingLeft={2}>
-            <DoneLine theme={theme} done={done} />
-          </box>
-        ))}
-      </box>
-      <box flexDirection="column" paddingTop={screen.done.length === 0 ? 0 : 1} flexShrink={0}>
-        {field}
-      </box>
-    </box>
+  // Each part as tall as its lines, wrapped by tutti's wrap: the field whole, and above it what is
+  // left room for. Left to Yoga, a screen too short for the form shrank its texts, which drew their
+  // lines over each other, and OpenTUI cuts nothing of what a box with no height draws (tutti-v62n).
+  const { width, height } = useTerminalDimensions()
+  const formRoom = Math.max(width - formInset, 1)
+  const head = [
+    ...wrap(initTitle(theme, repo), formRoom),
+    ...wrap([seg(initAbout, theme.form.faint)], formRoom),
+    ...(screen.at === null
+      ? []
+      : [[], ...wrap(stepperParts(theme, screen.steps, screen.at), formRoom)]),
+  ]
+  const done = screen.done.flatMap((each) =>
+    wrap(doneSegments(theme, each), Math.max(width - fieldInset, 1)).map((line) => [
+      seg("  "),
+      ...line,
+    ]),
   )
+  const page: Page = (used, field) => {
+    const above = aboveField(head, done, height - 1 - used)
+    return (
+      <box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
+        {above.length === 0 ? null : <Lines lines={above} />}
+        <box flexDirection="column" flexShrink={0}>
+          {field}
+        </box>
+      </box>
+    )
+  }
+  if (asking === null) {
+    return (
+      <WorkingView theme={theme} now={now} stop={screen.stop} cancel={screen.cancel} page={page} />
+    )
+  }
+  switch (asking._tag) {
+    case "Confirm":
+      return <ConfirmView key={asking.id} theme={theme} asking={asking} page={page} />
+    case "Select":
+      return <SelectView key={asking.id} theme={theme} asking={asking} page={page} />
+    case "Text":
+      return <TextView key={asking.id} theme={theme} asking={asking} page={page} />
+    case "Checklist":
+      return <ChecklistView key={asking.id} theme={theme} asking={asking} page={page} />
+    case "Scout":
+      return <ScoutView key={asking.id} theme={theme} asking={asking} now={now} page={page} />
+  }
 }
 
 /** InitView following `screen`, its spinners turning on `clock` while one is shown. */

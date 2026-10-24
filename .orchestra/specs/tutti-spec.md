@@ -1075,6 +1075,8 @@ As orchestra: every section of evidence goes between `<evidence id="<random>">` 
 
 **The start question on a short screen.** Its texts are wrapped by tutti's wrap, each part as tall as its lines. On a screen too short for it, the select gives up its top lines first, cut, keeping its options while it is the field answered; under the description it is left out where no line is left for it (tutti-lfii). Left to Yoga, the texts shrank and drew their lines over each other, and OpenTUI cuts nothing of what a box with no height draws.
 
+**tutti init's form on a short screen.** Its texts are wrapped by tutti's wrap too, each part as tall as its lines. The field asked is drawn whole; above it, the lines done in the step give up their top lines first, then the title, init's words and the stepper, cut from their top, keeping a blank line between the parts (tutti-v62n). Left to Yoga, its title, words, stepper and done lines drew over each other.
+
 ### 7.2 The dashboard
 
 orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with these changes. Rows, cards and totals are drawn from each ticket's phase and its worker's state (§5.1). §7.11 has the colours in full.
