@@ -14,7 +14,7 @@ import { Predicate } from "effect"
 import { useContext, useRef } from "react"
 import { type Answer, type AttentionRequest, allowsForRun } from "../agent/Attention.ts"
 import { UiCommand } from "../run/commands.ts"
-import type { Card } from "../run/runView.ts"
+import type { ShownRequest } from "../run/runView.ts"
 import { Box, useInput } from "./keys.ts"
 import {
   type Opened,
@@ -258,45 +258,48 @@ export const useSendAnswer = (): ((
   }
 }
 
-/** A card's answering: its focus, and what its keys and clicks do. */
+/**
+ * The answering of the requests drawn: each one's focus, and what its keys and clicks do. Each
+ * method takes the request a card or the panel shows, or undefined for one that shows none.
+ */
 export interface Answering {
-  /** The focused button of the card's request: its default until you move it. */
-  readonly focusOf: (card: Card) => number | null
+  /** The focused button of the request: its default until you move it. */
+  readonly focusOf: (request: ShownRequest | undefined) => number | null
   /** Moves the focus `step` buttons on; false, leaving it, past the last or before the first. */
-  readonly step: (card: Card, step: 1 | -1) => boolean
+  readonly step: (request: ShownRequest | undefined, step: 1 | -1) => boolean
   /** Forgets the focus moved, for the highlight leaving the card. */
   readonly reset: () => void
   /**
-   * Presses the card's button `index`, as Enter on it or a click does: the same function from one
-   * drawing to the next, so that a memoised card given it holds.
+   * Presses the request's button `index`, as Enter on it or a click does: the same function from
+   * one drawing to the next, so that a memoised card given it holds.
    */
-  readonly press: (card: Card, index: number) => void
+  readonly press: (request: ShownRequest | undefined, index: number) => void
   /** Presses the focused button; false when none is focused. */
-  readonly pressFocused: (card: Card) => boolean
-  /** Answers the card's request as `key` does, if it answers it. */
-  readonly key: (card: Card, key: AnswerKey) => void
-  /** Opens the reason box to deny the card's request with a reason you type (Shift+D). */
-  readonly denyWithReason: (card: Card) => void
+  readonly pressFocused: (request: ShownRequest | undefined) => boolean
+  /** Answers the request as `key` does, if it answers it. */
+  readonly key: (request: ShownRequest | undefined, key: AnswerKey) => void
+  /** Opens the reason box to deny the request with a reason you type (Shift+D). */
+  readonly denyWithReason: (request: ShownRequest | undefined) => void
   /**
-   * Names the card the keys answer as drawn, its request the target (§ 4.5): when the target's
-   * request changes, its guard starts again, so a key meant for the request before (answered, its
-   * card gone) can't answer the one the target moves on to. Called as the cards are drawn; the
-   * keys (Enter, `d`, `Shift+D`, `a`, `r`, `1`–`4`) name their card the target too.
+   * Names the request the keys answer as drawn, the target (§ 4.5): when the target changes, its
+   * guard starts again, so a key meant for the request before (answered, its card gone) can't
+   * answer the one the target moves on to. Called as the cards are drawn; the keys (Enter, `d`,
+   * `Shift+D`, `a`, `r`, `1`–`4`) name their request the target too.
    */
-  readonly target: (card: Card | undefined) => void
-  /** Focuses the question's option `n`, 1 to 4; false when the card has no such option. */
-  readonly pick: (card: Card, n: number) => boolean
+  readonly target: (request: ShownRequest | undefined) => void
+  /** Focuses the question's option `n`, 1 to 4; false when the request has no such option. */
+  readonly pick: (request: ShownRequest | undefined, n: number) => boolean
 }
 
 /**
- * The answering of the cards drawn in this render. Each card's oldest request is the one it shows;
- * the time it first showed it starts its guard, and the time it became the target (`target`) starts
- * it again. `sent` is called once a button or key has answered
- * (or the answer was dropped) or pressed Answer in view. Answer in view opens the card's worker
- * view, or does `inView` when given: the worker view's panel opens the answer form.
+ * The answering of the requests drawn in this render, each card's oldest or each of the panel's:
+ * the time one first showed starts its guard, and the time it became the target (`target`) starts
+ * it again. `sent` is called once a button or key has answered (or the answer was dropped) or
+ * pressed Answer in view. Answer in view opens the request's worker view, or does `inView` when
+ * given: the worker view's panel opens the answer form.
  */
 export const useAnswering = (
-  cards: ReadonlyArray<Card>,
+  requests: ReadonlyArray<ShownRequest>,
   sent: () => void = () => {},
   inView?: (request: AttentionRequest) => void,
 ): Answering => {
@@ -308,10 +311,7 @@ export const useAnswering = (
   // drawn, so a key pressed after a render guards the request that render drew.
   const shown = useRef(new Map<string, number>())
   const drawn = new Map<string, number>()
-  for (const card of cards) {
-    const request = card.requests[0]
-    if (request !== undefined) drawn.set(request.id, shown.current.get(request.id) ?? clock())
-  }
+  for (const request of requests) drawn.set(request.id, shown.current.get(request.id) ?? clock())
   shown.current = drawn
   // The target's request, and when it became the target.
   const aimed = useRef<{ readonly request: string; readonly since: number } | null>(null)
@@ -323,8 +323,7 @@ export const useAnswering = (
   const move = (to: { readonly request: string; readonly focus: number | null } | null) =>
     setMoved(() => to)
 
-  const requestOf = (card: Card) => card.requests[0]
-  const aim = (request: AttentionRequest | undefined) => {
+  const aim = (request: ShownRequest | undefined) => {
     if (request === undefined) aimed.current = null
     else if (aimed.current?.request !== request.id) {
       aimed.current = { request: request.id, since: clock() }
@@ -332,8 +331,7 @@ export const useAnswering = (
   }
   // A key answers the target, which it names too: a move that came with it, before the cards were
   // drawn again, starts the new target's guard as drawing would. A click names none.
-  const aimedAt = (card: Card) => {
-    const request = requestOf(card)
+  const aimedAt = (request: ShownRequest | undefined) => {
     aim(request)
     return request
   }
@@ -344,8 +342,7 @@ export const useAnswering = (
     const since = aim?.request === request.id ? Math.max(first, aim.since) : first
     return now - since >= settle
   }
-  const focusOf = (card: Card) => {
-    const request = requestOf(card)
+  const focusOf = (request: ShownRequest | undefined) => {
     if (request === undefined) return null
     const now = moved()
     return now?.request === request.id ? now.focus : defaultFocus(request)
@@ -354,13 +351,12 @@ export const useAnswering = (
     answer(request, given)
     sent()
   }
-  const press = (card: Card, index: number) => {
-    const request = requestOf(card)
+  const press = (request: ShownRequest | undefined, index: number) => {
     const button = request === undefined ? undefined : buttonsOf(request)[index]
     if (request === undefined || button === undefined || !settled(request)) return
     if (button.press._tag === "Answer") send(request, button.press.answer)
     else {
-      if (inView === undefined) command(UiCommand.OpenWorker({ ticket: card.ticket }))
+      if (inView === undefined) command(UiCommand.OpenWorker({ ticket: request.ticket }))
       else inView(request)
       sent()
     }
@@ -368,38 +364,37 @@ export const useAnswering = (
   const pressNow = useEvent(press)
   return {
     focusOf,
-    step: (card, step) => {
-      const request = requestOf(card)
+    step: (request, step) => {
       if (request === undefined) return false
-      const to = stepFocus(buttonsOf(request).length, focusOf(card), step, defaultFocus(request))
+      const to = stepFocus(buttonsOf(request).length, focusOf(request), step, defaultFocus(request))
       if (to === "leave") return false
       move({ request: request.id, focus: to })
       return true
     },
     reset: () => move(null),
     press: pressNow,
-    pressFocused: (card) => {
-      aimedAt(card)
-      const focus = focusOf(card)
+    pressFocused: (request) => {
+      aimedAt(request)
+      const focus = focusOf(request)
       if (focus === null) return false
-      press(card, focus)
+      press(request, focus)
       return true
     },
-    key: (card, key) => {
-      const request = aimedAt(card)
+    key: (request, key) => {
+      aimedAt(request)
       const answer = request === undefined ? null : keyAnswer(request, key)
       if (request !== undefined && answer !== null && settled(request)) send(request, answer)
     },
-    denyWithReason: (card) => {
-      const request = aimedAt(card)
+    denyWithReason: (request) => {
+      aimedAt(request)
       if (request === undefined || !settled(request)) return
       if (request.kind._tag === "Elicitation") send(request, { _tag: "Decline" })
       else
         box.set(Box.Reason({ requestId: request.id, ticket: request.ticket, label: request.label }))
     },
-    target: (card) => aim(card === undefined ? undefined : requestOf(card)),
-    pick: (card, n) => {
-      const request = aimedAt(card)
+    target: aim,
+    pick: (request, n) => {
+      aimedAt(request)
       if (request === undefined || !picksOptions(request)) return false
       if (n > buttonsOf(request).length) return false
       if (settled(request)) move({ request: request.id, focus: n - 1 })

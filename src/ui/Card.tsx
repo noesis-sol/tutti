@@ -16,7 +16,7 @@
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
 import { memo, useCallback, useMemo } from "react"
 import { pad } from "../run/localTime.ts"
-import type { Card } from "../run/runView.ts"
+import type { Card, ShownRequest } from "../run/runView.ts"
 import { attentionInside, attentionLines } from "./AttentionCard.tsx"
 import { clickable } from "./click.ts"
 import { workerMemory } from "./LoadLine.tsx"
@@ -535,7 +535,7 @@ const CardBox = memo(
     readonly highlighted: boolean
     readonly focus: number | null
     /** Presses an attention card's button: the same function from one drawing to the next. */
-    readonly press: (card: Card, index: number) => void
+    readonly press: (request: ShownRequest | undefined, index: number) => void
   }) => {
     // The card's lines but its head, which CardHead draws in their place, at the clock's time.
     const lines = useMemo(() => {
@@ -549,7 +549,7 @@ const CardBox = memo(
         : cardLines(card, theme, { now, spin, width, inside, highlighted })
     }, [card, theme, width, inside, highlighted, focus])
     const [top, below] = useMemo(() => [lines.slice(0, 1), lines.slice(2)], [lines])
-    const pressed = useCallback((index: number) => press(card, index), [press, card])
+    const pressed = useCallback((index: number) => press(card.requests[0], index), [press, card])
     return (
       <box flexDirection="column" height={lines.length} flexShrink={0}>
         <Lines lines={top} />
@@ -595,9 +595,9 @@ export const Cards = ({
   /** Opens the view of the ticket's worker. */
   readonly open: (ticket: string) => void
   /** The focused button of an attention card. */
-  readonly focusOf: (card: Card) => number | null
+  readonly focusOf: (request: ShownRequest | undefined) => number | null
   /** Presses an attention card's button: the same function from one drawing to the next. */
-  readonly press: (card: Card, index: number) => void
+  readonly press: (request: ShownRequest | undefined, index: number) => void
 }) => {
   const label = <Lines lines={[[seg("  "), seg("Current", theme.styles.picked)]]} />
   switch (layout._tag) {
@@ -650,7 +650,7 @@ export const Cards = ({
                         width={w}
                         inside={layout.inside}
                         highlighted={card.ticket === highlighted}
-                        focus={focusOf(card)}
+                        focus={focusOf(card.requests[0])}
                         press={press}
                       />
                     </box>

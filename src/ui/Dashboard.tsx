@@ -96,12 +96,19 @@ export interface DashboardLayout {
   readonly title: number
   /** The load line; none when small. */
   readonly load: number
+  /** The load line's segments, as LoadLine draws them; none when small. */
+  readonly loadLine: Segments
   /** The blank line between the title line and the load line: 1, or 0 where the pane is short. */
   readonly gap: number
   /** The totals' lines that fit. */
   readonly totals: ReadonlyArray<Segments>
   /** The tickets table's lines, its label and frame included; 0 where it is left out. */
   readonly table: number
+  /**
+   * The tickets table's `table` lines: the tickets beside Current's (rowsBesideCurrent), or all of
+   * them beside the end-of-run box, which shows none.
+   */
+  readonly tickets: ReadonlyArray<Segments>
   /** The lines of Current, its label included, or of the end-of-run box in its place. */
   readonly current: number
   /** How Current is laid out in them: Compact behind the end-of-run box and when small. */
@@ -112,6 +119,8 @@ export interface DashboardLayout {
   readonly spare: number
   /** The wind-down line's: 1, there or not, so the table stays put as it comes; none when small. */
   readonly windDown: number
+  /** The wind-down line, as WindDown draws it; null while the run doesn't wind down. */
+  readonly windDownLine: Segments | null
   /** The warning lines that fit. */
   readonly warnings: ReadonlyArray<Segments>
   /** The hint's lines that fit, every key it names, wrapped as the views wrap theirs (§ 7.5). */
@@ -151,7 +160,18 @@ export const dashboardLayout = (
     const totals = allTotals.slice(0, take(allTotals.length))
     const cards: CardsLayout = { _tag: "Compact" }
     const none = { title: 0, load: 0, gap: 0, table: 0, current: 0, windDown: 0 }
-    return { ...none, small, totals, cards, ending: null, spare: rest(), warnings: [], hint }
+    const blank = { loadLine: [], tickets: [], windDownLine: null }
+    return {
+      ...none,
+      ...blank,
+      small,
+      totals,
+      cards,
+      ending: null,
+      spare: rest(),
+      warnings: [],
+      hint,
+    }
   }
   const title = take(titleLines)
   const load = take(1)
@@ -174,20 +194,47 @@ export const dashboardLayout = (
   const table = fits ? take(tall) : 0
   const gap = take(1)
   const room = kept + take(rest())
-  const drawn = { small, title, load, gap, totals, table, windDown, warnings, hint }
+  const drawn = {
+    small,
+    title,
+    load,
+    loadLine: loadSegments(view.totals, view.load, theme, width),
+    gap,
+    totals,
+    table,
+    windDown,
+    windDownLine: view.windDown === null ? null : windDownSegments(view.windDown, theme, width),
+    warnings,
+    hint,
+  }
+  const ticketsOf = (rows: RunView["rows"]) =>
+    table === 0 ? [] : ticketsLines(rows, theme, width, { lines: table })
   if (view.endOfRun !== null && whole !== null) {
     // The box keeps to the room left, naming fewer workers, but always saying what q does.
     const ending = whole.length <= room ? whole : endOfRunLines(view.endOfRun, theme, width, room)
     const compact: CardsLayout = { _tag: "Compact" }
-    return { ...drawn, current: ending.length, cards: compact, ending, spare: room - ending.length }
+    const tickets = ticketsOf(view.rows)
+    const spare = room - ending.length
+    return { ...drawn, tickets, current: ending.length, cards: compact, ending, spare }
   }
+  const tickets = ticketsOf(rowsBesideCurrent(view.rows, cards))
   const layout = layoutOf(cards, width, room)
   const current = Math.min(sectionLines(layout, cards.length), room)
   const spare = room - current
-  if (layout._tag === "Cards") return { ...drawn, current, cards: layout, ending: null, spare }
+  if (layout._tag === "Cards") {
+    return { ...drawn, tickets, current, cards: layout, ending: null, spare }
+  }
   const fewer = hintAt(false).slice(0, hint.length)
   const freed = hint.length - fewer.length
-  return { ...drawn, hint: fewer, current, cards: layout, ending: null, spare: spare + freed }
+  return {
+    ...drawn,
+    tickets,
+    hint: fewer,
+    current,
+    cards: layout,
+    ending: null,
+    spare: spare + freed,
+  }
 }
 
 /** The card highlighted while none is chosen: that of the oldest open request (§ 4.5). */
@@ -409,9 +456,7 @@ export const Dashboard = () => {
   const layout = laid.cards
   // Only the full cards draw a request's buttons: the answer keys and the guard are theirs alone.
   const buttons = layout._tag === "Cards"
-  const answering = useAnswering(buttons ? cards : [])
-  // Beside Current, the table leaves out the tickets it shows; the end-of-run box shows none.
-  const rows = ending === null ? rowsBesideCurrent(view.rows, cards) : view.rows
+  const answering = useAnswering(buttons ? cards.flatMap((card) => card.requests.slice(0, 1)) : [])
 
   // The view's keys, as bound: a key does nothing while the key help is open, but close it.
   const input = useInput()
@@ -426,7 +471,7 @@ export const Dashboard = () => {
     }
   const highlightedCard = () => cards.find((card) => card.ticket === current())
   // The highlighted card's request is the target: its guard starts again as the highlight moves.
-  answering.target(buttons ? highlightedCard() : undefined)
+  answering.target(buttons ? highlightedCard()?.requests[0] : undefined)
   // The attention card highlighted, with its buttons drawn: the one Tab, Enter and 1–4 work in.
   const inCard = () => {
     const card = highlightedCard()
@@ -434,7 +479,7 @@ export const Dashboard = () => {
   }
   const step = (by: 1 | -1, inside: boolean) => {
     const card = inside ? inCard() : undefined
-    if (card !== undefined && answering.step(card, by)) return
+    if (card !== undefined && answering.step(card.requests[0], by)) return
     answering.reset()
     choose(moveHighlight(cards, current(), by))
   }
@@ -442,7 +487,7 @@ export const Dashboard = () => {
     const card = highlightedCard()
     if (card === undefined) return
     if (grows(card) && !buttons) box.set(Box.Answer({ ticket: card.ticket }))
-    else if (inCard() === undefined || !answering.pressFocused(card)) open(card.ticket)
+    else if (inCard() === undefined || !answering.pressFocused(card.requests[0])) open(card.ticket)
   }
   const keys = useCommands(
     "view",
@@ -454,11 +499,11 @@ export const Dashboard = () => {
         escape: () => showHelp(false),
         step: unlessHelp(step),
         enter: unlessHelp(enter),
-        answer: unlessHelp(answering.key),
-        denyWithReason: unlessHelp(answering.denyWithReason),
+        answer: unlessHelp((card: Card, key: AnswerKey) => answering.key(card.requests[0], key)),
+        denyWithReason: unlessHelp((card: Card) => answering.denyWithReason(card.requests[0])),
         openAnswer: unlessHelp((card: Card) => box.set(Box.Answer({ ticket: card.ticket }))),
         pick: unlessHelp((card: Card, n: number) => {
-          answering.pick(card, n)
+          answering.pick(card.requests[0], n)
         }),
         stop: unlessHelp(() => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
         endRun: unlessHelp(() => command(UiCommand.EndRun())),
@@ -490,13 +535,13 @@ export const Dashboard = () => {
       </Section>
       <Section lines={laid.gap} />
       <Section lines={laid.load}>
-        <LoadLine segments={loadSegments(view.totals, view.load, theme, width)} />
+        <LoadLine segments={laid.loadLine} />
       </Section>
       <Section lines={laid.totals.length}>
         <Totals lines={laid.totals} />
       </Section>
       <Section lines={laid.table}>
-        <TicketsTable lines={ticketsLines(rows, theme, width, { lines: laid.table })} />
+        <TicketsTable lines={laid.tickets} />
       </Section>
       <Section lines={laid.current}>
         {ending !== null ? (
@@ -518,9 +563,7 @@ export const Dashboard = () => {
       </Section>
       <Section lines={laid.spare} />
       <Section lines={laid.windDown}>
-        {view.windDown === null ? null : (
-          <WindDown segments={windDownSegments(view.windDown, theme, width)} />
-        )}
+        {laid.windDownLine === null ? null : <WindDown segments={laid.windDownLine} />}
       </Section>
       <Section lines={laid.warnings.length}>
         <Lines lines={laid.warnings} />

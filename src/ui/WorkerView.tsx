@@ -44,7 +44,6 @@
 // neither Claude nor its product.
 import { useTerminalDimensions } from "@opentui/react"
 import { useMemo, useState } from "react"
-import type { Key } from "../run/runView.ts"
 import { stack } from "./allot.ts"
 import {
   Composer,
@@ -328,17 +327,9 @@ export const workerViewCommands = (
   ]
 }
 
-/** A view's hint, `width` wide: every key, on as many lines as it takes; toasts go above them. */
-export const ViewHint = ({
-  keys,
-  width,
-}: {
-  readonly keys: ReadonlyArray<Key>
-  readonly width: number
-}) => {
-  const theme = useTheme()
+/** A view's hint, its `lines` as hintLines wraps every key onto them; toasts go above them. */
+export const ViewHint = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => {
   const input = useInput()
-  const lines = hintLines(keys, theme, width)
   useHintHeight(input.toasts, lines.length)
   return <Lines lines={lines} />
 }
@@ -390,25 +381,32 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     finished,
     ticketOpen: ticketPanel.open,
   })
-  const chrome = (requests: boolean): ViewChrome => ({
+  // The hint's lines with requests, for the panel's room, and as they are: each worked out once.
+  const hintWith = (requests: boolean) =>
+    hintLines(hintOf(workerViewCommands(at(requests))), theme, inner)
+  const askedHint = hintWith(true)
+  // The hand-back notice's lines, unselected: the selection draws them again only to show it.
+  const handBackDrawn = handBack ? handBackLines(theme, { width: panelWidth, selected: false }) : []
+  const chrome = (hint: ReadonlyArray<Segments>): ViewChrome => ({
     head: headLines,
     resources: resources === undefined ? 0 : 1,
     ticket: ticketLines,
-    handBack: handBack ? handBackLines(theme, { width: panelWidth, selected: false }).length : 0,
+    handBack: handBackDrawn.length,
     held: holding ? 1 : 0,
     line: finished || steered ? 1 : 0,
     queued: queued.length,
     composer: composer.lines,
-    hint: hintLines(hintOf(workerViewCommands(at(requests))), theme, inner).length,
+    hint: hint.length,
   })
-  const fit = usePanelRooms(theme, panelWidth, panelBudget(height, chrome(true)), height)
+  const fit = usePanelRooms(theme, panelWidth, panelBudget(height, chrome(askedHint)), height)
   // The requests open now: a finished worker's card, kept for its head, has none.
   const panel = usePanel(
     finished ? undefined : card,
     (requests, waiting) => fit.rooms(requests, waiting - requests.length).length,
   )
   const requests = panel.requests.length > 0
-  const laid = viewLayout(height, chrome(requests), fit.lines(panel.requests, panel.more))
+  const hint = requests ? askedHint : hintWith(false)
+  const laid = viewLayout(height, chrome(hint), fit.lines(panel.requests, panel.more))
   const selection = useSelection(transcript, panel, handBack ? [handBackKey] : [])
   const { help, actions, unlessHelp } = useTranscriptKeys({
     transcript,
@@ -481,10 +479,11 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
         </TranscriptSection>
         <Section lines={laid.handBack}>
           <Lines
-            lines={handBackLines(theme, {
-              width: panelWidth,
-              selected: selection.selected === handBackKey,
-            })}
+            lines={
+              selection.selected === handBackKey
+                ? handBackLines(theme, { width: panelWidth, selected: true })
+                : handBackDrawn
+            }
             press={commands.handBackNow}
           />
         </Section>
@@ -530,7 +529,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
           />
         </Section>
         <Section lines={laid.hint}>
-          <ViewHint keys={keys.hint} width={inner} />
+          <ViewHint lines={hint} />
         </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
         {box?._tag === "Interrupt" ? (

@@ -12,7 +12,7 @@
 import { type InputRenderable, RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useSyncExternalStore } from "react"
-import type { Card } from "../run/runView.ts"
+import type { Card, ShownRequest } from "../run/runView.ts"
 import {
   type Answering,
   type AnswerKey,
@@ -92,10 +92,10 @@ export const attentionLines = (
   )
 }
 
-/** The keys that answer a card's request, for the view's or the Answer box's layer. */
-export const answerBindings = (answering: Answering, card: () => Card | undefined) => {
-  const on = (run: (card: Card) => void) => () => {
-    const target = card()
+/** The keys that answer `request`, for the view's or the Answer box's layer. */
+export const answerBindings = (answering: Answering, request: () => ShownRequest | undefined) => {
+  const on = (run: (request: ShownRequest) => void) => () => {
+    const target = request()
     if (target !== undefined) run(target)
   }
   const keys: ReadonlyArray<AnswerKey> = ["d", "a", "r"]
@@ -130,8 +130,9 @@ export const AnswerBox = () => {
   const close = () => {
     if (box.get()?._tag === "Answer") box.set(null)
   }
-  const answering = useAnswering(card === undefined ? [] : [card], close)
-  answering.target(card)
+  const request = card?.requests[0]
+  const answering = useAnswering(request === undefined ? [] : [request], close)
+  answering.target(request)
   const gone = ticket !== null && card === undefined
   // biome-ignore lint/correctness/useExhaustiveDependencies: close reads the box as it is then
   useEffect(() => {
@@ -141,13 +142,14 @@ export const AnswerBox = () => {
   // request isn't shown yet, so the guard keeps it from answering.
   const latest = useLatestRunView()
   const target = () => {
-    if (card !== undefined) return card
+    if (request !== undefined) return request
     const shown = box.get()
     return shown?._tag === "Answer"
       ? latest().cards.find((each) => each.ticket === shown.ticket && each.requests.length > 0)
+          ?.requests[0]
       : undefined
   }
-  const on = (run: (card: Card) => void) => () => {
+  const on = (run: (request: ShownRequest) => void) => () => {
     const at = target()
     if (at !== undefined) run(at)
   }
@@ -177,7 +179,7 @@ export const AnswerBox = () => {
   const lines = attentionLines(card, theme, head, {
     width: outer,
     highlighted: false,
-    focus: answering.focusOf(card),
+    focus: answering.focusOf(request),
   })
   return (
     <>
@@ -192,7 +194,7 @@ export const AnswerBox = () => {
         // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
         backgroundColor={RGBA.defaultBackground()}
       >
-        <Lines lines={lines} press={(index) => answering.press(card, index)} />
+        <Lines lines={lines} press={(index) => answering.press(request, index)} />
       </box>
     </>
   )

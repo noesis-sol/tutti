@@ -187,7 +187,11 @@ export const InterviewView = () => {
   // The panel has the height the view's other parts leave it, and a few of the transcript's
   // (tutti-7nzv), the hint as it is with a question.
   const [headLines, setHeadLines] = useState(1)
-  const chrome = (question: boolean): ViewChrome => ({
+  // The hint's lines with a question, for the panel's room, and as they are: each worked out once.
+  const hintWith = (question: boolean) =>
+    hintLines(hintOf(interviewCommands({ question, composing: composer.typing })), theme, inner)
+  const askedHint = hintWith(true)
+  const chrome = (hint: ReadonlyArray<Segments>): ViewChrome => ({
     head: headLines,
     resources: 0,
     ticket: 0,
@@ -196,16 +200,12 @@ export const InterviewView = () => {
     line: 0,
     queued: queued.length,
     composer: composer.lines,
-    hint: hintLines(
-      hintOf(interviewCommands({ question, composing: composer.typing })),
-      theme,
-      inner,
-    ).length,
+    hint: hint.length,
   })
   const fit = usePanelRooms(
     theme,
     Math.max(inner - 2, 8),
-    panelBudget(height, chrome(true)),
+    panelBudget(height, chrome(askedHint)),
     height,
   )
   const panel = usePanel(
@@ -280,7 +280,8 @@ export const InterviewView = () => {
     "view",
     interviewCommands({ question, composing: composer.typing }, actions),
   )
-  const laid = viewLayout(height, chrome(question), fit.lines(panel.requests, panel.more))
+  const hint = question ? askedHint : hintWith(false)
+  const laid = viewLayout(height, chrome(hint), fit.lines(panel.requests, panel.more))
   const { box } = composer
   return (
     <LooksContext.Provider value={looks}>
@@ -328,7 +329,7 @@ export const InterviewView = () => {
           />
         </Section>
         <Section lines={laid.hint}>
-          <ViewHint keys={keys.hint} width={inner} />
+          <ViewHint lines={hint} />
         </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
         {box?._tag === "Leave" ? (

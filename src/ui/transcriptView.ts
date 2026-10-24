@@ -9,7 +9,7 @@ import type { MouseEvent, Renderable, ScrollBoxRenderable, TextareaRenderable } 
 import { useRenderer } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import type { AttentionRequest } from "../agent/Attention.ts"
-import type { Card } from "../run/runView.ts"
+import type { Card, ShownRequest } from "../run/runView.ts"
 import { type Answering, type AnswerKey, optionKeys, useAnswering } from "./attentionKeys.ts"
 import { useSends } from "./Composer.tsx"
 import type { Command } from "./keyCommands.ts"
@@ -181,11 +181,9 @@ export type TranscriptWindow = ReturnType<typeof useTranscriptWindow>
 /** The attention panel of `card`'s session. */
 export interface Panel {
   /** Its oldest open requests, those drawn: only they can be selected or answered. */
-  readonly requests: ReadonlyArray<AttentionRequest>
+  readonly requests: ReadonlyArray<ShownRequest>
   /** How many more are waiting, counted under them; each comes in as one before it is answered. */
   readonly more: number
-  /** Each request drawn as a card of its own, for the card's answering. */
-  readonly cards: ReadonlyArray<Card>
   readonly answering: Answering
 }
 
@@ -207,12 +205,10 @@ export const usePanel = (
   const waiting = card?.requests ?? []
   const oldest = waiting.slice(0, panelRequests)
   const requests = oldest.slice(0, Math.max(fit(oldest, waiting.length), 1))
-  const cards: ReadonlyArray<Card> =
-    card === undefined ? [] : requests.map((request) => ({ ...card, requests: [request] }))
-  const answering = useAnswering(cards, undefined, (request) =>
+  const answering = useAnswering(requests, undefined, (request) =>
     input.box.set(Box.Form({ requestId: request.id, ticket: request.ticket })),
   )
-  return { requests, more: waiting.length - requests.length, cards, answering }
+  return { requests, more: waiting.length - requests.length, answering }
 }
 
 /**
@@ -243,14 +239,14 @@ export const useSelection = (
       transcript.scroll.current?.scrollChildIntoView(entryId(key))
     }
   }
-  /** The request selected, as its card. */
-  const selectedCard = (): Card | undefined => {
+  /** The request selected. */
+  const selectedRequest = (): ShownRequest | undefined => {
     const key = current()
-    return panel.cards.find((each) => each.requests[0] && requestKey(each.requests[0]) === key)
+    return panel.requests.find((request) => requestKey(request) === key)
   }
-  const targetCard = () => selectedCard() ?? panel.cards[0]
+  const targetRequest = () => selectedRequest() ?? panel.requests[0]
   // Its guard starts again as the target moves: on to the next request once one is answered.
-  panel.answering.target(targetCard())
+  panel.answering.target(targetRequest())
   const move = (step: 1 | -1) => {
     if (selectables.length === 0) return
     // From none, the newest item: you're at the bottom.
@@ -269,13 +265,13 @@ export const useSelection = (
   return {
     selected: current(),
     current,
-    selectedCard,
+    selectedRequest,
     /** The request the answer keys answer: the one selected, or the oldest. */
-    targetCard,
+    targetRequest,
     move,
     /** Between the selected request's buttons, then on to the next selectable. */
     stepOrMove: (step: 1 | -1) => {
-      const target = selectedCard()
+      const target = selectedRequest()
       if (target !== undefined && panel.answering.step(target, step)) return
       move(step)
     },
@@ -285,13 +281,13 @@ export const useSelection = (
     enter: () => {
       const key = current()
       if (key === null) return
-      const target = selectedCard()
+      const target = selectedRequest()
       if (target !== undefined) panel.answering.pressFocused(target)
       else transcript.toggle(key)
     },
     /** Picks option `n` of the selected question. */
     pick: (n: number) => {
-      const target = selectedCard()
+      const target = selectedRequest()
       if (target !== undefined) panel.answering.pick(target, n)
     },
   }
@@ -455,9 +451,9 @@ export const useTranscriptKeys = (options: {
     (...args: A) => {
       if (!helpOpen()) run(...args)
     }
-  const target = (run: (card: Card) => void) => {
-    const card = selection.targetCard()
-    if (card !== undefined) run(card)
+  const target = (run: (request: ShownRequest) => void) => {
+    const request = selection.targetRequest()
+    if (request !== undefined) run(request)
   }
   return {
     help,
@@ -471,7 +467,9 @@ export const useTranscriptKeys = (options: {
       move: unlessHelp(selection.move),
       stepOrMove: unlessHelp(selection.stepOrMove),
       enter: unlessHelp(enter),
-      answer: unlessHelp((key: AnswerKey) => target((card) => panel.answering.key(card, key))),
+      answer: unlessHelp((key: AnswerKey) =>
+        target((request) => panel.answering.key(request, key)),
+      ),
       denyWithReason: unlessHelp(() => target(panel.answering.denyWithReason)),
       pick: unlessHelp((n: number) => {
         selection.pick(n)

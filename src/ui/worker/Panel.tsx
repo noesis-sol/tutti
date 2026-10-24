@@ -290,20 +290,17 @@ export const RequestPanel = ({
   const { answering } = panel
   return (
     <>
-      {panel.requests.map((request, i) => {
-        const at = panel.cards[i]
-        return at === undefined ? null : (
-          <PanelRequest
-            key={request.id}
-            request={request}
-            width={width}
-            selected={selection.selected === requestKey(request)}
-            focus={answering.focusOf(at)}
-            room={rooms[i] ?? inputLines}
-            press={(index) => answering.press(at, index)}
-          />
-        )
-      })}
+      {panel.requests.map((request, i) => (
+        <PanelRequest
+          key={request.id}
+          request={request}
+          width={width}
+          selected={selection.selected === requestKey(request)}
+          focus={answering.focusOf(request)}
+          room={rooms[i] ?? inputLines}
+          press={(index) => answering.press(request, index)}
+        />
+      ))}
       {panel.more > 0 ? (
         <Line segments={[seg(`  +${panel.more} more requests`, theme.styles.dim)]} />
       ) : null}
