@@ -52,19 +52,21 @@ export const modeOf = (fs: FileSystem.FileSystem, path: string): Effect.Effect<n
 
 /**
  * Writes `data` to `temporary`, a file that must not be there yet, with `mode` where it isn't null
- * (past the umask), and syncs it.
+ * (past the umask), and syncs it. With `made`, `temporary` is one the caller has made already, as
+ * tutti update makes its own to find out that it may write beside the binary.
  */
 export const writeSynced = (
   fs: FileSystem.FileSystem,
   temporary: string,
   data: Uint8Array,
   mode: number | null,
+  made = false,
 ): Effect.Effect<void, PlatformError> =>
   Effect.gen(function* () {
     yield* Effect.scoped(
       Effect.gen(function* () {
         const handle = yield* fs.open(temporary, {
-          flag: "wx",
+          flag: made ? "w" : "wx",
           ...(mode === null ? {} : { mode }),
         })
         yield* handle.writeAll(data)

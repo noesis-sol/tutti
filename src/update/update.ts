@@ -20,22 +20,17 @@
 // out. TUTTI_NO_UPDATE_CHECK=1 turns it off. A check never fails or slows a run: its errors are
 // ignored, and one still going as the run ends says nothing.
 import { createHash, verify } from "node:crypto"
-import {
-  chmodSync,
-  closeSync,
-  fsyncSync,
-  openSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-  writeSync,
-} from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { Duration, Effect, FileSystem, Option, Predicate, Result, Schema, type Scope } from "effect"
+import { PlatformError } from "effect/PlatformError"
 import { onOff } from "../cli/flags.ts"
 import { homeFolder } from "../project/userConfig.ts"
-import { writeFileAtomic } from "../services/atomicFile.ts"
+import {
+  syncFolder,
+  temporaryBeside,
+  writeFileAtomic,
+  writeSynced,
+} from "../services/atomicFile.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
 import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
@@ -403,29 +398,25 @@ const tuttiIn = (archive: Uint8Array, name: string) =>
   })
 
 // A folder tutti update may not write in: one it lacks the permission for, or a read-only one.
-const cannotWrite = (error: unknown): boolean =>
-  Predicate.hasProperty(error, "code") &&
-  (error.code === "EACCES" || error.code === "EPERM" || error.code === "EROFS")
+const deniedCodes: ReadonlySet<unknown> = new Set(["EACCES", "EPERM", "EROFS"])
 
-/** Writes `bytes` to the new file `path`, and syncs it to disk. */
-const writeSynced = (path: string, bytes: Uint8Array) => {
-  const fd = openSync(path, "w", 0o600)
-  try {
-    for (let written = 0; written < bytes.length; ) {
-      written += writeSync(fd, bytes, written)
-    }
-    // On disk before the rename makes it the binary: otherwise a power loss soon after could keep
-    // the rename and lose the data, an empty tutti in place of the old one.
-    fsyncSync(fd)
-  } finally {
-    closeSync(fd)
+const cannotWrite = (error: unknown): boolean => {
+  if (error instanceof PlatformError && error.reason._tag !== "BadArgument") {
+    return (
+      error.reason._tag === "PermissionDenied" ||
+      (Predicate.hasProperty(error.reason.cause, "code") &&
+        deniedCodes.has(error.reason.cause.code))
+    )
   }
+  return Predicate.hasProperty(error, "code") && deniedCodes.has(error.code)
 }
 
 /**
  * Replaces the binary at `exe`, through any symbolic links, with `release`'s for `target`, verified
  * with `keys`; it returns the path it replaced. The new file is made beside it first, so that a
- * folder it can't write in fails before the download, and removed on any failure or interruption.
+ * folder it can't write in fails before the download, written and synced as atomicFile writes
+ * (writeSynced), renamed over the binary and the folder synced, so that the rename lasts; it is
+ * removed on any failure or interruption.
  */
 export const install = (options: {
   readonly releases: Releases
@@ -435,11 +426,15 @@ export const install = (options: {
   readonly exe: string
 }) =>
   Effect.gen(function* () {
-    const exe = yield* Effect.try({
-      try: () => realpathSync(options.exe),
-      catch: (error) =>
-        new UpdateFailed({ message: `cannot find the binary to replace: ${describe(error)}` }),
-    })
+    const fs = yield* FileSystem.FileSystem
+    const exe = yield* fs
+      .realPath(options.exe)
+      .pipe(
+        Effect.mapError(
+          (error) =>
+            new UpdateFailed({ message: `cannot find the binary to replace: ${describe(error)}` }),
+        ),
+      )
     const assets = yield* assetsOf(options.release, options.target)
     if (options.keys.length === 0) {
       return yield* new UpdateFailed({
@@ -448,54 +443,50 @@ export const install = (options: {
       })
     }
     const dir = dirname(exe)
-    const temporary = join(dir, `.tutti-update-${process.pid}-${Date.now().toString(36)}`)
     const failed = (error: unknown) =>
       cannotWrite(error)
         ? new CannotWrite({ dir, message: describe(error) })
         : new UpdateFailed({ message: describe(error) })
-    yield* Effect.try({
-      try: () => writeFileSync(temporary, "", { flag: "wx", mode: 0o600 }),
-      catch: failed,
-    })
-    return yield* Effect.gen(function* () {
-      const archive = yield* fetchVerified(options.releases, assets, options.keys)
-      const binary = yield* tuttiIn(archive, assets.archive)
-      yield* Effect.try({
-        try: () => {
-          writeSynced(temporary, binary)
-          chmodSync(temporary, 0o755)
-        },
-        catch: failed,
-      })
-      const ran = yield* exec({
-        command: temporary,
-        args: ["--version"],
-        timeLimit: TimeLimit.read,
-      }).pipe(
-        Effect.mapError(
-          (error) => new UpdateFailed({ message: `the new binary doesn't run: ${error.message}` }),
-        ),
-      )
-      const said = sanitizeLine(`${ran.stdout}${ran.stderr}`.trim())
-      if (ran.exitCode !== 0) {
-        return yield* new UpdateFailed({
-          message: `the new binary doesn't run: it exited ${ran.exitCode}${said === "" ? "" : `: ${said}`}`,
-        })
-      }
-      if (ran.stdout.trim() !== `tutti ${options.release.tag}`) {
-        return yield* new UpdateFailed({
-          message: `the new binary's --version says '${said}', not tutti ${options.release.tag}`,
-        })
-      }
-      yield* Effect.try({ try: () => renameSync(temporary, exe), catch: failed })
-      return exe
-    }).pipe(
+    return yield* Effect.acquireUseRelease(
+      Effect.suspend(() => {
+        const temporary = temporaryBeside(exe, "update")
+        return fs
+          .writeFile(temporary, new Uint8Array(), { flag: "wx", mode: 0o600 })
+          .pipe(Effect.as(temporary), Effect.mapError(failed))
+      }),
+      (temporary) =>
+        Effect.gen(function* () {
+          const archive = yield* fetchVerified(options.releases, assets, options.keys)
+          const binary = yield* tuttiIn(archive, assets.archive)
+          yield* writeSynced(fs, temporary, binary, 0o755, true).pipe(Effect.mapError(failed))
+          const ran = yield* exec({
+            command: temporary,
+            args: ["--version"],
+            timeLimit: TimeLimit.read,
+          }).pipe(
+            Effect.mapError(
+              (error) =>
+                new UpdateFailed({ message: `the new binary doesn't run: ${error.message}` }),
+            ),
+          )
+          const said = sanitizeLine(`${ran.stdout}${ran.stderr}`.trim())
+          if (ran.exitCode !== 0) {
+            return yield* new UpdateFailed({
+              message: `the new binary doesn't run: it exited ${ran.exitCode}${said === "" ? "" : `: ${said}`}`,
+            })
+          }
+          if (ran.stdout.trim() !== `tutti ${options.release.tag}`) {
+            return yield* new UpdateFailed({
+              message: `the new binary's --version says '${said}', not tutti ${options.release.tag}`,
+            })
+          }
+          yield* fs.rename(temporary, exe).pipe(Effect.mapError(failed))
+          yield* syncFolder(fs, dir)
+          return exe
+        }),
       // The old binary stays; a leftover file beside it would break nothing, but is removed.
-      Effect.onExit((exit) =>
-        exit._tag === "Success"
-          ? Effect.void
-          : Effect.sync(() => rmSync(temporary, { force: true })),
-      ),
+      (temporary, exit) =>
+        exit._tag === "Success" ? Effect.void : Effect.ignore(fs.remove(temporary)),
     )
   })
 
