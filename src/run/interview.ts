@@ -29,7 +29,14 @@ import { makeCommands, type UiCommand } from "./commands.ts"
 import type { TicketFiling } from "./fileTicket.ts"
 import { exitCodes } from "./holds.ts"
 import { TicketPhase } from "./phase.ts"
-import { type Card, emptyView, type RunView, shownRequest, stateStatus } from "./runView.ts"
+import {
+  type Card,
+  emptyView,
+  type RunView,
+  shownRequest,
+  stateStatus,
+  statusTone,
+} from "./runView.ts"
 import { Screen, type ScreenInputs } from "./screen.ts"
 
 /** What the run hands the Interview view: a dashboard's inputs, the description, the filing. */
@@ -82,21 +89,23 @@ export const interviewCard = (
   now?: number,
 ): Card => {
   const requests = open.map(shownRequest)
+  const phase = TicketPhase.Working({ activity: requests.length > 0 ? "answer" : "working" })
   return {
     ticket: interviewWorker,
     label: interviewWorker,
     title: description.split("\n").find((line) => line.trim() !== "") ?? "",
     worker: 1,
-    phase: TicketPhase.Working({ activity: requests.length > 0 ? "answer" : "working" }),
+    phase,
     state,
     status: interviewStatus(state, requests, now),
+    tone: statusTone(phase, state, requests),
     motion:
       state === null ||
       state._tag === "Starting" ||
       state._tag === "Working" ||
       state._tag === "Retrying"
         ? "spinner"
-        : "•",
+        : "idle",
     since,
     action: null,
     latest: null,

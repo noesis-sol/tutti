@@ -5,6 +5,7 @@
 // how long it took. It is drawn from a fiber rather than by a renderer, so the terminal stays out
 // of raw mode and Ctrl+C comes as a signal. What is printed while it is drawn goes above it.
 import { Clock, Effect, Fiber } from "effect"
+import { marks } from "../ui/marks.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { frameInterval, spinnerFrames } from "../ui/spinner.ts"
 import type { Theme } from "../ui/theme.ts"
@@ -124,8 +125,10 @@ export const makePrinter = (out: Out, theme: Theme): Printer => {
       out.write(live === "" ? lines : `${eraseLine}${lines}${live}`)
     })
 
-  const sayLine = (text: string) => `${organ.paint("◆ ")}${say.paint(sanitizeLine(text))}`
-  const warnLine = (text: string) => `${organ.paint("◆ ")}${deferred.paint(sanitizeLine(text))}`
+  const sayLine = (text: string) =>
+    `${organ.paint(`${marks.organ} `)}${say.paint(sanitizeLine(text))}`
+  const warnLine = (text: string) =>
+    `${organ.paint(`${marks.organ} `)}${deferred.paint(sanitizeLine(text))}`
 
   const step = (text: string): Effect.Effect<OrganLine> =>
     Effect.gen(function* () {

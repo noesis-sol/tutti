@@ -5,7 +5,8 @@ import fc from "fast-check"
 import { decodeReferences, renderMarkdown, ruleWidth } from "../src/print/markdown.ts"
 import { eraseLine, makePrinter, type Out } from "../src/print/organLine.ts"
 import { closing, Ending, printSummary, type Summary, summary } from "../src/print/summary.ts"
-import { emptyView, type Row } from "../src/run/runView.ts"
+import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
 import { frameInterval, spinnerFrames } from "../src/ui/spinner.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
 
@@ -26,12 +27,11 @@ const unsafe = (text: string): boolean =>
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is sought
   /[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/.test(text.replace(sgr, ""))
 
-const row = (ticket: string, mark: string, word: string, note: string): Row => ({
+const row = (ticket: string, phase: TicketPhase, note: string): Row => ({
   ticket,
   label: ticket,
   title: note,
-  mark,
-  word,
+  ...rowStatus(phase),
   note,
   verdict: null,
 })
@@ -49,7 +49,11 @@ const ended = (rows: ReadonlyArray<Row>, totals: Partial<Summary["totals"]> = {}
 describe("the summary", () => {
   test("has the title, the totals and every ticket, as wide as the terminal", () => {
     const rows = Array.from({ length: 40 }, (_, i) =>
-      row(`tut-${i}`, "✓", "done", `abc${i} merged into main`),
+      row(
+        `tut-${i}`,
+        TicketPhase.Done({ outcome: Outcome.NoChange() }),
+        `abc${i} merged into main`,
+      ),
     )
     const out = summary(ended(rows, { completed: 40 }), theme, 80)
     const lines = strip(out).split("\n")
@@ -92,9 +96,9 @@ describe("the summary", () => {
   test("each row takes its state's style, and a finished row's note is faint", () => {
     const out = summary(
       ended([
-        row("tut-1", "✓", "done", "abc1234 merged into main"),
-        row("tut-2", "■", "stopped", "Two"),
-        row("tut-3", "◼", "to merge", "Three"),
+        row("tut-1", TicketPhase.Done({ outcome: Outcome.NoChange() }), "abc1234 merged into main"),
+        row("tut-2", TicketPhase.Stopped({ why: "PAUSED" }), "Two"),
+        row("tut-3", TicketPhase.ToMerge({ place: 1 }), "Three"),
       ]),
       theme,
       80,
@@ -112,14 +116,22 @@ describe("the summary", () => {
   test("a long ticket ID never makes the table wider than the terminal", () => {
     for (const width of [40, 41, 44, 60]) {
       const out = strip(
-        summary(ended([row("tutti-nrg.5.11.long", "✓", "done", "x")]), theme, width),
+        summary(
+          ended([
+            row("tutti-nrg.5.11.long", TicketPhase.Done({ outcome: Outcome.NoChange() }), "x"),
+          ]),
+          theme,
+          width,
+        ),
       )
       for (const line of out.split("\n")) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(width)
     }
   })
 
   test("a long note is cut to the table", () => {
-    const out = strip(summary(ended([row("tut-1", "↷", "deferred", "x".repeat(200))]), theme, 60))
+    const out = strip(
+      summary(ended([row("tut-1", TicketPhase.Deferred({ why: "" }), "x".repeat(200))]), theme, 60),
+    )
     expect(out).toContain("x…")
     for (const line of out.split("\n")) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(60)
   })
@@ -181,7 +193,7 @@ describe("the closing line", () => {
     await Effect.runPromise(
       printSummary(
         makePrinter(out, theme),
-        ended([row("tut-1", "✓", "done", "merged")]),
+        ended([row("tut-1", TicketPhase.Done({ outcome: Outcome.NoChange() }), "merged")]),
         Ending.Done({ text: "READY_EMPTY after 1 ticket", tickets: 1, limit: null, took: 0 }),
         theme,
         80,
@@ -426,7 +438,11 @@ describe("untrusted text", () => {
     fc.assert(
       fc.property(hostile, hostile, hostile, (ticket, note, text) => {
         const out = summary(
-          { ...ended([row(ticket, "▶", "working", note)]), branch: text, scope: ticket },
+          {
+            ...ended([row(ticket, TicketPhase.Working({ activity: "working" }), note)]),
+            branch: text,
+            scope: ticket,
+          },
           theme,
           80,
         )

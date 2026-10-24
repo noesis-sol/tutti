@@ -183,7 +183,7 @@ describe("the setup before the merge check", () => {
     })
     const card = view.cards.find((each) => each.ticket === "a")
     expect(card?.action).toBe("running the setup")
-    expect(card?.motion).toBe("◆")
+    expect(card?.motion).toBe("merging")
   })
 
   test("doesn't run when the rebase changed no setup file", async () => {

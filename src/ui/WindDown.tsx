@@ -7,6 +7,7 @@ import type { WindDownMark } from "../run/phase.ts"
 import type { WindDownView } from "../run/runView.ts"
 import { firstFit } from "./fit.ts"
 import { Line, type Look, type Segments, seg } from "./line.tsx"
+import { marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
 const markLook = (mark: WindDownMark, theme: Theme): Look => {
@@ -30,8 +31,8 @@ const markLook = (mark: WindDownMark, theme: Theme): Look => {
 export const windDownSegments = (view: WindDownView, theme: Theme, width: number): Segments => {
   const squares =
     view.marks.length === 0
-      ? [seg("■", theme.styles.windDown)]
-      : view.marks.map((each) => seg("■", markLook(each.mark, theme)))
+      ? [seg(marks.windingDown, theme.styles.windDown)]
+      : view.marks.map((each) => seg(marks.windingDown, markLook(each.mark, theme)))
   const spaced = (count: number): Segments =>
     squares.slice(0, count).flatMap((each, i) => (i === 0 ? [each] : [seg(" "), each]))
   const lead = [seg("  "), ...spaced(squares.length), seg("  ")]

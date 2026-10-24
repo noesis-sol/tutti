@@ -23,6 +23,7 @@ import {
 import { emptyStatus, project, rowStatus } from "../src/run/runView.ts"
 import { lifetime } from "../src/run/sessions.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
+import { marks } from "../src/ui/marks.ts"
 
 /** A phase of each tag, with details that count as the tag's other phases do but Working's. */
 const samples: { readonly [T in PhaseTag]: TicketPhase } = {
@@ -261,7 +262,11 @@ describe("the facts each phase.ts set and switch was", () => {
   })
 
   test("row: runView's rowStatus", () => {
-    expect(variants.map((phase) => [phaseLabel(phase), rowStatus(phase)])).toEqual(
+    const glyphs = (phase: TicketPhase): { readonly mark: string; readonly word: string } => {
+      const { mark, word } = rowStatus(phase)
+      return { mark: marks[mark], word }
+    }
+    expect(variants.map((phase) => [phaseLabel(phase), glyphs(phase)])).toEqual(
       variants.map((phase) => [phaseLabel(phase), rowBefore(phase)]),
     )
   })

@@ -23,7 +23,7 @@ import { interviewWorker } from "../agent/interview.ts"
 import { type Filing, filedSomething } from "../agent/interviewTools.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
 import { UiCommand } from "../run/commands.ts"
-import { elapsed, statusLook } from "./Card.tsx"
+import { cardMark, elapsed, statusLook } from "./Card.tsx"
 import { Composer, QueuedLines, queuedLines } from "./Composer.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
@@ -265,7 +265,7 @@ export const InterviewView = () => {
     card === undefined
       ? [seg("Interview", styles.picked)]
       : [
-          card.motion === "spinner" ? seg(spin, styles.picked) : seg("•", styles.done),
+          cardMark(card, theme, spin),
           seg("  "),
           seg("Interview", styles.picked),
           seg("  "),

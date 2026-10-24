@@ -16,6 +16,7 @@
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
 import { memo, useCallback, useMemo } from "react"
 import { pad } from "../run/localTime.ts"
+import { activityRows } from "../run/phase.ts"
 import type { Card, ShownRequest } from "../run/runView.ts"
 import { attentionInside, attentionLines } from "./AttentionCard.tsx"
 import { clickable } from "./click.ts"
@@ -32,6 +33,7 @@ import {
   seg,
   widthOf,
 } from "./line.tsx"
+import { lookOf, marks, motionTones } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 import { useNow, useSpinner } from "./useRunView.ts"
 
@@ -75,66 +77,15 @@ export const elapsed = (millis: number): string => {
 export const waitsForYou = (card: Card): boolean =>
   card.requests.length > 0 || card.state?._tag === "NeedsYou" || card.phase._tag === "Blocked"
 
-/** The look of a card's status (§ 7.11's Statuses). */
-export const statusLook = (card: Card, theme: Theme): Look => {
-  const { styles } = theme
-  if (waitsForYou(card)) return styles.stop
-  switch (card.phase._tag) {
-    case "ToMerge":
-      return styles.toMerge
-    case "Merging":
-      return styles.merging
-    case "Resolving":
-    case "Fixing":
-      return styles.deferred
-  }
-  const state = card.state
-  switch (state?._tag) {
-    case "Starting":
-    case "Closed":
-      return styles.dim
-    case "Working":
-      return state.doing === "testing" ? styles.testing : styles.picked
-    case "Retrying":
-    case "UsageLimited":
-      return styles.deferred
-    case "Idle":
-      return styles.done
-    case "Failed":
-      return state.interrupted ? styles.deferred : theme.look("needsYou")
-    case "Gone":
-      return theme.look("needsYou")
-  }
-  if (card.phase._tag !== "Working") return styles.dim
-  switch (card.phase.activity) {
-    case "testing":
-      return styles.testing
-    case "starting":
-      return styles.dim
-    case "retrying":
-    case "limit":
-      return styles.deferred
-    case "allow":
-    case "answer":
-      return styles.stop
-  }
-  return styles.picked
-}
+/** The look of a card's status (§ 7.11's Statuses), its tone as RunView worked it out. */
+export const statusLook = (card: Card, theme: Theme): Look => lookOf(card.tone, theme)
 
 /** The card's mark: the spinner's frame `spin` while its worker works, else its static mark. */
-const markOf = (card: Card, theme: Theme, spin: string) => {
-  const { styles } = theme
-  switch (card.motion) {
-    case "spinner":
-      return seg(spin, styles.picked)
-    case "◼":
-      return seg("◼", styles.toMerge)
-    case "◆":
-      return seg("◆", styles.merging)
-    case "•":
-      return seg("•", styles.done)
-  }
-}
+export const cardMark = (card: Card, theme: Theme, spin: string): Segment =>
+  seg(
+    card.motion === "spinner" ? spin : marks[card.motion],
+    lookOf(motionTones[card.motion], theme),
+  )
 
 /** The card's frame: `needsYou` when it waits for you, `live` while its worker works. */
 const frameOf = (card: Card, theme: Theme): Look =>
@@ -215,7 +166,7 @@ export const headOf = (
   now: number,
   spin: string,
   status: Segments,
-): Segments => headLine(cellsOf(card, theme, now, status), markOf(card, theme, spin), noColumns)
+): Segments => headLine(cellsOf(card, theme, now, status), cardMark(card, theme, spin), noColumns)
 
 /** The card's action line: the phase's, else its worker's latest action behind `▸`; null for none. */
 export const actionLine = (card: Card, theme: Theme): Segments | null => {
@@ -224,7 +175,7 @@ export const actionLine = (card: Card, theme: Theme): Segments | null => {
   if (card.latest === null) return null
   return [
     seg("  "),
-    seg(`▸ ${card.latest.text}`, card.latest.denied ? styles.deferred : styles.dim),
+    seg(`${marks.latest} ${card.latest.text}`, card.latest.denied ? styles.deferred : styles.dim),
   ]
 }
 
@@ -261,11 +212,12 @@ export const cardLines = (
   return boxed(content, options.width, frameOf(card, theme), border)
 }
 
-/** A compact line's status: an attention request's row word, `■ allow?` or `■ answer?`. */
+/** A compact line's status: an attention request's row status, `■ allow?` or `■ answer?`. */
 const compactStatus = (card: Card, theme: Theme): Segments => {
   const first = card.requests[0]
   if (first === undefined) return [seg(card.status, statusLook(card, theme))]
-  return [seg(first.kind._tag === "Question" ? "■ answer?" : "■ allow?", theme.styles.stop)]
+  const shown = activityRows[first.kind._tag === "Question" ? "answer" : "allow"]
+  return [seg(`${marks[shown.mark]} ${shown.word}`, lookOf(shown.tone, theme))]
 }
 
 /**
@@ -281,7 +233,7 @@ const compactLine = (
 ): Segments => [
   ...headLine(
     cellsOf(card, theme, now, compactStatus(card, theme)),
-    markOf(card, theme, spin),
+    cardMark(card, theme, spin),
     cols,
   ),
   seg("  "),

@@ -26,6 +26,7 @@ import type { WorkerState } from "../agent/WorkerState.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Issue } from "../services/Beads.ts"
 import { shortHash } from "../services/Git.ts"
+import type { Motion, Shown, Tone } from "../ui/marks.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
@@ -34,10 +35,10 @@ import { resetLabel } from "./localTime.ts"
 import type { CheckAhead } from "./mergetrain.ts"
 import {
   type Activity,
+  activityRows,
   countsUnder,
   factsOf,
   phaseFacts,
-  type RowStatus,
   TicketPhase,
   type WindDownMark,
 } from "./phase.ts"
@@ -233,17 +234,15 @@ export interface Totals {
 
 /**
  * A row of the tickets table, from the moment the run picks its ticket up. It keeps its place but
- * as its ticket leaves Current, when it moves to the end.
+ * as its ticket leaves Current, when it moves to the end. Its status, as `▶ testing`, is its mark,
+ * its word and its tone, and whether the rest of the row is faint.
  */
-export interface Row {
+export interface Row extends Shown {
   /** Its ticket's ID, the key the run's commands take; draw `label` instead. */
   readonly ticket: string
   /** Its ticket's ID as drawn: a worker files tickets, so it is sanitised (§ 7.10). */
   readonly label: string
   readonly title: string
-  /** The row's status, as `▶ testing`: its mark and its word. */
-  readonly mark: string
-  readonly word: string
   /** What the row says of the ticket: its title, or how it finished. */
   readonly note: string
   /** The triage organ's verdict, which replaces the note of a ticket set aside once it is in. */
@@ -318,9 +317,6 @@ export const ticketText = (issue: Issue): TicketText => {
   return text
 }
 
-/** What a card shows instead of a spinner when its worker isn't at work (§ 5.1). */
-export type Motion = "spinner" | "◼" | "◆" | "•"
-
 /** A card, for a ticket with work under way. */
 export interface Card {
   /** Its ticket's ID, the key the run's commands take; draw `label` instead. */
@@ -335,6 +331,8 @@ export interface Card {
   readonly state: WorkerState | null
   /** The card's status: the worker's state, or the phase's word. */
   readonly status: string
+  /** The tone of its status (§ 7.11's Statuses). */
+  readonly tone: Tone
   readonly motion: Motion
   /** When it entered its phase, for the elapsed time; epoch milliseconds. */
   readonly since: number
@@ -560,8 +558,8 @@ export const ordinal = (n: number): string => {
 export const countdown = (at: number, now: number): string =>
   formatDuration(Duration.minutes(Math.max(1, Math.ceil((at - now) / 60_000))))
 
-/** A row's mark and word for `phase`, as § 5.1's table gives them. */
-export const rowStatus = (phase: TicketPhase): RowStatus => factsOf(phase).row(phase)
+/** A row's mark, word and tone for `phase`, as § 5.1's table gives them. */
+export const rowStatus = (phase: TicketPhase): Shown => factsOf(phase).row(phase)
 
 const requestWord = (request: AttentionRequest): string => {
   switch (request.kind._tag) {
@@ -655,6 +653,47 @@ const cardStatus = (
 /** The status of a Blocked ticket's card while its conflict hand-back waits for you (§ 4.3). */
 export const handBackStatus = "conflict waits for you"
 
+/**
+ * The tone of a card's status (§ 7.11's Statuses), for a ticket in `phase` whose worker is in
+ * `state` with `requests` open: `stop` while it waits for you, whether by a request, the CLI or a
+ * conflict hand-back; else the phase's, the worker's state's, or the activity's.
+ */
+export const statusTone = (
+  phase: TicketPhase,
+  state: WorkerState | null,
+  requests: ReadonlyArray<AttentionRequest>,
+): Tone => {
+  if (requests.length > 0 || state?._tag === "NeedsYou" || phase._tag === "Blocked") return "stop"
+  switch (phase._tag) {
+    case "ToMerge":
+      return "toMerge"
+    case "Merging":
+      return "merging"
+    case "Resolving":
+    case "Fixing":
+      return "deferred"
+  }
+  switch (state?._tag) {
+    case "Starting":
+    case "Closed":
+      return "dim"
+    case "Working":
+      return state.doing === "testing" ? "testing" : "picked"
+    case "Retrying":
+    case "UsageLimited":
+      return "deferred"
+    case "Idle":
+      return "done"
+    case "Failed":
+      return state.interrupted ? "deferred" : "failed"
+    case "Gone":
+      return "failed"
+  }
+  if (phase._tag !== "Working") return "dim"
+  // A card's `starting` is faint, where its row's is `picked`.
+  return phase.activity === "starting" ? "dim" : activityRows[phase.activity].tone
+}
+
 /** Whether a worker in `state` with `requests` open is at work, so its card's spinner turns. */
 const working = (state: WorkerState | undefined, requests: ReadonlyArray<AttentionRequest>) =>
   requests.length === 0 &&
@@ -668,9 +707,9 @@ const motionOf = (
   state: WorkerState | undefined,
   requests: ReadonlyArray<AttentionRequest>,
 ): Motion => {
-  if (phase._tag === "ToMerge") return "◼"
-  if (phase._tag === "Merging") return "◆"
-  return working(state, requests) ? "spinner" : "•"
+  if (phase._tag === "ToMerge") return "toMerge"
+  if (phase._tag === "Merging") return "merging"
+  return working(state, requests) ? "spinner" : "idle"
 }
 
 /** The environment probe's card, worker 0, as a Working ticket's, its session in `state`. */
@@ -689,6 +728,7 @@ const probeCard = (
     phase,
     state: state ?? null,
     status: cardStatus(phase, state, [], now),
+    tone: statusTone(phase, state ?? null, []),
     motion: motionOf(phase, state, []),
     since: probe.since,
     action: "checking that commands run on this machine",
@@ -834,15 +874,17 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     }
     if (showsCard(entry) && entry.worker !== null) {
       const waits = handBackWaits(entry)
+      const atWork = phaseFacts[entry.phase._tag].atWork ? (state ?? null) : null
       cards.push({
         ticket: entry.ticket,
         label,
         title,
         worker: entry.worker,
         phase: entry.phase,
-        state: phaseFacts[entry.phase._tag].atWork ? (state ?? null) : null,
+        state: atWork,
         status: waits ? handBackStatus : cardStatus(phase, state, open, inputs.now),
-        motion: waits ? "•" : motionOf(entry.phase, state, open),
+        tone: statusTone(entry.phase, atWork, open),
+        motion: waits ? "idle" : motionOf(entry.phase, state, open),
         since: entry.since,
         action: actionOf(entry, branch, status.checksAhead.get(entry.ticket)),
         latest: latestOf(actions.get(entry.ticket)),

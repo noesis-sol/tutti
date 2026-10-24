@@ -45,6 +45,7 @@ import { initAbout, initTitle, scoutClock } from "./initTitle.ts"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { InputGuards } from "./keys.ts"
 import { Line, Lines, type Segments, seg, styled, wrap } from "./line.tsx"
+import { marks } from "./marks.ts"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -489,10 +490,10 @@ export const stepperParts = (
   return steps.flatMap((name, index) => [
     ...(index === 0 ? [] : [seg(" ──── ", index <= at ? done : faint)]),
     index < at
-      ? seg(`✓ ${name}`, closed)
+      ? seg(`${marks.done} ${name}`, closed)
       : index === at
-        ? seg(`● ${name}`, organ)
-        : seg(`○ ${name}`, faint),
+        ? seg(`${marks.current} ${name}`, organ)
+        : seg(`${marks.toCome} ${name}`, faint),
   ])
 }
 

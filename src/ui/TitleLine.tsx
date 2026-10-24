@@ -10,6 +10,7 @@ import { resetLabel } from "../run/localTime.ts"
 import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
 import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
+import { marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 import { useNow, useRunViewPart, useTheme } from "./useRunView.ts"
 
@@ -77,7 +78,7 @@ export const windowLabel = (name: string): string => {
 /** `▰▰▱▱▱▱▱▱▱▱` for 17%: a cell for each tenth, to the nearest. */
 export const gauge = (utilization: number): string => {
   const filled = Math.round(Math.min(1, utilization) * gaugeCells)
-  return "▰".repeat(filled) + "▱".repeat(gaugeCells - filled)
+  return marks.gaugeFull.repeat(filled) + marks.gaugeEmpty.repeat(gaugeCells - filled)
 }
 
 /**

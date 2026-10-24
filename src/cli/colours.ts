@@ -7,8 +7,8 @@
 import { Console, Effect } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { WorkerState } from "../agent/WorkerState.ts"
-import { TicketPhase } from "../run/phase.ts"
-import { type Card, type Key, type Row, shownRequest } from "../run/runView.ts"
+import { Outcome, TicketPhase } from "../run/phase.ts"
+import { type Card, type Key, type Row, rowStatus, shownRequest } from "../run/runView.ts"
 import { Tty } from "../services/Tty.ts"
 import { attentionLines } from "../ui/AttentionCard.tsx"
 import { defaultFocus } from "../ui/attentionKeys.ts"
@@ -104,6 +104,7 @@ const workingCard = (now: number): Card => ({
   phase: TicketPhase.Working({ activity: "editing" }),
   state: WorkerState.Working({ doing: "editing" }),
   status: "editing",
+  tone: "picked",
   motion: "spinner",
   since: began(now, 391_000),
   action: null,
@@ -139,6 +140,7 @@ const attentionCard = (now: number): Card => ({
   phase: TicketPhase.Working({ activity: "allow" }),
   state: WorkerState.NeedsYou({ requests: 1 }),
   status: "permission — waiting for you",
+  tone: "stop",
   motion: "spinner",
   since: began(now, 42_000),
   action: null,
@@ -152,8 +154,7 @@ const rows: ReadonlyArray<Row> = [
   {
     ticket: "tut-9",
     label: "tut-9",
-    mark: "✓",
-    word: "done",
+    ...rowStatus(TicketPhase.Done({ outcome: Outcome.Merged({ commit: "" }) })),
     title: "",
     note: "merged in 4m12s",
     verdict: null,
@@ -161,8 +162,7 @@ const rows: ReadonlyArray<Row> = [
   {
     ticket: "tut-12",
     label: "tut-12",
-    mark: "▶",
-    word: "editing",
+    ...rowStatus(TicketPhase.Working({ activity: "editing" })),
     title: "",
     note: "Retry a merge that lost the race",
     verdict: null,
@@ -170,8 +170,7 @@ const rows: ReadonlyArray<Row> = [
   {
     ticket: "tut-13",
     label: "tut-13",
-    mark: "◼",
-    word: "to merge",
+    ...rowStatus(TicketPhase.ToMerge({ place: 1 })),
     title: "",
     note: "Tidy the log",
     verdict: null,
@@ -179,8 +178,7 @@ const rows: ReadonlyArray<Row> = [
   {
     ticket: "tut-14",
     label: "tut-14",
-    mark: "■",
-    word: "allow?",
+    ...rowStatus(TicketPhase.Working({ activity: "allow" })),
     title: "",
     note: "Clear the build cache between checks",
     verdict: null,

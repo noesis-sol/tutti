@@ -15,6 +15,7 @@ import { Beads } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
+import { marks } from "../ui/marks.ts"
 import { windowLabel } from "../ui/TitleLine.tsx"
 import { saveAsked, saveLeft } from "./carry.ts"
 import { drainedLine } from "./drain.ts"
@@ -62,7 +63,7 @@ export const summaryLines = (s: {
     line`tutti ${s.version} on ${s.base}${scoped} · ${runTime(s.took)}`,
     detail`Completed ${totals.completed} · Set aside ${totals.deferred + totals.review} · Needs you ${totals.needsYou}`,
     ...(s.rows.length === 0 ? [] : s.figures.map((each) => detail`${figuresText(each)}`)),
-    ...s.rows.map((row) => detail`${row.mark} ${row.ticket} ${row.word}: ${row.note}`),
+    ...s.rows.map((row) => detail`${marks[row.mark]} ${row.ticket} ${row.word}: ${row.note}`),
   ]
 }
 

@@ -23,6 +23,7 @@ import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { compactLines, labelLines, sectionLines } from "../src/ui/Card.tsx"
 import { type DashboardLayout, dashboardLayout } from "../src/ui/Dashboard.tsx"
+import { type Motion, motionTones } from "../src/ui/marks.ts"
 import { fewestTableLines, ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
@@ -63,10 +64,12 @@ const bash = (id: string, ticket: string, lines: number): AttentionRequest => ({
   createdAt: began,
 })
 
+const motions = Object.keys(motionTones) as ReadonlyArray<Motion>
+
 const cardArb = (i: number): fc.Arbitrary<Card> =>
   fc
     .record({
-      motion: fc.constantFrom("spinner" as const, "◼" as const, "◆" as const, "•" as const),
+      motion: fc.constantFrom(...motions),
       action: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
       asks: fc.boolean(),
       title: fc.string({ maxLength: 60 }),
@@ -79,6 +82,7 @@ const cardArb = (i: number): fc.Arbitrary<Card> =>
       phase: TicketPhase.Working({ activity: "working" }),
       state: null,
       status: "working",
+      tone: motionTones[motion],
       motion,
       since: began,
       action,

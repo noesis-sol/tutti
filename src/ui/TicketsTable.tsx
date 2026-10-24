@@ -3,7 +3,7 @@
 // whatever their phase, so that no ticket is shown twice: the tickets that came to an end, in that
 // order, a ticket's row coming in under the others as it leaves Current. Where Current isn't drawn
 // (the end-of-run box), the running tickets keep their rows. A row's glyph, word and ID take its
-// state's style; the rest of a finished ticket's row is faint, and a ticket set aside shows the
+// state's tone, as RunView worked it out (marks.ts); the rest of a finished ticket's row is faint, and a ticket set aside shows the
 // triage organ's verdict, `◆ …`, once it is in.
 //
 // The table is as tall as the pane makes it, not as its tickets do: what the lines Current is kept
@@ -12,7 +12,8 @@
 // The run's summary prints the same table, every row of it and no blank one (print/summary.ts).
 import type { Card, Row } from "../run/runView.ts"
 import { fit, framed, Lines, type Segments, seg } from "./line.tsx"
-import type { StyleName, Theme } from "./theme.ts"
+import { lookOf, marks } from "./marks.ts"
+import type { Theme } from "./theme.ts"
 
 /** The lines a section takes besides its rows: its label, and its frame's top and bottom. */
 export const sectionChrome = 3
@@ -37,36 +38,6 @@ const stateWidth = 11
 /** The narrowest an ID column and the last column are. */
 const minIdWidth = 7
 const minAboutWidth = 8
-
-/** The row style of each status word, as § 7.11's ticket rows give them, and whether the rest of
- * the row is faint, as a finished ticket's is. */
-export const rowLooks: Readonly<
-  Record<string, { readonly style: StyleName; readonly faint: boolean }>
-> = {
-  working: { style: "picked", faint: false },
-  editing: { style: "picked", faint: false },
-  reading: { style: "picked", faint: false },
-  subagent: { style: "picked", faint: false },
-  starting: { style: "picked", faint: false },
-  testing: { style: "testing", faint: false },
-  done: { style: "closed", faint: true },
-  deferred: { style: "deferred", faint: true },
-  review: { style: "deferred", faint: true },
-  resolving: { style: "deferred", faint: false },
-  fixing: { style: "deferred", faint: false },
-  retrying: { style: "deferred", faint: false },
-  limit: { style: "deferred", faint: false },
-  stopped: { style: "stop", faint: false },
-  blocked: { style: "stop", faint: false },
-  "for you": { style: "stop", faint: false },
-  "allow?": { style: "stop", faint: false },
-  "answer?": { style: "stop", faint: false },
-  "to merge": { style: "toMerge", faint: false },
-  merging: { style: "merging", faint: false },
-  waiting: { style: "dim", faint: true },
-  queued: { style: "dim", faint: true },
-  "held back": { style: "dim", faint: true },
-}
 
 /**
  * How tall the table is: `lines` in all with its label, blank rows filling it and the oldest rows
@@ -113,14 +84,13 @@ export const ticketsLines = (
     ])
   }
   for (const row of rows.slice(hidden)) {
-    const look = rowLooks[row.word] ?? { style: "dim", faint: false }
-    const style = styles[look.style]
+    const style = lookOf(row.tone, theme)
     const about =
       row.verdict !== null
-        ? seg(fit(`◆ ${row.verdict}`, aboutWidth), styles.organ)
-        : seg(fit(row.note, aboutWidth), look.faint ? styles.dim : null)
+        ? seg(fit(`${marks.verdict} ${row.verdict}`, aboutWidth), styles.organ)
+        : seg(fit(row.note, aboutWidth), row.faint ? styles.dim : null)
     cells.push([
-      [seg(fit(`${row.mark} ${row.word}`, stateWidth), style)],
+      [seg(fit(`${marks[row.mark]} ${row.word}`, stateWidth), style)],
       [seg(fit(row.label, idWidth), style)],
       [about],
     ])

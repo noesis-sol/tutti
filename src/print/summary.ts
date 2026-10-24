@@ -12,6 +12,7 @@ import { Data, type Effect } from "effect"
 import { type FiguresLine, labelWidth } from "../run/figures.ts"
 import type { Row, Totals } from "../run/runView.ts"
 import { fit, framed, paint, type Segments, seg, widthOf } from "../ui/line.tsx"
+import { marks } from "../ui/marks.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { ticketsLines } from "../ui/TicketsTable.tsx"
 import { runTime } from "../ui/TitleLine.tsx"
@@ -92,9 +93,9 @@ const parts = (theme: Theme, width: number) => {
       ...(t.queueHeld ? [seg(" · held", styles.windDown)] : []),
     ]
     const columns: ReadonlyArray<readonly [string, Segments]> = [
-      ["Completed", count(t.completed, "✓", styles.closed)],
-      ["Set aside", count(setAside, "↷", styles.deferred)],
-      ["Needs you", count(t.needsYou, "?", styles.stop)],
+      ["Completed", count(t.completed, marks.done, styles.closed)],
+      ["Set aside", count(setAside, marks.setAside, styles.deferred)],
+      ["Needs you", count(t.needsYou, marks.asked, styles.stop)],
       ["Workers", workers],
       ["In queue", queue],
     ]
@@ -106,10 +107,10 @@ const parts = (theme: Theme, width: number) => {
       // Too narrow for the strip: the totals on one line.
       const one = (n: number, mark: string, style: Style) => seg(`${mark} ${n}`, style)
       const each: ReadonlyArray<Segments> = [
-        [one(t.completed, "✓", styles.closed)],
-        [one(setAside, "↷", styles.deferred)],
-        [one(t.needsYou, "?", styles.stop)],
-        [one(t.workers, "▶", styles.picked), seg(`/${t.slots}`, styles.dim)],
+        [one(t.completed, marks.done, styles.closed)],
+        [one(setAside, marks.setAside, styles.deferred)],
+        [one(t.needsYou, marks.asked, styles.stop)],
+        [one(t.workers, marks.working, styles.picked), seg(`/${t.slots}`, styles.dim)],
         [seg(`queue ${t.queued}`, styles.dim)],
       ]
       return [[seg(" "), ...each.flatMap((part, i) => (i === 0 ? part : [zero(" · "), ...part]))]]
@@ -199,9 +200,9 @@ export const closing = (ending: Ending, theme: Theme): string => {
   const [text, scope] = splitScope(sanitizeLine(ending.text))
   const first: Segments =
     ending._tag === "Stopped"
-      ? [seg(`■ ${text}`, styles.stop)]
+      ? [seg(`${marks.stopped} ${text}`, styles.stop)]
       : [
-          seg(`♪ ${headline(text, ending.limit, ending.tickets)}`, styles.closed),
+          seg(`${marks.end} ${headline(text, ending.limit, ending.tickets)}`, styles.closed),
           seg("  "),
           seg(
             ending.took >= 1000

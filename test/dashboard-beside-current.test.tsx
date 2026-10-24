@@ -23,6 +23,7 @@ import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { Root } from "../src/ui/App.tsx"
 import { compactLines } from "../src/ui/Card.tsx"
 import { widthOf } from "../src/ui/line.tsx"
+import { marks, type Shown } from "../src/ui/marks.ts"
 import { rowsBesideCurrent } from "../src/ui/TicketsTable.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
@@ -389,8 +390,7 @@ describe("the compact Current list's columns", () => {
 
 describe("the square for a ticket to merge", () => {
   test("◼ to merge, and ◷ for a ticket waiting on another", () => {
-    const join = (status: { readonly mark: string; readonly word: string }) =>
-      `${status.mark} ${status.word}`
+    const join = (status: Shown) => `${marks[status.mark]} ${status.word}`
     expect(join(rowStatus(TicketPhase.ToMerge({ place: 1 })))).toBe("◼ to merge")
     expect(
       join(rowStatus(TicketPhase.Waiting({ for: WaitFor.Blockers({ ids: ["tut-a1"] }) }))),
@@ -413,6 +413,6 @@ describe("the square for a ticket to merge", () => {
       windDown: null,
       bugs: [],
     })
-    expect(view.cards[0]?.motion).toBe("◼")
+    expect(view.cards[0]?.motion).toBe("toMerge")
   })
 })

@@ -7,6 +7,7 @@ import { Deferred, Duration, Effect, type FileSystem, Predicate, Schema } from "
 import type { ChildProcessSpawner } from "effect/process"
 import { exec, showCommand } from "../services/exec.ts"
 import { whichOnPath } from "../services/onPath.ts"
+import { marks as glyphs } from "../ui/marks.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 
 /**
@@ -134,10 +135,10 @@ export const runSteps = <S extends SetupStep<unknown, unknown>>(
 
 /** The summary's mark for each kind. */
 export const marks: Record<StepKind, string> = {
-  done: "✓",
-  kept: "•",
-  missing: "✗",
-  caution: "!",
+  done: glyphs.done,
+  kept: glyphs.kept,
+  missing: glyphs.missing,
+  caution: glyphs.caution,
 }
 
 /**

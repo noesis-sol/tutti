@@ -13,6 +13,7 @@ import { type Level, swappingPerMinute } from "../run/load.ts"
 import type { LoadView, Totals } from "../run/runView.ts"
 import { type FitPart, fitParts } from "./fit.ts"
 import { cut, Line, type Look, type Segments, seg } from "./line.tsx"
+import { marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
 /** A level's look: green `done`, amber `notice` (`windingDown` is for winding down only), red `stop`. */
@@ -40,8 +41,8 @@ const workersPart = (totals: Totals, theme: Theme): Segments => {
   const { styles } = theme
   const of = ` of ${totals.slots} ${totals.slots === 1 ? "worker" : "workers"}`
   return totals.workers === 0
-    ? [seg(`▶ 0${of}`, styles.dim)]
-    : [seg(`▶ ${totals.workers}`, styles.picked), seg(of, styles.dim)]
+    ? [seg(`${marks.working} 0${of}`, styles.dim)]
+    : [seg(`${marks.working} ${totals.workers}`, styles.picked), seg(of, styles.dim)]
 }
 
 /**

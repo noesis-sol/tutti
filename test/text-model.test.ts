@@ -6,7 +6,8 @@ import { TextAttributes } from "@opentui/core"
 import fc from "fast-check"
 import { initSummary } from "../src/print/initSummary.ts"
 import { type Summary, summary } from "../src/print/summary.ts"
-import { emptyView, type Row } from "../src/run/runView.ts"
+import { Outcome, TicketPhase } from "../src/run/phase.ts"
+import { emptyView, type Row, rowStatus } from "../src/run/runView.ts"
 import { boxed, paint, type Segments, seg, wrap } from "../src/ui/line.tsx"
 import { ticketsLines } from "../src/ui/TicketsTable.tsx"
 import { makeTheme, orchestra, roles } from "../src/ui/theme.ts"
@@ -108,12 +109,11 @@ describe("paint", () => {
   })
 })
 
-const row = (ticket: string, mark: string, word: string, note: string): Row => ({
+const row = (ticket: string, phase: TicketPhase, note: string): Row => ({
   ticket,
   label: ticket,
   title: note,
-  mark,
-  word,
+  ...rowStatus(phase),
   note,
   verdict: null,
 })
@@ -130,9 +130,9 @@ const ended = (rows: ReadonlyArray<Row>): Summary => ({
 
 describe("the summary's tickets", () => {
   const rows = [
-    row("tut-1", "✓", "done", "abc1234 merged into main"),
-    { ...row("tut-2", "↷", "deferred", "gave up"), verdict: "retry after tut-1" },
-    row("tut-3", "▶", "working", "Three"),
+    row("tut-1", TicketPhase.Done({ outcome: Outcome.NoChange() }), "abc1234 merged into main"),
+    { ...row("tut-2", TicketPhase.Deferred({ why: "" }), "gave up"), verdict: "retry after tut-1" },
+    row("tut-3", TicketPhase.Working({ activity: "working" }), "Three"),
   ]
 
   test("are the dashboard's table, every row and no blank one", () => {
@@ -148,7 +148,9 @@ describe("the summary's tickets", () => {
   })
 
   test("every row is shown, however many", () => {
-    const many = Array.from({ length: 30 }, (_, i) => row(`tut-${i}`, "✓", "done", "merged"))
+    const many = Array.from({ length: 30 }, (_, i) =>
+      row(`tut-${i}`, TicketPhase.Done({ outcome: Outcome.NoChange() }), "merged"),
+    )
     const out = summary(ended(many), theme, 80).replace(sgr, "")
     expect(out).not.toContain("earlier tickets")
     for (const each of many) expect(out).toContain(`${each.label} `)

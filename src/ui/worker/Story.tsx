@@ -10,6 +10,7 @@ import { RGBA } from "@opentui/core"
 import { memo, type ReactNode } from "react"
 import { clickable } from "../click.ts"
 import { cut, Line, padded, type Segments, seg, widthOf, wrap } from "../line.tsx"
+import { marks } from "../marks.ts"
 import { sanitize } from "../sanitize.ts"
 import type { Role, Theme } from "../theme.ts"
 import {
@@ -32,7 +33,7 @@ const markSegments = (mark: Mark, theme: Theme, room: number): Segments => {
     case "Pending":
       return []
     case "Done":
-      return [seg("✓", theme.look("done"))]
+      return [seg(marks.done, theme.look("done"))]
     case "Error":
       return cut([seg(mark.line, theme.look("needsYou"))], Math.max(room, 1))
     case "Edit":
@@ -46,7 +47,7 @@ const markSegments = (mark: Mark, theme: Theme, room: number): Segments => {
 
 /** What goes before an item's line: `▸ ` when it is selected. */
 const gutter = (selected: boolean, theme: Theme): Segments => [
-  seg(selected ? "▸ " : "  ", theme.styles.key),
+  seg(selected ? `${marks.selected} ` : "  ", theme.styles.key),
 ]
 
 /** The most lines a collapsed tool call or message takes; the last is cut with `…` (§ 7.5). */
@@ -105,10 +106,14 @@ const promptLines = (
   const from = lines.findIndex((line) => line.trim() !== "")
   const to = lines.findLastIndex((line) => line.trim() !== "")
   const body = from === -1 ? "" : lines.slice(from, to + 1).join("\n")
-  return wrap([...gutter(selected, theme), seg("› ", theme.styles.dim), seg(body)], width, {
-    indent: 4,
-    limit,
-  })
+  return wrap(
+    [...gutter(selected, theme), seg(`${marks.said} `, theme.styles.dim), seg(body)],
+    width,
+    {
+      indent: 4,
+      limit,
+    },
+  )
 }
 
 /** What a list of entries is drawn with besides them. */

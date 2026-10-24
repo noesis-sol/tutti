@@ -25,6 +25,7 @@ import { asRecord } from "../agent/untrusted.ts"
 import type { Command } from "./keyCommands.ts"
 import { cut, Line, padded, type Segments, seg, widthOf } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
+import { marks } from "./marks.ts"
 import { descriptionKeys } from "./StartQuestion.tsx"
 import { sanitizeLine } from "./sanitize.ts"
 import type { Theme } from "./theme.ts"
@@ -196,7 +197,7 @@ export const queuedLine = (send: Send, theme: Theme, width: number, word = "queu
   const room = Math.max(width - widthOf(mark) - 2, 0)
   const head: Segments = [
     seg("  "),
-    seg("› ", theme.styles.dim),
+    seg(`${marks.said} `, theme.styles.dim),
     seg(sanitizeLine(lines[0] ?? "")),
     ...(lines.length > 1 ? [seg(" …", theme.styles.dim)] : []),
   ]

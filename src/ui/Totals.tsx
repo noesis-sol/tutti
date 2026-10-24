@@ -8,6 +8,7 @@
 import type { Totals as TotalsView } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
 import { cut, framed, Lines, type Look, type Segments, seg, widthOf } from "./line.tsx"
+import { marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
 /** How much of Set aside's triage note the strip says: ` · ◆ n triaged`, ` · ◆ n`, or none. */
@@ -24,11 +25,12 @@ const cells = (t: TotalsView, theme: Theme, triage: Triage): ReadonlyArray<Segme
     n === 0
       ? [faint(`0 ${label}`)]
       : [seg(mark === "" ? String(n) : `${mark} ${n}`, look), faint(` ${label}`)]
-  const note = { full: ` · ◆ ${t.triaged} triaged`, short: ` · ◆ ${t.triaged}`, none: "" }[triage]
+  const verdict = `${marks.verdict} ${t.triaged}`
+  const note = { full: ` · ${verdict} triaged`, short: ` · ${verdict}`, none: "" }[triage]
   const triaged: Segments = t.triaged > 0 && note !== "" ? [seg(note, styles.organ)] : []
   return [
-    cell(t.completed, "✓", styles.closed, "Completed"),
-    [...cell(t.deferred + t.review, "↷", styles.deferred, "Set aside"), ...triaged],
+    cell(t.completed, marks.done, styles.closed, "Completed"),
+    [...cell(t.deferred + t.review, marks.setAside, styles.deferred, "Set aside"), ...triaged],
     cell(t.needsYou, "", styles.stop, "Needs you"),
     [...queueCount(t, theme), faint(" In queue"), ...queueNotes(t, theme, " · ")],
   ]
@@ -66,13 +68,15 @@ export const totalsLine = (
   const { styles } = theme
   const dot = seg(" · ", styles.dim)
   const parts: ReadonlyArray<Segments> = [
-    [seg(`✓ ${t.completed}`, styles.closed)],
+    [seg(`${marks.done} ${t.completed}`, styles.closed)],
     [
-      seg(`↷ ${t.deferred + t.review}`, styles.deferred),
-      ...(t.triaged > 0 ? [seg(` ◆ ${t.triaged}`, styles.organ)] : []),
+      seg(`${marks.setAside} ${t.deferred + t.review}`, styles.deferred),
+      ...(t.triaged > 0 ? [seg(` ${marks.verdict} ${t.triaged}`, styles.organ)] : []),
     ],
-    [seg(`? ${t.needsYou}`, styles.stop)],
-    ...(workers ? [[seg(`▶ ${t.workers}`, styles.picked), seg(`/${t.slots}`, styles.dim)]] : []),
+    [seg(`${marks.asked} ${t.needsYou}`, styles.stop)],
+    ...(workers
+      ? [[seg(`${marks.working} ${t.workers}`, styles.picked), seg(`/${t.slots}`, styles.dim)]]
+      : []),
     [seg("queue ", styles.dim), ...queueCount(t, theme), ...queueNotes(t, theme, " ")],
   ]
   return cut([seg(" "), ...parts.flatMap((part, i) => (i === 0 ? part : [dot, ...part]))], width)

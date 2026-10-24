@@ -4,6 +4,7 @@
 // queue, a merge's step), never its tag. The run loop drives the machine; the ledger, RunView, the
 // log, the event stream and the report read it.
 import { Data, Result, Schema } from "effect"
+import type { Mark, Shown, Tone } from "../ui/marks.ts"
 import {
   type endingPhases,
   type Kind,
@@ -740,12 +741,6 @@ export interface SessionKeeps {
   readonly handBackWaits: boolean
 }
 
-/** A ticket's mark and word in the tickets table: `▶ editing`, `◼ to merge`, … */
-export interface RowStatus {
-  readonly mark: string
-  readonly word: string
-}
-
 /**
  * What is so of a ticket in a phase, wherever the run asks: what it counts as, where it is in the
  * run, its session, its row. A phase without an entry, or an entry without a fact, doesn't compile.
@@ -789,8 +784,8 @@ export interface Facts<T extends PhaseTag> {
   readonly orchestra: PhaseSeconds | null
   /** Its session's lifetime (§ 4.8). */
   session(phase: PhaseOf<T>, keeps: SessionKeeps): Lifetime
-  /** Its row's mark and word. */
-  row(phase: PhaseOf<T>): RowStatus
+  /** Its row's mark, word and tone: `▶ editing`, `◼ to merge`, … The same object each call. */
+  row(phase: PhaseOf<T>): Shown
 }
 
 // The facts that are the same for every phase of a tag give the same value each call: the
@@ -805,20 +800,29 @@ const workers: ReadonlyArray<Total> = ["workers"]
 const workersAndYou: ReadonlyArray<Total> = ["workers", "needsYou"]
 const setupFailed: ReadonlyArray<Total> = ["setupFailed"]
 
-const shows = (mark: string, word: string) => always<RowStatus>({ mark, word })
+const shows = (mark: Mark, word: string, tone: Tone, faint = false) =>
+  always<Shown>({ mark, word, tone, faint })
 
-const activityRow = (activity: Activity): RowStatus =>
-  activity === "allow"
-    ? { mark: "■", word: "allow?" }
-    : activity === "answer"
-      ? { mark: "■", word: "answer?" }
-      : activity === "limit"
-        ? { mark: "◷", word: "limit" }
-        : { mark: "▶", word: activity }
+const atWork = (word: string, tone: Tone = "picked"): Shown => ({
+  mark: "working",
+  word,
+  tone,
+  faint: false,
+})
 
-const activityRows = Object.fromEntries(
-  activities.map((activity) => [activity, activityRow(activity)]),
-) as { readonly [A in Activity]: RowStatus }
+/** A Working ticket's row by its worker's activity (§ 7.11's ticket rows). */
+export const activityRows: { readonly [A in Activity]: Shown } = {
+  working: atWork("working"),
+  editing: atWork("editing"),
+  reading: atWork("reading"),
+  testing: atWork("testing", "testing"),
+  subagent: atWork("subagent"),
+  starting: atWork("starting"),
+  retrying: atWork("retrying", "deferred"),
+  allow: { mark: "waitsForYou", word: "allow?", tone: "stop", faint: false },
+  answer: { mark: "waitsForYou", word: "answer?", tone: "stop", faint: false },
+  limit: { mark: "queued", word: "limit", tone: "deferred", faint: false },
+}
 
 /**
  * What is so of each phase: the dashboard's totals, the run's end notice, the reviewer's sections,
@@ -844,7 +848,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: null,
     session: always("closed"),
-    row: shows("◷", "queued"),
+    row: shows("queued", "queued", "dim", true),
   },
   HeldBack: {
     totals: always(["heldBack"]),
@@ -863,7 +867,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: null,
     session: always("closed"),
-    row: shows("◷", "held back"),
+    row: shows("queued", "held back", "dim", true),
   },
   Working: {
     totals: (phase) =>
@@ -903,7 +907,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: "waiting",
     session: always("open"),
-    row: shows("◼", "to merge"),
+    row: shows("toMerge", "to merge", "toMerge"),
   },
   Merging: {
     totals: always(none),
@@ -922,7 +926,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: "merging",
     session: always("open"),
-    row: shows("◆", "merging"),
+    row: shows("merging", "merging", "merging"),
   },
   Resolving: {
     totals: always(workers),
@@ -941,7 +945,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: "resolving",
     session: always("open"),
-    row: shows("⟳", "resolving"),
+    row: shows("reworking", "resolving", "deferred"),
   },
   Fixing: {
     totals: always(workers),
@@ -960,7 +964,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: "fixing",
     session: always("open"),
-    row: shows("⟳", "fixing"),
+    row: shows("reworking", "fixing", "deferred"),
   },
   Done: {
     totals: always(["completed"]),
@@ -979,7 +983,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: true,
     orchestra: null,
     session: always("closed"),
-    row: shows("✓", "done"),
+    row: shows("done", "done", "closed", true),
   },
   // Its worker settled before it filed the question: its session is closed until the answer.
   Asked: {
@@ -999,7 +1003,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: null,
     session: always("closed"),
-    row: shows("?", "for you"),
+    row: shows("asked", "for you", "stop"),
   },
   Waiting: {
     // Only one whose setup failed counts, apart in In queue, as it waits for a merge or a probe.
@@ -1019,7 +1023,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: null,
     session: always("closed"),
-    row: shows("◷", "waiting"),
+    row: shows("queued", "waiting", "dim", true),
   },
   Deferred: {
     totals: always(["setAside"]),
@@ -1038,7 +1042,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: true,
     orchestra: null,
     session: always("closed"),
-    row: shows("↷", "deferred"),
+    row: shows("setAside", "deferred", "deferred", true),
   },
   Review: {
     totals: always(["setAside"]),
@@ -1059,7 +1063,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     // A recheck may hand it a conflict.
     session: (phase, { recheck }) =>
       phase.why === "CHECKS_FAILED" && recheck ? "untilRunEnds" : "closed",
-    row: shows("!", "review"),
+    row: shows("review", "review", "deferred", true),
   },
   Blocked: {
     totals: always(["needsYou"]),
@@ -1080,7 +1084,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     // You may message, interrupt or release its steered worker while its hand-back waits (§ 4.3).
     session: (phase, { handBackWaits }) =>
       phase.why === "MERGE_CONFLICT" && handBackWaits ? "open" : "closed",
-    row: shows("■", "blocked"),
+    row: shows("waitsForYou", "blocked", "stop"),
   },
   // The run's end suspends its session.
   Stopped: {
@@ -1100,7 +1104,7 @@ export const phaseFacts: { readonly [T in PhaseTag]: Facts<T> } = {
     over: false,
     orchestra: null,
     session: always("suspended"),
-    row: shows("■", "stopped"),
+    row: shows("stopped", "stopped", "stop"),
   },
 }
 

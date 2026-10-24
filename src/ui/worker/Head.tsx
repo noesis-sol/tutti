@@ -85,7 +85,7 @@ export const WorkerHead = ({
   const head = (now: number, spin: string): Segments => {
     if (card === undefined) return [seg(`${sanitizeLine(ticket)} has no worker`, theme.styles.dim)]
     if (finished) ended.current ??= now
-    const shown: Card = finished ? { ...card, motion: "•", steered: false } : card
+    const shown: Card = finished ? { ...card, motion: "idle", steered: false } : card
     const status = finished
       ? seg(finishedWords(ticket).status, theme.styles.done)
       : seg(card.status, statusLook(card, theme))

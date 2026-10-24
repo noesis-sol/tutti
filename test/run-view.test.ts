@@ -33,6 +33,7 @@ import { Captured } from "../src/testing/EventStream.ts"
 import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import { texts } from "../src/testing/Log.ts"
 import { dashboardHint } from "../src/ui/Dashboard.tsx"
+import { marks } from "../src/ui/marks.ts"
 import { sanitizeLine } from "../src/ui/sanitize.ts"
 
 type Env = Ledger | Log | EventStream | Captured | Scope.Scope
@@ -136,7 +137,7 @@ describe("totals", () => {
     })
     const status = (ticket: string) => {
       const row = view.rows.find((each) => each.ticket === ticket)
-      return row === undefined ? undefined : `${row.mark} ${row.word}`
+      return row === undefined ? undefined : `${marks[row.mark]} ${row.word}`
     }
     expect(status("queued")).toBeUndefined()
     expect(status("held")).toBeUndefined()
@@ -160,7 +161,7 @@ describe("totals", () => {
     )
     const asking = view.cards.find((card) => card.ticket === "asking")
     expect(asking?.status).toBe("permission — waiting for you (2)")
-    expect(asking?.motion).toBe("•")
+    expect(asking?.motion).toBe("idle")
     expect(view.cards.find((card) => card.ticket === "to-merge")?.status).toBe("to merge (1st)")
     expect(view.cards.find((card) => card.ticket === "merging")?.action).toBe("rebasing onto main")
   })
