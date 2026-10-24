@@ -819,9 +819,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const hearQuit = (request: QuitRequest) =>
       Effect.gen(function* () {
         asked += 1
+        // A panic that already quit the run makes the first request the second: it says what is
+        // under way, and the next exits at once.
+        if (heard(asked) === "quit" && !(yield* Deferred.succeed(quitting, { request }))) asked += 1
         switch (heard(asked)) {
           case "quit":
-            yield* Deferred.succeed(quitting, { request })
             return
           case "warn": {
             const merging = (yield* queue.state).merging
