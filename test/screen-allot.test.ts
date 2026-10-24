@@ -36,7 +36,16 @@ describe("stack", () => {
         "body",
       ),
     ).toEqual({ hint: 1, head: 2, body: 3, panel: 4 })
-    expect(stack(4, [["hint", 1]], "body")).toEqual({ hint: 1, body: 3 })
+    expect(
+      stack(
+        4,
+        [
+          ["hint", 1],
+          ["body", 0],
+        ],
+        "body",
+      ),
+    ).toEqual({ hint: 1, body: 3 })
   })
 
   test("adds up a part named more than once", () => {

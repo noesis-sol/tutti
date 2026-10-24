@@ -25,8 +25,8 @@ export const allot = (height: number): Allotment => {
 
 /**
  * A pane `height` tall handed out to `wants` in their order, each its part's lines of those left,
- * a part named more than once the sum of them; then `rest` takes the lines left. The parts add up
- * to `height`.
+ * a part named more than once the sum of them; then `rest`, one of their parts, takes the lines
+ * left. The parts add up to `height`.
  */
 export const stack = <K extends string>(
   height: number,
