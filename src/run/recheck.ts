@@ -100,9 +100,18 @@ export const makeRechecks: Effect.Effect<Rechecks> = Effect.gen(function* () {
 })
 
 // A line of a check's output naming a package that failed, by its import path (go test's FAIL,
-// gotestsum's === FAIL:), or a file, by its position (a lint, vet or build error).
+// gotestsum's === FAIL:), or a file, by its position: a lint, vet or build error's
+// `a.go:10:5: …`, tsc's `src/a.ts(10,5): error TS2322: …`, or a Biome diagnostic's header as the
+// check keeps it (Checks.ts), `src/a.ts:10:5 lint/style/useConst  FIXABLE` or, for a file's
+// format, `src/a.ts format`.
 const failedPackage = /^(?:FAIL|=== FAIL:)\s+(\S+)/
 const failedFile = /^([^\s:]+\.\w+):\d+(?::\d+)?: /
+const failedInTsc = /^([^\s(]+\.\w+)\(\d+,\d+\): error TS\d/
+const failedInBiome = /^([^\s:]+\.\w+)(?::\d+(?::\d+)?)? [a-z][\w/]*(?: +[A-Z]+)*$/
+
+/** The file a line of a check's output names by its position; undefined when it names none. */
+const fileOf = (line: string): string | undefined =>
+  (failedFile.exec(line) ?? failedInTsc.exec(line) ?? failedInBiome.exec(line))?.[1]
 
 /** `path` as Go's path.Clean has it: no `.` or `..` parts, no trailing slash, `.` for none. */
 const clean = (path: string): string => {
@@ -125,7 +134,7 @@ export const ownFailures = (
   const found: Array<string> = []
   for (const each of said) {
     const pkg = failedPackage.exec(each)?.[1]
-    const file = pkg === undefined ? failedFile.exec(each)?.[1] : undefined
+    const file = pkg === undefined ? fileOf(each) : undefined
     if (pkg === undefined && file === undefined) continue
     const at = pkg === undefined ? posix.dirname(clean(file as string)) : clean(pkg)
     for (const folder of own) {
