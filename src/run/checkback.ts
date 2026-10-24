@@ -44,7 +44,7 @@ import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { type Commit, Git, gitWhy, givenHash, shortHash } from "../services/Git.ts"
 import { restoreBranch } from "./branch.ts"
-import { type Checked, failedHow, saidOf } from "./check.ts"
+import { failedHow, saidOf } from "./check.ts"
 import {
   type Counts,
   carryIfBaseMoved,
@@ -66,11 +66,12 @@ import {
   type MergeEnv,
   type MergeMemory,
   type MergeOptions,
+  type MergeTarget,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { info } from "./say.ts"
 import { namesTicket } from "./settle.ts"
-import type { Fix, SetUp } from "./setup.ts"
+import type { Fix } from "./setup.ts"
 
 /**
  * A check that failed on a finished ticket's branch rebased onto the base, or on top of it already
@@ -193,7 +194,7 @@ export const whyNotFix = (
       return not("it could not be run, so there is no failure to show its worker")
     }
     if (stop.at === "" || stop.head === "") return not("git could not say what the check failed on")
-    const noMore = options.noMore === undefined ? undefined : yield* options.noMore
+    const noMore = yield* options.noMore
     // A worker at the usage limit takes it once the limit lifts (handback.ts's give).
     if (noMore !== undefined && !(noMore === usageHolds && (yield* atLimit(id)))) {
       return not(noMore)
@@ -267,7 +268,7 @@ export const fixPrompt = (
  */
 export const handOverFix = (
   stop: CheckStop,
-  options: MergeOptions,
+  options: MergeTarget,
   fixes: Fixes,
 ): Effect.Effect<boolean, never, MergeEnv> =>
   Effect.gen(function* () {
@@ -310,8 +311,8 @@ export const Verified = Data.taggedEnum<Verified>()
  */
 export const verifyFixed = (
   stop: CheckStop,
-  options: MergeOptions,
-): Effect.Effect<Verified, never, MergeEnv> =>
+  options: MergeTarget,
+): Effect.Effect<Verified, never, Git> =>
   Effect.gen(function* () {
     const git = yield* Git
     const { id, branch } = stop.ticket
@@ -343,7 +344,7 @@ export const verifyFixed = (
  * progress aborted, and the branch reset when it is elsewhere and the worktree is clean and on it.
  * What it did, as words to add to why the fix was rejected: "" when the branch is there already.
  */
-export const undoFix = (stop: CheckStop): Effect.Effect<string, never, MergeEnv> =>
+export const undoFix = (stop: CheckStop): Effect.Effect<string, never, Git> =>
   Effect.gen(function* () {
     const { branch, worktree } = stop.ticket
     const to = stop.at
@@ -451,30 +452,12 @@ export const fixPassed = (
   })
 
 /**
- * What came of the check, or the setup before it, on what its worker left after `stop`'s failure
- * was handed back, `left`, `tries` saying what came of the hand-backs before it: Verified when it
- * passes; Aside when its worker committed nothing and it fails again, or it fails with no
- * hand-back left, the ticket set aside; else Again, the failure on the fix to be handed back
- * again, its `tried` saying what came of each hand-back so far. `at`: the commit checked, its branch's as the
- * setup started ("" when git couldn't say), where a failure stops.
- */
-export const afterFix = (
-  stop: CheckStop,
-  left: Left,
-  checked: SetUp | Checked,
-  tries: ReadonlyArray<string>,
-  options: MergeOptions,
-  memory: MergeMemory,
-  at: string,
-): Effect.Effect<FixEnd, never, MergeEnv> =>
-  checked._tag === "Failed"
-    ? fixFailed(stop, left, checked.error, checked.output, tries, options, memory, at)
-    : Effect.as(fixPassed(stop.ticket, left), FixEnd.Verified())
-
-/**
  * What came of a check, or the setup before it, that failed (`error`, its output in `output`) on
- * what its worker left after `stop`'s failure was handed back, as afterFix says: Aside, the ticket
- * set aside, or Again, the failure on the fix, to be handed back again.
+ * what its worker left after `stop`'s failure was handed back, `left`, `tries` saying what came of
+ * the hand-backs before it: Aside when its worker committed nothing, or no hand-back is left, the
+ * ticket set aside; else Again, the failure on the fix, to be handed back again, its `tried` saying
+ * what came of each hand-back so far. `at`: the commit checked, its branch's as the setup started
+ * ("" when git couldn't say), where a failure stops.
  */
 export const fixFailed = (
   stop: CheckStop,
@@ -569,7 +552,21 @@ export const fixCheck = (
       const rest = Effect.succeed({ fixed: verified, tries })
       if (yield* carryIfBaseMoved(stop, did, fix, rest, options, memory)) return FixEnd.Verified()
       const { at, checked } = yield* checkWithFix(stop, fix, options, memory)
-      const after = yield* afterFix(stop, verified, checked, tries, options, memory, at)
+      // Verified when it passes; else what came of the failure on what its worker left.
+      if (checked._tag !== "Failed") {
+        yield* fixPassed(stop.ticket, verified)
+        return FixEnd.Verified()
+      }
+      const after = yield* fixFailed(
+        stop,
+        verified,
+        checked.error,
+        checked.output,
+        tries,
+        options,
+        memory,
+        at,
+      )
       if (after._tag !== "Again") return after
       if (!(yield* handOverFix(after.stop, options, memory.fixes))) return FixEnd.Aside()
       stop = after.stop

@@ -13,7 +13,7 @@ import { oneLine } from "../ui/oneLine.ts"
 import { failedHow } from "./check.ts"
 import type { Entry } from "./ledger.ts"
 import { branchOn } from "./log.ts"
-import type { FinishedTicket, MergeOptions } from "./merge.ts"
+import type { FinishedTicket, MergeTarget } from "./merge.ts"
 import { foldersOf, type Rechecks } from "./recheck.ts"
 import { descendants } from "./scope.ts"
 
@@ -86,7 +86,7 @@ export const failedCheckSaid = (f: FailedCheck): string => {
  */
 export const noteFailedCheck = (
   ticket: FinishedTicket,
-  options: MergeOptions,
+  options: MergeTarget,
   rechecks: Rechecks,
   onto: string,
   error: CheckError,

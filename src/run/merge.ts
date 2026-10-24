@@ -88,7 +88,7 @@ import {
   whyNotFix,
 } from "./checkback.ts"
 import { writtenOnly } from "./checkWrote.ts"
-import { EventStream } from "./eventstream.ts"
+import type { EventStream } from "./eventstream.ts"
 import {
   type AtReset,
   type HandBacks,
@@ -118,6 +118,10 @@ export interface FinishedTicket {
   readonly worktree: string
 }
 
+/**
+ * What the merges read of the run, resolved once by mergequeue.make from what the run gave it
+ * (GivenMergeOptions): each "without it" is the default it puts in its place.
+ */
 export interface MergeOptions {
   /** The main checkout. */
   readonly repo: string
@@ -127,7 +131,7 @@ export interface MergeOptions {
    * Why the run takes on no more work, as the merges say it (holds.ts's noMoreWork): undefined when
    * it does. A failed check isn't handed back to its worker then. Without it, only a drain counts.
    */
-  readonly noMore?: Effect.Effect<string | undefined>
+  readonly noMore: Effect.Effect<string | undefined>
   /**
    * Where a hand-back due to a worker at the account's usage limit waits for the limit to lift: the
    * usage-limit hold, which sends it at the reset (handback.ts's give). Without it, it is sent at once.
@@ -138,16 +142,27 @@ export interface MergeOptions {
    * has it pressed (load.ts's pressing). A hand-back's time limit leaves out the time it is, up to
    * the limit again (handback.ts's give). Without it, the machine is never loaded.
    */
-  readonly loaded?: Effect.Effect<boolean>
+  readonly loaded: Effect.Effect<boolean>
   /**
    * Takes a slot for a ticket checked once more (recheck.ts) and runs `work` in it, as a running
    * ticket's: false, taking none, while a solo ticket runs or is next, no slot is free, or the
    * ticket holds one still (the scheduler's recheckSlot). Without it, a recheck takes no slot.
    */
-  readonly recheckSlot?: (ticket: string, work: Effect.Effect<void>) => Effect.Effect<boolean>
+  readonly recheckSlot: (ticket: string, work: Effect.Effect<void>) => Effect.Effect<boolean>
   /** The run's setups (setup.ts), which starting a ticket shares; the queue's own without it. */
-  readonly setUps?: SetUps
+  readonly setUps: SetUps
+  /**
+   * Whether the run holds at the machine's cap on workers: no check ahead starts then
+   * (mergetrain.ts). Never without it.
+   */
+  readonly machineFull: Effect.Effect<boolean>
 }
+
+/** Where the merges land: the main checkout and the base, all that most of their steps read. */
+export type MergeTarget = Pick<MergeOptions, "repo" | "base">
+
+/** What the run gives the merge queue: where the merges land, and any of the others. */
+export type GivenMergeOptions = MergeTarget & Partial<Omit<MergeOptions, "repo" | "base">>
 
 /** What stops the merges, and the exit code the run ends with for it (§ 5 item 10). */
 export const stopCodes = { DIRTY_TREE: 5, GIT_FAILED: 4, MERGE_FAILED: 6 } as const
@@ -241,16 +256,6 @@ export type MergeEnv =
   | AgentHost
   | Store
 
-const services = Effect.all({
-  config: AppConfig,
-  git: Git,
-  worktrees: Worktrees,
-  beads: Beads,
-  ledger: Ledger,
-  log: Log,
-  events: EventStream,
-})
-
 /** `<tag>: <id> closed, but …`, the line of a ticket its merge sets aside or blocks. */
 const closedButLine =
   (ticket: FinishedTicket, tag: string) =>
@@ -273,7 +278,7 @@ const closedBut =
 /** The ticket can't merge until you act: Merging → Blocked, with `record` and its line beside it. */
 const block = (ticket: FinishedTicket, why: string, record: Said) =>
   Effect.gen(function* () {
-    const { ledger } = yield* services
+    const ledger = yield* Ledger
     yield* ledger.transition(ticket.id, Cause.Block({ why }), { said: [record] })
   })
 
@@ -312,11 +317,11 @@ export interface Changed {
  */
 export const unchanged = (
   ticket: FinishedTicket,
-  options: MergeOptions,
+  options: MergeTarget,
   why: (own: boolean) => string,
-): Effect.Effect<Unchanged | Changed, never, MergeEnv> =>
+): Effect.Effect<Unchanged | Changed, never, Git> =>
   Effect.gen(function* () {
-    const { git } = yield* services
+    const git = yield* Git
     const { repo, base } = options
     const read = yield* Effect.all(
       {
@@ -456,7 +461,9 @@ const rebaseAndCheck = (
   status: WorktreeStatus | undefined,
 ): Effect.Effect<CheckOutcome, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, ledger, log } = yield* services
+    const git = yield* Git
+    const ledger = yield* Ledger
+    const log = yield* Log
     const { id, branch, worktree } = ticket
     const { repo, base } = options
     const dirty = yield* setAsideDirty(
@@ -565,7 +572,9 @@ const setUpAndCheck = (
   MergeEnv
 > =>
   Effect.gen(function* () {
-    const { git, ledger, log } = yield* services
+    const git = yield* Git
+    const ledger = yield* Ledger
+    const log = yield* Log
     const { id, branch } = ticket
     const tries = carried?.tries ?? []
     // The commit checked: one made while the setup and check run is checked before it merges.
@@ -701,7 +710,7 @@ export const checksFailed = (
   onTop = false,
 ): Effect.Effect<void, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { log } = yield* services
+    const log = yield* Log
     const where = error._tag === "CheckNotRun" ? "" : line` (output is in ${output})`
     const again = (yield* rechecks.rechecked(ticket.id)) ? " again" : ""
     const later = yield* keepForRecheck(ticket, options, rechecks, onto, error)
@@ -754,7 +763,9 @@ export const prepare = (
   memory: MergeMemory,
 ): Effect.Effect<Prepared, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { config, git, log } = yield* services
+    const config = yield* AppConfig
+    const git = yield* Git
+    const log = yield* Log
     const { id, branch, worktree } = ticket
     const { repo, base } = options
     // A conflict you handed over is handed back to its steered worker in this merge only (§ 4.3).
@@ -1004,7 +1015,7 @@ export interface DoneTicket {
  */
 export const removeMerged = (
   ticket: Omit<DoneTicket, "title">,
-  options: MergeOptions,
+  options: MergeTarget,
   how: { readonly moveToBase: boolean | "ahead"; readonly leaveChanged?: boolean },
 ): Effect.Effect<Cleanup, never, Git | Worktrees | Log> =>
   Effect.gen(function* () {
@@ -1073,7 +1084,7 @@ export const cleanupFailed = (
  */
 export const retire = (
   ticket: DoneTicket,
-  options: MergeOptions,
+  options: MergeTarget,
   how: {
     readonly cause: Cause
     readonly moveToBase: boolean | "ahead"
@@ -1087,7 +1098,8 @@ export const retire = (
   },
 ): Effect.Effect<void, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { beads, ledger } = yield* services
+    const beads = yield* Beads
+    const ledger = yield* Ledger
     const { id, title } = ticket
     const cleanup = yield* removeMerged(ticket, options, how)
     const shown =
@@ -1109,7 +1121,7 @@ export const retire = (
  */
 export const closeUnchanged = (
   ticket: FinishedTicket,
-  options: MergeOptions,
+  options: MergeTarget,
   unchanged: Unchanged,
 ): Effect.Effect<void, never, MergeEnv> =>
   retire(ticket, options, {
@@ -1133,7 +1145,9 @@ export const closeUnchanged = (
  */
 export const closeEpics = (id: string, read?: Result.Result<Issue, BeadsError>) =>
   Effect.gen(function* () {
-    const { config, beads, ledger } = yield* services
+    const config = yield* AppConfig
+    const beads = yield* Beads
+    const ledger = yield* Ledger
     const shown = read ?? (yield* Effect.result(beads.show(id)))
     let parent = Result.isSuccess(shown) ? shown.success.parent : undefined
     while (parent !== undefined) {
@@ -1200,7 +1214,7 @@ export const Refused = Data.taggedEnum<Refused>()
  * as steering makes them.
  */
 export const diagnose = (
-  options: Pick<MergeOptions, "repo" | "base">,
+  options: MergeTarget,
   onto: string,
   at: string,
   status: ReadonlyArray<StatusEntry>,
@@ -1242,12 +1256,14 @@ export const diagnose = (
  */
 export const fastForward = (
   ticket: FinishedTicket,
-  options: MergeOptions,
+  options: MergeTarget,
   onto: string,
   at: string,
 ): Effect.Effect<FastForward, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, ledger, log } = yield* services
+    const git = yield* Git
+    const ledger = yield* Ledger
+    const log = yield* Log
     const { id, branch, worktree } = ticket
     const { repo, base } = options
     yield* ledger.refine(id, Detail.Step({ step: "fast-forward" }))

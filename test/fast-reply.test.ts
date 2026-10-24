@@ -110,7 +110,7 @@ describe("a reply that comes at once", () => {
         // Just started, its state Starting: the hand-back is sent to its open session, and its
         // script's fiber, forked by the start, answers it before any fiber give forks has run.
         yield* host.start(id, session)
-        return yield* give(handBack, Duration.minutes(30), {})
+        return yield* give(handBack, Duration.minutes(30), { loaded: Effect.succeed(false) })
       }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<
         string | undefined,
         unknown,

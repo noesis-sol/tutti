@@ -58,6 +58,7 @@ import {
   closeUnchanged,
   type FinishedTicket,
   fastForward,
+  type GivenMergeOptions,
   keptChanging,
   type MergeEnv,
   type MergeOptions,
@@ -152,10 +153,7 @@ export const isSettled = (state: QueueState): boolean =>
  * then quits, PANIC); the ticket whose merge it cut short before the fast-forward is back in line.
  */
 export const make = (
-  options: MergeOptions & {
-    /** Whether the run holds at the machine's cap on workers: no check ahead starts then. */
-    readonly machineFull?: Effect.Effect<boolean>
-  },
+  given: GivenMergeOptions,
   onPanic?: (where: string, defect: unknown) => Effect.Effect<void>,
 ): Effect.Effect<MergeQueue, never, MergeEnv | RunFibers | Scope.Scope> =>
   Effect.gen(function* () {
@@ -168,7 +166,16 @@ export const make = (
     const rechecks = yield* makeRechecks
     // Set as quitting begins: no more turns or hand-backs.
     const held = yield* Ref.make(false)
-    const setUps = options.setUps ?? (yield* makeSetUps)
+    // What the run didn't give, in its place once (MergeOptions): a recheck then takes no slot.
+    const options: MergeOptions = {
+      ...given,
+      noMore: given.noMore ?? Effect.succeed(undefined),
+      loaded: given.loaded ?? Effect.succeed(false),
+      recheckSlot: given.recheckSlot ?? (() => Effect.succeed(true)),
+      setUps: given.setUps ?? (yield* makeSetUps),
+      machineFull: given.machineFull ?? Effect.succeed(false),
+    }
+    const { setUps } = options
     const handBacks = yield* makeHandBacks
     const heldMessages = yield* makeHeld
     const fixes = yield* makeFixes

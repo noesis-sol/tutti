@@ -25,7 +25,7 @@ import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
-import { type FinishedTicket, type MergeOptions, someFiles } from "./merge.ts"
+import { type FinishedTicket, type MergeOptions, type MergeTarget, someFiles } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause } from "./phase.ts"
 import { clean } from "./repoFiles.ts"
@@ -149,7 +149,7 @@ export const ownFailures = (
  */
 export const keepForRecheck = (
   ticket: FinishedTicket,
-  options: MergeOptions,
+  options: MergeTarget,
   rechecks: Rechecks,
   onto: string,
   error: CheckError,
@@ -198,7 +198,7 @@ export const dropRechecks = (
   })
 
 /** Whether the base, at `base` now, has moved on from `onto`: on from it, not merely elsewhere. */
-const movedOn = (options: MergeOptions, onto: string, base: string) =>
+const movedOn = (options: MergeTarget, onto: string, base: string) =>
   Effect.gen(function* () {
     // On a base moved back, its branch would fast-forward unchecked.
     return base !== onto && (yield* (yield* Git).mergeBase(options.repo, onto, base)) === onto
@@ -208,7 +208,7 @@ const movedOn = (options: MergeOptions, onto: string, base: string) =>
  * Why the ticket, `issue` as bd has it now, is left as it is rather than checked once more, or
  * undefined.
  */
-const whyNot = (recheck: Recheck, issue: Issue, options: MergeOptions) =>
+const whyNot = (recheck: Recheck, issue: Issue, options: MergeTarget) =>
   Effect.gen(function* () {
     const git = yield* Git
     const ledger = yield* Ledger
@@ -248,7 +248,7 @@ const notNow = (queue: Pick<MergeQueue, "state">, options: MergeOptions) =>
   Effect.gen(function* () {
     if ((yield* (yield* Ledger).current).windDown !== null) return true
     if ((yield* queue.state).stop !== null) return true
-    return options.noMore !== undefined && (yield* options.noMore) !== undefined
+    return (yield* options.noMore) !== undefined
   })
 
 /**
@@ -278,10 +278,8 @@ export const recheckDue = (
       // Its slot is held from before its offer until its merge is over: a slot that waited for
       // nothing to start waiting would see it out of the queue before it went in.
       const offered = yield* Deferred.make<void>()
-      if (options.recheckSlot !== undefined) {
-        const work = Effect.andThen(Deferred.await(offered), mergeOver(queue, id))
-        if (!(yield* options.recheckSlot(id, work))) break
-      }
+      const work = Effect.andThen(Deferred.await(offered), mergeOver(queue, id))
+      if (!(yield* options.recheckSlot(id, work))) break
       const put = Effect.gen(function* () {
         // bd failing doesn't use up its recheck: it stays waiting, asked again at the next look.
         const issue = yield* Effect.result((yield* Beads).show(id))

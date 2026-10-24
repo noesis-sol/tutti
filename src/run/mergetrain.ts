@@ -315,14 +315,11 @@ export interface MergeTrain extends CheckWatch {
 }
 
 /**
- * The merge queue's train: `waiting` is its line, next first; `machineFull`, whether the run holds
- * at the machine's cap on workers. A defect in a train goes to `guard`, naming where it came from.
+ * The merge queue's train: `waiting` is its line, next first. A defect in a train goes to `guard`,
+ * naming where it came from.
  */
 export const make = (
-  options: MergeOptions & {
-    readonly waiting: Effect.Effect<ReadonlyArray<string>>
-    readonly machineFull?: Effect.Effect<boolean>
-  },
+  options: MergeOptions & { readonly waiting: Effect.Effect<ReadonlyArray<string>> },
   memory: MergeMemory,
   guard: (where: string, effect: Effect.Effect<void>) => Effect.Effect<void>,
 ): Effect.Effect<MergeTrain, never, MergeEnv | RunFibers | Scope.Scope> =>
@@ -333,7 +330,7 @@ export const make = (
     const log = yield* Log
     const { repo, base } = options
     const size = config.settings.merge.train
-    const machineFull = options.machineFull ?? Effect.succeed(false)
+    const { machineFull } = options
     // The trains (Trains), each change one step.
     const trains = yield* Ref.make(noTrains)
     const update = (change: (now: Trains) => Trains) => Ref.update(trains, change)
@@ -384,7 +381,7 @@ export const make = (
     // for its turn to close it as unchanged). Where git can't tell, it is put back, or isn't
     // rebased, and its turn asks again. Run with interruption off: once begun, the rebase finishes,
     // or is undone, and the branch's commits are known for its turn.
-    const rebaseAhead = (run: Run): Effect.Effect<Run, never, MergeEnv> =>
+    const rebaseAhead = (run: Run): Effect.Effect<Run, never, Git | Store> =>
       Effect.gen(function* () {
         const { id, branch, worktree } = run.ticket
         const notRebased = (from: Run, head = ""): Run => ({

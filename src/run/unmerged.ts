@@ -18,7 +18,7 @@ import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, ticketLine } from "./log.ts"
-import type { MergeOptions } from "./merge.ts"
+import type { MergeTarget } from "./merge.ts"
 import { info, warn } from "./say.ts"
 import { unmergedLabel } from "./scope.ts"
 
@@ -81,7 +81,7 @@ export interface Found {
  * when the base holds the branch's changes, squash-merged and the branch kept, a commit on the
  * base the branch doesn't have.
  */
-const branchMerged = (issue: Issue, branch: string, options: MergeOptions) =>
+const branchMerged = (issue: Issue, branch: string, options: MergeTarget) =>
   Effect.gen(function* () {
     const git = yield* Git
     const { repo, base } = options
@@ -100,10 +100,7 @@ const branchMerged = (issue: Issue, branch: string, options: MergeOptions) =>
  * (`unmerged_fork`) naming the ticket is its merge. Without a fork, or when git can't tell, it
  * hasn't merged. The Nothing to run box asks it too, so the run and the box agree.
  */
-export const mergedSince = (
-  issue: Issue,
-  options: MergeOptions,
-): Effect.Effect<Found, never, Git> =>
+export const mergedSince = (issue: Issue, options: MergeTarget): Effect.Effect<Found, never, Git> =>
   Effect.gen(function* () {
     const git = yield* Git
     if (ticketIdProblem(issue.id) !== undefined) return {}
@@ -134,7 +131,7 @@ export interface LeftUnmerged {
  * would hand them back, but only read: what the Nothing to run box counts, before the run.
  */
 export const stillUnmerged = (
-  options: MergeOptions,
+  options: MergeTarget,
 ): Effect.Effect<ReadonlySet<string>, BeadsError, Git | Beads> =>
   Effect.gen(function* () {
     const beads = yield* Beads
@@ -173,7 +170,7 @@ export const unlabel = (id: string) =>
  * block. bd failing to list them fails, for the run to stop on.
  */
 export const loadUnmerged = (
-  options: MergeOptions,
+  options: MergeTarget,
 ): Effect.Effect<ReadonlyArray<LeftUnmerged>, BeadsError, Git | Beads | Log | EventStream> =>
   Effect.gen(function* () {
     const beads = yield* Beads
@@ -202,7 +199,7 @@ export const loadUnmerged = (
  * a later run takes only the branch's own commits for its merge. A fork that can't be found or
  * noted leaves the branch's tip alone for its own. Whether bd labelled it.
  */
-const label = (id: string, options: MergeOptions) =>
+const label = (id: string, options: MergeTarget) =>
   Effect.gen(function* () {
     const git = yield* Git
     const beads = yield* Beads
@@ -230,7 +227,7 @@ const label = (id: string, options: MergeOptions) =>
  * can't show is passed over.
  */
 export const labelAtEnd = (
-  options: MergeOptions,
+  options: MergeTarget,
 ): Effect.Effect<void, never, Git | Beads | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const beads = yield* Beads

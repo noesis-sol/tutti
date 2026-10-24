@@ -25,7 +25,7 @@ import {
   cleanupFailed,
   type DoneTicket,
   type MergeEnv,
-  type MergeOptions,
+  type MergeTarget,
   retire,
 } from "./merge.ts"
 import { Cause } from "./phase.ts"
@@ -82,7 +82,7 @@ const takeAsMerged = (
   phase: "Review" | "Blocked",
   commit: Commit,
   rechecks: Pick<Rechecks, "drop">,
-  options: MergeOptions,
+  options: MergeTarget,
 ) =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -118,7 +118,7 @@ const takeAsMerged = (
 export const mergedByHand = (
   seen: Ref.Ref<string | undefined>,
   memory: { readonly rechecks: Pick<Rechecks, "drop">; readonly handBacks: HandBacks },
-  options: MergeOptions,
+  options: MergeTarget,
   at?: string,
 ): Effect.Effect<ReadonlyArray<string>, never, MergeEnv> =>
   Effect.gen(function* () {

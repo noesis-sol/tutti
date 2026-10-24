@@ -59,7 +59,7 @@ import type { EventStream } from "./eventstream.ts"
 import { settingsGlobMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
-import type { FinishedTicket, MergeOptions } from "./merge.ts"
+import type { FinishedTicket, MergeTarget } from "./merge.ts"
 import { Cause, Detail } from "./phase.ts"
 import { sameRequires } from "./requires.ts"
 import { warn } from "./say.ts"
@@ -279,7 +279,7 @@ export interface Fix {
  */
 export const setUp = (
   ticket: FinishedTicket,
-  options: MergeOptions,
+  options: MergeTarget,
   setUps: SetUps,
   fork: string,
   onto: string,
@@ -600,7 +600,7 @@ export const setupWaitsPart = (waiting: ReadonlyArray<readonly [string, string]>
  */
 export const setupToResolve = (
   stop: { readonly ticket: FinishedTicket; readonly fork: string; readonly onto: string },
-  options: MergeOptions,
+  options: MergeTarget,
   setUps: SetUps,
 ): Effect.Effect<{ readonly prompt: string; readonly told: Line }, never, Git> =>
   Effect.gen(function* () {
@@ -648,7 +648,7 @@ const setupSaid = (command: string | null): string => (command === null ? "none"
  */
 export const takeSettings = (
   id: string,
-  options: MergeOptions,
+  options: MergeTarget,
   setUps: SetUps,
   before: string,
   merged?: string,

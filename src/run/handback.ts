@@ -51,6 +51,7 @@ import { awakeSince } from "../services/Wake.ts"
 import { baseSince, branchHead, onBranch, restoreBranch } from "./branch.ts"
 import { type Checked, failedHow, markHandedBack, runMergeCheck } from "./check.ts"
 import type { Carried } from "./checkback.ts"
+import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
 import { loadEvery } from "./load.ts"
 import { detail, type Line, Log, line, resolving, Tag, ticketLine } from "./log.ts"
@@ -59,6 +60,7 @@ import {
   type MergeEnv,
   type MergeMemory,
   type MergeOptions,
+  type MergeTarget,
   notePass,
   someFiles,
   type Unchanged,
@@ -322,10 +324,10 @@ const block = (stop: RebaseStop, base: string, why: string, by: "Block" | "Aside
  */
 export const notHandedBack = (
   stop: RebaseStop,
-  options: MergeOptions,
+  options: MergeTarget,
   not: NotHandedBack,
   handBacks: HandBacks,
-): Effect.Effect<void, never, MergeEnv> =>
+): Effect.Effect<void, never, Git | Ledger> =>
   Effect.gen(function* () {
     const git = yield* Git
     const { worktree } = stop.ticket
@@ -350,7 +352,7 @@ export const notHandedBack = (
  */
 export const handOver = (
   stop: RebaseStop,
-  options: MergeOptions,
+  options: MergeTarget,
   handBacks: HandBacks,
   setUps: SetUps,
 ): Effect.Effect<boolean, never, MergeEnv> =>
@@ -400,7 +402,7 @@ export interface HandBack {
    * Whether git shows what the worker was asked done, its worker not settled: the rebase finished,
    * with the branch on top of the base, or a fix committed.
    */
-  readonly done: Effect.Effect<boolean, never, MergeEnv>
+  readonly done: Effect.Effect<boolean, never, Git>
 }
 
 /** What a worker on a hand-back has done once git shows it done, for a line. */
@@ -451,7 +453,7 @@ export const handBackOver = (handBack: HandBack, limit: string, attempt: string)
 }
 
 /** What give needs: the host, what a resume records (sessions.ts), and git to end a hand-back. */
-export type GiveEnv = MergeEnv
+export type GiveEnv = AgentHost | AppConfig | EventStream | Git | Ledger | Log | Store
 
 /**
  * Where a hand-back due to a worker at the account's usage limit waits for the limit to lift: the
@@ -565,8 +567,7 @@ const clock = (
   Effect.gen(function* () {
     const logs = yield* Log
     const { id, branch } = handBack.ticket
-    const { atReset } = options
-    const loaded = options.loaded ?? Effect.succeed(false)
+    const { atReset, loaded } = options
     const most = Duration.toMillis(limit)
     const every = Duration.toMillis(loadEvery)
     let left = most
@@ -844,9 +845,9 @@ export const carryIfBaseMoved = (
   did: Line,
   fix: Fix,
   rest: Effect.Effect<Omit<Carried, "fix">>,
-  options: MergeOptions,
+  options: MergeTarget,
   memory: MergeMemory,
-): Effect.Effect<boolean, never, MergeEnv> =>
+): Effect.Effect<boolean, never, Git | Log> =>
   Effect.gen(function* () {
     const logs = yield* Log
     const { id, branch } = stop.ticket
@@ -873,7 +874,7 @@ export const carryIfBaseMoved = (
 export const checkWithFix = (
   stop: Stopped,
   fix: Fix,
-  options: MergeOptions,
+  options: MergeTarget,
   memory: MergeMemory,
 ): Effect.Effect<{ readonly at: string; readonly checked: SetUp | Checked }, never, MergeEnv> =>
   Effect.gen(function* () {
@@ -896,8 +897,8 @@ export const checkWithFix = (
  */
 export const verifyResolved = (
   stop: RebaseStop,
-  options: MergeOptions,
-): Effect.Effect<string | undefined, never, MergeEnv> =>
+  options: MergeTarget,
+): Effect.Effect<string | undefined, never, Git> =>
   Effect.gen(function* () {
     const git = yield* Git
     const { id, branch } = stop.ticket
@@ -930,7 +931,7 @@ export const verifyResolved = (
  * rebase in progress aborted, and the branch reset when it is elsewhere and the worktree is clean
  * and on it. What it did, for the lines and notes.
  */
-export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, MergeEnv> =>
+export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, Git> =>
   Effect.gen(function* () {
     const { branch, worktree } = stop.ticket
     const to = stop.head
@@ -987,10 +988,10 @@ export const failedResolved = (stop: RebaseStop, error: CheckError, output: stri
  */
 export const rejectResolution = (
   stop: RebaseStop,
-  options: MergeOptions,
+  options: MergeTarget,
   why: string,
   by: "Block" | "Aside" = "Block",
-): Effect.Effect<void, never, MergeEnv> =>
+): Effect.Effect<void, never, Beads | Git | Ledger> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const { id, branch } = stop.ticket

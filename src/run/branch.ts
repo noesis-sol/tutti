@@ -8,7 +8,7 @@ import { Data, Duration, Effect, Result } from "effect"
 import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { type Again, retrying } from "./again.ts"
-import type { FinishedTicket, MergeOptions } from "./merge.ts"
+import type { FinishedTicket, MergeTarget } from "./merge.ts"
 
 /** How many times a git read that steers a merge is made while it fails, as orchestra asks git. */
 export const gitTries = 3
@@ -161,7 +161,7 @@ export const restoreBranch = (
  */
 export const branchHead = (
   ticket: FinishedTicket,
-  options: MergeOptions,
+  options: MergeTarget,
 ): Effect.Effect<string, never, Git> =>
   Effect.gen(function* () {
     const at = yield* Effect.result(steering((yield* Git).revParse(options.repo, ticket.branch)))
@@ -184,7 +184,7 @@ export const BaseSince = Data.taggedEnum<BaseSince>()
  * where the branch is again. A failure is Unknown, never Still.
  */
 export const baseSince = (
-  options: MergeOptions,
+  options: MergeTarget,
   onto: string,
 ): Effect.Effect<BaseSince, never, Git> =>
   Effect.gen(function* () {

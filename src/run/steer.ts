@@ -26,7 +26,7 @@ import type { RebaseStop } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import * as log from "./log.ts"
 import { detail, type Line, Log, Tag } from "./log.ts"
-import type { MergeOptions } from "./merge.ts"
+import type { MergeTarget } from "./merge.ts"
 import type { MergeQueue } from "./mergequeue.ts"
 import { Cause } from "./phase.ts"
 import { info } from "./say.ts"
@@ -165,7 +165,7 @@ const handOver = (
 export const handBackNow = (
   ticket: string,
   queue: HandBackQueue,
-  options: MergeOptions,
+  options: MergeTarget,
 ): Effect.Effect<boolean, never, Ledger | Log | EventStream> =>
   handOver(
     ticket,
@@ -185,7 +185,7 @@ export const handBackNow = (
 export const releaseAndHandOver = (
   ticket: string,
   queue: HandBackQueue,
-  options: MergeOptions,
+  options: MergeTarget,
 ): Effect.Effect<boolean, never, SteerEnv> =>
   Effect.gen(function* () {
     if (!(yield* release(ticket))) return false
