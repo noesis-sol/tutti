@@ -3,7 +3,9 @@
 // single write, so a reader tailing the file never sees half of one, and the file keeps every run.
 // The file is opened below the checkout with openat and O_NOFOLLOW, so a symbolic link in its path
 // is refused rather than written through. A stream that can't be opened or written is warned about
-// once; the run goes on, and later records are still tried.
+// once; the run goes on, and later records are still tried. A write cut short (on ENOSPC, say)
+// leaves part of a record without its newline: the newline is written at once, or, where that
+// fails too, ahead of the next record, so only the cut record is lost, not the one after it.
 import { writeSync } from "node:fs"
 import { Clock, Context, Effect, Layer, Result } from "effect"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
@@ -21,6 +23,8 @@ export const stamp = (event: Event, run: string, now: number): EventRecord =>
 /** The warning for a stream that can't be opened or written, as orchestra words it. */
 export const notRecorded = (reason: string): string =>
   `events not recorded in ${eventsFile}: ${reason}; the run goes on, and later failures aren't logged`
+
+const newline = 0x0a
 
 const reasonOf = (error: unknown): string =>
   error instanceof Error ? error.message : typeof error === "string" ? error : String(error)
@@ -40,6 +44,8 @@ export class EventStream extends Context.Service<
     readonly repo: string
     readonly run: string
     readonly warn?: (message: string) => Effect.Effect<void>
+    /** Writes to the stream's file, as `writeSync`; a test cuts a write short with it. */
+    readonly writeSync?: (fd: number, bytes: Uint8Array) => number
   }) =>
     Layer.effect(
       EventStream,
@@ -69,18 +75,34 @@ export class EventStream extends Context.Service<
           (fd) => (fd === undefined ? Effect.void : Effect.ignore(close(fd))),
         )
 
+        const writeTo = options.writeSync ?? writeSync
+        // Whether the file ends in part of a record, cut short, that the next write ends first.
+        let torn = false
+        // Writes `bytes` in one write, and returns how many were written; a throw writes none.
+        const writeOnce = (bytes: Uint8Array): number => {
+          const written = writeTo(fd as number, bytes)
+          if (written > 0) torn = bytes[written - 1] !== newline
+          return written
+        }
+
         const write = (line: string) =>
           Effect.suspend(() => {
             if (fd === undefined) return Effect.void
-            const bytes = Buffer.from(line)
+            const record = Buffer.from(line)
+            const bytes = torn ? Buffer.concat([Buffer.of(newline), record]) : record
+            let written: number
             try {
-              const written = writeSync(fd, bytes)
-              return written === bytes.length
-                ? Effect.void
-                : failed(`wrote ${written} of a record's ${bytes.length} bytes`)
+              written = writeOnce(bytes)
             } catch (error) {
               return failed(reasonOf(error))
             }
+            if (written === bytes.length) return Effect.void
+            try {
+              if (torn) writeOnce(Buffer.of(newline))
+            } catch {
+              // The next write ends the cut record first.
+            }
+            return failed(`wrote ${written} of a record's ${bytes.length} bytes`)
           })
 
         return EventStream.of({
