@@ -39,6 +39,8 @@ export const priorities = {
   field: 400,
   /** An open box: the quit box, the stop question, an answer form, a confirmation. */
   box: 300,
+  /** The key help open over the view: the keys that scroll it, over the view's own. */
+  help: 250,
   /** The keys of the view shown: the dashboard's or a worker view's. */
   view: 200,
   /** The keys of every view. */
@@ -145,8 +147,8 @@ const andAlso = (matcher: ReactiveMatcher, also: () => boolean): ReactiveMatcher
 
 /**
  * Binds `bindings` in `layer` while the component is mounted: in the box layer while the box
- * `which` is open (any box when left out), in the view's and the global layer while no box is
- * open, in `always` always. A focused text field is left the printable keys of a box's layer, and
+ * `which` is open (any box when left out), in the key help's, the view's and the global layer while
+ * no box is open, in `always` always. A focused text field is left the printable keys of a box's layer, and
  * every key it takes (fieldTakes) of the view's and the global layer. Each key runs the `run` of
  * the latest render.
  *
