@@ -58,7 +58,8 @@
 //
 // The run's parts each have a module: its holds (holdsGate.ts), its place among the machine's runs
 // (machineGate.ts), the screen's commands and the run's end they act until (screenCommands.ts),
-// BLOCKED (blockedWatch.ts), quitting (quitting.ts) and the end's steps (endOfRun.ts).
+// BLOCKED (blockedWatch.ts), the loop that looks at the run until nothing is left (look.ts),
+// quitting (quitting.ts) and the end's steps (endOfRun.ts).
 import { join } from "node:path"
 import {
   Cause as Causes,
@@ -121,16 +122,16 @@ import {
   showUsage,
   stopFor,
   stopOfLine,
-  swapStop,
   takesBack,
   takesNew,
 } from "./holds.ts"
-import { make as makeHoldsGate, waitedFor } from "./holdsGate.ts"
-import { type Entry, Ledger } from "./ledger.ts"
+import { make as makeHoldsGate } from "./holdsGate.ts"
+import { Ledger } from "./ledger.ts"
 import { Load, pressing, watchLoad } from "./load.ts"
 import { type Line, Log, tagged } from "./log.ts"
+import { make as makeLoop } from "./look.ts"
 import { make as makeMachineGate } from "./machineGate.ts"
-import { isSettled, make as makeQueue, type QueueState } from "./mergequeue.ts"
+import { make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { putBackLeft } from "./mergetrain.ts"
 import type { TicketPhase } from "./phase.ts"
 import { make as makePredictor } from "./predict.ts"
@@ -140,7 +141,6 @@ import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { runRequires } from "./requires.ts"
-import { decide, endOfRunBox, type Look } from "./runEnd.ts"
 import { emptyStatus, type Status, showOn } from "./runView.ts"
 import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
 import { type Dashboard, show } from "./screen.ts"
@@ -152,7 +152,7 @@ import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold } from "./usageLimit.ts"
 import { make as watchUsageWindows } from "./usageWindows.ts"
-import { make as makeWakes, reads } from "./wakes.ts"
+import { make as makeWakes } from "./wakes.ts"
 import { requeueWaiting, type WorkEnv, type WorkError, type Worked, work } from "./work.ts"
 
 /** How a run ended: its exit code, and each ticket's phase then. */
@@ -807,108 +807,28 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // For the other runs to count before this one next looks around.
       yield* machine.sayRunning(yield* scheduler.slots)
     })
-    // Fills the free slots, after the look's other effects, then reads what they left for the end's
-    // decision (runEnd.ts). A look woken only for what bd and git can't have changed, an attention
-    // change, skips to the reading (wakes.ts).
-    const nothingLeft = Effect.gen(function* () {
-      // A merge that ends during this look frees what it held back after the look has read it: the
-      // run is done only when nothing was merging as the look began, and its wake has it look again.
-      const mergedBefore = isSettled(yield* queue.state)
-      const why = yield* wakes.take
-      yield* Effect.logDebug(`look, woken for ${why.size === 0 ? "nothing" : [...why].join(", ")}`)
-      if (reads(why)) yield* fill
-      const look: Look = {
-        mergedBefore,
-        tickets: (yield* ledger.current).tickets,
-        overLimit: (yield* holds.now).overLimit,
-        asking: (yield* attention.current).map((request) => request.ticket),
-        running: yield* scheduler.running,
-        canTake: takesNew(yield* gate),
-        resuming: (yield* Ref.get(unslotted)).size > 0,
-        settled: isSettled(yield* queue.state),
-        triagePending: yield* triage.pending,
-        dashboard: screen !== null,
-      }
-      return look
-    })
-    // Whether nothing runs but workers waiting for the usage limit.
-    // A worker at the limit on a hand-back (Resolving, Fixing) waits for it as one on its ticket
-    // does, once its hand-back waits for it: kept for the reset, or on its turn that ended on it, not
-    // while it is handed over or what it left is checked.
-    const limitedOnly = Effect.gen(function* () {
-      const limited = yield* usage.limited
-      const handBacks = yield* usage.handBacks
-      const over = (yield* holds.now).overLimit
-      const waits = (entry: Entry) =>
-        limited.has(entry.ticket) &&
-        (entry.phase._tag === "Working" ||
-          ((entry.phase._tag === "Resolving" || entry.phase._tag === "Fixing") &&
-            handBacks.has(entry.ticket)))
-      const others = [...(yield* ledger.current).tickets.values()].some(
-        (entry) => waitedFor(entry, over) && !waits(entry),
-      )
-      const merges = yield* queue.state
-      return (
-        !others &&
-        isSettled({ ...merges, resolving: merges.resolving.filter((id) => !handBacks.has(id)) })
-      )
-    })
-    // Waits until nothing is left. With the usage-limit hold on, the run waits for its reset
-    // instead, unless a stop ends it anyway; it ends USAGE_LIMIT when it can't wait for it: whether
-    // it does. With everything else done and workers waiting on you (D19), a dashboard shows the
-    // end-of-run box and waits, until they are answered, their conflicts handed over (§ 4.3), or the
-    // box's `q` ends the run; plain, the run waits only until a stop holds it. Gives whether the
-    // usage limit ends it, whether the box's `q` did, and the count of the screen's commands acted
-    // on before its last look.
-    const settle = Effect.gen(function* () {
-      for (;;) {
-        const seen = yield* commands.acted
-        const look = yield* nothingLeft
-        const limit = yield* usage.look(yield* limitedOnly)
-        if (limit !== null) {
-          yield* scheduler.interrupt
-          // The hand-backs under way, all of workers at the limit, stop as quitting's do.
-          yield* queue.hold
-          yield* stopped(limit)
-          return { limited: true, asked: false, seen }
-        }
-        const { stop, usageHeld } = yield* gate
-        yield* showEndOfRun(status, endOfRunBox(look))
-        const endAsked = yield* commands.endAsked
-        const end = decide({ ...look, held: stop !== null, usageHeld, endAsked })
-        if (end._tag === "Done") return { limited: false, asked: end.asked, seen }
-        yield* wakes.next(scheduler.freed)
-      }
-    })
-    // Nothing left: a hold for the environment probes the machine, and goes on or ends the run. A
-    // command acted on meanwhile (a hand-back handed over, an answer) has the run look again, the
-    // box's `q` it ended on still asked.
-    const loop = Effect.gen(function* () {
-      for (;;) {
-        const { limited, asked, seen } = yield* settle
-        if (limited) {
-          yield* commands.endAfter(null)
-          break
-        }
-        // The probe runs only with its hold's stop alone, the first; it lifts or replaces only
-        // that one, those raised while it waited (BLOCKED, TICKET_LIMIT, PAUSED) kept.
-        const before = yield* currentStops
-        const probed = yield* environment.probe(before)
-        const held = firstStop(before)
-        if (probed._tag === "Resumed" && held !== null) {
-          yield* changeHolds((now) => changeStops(now, (all) => swapStop(all, held, null)))
-          continue
-        }
-        if (probed._tag === "Failed" && held !== null) {
-          yield* changeHolds((now) => changeStops(now, (all) => swapStop(all, held, probed.stop)))
-        }
-        if (yield* commands.endAfter(seen)) break
-        if (asked) yield* commands.askEnd
-      }
+    // The loop (look.ts): it looks at each wake until nothing is left, then ends the run.
+    const fillContext = yield* Effect.context<WorkEnv | FileSystem.FileSystem>()
+    const { untilEnd } = yield* makeLoop({
+      fill: Effect.provideContext(fill, fillContext),
+      wakes,
+      gate,
+      holds,
+      ledger,
+      attention,
+      scheduler,
+      queue,
+      triage,
+      usage,
+      commands,
+      environment,
+      resuming: Effect.map(Ref.get(unslotted), (all) => all.size > 0),
+      showEndOfRun: (tickets) => showEndOfRun(status, tickets),
+      dashboard: screen !== null,
     })
 
     // A panic in the loop quits the run as one in its other fibers does.
-    const guardedLoop = Effect.catchDefect(Effect.as(loop, null), (defect) =>
+    const guardedLoop = Effect.catchDefect(Effect.as(untilEnd, null), (defect) =>
       Effect.andThen(
         panicked("the run", stopFor("PANIC", `the run's loop: ${firstLine(defect)}`), defect),
         Effect.never,

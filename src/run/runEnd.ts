@@ -1,11 +1,14 @@
 // The run's end (§ 5 item 6, D19, § 4.3): whether a look of the run, its effects done (the fill, the
 // requeues, the recheck, the answers), leaves it busy, done, waiting on you or waiting for the usage
-// limit's reset. run.ts's nothingLeft and settle do the look's effects and read what they left into
-// a Snapshot; decide reads that, and nothing else.
+// limit's reset. look.ts's loop does the look's effects and reads what they left into a Snapshot;
+// decide reads that, and nothing else. limitedOnly reads, for the usage-limit hold, whether nothing
+// runs but workers waiting for the limit.
 import { Data } from "effect"
+import { waitedFor } from "./holdsGate.ts"
 import { type Entry, handBackWaits } from "./ledger.ts"
+import { isSettled, type QueueState } from "./mergequeue.ts"
 
-/** What a look of the run left: read after its effects, in nothingLeft. */
+/** What a look of the run left: read after its effects, in look.ts's nothingLeft. */
 export interface Look {
   /** Nothing was merging as the look began: a merge that ended during it has the run look again. */
   readonly mergedBefore: boolean
@@ -33,7 +36,7 @@ export interface Look {
   readonly dashboard: boolean
 }
 
-/** A look, and what settle reads after it. */
+/** A look, and what look.ts's untilDone reads after it. */
 export interface Snapshot extends Look {
   /** A stop holds the run. */
   readonly held: boolean
@@ -122,4 +125,40 @@ export const decide = (snapshot: Snapshot): End => {
     return End.Done({ asked: snapshot.endAsked })
   }
   return End.WaitOnYou({ tickets: waiting })
+}
+
+/** What limitedOnly reads, after a look. */
+export interface LimitedOnly {
+  /** The tickets whose workers are at the usage limit. */
+  readonly limited: ReadonlySet<string>
+  /** The tickets whose hand-backs wait for their workers to leave the limit. */
+  readonly handBacks: ReadonlySet<string>
+  /** The tickets whose workers went past --ticket-limit. */
+  readonly overLimit: ReadonlySet<string>
+  /** The ledger's tickets. */
+  readonly tickets: Iterable<Pick<Entry, "ticket" | "phase">>
+  /** The merge queue's state. */
+  readonly merges: QueueState
+}
+
+/**
+ * Whether nothing runs but workers waiting for the usage limit, and no merge is under way or due
+ * but the hand-backs waiting for it. A worker at the limit on a hand-back (Resolving, Fixing) waits
+ * for it as one on its ticket does, once its hand-back waits for it: kept for the reset, or on its
+ * turn that ended on it, not while it is handed over or what it left is checked.
+ */
+export const limitedOnly = (read: LimitedOnly): boolean => {
+  const waits = (entry: Pick<Entry, "ticket" | "phase">) =>
+    read.limited.has(entry.ticket) &&
+    (entry.phase._tag === "Working" ||
+      ((entry.phase._tag === "Resolving" || entry.phase._tag === "Fixing") &&
+        read.handBacks.has(entry.ticket)))
+  const others = [...read.tickets].some(
+    (entry) => waitedFor(entry, read.overLimit) && !waits(entry),
+  )
+  const { merges } = read
+  return (
+    !others &&
+    isSettled({ ...merges, resolving: merges.resolving.filter((id) => !read.handBacks.has(id)) })
+  )
 }
