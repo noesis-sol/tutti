@@ -140,10 +140,7 @@ describe("frames", () => {
        tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
-      ╭────────────────┬────────────────┬────────────────┬───────────────────────────╮
-      │ Completed      │ Set aside      │ Needs you      │ In queue                  │
-      │ ✓ 1            │ ↷ 1 ◆ 1        │ 1              │ 1 of 16 · 1 held back     │
-      ╰────────────────┴────────────────┴────────────────┴───────────────────────────╯
+       ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────╮
       │             │ +3      │ earlier tickets, see the log                         │
@@ -154,6 +151,9 @@ describe("frames", () => {
       ╭──────────────────────────────────────────────────────────────────────────────╮
       │ ⣾ picking the next ticket…                                                   │
       ╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+
 
 
 
@@ -172,10 +172,9 @@ describe("frames", () => {
        tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                      usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
-      ╭──────────────────────────┬──────────────────────────┬──────────────────────────┬─────────────────────────────────────╮
-      │ Completed                │ Set aside                │ Needs you                │ In queue                            │
-      │ ✓ 1                      │ ↷ 1 ◆ 1                  │ 1                        │ 1 of 16 · 1 held back               │
-      ╰──────────────────────────┴──────────────────────────┴──────────────────────────┴─────────────────────────────────────╯
+      ╭───────────────────────┬─────────────────────────────┬───────────────────────┬────────────────────────────────────────╮
+      │ ✓ 1 Completed         │ ↷ 1 Set aside · ◆ 1 triaged │ 1 Needs you           │ 1 of 16 In queue · 1 held back         │
+      ╰───────────────────────┴─────────────────────────────┴───────────────────────┴────────────────────────────────────────╯
         Tickets
       ╭─────────────┬─────────┬──────────────────────────────────────────────────────────────────────────────────────────────╮
       │ ✓ done      │ tut-dwv │ ffd6ce4 merged into batch/2026-10-20                                                         │
@@ -183,6 +182,7 @@ describe("frames", () => {
       │ ▶ testing   │ tut-zq4 │ Add an undo stack for property edits                                                         │
       │ ■ allow?    │ tut-9a1 │ Remove the build cache                                                                       │
       │ ↷ deferred  │ tut-vzg │ ◆ environment · high · prompt never submitted                                                │
+      │             │         │                                                                                              │
       │             │         │                                                                                              │
       ╰─────────────┴─────────┴──────────────────────────────────────────────────────────────────────────────────────────────╯
         Current
@@ -335,22 +335,26 @@ describe("the title line", () => {
 })
 
 describe("the totals strip", () => {
-  test("zeros faint, the counts in their styles, ◆ triaged, held back and held", async () => {
-    const { frame, text } = await draw(illustrated, { width: 80, height: 24 })
-    looksLike(frame, "Completed", "dim")
+  test("zeros faint whole, the counts in their styles, their labels faint, ◆ triaged, held back and held", async () => {
+    const { frame, text } = await draw(illustrated, { width: 120, height: 30 })
+    looksLike(frame, " Completed", "dim")
     looksLike(frame, "✓ 1", "closed")
     looksLike(frame, "↷ 1", "deferred")
-    looksLike(frame, " ◆ 1", "organ")
+    looksLike(frame, " · ◆ 1 triaged", "organ")
+    looksLike(frame, " Needs you", "dim")
     looksLike(frame, " of 3", "dim")
     looksLike(frame, " of 16", "dim")
+    looksLike(frame, " In queue", "dim")
     looksLike(frame, " · 1 held back", "heldBack")
-    expect(text).not.toContain("· held\n")
+    expect(text).not.toContain("· held ")
     const empty = await draw(viewOf([], { holds: [{ word: "BLOCKED", resetsAt: null }] }), {
       width: 80,
       height: 24,
     })
-    expect(empty.text).toContain("│ 0")
-    expect(empty.text).toContain("0 of 3")
+    expect(empty.text).toContain("│ 0 Completed ")
+    expect(empty.text).toContain("│ 0 In queue · held ")
+    looksLike(empty.frame, "0 Completed", "dim")
+    looksLike(empty.frame, "0 Needs you", "dim")
     looksLike(empty.frame, "0 of 3", "dim")
     looksLike(empty.frame, " · held", "windDown")
   })
@@ -455,12 +459,12 @@ describe("the tickets table", () => {
   })
 
   test("its height is what Current is kept leaves, and the oldest give way to +N earlier tickets", async () => {
-    // At 80 columns, the title, the strip and the foot take 10 lines, and Current is kept 16 for 3
+    // At 80 columns, the title, the strip and the foot take 9 lines, and Current is kept 16 for 3
     // workers' cards; at 16 lines the table's fewest don't fit beside a line for each worker.
     const tables = [16, 24, 30, 35, 45, 60].map(
       (height) => dashboardLayout(viewOf([]), theme, 80, height).table,
     )
-    expect(tables).toEqual([0, 6, 6, 9, 13, 13])
+    expect(tables).toEqual([0, 6, 6, 10, 13, 13])
     const many = viewOf(
       Array.from({ length: 9 }, (_, i) =>
         entry(`tut-${i + 1}`, `Ticket ${i + 1}`, merged(`c0ffee${i}abcdef`), i),
@@ -469,29 +473,30 @@ describe("the tickets table", () => {
     const { text } = await draw(many, { width: 80, height: 35 })
     const lines = text.split("\n")
     const top = lines.findIndex((line) => line.startsWith("╭─────────────┬"))
-    // 9 lines in all: the label, the frame, and 6 rows.
+    // 10 lines in all: the label, the frame, and 7 rows.
     expect(lines[top - 1]).toBe("  Tickets")
-    expect(lines[top + 1]).toMatch(/^│ +│ \+4 +│ earlier tickets, see the log +│$/)
-    expect(lines.slice(top + 2, top + 7).map((line) => line.split("│")[2]?.trim())).toEqual([
+    expect(lines[top + 1]).toMatch(/^│ +│ \+3 +│ earlier tickets, see the log +│$/)
+    expect(lines.slice(top + 2, top + 8).map((line) => line.split("│")[2]?.trim())).toEqual([
+      "tut-4",
       "tut-5",
       "tut-6",
       "tut-7",
       "tut-8",
       "tut-9",
     ])
-    expect(lines[top + 7]).toStartWith("╰")
+    expect(lines[top + 8]).toStartWith("╰")
     const few = await draw(viewOf([entry("tut-1", "One", working("editing"), 0)]), {
       width: 80,
       height: 35,
     })
     const blank = few.text.split("\n").filter((line) => /^│ +│ +│ +│$/.test(line))
-    expect(blank).toHaveLength(5)
+    expect(blank).toHaveLength(6)
   })
 
   test("a pane too short for it and a line a worker leaves it out", async () => {
     const view = viewOf([entry("tut-1", "One", working("editing"), 0)])
-    expect((await draw(view, { width: 80, height: 20 })).text).not.toContain("Tickets")
-    expect((await draw(view, { width: 80, height: 21 })).text).toContain("Tickets")
+    expect((await draw(view, { width: 80, height: 19 })).text).not.toContain("Tickets")
+    expect((await draw(view, { width: 80, height: 20 })).text).toContain("Tickets")
     const more = viewOf([entry("tut-1", "One", working("editing"), 0)], { concurrency: 8 })
     expect((await draw(more, { width: 80, height: 24 })).text).not.toContain("Tickets")
   })

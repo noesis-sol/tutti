@@ -13,10 +13,9 @@ terminal shows what it showed before, followed by the run's summary.
  tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2    usage 85% of the five-hour limit · resets 14:05
 
  ▶ 3 of 3 workers · memory 4.1 GB (workers 3.2, merge check 0.9) · pressure normal · CPU 9.8/10 cores
-╭────────────┬───────────┬───────────┬───────────────────────────────────╮
-│ Completed  │ Set aside │ Needs you │ In queue                          │
-│ ✓ 2        │ ↷ 1 ◆ 1   │ 1         │ 9 of 16 · 2 held back             │
-╰────────────┴───────────┴───────────┴───────────────────────────────────╯
+╭───────────────┬───────────────┬──────────────┬─────────────────────────╮
+│ ✓ 2 Completed │ ↷ 1 Set aside │ 1 Needs you  │ 9 of 16 In queue        │
+╰───────────────┴───────────────┴──────────────┴─────────────────────────╯
   Tickets
 ╭────────────┬─────────────┬─────────────────────────────────────────────╮
 │ ✓ done     │ tut-dwv     │ ffd6ce4 merged into batch/2026-10-20        │
@@ -98,20 +97,22 @@ dashboard shows; with plain output, the hold at `--machine-workers` alone counts
 
 ### The totals
 
-One strip for the run:
+One strip for the run, each count beside its label on one line, a zero faint:
 
 - **Completed**: tickets merged, or closed with no change to merge.
 - **Set aside**: tickets deferred or left for review, `↷ n`, and of those how many triage has given a
-  verdict on, `◆ n`.
+  verdict on, `↷ 3 Set aside · ◆ 2 triaged`.
 - **Needs you**: each ticket once whose worker waits on you (a permission request or a question),
   that waits on a question ticket for you, or whose work is done but can't merge until you act.
-- **In queue**: ready tickets waiting for a slot, out of the tickets not closed (`9 of 16`); then
-  `· 2 held back` for ready tickets that wait for something besides a slot (an overlap, their
-  subtickets, a blocker not merged, a solo ticket), `· 1 setup failed` for ready tickets whose
-  worktree's setup failed, waiting for a ticket to merge or a probe, and `· held` while the run takes
-  no new tickets.
+- **In queue**: ready tickets waiting for a slot, out of the tickets not closed
+  (`9 of 16 In queue`); then `· 2 held back` for ready tickets that wait for something besides a
+  slot (an overlap, their subtickets, a blocker not merged, a solo ticket), `· 1 setup failed` for
+  ready tickets whose worktree's setup failed, waiting for a ticket to merge or a probe, and
+  `· held` while the run takes no new tickets.
 
-The workers are on the load line above. A pane too narrow for the strip gets the totals on one line:
+The first three cells are as wide as each other, up to a fifth of the strip, and In queue takes the
+rest; as the pane narrows they give up width, but never below what each says. The workers are on the
+load line above. A pane too narrow for the strip gets the totals on one line:
 `✓ 2 · ↷ 1 · ? 1 · queue 9 of 16`, and a pane too small for the dashboard, which has no load line,
 `✓ 2 · ↷ 1 · ? 1 · ▶ 3/3 · queue 9 of 16`.
 

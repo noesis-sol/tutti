@@ -179,10 +179,9 @@ describe("the end-of-run box on a short dashboard", () => {
        tutti  0.1.0   batch/2026-10-20 · 1m7s
 
        ▶ 5 of 5 workers
-      ╭───────────────────┬───────────────────┬───────────────────┬──────────────────╮
-      │ Completed         │ Set aside         │ Needs you         │ In queue         │
-      │ ✓ 6               │ 0                 │ 5                 │ 0                │
-      ╰───────────────────┴───────────────────┴───────────────────┴──────────────────╯
+      ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
+      │ ✓ 6 Completed │ 0 Set aside   │ 5 Needs you   │ 0 In queue                   │
+      ╰───────────────┴───────────────┴───────────────┴──────────────────────────────╯
       ╭──────────────────────────────────────────────────────────────────────────────╮
       │ Everything else is done. 5 workers wait for you: tut-9a1 (Allow Bash(bun     │
       │ test test/tut-9a1.test.ts --timeout 60000 --rerun-each 3)?), tut-7k2 (Allow  │
@@ -194,6 +193,7 @@ describe("the end-of-run box on a short dashboard", () => {
       │ Answering lets them carry on. q ends the run, suspending them: the next run  │
       │ resumes them.                                                                │
       ╰──────────────────────────────────────────────────────────────────────────────╯
+
 
 
 
@@ -216,7 +216,8 @@ describe("the end-of-run box on a short dashboard", () => {
       │ test test/tut-9a1.test.ts --timeout 60000 --rerun-each 3)?), tut-7k2 (Allow  │
       │ Bash(bun test test/tut-7k2.test.ts --timeout 60000 --rerun-each 3)?),        │
       │ tut-3fx (Allow Bash(bun test test/tut-3fx.test.ts --timeout 60000            │
-      │ --rerun-each 3)?), +2 more                                                   │
+      │ --rerun-each 3)?), tut-5qe (Allow Bash(bun test test/tut-5qe.test.ts         │
+      │ --timeout 60000 --rerun-each 3)?), +1 more                                   │
       │ Answering lets them carry on. q ends the run, suspending them: the next run  │
       │ resumes them.                                                                │
       ╰──────────────────────────────────────────────────────────────────────────────╯

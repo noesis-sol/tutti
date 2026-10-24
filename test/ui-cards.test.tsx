@@ -507,8 +507,8 @@ describe("the Current section", () => {
       expect(lines.flatMap((line) => line.match(/│ {3}Title of tut-/g) ?? [])).toHaveLength(6)
       const tickets = lines.findIndex((line) => line === "  Tickets")
       const current = lines.findIndex((line) => line === "  Current")
-      // The label, the frame and 6 blank rows, the tickets Current shows left out; 3 at 120×32.
-      expect(current - tickets).toBe(size.width === 80 ? 9 : 6)
+      // The label, the frame and 7 blank rows, the tickets Current shows left out; 4 at 120×32.
+      expect(current - tickets).toBe(size.width === 80 ? 10 : 7)
     }
   })
 

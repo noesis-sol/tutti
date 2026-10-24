@@ -181,12 +181,12 @@ describe("dashboardLayout", () => {
   })
 
   test("the blank line over the load line goes before the tickets table", () => {
-    // 80 columns, 3 slots: the title, the strip and the foot take 9 lines, a line each for the
+    // 80 columns, 3 slots: the title, the strip and the foot take 8 lines, a line each for the
     // workers 6, and the table its fewest 6.
     const view = { ...emptyView, totals: { ...emptyView.totals, slots: 3 } }
-    expect(dashboardLayout(view, theme, 80, 22)).toMatchObject({ table: 6, gap: 1 })
-    expect(dashboardLayout(view, theme, 80, 21)).toMatchObject({ table: 6, gap: 0 })
-    expect(dashboardLayout(view, theme, 80, 20)).toMatchObject({ table: 0, gap: 1 })
+    expect(dashboardLayout(view, theme, 80, 21)).toMatchObject({ table: 6, gap: 1 })
+    expect(dashboardLayout(view, theme, 80, 20)).toMatchObject({ table: 6, gap: 0 })
+    expect(dashboardLayout(view, theme, 80, 19)).toMatchObject({ table: 0, gap: 1 })
   })
 })
 
