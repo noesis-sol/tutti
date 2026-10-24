@@ -9,6 +9,7 @@ import { requestFile } from "../src/agent/attentionFiles.ts"
 import { planServices, tuttiWith } from "../src/cli/commands.ts"
 import type { DrainRequest } from "../src/run/drain.ts"
 import { drainLine, drainWords } from "../src/run/drain.ts"
+import { runTime } from "../src/run/endOfRun.ts"
 import {
   addStop,
   exitCodeOf,
@@ -20,7 +21,7 @@ import {
 } from "../src/run/holds.ts"
 import { type Line, line } from "../src/run/log.ts"
 import { gitAgainAfter, gitTries } from "../src/run/merge.ts"
-import { errorStop, type Outcome, panicStop, run, runTime } from "../src/run/run.ts"
+import { errorStop, type Outcome, panicStop, run } from "../src/run/run.ts"
 import { Beads, BeadsFailed } from "../src/services/Beads.ts"
 import { Git, GitFailed } from "../src/services/Git.ts"
 import { StoreWriteFailed } from "../src/services/Store.ts"
