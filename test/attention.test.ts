@@ -23,6 +23,7 @@ import {
   summarize,
   summaryLength,
 } from "../src/agent/Attention.ts"
+import { tools } from "../src/agent/tools.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import type { Log } from "../src/run/log.ts"
@@ -703,14 +704,19 @@ describe("Attention: reading what the worker wrote", () => {
 
   test("summarize is one safe line, at most summaryLength characters", () => {
     fc.assert(
-      fc.property(fc.dictionary(fc.string(), fc.jsonValue()), text, (input, command) => {
-        for (const each of [input, { ...input, command }]) {
-          const summary = summarize(each)
-          expect(unsafe(summary)).toBe(false)
-          expect(summary).not.toContain("\n")
-          expect([...summary].length).toBeLessThanOrEqual(summaryLength)
-        }
-      }),
+      fc.property(
+        fc.oneof(fc.constantFrom(...Object.keys(tools)), fc.string()),
+        fc.dictionary(fc.string(), fc.jsonValue()),
+        text,
+        (tool, input, command) => {
+          for (const each of [input, { ...input, command }]) {
+            const summary = summarize(tool, each)
+            expect(unsafe(summary)).toBe(false)
+            expect(summary).not.toContain("\n")
+            expect([...summary].length).toBeLessThanOrEqual(summaryLength)
+          }
+        },
+      ),
     )
   })
 

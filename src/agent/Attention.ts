@@ -44,6 +44,7 @@ import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { AnswerWord } from "./attentionFiles.ts"
+import { aboutOf } from "./tools.ts"
 
 /** The tool whose calls are questions rather than permission requests. */
 export const askUserQuestion = "AskUserQuestion"
@@ -373,23 +374,18 @@ export const questionsOf = (input: unknown): ReadonlyArray<Question> | undefined
 /** The longest summary of a tool's input, in characters. */
 export const summaryLength = 120
 
-// The input fields that say most about a call, in the order they are looked for.
-const telling = ["command", "file_path", "path", "notebook_path", "pattern", "url", "query"]
-
 const clip = (text: string): string => {
   const chars = [...text]
   return chars.length <= summaryLength ? text : `${chars.slice(0, summaryLength - 1).join("")}…`
 }
 
 /**
- * A one-line summary of a tool call's input, sanitised and at most `summaryLength` characters: the
- * command, the file or the pattern it names, else the input as JSON.
+ * A one-line summary of a call of `tool`, sanitised and at most `summaryLength` characters: what
+ * the call is about (tools.ts's aboutOf), else its input as JSON.
  */
-export const summarize = (input: Readonly<Record<string, unknown>>): string => {
-  for (const key of telling) {
-    const value = input[key]
-    if (typeof value === "string" && value.trim() !== "") return clip(sanitizeLine(value).trim())
-  }
+export const summarize = (tool: string, input: Readonly<Record<string, unknown>>): string => {
+  const about = aboutOf(tool, input)
+  if (about !== undefined) return clip(sanitizeLine(about).trim())
   let json: string | undefined
   try {
     json = JSON.stringify(input)
@@ -793,7 +789,7 @@ export const make = (
                 tool: sanitizeLine(toolName),
                 input,
                 suggestions: sdk.suggestions ?? [],
-                summary: summarize(input),
+                summary: summarize(toolName, input),
               }
             : { _tag: "Question", questions, input }
         const request: AttentionRequest = {
@@ -832,7 +828,7 @@ export const make = (
             [by]: (Object.hasOwn(tally.deniedBy, by) ? (tally.deniedBy[by] ?? 0) : 0) + 1,
           },
         }))
-        const what = input === undefined ? tool : `${tool}(${summarize(input)})`
+        const what = input === undefined ? tool : `${tool}(${summarize(message.tool_name, input)})`
         yield* logs.writeWith(
           [log.denied({ id: ticket, what, by, reason })],
           events.emit({ kind: "denied", ticket, tool, reason_type: by, reason }),

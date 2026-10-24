@@ -19,9 +19,9 @@
 // The prompt (`>`) is drawn `formAccent`, the cursor `formSelected`, the placeholder
 // `formPlaceholder`, the text `formText`.
 import type { BoxRenderable, TextareaRenderable } from "@opentui/core"
-import { Predicate } from "effect"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "../agent/Transcripts.ts"
+import { asRecord } from "../agent/untrusted.ts"
 import { AttentionLines, type ButtonSegment } from "./AttentionCard.tsx"
 import type { Command } from "./keyCommands.ts"
 import { cut, Line, padded, type Segments, seg, widthOf } from "./line.tsx"
@@ -117,10 +117,6 @@ export interface Send {
   /** Sent while its ticket waited to merge or merged: the run holds it till the merge is over. */
   readonly held?: boolean
 }
-
-// A value of an SDK message whose shape this tutti may not know, read without trusting it.
-const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  Predicate.isObject(value) ? value : undefined
 
 /** The lifecycle states that say the CLI has taken a send, or dropped it. */
 const takenStates = new Set(["started", "completed", "cancelled"])

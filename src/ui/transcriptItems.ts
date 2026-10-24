@@ -13,7 +13,7 @@
 // `mountLimit` are let go. Back at the bottom, the window is the latest items again.
 //
 // Every text here is a model's or a tool's, so it is sanitised as it comes in (§ 7.10).
-import { Effect, Fiber, Predicate, type Scope, Stream } from "effect"
+import { Effect, Fiber, type Scope, Stream } from "effect"
 import {
   type Item,
   type Live,
@@ -23,6 +23,7 @@ import {
   type Transcripts,
   toolSummary,
 } from "../agent/Transcripts.ts"
+import { asRecord, asString } from "../agent/untrusted.ts"
 import { keepAll } from "../run/same.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import { type External, external } from "./useRunView.ts"
@@ -66,13 +67,6 @@ export type Entry =
   | { readonly _tag: "Nested"; readonly key: string; readonly children: ReadonlyArray<Entry> }
 
 export type ToolEntry = Extract<Entry, { readonly _tag: "Tool" }>
-
-// A value of an SDK message whose shape this tutti may not know, read without trusting it.
-const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  Predicate.isObject(value) ? value : undefined
-
-const asString = (value: unknown): string | undefined =>
-  typeof value === "string" ? value : undefined
 
 const toolUseTypes = new Set(["tool_use", "server_tool_use", "mcp_tool_use"])
 

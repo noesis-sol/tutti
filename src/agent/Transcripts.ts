@@ -19,7 +19,6 @@ import {
   Context,
   Effect,
   Layer,
-  Predicate,
   PubSub,
   Result,
   Schema,
@@ -31,6 +30,8 @@ import { terminalSafe } from "../run/events.ts"
 import { timestamp } from "../run/localTime.ts"
 import { denier, unknownDenier } from "../run/log.ts"
 import { runFolder, ticketIdProblem } from "../services/Worktrees.ts"
+import { aboutOf } from "./tools.ts"
+import { asRecord, asString } from "./untrusted.ts"
 
 /** The folder of the workers' transcripts, relative to the main checkout's top level (§ 9.1). */
 export const workersFolder = ".tutti/run/workers"
@@ -169,13 +170,6 @@ const checked = (storage: Storage): Storage => {
   }
 }
 
-// asRecord reads a value of an SDK message whose shape this tutti may not know, without trusting it.
-const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  Predicate.isObject(value) ? value : undefined
-
-const asString = (value: unknown): string | undefined =>
-  typeof value === "string" ? value : undefined
-
 const lineBreak = /\r\n|[\n\r\u2028\u2029]/
 
 const cut = (text: string, limit: number): string => {
@@ -200,36 +194,12 @@ const firstLine = (text: string): string => {
   return lines.length > 1 ? `${first} …` : first
 }
 
-// The input field that says what a call of each tool is about; another tool's first string field.
-const summaryField: Readonly<Record<string, string>> = {
-  Bash: "command",
-  Read: "file_path",
-  Edit: "file_path",
-  MultiEdit: "file_path",
-  Write: "file_path",
-  NotebookEdit: "notebook_path",
-  Grep: "pattern",
-  Glob: "pattern",
-  Agent: "description",
-  Task: "description",
-  WebFetch: "url",
-  WebSearch: "query",
-  Skill: "skill",
-}
-
 /**
- * What a call of tool `name` is about, on one line: its command, its file, its pattern, or its first
- * string field; empty for none. The worker view shows it beside the tool's name (§ 7.5).
+ * What a call of tool `name` is about (tools.ts's aboutOf), on one line; empty for none. The worker
+ * view shows it beside the tool's name (§ 7.5).
  */
-export const toolSummary = (name: string, input: unknown): string => {
-  const fields = asRecord(input) ?? {}
-  const field = summaryField[name]
-  const value =
-    field === undefined
-      ? Object.values(fields).find((v): v is string => typeof v === "string" && v.trim() !== "")
-      : asString(fields[field])
-  return value === undefined ? "" : firstLine(value)
-}
+export const toolSummary = (name: string, input: unknown): string =>
+  firstLine(aboutOf(name, input) ?? "")
 
 /** A tool call as the card shows it: `Bash(scripts/check-fast.sh)`, or `TodoWrite`. */
 export const toolCall = (name: string, input: unknown): string => {

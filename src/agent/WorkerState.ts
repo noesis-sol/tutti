@@ -11,12 +11,12 @@
 // another version sent without a field it reads is Unreadable, and no change. Each reading, and
 // each event, has its handler in a table of its own, made once.
 import type { HookInput } from "@anthropic-ai/claude-agent-sdk"
-import { Data, type Duration, Predicate } from "effect"
+import { Data, type Duration } from "effect"
 import type { Reading } from "./reading.ts"
+import { aboutOf, type Doing, toolOf } from "./tools.ts"
 import { endedOnLimit, noTurnLimit, type TurnLimit, turnLimitStep } from "./UsageLimits.ts"
 
-/** What a working worker is doing, from its hook callbacks, as orchestra classifies it. */
-export type Doing = "testing" | "editing" | "reading" | "subagent" | "working"
+export type { Doing } from "./tools.ts"
 
 /** A variant with no fields. */
 type Empty = Record<never, never>
@@ -108,39 +108,21 @@ const testRunner = new RegExp(
     ")\\b",
 )
 
-const editing = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"])
-const reading = new Set(["Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch"])
-
-/** Bash's command in a tool call's input, or "" when it has none. */
-const commandOf = (input: unknown): string => {
-  if (!Predicate.hasProperty(input, "command")) return ""
-  return typeof input.command === "string" ? input.command : ""
-}
-
 /**
  * What a tool call is doing, as orchestra's DoingOf classifies it: testing (Bash running one of
  * the `checks` commands or a known test runner), editing, reading, subagent (the Agent tool), or
- * working for anything else.
+ * working, as the table of tools (tools.ts) has it for the rest.
  */
 export const classify = (
   tool: string,
   input: unknown,
   checks: ReadonlyArray<string> = [],
 ): Doing => {
-  switch (tool) {
-    case "Agent":
-    case "Task":
-      return "subagent"
-    case "Bash": {
-      const command = commandOf(input).trim()
-      const isCheck = checks.some((check) => check !== "" && command.includes(check))
-      return isCheck || testRunner.test(command) ? "testing" : "working"
-    }
-  }
-  if (editing.has(tool)) {
-    return "editing"
-  }
-  return reading.has(tool) ? "reading" : "working"
+  const doing = toolOf(tool)?.doing ?? "working"
+  if (tool !== "Bash") return doing
+  const command = (aboutOf(tool, input) ?? "").trim()
+  const isCheck = checks.some((check) => check !== "" && command.includes(check))
+  return isCheck || testRunner.test(command) ? "testing" : doing
 }
 
 /** How the session's last turn went. */

@@ -7,8 +7,10 @@
 // as bd show gives it. The ticket is named by its ID alone outside the tags, and tutti's line on how
 // it was set aside comes last, as Claude reads long inputs best with the request at the end. When it
 // is asked, and what becomes of its verdict, is run/triage.ts's.
-import { Effect, Predicate, Schema } from "effect"
+import { Effect, Schema } from "effect"
 import type { Item } from "../agent/Transcripts.ts"
+import { aboutOf } from "../agent/tools.ts"
+import { asRecord, asString } from "../agent/untrusted.ts"
 import { denier, unknownDenier } from "../run/log.ts"
 import { oneLine } from "../ui/oneLine.ts"
 import { type InputPart, section } from "./evidence.ts"
@@ -61,22 +63,10 @@ export const resultCharacters = 200
 
 type Fields = Readonly<Record<string, unknown>>
 
-const asRecord = (value: unknown): Fields | undefined =>
-  Predicate.isObject(value) ? value : undefined
-
-const asString = (value: unknown): string | undefined =>
-  typeof value === "string" ? value : undefined
-
-// The input field that says what a call is about, in the order they are looked for.
-const inputKeys = ["command", "file_path", "notebook_path", "pattern", "url", "query", "prompt"]
-
-/** What a tool was called with: a command, a file, a pattern, or else its input as JSON. */
-const toolInput = (input: unknown): string => {
-  const fields = asRecord(input)
-  const key = fields === undefined ? undefined : inputKeys.find((k) => asString(fields[k]))
-  if (fields !== undefined && key !== undefined) {
-    return oneLine(asString(fields[key]) ?? "", textCharacters)
-  }
+/** What a call of `tool` is about (tools.ts's aboutOf), or else its input as JSON. */
+const toolInput = (tool: string, input: unknown): string => {
+  const about = aboutOf(tool, input)
+  if (about !== undefined) return oneLine(about, textCharacters)
   let json: string | undefined
   try {
     json = JSON.stringify(input)
@@ -115,7 +105,8 @@ const contentLines = (role: string, content: unknown): ReadonlyArray<string> => 
       return text === "" ? [] : [`${role}: ${text}`]
     }
     if (toolUses.has(String(b.type))) {
-      return [`tool ${oneLine(asString(b.name) ?? "?", textCharacters)}: ${toolInput(b.input)}`]
+      const name = asString(b.name) ?? "?"
+      return [`tool ${oneLine(name, textCharacters)}: ${toolInput(name, b.input)}`]
     }
     if (b.type === "tool_result") {
       return b.is_error === true
