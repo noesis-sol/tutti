@@ -17,18 +17,19 @@
 // A worker that stops at the account's usage limit with its ticket deferred, as orchestra 0.8.1 has
 // it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
 // worker carries on after the reset, rather than the ticket being set aside as deferred.
-import { Data, Duration, Effect, Option, Result, Schedule, Stream } from "effect"
+import { Data, Duration, Effect, Option, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type Status } from "../services/Beads.ts"
 import { type Commit, Git, type GitError, type StatusEntry } from "../services/Git.ts"
 import { allChangeEntries, allChanges } from "../services/gitStatus.ts"
 import { awakeSince, sleepAwake } from "../services/Wake.ts"
+import { retrying } from "./again.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
 import { gitWhy, type MergeEnv, onBranch } from "./merge.ts"
-import { readAgainAfter, readTries } from "./schedule.ts"
+import { readAgain } from "./schedule.ts"
 import { resumeGone } from "./sessions.ts"
 import type { StartedWorker } from "./start.ts"
 
@@ -224,9 +225,7 @@ export const limitDeferralNote =
 const show = (id: string) =>
   Effect.gen(function* () {
     const beads = yield* Beads
-    return yield* beads
-      .show(id)
-      .pipe(Effect.retry({ times: readTries - 1, schedule: Schedule.spaced(readAgainAfter) }))
+    return yield* retrying(beads.show(id), readAgain)
   })
 
 /**

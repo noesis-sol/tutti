@@ -45,6 +45,7 @@ import {
 import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
+import { type Again, retrying } from "./again.ts"
 import type { ClosedBranches } from "./closedBranches.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
@@ -88,6 +89,9 @@ export const readyPoll: Duration.Duration = Duration.seconds(30)
 /** How many times a poll reads bd ready while it fails, and how long it waits between reads. */
 export const readTries = 3
 export const readAgainAfter: Duration.Duration = Duration.seconds(3)
+
+/** How a bd read is made again while it fails: readTries in all, readAgainAfter apart. */
+export const readAgain: Again = { tries: readTries, after: readAgainAfter }
 
 /** The per-ticket fiber's entry: `start` is that fiber, and the ticket holds its slot until it ends. */
 export interface Start {
@@ -1129,25 +1133,17 @@ export const make = (
       }),
     )
 
-    // A fill whose read fails is tried again a few seconds later, up to readTries reads.
-    const fillTries = (tries: number): Effect.Effect<Filled, BeadsError> =>
-      fill.pipe(
-        Effect.catch((error) =>
-          tries >= readTries
-            ? Effect.fail(error)
-            : Effect.gen(function* () {
-                yield* logs.write(
-                  line`could not read the queue (try ${tries} of ${readTries}), reading it again: ${beadsWhy(error)}`,
-                )
-                yield* Effect.sleep(readAgainAfter)
-                return yield* fillTries(tries + 1)
-              }),
+    // A fill whose read fails is tried again a few seconds later, as readAgain says.
+    const fillTrying = retrying(fill, readAgain, {
+      tried: (error: BeadsError, tried) =>
+        logs.write(
+          line`could not read the queue (try ${tried} of ${readTries}), reading it again: ${beadsWhy(error)}`,
         ),
-      )
+    })
 
     const run = Effect.forever(
       Effect.andThen(
-        fillTries(1),
+        fillTrying,
         Effect.race(Queue.take(freed), Effect.asVoid(Effect.sleep(readyPoll))),
       ),
     )
@@ -1155,7 +1151,7 @@ export const make = (
     return {
       fill,
       run,
-      fillTrying: fillTries(1),
+      fillTrying,
       freed: Queue.take(freed),
       carry: (ticket, start, issue) =>
         oneFill.withPermit(

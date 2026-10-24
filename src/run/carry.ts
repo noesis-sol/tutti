@@ -46,6 +46,7 @@ import { Beads, type BeadsError, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { type PhaseName, Store, type TicketRecord } from "../services/Store.ts"
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
+import { retrying } from "./again.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
 import { handedBackOf, uncheckedKey, uncheckedOf } from "./check.ts"
 import { removeMerged } from "./handMerged.ts"
@@ -54,7 +55,7 @@ import { detail, type Line, Log, line } from "./log.ts"
 import { beadsWhy, gitWhy } from "./merge.ts"
 import { Cause } from "./phase.ts"
 import { info } from "./say.ts"
-import { readAgainAfter, readTries } from "./schedule.ts"
+import { readAgain } from "./schedule.ts"
 import { descendants } from "./scope.ts"
 import { resume, workerGone } from "./sessions.ts"
 import { openQuestion } from "./settle.ts"
@@ -102,17 +103,11 @@ export type CarryEnv = WorkEnv | FileSystem.FileSystem
 const carriedLine = (id: string, what: Line): Line =>
   detail`${id}, carried over from the last run, ${what}`
 
-/** The ticket, read up to `readTries` times while bd fails; not again when bd has no such ticket. */
-const showTrying = (
-  beads: Beads["Service"],
-  id: string,
-  tries = 1,
-): Effect.Effect<Issue, BeadsError> =>
-  Effect.catch(beads.show(id), (error) =>
-    tries >= readTries || (error._tag === "BeadsFailed" && error.noSuchIssue)
-      ? Effect.fail(error)
-      : Effect.andThen(Effect.sleep(readAgainAfter), showTrying(beads, id, tries + 1)),
-  )
+/** The ticket, read again as readAgain says while bd fails; not again when bd has no such ticket. */
+const showTrying = (beads: Beads["Service"], id: string): Effect.Effect<Issue, BeadsError> =>
+  retrying(beads.show(id), readAgain, {
+    while: (error) => !(error._tag === "BeadsFailed" && error.noSuchIssue),
+  })
 
 /**
  * Saves each Asked ticket for the next run as the run ends: why (`asked`), its phase and its
