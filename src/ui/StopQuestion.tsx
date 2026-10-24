@@ -11,7 +11,7 @@ import { drainWords } from "../run/drain.ts"
 import { useInput, useLayer } from "./keys.ts"
 import { seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
-import { useCommand, useRunView, useTheme } from "./useRunView.ts"
+import { useCommand, useRunViewPart, useTheme } from "./useRunView.ts"
 
 /** What the stop question asks and says, with the words of its `y` and `n`. */
 export const stopWords = (
@@ -75,11 +75,11 @@ export const StopKeys = () => {
 
 export const StopQuestion = ({ windingDown }: { readonly windingDown: boolean }) => {
   const theme = useTheme()
-  const view = useRunView()
+  const cards = useRunViewPart((view) => view.cards)
   const answers = useAnswers()
   const words = stopWords(
     windingDown,
-    view.cards.map((card) => card.label),
+    cards.map((card) => card.label),
   )
   const notice = theme.rgba("notice")
   return (

@@ -9,7 +9,7 @@ import { resetLabel } from "../run/localTime.ts"
 import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
 import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
-import { useNow, useRunView, useTheme } from "./useRunView.ts"
+import { useNow, useRunViewPart, useTheme } from "./useRunView.ts"
 
 /** The narrowest the branch and the time are shown, cut. */
 const minWhere = 8
@@ -227,13 +227,14 @@ const laidOut = (
 
 /** The title line, a blank line above it. */
 export const TitleLine = ({ width }: { readonly width: number }) => {
-  const view = useRunView()
+  const title = useRunViewPart((view) => view.title)
+  const banners = useRunViewPart((view) => view.banners)
   const theme = useTheme()
   const now = useNow()
   return (
     <box flexDirection="column" height={2} flexShrink={0}>
       <Line segments={[]} />
-      <Line segments={titleSegments(view.title, view.banners, now, theme, width)} />
+      <Line segments={titleSegments(title, banners, now, theme, width)} />
     </box>
   )
 }

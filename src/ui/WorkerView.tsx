@@ -121,7 +121,14 @@ import {
   useTranscriptKeys,
   useTranscriptWindow,
 } from "./transcriptView.ts"
-import { useCommand, useHandBacks, useNow, useRunView, useSpinner, useTheme } from "./useRunView.ts"
+import {
+  useCommand,
+  useHandBacks,
+  useNow,
+  useRunViewPart,
+  useSpinner,
+  useTheme,
+} from "./useRunView.ts"
 
 export { entryId, panelRequests, requestKey, selectable } from "./transcriptView.ts"
 
@@ -1144,13 +1151,13 @@ export const ViewHint = ({
 
 /** The view of the ticket's worker, while the run shows it. */
 export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
-  const view = useRunView()
+  // Its card alone: another worker's card or the load changing doesn't draw the view anew.
+  const found = useRunViewPart((view) => view.cards.find((each) => each.ticket === viewed))
   const theme = useTheme()
   const looks = useSyntaxStyles(theme)
   const command = useCommand()
   const handBacks = useHandBacks()
   const { width, height } = useTerminalDimensions()
-  const found = view.cards.find((each) => each.ticket === viewed)
   // The card last seen, so that the view still shows a worker that has just finished.
   const last = useRef<Card | undefined>(found)
   if (found !== undefined) last.current = found
@@ -1191,8 +1198,9 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     hint: hintLines(hintKeys(requests, composer.typing, steered, finished), theme, inner).length,
   })
   const fit = usePanelRooms(theme, panelWidth, panelBudget(height, chrome(true)), height)
+  // The requests open now: a finished worker's card, kept for its head, has none.
   const panel = usePanel(
-    card,
+    found,
     (requests, waiting) => fit.rooms(requests, waiting - requests.length).length,
   )
   const laid = viewLayout(

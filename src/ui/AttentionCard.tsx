@@ -40,7 +40,7 @@ import {
 } from "./line.tsx"
 import { Backdrop, modalMaxWidth } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
-import { useLatestRunView, useRunView, useTheme } from "./useRunView.ts"
+import { useLatestRunView, useRunViewPart, useTheme } from "./useRunView.ts"
 
 /** A segment that draws button `button`, a click target. */
 export interface ButtonSegment extends Segment {
@@ -172,13 +172,17 @@ export const answerBoxWidth = 72
  * waits for you. Mounted while no box is open too, so that its keys are bound before it opens.
  */
 export const AnswerBox = () => {
-  const view = useRunView()
   const theme = useTheme()
   const { width, height } = useTerminalDimensions()
   const { box } = useInput()
   const open = useSyncExternalStore(box.subscribe, box.get)
   const ticket = open?._tag === "Answer" ? open.ticket : null
-  const card = view.cards.find((each) => each.ticket === ticket && each.requests.length > 0)
+  // Its worker's card while the box is open; nothing while it is closed, drawn anew by no change.
+  const card = useRunViewPart((view) =>
+    ticket === null
+      ? undefined
+      : view.cards.find((each) => each.ticket === ticket && each.requests.length > 0),
+  )
   const close = () => {
     if (box.get()?._tag === "Answer") box.set(null)
   }

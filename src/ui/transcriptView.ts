@@ -25,7 +25,7 @@ import {
   withLive,
 } from "./transcriptItems.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { external, useRunView, useTranscripts } from "./useRunView.ts"
+import { external, useEvent, useTranscripts } from "./useRunView.ts"
 
 /** The most requests the panel shows whole; the rest are counted under them. */
 export const panelRequests = 2
@@ -202,9 +202,8 @@ export const usePanel = (
   card: Card | undefined,
   fit: PanelFit = (requests) => requests.length,
 ): Panel => {
-  const view = useRunView()
   const input = useInput()
-  const waiting = card === undefined ? [] : view.requests.filter((r) => r.ticket === card.ticket)
+  const waiting = card?.requests ?? []
   const oldest = waiting.slice(0, panelRequests)
   const requests = oldest.slice(0, Math.max(fit(oldest, waiting.length), 1))
   const cards: ReadonlyArray<Card> =
@@ -261,17 +260,11 @@ export const useSelection = (
     choose(selectables[next] ?? null)
   }
   // A click, the same function from one drawing to the next, so that the entries' memo holds
-  // (tutti-k2n1): it chooses as this drawing's selectables say.
-  const chooseNow = useRef(choose)
-  chooseNow.current = choose
-  const { toggle } = transcript
-  const click = useCallback(
-    (key: string) => {
-      chooseNow.current(key)
-      toggle(key)
-    },
-    [toggle],
-  )
+  // (tutti-k2n1): it chooses as the latest drawing's selectables say.
+  const click = useEvent((key: string) => {
+    choose(key)
+    transcript.toggle(key)
+  })
   return {
     selected: current(),
     current,

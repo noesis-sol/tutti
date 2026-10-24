@@ -228,6 +228,8 @@ Each service has a live layer and a test layer. Names are illustrative. Errors a
   - Transcripts are not in it. The worker view subscribes to its own worker's stream from `Transcripts` (§4.4).
   - Writing the projection has its own fiber, throttled to at most 30 Hz, so a burst of SDK messages costs one render. Unchanged parts keep their identity, so React memoisation works.
 - **React reads `RunView`** with `useSyncExternalStore`. A fiber consuming the `SubscriptionRef`'s changes stores the latest `RunView` in a plain variable and notifies the subscribed listeners. `getSnapshot` returns that variable, the same object until the next change, as `useSyncExternalStore` requires.
+  - A component selects the part of `RunView` it reads (a worker's view its card, a closed box nothing), so another part changing doesn't draw it anew. A card is memoised, and only its head, with its time and spinner, is drawn at a tick.
+  - The times and spinners on screen read two tickers, one for the clock (every 3 seconds) and one for the spinner (ten times a second), each one interval for the whole screen, running while anything draws them: every spinner turns in step.
 - **UI events become `UiCommand` values:** `OpenWorker{id}`, `Answer{requestId, answer}`, `SendMessage{ticket, text}`, `Interrupt{ticket}`, `Release{ticket}`, `Drain`, `Undrain`, `Quit{now}`, and so on.
   - React handlers put them in the command queue with `Queue.unsafeOffer` and never run Effects themselves.
   - A command carries IDs, and the run loop resolves them against current state. This also keeps handlers clear of OpenTUI issue #1660, where closures see stale state when input outruns React's commits.

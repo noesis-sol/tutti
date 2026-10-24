@@ -14,8 +14,8 @@
 // something on it. Below the minimum size, 60×16 (§ 7.7), only the totals, on one line, and the hint
 // are drawn. One function, dashboardLayout, hands out every section's lines in priority order, so
 // that they add up to the pane's height; each section is drawn in its lines and no more (Section).
-// The cards and the idle box run their own clock and spinner, so a tick draws them alone, and
-// none ticks below the minimum size or behind the end-of-run box.
+// The cards' heads, the compact box and the idle box read the shell's clock and spinner, so a tick
+// draws them alone, and none ticks below the minimum size or behind the end-of-run box.
 //
 // The keys (§ 7.3), in the view's input layer (keys.ts): `Tab`, `Shift+Tab` and the arrows move the
 // highlight between cards, `Enter` opens the highlighted card, and a click opens the card under it,
@@ -37,7 +37,7 @@
 // answer there. The box is placed before the tickets table: the table gives up rows for it, down
 // to its fewest, and is left out below them; the box then keeps to the room left (EndOfRunBox.tsx).
 import { useTerminalDimensions } from "@opentui/react"
-import { useCallback, useMemo, useRef } from "react"
+import { useCallback, useMemo } from "react"
 import { UiCommand } from "../run/commands.ts"
 import type { Card, Key, RunView } from "../run/runView.ts"
 import { answerBindings } from "./AttentionCard.tsx"
@@ -69,7 +69,7 @@ import { useHintHeight } from "./Toasts.tsx"
 import { Totals, totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { useCommand, useRunView, useTheme } from "./useRunView.ts"
+import { useCommand, useEvent, useRunView, useTheme } from "./useRunView.ts"
 import { WindDown, windDownSegments } from "./WindDown.tsx"
 
 /** The smallest pane the whole dashboard is drawn in (§ 7.7). */
@@ -241,8 +241,7 @@ export const Dashboard = () => {
   const answering = useAnswering(buttons ? cards : [])
   // Beside Current, the table leaves out the tickets it shows; the end-of-run box shows none.
   const rows = ending === null ? rowsBesideCurrent(view.rows, cards) : view.rows
-  const endingNow = useRef(false)
-  endingNow.current = ending !== null
+  const endingNow = useEvent(() => ending !== null)
 
   // The view's keys, as bound: a key does nothing while the key help is open, but close it.
   const input = useInput()
@@ -290,7 +289,7 @@ export const Dashboard = () => {
     // The stop question: stop after the running tickets, or, winding down, keep taking tickets.
     ...key(["s"], () => box.set(Box.Stop({ windingDown: view.windDown !== null }))),
     // With the end-of-run box shown, `q` ends the run.
-    ...key(["q"], () => (endingNow.current ? command(UiCommand.EndRun()) : undefined)),
+    ...key(["q"], () => (endingNow() ? command(UiCommand.EndRun()) : undefined)),
     // Tab and → move between an attention card's buttons, and on to the next card; ↓ and ↑ from
     // card to card.
     ...key(["tab", "right"], () => step(1, true)),

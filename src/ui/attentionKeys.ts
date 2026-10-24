@@ -25,7 +25,7 @@ import {
 } from "./openUrl.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { ShellContext, useClock, useCommand, useLatestRunView } from "./useRunView.ts"
+import { ShellContext, useClock, useCommand, useEvent, useLatestRunView } from "./useRunView.ts"
 
 /**
  * How long input to a card is ignored after its request appears or changes, or becomes the target,
@@ -266,7 +266,10 @@ export interface Answering {
   readonly step: (card: Card, step: 1 | -1) => boolean
   /** Forgets the focus moved, for the highlight leaving the card. */
   readonly reset: () => void
-  /** Presses the card's button `index`, as Enter on it or a click does. */
+  /**
+   * Presses the card's button `index`, as Enter on it or a click does: the same function from one
+   * drawing to the next, so that a memoised card given it holds.
+   */
   readonly press: (card: Card, index: number) => void
   /** Presses the focused button; false when none is focused. */
   readonly pressFocused: (card: Card) => boolean
@@ -362,6 +365,7 @@ export const useAnswering = (
       sent()
     }
   }
+  const pressNow = useEvent(press)
   return {
     focusOf,
     step: (card, step) => {
@@ -373,7 +377,7 @@ export const useAnswering = (
       return true
     },
     reset: () => move(null),
-    press,
+    press: pressNow,
     pressFocused: (card) => {
       aimedAt(card)
       const focus = focusOf(card)

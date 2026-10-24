@@ -39,7 +39,7 @@ import {
   useTranscriptKeys,
   useTranscriptWindow,
 } from "./transcriptView.ts"
-import { type External, useCommand, useRunView, useTheme } from "./useRunView.ts"
+import { type External, useCommand, useRunViewPart, useTheme } from "./useRunView.ts"
 import {
   LooksContext,
   panelBudget,
@@ -137,12 +137,11 @@ export const LeaveQuestion = ({
 export const InterviewView = () => {
   const interview = useContext(InterviewContext)
   if (interview === null) throw new Error("the Interview view is drawn outside its interview")
-  const view = useRunView()
+  const card = useRunViewPart((view) => view.cards.find((each) => each.ticket === interviewWorker))
   const theme = useTheme()
   const looks = useSyntaxStyles(theme)
   const command = useCommand()
   const { width, height } = useTerminalDimensions()
-  const card = view.cards.find((each) => each.ticket === interviewWorker)
 
   // The transcript, open while the view is; the panel: the session's oldest open requests.
   const transcript = useTranscriptWindow(

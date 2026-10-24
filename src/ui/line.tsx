@@ -2,7 +2,7 @@
 // the pane's width before it is drawn, so that no line wraps (§ 7.2). Frames are drawn as text too,
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
 import { RGBA, TextAttributes } from "@opentui/core"
-import { createContext, type ReactNode, useContext } from "react"
+import { createContext, memo, type ReactNode, useContext } from "react"
 import { orchestra, type Role, rgbaOf, type Style, type Theme } from "./theme.ts"
 
 /** What a segment is drawn in: a style's colours and attributes. */
@@ -312,8 +312,12 @@ export const selectionLookOf = (theme: Theme): SelectionColours => {
 /** The selection colours of the lines drawn under it; OpenTUI's own outside it. */
 export const SelectionLook = createContext<SelectionColours>({})
 
-/** One line, never wrapped: what doesn't fit the box is clipped. */
-export const Line = ({ segments }: { readonly segments: Segments }) => (
+/**
+ * One line, never wrapped: what doesn't fit the box is clipped. Drawn anew only when its segments
+ * are other segments: a line worked out once keeps them, and isn't drawn again with the lines
+ * around it.
+ */
+export const Line = memo(({ segments }: { readonly segments: Segments }) => (
   <text wrapMode="none" height={1} fg={plainFg} {...useContext(SelectionLook)}>
     {segments.map((each, i) =>
       each.look === null ? (
@@ -327,7 +331,7 @@ export const Line = ({ segments }: { readonly segments: Segments }) => (
       ),
     )}
   </text>
-)
+))
 
 /** Lines one under the other, as tall as they are. */
 export const Lines = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => (

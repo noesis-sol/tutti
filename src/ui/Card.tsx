@@ -15,6 +15,7 @@
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
 import { TextAttributes } from "@opentui/core"
+import { memo, useCallback, useMemo } from "react"
 import { pad } from "../run/localTime.ts"
 import type { Card } from "../run/runView.ts"
 import { AttentionLines, attentionInside, attentionLines } from "./AttentionCard.tsx"
@@ -23,7 +24,9 @@ import { workerMemory } from "./LoadLine.tsx"
 import {
   type Border,
   boxed,
+  boxSides,
   frameLook,
+  Line,
   Lines,
   type Look,
   roleLook,
@@ -443,7 +446,7 @@ export const keptLines = (width: number, slots: number, cards: number): number =
 }
 
 /**
- * The box with no worker in it, its spinner turning: it runs the spinner itself, so that nothing
+ * The box with no worker in it, its spinner turning: it reads the spinner itself, so that nothing
  * over it is drawn anew ten times a second (tutti-axpo.5).
  */
 const IdleBox = ({
@@ -458,7 +461,7 @@ const IdleBox = ({
 
 /**
  * The compact box in `lines` lines, its frame included, a click on a card's line opening its worker;
- * its clock and spinner run here, the spinner while any of its cards works.
+ * its clock and spinner are read here, the spinner while any of its cards works.
  */
 const CompactBox = ({
   cards,
@@ -495,45 +498,81 @@ const CompactBox = ({
 }
 
 /**
- * A full card `width` wide, an attention card with its request's buttons: its clock and spinner run
- * here, the spinner while its worker works, so that a tick draws this card anew and nothing else.
+ * A card's head between its frame's sides, `width` wide: its clock and spinner tick here, the spinner
+ * while its worker works, so that a tick draws this line anew and nothing else of the card.
  */
-const CardBox = ({
+const CardHead = ({
   card,
   theme,
   width,
-  inside,
-  highlighted,
-  focus,
-  press,
+  border,
 }: {
   readonly card: Card
   readonly theme: Theme
   readonly width: number
-  readonly inside: number
-  readonly highlighted: boolean
-  readonly focus: number | null
-  readonly press: (index: number) => void
+  readonly border: Border
 }) => {
   const now = useNow()
   const spin = useSpinner(card.motion === "spinner")
-  return grows(card) ? (
-    <AttentionLines
-      lines={attentionLines(card, theme, contentOf(card, theme, now, spin).slice(0, 2), {
-        width,
-        highlighted,
-        focus,
-      })}
-      press={press}
-    />
-  ) : (
-    <Lines lines={cardLines(card, theme, { now, spin, width, inside, highlighted })} />
-  )
+  const head = headOf(card, theme, now, spin, [seg(card.status, statusLook(card, theme))])
+  return <Line segments={boxSides([head], width, frameOf(card, theme), border)[0] ?? []} />
 }
 
 /**
- * The Current section: its label, then the cards as `layout` lays them out. Each card, the compact
- * box and the idle box run their own clock and spinner (tutti-axpo.5).
+ * A full card `width` wide, an attention card with its request's buttons, drawn anew only when what
+ * it shows changes: its lines are worked out then, and only its head (CardHead) ticks.
+ */
+const CardBox = memo(
+  ({
+    card,
+    theme,
+    width,
+    inside,
+    highlighted,
+    focus,
+    press,
+  }: {
+    readonly card: Card
+    readonly theme: Theme
+    readonly width: number
+    readonly inside: number
+    readonly highlighted: boolean
+    readonly focus: number | null
+    /** Presses an attention card's button: the same function from one drawing to the next. */
+    readonly press: (card: Card, index: number) => void
+  }) => {
+    // The card's lines but its head, which CardHead draws in their place, at the clock's time.
+    const lines = useMemo(() => {
+      const [now, spin] = [card.since, ""]
+      return grows(card)
+        ? attentionLines(card, theme, contentOf(card, theme, now, spin).slice(0, 2), {
+            width,
+            highlighted,
+            focus,
+          })
+        : cardLines(card, theme, { now, spin, width, inside, highlighted })
+    }, [card, theme, width, inside, highlighted, focus])
+    const [top, below] = useMemo(() => [lines.slice(0, 1), lines.slice(2)], [lines])
+    const pressed = useCallback((index: number) => press(card, index), [press, card])
+    return (
+      <box flexDirection="column" height={lines.length} flexShrink={0}>
+        <Lines lines={top} />
+        <CardHead
+          card={card}
+          theme={theme}
+          width={width}
+          border={highlighted ? "heavy" : "rounded"}
+        />
+        {grows(card) ? <AttentionLines lines={below} press={pressed} /> : <Lines lines={below} />}
+      </box>
+    )
+  },
+)
+
+/**
+ * The Current section: its label, then the cards as `layout` lays them out. Each card's head, the
+ * compact box and the idle box read the shell's clock and spinner (tutti-axpo.5), so that a tick
+ * draws them alone; a card is drawn anew whole only when it changes (tutti-rvzn.1).
  */
 export const Cards = ({
   cards,
@@ -560,7 +599,7 @@ export const Cards = ({
   readonly open: (ticket: string) => void
   /** The focused button of an attention card. */
   readonly focusOf: (card: Card) => number | null
-  /** Presses an attention card's button. */
+  /** Presses an attention card's button: the same function from one drawing to the next. */
   readonly press: (card: Card, index: number) => void
 }) => {
   const label = <Lines lines={[[seg("  "), seg("Current", theme.styles.picked)]]} />
@@ -615,7 +654,7 @@ export const Cards = ({
                         inside={layout.inside}
                         highlighted={card.ticket === highlighted}
                         focus={focusOf(card)}
-                        press={(index) => press(card, index)}
+                        press={press}
                       />
                     </box>
                   )

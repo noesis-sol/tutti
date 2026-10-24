@@ -39,7 +39,7 @@ import { cut, Line, plainFg, roleLook, type Segments, seg, styled } from "./line
 import { Backdrop } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
-import { useRunView, useTheme } from "./useRunView.ts"
+import { useRunViewPart, useTheme } from "./useRunView.ts"
 
 /** The widest the form gets, its frame included. */
 export const formWidth = 72
@@ -362,9 +362,8 @@ export const AnswerForm = ({
   readonly requestId: string
   readonly ticket: string
 }) => {
-  const view = useRunView()
+  const request = useRunViewPart((view) => view.requests.find((each) => each.id === requestId))
   const { box, toasts } = useInput()
-  const request = view.requests.find((each) => each.id === requestId)
   const form = useMemo(() => (request === undefined ? undefined : formOf(request)), [request])
   const close = () => {
     const open = box.get()

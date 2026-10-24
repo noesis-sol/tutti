@@ -27,9 +27,9 @@ import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { useBindings } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
 import { Data } from "effect"
-import { createContext, useContext, useEffect, useRef } from "react"
+import { createContext, useContext, useEffect } from "react"
 import type { ToastStore } from "./Toasts.tsx"
-import type { Settable } from "./useRunView.ts"
+import { type Settable, useEvent } from "./useRunView.ts"
 
 /** The layers, highest first: each one's keys win over those of the layers below it. */
 export const priorities = {
@@ -162,8 +162,8 @@ export const useLayer = (
 ): void => {
   const renderer = useRenderer()
   const { box } = useInput()
-  const latest = useRef(bindings)
-  latest.current = bindings
+  // The latest render's binding of a key: one function for every render, bound once.
+  const runKey = useEvent((key: string) => bindings.find((binding) => binding.key === key)?.run())
   const keys = bindings.map((binding) => binding.key)
   const shape = keys.join("\n")
   // Two keymap layers at the layer's priority: those of the keys left to a text field, off while one
@@ -187,7 +187,7 @@ export const useLayer = (
         .filter((key) => leaves(key) === typed)
         .map((key) => ({
           key,
-          cmd: () => latest.current.find((binding) => binding.key === key)?.run(),
+          cmd: () => runKey(key),
         })),
     }
   }
