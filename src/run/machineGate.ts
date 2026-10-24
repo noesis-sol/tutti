@@ -5,7 +5,7 @@
 // run with no worker of its own running never waits, so one at the cap with others' workers alone
 // gets on. Held, the run reads the other runs every machinePoll, and looks again once one of their
 // workers has finished, so that the slot it freed is filled within seconds.
-import { Effect, type FileSystem, Ref, type Scope, SubscriptionRef } from "effect"
+import { Effect, type FileSystem, Ref, type Scope, type SubscriptionRef } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { AppConfig } from "../cli/AppConfig.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -13,7 +13,7 @@ import { withMachineHold } from "./holds.ts"
 import type { HoldsGate } from "./holdsGate.ts"
 import { detail, Log } from "./log.ts"
 import { holdLine, machinePoll, make as makeMachine, OtherWorkers } from "./machine.ts"
-import type { Status } from "./runView.ts"
+import { type Status, showOn } from "./runView.ts"
 import { sayer } from "./say.ts"
 import type { Scheduler } from "./schedule.ts"
 
@@ -99,9 +99,7 @@ export const make = (options: {
       }
       const last = seen.at(-1)
       if (last !== undefined) {
-        yield* SubscriptionRef.update(status, (now) =>
-          now.shared === last.shared ? now : { ...now, shared: last.shared },
-        )
+        yield* showOn(status, "shared")(last.shared)
       }
       yield* otherWorkers.set(yield* machine.others)
       if (!(yield* atCap)) yield* holdMachine(false)

@@ -138,8 +138,7 @@ import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
 import { runRequires } from "./requires.ts"
 import { decide, endOfRunBox, type Look } from "./runEnd.ts"
-import { emptyStatus, type Status } from "./runView.ts"
-import { same } from "./same.ts"
+import { emptyStatus, type Status, showOn } from "./runView.ts"
 import { footprintsOf, make as makeScheduler, readyPoll, type Scheduler } from "./schedule.ts"
 import { type Dashboard, show } from "./screen.ts"
 import { make as makeScreenCommands } from "./screenCommands.ts"
@@ -272,10 +271,7 @@ const causeStop = (ticket: string, cause: Causes.Cause<WorkError>): StopReason |
 export const showEndOfRun = (
   status: SubscriptionRef.SubscriptionRef<Status>,
   tickets: ReadonlyArray<string> | null,
-): Effect.Effect<void> =>
-  SubscriptionRef.updateSome(status, (now) =>
-    same(now.endOfRun, tickets) ? Option.none() : Option.some({ ...now, endOfRun: tickets }),
-  )
+): Effect.Effect<void> => showOn(status, "endOfRun")(tickets)
 
 /**
  * The run, from its START block to its end record, in the run's scope: it hands back its exit
@@ -365,10 +361,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     })
     // The account's windows on the title line all the time, each figure recorded (usageWindows.ts).
     yield* watchUsageWindows({
-      show: (windows) =>
-        SubscriptionRef.update(status, (now) =>
-          same(now.windows, windows) ? now : { ...now, windows },
-        ),
+      show: showOn(status, "windows"),
     })
 
     // Triage in the background, when the run has organs: each verdict wakes the run, which doesn't
@@ -547,7 +540,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       ...(predictor === undefined ? {} : { predictor }),
       closedBranches: branches,
       show: ({ solo, unclosed }) =>
-        SubscriptionRef.update(status, (now) => ({ ...now, solo, unclosed })),
+        Effect.andThen(showOn(status, "solo")(solo), showOn(status, "unclosed")(unclosed)),
     })
     yield* Ref.set(slots, scheduler.recheckSlot)
     yield* machine.attach(scheduler)
@@ -563,13 +556,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       )
     // The title line's badge while the --keep-awake command holds the machine awake.
     if (options.keepingAwake !== undefined) {
-      yield* watch(
-        Stream.runForEach(options.keepingAwake, (keepAwake) =>
-          SubscriptionRef.update(status, (now) =>
-            now.keepAwake === keepAwake ? now : { ...now, keepAwake },
-          ),
-        ),
-      )
+      yield* watch(Stream.runForEach(options.keepingAwake, showOn(status, "keepAwake")))
     }
 
     // Each sleep of the machine the run notices, said with its SLEPT line (slept.ts).
@@ -688,23 +675,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // one of their workers has finished; it doesn't read bd ready meanwhile.
     if (machine.poll !== undefined) yield* watch(machine.poll)
     // Triage's verdicts go on their tickets' rows as they come in.
-    yield* watch(
-      Stream.runForEach(triage.verdicts, (verdicts) =>
-        SubscriptionRef.update(status, (now) => ({ ...now, verdicts })),
-      ),
-    )
+    yield* watch(Stream.runForEach(triage.verdicts, showOn(status, "verdicts", Object.is)))
     // How the checks ahead of their turn to merge go shows on their tickets' cards (mergetrain.ts).
-    yield* watch(
-      Stream.runForEach(queue.checksAhead, (checksAhead) =>
-        SubscriptionRef.update(status, (now) => ({ ...now, checksAhead })),
-      ),
-    )
+    yield* watch(Stream.runForEach(queue.checksAhead, showOn(status, "checksAhead", Object.is)))
     // The environment probe's session shows as a card while it runs.
-    yield* watch(
-      Stream.runForEach(environment.probing, (probe) =>
-        SubscriptionRef.update(status, (now) => ({ ...now, probe })),
-      ),
-    )
+    yield* watch(Stream.runForEach(environment.probing, showOn(status, "probe")))
     // With the dashboard shown, the machine's load (load.ts), for its load line and each worker's
     // memory in Current. A reading that fails stops the reading, not the run: the line stays as it
     // was last read.
@@ -716,10 +691,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           roots: host.processes,
           self: process.pid,
           show: (load) =>
-            Effect.andThen(
-              Ref.set(pressed, pressing(load.levels)),
-              SubscriptionRef.update(status, (now) => ({ ...now, load })),
-            ),
+            Effect.andThen(Ref.set(pressed, pressing(load.levels)), showOn(status, "load")(load)),
         }).pipe(
           Effect.catchDefect((defect) =>
             Effect.andThen(

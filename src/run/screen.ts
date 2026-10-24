@@ -113,9 +113,7 @@ export const latestActions: Effect.Effect<
     yield* Effect.sleep(actionPoll)
     const found = yield* read
     yield* SubscriptionRef.updateSome(actions, (before) =>
-      same(Object.fromEntries(before), Object.fromEntries(found))
-        ? Option.none()
-        : Option.some(found),
+      same(before, found) ? Option.none() : Option.some(found),
     )
   }).pipe(Effect.forever, Effect.forkScoped)
   return SubscriptionRef.changes(actions)

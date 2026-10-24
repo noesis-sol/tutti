@@ -37,7 +37,7 @@ import {
   TicketPhase,
   type WindDownMark,
 } from "./phase.ts"
-import { keep, keepAll } from "./same.ts"
+import { keep, keepAll, same } from "./same.ts"
 
 /** A hold on the run, for its banner: `BLOCKED`, `USAGE_LIMIT` with its reset, … */
 export interface RunHold {
@@ -142,6 +142,23 @@ export const emptyStatus: Status = {
   probe: null,
   warnings: [],
 }
+
+/**
+ * Shows each value it is given as `key` on `status`, reading and setting it in one step, and
+ * publishing nothing when the value is `equal` to the one shown: SubscriptionRef publishes every
+ * set, changed or not, and each publish projects the whole view. A Map-valued key's source makes a
+ * new Map for each change, so `Object.is` says when it changed without walking it.
+ */
+export const showOn =
+  <K extends keyof Status>(
+    status: SubscriptionRef.SubscriptionRef<Status>,
+    key: K,
+    equal: (shown: Status[K], value: Status[K]) => boolean = same,
+  ) =>
+  (value: Status[K]): Effect.Effect<void> =>
+    SubscriptionRef.updateSome(status, (now) =>
+      equal(now[key], value) ? Option.none() : Option.some({ ...now, [key]: value }),
+    )
 
 /** Everything RunView is derived from. */
 export interface Inputs {
@@ -727,6 +744,19 @@ export const loadView = (reading: Reading): LoadView => {
   }
 }
 
+/**
+ * Each ledger entry's ID and title, sanitised: an entry keeps its identity until it changes, so each
+ * is sanitised once, not on every projection, Done ones included.
+ */
+const sanitised = new WeakMap<Entry, { readonly label: string; readonly title: string }>()
+const textsOf = (entry: Entry) => {
+  const found = sanitised.get(entry)
+  if (found !== undefined) return found
+  const texts = { label: sanitizeLine(entry.ticket), title: sanitizeLine(entry.title) }
+  sanitised.set(entry, texts)
+  return texts
+}
+
 /** RunView for `inputs`, keeping every part of `previous` that is unchanged, and `previous` itself
  * when nothing is. */
 export const project = (inputs: Inputs, previous: RunView = emptyView): RunView => {
@@ -751,8 +781,7 @@ export const project = (inputs: Inputs, previous: RunView = emptyView): RunView 
     const state = workers.get(entry.ticket)
     const open = requestsOf.get(entry.ticket) ?? none
     const phase = shown(entry.phase, state, open)
-    const label = sanitizeLine(entry.ticket)
-    const title = sanitizeLine(entry.title)
+    const { label, title } = textsOf(entry)
     const verdict = setAside.has(phase._tag) ? (status.verdicts.get(entry.ticket) ?? null) : null
     for (const total of countsUnder(phase)) {
       if (total === "needsYou") needsYou.add(entry.ticket)

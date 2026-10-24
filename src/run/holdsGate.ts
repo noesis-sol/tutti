@@ -3,7 +3,7 @@
 // shown on the dashboard as it comes: `· stopping` while a stop holds the run, the banners, the usage
 // line and its notice. A stop holds the run: said as it comes while tickets still run, unless its
 // line was, and the run is woken to look again.
-import { Effect, Semaphore, SubscriptionRef } from "effect"
+import { Effect, Option, Semaphore, SubscriptionRef } from "effect"
 import type { EventStream } from "./eventstream.ts"
 import { type Holds, noHolds, raiseStop, type StopReason, type Stops, shownHolds } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
@@ -73,10 +73,12 @@ export const make = (options: {
           yield* SubscriptionRef.set(holds, after)
           const { notice, ...shown } = shownHolds(after)
           const next = { ...shown, warnings: [...notices, ...(notice === null ? [] : [notice])] }
-          const { stopping, holds: banners, usage, warnings } = yield* SubscriptionRef.get(status)
-          if (!same({ stopping, holds: banners, usage, warnings }, next)) {
-            yield* SubscriptionRef.update(status, (now) => ({ ...now, ...next }))
-          }
+          yield* SubscriptionRef.updateSome(status, (now) => {
+            const { stopping, holds: banners, usage, warnings } = now
+            return same({ stopping, holds: banners, usage, warnings }, next)
+              ? Option.none()
+              : Option.some({ ...now, ...next })
+          })
           return before
         }),
       )
