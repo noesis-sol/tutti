@@ -40,8 +40,12 @@ const where = (
 ): Where => ({
   platform,
   env: (name) => env[name],
+  overSsh: false,
   installed: (command) => installed.includes(command),
 })
+
+/** `local` over ssh, as Tty reads it. */
+const overSsh = (local: Where): Where => ({ ...local, overSsh: true })
 
 const pbcopy: Copier = { _tag: "Command", command: "pbcopy", args: [] }
 const wlCopy: Copier = { _tag: "Command", command: "wl-copy", args: [] }
@@ -56,15 +60,14 @@ describe("the copier", () => {
     expect(copierOf(where("darwin"))).toEqual(pbcopy)
   })
 
-  test("is OSC 52 on macOS over ssh, from SSH_CONNECTION or SSH_TTY", () => {
-    expect(copierOf(where("darwin", { SSH_CONNECTION: "10.0.0.2 51234 10.0.0.1 22" }))).toEqual(
-      osc52,
-    )
-    expect(copierOf(where("darwin", { SSH_TTY: "/dev/ttys004" }))).toEqual(osc52)
+  test("is OSC 52 on macOS over ssh", () => {
+    expect(copierOf(overSsh(where("darwin")))).toEqual(osc52)
   })
 
-  test("takes an empty ssh variable for a local session", () => {
-    expect(copierOf(where("darwin", { SSH_CONNECTION: "", SSH_TTY: "" }))).toEqual(pbcopy)
+  test("takes ssh from Tty's overSsh, not the ssh variables", () => {
+    expect(copierOf(where("darwin", { SSH_CONNECTION: "10.0.0.2 51234 10.0.0.1 22" }))).toEqual(
+      pbcopy,
+    )
   })
 
   test("is wl-copy on Linux in a Wayland session with it installed", () => {
@@ -82,9 +85,9 @@ describe("the copier", () => {
   })
 
   test("is OSC 52 on Linux over ssh, whatever is installed", () => {
-    expect(
-      copierOf(where("linux", { ...x11, SSH_TTY: "/dev/pts/3" }, ["wl-copy", "xclip"])),
-    ).toEqual(osc52)
+    expect(copierOf(overSsh(where("linux", { ...wayland, ...x11 }, ["wl-copy", "xclip"])))).toEqual(
+      osc52,
+    )
   })
 
   test("is OSC 52 on any other platform", () => {

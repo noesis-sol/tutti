@@ -12,7 +12,6 @@
 import { Duration, Effect } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { installedOnPath } from "../services/onPath.ts"
-import { overSshOf } from "../services/Tty.ts"
 import type { Clipboard, Where } from "./clipboard.ts"
 
 /** What opening the URL in the browser toasts. */
@@ -45,7 +44,7 @@ const set = (env: Where["env"], name: string): boolean => {
  * `xdg-open` in a Wayland or X session, when it is installed; otherwise copied.
  */
 export const openerOf = (where: Where): Opener => {
-  if (!overSshOf(where.env)) {
+  if (!where.overSsh) {
     if (where.platform === "darwin") return { _tag: "Command", command: "open" }
     const display = set(where.env, "WAYLAND_DISPLAY") || set(where.env, "DISPLAY")
     if (where.platform === "linux" && display && where.installed("xdg-open")) {
@@ -126,14 +125,19 @@ export const makeUrlOpener = (
     }
   })
 
-/** The UrlOpener of this process: its platform, environment and PATH, copying with `clipboard`. */
+/**
+ * The UrlOpener of this process: its platform, environment and PATH, and whether it runs over ssh
+ * (Tty's `overSsh`), copying with `clipboard`.
+ */
 export const liveUrlOpener = (
   clipboard: Clipboard,
+  overSsh: boolean,
 ): Effect.Effect<UrlOpener, never, ChildProcessSpawner.ChildProcessSpawner> =>
   makeUrlOpener(
     openerOf({
       platform: process.platform,
       env: (name) => process.env[name],
+      overSsh,
       installed: installedOnPath,
     }),
     clipboard,

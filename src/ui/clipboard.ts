@@ -19,7 +19,7 @@ import { Duration, Effect, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { useContext, useEffect } from "react"
 import { installedOnPath } from "../services/onPath.ts"
-import { type Env, overSshOf } from "../services/Tty.ts"
+import type { Env } from "../services/Tty.ts"
 import type { ToastStore } from "./Toasts.tsx"
 import { ShellContext } from "./useRunView.ts"
 
@@ -48,6 +48,8 @@ export type Copier =
 export interface Where {
   readonly platform: NodeJS.Platform
   readonly env: Env
+  /** Whether the session is over ssh, as Tty read it (TtyValue.overSsh). */
+  readonly overSsh: boolean
   /** Whether a command of this name is on the PATH. */
   readonly installed: (command: string) => boolean
 }
@@ -63,7 +65,7 @@ const set = (env: Where["env"], name: string): boolean => {
  * installed; otherwise OSC 52.
  */
 export const copierOf = (where: Where): Copier => {
-  if (!overSshOf(where.env)) {
+  if (!where.overSsh) {
     if (where.platform === "darwin") return { _tag: "Command", command: "pbcopy", args: [] }
     if (where.platform === "linux") {
       if (set(where.env, "WAYLAND_DISPLAY") && where.installed("wl-copy")) {
@@ -149,14 +151,19 @@ export const rendererOsc52 =
     }
   }
 
-/** The Clipboard of this process: its platform, environment and PATH, and `renderer`'s OSC 52. */
+/**
+ * The Clipboard of this process: its platform, environment and PATH, whether it runs over ssh
+ * (Tty's `overSsh`), and `renderer`'s OSC 52.
+ */
 export const liveClipboard = (
   renderer: CliRenderer,
+  overSsh: boolean,
 ): Effect.Effect<Clipboard, never, ChildProcessSpawner.ChildProcessSpawner> =>
   makeClipboard(
     copierOf({
       platform: process.platform,
       env: (name) => process.env[name],
+      overSsh,
       installed: installedOnPath,
     }),
     rendererOsc52(renderer),

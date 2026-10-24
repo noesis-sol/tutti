@@ -551,8 +551,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             if (nothing !== null) return nothing
           }
           const shell = yield* screen.shell
-          const clipboard = yield* liveClipboard(shell.renderer)
-          const desktop = { clipboard, urlOpener: yield* liveUrlOpener(clipboard) }
+          const clipboard = yield* liveClipboard(shell.renderer, tty.overSsh)
+          const desktop = { clipboard, urlOpener: yield* liveUrlOpener(clipboard, tty.overSsh) }
           if (asks !== "no") {
             const work = yield* askThenBegin(askStart(shell, themeOf, count), begin)
             if (work === null) return { _tag: "Cancelled" } as const

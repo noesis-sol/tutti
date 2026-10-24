@@ -41,8 +41,12 @@ const where = (
 ): Where => ({
   platform,
   env: (name) => env[name],
+  overSsh: false,
   installed: (command) => installed.includes(command),
 })
+
+/** `local` over ssh, as Tty reads it. */
+const overSsh = (local: Where): Where => ({ ...local, overSsh: true })
 
 const open: Opener = { _tag: "Command", command: "open" }
 const xdgOpen: Opener = { _tag: "Command", command: "xdg-open" }
@@ -53,14 +57,13 @@ describe("the opener", () => {
     expect(openerOf(where("darwin"))).toEqual(open)
   })
 
-  test("copies over ssh, from SSH_CONNECTION, SSH_CLIENT or SSH_TTY", () => {
-    expect(openerOf(where("darwin", { SSH_CONNECTION: "10.0.0.2 51234 10.0.0.1 22" }))).toEqual(
-      copy,
-    )
-    expect(openerOf(where("darwin", { SSH_TTY: "/dev/ttys004" }))).toEqual(copy)
-    expect(
-      openerOf(where("linux", { DISPLAY: ":0", SSH_CLIENT: "10.0.0.2 51234 22" }, ["xdg-open"])),
-    ).toEqual(copy)
+  test("copies over ssh", () => {
+    expect(openerOf(overSsh(where("darwin")))).toEqual(copy)
+    expect(openerOf(overSsh(where("linux", { DISPLAY: ":0" }, ["xdg-open"])))).toEqual(copy)
+  })
+
+  test("takes ssh from Tty's overSsh, not the ssh variables", () => {
+    expect(openerOf(where("darwin", { SSH_TTY: "/dev/ttys004" }))).toEqual(open)
   })
 
   test("is xdg-open on Linux in a Wayland or X session with it installed", () => {

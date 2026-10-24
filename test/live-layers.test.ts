@@ -273,7 +273,9 @@ describe("the live layers on this platform's desktop", () => {
       const copied = await onPath(
         dir,
         () =>
-          run(liveClipboard(renderer(asked))).then((clipboard) => clipboard.copy("line one\nzwei")),
+          run(liveClipboard(renderer(asked), false)).then((clipboard) =>
+            clipboard.copy("line one\nzwei"),
+          ),
         desktop.display,
       )
       expect(copied).toBe(true)
@@ -288,7 +290,7 @@ describe("the live layers on this platform's desktop", () => {
       fake(dir, desktop.copy, { readsStdin: true, exit: 1 })
       const copied = await onPath(
         dir,
-        () => run(liveClipboard(renderer([]))).then((clipboard) => clipboard.copy("text")),
+        () => run(liveClipboard(renderer([]), false)).then((clipboard) => clipboard.copy("text")),
         desktop.display,
       )
       expect(copied).toBe(false)
@@ -306,7 +308,9 @@ describe("the live layers on this platform's desktop", () => {
         dir,
         () =>
           run(
-            Effect.flatMap(liveClipboard(renderer([])), (clipboard) => liveUrlOpener(clipboard)),
+            Effect.flatMap(liveClipboard(renderer([]), false), (clipboard) =>
+              liveUrlOpener(clipboard, false),
+            ),
           ).then((opener) => opener.open(url)),
         desktop.display,
       )
@@ -325,7 +329,9 @@ describe("the live layers on this platform's desktop", () => {
         dir,
         () =>
           run(
-            Effect.flatMap(liveClipboard(renderer([])), (clipboard) => liveUrlOpener(clipboard)),
+            Effect.flatMap(liveClipboard(renderer([]), false), (clipboard) =>
+              liveUrlOpener(clipboard, false),
+            ),
           ).then((opener) => opener.open(url)),
         desktop.display,
       )
