@@ -23,7 +23,7 @@ import {
   tool,
   turn,
 } from "../src/testing/AgentHost.ts"
-import { appConfig } from "../src/testing/AppConfig.ts"
+import { appConfig, layer as appConfigLayer } from "../src/testing/AppConfig.ts"
 import { layer as eventsLayer, Captured as Records } from "../src/testing/EventStream.ts"
 import { Captured, layer as capturedLayer } from "../src/testing/Notifier.ts"
 import { backlog, expectExitCode, scenario, type World } from "./harness.ts"
@@ -160,7 +160,7 @@ const notified = (events: ReadonlyArray<Event | number>) =>
       Effect.provide(
         notifying.pipe(
           Layer.provideMerge(Layer.mergeAll(eventsLayer(), capturedLayer)),
-          Layer.provideMerge(TestClock.layer()),
+          Layer.provideMerge(Layer.mergeAll(appConfigLayer(), TestClock.layer())),
         ),
       ),
     ),

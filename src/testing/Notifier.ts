@@ -1,9 +1,9 @@
-// The Notifier test layer (§ 3.3): notices captured in memory, sanitised as the live layer shows
-// them, for a test to read through Captured. It captures whatever AppConfig's `notify` says: the
-// live layer's tests cover turning notifications off.
+// The Notifier test layer (§ 3.3): notices captured in memory, as the live layer would show them
+// (noticeOf: sanitised, and none when AppConfig's `notify` is off), for a test to read through
+// Captured.
 import { Context, Effect, Layer, Ref } from "effect"
-import { Notifier } from "../services/Notifier.ts"
-import { sanitizeLine } from "../ui/sanitize.ts"
+import { AppConfig } from "../cli/AppConfig.ts"
+import { Notifier, noticeOf } from "../services/Notifier.ts"
 
 /** The notices the test layer captured, for a test to look at. */
 export class Captured extends Context.Service<
@@ -15,13 +15,14 @@ export class Captured extends Context.Service<
 >()("tutti/testing/Notifier/Captured") {}
 
 /** A Notifier that captures its notices, and Captured, to read them. */
-export const layer: Layer.Layer<Notifier | Captured> = Layer.effectContext(
+export const layer: Layer.Layer<Notifier | Captured, never, AppConfig> = Layer.effectContext(
   Effect.gen(function* () {
+    const config = yield* AppConfig
     const notices = yield* Ref.make<ReadonlyArray<string>>([])
     const notifier = Notifier.of({
       notify: (notice) => {
-        const text = sanitizeLine(notice).trim()
-        return text === "" ? Effect.void : Ref.update(notices, (all) => [...all, text])
+        const text = noticeOf(config, notice)
+        return text === undefined ? Effect.void : Ref.update(notices, (all) => [...all, text])
       },
     })
     return Context.make(Notifier, notifier).pipe(

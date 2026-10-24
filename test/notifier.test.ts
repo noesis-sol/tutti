@@ -363,7 +363,7 @@ describe("the test layer", () => {
         yield* notifier.notify("")
         yield* notifier.notify("Finished the run\n· 2 closed")
         return yield* (yield* Captured).notices
-      }).pipe(Effect.provide(capturedLayer)),
+      }).pipe(Effect.provide(capturedLayer.pipe(Layer.provide(appConfigLayer())))),
     )
     expect(notices).toEqual([
       "tut-1 needs you · Allow Bash(rm -rf build)?",

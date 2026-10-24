@@ -16,7 +16,7 @@
 import { basename } from "node:path"
 import { Context, Duration, Effect, FiberSet, type FileSystem, Layer } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
-import { AppConfig } from "../cli/AppConfig.ts"
+import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import { Log, Tag, tagged } from "../run/log.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import {
@@ -181,6 +181,19 @@ const failure = (error: CommandExitedNonZero | CommandNotRun | CommandTimedOut):
   }
 }
 
+/**
+ * The text `notice` is shown as under `config`, sanitised and trimmed: undefined when notifications
+ * are off or nothing is left of it. The test layer captures what this gives, as the live one shows.
+ */
+export const noticeOf = (
+  config: Pick<AppConfigValue, "notify">,
+  notice: string,
+): string | undefined => {
+  if (!config.notify) return undefined
+  const text = sanitizeLine(notice).trim()
+  return text === "" ? undefined : text
+}
+
 /** What the Notifier needs from outside: where it runs, and how it runs a command and writes. */
 export interface Environment extends Where {
   readonly run: (
@@ -236,8 +249,8 @@ export const make = Effect.fn("Notifier.make")(function* (environment: Environme
 
   return Notifier.of({
     notify: (notice) => {
-      const text = sanitizeLine(notice).trim()
-      return route._tag === "None" || text === ""
+      const text = noticeOf(config, notice)
+      return route._tag === "None" || text === undefined
         ? Effect.void
         : FiberSet.run(fibers, show(text)).pipe(Effect.asVoid)
     },

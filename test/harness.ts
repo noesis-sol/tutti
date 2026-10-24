@@ -228,6 +228,7 @@ export const environment = (
       ),
     ),
     Layer.provideMerge(notifying),
+    Layer.provideMerge(notifierLayer),
     Layer.provideMerge(
       Layer.mergeAll(
         configLayer(config),
@@ -241,7 +242,6 @@ export const environment = (
         worktreesLayer(setup.worktrees, worktreeCalls),
         lockLayer(setup.locks),
         ttyLayer(setup.tty),
-        notifierLayer,
         fibersLayer,
         BunServices.layer,
       ),
