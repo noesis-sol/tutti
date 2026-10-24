@@ -3,9 +3,9 @@
 // textarea for its description. As orchestra's huh form: ↑ and ↓ (or k and j) move the selector,
 // Enter chooses; in the description Enter submits and Alt+Enter or Ctrl+J starts a new line
 // (Ctrl+J for terminals whose legacy encoding can't tell Alt+Enter from Enter, § 7.7), and
-// Shift+Tab goes back to the select. Esc or Ctrl+C cancels: nothing has started yet. A click on an
-// option chooses it, as Enter on it does (D9, § 7.3); one on the description focuses it, as the
-// renderer focuses what is clicked.
+// Shift+Tab goes back to the select, keeping what was typed. Esc or Ctrl+C cancels: nothing has
+// started yet. A click on an option chooses it, as Enter on it does (D9, § 7.3); one on the
+// description focuses it, as the renderer focuses what is clicked.
 import type { KeyBinding, TextareaRenderable } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import type { Effect } from "effect"
@@ -61,13 +61,21 @@ export const StartQuestion = ({
       return
     }
     if (stepNow() === "describe") {
-      if (key.name === "tab" && key.shift) setStep(() => "choose")
+      if (key.name === "tab" && key.shift) {
+        setStep(() => "choose")
+        // The read's keys after Shift+Tab are the select's, not the description's.
+        description.current?.blur()
+      }
       return
     }
     if (key.name === "up" || key.name === "k") setHighlighted((at) => Math.max(0, at - 1))
     else if (key.name === "down" || key.name === "j") {
       setHighlighted((at) => Math.min(options.length - 1, at + 1))
-    } else if (key.name === "return" || key.name === "kpenter") choose(highlightedNow())
+    } else if (key.name === "return" || key.name === "kpenter") {
+      // The Enter that chooses isn't the description's: it would submit it empty.
+      key.preventDefault()
+      choose(highlightedNow())
+    }
   })
 
   // Option `at` chosen: the current tickets answer; a new feature asks for its description.
@@ -76,6 +84,8 @@ export const StartQuestion = ({
     else if (stepNow() === "choose") {
       setError(null)
       setStep(() => "describe")
+      // The read's keys after this Enter are the description's, before React draws it.
+      description.current?.focus()
     }
   }
 
@@ -110,30 +120,29 @@ export const StartQuestion = ({
           </text>
         ))}
       </Field>
-      {step === "describe" ? (
-        <box flexDirection="column" paddingTop={1}>
-          <Field theme={theme} focused>
-            <text {...styled(form.fieldTitle)}>{describeTitle}</text>
-            <text {...styled(form.description)}>{`${describeDescription} ${newLineHint}`}</text>
-            <textarea
-              ref={description}
-              focused
-              height={descriptionLines}
-              keyBindings={descriptionKeys}
-              onSubmit={submit}
-              onContentChange={() => setError(null)}
-              placeholder="What should it do, and why?"
-              {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
-              {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
-              {...(form.placeholder.fg === undefined
-                ? {}
-                : { placeholderColor: form.placeholder.fg })}
-              {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
-            />
-            {error === null ? null : <text {...styled(form.error)}>{error}</text>}
-          </Field>
-        </box>
-      ) : null}
+      {/* Mounted while hidden, so that the keys of the read that chose New feature reach it. */}
+      <box flexDirection="column" paddingTop={1} visible={step === "describe"}>
+        <Field theme={theme} focused>
+          <text {...styled(form.fieldTitle)}>{describeTitle}</text>
+          <text {...styled(form.description)}>{`${describeDescription} ${newLineHint}`}</text>
+          <textarea
+            ref={description}
+            focused={step === "describe"}
+            height={descriptionLines}
+            keyBindings={descriptionKeys}
+            onSubmit={submit}
+            onContentChange={() => setError(null)}
+            placeholder="What should it do, and why?"
+            {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
+            {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
+            {...(form.placeholder.fg === undefined
+              ? {}
+              : { placeholderColor: form.placeholder.fg })}
+            {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
+          />
+          {error === null ? null : <text {...styled(form.error)}>{error}</text>}
+        </Field>
+      </box>
       <box paddingTop={1}>
         <Hint
           theme={theme}
