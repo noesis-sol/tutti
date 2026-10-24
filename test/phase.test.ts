@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Result, Schema } from "effect"
+import { Result } from "effect"
 import fc from "fast-check"
 import { phaseNames } from "../src/run/events.ts"
 import {
@@ -16,7 +16,6 @@ import {
   refine,
   stopsAtEnd,
   TicketPhase,
-  TicketPhaseSchema,
   transition,
   transitions,
   WaitFor,
@@ -575,30 +574,5 @@ describe("what the UI and totals read", () => {
       "Resolving",
       "Fixing",
     ])
-  })
-})
-
-describe("TicketPhaseSchema", () => {
-  test("its tags are the event stream's phase names", () => {
-    expect(Object.keys(TicketPhaseSchema.cases).sort()).toEqual([...phaseNames].sort())
-  })
-
-  test("round-trips every phase", () => {
-    fc.assert(
-      fc.property(phaseArb, (phase) => {
-        const encoded = Schema.encodeSync(TicketPhaseSchema)(phase)
-        expect(
-          Schema.decodeUnknownSync(TicketPhaseSchema)(JSON.parse(JSON.stringify(encoded))),
-        ).toEqual({ ...phase })
-      }),
-    )
-  })
-
-  test("rejects a place or attempt below 1, and an unknown hold", () => {
-    const decode = Schema.decodeUnknownResult(TicketPhaseSchema)
-    expect(Result.isFailure(decode({ _tag: "ToMerge", place: 0 }))).toBe(true)
-    expect(Result.isFailure(decode({ _tag: "Resolving", attempt: 0 }))).toBe(true)
-    expect(Result.isFailure(decode({ _tag: "HeldBack", why: "slot" }))).toBe(true)
-    expect(Result.isSuccess(decode({ _tag: "HeldBack", why: "solo" }))).toBe(true)
   })
 })

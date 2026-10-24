@@ -1,15 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { Result, Schema } from "effect"
+import { Result } from "effect"
 import fc from "fast-check"
-import {
-  countsUnder,
-  Move,
-  TicketPhase,
-  transition,
-  WaitFor,
-  WaitForSchema,
-  waitShown,
-} from "../src/run/phase.ts"
+import { countsUnder, Move, TicketPhase, transition, WaitFor, waitShown } from "../src/run/phase.ts"
 import { phaseSaid } from "../src/run/report.ts"
 
 const waiting = (wait: WaitFor) => TicketPhase.Waiting({ for: wait })
@@ -53,14 +45,10 @@ describe("what a Waiting ticket waits for", () => {
     )
   })
 
-  test("any list of blockers round-trips through the schema and stays blockers", () => {
-    const decode = Schema.decodeUnknownSync(WaitForSchema)
+  test("any list of blockers is shown as their IDs", () => {
     fc.assert(
       fc.property(fc.array(fc.string()), (ids) => {
-        const wait = WaitFor.Blockers({ ids })
-        const back = decode(JSON.parse(JSON.stringify(Schema.encodeSync(WaitForSchema)(wait))))
-        expect(back).toEqual({ ...wait })
-        expect(waitShown(wait)).toBe(ids.join(", "))
+        expect(waitShown(WaitFor.Blockers({ ids }))).toBe(ids.join(", "))
       }),
     )
   })

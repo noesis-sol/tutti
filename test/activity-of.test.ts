@@ -1,10 +1,9 @@
 // A Working ticket's activity is RunView's (runView.ts activityOf), worked out from its worker's
 // state and open requests as the view is projected; the ledger's phase doesn't carry it.
 import { describe, expect, test } from "bun:test"
-import { Schema } from "effect"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import { emptyTallies, type State } from "../src/run/ledger.ts"
-import { activities, TicketPhase, TicketPhaseSchema } from "../src/run/phase.ts"
+import { activities, TicketPhase } from "../src/run/phase.ts"
 import { activityOf, emptyStatus, project } from "../src/run/runView.ts"
 import { questionOf, stateFor } from "./activity.ts"
 
@@ -85,11 +84,5 @@ describe("a Working ticket in RunView", () => {
     expect(view.rows[0]?.word).toBe("starting")
     expect([view.cards[0]?.status, view.cards[0]?.tone]).toEqual(["starting", "dim"])
     expect([view.totals.workers, view.totals.needsYou]).toEqual([1, 0])
-  })
-
-  test("the event stream's phase is its tag alone", () => {
-    expect(Schema.encodeSync(TicketPhaseSchema)(TicketPhase.Working())).toEqual({
-      _tag: "Working",
-    })
   })
 })

@@ -9,7 +9,7 @@ import type { Mark, Shown, Tone } from "../ui/marks.ts"
 import {
   type endingPhases,
   type Kind,
-  mergeSteps,
+  type mergeSteps,
   phaseNames,
   type phaseSeconds,
   type queuePhases,
@@ -39,14 +39,6 @@ export type WaitFor = Data.TaggedEnum<{
 }>
 
 export const WaitFor = Data.taggedEnum<WaitFor>()
-
-/** WaitFor's Schema, for TicketPhaseSchema. */
-export const WaitForSchema = Schema.TaggedUnion({
-  Blockers: { ids: Schema.Array(Schema.String) },
-  Setup: {},
-  Probe: {},
-  SetupProblem: {},
-})
 
 /**
  * What a Waiting ticket waits for, as the event stream's `why` gives it: its blockers' IDs, joined
@@ -122,34 +114,9 @@ export const TicketPhase = Data.taggedEnum<TicketPhase>()
 
 export type PhaseTag = TicketPhase["_tag"]
 
-const Ordinal = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
-
-/** TicketPhase's Schema, for the event stream: the phase as a tagged object. */
-export const TicketPhaseSchema = Schema.TaggedUnion({
-  Queued: {},
-  HeldBack: { why: Schema.Literals(holdBacks) },
-  Working: {},
-  ToMerge: { place: Ordinal },
-  Merging: { step: Schema.Literals(mergeSteps) },
-  Resolving: { attempt: Ordinal },
-  Fixing: { attempt: Ordinal, afterResolution: Schema.Boolean },
-  Done: {
-    outcome: Schema.TaggedUnion({ Merged: { commit: Schema.String }, NoChange: {} }),
-  },
-  Asked: { question: Schema.String },
-  Waiting: { for: WaitForSchema },
-  Deferred: { why: Schema.String },
-  Review: { why: Schema.String },
-  Blocked: { why: Schema.String },
-  Stopped: { why: Schema.String },
-})
-
-// The Schema and the tagged union describe the same values, and the event stream's phase names
-// are their tags.
+// The event stream's phase names are the phases' tags.
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never
-const sameType: Same<typeof TicketPhaseSchema.Type, TicketPhase> = true
 const sameTags: Same<(typeof phaseNames)[number], PhaseTag> = true
-void sameType
 void sameTags
 
 /** What moves a ticket from one phase to another: the table's When. */
