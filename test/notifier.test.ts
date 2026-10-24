@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import fc from "fast-check"
 import type { Command } from "../src/services/exec.ts"
-import { CommandFailed } from "../src/services/exec.ts"
+import { CommandExitedNonZero } from "../src/services/exec.ts"
 import {
   type Environment,
   make,
@@ -240,7 +240,7 @@ const recording = (
         if (options.slow) yield* Effect.sleep("30 millis")
         ran.push(command)
         if (options.fail) {
-          return yield* new CommandFailed({
+          return yield* new CommandExitedNonZero({
             command: command.command,
             exitCode: 1,
             stderr: "no notification server\n",

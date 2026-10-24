@@ -6,7 +6,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Fiber } from "effect"
 import {
   type Command,
-  CommandFailed,
+  CommandExitedNonZero,
   CommandNotRun,
   CommandTimedOut,
   exec,
@@ -164,10 +164,10 @@ describe("run", () => {
     )
   })
 
-  test("fails with CommandFailed carrying the command, exit code and stderr", async () => {
+  test("fails with CommandExitedNonZero carrying the command, exit code and stderr", async () => {
     const exit = await runExit(run(sh("echo nope >&2; exit 2")))
     expect(failure(exit)).toEqual(
-      new CommandFailed({
+      new CommandExitedNonZero({
         command: "sh -c 'echo nope >&2; exit 2'",
         exitCode: 2,
         stderr: "nope\n",

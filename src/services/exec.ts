@@ -134,11 +134,14 @@ export const ProcessGroups = Context.Reference<Set<number>>("tutti/services/exec
 })
 
 /** The command exited with a code other than 0. A command killed by a signal gets 128 + its number. */
-export class CommandFailed extends Schema.TaggedError<CommandFailed>()("CommandFailed", {
-  command: Schema.String,
-  exitCode: Schema.Number,
-  stderr: Schema.String,
-}) {}
+export class CommandExitedNonZero extends Schema.TaggedError<CommandExitedNonZero>()(
+  "CommandExitedNonZero",
+  {
+    command: Schema.String,
+    exitCode: Schema.Number,
+    stderr: Schema.String,
+  },
+) {}
 
 /** The command ran past its time limit, and its process group was killed. */
 export class CommandTimedOut extends Schema.TaggedError<CommandTimedOut>()("CommandTimedOut", {
@@ -369,11 +372,11 @@ export const exec = Effect.fn("exec")(function* (command: Command) {
   )
 })
 
-/** Runs a command as `exec` does, and fails with CommandFailed when it exits with a code other than 0. */
+/** Runs a command as `exec` does, and fails with CommandExitedNonZero when it exits with a code other than 0. */
 export const run = Effect.fn("run")(function* (command: Command) {
   const output = yield* exec(command)
   if (output.exitCode !== 0) {
-    return yield* new CommandFailed({
+    return yield* new CommandExitedNonZero({
       command: showCommand(command),
       exitCode: output.exitCode,
       stderr: output.stderr,

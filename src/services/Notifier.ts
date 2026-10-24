@@ -21,7 +21,7 @@ import { Log, Tag, tagged } from "../run/log.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import {
   type Command,
-  type CommandFailed,
+  type CommandExitedNonZero,
   type CommandNotRun,
   type CommandTimedOut,
   run,
@@ -170,9 +170,9 @@ export const oscSequence = (osc: Osc, title: string, notice: string, tmux: boole
 }
 
 /** What a failed notification command logs. */
-const failure = (error: CommandFailed | CommandNotRun | CommandTimedOut): string => {
+const failure = (error: CommandExitedNonZero | CommandNotRun | CommandTimedOut): string => {
   switch (error._tag) {
-    case "CommandFailed":
+    case "CommandExitedNonZero":
       return `exited with ${error.exitCode}${error.stderr.trim() === "" ? "" : `: ${error.stderr.trim()}`}`
     case "CommandTimedOut":
       return `took longer than ${Duration.format(notifyLimit)}`
@@ -185,7 +185,7 @@ const failure = (error: CommandFailed | CommandNotRun | CommandTimedOut): string
 export interface Environment extends Where {
   readonly run: (
     command: Command,
-  ) => Effect.Effect<unknown, CommandFailed | CommandNotRun | CommandTimedOut>
+  ) => Effect.Effect<unknown, CommandExitedNonZero | CommandNotRun | CommandTimedOut>
   /** Writes text to the terminal (stdout). */
   readonly write: (text: string) => Effect.Effect<void, Error>
 }
