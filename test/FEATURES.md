@@ -39,11 +39,13 @@ below are the coverage report's uncovered lines at 368899e.
 ## The command line: `--version`, `--help`, flags and variables
 
 - **Reached by**: `tutti --version`, `tutti <command> --help`, the run flags of spec § 8.2 and their
-  `TUTTI_*` variables, the user config.
+  `TUTTI_*` variables (`--keep-awake` and `TUTTI_KEEP_AWAKE` among them), the user config.
 - **Tests**: `smoke.test.ts` (e2e: `bun src/main.ts --version`; a bare `tutti` outside a git
   repository exits 2), `tutti-skill.test.ts` (e2e: each command's `--help` lists the flags the
   skill names), `version.test.ts`, `app-config.test.ts`, `settings.test.ts`, `schemas.test.ts`,
-  `airtight-env.test.ts`, `session-env.test.ts` (unit).
+  `keep-awake.test.ts` (`--keep-awake` off by default, the flag before its variable; the settings'
+  retired `keep_awake` taken whatever its value, and not read), `airtight-env.test.ts`,
+  `session-env.test.ts` (unit).
 - **Untested**: nothing found.
 
 ## `tutti init`
@@ -123,8 +125,9 @@ below are the coverage report's uncovered lines at 368899e.
 
 ## A run's start: startup checks, the lock, the start question
 
-- **Reached by**: a bare `tutti` (and `--ticket`, `--feature`, `--yes`, `--plain`).
-- **Tests**: `startup.test.ts`, `startup-ticket-scope.test.ts`, `run-lock.test.ts`,
+- **Reached by**: a bare `tutti` (and `--ticket`, `--feature`, `--yes`, `--plain`, `--keep-awake`).
+- **Tests**: `startup.test.ts` (with the START block's warning for a key the settings no longer
+  read, `keep_awake`), `startup-ticket-scope.test.ts`, `run-lock.test.ts`,
   `untrusted-checkout.test.ts`, `start.test.ts`, `run-start-question.test.ts`,
   `run-start-ending.test.ts`, `start-question.test.tsx`, `start-deferred-free.test.ts`,
   `shared-machine.test.ts`, `shared-runs-title.test.ts`, `smoke.test.ts` (e2e: outside a repository),
