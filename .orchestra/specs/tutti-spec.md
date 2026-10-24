@@ -1072,7 +1072,7 @@ As orchestra: every section of evidence goes between `<evidence id="<random>">` 
 orchestra's layout, rules and colours (its `docs/dashboard.md`) are kept, with these changes. Rows, cards and totals are drawn from each ticket's phase and its worker's state (§5.1). §7.11 has the colours in full.
 
 ```
- tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2    usage 85% · resets 14:05
+ Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2    usage 85% · resets 14:05
 ╭───────────────┬───────────────┬───────────────┬────────────────────────╮
 │ ✓ 2 Completed │ ↷ 1 Set aside │ 1 Needs you   │ 9 of 16 In queue       │
 ╰───────────────┴───────────────┴───────────────┴────────────────────────╯
@@ -1337,7 +1337,7 @@ Faint text (SGR 2) carries the quiet parts: elapsed times, versions, the branch 
 As orchestra draws it:
 
 - **Title line**:
-  - the pill ` tutti `, bold `pillText` on `pill`, with a blank line above
+  - the pill ` Tutti `, bold `pillText` on `pill`, with a blank line above
   - the version, the branch and the run time faint
   - ` keep awake `, after the version while `--keep-awake` holds, `keepAwakeText` on `keepAwake`, not bold
   - `· stopping` `needsYou` bold; `· solo <id> next` `notice`; `· solo <id> running` `live` bold

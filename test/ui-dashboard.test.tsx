@@ -137,7 +137,7 @@ describe("frames", () => {
     expect(text).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
       ╭───────────────┬───────────────┬─────────────┬────────────────────────────────╮
@@ -169,7 +169,7 @@ describe("frames", () => {
     expect(text).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                      usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                      usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
       ╭───────────────────────────┬─────────────────────────────┬───────────────────────────┬────────────────────────────────╮
@@ -207,7 +207,7 @@ describe("frames", () => {
     expect(text).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 …  usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 …  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
        ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
@@ -259,21 +259,21 @@ describe("the title line", () => {
 
   test("the pill, the version faint, the branch, the run's time and the scope faint", async () => {
     const { frame, line } = await title({ scope: "tut-8f2" })
-    expect(line).toBe(" tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2")
-    looksLike(frame, " tutti ", "title")
+    expect(line).toBe(" Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2")
+    looksLike(frame, " Tutti ", "title")
     looksLike(frame, "0.1.0", "dim")
     looksLike(frame, "18m40s", "dim")
   })
 
   test("· stopping, and the solo ticket next or running", async () => {
     const stopping = await title({ stopping: true })
-    expect(stopping.line).toStartWith(" tutti  0.1.0  · stopping   batch/2026-10-20")
+    expect(stopping.line).toStartWith(" Tutti  0.1.0  · stopping   batch/2026-10-20")
     looksLike(stopping.frame, "· stopping", "stop")
     const next = await title({ solo: { ticket: "tut-s1", running: false } })
-    expect(next.line).toStartWith(" tutti  0.1.0  · solo tut-s1 next   batch")
+    expect(next.line).toStartWith(" Tutti  0.1.0  · solo tut-s1 next   batch")
     looksLike(next.frame, "· solo tut-s1 next", "deferred")
     const running = await title({ solo: { ticket: "tut-s1", running: true } })
-    expect(running.line).toStartWith(" tutti  0.1.0  · solo tut-s1 running   batch")
+    expect(running.line).toStartWith(" Tutti  0.1.0  · solo tut-s1 running   batch")
     looksLike(running.frame, "· solo tut-s1 running", "picked")
   })
 
@@ -302,13 +302,13 @@ describe("the title line", () => {
   test("a narrow pane cuts the branch and the time, then drops them, keeping the banners", async () => {
     const holds = [{ word: "BLOCKED", resetsAt: null }]
     expect((await title({ holds }, 60)).line).toBe(
-      ` tutti  0.1.0   batch/2026-10-20 · 18m40s${" ".repeat(12)}BLOCKED`,
+      ` Tutti  0.1.0   batch/2026-10-20 · 18m40s${" ".repeat(12)}BLOCKED`,
     )
     const cut = await title(
       { holds, stopping: true, solo: { ticket: "tut-s1", running: true } },
       60,
     )
-    expect(cut.line).toBe(" tutti  0.1.0  · stopping  · solo tut-s1 running     BLOCKED")
+    expect(cut.line).toBe(" Tutti  0.1.0  · stopping  · solo tut-s1 running     BLOCKED")
   })
 
   test("the run's time is drawn anew every 3 seconds", async () => {

@@ -46,14 +46,14 @@ describe("the title line", () => {
   })
 
   test("says how many other runs share the machine", () => {
-    expect(text({ ...title, shared: 1 })).toContain(" tutti  0.1.0  · shared with 1 run   main")
+    expect(text({ ...title, shared: 1 })).toContain(" Tutti  0.1.0  · shared with 1 run   main")
     expect(text({ ...title, shared: 2 })).toContain("· shared with 2 runs   main")
   })
 
   test("keeps the count after the solo ticket, and before the branch a narrow pane drops", () => {
     const solo = { ...title, shared: 1, solo: { ticket: "s", running: true } }
     expect(text(solo)).toContain("· solo s running  · shared with 1 run   main")
-    expect(text(solo, 56).trimEnd()).toBe(" tutti  0.1.0  · solo s running  · shared with 1 run")
+    expect(text(solo, 56).trimEnd()).toBe(" Tutti  0.1.0  · solo s running  · shared with 1 run")
   })
 
   test("draws the count in notice, as orchestra draws it in its deferred style", () => {

@@ -45,21 +45,21 @@ const text = (view: TitleView, banners: ReadonlyArray<Banner>, width: number) =>
 describe("the title line in a narrow pane", () => {
   test("shows everything where it fits", () => {
     const line = text(title, [usage, blocked], 140)
-    expect(line).toStartWith(" tutti  0.1.0  · stopping   main · 0s")
+    expect(line).toStartWith(" Tutti  0.1.0  · stopping   main · 0s")
     expect(line).toEndWith(`usage 85% of the five-hour limit · resets ${resets} · overage  BLOCKED`)
   })
 
   test("at 80 columns drops the branch and the time, then shortens the usage", () => {
     const line = text(title, [usage, blocked], 80)
     expect(line).not.toContain("main")
-    expect(line).toStartWith(" tutti  0.1.0  · stopping ")
+    expect(line).toStartWith(" Tutti  0.1.0  · stopping ")
     expect(line).toEndWith(`usage 85% · resets ${resets}  BLOCKED`)
   })
 
   test("at 60 columns keeps the states and the hold, the usage at its percentage", () => {
     expect(text(title, [usage, blocked], 60)).toEndWith(`usage 85% · resets ${resets}  BLOCKED`)
     const line = text({ ...title, quitting: "Quitting…" }, [usage, blocked], 60)
-    expect(line).toStartWith(" tutti  0.1.0  · Quitting… ")
+    expect(line).toStartWith(" Tutti  0.1.0  · Quitting… ")
     expect(line).toEndWith("usage 85%  BLOCKED")
   })
 
@@ -67,14 +67,14 @@ describe("the title line in a narrow pane", () => {
     const solo = { ...title, shared: 2, solo: { ticket: "t-1", running: true } }
     const line = text(solo, [usage, blocked], 60)
     expect(line).not.toContain("usage")
-    expect(line).toStartWith(" tutti  0.1.0  · stopping  · solo t-1 running")
+    expect(line).toStartWith(" Tutti  0.1.0  · stopping  · solo t-1 running")
     expect(line).toEndWith("…  BLOCKED")
   })
 
   test("keeps the usage limit's reset and countdown before the states, its word last", () => {
     const line = text(title, [usage, limited], 60)
     expect(line).toEndWith(`USAGE_LIMIT · resets ${resets} · in 1h`)
-    expect(text(title, [usage, limited], 30).trimEnd()).toBe(" tutti  0.1.0  ·…  USAGE_LIMIT")
+    expect(text(title, [usage, limited], 30).trimEnd()).toBe(" Tutti  0.1.0  ·…  USAGE_LIMIT")
   })
 
   test("never cuts a hold's word while the pill and the words fit", () => {
@@ -93,7 +93,7 @@ describe("the title line in a narrow pane", () => {
         (width, banners, stopping, shared) => {
           const line = text({ ...title, stopping, shared }, banners, width)
           const words = banners.flatMap((b) => (b._tag === "Hold" ? [b.word] : []))
-          const least = " tutti ".length + words.reduce((sum, word) => sum + word.length + 2, 0)
+          const least = " Tutti ".length + words.reduce((sum, word) => sum + word.length + 2, 0)
           if (least <= width) for (const word of words) expect(line).toContain(word)
         },
       ),

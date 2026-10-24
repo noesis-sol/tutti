@@ -183,7 +183,7 @@ describe("the account's windows on the title line", () => {
   test("a narrow pane puts the tighter window first, then shows it alone", () => {
     expect(text([windows], 50)).toEndWith("  This week 41% · Current usage 17%")
     expect(text([windows], 30)).toEndWith("  This week 41%")
-    expect(text([windows], 18)).toBe(" tutti  0.1.0")
+    expect(text([windows], 18)).toBe(" Tutti  0.1.0")
   })
 
   test("beside a hold, before which it is dropped", () => {
@@ -196,7 +196,7 @@ describe("the account's windows on the title line", () => {
 
   test("a window whose reset has passed is left out", () => {
     expect(text([windows], 120, 3_600_000)).toEndWith("   This week ▰▰▰▰▱▱▱▱▱▱  41%")
-    expect(text([windows], 120, 8 * 86_400_000)).toBe(" tutti  0.1.0   main · 192h")
+    expect(text([windows], 120, 8 * 86_400_000)).toBe(" Tutti  0.1.0   main · 192h")
   })
 
   test("names and gauges", () => {

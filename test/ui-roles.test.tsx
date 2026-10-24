@@ -552,7 +552,7 @@ const scenes: ReadonlyArray<Scene> = [
     ready: "? keys",
     checks: [
       // The title line.
-      [" tutti ", look("pillText", { bg: "pill" }, "bold")],
+      [" Tutti ", look("pillText", { bg: "pill" }, "bold")],
       ["0.1.0", look("text", "faint")],
       ["batch/2026-10-20 · 18m40s", look("text", "faint")],
       ["usage 85% · resets 14:05", look("notice")],
@@ -1185,7 +1185,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tu…  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
       ╭───────────────┬───────────────┬─────────────┬────────────────────────────────╮
@@ -1228,7 +1228,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                      usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2                                      usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
       ╭───────────────────────────┬─────────────────────────────┬───────────────────────────┬────────────────────────────────╮
@@ -1281,7 +1281,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 …  usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 …  usage 85% · resets 14:05
 
        ▶ 2 of 3 workers
        ✓ 1 · ↷ 1 ◆ 1 · ? 1 · queue 1 of 16 · 1 held back
@@ -1340,7 +1340,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 18m40s
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
        ▶ 2 of 3 workers
       ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1387,7 +1387,7 @@ describe("layouts", () => {
       expect(await layout(sceneOf("the end-of-run box"))).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 18m40s
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
        ▶ 2 of 3 workers
       ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1431,7 +1431,7 @@ describe("layouts", () => {
       ).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 18m40s               usage 85% · resets 14:05
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s               usage 85% · resets 14:05
 
        ▶ 0 of 3 workers
       ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1458,7 +1458,7 @@ describe("layouts", () => {
       expect(await layout(sceneOf("wind-down"))).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 18m40s
+       Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
        ▶ 1 of 3 workers
       ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1533,7 +1533,7 @@ test(
     "
     Queued:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1556,7 +1556,7 @@ test(
 
     HeldBack:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭──────────────┬──────────────┬──────────────┬─────────────────────────────────╮
@@ -1579,7 +1579,7 @@ test(
 
     Working:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 1 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1602,7 +1602,7 @@ test(
 
     ToMerge:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1625,7 +1625,7 @@ test(
 
     Merging:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1648,7 +1648,7 @@ test(
 
     Resolving:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 1 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1671,7 +1671,7 @@ test(
 
     Fixing:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 1 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1694,7 +1694,7 @@ test(
 
     Done:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1717,7 +1717,7 @@ test(
 
     Asked:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1740,7 +1740,7 @@ test(
 
     Waiting:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1763,7 +1763,7 @@ test(
 
     Deferred:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1786,7 +1786,7 @@ test(
 
     Review:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1809,7 +1809,7 @@ test(
 
     Blocked:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮
@@ -1832,7 +1832,7 @@ test(
 
     Stopped:
 
-     tutti  0.1.0   batch/2026-10-20 · 18m40s
+     Tutti  0.1.0   batch/2026-10-20 · 18m40s
 
      ▶ 0 of 3 workers
     ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮

@@ -25,7 +25,7 @@ export const tildify = (path: string, home: string = homedir()): string =>
 export const initTitle = (theme: Theme, repo: string): Line => {
   const { title, organ } = theme.styles
   return [
-    { text: " tutti ", style: title },
+    { text: " Tutti ", style: title },
     { text: " ", style: null },
     { text: "init", style: organ },
     { text: "  ", style: null },

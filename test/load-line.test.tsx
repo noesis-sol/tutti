@@ -290,7 +290,7 @@ describe("Current", () => {
     }
     const frame = await renderFrame(<Root value={value} />, { width: 120, height: 30 })
     const lines = frame.chars.split("\n").map((each) => each.trimEnd())
-    expect(lines[1]).toStartWith(" tutti  0.1.0")
+    expect(lines[1]).toStartWith(" Tutti  0.1.0")
     expect(lines[2]).toBe("")
     expect(lines[3]).toBe(
       " ▶ 2 of 2 workers · memory 2.6 GB (workers 1.2, merge check 1.4) · pressure normal · CPU 9.8/10 cores",

@@ -161,7 +161,7 @@ const laidOut = (
   badge: boolean,
 ): Segments | null => {
   const { styles } = theme
-  const left: Array<Segment> = [seg(" tutti ", styles.title)]
+  const left: Array<Segment> = [seg(" Tutti ", styles.title)]
   if (title.version !== "") left.push(seg(" "), seg(title.version, styles.dim))
   if (badge) left.push(seg(" "), seg(" keep awake ", styles.keepAwake))
   if (title.quitting !== null) left.push(seg(`  · ${title.quitting}`, styles.stop))

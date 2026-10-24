@@ -46,17 +46,17 @@ const text = (view: TitleView, width = 120, banners: ReadonlyArray<Banner> = [])
 
 describe("the keep-awake badge", () => {
   test("follows the version while the run keeps the machine awake", () => {
-    expect(text(awake)).toStartWith(" tutti  0.1.0  keep awake    main · 0s")
+    expect(text(awake)).toStartWith(" Tutti  0.1.0  keep awake    main · 0s")
   })
 
   test("is absent from a run that doesn't keep the machine awake", () => {
-    expect(text(title)).toStartWith(" tutti  0.1.0   main · 0s")
+    expect(text(title)).toStartWith(" Tutti  0.1.0   main · 0s")
     expect(text(title)).not.toContain("keep awake")
   })
 
   test("comes before the run's states", () => {
     expect(text({ ...awake, stopping: true, shared: 2 })).toStartWith(
-      " tutti  0.1.0  keep awake   · stopping  · shared with 2 runs   main",
+      " Tutti  0.1.0  keep awake   · stopping  · shared with 2 runs   main",
     )
   })
 
@@ -118,7 +118,7 @@ describe("the keep-awake badge", () => {
     const plain = themeIn("dark", true)
     const segments = titleSegments(awake, [], 0, plain, 120)
     expect(segments.map((segment) => segment.text).join("")).toStartWith(
-      " tutti  0.1.0  keep awake    main",
+      " Tutti  0.1.0  keep awake    main",
     )
     expect(plain.styles.keepAwake.paint(" keep awake ")).toBe(" keep awake ")
   })

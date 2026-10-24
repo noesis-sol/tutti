@@ -132,7 +132,7 @@ describe("when a run leaves its end to finish", () => {
       expect.objectContaining({ _tag: "Done", text: "READY_EMPTY after 1 tickets", tickets: 1 }),
     )
     expect(outcome.summary.rows.map((row) => row.ticket)).toEqual(["t-1"])
-    expect(printed).toContain(" tutti  0.1.0-test")
+    expect(printed).toContain(" Tutti  0.1.0-test")
     expect(printed).toContain("Completed")
     expect(printed).toContain("Tickets")
     expect(printed).toMatch(/│ ↷ deferred +│ t-1 +│/)
@@ -195,7 +195,7 @@ describe("when a run leaves its end to finish", () => {
     })
     const { printed } = finished(ran)
     expect(printed).not.toContain("♪")
-    expect(printed).not.toContain(" tutti ")
+    expect(printed).not.toContain(" Tutti ")
     expect(printed).toStartWith("◆ Run report written")
     // The log's REPORT line, printed on stdout too, says where the report is saved.
     expect(printed).not.toContain("Report saved")

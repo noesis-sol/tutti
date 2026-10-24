@@ -176,7 +176,7 @@ describe("the end-of-run box on a short dashboard", () => {
     expect(`\n${linesOf(frame).join("\n")}\n`).toMatchInlineSnapshot(`
       "
 
-       tutti  0.1.0   batch/2026-10-20 · 1m7s
+       Tutti  0.1.0   batch/2026-10-20 · 1m7s
 
        ▶ 5 of 5 workers
       ╭───────────────┬───────────────┬───────────────┬──────────────────────────────╮

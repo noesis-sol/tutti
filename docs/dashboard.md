@@ -10,7 +10,7 @@ program such as `less` does: nothing is printed above it while the run goes, and
 terminal shows what it showed before, followed by the run's summary.
 
 ```
- tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2    usage 85% of the five-hour limit · resets 14:05
+ Tutti  0.1.0   batch/2026-10-20 · 18m40s · ticket tut-8f2    usage 85% of the five-hour limit · resets 14:05
 
  ▶ 3 of 3 workers · memory 4.1 GB (workers 3.2, merge check 0.9) · pressure normal · CPU 9.8/10 cores
 ╭───────────────┬───────────────┬───────────────┬────────────────────────╮
@@ -40,7 +40,7 @@ terminal shows what it showed before, followed by the run's summary.
 
 ### The title line
 
-The ` tutti ` pill, the version, then, faint, the branch finished tickets land on, how long the run
+The ` Tutti ` pill, the version, then, faint, the branch finished tickets land on, how long the run
 has gone, and the scope of a `--ticket` or feature run (`· ticket tut-8f2`). It also says
 `· stopping` while something holds the run, `Quitting…` while it quits, and
 `· solo <id> running` or `· solo <id> next` around a ticket labelled `solo`.

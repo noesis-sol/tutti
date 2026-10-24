@@ -164,7 +164,7 @@ describe("init's form in the renderer", () => {
       async ({ until, press }) => {
         expect(await until("Tickets to run at the same time")).toMatchInlineSnapshot(`
           "
-            tutti  init  /work/shop
+            Tutti  init  /work/shop
             Sets this project up for tutti, in .tutti/.
 
            ● Workers ──── ○ Checks
@@ -194,7 +194,7 @@ describe("init's form in the renderer", () => {
         await press((setup) => setup.mockInput.pressEnter())
         expect(await until("Merge CHANGELOG.md by union?")).toMatchInlineSnapshot(`
           "
-            tutti  init  /work/shop
+            Tutti  init  /work/shop
             Sets this project up for tutti, in .tutti/.
 
            ● Workers ──── ○ Checks
@@ -237,7 +237,7 @@ describe("init's form in the renderer", () => {
         await press((setup) => setup.mockInput.pressEnter())
         expect(await until("Number of tickets at the same time")).toMatchInlineSnapshot(`
           "
-            tutti  init  /work/shop
+            Tutti  init  /work/shop
             Sets this project up for tutti, in .tutti/.
 
            ● Workers ──── ○ Checks
@@ -282,7 +282,7 @@ describe("init's form in the renderer", () => {
         await press((setup) => setup.mockInput.pressEnter())
         expect(await until("Looking for the project's suites")).toMatchInlineSnapshot(`
           "
-            tutti  init  /work/shop
+            Tutti  init  /work/shop
             Sets this project up for tutti, in .tutti/.
 
            ✓ Workers ──── ● Checks
@@ -300,7 +300,7 @@ describe("init's form in the renderer", () => {
         await press((setup) => setup.mockInput.pressEnter())
         expect(await until("On every merge (check-fast)")).toMatchInlineSnapshot(`
           "
-            tutti  init  /work/shop
+            Tutti  init  /work/shop
             Sets this project up for tutti, in .tutti/.
 
            ✓ Workers ──── ● Checks
@@ -578,7 +578,7 @@ describe("init's summary on the main screen", () => {
     // NO_COLOR keeps bold and faint; the words and frames are what's left to compare.
     expect(Bun.stripANSI(text)).toMatchInlineSnapshot(`
       "
-       tutti  init  /work/shop
+       Tutti  init  /work/shop
        Sets this project up for tutti, in .tutti/.
 
         ✓ settings       wrote .tutti/settings.json

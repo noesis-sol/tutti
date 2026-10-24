@@ -139,7 +139,7 @@ const parts = (theme: Theme, width: number) => {
 
   /** The pill, the version, the branch, a scoped run's ticket and the run's time. */
   const title = (s: Summary): string => {
-    const pill = styles.title.paint(" tutti ")
+    const pill = styles.title.paint(" Tutti ")
     const version = fit(s.version, Math.max(w - 8, 1))
     const scoped = s.scope === null ? "" : ` · ticket ${sanitizeLine(s.scope)}`
     const used = 8 + Bun.stringWidth(version) + 3
