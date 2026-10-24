@@ -65,6 +65,7 @@ import {
   ticketsLines,
 } from "./TicketsTable.tsx"
 import { TitleLine } from "./TitleLine.tsx"
+import { useHintHeight } from "./Toasts.tsx"
 import { Totals, totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
@@ -244,7 +245,10 @@ export const Dashboard = () => {
   endingNow.current = ending !== null
 
   // The view's keys, as bound: a key does nothing while the key help is open, but close it.
-  const { box } = useInput()
+  const input = useInput()
+  const { box } = input
+  // Toasts are drawn above the hint's lines, however many it wraps onto.
+  useHintHeight(input.toasts, laid.hint.length)
   const showHelp = (shown: boolean) => setHelp(() => shown)
   const key = (keys: ReadonlyArray<string>, run: () => void): ReadonlyArray<KeyBinding> =>
     keys.map((each) => ({ key: each, run: () => (helpOpen() ? undefined : run()) }))

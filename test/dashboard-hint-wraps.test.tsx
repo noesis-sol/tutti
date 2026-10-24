@@ -1,7 +1,8 @@
 // The dashboard's hint wraps every key onto as many lines as it takes, as the views' do (§ 7.5;
 // tutti-p19v): at 60 to 75 columns with a request open, the whole hint is 76 columns, and a hint cut
 // to one line lost `? keys` and part of `s`. Where a request's buttons aren't drawn, the hint
-// without `d` and `a` gives the lines it no longer needs to the blank ones above the foot.
+// without `d` and `a` gives the lines it no longer needs to the blank ones above the foot. A toast
+// is drawn above the hint's lines, however many it wraps onto (useHintHeight).
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
@@ -14,9 +15,10 @@ import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { dashboardLayout } from "../src/ui/Dashboard.tsx"
 import { widthOf } from "../src/ui/line.tsx"
+import { suspendToast } from "../src/ui/Toasts.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { renderFrame, type Size } from "./render.ts"
+import { type Rendered, renderFrame, type Size, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -80,8 +82,8 @@ const permission: AttentionRequest = {
   createdAt: began,
 }
 
-/** The frame's lines, their trailing spaces left out. */
-const draw = async (view: RunView, size: Size): Promise<ReadonlyArray<string>> => {
+/** The dashboard over `view`. */
+const dashboard = (view: RunView) => {
   const value = {
     view: external(view),
     screen: external<Screen>(Screen.Dashboard()),
@@ -90,8 +92,24 @@ const draw = async (view: RunView, size: Size): Promise<ReadonlyArray<string>> =
     themeOf,
     now: () => began,
   }
-  const frame = await renderFrame(<Root value={value} />, size)
-  return frame.chars.split("\n").map((line) => line.trimEnd())
+  return <Root value={value} />
+}
+
+const linesOf = (chars: string): ReadonlyArray<string> =>
+  chars.split("\n").map((line) => line.trimEnd())
+
+/** The frame's lines, their trailing spaces left out. */
+const draw = async (view: RunView, size: Size): Promise<ReadonlyArray<string>> =>
+  linesOf((await renderFrame(dashboard(view), size)).chars)
+
+/** The frame's lines once `text` shows, or after 5 s. */
+const until = async (rendered: Rendered, text: string): Promise<ReadonlyArray<string>> => {
+  const deadline = Date.now() + 5000
+  for (;;) {
+    const frame = await rendered.capture()
+    if (frame.chars.includes(text) || Date.now() > deadline) return linesOf(frame.chars)
+    await Bun.sleep(20)
+  }
 }
 
 /** The pane's last `count` lines, the hint's, joined on one. */
@@ -158,5 +176,17 @@ describe("the dashboard's hint", () => {
       expect(foot).toContain(key)
     }
     expect(foot).not.toContain("a allow")
+  })
+
+  test("has a toast drawn above its two lines, not over the first", async () => {
+    const size = { width: 70, height: 40 }
+    await withRender(dashboard(viewOf(1)), size, async (rendered) => {
+      await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
+      const lines = await until(rendered, "can't be suspended")
+      expect(footOf(lines, size.height, 2)).toBe(
+        "Tab select · Enter open · d deny · a allow · s stop after current ? keys",
+      )
+      expect(lines[size.height - 3]).toContain(suspendToast.slice(0, 30))
+    })
   })
 })
