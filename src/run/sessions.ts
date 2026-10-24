@@ -28,7 +28,7 @@
 // ticket is then warned about (WORKER_GONE), noted, and dropped, left for review, its record in
 // state.json forgotten.
 import { Data, Effect, Result, Schema } from "effect"
-import { AgentHost } from "../agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { Beads } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { leaveForReview } from "./aside.ts"
@@ -110,7 +110,7 @@ export const resume = ({
   why,
   message,
   what,
-}: Resuming): Effect.Effect<string, ResumeFailed, AgentHost | Store | Log | EventStream> =>
+}: Resuming): Effect.Effect<MessageUuid, ResumeFailed, AgentHost | Store | Log | EventStream> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const store = yield* Store
@@ -140,7 +140,7 @@ export const resume = ({
 /** How the resume of a session that ended unexpectedly went. */
 export type GoneResume = Data.TaggedEnum<{
   /** Resumed and told to carry on: the message's uuid. */
-  Resumed: { readonly message: string }
+  Resumed: { readonly message: MessageUuid }
   /** It was resumed once in this run already. */
   Spent: Record<never, never>
   /** It couldn't be resumed: why. */

@@ -95,8 +95,8 @@ export const worktreeStatus = (worktree: string): Effect.Effect<WorktreeStatus, 
 export const gitReads = { concurrency: "unbounded" } as const
 
 /**
- * What came of putting a branch back (restoreBranch). `at` is where the branch is left, "" when
- * git couldn't say.
+ * What came of putting a branch back (restoreBranch). `at` is where the branch is left, undefined
+ * when git couldn't say.
  */
 export type Restored = Data.TaggedEnum<{
   /** At `to` already, once a rebase in progress was aborted (`aborted`), or none was. */
