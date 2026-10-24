@@ -100,7 +100,7 @@ describe("AgentHost live: the context window", () => {
             sessionId: "11111111-1111-4111-8111-111111111111",
             cwd: dir,
           })
-          yield* host.send("t-1", "go", "clientComposed")
+          yield* host.send("t-1", { text: "go", from: "clientComposed" })
           return yield* measured("t-1")
         }),
     )
@@ -117,7 +117,7 @@ describe("AgentHost live: the context window", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* host.send("t-1", "go", "clientComposed")
+        yield* host.send("t-1", { text: "go", from: "clientComposed" })
         yield* host.state("t-1").pipe(
           Stream.filter((state) => state._tag === "Idle"),
           Stream.runHead,

@@ -49,7 +49,7 @@ describe("a reply that comes at once", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start(id, session)
-        const uuid = yield* host.send(id, "go", "clientComposed")
+        const uuid = yield* host.send(id, { text: "go", from: "clientComposed" })
         const fiber = yield* Effect.forkChild(host.answered(id, uuid))
         yield* quiet
         // Answered without the clock moving: nothing waited on a message already come.
@@ -65,13 +65,13 @@ describe("a reply that comes at once", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start(id, session)
-        yield* host.send(id, "go", "clientComposed")
+        yield* host.send(id, { text: "go", from: "clientComposed" })
         yield* host.state(id).pipe(
           Stream.filter((state) => state._tag === "Idle"),
           Stream.runHead,
         )
         // Its script's steps have run out: this send stays queued, outstanding.
-        const uuid = yield* host.send(id, "again", "clientComposed")
+        const uuid = yield* host.send(id, { text: "again", from: "clientComposed" })
         const fiber = yield* Effect.forkChild(host.answered(id, uuid))
         yield* quiet
         const before = fiber.pollUnsafe()

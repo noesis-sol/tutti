@@ -89,18 +89,28 @@ export class ResumeFailed extends Schema.TaggedError<ResumeFailed>()("ResumeFail
   }
 }
 
+/** A resume of a ticket's session: what it is for, what it is sent, and what its line says. */
+export interface Resuming {
+  readonly ticket: string
+  readonly why: ResumeWhy
+  /** What the session is sent, client_composed. */
+  readonly message: string
+  /** What the RESUMED line starts with. */
+  readonly what: Line
+}
+
 /**
  * Resumes the ticket's saved session in its worktree for `why`, sending it `message`
  * (client_composed), and records it: the RESUMED line, which starts with `what`, its `resumed`
  * record, and one more resume in state.json. The message's uuid. Fails when the ticket has no saved
  * session or the session doesn't start.
  */
-export const resume = (
-  ticket: string,
-  why: ResumeWhy,
-  message: string,
-  what: Line,
-): Effect.Effect<string, ResumeFailed, AgentHost | Store | Log | EventStream> =>
+export const resume = ({
+  ticket,
+  why,
+  message,
+  what,
+}: Resuming): Effect.Effect<string, ResumeFailed, AgentHost | Store | Log | EventStream> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const store = yield* Store
@@ -152,12 +162,12 @@ export const resumeGone = (
     const ledger = yield* Ledger
     if (!(yield* ledger.claimGoneResume(ticket))) return GoneResume.Spent()
     const resumed = yield* Effect.result(
-      resume(
+      resume({
         ticket,
-        "gone",
-        goneText(ticket),
-        line`${ticket}'s worker is gone (${why}) with the ticket in progress`,
-      ),
+        why: "gone",
+        message: goneText(ticket),
+        what: line`${ticket}'s worker is gone (${why}) with the ticket in progress`,
+      }),
     )
     if (Result.isFailure(resumed)) return GoneResume.Failed({ reason: resumed.failure.reason })
     yield* Effect.ignore(
@@ -172,11 +182,15 @@ export const resumeGone = (
  * Drops the ticket, in progress with its worker gone and its session not resumed (`why`): warned
  * about (WORKER_GONE), noted, and left for review, no longer followed, and forgotten in state.json.
  */
-export const workerGone = (
-  ticket: string,
-  worktree: string,
-  why: string,
-): Effect.Effect<void, never, Beads | Ledger | Log | Store> =>
+export const workerGone = ({
+  ticket,
+  worktree,
+  why,
+}: {
+  readonly ticket: string
+  readonly worktree: string
+  readonly why: string
+}): Effect.Effect<void, never, Beads | Ledger | Log | Store> =>
   Effect.gen(function* () {
     const store = yield* Store
     yield* leaveForReview(ticket, {

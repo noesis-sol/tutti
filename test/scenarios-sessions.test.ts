@@ -579,7 +579,7 @@ describe("an asked ticket", () => {
 
     expectRun(second, 0, { t: "Done" })
     expect(sessionsOf(second, "t")).toEqual([`Resumed ${first.state.tickets.t?.session}`])
-    expect(textsOf(second, "t")).toEqual([answeredText("t", question, "Which way?")])
+    expect(textsOf(second, "t")).toEqual([answeredText({ id: "t", question, title: "Which way?" })])
     expect(records(second, "resumed")).toEqual([
       expect.objectContaining({ ticket: "t", why: "answered" }),
     ])

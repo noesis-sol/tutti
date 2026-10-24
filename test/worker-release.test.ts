@@ -63,7 +63,7 @@ describe("Transcripts' release", () => {
     const after = await Effect.runPromise(
       Effect.gen(function* () {
         const transcripts = yield* makeTranscripts(storage)
-        yield* transcripts.record(worker, "s-1", text("one"))
+        yield* transcripts.record(worker, { session: "s-1", message: text("one") })
         const read = counts.readBack
         yield* transcripts.release(worker)
         const released = counts.released
@@ -80,7 +80,7 @@ describe("Transcripts' release", () => {
     const seen = await Effect.runPromise(
       Effect.gen(function* () {
         const transcripts = yield* makeTranscripts(storage)
-        yield* transcripts.record(worker, "s-1", text("one"))
+        yield* transcripts.record(worker, { session: "s-1", message: text("one") })
         const first = yield* Scope.make()
         const second = yield* Scope.make()
         yield* Scope.provide(transcripts.view(worker), first)
@@ -105,7 +105,7 @@ describe("Transcripts' release", () => {
     const seen = await Effect.runPromise(
       Effect.gen(function* () {
         const transcripts = yield* makeTranscripts(storage)
-        yield* transcripts.record(worker, "s-1", text("one"))
+        yield* transcripts.record(worker, { session: "s-1", message: text("one") })
         yield* transcripts.release(worker)
         const read = counts.readBack
         const released = {
@@ -114,7 +114,7 @@ describe("Transcripts' release", () => {
           readBack: counts.readBack - read,
         }
         // Its next message starts it again, its latest action with it.
-        yield* transcripts.record(worker, "s-2", text("two"))
+        yield* transcripts.record(worker, { session: "s-2", message: text("two") })
         return { released, again: yield* transcripts.latestAction(worker) }
       }),
     )
@@ -146,7 +146,7 @@ describe("Transcripts' release", () => {
     const seen = await Effect.runPromise(
       Effect.gen(function* () {
         const transcripts = yield* makeTranscripts(storage)
-        yield* transcripts.record(worker, "s-1", text("one"))
+        yield* transcripts.record(worker, { session: "s-1", message: text("one") })
         yield* transcripts.release(worker)
         const view = yield* Effect.scoped(
           Effect.map(transcripts.view(worker), (opened) => opened.items.length),
@@ -167,7 +167,7 @@ describe("Transcripts' release", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const transcripts = yield* makeTranscripts(storage)
-          yield* transcripts.record(worker, "s-1", text("one"))
+          yield* transcripts.record(worker, { session: "s-1", message: text("one") })
           yield* Effect.scoped(transcripts.view(worker))
         }),
       ),
@@ -183,7 +183,7 @@ describe("the host's end", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start(worker, { sessionId: "s-1", cwd: "/work/t-1" })
-        yield* host.send(worker, "go", "clientComposed")
+        yield* host.send(worker, { text: "go", from: "clientComposed" })
         yield* untilSettled(worker)
         const before = counts.released
         yield* host.end(worker)
@@ -217,7 +217,7 @@ const fitted = (cause: Move) =>
       yield* ledger.transition(worker, Move.Ready(), { title: "One ticket" })
       yield* ledger.transition(worker, Move.Dispatched())
       yield* host.start(worker, { sessionId: "s-1", cwd: "/work/t-1" })
-      yield* host.send(worker, "go", "clientComposed")
+      yield* host.send(worker, { text: "go", from: "clientComposed" })
       yield* untilSettled(worker)
       yield* ledger.transition(worker, cause)
       yield* fit(worker)

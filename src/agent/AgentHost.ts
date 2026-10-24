@@ -64,7 +64,7 @@ export interface Message {
   readonly text: string
   readonly from: From
   /** The uuid to send it with, drawn by the caller (the composer, § 7.5); drawn here when left out. */
-  readonly uuid?: string
+  readonly uuid?: string | undefined
 }
 
 /** A session to start or resume: its ID, drawn by the caller, and where it runs (the worktree). */
@@ -101,7 +101,10 @@ export interface Compaction {
 }
 
 /** The SDK user message that carries `message`, stamped `uuid`, into session `session`. */
-export const userMessage = (message: Message, uuid: string, session: string): SDKUserMessage => ({
+export const userMessage = (
+  message: Message,
+  { uuid, session }: { readonly uuid: string; readonly session: string },
+): SDKUserMessage => ({
   type: "user",
   message: { role: "user", content: message.text },
   parent_tool_use_id: null,
@@ -165,11 +168,11 @@ export class AgentHost extends Context.Service<
     ): Effect.Effect<string, AgentStartFailed>
     /**
      * Pushes a message into the worker's inbox: the CLI may fold it into the running turn or queue
-     * it, alone or sharing a turn with another (§ 4.1). Its uuid, `uuid` when given, which the
-     * session's results and an interrupt's receipt name it by. Fails when the worker has no open
-     * session, or it is closing: the message didn't go.
+     * it, alone or sharing a turn with another (§ 4.1). Its uuid, the message's when given, which
+     * the session's results and an interrupt's receipt name it by. Fails when the worker has no
+     * open session, or it is closing: the message didn't go.
      */
-    send(ticket: string, text: string, from: From, uuid?: string): Effect.Effect<string, AgentGone>
+    send(ticket: string, message: Message): Effect.Effect<string, AgentGone>
     /**
      * Interrupts the worker's turn and cancels the messages queued behind it (§ 4.8); open requests
      * are withdrawn. The receipt.
@@ -491,7 +494,7 @@ export const makeWorkers = (
       fold,
       emit: (entry, session, message) =>
         Effect.gen(function* () {
-          yield* transcripts.record(entry.ticket, session, message)
+          yield* transcripts.record(entry.ticket, { session, message })
           const reading = read(message)
           // All a partial message can change of the worker's state is to end an api_retry, so it is
           // folded only while one holds: the rest are cheap to pass on (§ 4.4).
@@ -510,7 +513,7 @@ export const makeWorkers = (
               }
               // Spending reads a result's figures defensively itself: a turn it ended still cost.
               if (message.type === "result" && Option.isSome(spending)) {
-                yield* spending.value.message(entry.ticket, session, message)
+                yield* spending.value.message(entry.ticket, { session, message })
               }
               break
             case "Assistant":
@@ -526,13 +529,13 @@ export const makeWorkers = (
               break
             case "Result":
               if (Option.isSome(spending)) {
-                yield* spending.value.message(entry.ticket, session, reading.message)
+                yield* spending.value.message(entry.ticket, { session, message: reading.message })
               }
               break
           }
           return reading
         }),
-      sent: (entry, session, message) => transcripts.record(entry.ticket, session, message),
+      sent: (entry, session, message) => transcripts.record(entry.ticket, { session, message }),
       compacted: (entry, trigger) =>
         Effect.asVoid(PubSub.publish(compactions, { ticket: entry.ticket, trigger })),
       compactions: Stream.fromPubSub(compactions),

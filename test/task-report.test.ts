@@ -48,7 +48,7 @@ const late =
 const start = Effect.gen(function* () {
   const host = yield* AgentHost
   yield* host.start("t-1", session)
-  yield* host.send("t-1", "Your ticket is t-1.", "clientComposed")
+  yield* host.send("t-1", { text: "Your ticket is t-1.", from: "clientComposed" })
 })
 
 const current = Effect.gen(function* () {

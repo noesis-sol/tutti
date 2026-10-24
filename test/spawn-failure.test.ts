@@ -251,7 +251,12 @@ describe("a session whose folder isn't there", () => {
           branch: "tutti/t-1",
         })
         return yield* Effect.exit(
-          resume("t-1", "suspended", "Carry on.", line`t-1 was suspended as the last run ended`),
+          resume({
+            ticket: "t-1",
+            why: "suspended",
+            message: "Carry on.",
+            what: line`t-1 was suspended as the last run ended`,
+          }),
         )
       }).pipe(Effect.provide(liveLayer(hostOptions(log)).pipe(Layer.provide(ClaudeCode.layer)))),
     )

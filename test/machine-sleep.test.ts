@@ -309,7 +309,7 @@ describe("commands and sessions across a sleep", () => {
       Effect.gen(function* () {
         const agents = yield* AgentHost
         yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* agents.send("t-1", "Go.", "clientComposed")
+        yield* agents.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* agents.state("t-1").pipe(
           Stream.takeUntil((state) => state._tag === "Working"),
           Stream.runDrain,

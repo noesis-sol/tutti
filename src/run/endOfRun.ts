@@ -211,7 +211,7 @@ export const make = (options: {
         for (const [ticket, mode] of unsent) {
           const worktree = (yield* store.ticket(ticket))?.worktree
           if (mode === "fixing" || worktree === undefined) {
-            neverSent.push(neverHanded(ticket, mode))
+            neverSent.push(neverHanded({ id: ticket, mode }))
             continue
           }
           const rebasing = git.rebaseInProgress(worktree)
@@ -220,11 +220,11 @@ export const make = (options: {
           )
           const stuck = yield* Effect.result(rebasing)
           neverSent.push(
-            neverHanded(
-              ticket,
+            neverHanded({
+              id: ticket,
               mode,
-              Result.isSuccess(stuck) && !stuck.success ? undefined : worktree,
-            ),
+              stuck: Result.isSuccess(stuck) && !stuck.success ? undefined : worktree,
+            }),
           )
         }
         const suspended: Array<{ readonly ticket: string; readonly because: string }> = []

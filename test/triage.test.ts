@@ -433,7 +433,8 @@ describe("triage in the background", () => {
     yield* git.addWorktree("/repo", path, { branch: `tutti/${id}`, base: "main" })
     yield* repository.commit(path, `Half of it (${id})`, { "src/a.ts": "a\n" })
     yield* repository.write(path, { "src/b.ts": "b\n" })
-    const record = (m: object) => transcripts.record(id, "s-1", m as SDKMessage)
+    const record = (m: object) =>
+      transcripts.record(id, { session: "s-1", message: m as SDKMessage })
     yield* record(compaction("auto"))
     yield* record(
       assistant([{ type: "tool_use", id: "a", name: "Bash", input: { command: "make" } }]),

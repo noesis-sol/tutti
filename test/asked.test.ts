@@ -249,7 +249,7 @@ describe("a worker that filed a question ticket", () => {
     const [started, resumed] = sessions(ran)
     expect(resumed).toEqual(started)
     expect(sentTags(ran)).toEqual(["Started", "Message", "Closed", "Resumed", "Message"])
-    expect(sentTexts(ran).at(-1)).toBe(answeredText(id, question, "Which way?"))
+    expect(sentTexts(ran).at(-1)).toBe(answeredText({ id, question, title: "Which way?" }))
     expectEvents(ran, ["asked", "phase", "answered", "resumed", "phase"])
     const moved = records(ran, "phase").filter(
       (record) => record.kind === "phase" && record.cause === "Answered",

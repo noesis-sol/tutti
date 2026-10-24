@@ -552,7 +552,11 @@ describe("the message's uuid", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" })
-        const returned = yield* host.send("t-1", "Please also add tests", "human", uuid)
+        const returned = yield* host.send("t-1", {
+          text: "Please also add tests",
+          from: "human",
+          uuid,
+        })
         return { returned, messages: yield* (yield* Recording).messages("t-1") }
       }).pipe(
         Effect.provide(

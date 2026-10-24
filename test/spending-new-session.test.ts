@@ -58,10 +58,13 @@ describe("a session started anew", () => {
         // A result of the same session ID in the transcript: a resume would count over it, a start
         // doesn't read it.
         const transcripts = yield* Transcripts
-        yield* transcripts.record("t-1", "s-1", resultMessage(1, usage(13, 200)))
+        yield* transcripts.record("t-1", {
+          session: "s-1",
+          message: resultMessage(1, usage(13, 200)),
+        })
         const host = yield* AgentHost
         yield* host.start("t-1", { sessionId: "s-1", cwd: "/w/t-1" })
-        yield* host.send("t-1", "Work on t-1.", "clientComposed")
+        yield* host.send("t-1", { text: "Work on t-1.", from: "clientComposed" })
         yield* host.state("t-1").pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
         yield* host.end("t-1")
         return yield* (yield* Spending).ofTicket("t-1")

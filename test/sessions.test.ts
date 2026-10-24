@@ -445,7 +445,12 @@ describe("a session tutti closed", () => {
         yield* host.start(id, { sessionId: "s-1", cwd: "/w/t-1" })
         for (let i = 0; i < 3; i++) {
           yield* host.close(id)
-          yield* resume(id, "hand_back", "Resolve the conflicts.", line`${id}'s session is closed`)
+          yield* resume({
+            ticket: id,
+            why: "hand_back",
+            message: "Resolve the conflicts.",
+            what: line`${id}'s session is closed`,
+          })
         }
         yield* host.close(id)
         const gone = yield* resumeGone(id, "exit 1")
@@ -468,7 +473,12 @@ describe("a session tutti closed", () => {
     const ran = await scenario(
       { backlog: tiny.seeds, scripts: { [id]: [[]] } },
       Effect.flip(
-        resume(id, "answered", "Your question is answered.", line`${id}'s question is answered`),
+        resume({
+          ticket: id,
+          why: "answered",
+          message: "Your question is answered.",
+          what: line`${id}'s question is answered`,
+        }),
       ),
     )
     expect(resultOf(ran).reason).toBe("it has no session to resume")

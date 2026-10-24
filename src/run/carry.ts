@@ -442,18 +442,19 @@ const takeUp = (
           scope: config.ticket,
         })
         const resumed = yield* Effect.result(
-          resume(
-            id,
-            "suspended",
-            resumedText(id, why, facts),
-            record.suspended === undefined
-              ? line`${id} was in progress as the last run crashed`
-              : line`${id} was suspended as the last run ended (${why})`,
-          ),
+          resume({
+            ticket: id,
+            why: "suspended",
+            message: resumedText(id, why, facts),
+            what:
+              record.suspended === undefined
+                ? line`${id} was in progress as the last run crashed`
+                : line`${id} was suspended as the last run ended (${why})`,
+          }),
         )
         if (Result.isFailure(resumed)) {
           carried.set(id, "workerGone")
-          yield* workerGone(id, worktree, resumed.failure.reason)
+          yield* workerGone({ ticket: id, worktree, why: resumed.failure.reason })
           return undefined
         }
         carried.set(id, "resumed")

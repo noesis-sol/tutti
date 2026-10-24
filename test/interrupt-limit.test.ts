@@ -117,9 +117,9 @@ const working = (dir: string, queued: number) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     yield* host.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-    yield* host.send("t-1", "Go.", "clientComposed")
+    yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
     yield* reaches("t-1", "Working")
-    for (let i = 0; i < queued; i++) yield* host.send("t-1", `And ${i}.`, "human")
+    for (let i = 0; i < queued; i++) yield* host.send("t-1", { text: `And ${i}.`, from: "human" })
     yield* fakeRead(join(dir, "fake.jsonl"), 1 + queued)
     return host
   })

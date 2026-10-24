@@ -475,14 +475,18 @@ describe("scrolling the Interview view", () => {
 
       // Scrolled back, a new item waits; G goes to the latest, and the next one shows as it comes.
       await rendered.input(() =>
-        Effect.runPromise(transcripts.record(interviewWorker, session, said("item 251"))),
+        Effect.runPromise(
+          transcripts.record(interviewWorker, { session, message: said("item 251") }),
+        ),
       )
       expect((await rendered.capture()).chars).not.toContain("item 251")
       await press(rendered, "G")
       const end = await until(rendered, has("item 251"))
       expect(last(shownItems(end))).toBe(251)
       await rendered.input(() =>
-        Effect.runPromise(transcripts.record(interviewWorker, session, said("item 252"))),
+        Effect.runPromise(
+          transcripts.record(interviewWorker, { session, message: said("item 252") }),
+        ),
       )
       const next = await until(rendered, has("item 252"))
       expect(last(shownItems(next))).toBe(252)

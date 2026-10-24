@@ -142,7 +142,7 @@ const settle = async (
       const states = []
       for (const [i, ticket] of tickets.entries()) {
         yield* agents.start(ticket, { sessionId: sessionIds[i] ?? "", cwd: dir })
-        yield* agents.send(ticket, "go", "clientComposed")
+        yield* agents.send(ticket, { text: "go", from: "clientComposed" })
         const state = yield* agents.state(ticket).pipe(
           Stream.filter((s) => s._tag === "Idle" || s._tag === "Failed" || s._tag === "Gone"),
           Stream.runHead,

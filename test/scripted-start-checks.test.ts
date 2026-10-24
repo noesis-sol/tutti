@@ -58,7 +58,7 @@ const session = (sessionId = "s-1") => ({ sessionId, cwd: "/work/t-1" })
 const startsAndSends = Effect.gen(function* () {
   const host = yield* AgentHost
   yield* host.start("t-1", session())
-  yield* host.send("t-1", "Go.", "clientComposed")
+  yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
   yield* TestClock.adjust("1 second")
   return {
     now: yield* host.current("t-1"),
@@ -122,7 +122,7 @@ describe("the scripted AgentHost: the first system/init", () => {
         const host = yield* AgentHost
         for (const ticket of ["t-1", "t-2"]) {
           yield* host.start(ticket, { sessionId: `s-${ticket}`, cwd: `/work/${ticket}` })
-          yield* host.send(ticket, "Go.", "clientComposed")
+          yield* host.send(ticket, { text: "Go.", from: "clientComposed" })
         }
         yield* TestClock.adjust("1 second")
         return {

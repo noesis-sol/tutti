@@ -921,7 +921,7 @@ describe("bounded rendering", () => {
         ])
         // A new item while scrolled back waits; G goes back to the latest 200, following.
         await rendered.input(() =>
-          Effect.runPromise(transcripts.record("t-1", session, said("item 1001"))),
+          Effect.runPromise(transcripts.record("t-1", { session, message: said("item 1001") })),
         )
         expect(mountedIn(rendered).last).toBe("600:0")
         await press(rendered, "G")
@@ -937,11 +937,10 @@ describe("bounded rendering", () => {
     const view = external(viewOf())
     const commands = Effect.runSync(makeCommands)
     const event = (e: Record<string, unknown>) =>
-      transcripts.record(
-        "t-1",
+      transcripts.record("t-1", {
         session,
-        sdk({ type: "stream_event", event: e, parent_tool_use_id: null }),
-      )
+        message: sdk({ type: "stream_event", event: e, parent_tool_use_id: null }),
+      })
     await withRender(
       <Root value={shellOf(view, commands, feed)} />,
       { width: 60, height: 20 },

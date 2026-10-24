@@ -147,7 +147,7 @@ describe("Transcripts' ID check", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const transcripts = yield* makeTranscripts(storage)
-        yield* transcripts.record("../escape", "s", { type: "user" } as never)
+        yield* transcripts.record("../escape", { session: "s", message: { type: "user" } as never })
         transcripts.stderr("../escape")("oops")
         yield* transcripts.page("../escape")
       }),
@@ -164,7 +164,7 @@ describe("Transcripts' ID check", () => {
     const kept = await Effect.runPromise(
       Effect.gen(function* () {
         const transcripts = yield* Transcripts
-        yield* transcripts.record("../escape", "s", { type: "user" } as never)
+        yield* transcripts.record("../escape", { session: "s", message: { type: "user" } as never })
         transcripts.stderr("../escape")("oops")
         const files = yield* Files
         return {

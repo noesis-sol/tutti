@@ -255,7 +255,7 @@ const direct = (repo: string, cwd: string, how: SessionStart): Direct => {
     ended,
     send: (text) => {
       const uuid = randomUUID()
-      pending.push(userMessage({ text, from: "clientComposed" }, uuid, how.sessionId))
+      pending.push(userMessage({ text, from: "clientComposed" }, { uuid, session: how.sessionId }))
       nudge()
       return uuid
     },
@@ -471,30 +471,26 @@ live.describe("Agent SDK contract: turns", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir, sessionId))
-          const first = yield* host.send(
-            ticket,
-            "Reply with the single word ALPHA.",
-            "clientComposed",
-          )
+          const first = yield* host.send(ticket, {
+            text: "Reply with the single word ALPHA.",
+            from: "clientComposed",
+          })
           // Sent while the first turn is under way: the CLI folds them into it, or queues them.
           yield* messagesUntil("the first turn's system/init", (all) => all.some(isInit))
-          const second = yield* host.send(
-            ticket,
-            "Reply with the single word BRAVO.",
-            "clientComposed",
-          )
-          const third = yield* host.send(
-            ticket,
-            "Reply with the single word CHARLIE.",
-            "clientComposed",
-          )
+          const second = yield* host.send(ticket, {
+            text: "Reply with the single word BRAVO.",
+            from: "clientComposed",
+          })
+          const third = yield* host.send(ticket, {
+            text: "Reply with the single word CHARLIE.",
+            from: "clientComposed",
+          })
           yield* messagesUntil("the three sends answered", answered(first, second, third))
           // A send after the session went idle: a turn of its own.
-          const later = yield* host.send(
-            ticket,
-            "Reply with the single word DELTA.",
-            "clientComposed",
-          )
+          const later = yield* host.send(ticket, {
+            text: "Reply with the single word DELTA.",
+            from: "clientComposed",
+          })
           yield* messagesUntil("the later send answered", answered(later))
           return {
             all: yield* messages,
@@ -568,11 +564,10 @@ live.describe("Agent SDK contract: background tasks", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          const uuid = yield* host.send(
-            ticket,
-            `Use the Bash tool with run_in_background: true to run exactly this command: ./wait.sh ${seconds}\nDon't wait for it: reply with the single word STARTED right away.`,
-            "clientComposed",
-          )
+          const uuid = yield* host.send(ticket, {
+            text: `Use the Bash tool with run_in_background: true to run exactly this command: ./wait.sh ${seconds}\nDon't wait for it: reply with the single word STARTED right away.`,
+            from: "clientComposed",
+          })
           yield* messagesUntil("the send answered", answered(uuid))
           const whileLive = yield* host.current(ticket)
           // The report: a result after the live set emptied, and idle after it.
@@ -673,11 +668,10 @@ live.describe("Agent SDK contract: background tasks", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          const uuid = yield* host.send(
-            ticket,
-            'Use the Agent tool once, with subagent_type "helper", run_in_background: true and the prompt "Wait". Don\'t wait for it: reply with the single word STARTED right away.',
-            "clientComposed",
-          )
+          const uuid = yield* host.send(ticket, {
+            text: 'Use the Agent tool once, with subagent_type "helper", run_in_background: true and the prompt "Wait". Don\'t wait for it: reply with the single word STARTED right away.',
+            from: "clientComposed",
+          })
           // The send's result, with the subagent still at work: no idle comes with it.
           yield* messagesUntil("the send's result", (all) => resultsFor(all, uuid).length > 0)
           const whileLive = yield* host.current(ticket)
@@ -765,22 +759,19 @@ live.describe("Agent SDK contract: folded and shared sends", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          const first = yield* host.send(
-            ticket,
-            `Use the Bash tool to run exactly this command: ./wait.sh ${seconds}\nThen reply with the single word ALPHA.`,
-            "clientComposed",
-          )
+          const first = yield* host.send(ticket, {
+            text: `Use the Bash tool to run exactly this command: ./wait.sh ${seconds}\nThen reply with the single word ALPHA.`,
+            from: "clientComposed",
+          })
           yield* runningNow(seconds)
-          const second = yield* host.send(
-            ticket,
-            "Also reply with the single word BRAVO.",
-            "clientComposed",
-          )
-          const third = yield* host.send(
-            ticket,
-            "Also reply with the single word CHARLIE.",
-            "clientComposed",
-          )
+          const second = yield* host.send(ticket, {
+            text: "Also reply with the single word BRAVO.",
+            from: "clientComposed",
+          })
+          const third = yield* host.send(ticket, {
+            text: "Also reply with the single word CHARLIE.",
+            from: "clientComposed",
+          })
           yield* messagesUntil("the three sends answered", answered(first, second, third))
           return { all: yield* messages, sends: [first, second, third] }
         }),
@@ -804,15 +795,20 @@ live.describe("Agent SDK contract: folded and shared sends", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          const first = yield* host.send(
-            ticket,
-            "Count from 1 to 40, one number per line, with nothing else.",
-            "clientComposed",
-          )
+          const first = yield* host.send(ticket, {
+            text: "Count from 1 to 40, one number per line, with nothing else.",
+            from: "clientComposed",
+          })
           yield* messagesUntil("the first turn's system/init", (all) => all.some(isInit))
           const queued = [
-            yield* host.send(ticket, "Reply with the single word BRAVO.", "clientComposed"),
-            yield* host.send(ticket, "Reply with the single word CHARLIE.", "clientComposed"),
+            yield* host.send(ticket, {
+              text: "Reply with the single word BRAVO.",
+              from: "clientComposed",
+            }),
+            yield* host.send(ticket, {
+              text: "Reply with the single word CHARLIE.",
+              from: "clientComposed",
+            }),
           ]
           yield* messagesUntil("the sends answered", answered(first, ...queued))
           return { all: yield* messages, first, queued }
@@ -842,11 +838,10 @@ live.describe("Agent SDK contract: canUseTool", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          const uuid = yield* host.send(
-            ticket,
-            "Use the Bash tool to run exactly this command: touch asked-by-tutti.txt\nThen reply with the single word DONE.",
-            "clientComposed",
-          )
+          const uuid = yield* host.send(ticket, {
+            text: "Use the Bash tool to run exactly this command: touch asked-by-tutti.txt\nThen reply with the single word DONE.",
+            from: "clientComposed",
+          })
           yield* stateUntil((s) => s._tag === "NeedsYou")
           const request = yield* onlyRequest
           yield* (yield* Attention).answer(request.id, { _tag: "Allow" }, "screen")
@@ -898,7 +893,7 @@ live.describe("Agent SDK contract: canUseTool", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          const uuid = yield* host.send(ticket, removal, "clientComposed")
+          const uuid = yield* host.send(ticket, { text: removal, from: "clientComposed" })
           yield* stateUntil((s) => s._tag === "NeedsYou")
           const request = yield* onlyRequest
           yield* (yield* Attention).answer(request.id, { _tag: "Deny" }, "screen")
@@ -928,7 +923,7 @@ live.describe("Agent SDK contract: canUseTool", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          const uuid = yield* host.send(ticket, removal, "clientComposed")
+          const uuid = yield* host.send(ticket, { text: removal, from: "clientComposed" })
           return yield* messagesUntil("the turn answered", answered(uuid))
         }),
         {
@@ -969,18 +964,23 @@ live.describe("Agent SDK contract: interrupt", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          yield* host.send(
-            ticket,
-            `Use the Bash tool to run exactly this command: ./wait.sh ${seconds}\nThen reply with the single word DONE.`,
-            "clientComposed",
-          )
+          yield* host.send(ticket, {
+            text: `Use the Bash tool to run exactly this command: ./wait.sh ${seconds}\nThen reply with the single word DONE.`,
+            from: "clientComposed",
+          })
           yield* Effect.sync(() => running(seconds)).pipe(
             Effect.repeat({ until: (r) => r, schedule: Schedule.spaced(Duration.millis(200)) }),
             Effect.timeout(waitLimit),
           )
           const queued = [
-            yield* host.send(ticket, "Reply with the single word BRAVO.", "clientComposed"),
-            yield* host.send(ticket, "Reply with the single word CHARLIE.", "clientComposed"),
+            yield* host.send(ticket, {
+              text: "Reply with the single word BRAVO.",
+              from: "clientComposed",
+            }),
+            yield* host.send(ticket, {
+              text: "Reply with the single word CHARLIE.",
+              from: "clientComposed",
+            }),
           ]
           yield* messagesUntil("both sends queued", (all) =>
             queued.every((uuid) => lifecycleOf(all, uuid).includes("queued")),
@@ -1064,11 +1064,10 @@ live.describe("Agent SDK contract: resume", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir, sessionId))
-          const told = yield* host.send(
-            ticket,
-            `Remember this codeword: ${codeword}. Reply with the single word OK.`,
-            "clientComposed",
-          )
+          const told = yield* host.send(ticket, {
+            text: `Remember this codeword: ${codeword}. Reply with the single word OK.`,
+            from: "clientComposed",
+          })
           yield* messagesUntil("the codeword taken", answered(told))
           yield* host.close(ticket)
           const closed = yield* host.current(ticket)
@@ -1195,7 +1194,10 @@ live.describe("Agent SDK contract: a removed worktree", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(worktree, sessionId))
-          const uuid = yield* host.send(ticket, "Reply with the single word OK.", "clientComposed")
+          const uuid = yield* host.send(ticket, {
+            text: "Reply with the single word OK.",
+            from: "clientComposed",
+          })
           yield* messagesUntil("the turn answered", answered(uuid))
         }),
       )
@@ -1251,11 +1253,10 @@ live.describe("Agent SDK contract: quit and carry on", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir, sessionId))
-          yield* host.send(
-            ticket,
-            `Use the Bash tool to run exactly this command: ./wait.sh ${seconds}\nThen reply with the single word DONE.`,
-            "clientComposed",
-          )
+          yield* host.send(ticket, {
+            text: `Use the Bash tool to run exactly this command: ./wait.sh ${seconds}\nThen reply with the single word DONE.`,
+            from: "clientComposed",
+          })
           yield* runningNow(seconds)
           // tutti's quit (§ 4.8): interrupt(), its result, then close().
           yield* host.interrupt(ticket)
@@ -1303,11 +1304,10 @@ live.describe("Agent SDK contract: quit and carry on", () => {
           const host = yield* AgentHost
           const attention = yield* Attention
           yield* host.start(ticket, session(dir, sessionId))
-          yield* host.send(
-            ticket,
-            "Use the Bash tool to run exactly this command: touch carried-on.txt\nThen reply with the single word DONE.",
-            "clientComposed",
-          )
+          yield* host.send(ticket, {
+            text: "Use the Bash tool to run exactly this command: touch carried-on.txt\nThen reply with the single word DONE.",
+            from: "clientComposed",
+          })
           yield* stateUntil((s) => s._tag === "NeedsYou")
           const first = yield* onlyRequest
           yield* host.interrupt(ticket)
@@ -1371,7 +1371,10 @@ live.describe("Agent SDK contract: MCP servers", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start(ticket, session(dir))
-          const uuid = yield* host.send(ticket, "Reply with the single word OK.", "clientComposed")
+          const uuid = yield* host.send(ticket, {
+            text: "Reply with the single word OK.",
+            from: "clientComposed",
+          })
           yield* messagesUntil("the turn answered", answered(uuid))
           return {
             all: yield* messages,
@@ -1422,11 +1425,10 @@ live.describe("Agent SDK contract: the verifier", () => {
           yield* host.start(ticket, session(dir))
           // The model asks for the background, so only the hook can keep the verifier in the
           // foreground.
-          const uuid = yield* host.send(
-            ticket,
-            'Use the Agent tool once, with subagent_type "verifier", run_in_background: true and the prompt "Check ticket contract-1". When the verifier\'s answer is in front of you, reply with its VERIFIED line and stop.',
-            "clientComposed",
-          )
+          const uuid = yield* host.send(ticket, {
+            text: 'Use the Agent tool once, with subagent_type "verifier", run_in_background: true and the prompt "Check ticket contract-1". When the verifier\'s answer is in front of you, reply with its VERIFIED line and stop.',
+            from: "clientComposed",
+          })
           yield* messagesUntil("the turn answered", answered(uuid))
           return { all: yield* messages, uuid }
         }),

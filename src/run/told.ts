@@ -13,9 +13,15 @@ export const nudgeText = (id: string): string =>
   "defer as your instructions say."
 
 /** What a worker whose question is answered (asked.ts) is told as its session is resumed. */
-export const answeredText = (id: string, question: string, title: string): string =>
-  `tutti: your question ${question} (${title}) is answered. Read the answer with bd show ` +
-  `${question}, then carry on with ${id} as your instructions say.`
+export const answeredText = (a: {
+  readonly id: string
+  /** The question's ID. */
+  readonly question: string
+  /** The question's title. */
+  readonly title: string
+}): string =>
+  `tutti: your question ${a.question} (${a.title}) is answered. Read the answer with bd show ` +
+  `${a.question}, then carry on with ${a.id} as your instructions say.`
 
 /** What a worker whose session went (§ 4.8) is told as it is resumed. */
 export const goneText = (id: string): string =>

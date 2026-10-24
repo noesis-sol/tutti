@@ -92,7 +92,7 @@ const startAndWatch = (ticket: string, n: number) =>
     const host = yield* AgentHost
     yield* host.start(ticket, session())
     const states = yield* watch(ticket, n)
-    yield* host.send(ticket, `Your ticket is ${ticket}.`, "clientComposed")
+    yield* host.send(ticket, { text: `Your ticket is ${ticket}.`, from: "clientComposed" })
     return yield* Fiber.join(states)
   })
 
@@ -153,7 +153,7 @@ describe("the helper scripts drive WorkerState", () => {
         const attention = yield* Attention
         yield* host.start("t-1", session())
         const states = yield* watch("t-1", 5)
-        yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* host.state("t-1").pipe(
           Stream.takeUntil((s) => s._tag === "NeedsYou"),
           Stream.runDrain,
@@ -233,7 +233,7 @@ describe("scripted cases", () => {
         const host = yield* AgentHost
         yield* host.start("t-1", session())
         const states = yield* watch("t-1", 3)
-        yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* TestClock.adjust("30 seconds")
         expect(yield* host.current("t-1")).toEqual(working)
         // b1 ends at 60 s; until the turn reporting it starts, 70 ms later, its report is to come.
@@ -258,7 +258,7 @@ describe("scripted cases", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const states = yield* startAndWatch("t-1", 3)
-        const send = yield* Effect.exit(host.send("t-1", "Hello?", "human"))
+        const send = yield* Effect.exit(host.send("t-1", { text: "Hello?", from: "human" }))
         const interrupt = yield* Effect.exit(host.interrupt("t-1"))
         const resumed = yield* watch("t-1", 4)
         yield* host.resume("t-1", session(), { text: "Carry on.", from: "clientComposed" })
@@ -291,7 +291,7 @@ describe("scripted cases", () => {
         yield* host.start("t-1", session())
         yield* TestClock.adjust("1 hour")
         expect(yield* host.current("t-1")).toEqual(WorkerState.Starting())
-        yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* host.state("t-1").pipe(
           Stream.takeUntil((s) => s._tag === "Working"),
           Stream.runDrain,
@@ -367,8 +367,11 @@ describe("what it was sent", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", session())
-        const first = yield* host.send("t-1", "Your ticket is t-1.", "clientComposed")
-        const second = yield* host.send("t-1", "/context", "human")
+        const first = yield* host.send("t-1", {
+          text: "Your ticket is t-1.",
+          from: "clientComposed",
+        })
+        const second = yield* host.send("t-1", { text: "/context", from: "human" })
         return { first, second, messages: yield* (yield* Recording).messages("t-1") }
       }),
     )
@@ -376,10 +379,12 @@ describe("what it was sent", () => {
     expect(done.messages).toEqual([
       userMessage(
         { text: "Your ticket is t-1.", from: "clientComposed" },
-        done.first as never,
-        "s-1",
+        { uuid: done.first as never, session: "s-1" },
       ),
-      userMessage({ text: "/context", from: "human" }, done.second as never, "s-1"),
+      userMessage(
+        { text: "/context", from: "human" },
+        { uuid: done.second as never, session: "s-1" },
+      ),
     ])
     expect(done.messages[0]?.client_composed).toBe(true)
     expect(done.messages[0]?.origin).toBeUndefined()
@@ -404,12 +409,12 @@ describe("what it was sent", () => {
         const host = yield* AgentHost
         const attention = yield* Attention
         yield* host.start("t-1", session())
-        yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* host.state("t-1").pipe(
           Stream.takeUntil((s) => s._tag === "NeedsYou"),
           Stream.runDrain,
         )
-        const queued = yield* host.send("t-1", "And then this.", "human")
+        const queued = yield* host.send("t-1", { text: "And then this.", from: "human" })
         const receipt = yield* host.interrupt("t-1")
         const stopped = yield* host.state("t-1").pipe(
           Stream.takeUntil((s) => s._tag === "Failed"),
@@ -461,12 +466,12 @@ describe("what it was sent", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", session())
-        yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* host.state("t-1").pipe(
           Stream.takeUntil((s) => s._tag === "NeedsYou"),
           Stream.runDrain,
         )
-        const queued = yield* host.send("t-1", "And then this.", "human")
+        const queued = yield* host.send("t-1", { text: "And then this.", from: "human" })
         const states = yield* untilIdle("t-1")
         const receipt = yield* host.interrupt("t-1")
         return {
@@ -508,12 +513,12 @@ describe("what it was sent", () => {
         const host = yield* AgentHost
         const attention = yield* Attention
         yield* host.start("t-1", session())
-        const first = yield* host.send("t-1", "Go.", "clientComposed")
+        const first = yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* host.state("t-1").pipe(
           Stream.takeUntil((s) => s._tag === "NeedsYou"),
           Stream.runDrain,
         )
-        const second = yield* host.send("t-1", "Continue.", "clientComposed")
+        const second = yield* host.send("t-1", { text: "Continue.", from: "clientComposed" })
         const states = yield* untilIdle("t-1")
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         return {

@@ -345,7 +345,9 @@ describe("carry-over: an asked ticket", () => {
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done" })
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
-    expect(textsOf(ran, "t-1")).toEqual([answeredText("t-1", "q-1", "Which way?")])
+    expect(textsOf(ran, "t-1")).toEqual([
+      answeredText({ id: "t-1", question: "q-1", title: "Which way?" }),
+    ])
     expect(entries(ran, "t-1")).toEqual(["StillAsked Asked"])
     expect(records(ran, "resumed")).toEqual([expect.objectContaining({ why: "answered" })])
   })

@@ -107,10 +107,10 @@ const queueTwoAndInterrupt = (settled: WorkerState["_tag"]) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     yield* host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" })
-    yield* host.send("t-1", "Go.", "clientComposed")
+    yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
     yield* reaches("t-1", "Working")
-    const b = yield* host.send("t-1", "And this.", "human")
-    const c = yield* host.send("t-1", "And that.", "human")
+    const b = yield* host.send("t-1", { text: "And this.", from: "human" })
+    const c = yield* host.send("t-1", { text: "And that.", from: "human" })
     const receipt = yield* host.interrupt("t-1")
     const states = yield* reaches("t-1", settled)
     return {
@@ -251,10 +251,10 @@ const liveQueueTwoAndInterrupt = (log: string, settled: WorkerState["_tag"]) =>
       sessionId: "11111111-1111-4111-8111-111111111111",
       cwd: join(log, ".."),
     })
-    yield* host.send("t-1", "Go.", "clientComposed")
+    yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
     yield* reaches("t-1", "Working")
-    const b = yield* host.send("t-1", "And this.", "human")
-    const c = yield* host.send("t-1", "And that.", "human")
+    const b = yield* host.send("t-1", { text: "And this.", from: "human" })
+    const c = yield* host.send("t-1", { text: "And that.", from: "human" })
     yield* fakeRead(log, 3)
     const receipt = yield* host.interrupt("t-1")
     const states = yield* reaches("t-1", settled)

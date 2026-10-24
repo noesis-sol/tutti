@@ -62,7 +62,7 @@ const trivialRun = Effect.gen(function* () {
       yield* Effect.sleep("1 minute")
       const worktree = yield* (yield* Worktrees).prepare("t-1")
       yield* host.start("t-1", { sessionId: "s-1", cwd: worktree.path })
-      yield* host.send("t-1", "Work on t-1.", "clientComposed")
+      yield* host.send("t-1", { text: "Work on t-1.", from: "clientComposed" })
       yield* host.state("t-1").pipe(Stream.filter(settled), Stream.take(1), Stream.runDrain)
       yield* host.end("t-1")
       yield* log.write(line`  t-1 merged`)

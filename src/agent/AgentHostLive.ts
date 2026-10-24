@@ -275,7 +275,7 @@ export const push = (
     const uuid = message.uuid ?? randomUUID()
     // Outstanding before the CLI can see it, so its turn's result can't come first.
     yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
-    const sdk = userMessage(message, uuid, session.sessionId)
+    const sdk = userMessage(message, { uuid, session: session.sessionId })
     if (!(yield* session.claude.send(sdk))) {
       yield* workers.fold(
         session.entry,
@@ -889,10 +889,8 @@ export const layer = (
             },
           ),
         ),
-        send: Effect.fn("AgentHost.send")((ticket, text, from, uuid) =>
-          Effect.flatMap(sessionOf(ticket), (session) =>
-            push(workers, session, { text, from, ...(uuid === undefined ? {} : { uuid }) }),
-          ),
+        send: Effect.fn("AgentHost.send")((ticket, message) =>
+          Effect.flatMap(sessionOf(ticket), (session) => push(workers, session, message)),
         ),
         interrupt: Effect.fn("AgentHost.interrupt")((ticket) =>
           Effect.flatMap(sessionOf(ticket), (session) =>

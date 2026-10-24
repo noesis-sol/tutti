@@ -104,7 +104,16 @@ export const limitName = (limit: string | null): string =>
  * first: a rebase aborted, for the next run to merge the ticket again, or, `stuck`, its worktree
  * left mid-rebase as the abort failed.
  */
-export const neverHanded = (id: string, mode: HandBackMode, stuck?: string): string => {
+export const neverHanded = ({
+  id,
+  mode,
+  stuck,
+}: {
+  readonly id: string
+  readonly mode: HandBackMode
+  /** The worktree left mid-rebase. */
+  readonly stuck?: string | undefined
+}): string => {
   const what = `${id}'s worker, at the usage limit, was never handed its ${handedWords(mode)}`
   if (stuck !== undefined) {
     return `${what}, and its rebase could not be aborted, so ${stuck} is left mid-rebase`
@@ -518,7 +527,9 @@ export const make = (options: {
           yield* Deferred.succeed(handBack.sent, undefined)
           continue
         }
-        const sent = yield* Effect.exit(host.send(ticket, handBack.prompt, "clientComposed"))
+        const sent = yield* Effect.exit(
+          host.send(ticket, { text: handBack.prompt, from: "clientComposed" }),
+        )
         yield* Deferred.done(handBack.sent, sent)
         if (sent._tag === "Success") {
           yield* logs.write(
@@ -542,7 +553,7 @@ export const make = (options: {
           )
           continue
         }
-        const sent = yield* Effect.result(host.send(ticket, text, "clientComposed"))
+        const sent = yield* Effect.result(host.send(ticket, { text, from: "clientComposed" }))
         if (sent._tag === "Success") {
           yield* logs.write(
             phase === "Resolving" || phase === "Fixing"

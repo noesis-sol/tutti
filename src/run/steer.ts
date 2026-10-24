@@ -70,7 +70,7 @@ export const sendMessage = (
     const logs = yield* Log
     const events = yield* EventStream
     yield* steer(ticket, "message")
-    const sent = yield* Effect.result(host.send(ticket, text, "human", uuid))
+    const sent = yield* Effect.result(host.send(ticket, { text, from: "human", uuid }))
     if (Result.isFailure(sent)) {
       yield* Effect.logDebug(`dropped SendMessage: ${sent.failure.message}`)
       return false

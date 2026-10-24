@@ -64,7 +64,7 @@ const itemsOf = (messages: ReadonlyArray<SDKMessage>): ReadonlyArray<Item> =>
 
 /** A message sent to the worker, as the host records it. */
 const sent = (text: string, uuid: string) =>
-  userMessage({ text, from: "human" }, uuid, session) as unknown as SDKMessage
+  userMessage({ text, from: "human" }, { uuid, session }) as unknown as SDKMessage
 
 const said = (words: string) =>
   sdk({
@@ -104,7 +104,11 @@ describe("the scripted host records what it sends", () => {
           Stream.runHead,
           Effect.forkChild({ startImmediately: true }),
         )
-        const uuid = yield* host.send("t-1", "Please add tests too.", "human", "u-1")
+        const uuid = yield* host.send("t-1", {
+          text: "Please add tests too.",
+          from: "human",
+          uuid: "u-1",
+        })
         yield* Fiber.join(settled)
         return {
           uuid,
@@ -116,7 +120,10 @@ describe("the scripted host records what it sends", () => {
     expect(done.uuid).toBe("u-1")
     const [first, second] = done.transcript
     expect(first?.message).toEqual(
-      userMessage({ text: "Please add tests too.", from: "human" }, "u-1", "s-1"),
+      userMessage(
+        { text: "Please add tests too.", from: "human" },
+        { uuid: "u-1", session: "s-1" },
+      ),
     )
     expect(first?.session).toBe("s-1")
     expect(second?.message).toMatchObject({ type: "command_lifecycle", state: "queued" })
@@ -156,9 +163,13 @@ describe("the live host records what it sends", () => {
       Effect.gen(function* () {
         const agents = yield* AgentHost
         yield* agents.start("t-1", { sessionId, cwd: dir })
-        const first = yield* agents.send("t-1", "Work on t-1.", "clientComposed")
+        const first = yield* agents.send("t-1", { text: "Work on t-1.", from: "clientComposed" })
         yield* idle
-        const second = yield* agents.send("t-1", "And the docs.", "human", "u-2")
+        const second = yield* agents.send("t-1", {
+          text: "And the docs.",
+          from: "human",
+          uuid: "u-2",
+        })
         yield* idle
         return { first, second, items: yield* (yield* Files).messages("t-1") }
       }).pipe(
@@ -189,8 +200,11 @@ describe("the live host records what it sends", () => {
       (item) => item.message.type === "user" && !("isReplay" in item.message),
     )
     expect(users.map((item) => item.message)).toEqual([
-      userMessage({ text: "Work on t-1.", from: "clientComposed" }, done.first, sessionId),
-      userMessage({ text: "And the docs.", from: "human" }, "u-2", sessionId),
+      userMessage(
+        { text: "Work on t-1.", from: "clientComposed" },
+        { uuid: done.first, session: sessionId },
+      ),
+      userMessage({ text: "And the docs.", from: "human" }, { uuid: "u-2", session: sessionId }),
     ])
     expect(users.every((item) => item.session === sessionId)).toBe(true)
     // Each before the result of the turn it started.

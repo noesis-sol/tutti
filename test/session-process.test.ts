@@ -187,7 +187,7 @@ describe("what Claude Code last wrote to stderr, in the reason its session faile
         Effect.gen(function* () {
           const agents = yield* AgentHost
           yield* agents.start("t-1", sessionIn(dir))
-          yield* agents.send("t-1", "go", "clientComposed")
+          yield* agents.send("t-1", { text: "go", from: "clientComposed" })
           const found = yield* agents.state("t-1").pipe(
             Stream.filter((each) => each._tag === "Gone"),
             Stream.runHead,

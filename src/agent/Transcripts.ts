@@ -372,7 +372,10 @@ export class Transcripts extends Context.Service<
      * to its transcript with the next sequence number and kept in memory; a partial message is
      * folded into the live message while a view of the worker is open, and dropped otherwise.
      */
-    record(worker: string, session: string, message: SDKMessage): Effect.Effect<void>
+    record(
+      worker: string,
+      sent: { readonly session: string; readonly message: SDKMessage },
+    ): Effect.Effect<void>
     /** The callback for the worker's session's `stderr` option: appends to its stderr.log. */
     stderr(worker: string): (data: string) => void
     /** The worker's last items in memory, oldest first: at most `ringSize`. */
@@ -519,7 +522,7 @@ export const makeTranscripts = (given: Storage): Effect.Effect<Transcripts["Serv
     }
 
     return Transcripts.of({
-      record: (id, session, message) =>
+      record: (id, { session, message }) =>
         message.type === "stream_event"
           ? Effect.sync(() => partial(id, message))
           : Effect.flatMap(Clock.currentTimeMillis, (now) =>

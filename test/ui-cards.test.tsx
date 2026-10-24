@@ -763,12 +763,18 @@ describe("the latest actions", () => {
           if (Result.isFailure(next)) throw new Error("invalid transition")
         }
         yield* ledger.transition("t-2", Move.Ready(), { title: "Queued" })
-        yield* transcripts.record("t-1", "s-1", assistant("call-1", "scripts/check-fast.sh"))
-        yield* transcripts.record("t-2", "s-2", assistant("call-9", "ls"))
+        yield* transcripts.record("t-1", {
+          session: "s-1",
+          message: assistant("call-1", "scripts/check-fast.sh"),
+        })
+        yield* transcripts.record("t-2", { session: "s-2", message: assistant("call-9", "ls") })
         const actions = yield* latestActions
         const fiber = yield* Stream.take(actions, 2).pipe(Stream.runCollect, Effect.forkScoped)
         for (let i = 0; i < 20; i++) yield* Effect.yieldNow
-        yield* transcripts.record("t-1", "s-1", assistant("call-2", "git status"))
+        yield* transcripts.record("t-1", {
+          session: "s-1",
+          message: assistant("call-2", "git status"),
+        })
         yield* TestClock.adjust(actionPoll)
         return Array.from(yield* Fiber.join(fiber), (each) => [...each])
       }).pipe(

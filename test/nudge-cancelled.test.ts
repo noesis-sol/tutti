@@ -81,13 +81,13 @@ describe("a nudge an interrupt cancels", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start(id, { sessionId: "s-1", cwd: "/work/t-1" })
-        yield* host.send(id, "Go.", "clientComposed")
+        yield* host.send(id, { text: "Go.", from: "clientComposed" })
         yield* host.state(id).pipe(
           Stream.filter((state) => state._tag === "Idle"),
           Stream.runHead,
         )
         // The worker's steps have run out: the nudge stays queued until the interrupt cancels it.
-        const uuid = yield* host.send(id, nudgeText(id), "clientComposed")
+        const uuid = yield* host.send(id, { text: nudgeText(id), from: "clientComposed" })
         const waiting = yield* Effect.forkChild(host.answered(id, uuid))
         yield* quiet
         expect(waiting.pollUnsafe()).toBeUndefined()

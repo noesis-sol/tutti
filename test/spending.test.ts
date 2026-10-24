@@ -142,14 +142,20 @@ describe("Spending", () => {
     const { value, records } = await spending(
       Effect.gen(function* () {
         const s = yield* Spending
-        yield* s.message("t-1", "s-1", resultMessage(0.5, usage(10, 100)))
-        yield* s.message("t-1", "s-1", resultMessage(0.75, usage(12, 160)))
+        yield* s.message("t-1", { session: "s-1", message: resultMessage(0.5, usage(10, 100)) })
+        yield* s.message("t-1", { session: "s-1", message: resultMessage(0.75, usage(12, 160)) })
         // The session resumed: its totals go on from its transcript's.
-        yield* s.message("t-1", "s-1", resultMessage(1, usage(13, 200)))
+        yield* s.message("t-1", { session: "s-1", message: resultMessage(1, usage(13, 200)) })
         // A crash's zeroed result spends nothing and leaves the totals as they were.
-        yield* s.message("t-1", "s-1", resultMessage(0, {}, { subtype: "error_during_execution" }))
-        yield* s.message("t-1", "s-1", resultMessage(1.25, usage(14, 250)))
-        yield* s.message("t-2", "s-2", resultMessage(0.25, usage(1, 10), { is_error: true }))
+        yield* s.message("t-1", {
+          session: "s-1",
+          message: resultMessage(0, {}, { subtype: "error_during_execution" }),
+        })
+        yield* s.message("t-1", { session: "s-1", message: resultMessage(1.25, usage(14, 250)) })
+        yield* s.message("t-2", {
+          session: "s-2",
+          message: resultMessage(0.25, usage(1, 10), { is_error: true }),
+        })
         return { t1: yield* s.ofTicket("t-1"), total: yield* s.total, t3: yield* s.ofTicket("t-3") }
       }),
     )
@@ -181,7 +187,10 @@ describe("Spending", () => {
   test("a message that isn't a result is nothing to it", async () => {
     const { records } = await spending(
       Effect.flatMap(Spending, (s) =>
-        s.message("t-1", "s-1", { type: "system", subtype: "init" } as unknown as SDKMessage),
+        s.message("t-1", {
+          session: "s-1",
+          message: { type: "system", subtype: "init" } as unknown as SDKMessage,
+        }),
       ),
     )
     expect(records).toEqual([])
@@ -373,7 +382,10 @@ describe("what a ticket spent, on the records that end its part in the run", () 
           Effect.andThen(TestClock.adjust(wait), ledger.transition("t-1", cause, { title: "T" }))
         yield* move(Move.Ready())
         yield* move(Move.Dispatched(), 1000)
-        yield* (yield* Spending).message("t-1", "s-1", resultMessage(0.5, usage(1, 10)))
+        yield* (yield* Spending).message("t-1", {
+          session: "s-1",
+          message: resultMessage(0.5, usage(1, 10)),
+        })
         yield* move(Move.Verified({ place: 1 }), 60_000)
         yield* move(Move.ItsTurn(), 5000)
         yield* move(Move.ConflictsHandedBack({ attempt: 1 }), 2000)
@@ -517,9 +529,18 @@ describe("a session resumed from an earlier run", () => {
       Effect.gen(function* () {
         // What the earlier run's transcript holds of the session: two results, the last at $1.
         const transcripts = yield* Transcripts
-        yield* transcripts.record("t-1", "s-1", resultMessage(0.5, usage(10, 100)))
-        yield* transcripts.record("t-1", "s-1", resultMessage(1, usage(13, 200)))
-        yield* transcripts.record("t-1", "s-0", resultMessage(9, usage(90, 900)))
+        yield* transcripts.record("t-1", {
+          session: "s-1",
+          message: resultMessage(0.5, usage(10, 100)),
+        })
+        yield* transcripts.record("t-1", {
+          session: "s-1",
+          message: resultMessage(1, usage(13, 200)),
+        })
+        yield* transcripts.record("t-1", {
+          session: "s-0",
+          message: resultMessage(9, usage(90, 900)),
+        })
         const host = yield* AgentHost
         yield* host.resume(
           "t-1",

@@ -242,7 +242,16 @@ export const badTicketId = (id: string, why: string): Aside => ({
 })
 
 /** Setting aside a ticket whose worktree has a symbolic link at `path` on the way to its run files. */
-export const runFilesOutside = (id: string, worktree: string, path: string): Aside => {
+export const runFilesOutside = ({
+  id,
+  worktree,
+  path,
+}: {
+  readonly id: string
+  readonly worktree: string
+  /** The link, relative to the worktree. */
+  readonly path: string
+}): Aside => {
   const why = `its worktree's ${path} is a symlink`
   const link = join(worktree, path)
   return {
@@ -261,7 +270,15 @@ export const runFilesOutside = (id: string, worktree: string, path: string): Asi
 }
 
 /** Setting aside a ticket whose worker didn't start in `worktree`, for `reason`. */
-export const startFailed = (id: string, worktree: string, reason: string): Aside => ({
+export const startFailed = ({
+  id,
+  worktree,
+  reason,
+}: {
+  readonly id: string
+  readonly worktree: string
+  readonly reason: string
+}): Aside => ({
   note:
     `tutti: ${id}'s worker didn't start (${reason}); deferred so it can be retried ` +
     `(worktree ${worktree}). Bring it back with: bd undefer ${id}`,
@@ -310,8 +327,12 @@ const runFolderFailed = (id: string, worktree: string, error: RunFilesError): Se
   new SetAsideBy({
     aside:
       error._tag === "RunFilesOutside"
-        ? runFilesOutside(id, worktree, error.path)
-        : startFailed(id, worktree, `its ${runFolder} can't be opened: ${error.message}`),
+        ? runFilesOutside({ id, worktree, path: error.path })
+        : startFailed({
+            id,
+            worktree,
+            reason: `its ${runFolder} can't be opened: ${error.message}`,
+          }),
   })
 
 /**
@@ -394,7 +415,7 @@ export const start = (
       if (Option.isSome(now) && now.value._tag === "Gone" && now.value.setup === true) {
         return yield* new SetupStopped({ worktree, problem: now.value.why })
       }
-      const sent = yield* host.send(id, message, "clientComposed")
+      const sent = yield* host.send(id, { text: message, from: "clientComposed" })
       const ended = host.state(id).pipe(
         Stream.filter((state) => state._tag === "Gone" || state._tag === "Closed"),
         Stream.runHead,
@@ -442,7 +463,9 @@ export const start = (
           Effect.fail(new NotBegun({ reason: `its session ended at once: ${error.why}` })),
       }),
       Effect.catchTag("NotBegun", ({ reason }) =>
-        Effect.fail(new SetAsideBy({ aside: startFailed(id, path, reason), session: true })),
+        Effect.fail(
+          new SetAsideBy({ aside: startFailed({ id, worktree: path, reason }), session: true }),
+        ),
       ),
     )
     return Start.Started({ worker: { ticket: id, worktree, session, message: sent } })

@@ -318,7 +318,7 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
       "  b's worker is at the usage limit: it is handed its conflicts to resolve once the limit lifts, the wait not counting toward the 20m",
     ])
     expect(closing(ran)).toBe(
-      `USAGE_LIMIT: the five-hour limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets; ${neverHanded("b", "resolving")}`,
+      `USAGE_LIMIT: the five-hour limit is reached and when it resets is unknown; 1 worker waits for it; run tutti again once it resets; ${neverHanded({ id: "b", mode: "resolving" })}`,
     )
     // Only the fix was sent: the conflicts never were, and the rebase is undone for the next run.
     expect(composed(ran)).toHaveLength(1)
@@ -355,7 +355,7 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
       /^ {2}FIXING: /,
       "  b's worker is at the usage limit: it is handed its failed check to fix once the limit lifts, the wait not counting toward the 20m",
     ])
-    expect(closing(ran)).toEndWith(`; ${neverHanded("b", "fixing")}`)
+    expect(closing(ran)).toEndWith(`; ${neverHanded({ id: "b", mode: "fixing" })}`)
     expect(composed(ran)).toHaveLength(1)
     expect(ran.rebasing).toBe(false)
     expect(ran.on).toBe("tutti/b")
@@ -393,7 +393,7 @@ describe("a run that ends before a hand-back kept for the reset is sent", () => 
     expectLog(ran, [
       "  b's worker is at the usage limit: it is handed its failed check to fix once the limit lifts, the wait not counting toward the 20m",
       /^USAGE_LIMIT: nothing else runs; waiting for the five-hour limit to reset at /,
-      `INTERRUPTED: quit from the dashboard; b's session is saved for the next run; ${neverHanded("b", "fixing")}`,
+      `INTERRUPTED: quit from the dashboard; b's session is saved for the next run; ${neverHanded({ id: "b", mode: "fixing" })}`,
     ])
     expect(composed(ran)).toHaveLength(1)
     expect(ran.log).not.toContain("USAGE_LIMIT lifted")
@@ -553,13 +553,13 @@ describe("the usage-limit hold's keep", () => {
   })
 
   test("names each hand-back never sent, and a rebase that could not be aborted", () => {
-    expect(neverHanded("b", "resolving")).toBe(
+    expect(neverHanded({ id: "b", mode: "resolving" })).toBe(
       "b's worker, at the usage limit, was never handed its conflicts to resolve: its rebase is aborted, for the next run to merge b again",
     )
-    expect(neverHanded("b", "fixing")).toBe(
+    expect(neverHanded({ id: "b", mode: "fixing" })).toBe(
       "b's worker, at the usage limit, was never handed its failed check to fix: the next run merges b again",
     )
-    expect(neverHanded("b", "resolving", "/w/b")).toBe(
+    expect(neverHanded({ id: "b", mode: "resolving", stuck: "/w/b" })).toBe(
       "b's worker, at the usage limit, was never handed its conflicts to resolve, and its rebase could not be aborted, so /w/b is left mid-rebase",
     )
   })

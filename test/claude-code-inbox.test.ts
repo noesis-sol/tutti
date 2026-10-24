@@ -29,8 +29,11 @@ const launch = (fields: Partial<Launch> = {}): Launch => ({
   ...fields,
 })
 
-const hello = userMessage({ text: "Hello.", from: "clientComposed" }, "u-1", "s-1")
-const more = userMessage({ text: "More.", from: "human" }, "u-2", "s-1")
+const hello = userMessage(
+  { text: "Hello.", from: "clientComposed" },
+  { uuid: "u-1", session: "s-1" },
+)
+const more = userMessage({ text: "More.", from: "human" }, { uuid: "u-2", session: "s-1" })
 
 /** Opens a session over `open` in a scope of its own, which `use` may close. */
 const withSession = <A>(

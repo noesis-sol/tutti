@@ -83,12 +83,12 @@ export const takeAnswers = (
         if (Result.isFailure(moved)) return undefined
         const saved = yield* store.ticket(id)
         const session = yield* Effect.result(
-          resume(
-            id,
-            "answered",
-            answeredText(id, question, asked),
-            line`${id}'s question ${question} is answered`,
-          ),
+          resume({
+            ticket: id,
+            why: "answered",
+            message: answeredText({ id, question, title: asked }),
+            what: line`${id}'s question ${question} is answered`,
+          }),
         )
         if (Result.isFailure(session)) {
           // Its record is forgotten, so only bd ready brings it back: open, a later run starts it

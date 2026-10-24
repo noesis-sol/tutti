@@ -210,7 +210,7 @@ describe("the live host", () => {
         const agents = yield* AgentHost
         const attention = yield* Attention
         yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* agents.send("t-1", "go", "clientComposed")
+        yield* agents.send("t-1", { text: "go", from: "clientComposed" })
         yield* until((s) => s._tag === "NeedsYou")
         const before = (yield* attention.current).map((r) => r.id)
         yield* agents.close("t-1")

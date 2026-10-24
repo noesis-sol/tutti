@@ -204,7 +204,9 @@ const nudge = (ticket: string, n: number) =>
   Effect.gen(function* () {
     const host = yield* AgentHost
     const logs = yield* Log
-    const sent = yield* Effect.result(host.send(ticket, nudgeText(ticket), "clientComposed"))
+    const sent = yield* Effect.result(
+      host.send(ticket, { text: nudgeText(ticket), from: "clientComposed" }),
+    )
     if (Result.isFailure(sent)) return false
     yield* logs.write(
       detail`${ticket}'s worker ended its turn with the ticket still in progress; told it to continue (${n} of ${nudges})`,

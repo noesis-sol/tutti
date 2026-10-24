@@ -67,7 +67,7 @@ describe("RunHolds", () => {
   })
 
   test("a worker past its ticket limit raises its stop and counts over the limit", () => {
-    const stop = ticketLimitStop("t-1", "2h", "/w/t-1")
+    const stop = ticketLimitStop({ id: "t-1", limit: "2h", worktree: "/w/t-1" })
     const over = pastTicketLimit(noHolds, "t-1", stop)
     expect([...over.overLimit]).toEqual(["t-1"])
     expect(over.stops[0]).toBe(stop)
@@ -150,7 +150,11 @@ describe("RunHolds", () => {
               blocked.delete(each.ticket)
               break
             case "limit":
-              holds = pastTicketLimit(holds, each.ticket, ticketLimitStop(each.ticket, "2h", "/w"))
+              holds = pastTicketLimit(
+                holds,
+                each.ticket,
+                ticketLimitStop({ id: each.ticket, limit: "2h", worktree: "/w" }),
+              )
               over.add(each.ticket)
               others++
               break

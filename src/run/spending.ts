@@ -165,7 +165,10 @@ export class Spending extends Context.Service<
      * record, with its share of the session's totals, and added to the ticket's and the run's sums.
      * Any other message is nothing to it.
      */
-    message(ticket: string, session: string, message: SDKMessage): Effect.Effect<void>
+    message(
+      ticket: string,
+      sent: { readonly session: string; readonly message: SDKMessage },
+    ): Effect.Effect<void>
     /** Whether the run has seen a result of the session, or was told its totals. */
     knows(session: string): Effect.Effect<boolean>
     /**
@@ -192,7 +195,10 @@ export class Spending extends Context.Service<
         readonly total: Spent
       }>({ sessions: new Map(), tickets: new Map(), total: nothingSpent })
 
-      const message = (ticket: string, session: string, message: SDKMessage) =>
+      const message = (
+        ticket: string,
+        { session, message }: { readonly session: string; readonly message: SDKMessage },
+      ) =>
         Effect.gen(function* () {
           if (message.type !== "result") return
           const r = message as unknown as ResultFields

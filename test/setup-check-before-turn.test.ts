@@ -195,7 +195,7 @@ describe("AgentHost live: the setup check before the first turn", () => {
           Effect.gen(function* () {
             const host = yield* AgentHost
             yield* host.start("t-1", { sessionId: crypto.randomUUID(), cwd: dir })
-            yield* host.send("t-1", "go", "clientComposed")
+            yield* host.send("t-1", { text: "go", from: "clientComposed" })
             return yield* until((s) => s._tag === "Idle" || s._tag === "Gone")
           }),
         servers,
@@ -215,7 +215,7 @@ describe("AgentHost live: the setup check before the first turn", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start("t-1", { sessionId: crypto.randomUUID(), cwd: dir })
-          yield* host.send("t-1", "go", "clientComposed")
+          yield* host.send("t-1", { text: "go", from: "clientComposed" })
           const state = yield* until((s) => s._tag === "Gone")
           const from = Date.now()
           yield* host.close("t-1")

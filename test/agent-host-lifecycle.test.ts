@@ -133,7 +133,7 @@ describe("AgentHost live: a session's lifecycle", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           yield* host.start("t-1", { sessionId, cwd: dir })
-          yield* host.send("t-1", "go", "clientComposed")
+          yield* host.send("t-1", { text: "go", from: "clientComposed" })
           const state = yield* until("t-1", (s) => s._tag === "Gone")
           // Its Claude Code is still winding down: the resume waits for it.
           yield* host.resume("t-1", { sessionId, cwd: dir }, { text: "on", from: "clientComposed" })
@@ -150,7 +150,7 @@ describe("AgentHost live: a session's lifecycle", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", { sessionId, cwd: dir })
-        yield* host.send("t-1", "go", "clientComposed")
+        yield* host.send("t-1", { text: "go", from: "clientComposed" })
         yield* until("t-1", (s) => s._tag === "Idle")
         const closing = yield* Effect.forkChild(host.close("t-1"))
         const closed = yield* until("t-1", (s) => s._tag === "Closed")
@@ -176,7 +176,7 @@ describe("AgentHost live: a session's lifecycle", () => {
         const waited = Date.now() - from
         // Closed, its stdin has ended.
         yield* logged(log, (e) => e.closed === true)
-        const sent = yield* Effect.exit(host.send("t-1", "lost", "clientComposed"))
+        const sent = yield* Effect.exit(host.send("t-1", { text: "lost", from: "clientComposed" }))
         return { exit, state: yield* host.current("t-1"), waited, sent }
       }),
     )

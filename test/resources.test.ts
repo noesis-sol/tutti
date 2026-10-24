@@ -245,8 +245,8 @@ describe("Spending's sums", () => {
         const spending = yield* Spending
         const fiber = yield* spending.sums.pipe(Stream.take(3), Stream.runCollect, Effect.forkChild)
         yield* Effect.yieldNow
-        yield* spending.message("t-1", "s-1", resultOf(0.5, 100))
-        yield* spending.message("t-2", "s-2", resultOf(0.25, 10))
+        yield* spending.message("t-1", { session: "s-1", message: resultOf(0.5, 100) })
+        yield* spending.message("t-2", { session: "s-2", message: resultOf(0.25, 10) })
         return [...(yield* Fiber.join(fiber))]
       }).pipe(Effect.provide(spendingLayer().pipe(Layer.provideMerge(eventsLayer())))),
     )
@@ -263,7 +263,7 @@ describe("the hosts' contexts", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", { sessionId: "s-1", cwd: "/work/t-1" })
-        yield* host.send("t-1", "Work on t-1", "clientComposed")
+        yield* host.send("t-1", { text: "Work on t-1", from: "clientComposed" })
         const measured = yield* host.contexts.pipe(
           Stream.filter((all) => all.has("t-1")),
           Stream.runHead,

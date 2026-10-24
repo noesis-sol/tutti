@@ -68,7 +68,7 @@ import {
 } from "./merge.ts"
 import { Move } from "./phase.ts"
 import { info, say } from "./say.ts"
-import { type ResumeWhy, resume } from "./sessions.ts"
+import { type Resuming, resume } from "./sessions.ts"
 import { namesTicket, untilSettled } from "./settle.ts"
 import { type Fix, type SetUp, type SetUps, setUp, setupToResolve } from "./setup.ts"
 import { resolvePrompt } from "./told.ts"
@@ -475,34 +475,38 @@ export const handedWords = (mode: HandBackMode): string =>
   mode === "resolving" ? "conflicts to resolve" : "failed check to fix"
 
 /**
- * Resumes the ticket's session for its hand-back, `prompt`, recording it (`why`, the RESUMED line
- * starting with `what`). Why it couldn't be; undefined once it is resumed.
+ * Resumes the ticket's session for its hand-back, its message, recording it (`why`, the RESUMED
+ * line starting with `what`). Why it couldn't be; undefined once it is resumed.
  */
-const resumeFor = (
-  id: string,
-  why: ResumeWhy,
-  prompt: string,
-  what: Line,
-): Effect.Effect<string | undefined, never, GiveEnv> =>
-  Effect.map(Effect.result(resume(id, why, prompt, what)), (resumed) =>
+const resumeFor = (resuming: Resuming): Effect.Effect<string | undefined, never, GiveEnv> =>
+  Effect.map(Effect.result(resume(resuming)), (resumed) =>
     Result.isFailure(resumed) ? resumed.failure.reason : undefined,
   )
 
 /**
- * The ticket's Gone worker (`why`) resumed for its hand-back, `prompt`, as the ticket's one Gone
- * resume of the run (§ 4.8): one that can't be is warned about, WORKER_GONE. Why it wasn't resumed;
- * undefined once it is.
+ * The ticket's Gone worker (`gone`, why it went) resumed for its hand-back, `message`, as the
+ * ticket's one Gone resume of the run (§ 4.8): one that can't be is warned about, WORKER_GONE. Why
+ * it wasn't resumed; undefined once it is.
  */
-const resumeGoneFor = (
-  id: string,
-  why: string,
-  prompt: string,
-  what: Line,
-): Effect.Effect<string | undefined, never, GiveEnv> =>
+const resumeGoneFor = ({
+  ticket: id,
+  gone: why,
+  message,
+  what,
+}: Omit<Resuming, "why"> & { readonly gone: string }): Effect.Effect<
+  string | undefined,
+  never,
+  GiveEnv
+> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     if (!(yield* ledger.claimGoneResume(id))) return goneAgain(why)
-    const failed = yield* resumeFor(id, "gone", prompt, line`${what}, which is gone (${why})`)
+    const failed = yield* resumeFor({
+      ticket: id,
+      why: "gone",
+      message,
+      what: line`${what}, which is gone (${why})`,
+    })
     if (failed === undefined) return undefined
     const text = ticketLine(
       Tag.workerGone,
@@ -611,7 +615,7 @@ const interruptWith = (id: string, text: string): Effect.Effect<void, never, Giv
     const host = yield* AgentHost
     const logs = yield* Log
     yield* Effect.ignore(host.interrupt(id))
-    const sent = yield* Effect.result(host.send(id, text, "clientComposed"))
+    const sent = yield* Effect.result(host.send(id, { text, from: "clientComposed" }))
     if (Result.isFailure(sent)) {
       yield* logs.write(
         detail`${id}'s worker did not take the message that its hand-back is over (${sent.failure.why})`,
@@ -665,7 +669,9 @@ type Sent = Result.Result<string, string>
 /** Sends the ticket's worker its hand-back, `prompt`, now. */
 const sendNow = (id: string, prompt: string): Effect.Effect<Sent, never, AgentHost> =>
   Effect.gen(function* () {
-    const sent = yield* Effect.result((yield* AgentHost).send(id, prompt, "clientComposed"))
+    const sent = yield* Effect.result(
+      (yield* AgentHost).send(id, { text: prompt, from: "clientComposed" }),
+    )
     return Result.isSuccess(sent)
       ? Result.succeed(sent.success)
       : Result.fail(line`its worker did not take the hand-back (${sent.failure.why})`)
@@ -743,7 +749,12 @@ export const give = (
       const state = yield* Effect.result(host.current(id))
       let taken: Effect.Effect<void, never, AgentHost>
       if (Result.isSuccess(state) && state.success._tag === "Gone") {
-        const failed = yield* resumeGoneFor(id, state.success.why, prompt, what)
+        const failed = yield* resumeGoneFor({
+          ticket: id,
+          gone: state.success.why,
+          message: prompt,
+          what,
+        })
         if (failed !== undefined) return failed
         // As below: the resume put its state back at Starting.
         taken = Effect.void
@@ -757,7 +768,7 @@ export const give = (
         if (Result.isFailure(sent)) return sent.failure
         taken = host.answered(id, sent.success)
       } else {
-        const failed = yield* resumeFor(id, "hand_back", prompt, what)
+        const failed = yield* resumeFor({ ticket: id, why: "hand_back", message: prompt, what })
         if (failed !== undefined) return line`its session could not be resumed: ${failed}`
         // The resume put its state back at Starting: it settles only once the hand-back's turn,
         // the first of a resumed session, is over.

@@ -74,7 +74,7 @@ const playToIdle = (ticket: string) =>
       Effect.forkChild,
     )
     yield* Deferred.await(listening)
-    yield* host.send(ticket, `Your ticket is ${ticket}.`, "clientComposed")
+    yield* host.send(ticket, { text: `Your ticket is ${ticket}.`, from: "clientComposed" })
     return yield* Fiber.join(states)
   })
 
@@ -342,7 +342,7 @@ describe("the live host", () => {
       Effect.gen(function* () {
         const agents = yield* AgentHost
         yield* agents.start("t-5", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-        yield* agents.send("t-5", "Work on t-5.", "clientComposed")
+        yield* agents.send("t-5", { text: "Work on t-5.", from: "clientComposed" })
         const idle = yield* agents.state("t-5").pipe(
           Stream.filter((s) => s._tag === "Idle"),
           Stream.runHead,

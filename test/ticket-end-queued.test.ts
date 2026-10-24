@@ -88,7 +88,7 @@ describe("the ledger's ticket_end for the tickets left in the queue", () => {
           yield* move(id, Move.Dispatched())
         }
         yield* move("n", Move.Ready())
-        yield* (yield* Spending).message("w", "s-w", resultMessage(0.25, 40))
+        yield* (yield* Spending).message("w", { session: "s-w", message: resultMessage(0.25, 40) })
         yield* TestClock.adjust(30_000)
         yield* move("w", Move.WaitsForMerge({ blockers: ["t-9"] }))
         yield* move("s", Move.SetupFailed())

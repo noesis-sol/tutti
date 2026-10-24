@@ -370,7 +370,7 @@ export const make = (options: {
             cwd: config.repo,
             kind: SessionKind.Probe(),
           }),
-          host.send(probeWorker, probePrompt(file), "clientComposed"),
+          host.send(probeWorker, { text: probePrompt(file), from: "clientComposed" }),
         ),
       )
       if (Result.isFailure(started)) return `it could not be started: ${started.failure.message}`

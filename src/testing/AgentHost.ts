@@ -230,8 +230,10 @@ export const layer = (
               live.resume(ticket, s, { ...message, uuid: drawn }),
             )
           }),
-        send: (ticket, text, from, given) =>
-          Effect.flatMap(uuid(given), (drawn) => live.send(ticket, text, from, drawn)),
+        send: (ticket, message) =>
+          Effect.flatMap(uuid(message.uuid), (drawn) =>
+            live.send(ticket, { ...message, uuid: drawn }),
+          ),
         interrupt: (ticket) =>
           Effect.tap(live.interrupt(ticket), (receipt) =>
             record(Sent.Interrupted({ ticket, receipt })),

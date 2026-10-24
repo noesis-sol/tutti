@@ -138,7 +138,7 @@ describe("a resumed worker is told the standing rules' notes that changed", () =
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", session(dir))
-        yield* host.send("t-1", "first", "clientComposed")
+        yield* host.send("t-1", { text: "first", from: "clientComposed" })
         yield* idle("t-1")
         yield* host.close("t-1")
         yield* resume(dir, "same list")

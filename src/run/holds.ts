@@ -567,11 +567,16 @@ export const shownHolds = (holds: RunHolds): ShownHolds => ({
 export const longRunning: Duration.Duration = Duration.hours(2)
 
 /** The TICKET_LIMIT stop of `id`'s worker, still going `limit` after its dispatch. */
-export const ticketLimitStop = (id: string, limit: string, worktree: string): StopReason =>
+export const ticketLimitStop = (t: {
+  readonly id: string
+  /** The ticket limit, as in `20m`. */
+  readonly limit: string
+  readonly worktree: string
+}): StopReason =>
   stopFor(
     "TICKET_LIMIT",
-    `${id} still working after ${limit} (worktree ${worktree}); its worker goes on, and is suspended when the run ends`,
-    { ticket: id },
+    `${t.id} still working after ${t.limit} (worktree ${t.worktree}); its worker goes on, and is suspended when the run ends`,
+    { ticket: t.id },
   )
 
 /** `  LONG_RUNNING: …`, said once of a worker going on without a ticket limit. */
@@ -689,5 +694,5 @@ export const timeLimit = (
         appendNotes: `tutti: its worker was still working after the ${after} ticket limit (worktree ${worktree}).`,
       }),
     )
-    yield* onLimit(ticketLimitStop(ticket, after, worktree))
+    yield* onLimit(ticketLimitStop({ id: ticket, limit: after, worktree }))
   })

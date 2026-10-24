@@ -370,7 +370,7 @@ const settle = async (
     Effect.gen(function* () {
       const agents = yield* AgentHost
       yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
-      yield* agents.send("t-1", "go", "clientComposed")
+      yield* agents.send("t-1", { text: "go", from: "clientComposed" })
       const state = yield* agents.state("t-1").pipe(
         Stream.filter((s) => s._tag === "Idle" || s._tag === "Failed" || s._tag === "Gone"),
         Stream.runHead,

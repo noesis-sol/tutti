@@ -151,7 +151,7 @@ export const startInterview = (
     })
     const first = yield* firstMessage(description)
     yield* host
-      .send(interviewWorker, first, "clientComposed")
+      .send(interviewWorker, { text: first, from: "clientComposed" })
       .pipe(
         Effect.mapError(
           (gone) => new AgentStartFailed({ ticket: interviewWorker, reason: gone.why }),
@@ -203,7 +203,7 @@ export const startInterview = (
       sessionId,
       tools,
       filing: tools.filing,
-      send: (text, uuid) => host.send(interviewWorker, text, "human", uuid),
+      send: (text, uuid) => host.send(interviewWorker, { text, from: "human", uuid }),
       ended,
       leave: Effect.andThen(Ref.set(left, true), host.end(interviewWorker)),
       filedSomething: Effect.map(SubscriptionRef.get(tools.filing), filedSomething),

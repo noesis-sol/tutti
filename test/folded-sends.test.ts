@@ -234,10 +234,10 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
         const host = yield* AgentHost
         const attention = yield* Attention
         yield* host.start("t-1", scriptedSession)
-        const first = yield* host.send("t-1", "Go.", "clientComposed")
+        const first = yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* until("t-1", "NeedsYou")
-        const second = yield* host.send("t-1", "Also this.", "clientComposed")
-        const third = yield* host.send("t-1", "And this.", "human")
+        const second = yield* host.send("t-1", { text: "Also this.", from: "clientComposed" })
+        const third = yield* host.send("t-1", { text: "And this.", from: "human" })
         const states = yield* untilIdle("t-1")
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         return {
@@ -273,9 +273,9 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
         const host = yield* AgentHost
         const attention = yield* Attention
         yield* host.start("t-1", scriptedSession)
-        yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* until("t-1", "NeedsYou")
-        yield* host.send("t-1", "Also this.", "clientComposed")
+        yield* host.send("t-1", { text: "Also this.", from: "clientComposed" })
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         yield* Deferred.await(played)
         return yield* host.current("t-1")
@@ -302,12 +302,12 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
         const host = yield* AgentHost
         const attention = yield* Attention
         yield* host.start("t-1", scriptedSession)
-        const go = yield* host.send("t-1", "Go.", "clientComposed")
+        const go = yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         yield* until("t-1", "NeedsYou")
-        const a = yield* host.send("t-1", "a", "clientComposed")
-        const b = yield* host.send("t-1", "b", "clientComposed")
-        const c = yield* host.send("t-1", "/context", "human")
-        const d = yield* host.send("t-1", "d", "clientComposed")
+        const a = yield* host.send("t-1", { text: "a", from: "clientComposed" })
+        const b = yield* host.send("t-1", { text: "b", from: "clientComposed" })
+        const c = yield* host.send("t-1", { text: "/context", from: "human" })
+        const d = yield* host.send("t-1", { text: "d", from: "clientComposed" })
         const states = yield* untilIdle("t-1")
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         return { go, a, b, c, d, states: yield* Fiber.join(states), ...(yield* transcript) }
@@ -337,12 +337,12 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
         const host = yield* AgentHost
         const attention = yield* Attention
         yield* host.start("t-1", scriptedSession)
-        const go = yield* host.send("t-1", "Go.", "clientComposed")
+        const go = yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         // The first adjust lets the script reach its sleep, which the second passes.
         yield* TestClock.adjust("1 second")
         yield* TestClock.adjust("2 minutes")
         yield* until("t-1", "NeedsYou")
-        const later = yield* host.send("t-1", "Continue.", "clientComposed")
+        const later = yield* host.send("t-1", { text: "Continue.", from: "clientComposed" })
         const states = yield* untilIdle("t-1")
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         return { go, later, states: yield* Fiber.join(states), ...(yield* transcript) }
@@ -359,7 +359,7 @@ describe("scripted sessions: folded, coalesced and self-started turns", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", scriptedSession)
-        yield* host.send("t-1", "Go.", "clientComposed")
+        yield* host.send("t-1", { text: "Go.", from: "clientComposed" })
         const states = yield* untilIdle("t-1")
         // The first adjust lets the script reach its sleep, which the second passes.
         yield* TestClock.adjust("1 second")
@@ -474,10 +474,10 @@ describe("the fake Claude Code: folded, coalesced and self-started turns", () =>
         const host = yield* AgentHost
         const attention = yield* Attention
         yield* host.start("t-1", liveSession(dir))
-        const first = yield* host.send("t-1", "first", "clientComposed")
+        const first = yield* host.send("t-1", { text: "first", from: "clientComposed" })
         yield* reaches("t-1", "NeedsYou")
-        const second = yield* host.send("t-1", "second", "clientComposed")
-        const third = yield* host.send("t-1", "third", "human")
+        const second = yield* host.send("t-1", { text: "second", from: "clientComposed" })
+        const third = yield* host.send("t-1", { text: "third", from: "human" })
         yield* fakeRead(log, 3)
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         yield* reaches("t-1", "Idle")
@@ -495,11 +495,11 @@ describe("the fake Claude Code: folded, coalesced and self-started turns", () =>
         const host = yield* AgentHost
         const attention = yield* Attention
         yield* host.start("t-1", liveSession(dir))
-        const go = yield* host.send("t-1", "go", "clientComposed")
+        const go = yield* host.send("t-1", { text: "go", from: "clientComposed" })
         yield* reaches("t-1", "NeedsYou")
-        const a = yield* host.send("t-1", "a", "clientComposed")
-        const b = yield* host.send("t-1", "b", "human")
-        const c = yield* host.send("t-1", "c", "human")
+        const a = yield* host.send("t-1", { text: "a", from: "clientComposed" })
+        const b = yield* host.send("t-1", { text: "b", from: "human" })
+        const c = yield* host.send("t-1", { text: "c", from: "human" })
         yield* fakeRead(log, 4)
         yield* attention.answer("r1", { _tag: "Allow" }, "screen")
         yield* reaches("t-1", "Idle")
@@ -519,7 +519,7 @@ describe("the fake Claude Code: folded, coalesced and self-started turns", () =>
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start("t-1", liveSession(dir))
-        const go = yield* host.send("t-1", "go", "clientComposed")
+        const go = yield* host.send("t-1", { text: "go", from: "clientComposed" })
         // The task is live, then its report is to come: Idle only after the report's turn.
         yield* reaches("t-1", "Idle")
         return { go, ...(yield* liveTranscript) }

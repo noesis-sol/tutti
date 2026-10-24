@@ -89,7 +89,7 @@ const streamed = (words: ReadonlyArray<string>) => [
 
 const record = (message: SDKMessage, session = first, id = worker) =>
   Effect.gen(function* () {
-    yield* (yield* Transcripts).record(id, session, message)
+    yield* (yield* Transcripts).record(id, { session, message })
   })
 
 const recordAll = (messages: ReadonlyArray<SDKMessage>, session = first, id = worker) =>
