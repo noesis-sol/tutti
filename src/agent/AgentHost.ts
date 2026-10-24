@@ -205,7 +205,9 @@ export class AgentHost extends Context.Service<
     end(ticket: string): Effect.Effect<void>
     /**
      * The run's requires list has the entries `names` from now on, a merge having changed it: the
-     * workers started or resumed after are told so (requiresNote); before, the settings' entries.
+     * workers started after are told so in their standing rules (requiresNote), and those resumed
+     * after in their resume's message (resumedNotes), as a resumed session keeps the system prompt
+     * it began with; before, the settings' entries.
      */
     takeRequires(names: ReadonlyArray<string>): Effect.Effect<void>
     /** The worker's state now. */

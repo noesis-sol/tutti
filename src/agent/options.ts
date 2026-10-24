@@ -193,6 +193,24 @@ export const allowRequiresReadme: HookCallbackMatcher = {
 }
 
 /**
+ * The notes of a worker's standing rules that can change between its session's launches: the
+ * requires list's (requiresNote), which a merge changes mid-run, and the check's (checkNote), which
+ * a later run may have changed. A resumed session keeps the system prompt it recorded as it began
+ * (`snapshot: true`), so the host tells it these in its message instead where they may differ.
+ */
+export const changingNotes = (
+  input: Pick<WorkerOptionsInput, "config" | "servers" | "readme" | "requires">,
+  prompt: WorkerPrompt,
+): string =>
+  requiresNote(
+    input.requires ?? input.config.settings.requires.map((r) => r.name),
+    prompt.text,
+    input.readme === true,
+    hasOwn(input.servers, requiresServerName),
+  ) +
+  checkNote(input.config.settings.checks.own.command ?? input.config.settings.checks.fast.command)
+
+/**
  * A worker session's SDK options (§ 4.1). A worker whose servers have tutti's own (withOwn) is told
  * of its requires tools, and is allowed requires_readme without asking (allowRequiresReadme).
  */
@@ -217,16 +235,7 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
         : {
             append:
               forTicket(input.prompt, input.ticket) +
-              requiresNote(
-                input.requires ?? input.config.settings.requires.map((r) => r.name),
-                input.prompt.text,
-                input.readme === true,
-                own,
-              ) +
-              checkNote(
-                input.config.settings.checks.own.command ??
-                  input.config.settings.checks.fast.command,
-              ) +
+              changingNotes(input, input.prompt) +
               usageLimitNote,
           }),
       snapshot: true,

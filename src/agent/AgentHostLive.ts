@@ -41,6 +41,12 @@
 // and Closing from tutti closing it or its going until its Claude Code has exited. A start or
 // resume waits for a Closing session's end, so two Claude Codes never share a session; the start
 // itself runs in the session's scope, so closing a Starting session cancels it.
+//
+// A resumed session keeps the system prompt it recorded as it began (`snapshot: true`, § 4.1), so
+// the standing rules' notes that can change, the requires list's and the check's (changingNotes),
+// reach it in the resume's message instead (resumedNotes): when they differ from those its session
+// was started or last resumed with in this run, or when it was started in an earlier run, which
+// may have had others.
 import { randomUUID } from "node:crypto"
 import { availableParallelism } from "node:os"
 import { join } from "node:path"
@@ -98,7 +104,13 @@ import { queryThrew } from "./claudeBinary.ts"
 import { coreShare, workerEnv } from "./env.ts"
 import { serverName } from "./interviewTools.ts"
 import { type ChosenServers, checkInit, checkStatus, inProcess, noServers, withOwn } from "./mcp.ts"
-import { interviewOptions, type SessionStart, workerCallbacks, workerOptions } from "./options.ts"
+import {
+  changingNotes,
+  interviewOptions,
+  type SessionStart,
+  workerCallbacks,
+  workerOptions,
+} from "./options.ts"
 import { requiresServerName } from "./requiresTools.ts"
 import {
   type SessionProcess,
@@ -109,6 +121,15 @@ import {
 import type { Transcripts } from "./Transcripts.ts"
 import { projectHasSkills } from "./unusedTools.ts"
 import { WorkerEvent } from "./WorkerState.ts"
+
+/**
+ * What a resumed worker's message begins with when the standing rules' notes that can change,
+ * `notes` (changingNotes), may differ from those its session recorded: those notes as they are now.
+ */
+export const resumedNotes = (notes: string): string =>
+  "Your session keeps the system prompt it began with, so here is what your standing rules say " +
+  `now of the project's requires list and its check, which may have changed since:\n\n` +
+  `${notes.trim().replace(/\n{3,}/g, "\n\n")}\n\n`
 
 /** How long a session has to start: Claude Code spawned and its initialize answered. */
 export const startLimit: Duration.Duration = Duration.minutes(1)
@@ -389,6 +410,9 @@ export const layer = (
       // The fields of the first system/init whose check was skipped, logged once each (unchecked).
       const uncheckedFields = yield* Ref.make<ReadonlySet<string>>(new Set())
       const sessions = new Map<string, Lifecycle>()
+      // The changing notes (changingNotes) each ticket's worker was last given, as its session
+      // started or in its last resume's message: a resume with others tells it them (resumedNotes).
+      const notesGiven = new Map<string, string>()
       const interruptWithin = options.interruptLimit ?? interruptLimit
 
       /**
@@ -681,6 +705,13 @@ export const layer = (
                       requiresServerName,
                       yield* options.ownServer(session.cwd),
                     )
+          const prompt = session.probe === true ? null : options.prompt
+          const requiresNow = yield* Ref.get(requires)
+          // A worker's changing notes; none for the probe or an interview.
+          const notes =
+            setup !== undefined || prompt === null
+              ? undefined
+              : changingNotes({ config, servers, readme, requires: requiresNow }, prompt)
           const asked: Options =
             setup !== undefined
               ? interviewOptions({
@@ -696,11 +727,11 @@ export const layer = (
                   config,
                   ticket,
                   worktree: session.cwd,
-                  prompt: session.probe === true ? null : options.prompt,
+                  prompt,
                   servers,
                   skills,
                   readme,
-                  requires: yield* Ref.get(requires),
+                  requires: requiresNow,
                   callbacks,
                   session: how,
                   env,
@@ -762,7 +793,7 @@ export const layer = (
             for (const capability of capabilitiesOf(initialized.value)) {
               opened.capabilities.add(capability)
             }
-            return { opened, problem: yield* checkBefore(opened, initialized.value) }
+            return { opened, problem: yield* checkBefore(opened, initialized.value), notes }
           }
           // A startup failure's result comes just before the stream ends: the reader sees it.
           yield* Fiber.await(reader).pipe(Effect.timeout(closeLimit), Effect.ignore)
@@ -864,21 +895,38 @@ export const layer = (
 
       return AgentHost.of({
         start: (ticket, session) =>
-          Effect.asVoid(begin(ticket, session, { _tag: "New", sessionId: session.sessionId })),
+          Effect.map(
+            begin(ticket, session, { _tag: "New", sessionId: session.sessionId }),
+            ({ notes }) => {
+              if (notes === undefined) notesGiven.delete(ticket)
+              else notesGiven.set(ticket, notes)
+            },
+          ),
         // A session stopped over a setup problem as it resumed is sent nothing: the message's uuid
-        // all the same, its worker Gone with `setup` for the caller to settle.
+        // all the same, its worker Gone with `setup` for the caller to settle. One whose changing
+        // notes may differ from those it recorded is told them first (resumedNotes).
         resume: (ticket, session, message) =>
           Effect.flatMap(
             begin(ticket, session, { _tag: "Resume", sessionId: session.sessionId }),
-            ({ opened, problem }) =>
-              problem === undefined
-                ? push(workers, opened, message).pipe(
-                    Effect.catchTag(
-                      "AgentGone",
-                      () => new AgentStartFailed({ ticket, reason: closedWhy }),
-                    ),
-                  )
-                : Effect.succeed(message.uuid ?? randomUUID()),
+            ({ opened, problem, notes }) => {
+              if (problem !== undefined) return Effect.succeed(message.uuid ?? randomUUID())
+              const sent =
+                notes === undefined || notesGiven.get(ticket) === notes
+                  ? push(workers, opened, message)
+                  : Effect.tap(
+                      push(workers, opened, {
+                        ...message,
+                        text: resumedNotes(notes) + message.text,
+                      }),
+                      () => Effect.sync(() => void notesGiven.set(ticket, notes)),
+                    )
+              return sent.pipe(
+                Effect.catchTag(
+                  "AgentGone",
+                  () => new AgentStartFailed({ ticket, reason: closedWhy }),
+                ),
+              )
+            },
           ),
         send: (ticket, text, from, uuid) =>
           Effect.flatMap(sessionOf(ticket), (session) =>
