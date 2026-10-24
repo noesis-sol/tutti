@@ -11,6 +11,7 @@ import { Duration, Effect, Exit, Fiber, Layer, Option, Schedule, Stream } from "
 import { AgentHost, AgentStartFailed, makeWorkers } from "../src/agent/AgentHost.ts"
 import { closedWhy, layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
+import { read } from "../src/agent/reading.ts"
 import { WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -213,7 +214,7 @@ describe("makeWorkers: events of an earlier session", () => {
           yield* workers.fold(entry, WorkerEvent.Ended({ session: "a", why: "late" }))
           yield* workers.fold(entry, WorkerEvent.Sent({ session: "a", uuid: "u-1" }))
           const starting = yield* workers.current("t-1")
-          yield* workers.fold(entry, WorkerEvent.Message({ session: "b", message: init }))
+          yield* workers.fold(entry, WorkerEvent.Message({ session: "b", reading: read(init) }))
           yield* workers.fold(entry, WorkerEvent.Sent({ session: "b", uuid: "u-2" }))
           return { closed, starting, working: yield* workers.current("t-1") }
         }),

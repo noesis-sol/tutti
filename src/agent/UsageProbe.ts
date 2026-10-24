@@ -34,8 +34,9 @@ import { OrganCost } from "../organs/OrganCost.ts"
 import type { AccountProbe } from "./Account.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { workerEnv } from "./env.ts"
+import { turnLimit } from "./reading.ts"
 import { organCloseLimit, withSessionProcess, withStderr } from "./sessionProcess.ts"
-import { endedOnLimit, turnLimit } from "./UsageLimits.ts"
+import { endedOnLimit } from "./UsageLimits.ts"
 
 /** What the account answered the probe. Times are epoch milliseconds. */
 export type ProbeAnswer = Data.TaggedEnum<{

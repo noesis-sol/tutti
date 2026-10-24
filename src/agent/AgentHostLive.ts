@@ -107,17 +107,16 @@ import {
   workerCallbacks,
   workerOptions,
 } from "./options.ts"
+import { capabilitiesOf } from "./reading.ts"
 import { requiresServerName } from "./requiresTools.ts"
 import {
   cancelQueuedCapability,
-  capabilitiesOf,
   isLaunchFailure,
   launchFailed,
   makeChecks,
   setupLine,
   skippedLine,
   startFailure,
-  startupFailureOf,
 } from "./sessionChecks.ts"
 import {
   type SessionProcess,
@@ -450,7 +449,7 @@ export const layer = (
       }
 
       /** Its first system/init checked, a Starting session is Open, or ends over a setup problem. */
-      const born = (session: Live, init: SDKSystemMessage) =>
+      const born = (session: Live, init: SDKMessage) =>
         Effect.gen(function* () {
           const problem = yield* checks.first(init, session.servers)
           if (problem !== undefined) return yield* setupProblem(session, problem)
@@ -461,13 +460,12 @@ export const layer = (
 
       const onMessage = (session: Live, message: SDKMessage) =>
         Effect.gen(function* () {
-          yield* workers.emit(session.entry, session.sessionId, message)
-          if (message.type === "system" && message.subtype === "init") {
-            for (const capability of capabilitiesOf(message)) session.capabilities.add(capability)
+          const reading = yield* workers.emit(session.entry, session.sessionId, message)
+          if (reading._tag === "Init") {
+            for (const capability of reading.capabilities) session.capabilities.add(capability)
             if (starting(session)) yield* born(session, message)
-          } else {
-            const refused = startupFailureOf(message)
-            if (refused === undefined) return
+          } else if (reading._tag === "Result" && reading.startupFailure !== null) {
+            const refused = reading.startupFailure
             yield* Deferred.succeed(session.startupFailure, refused)
             yield* gone(session, refused)
           }
@@ -865,8 +863,7 @@ export const layer = (
         current: workers.current,
         begun: workers.begun,
         state: workers.state,
-        messages: workers.messages,
-        subscribe: workers.subscribe,
+        answered: workers.answered,
         workers: workers.workers,
         compactions: workers.compactions,
         processes: Effect.sync(() => {

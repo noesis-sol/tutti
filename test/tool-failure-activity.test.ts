@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
 import { activityEvents, activityHooks } from "../src/agent/hooks.ts"
+import { read } from "../src/agent/reading.ts"
 import { type Doing, initial, step, WorkerEvent } from "../src/agent/WorkerState.ts"
 
 // A call that fails (a check exiting non-zero) or is denied ends with PostToolUseFailure or
@@ -9,7 +10,7 @@ import { type Doing, initial, step, WorkerEvent } from "../src/agent/WorkerState
 const check = "scripts/check-fast.sh"
 const init = WorkerEvent.Message({
   session: "s",
-  message: { type: "system", subtype: "init", session_id: "s" } as unknown as SDKMessage,
+  reading: read({ type: "system", subtype: "init", session_id: "s" } as unknown as SDKMessage),
 })
 const hook = (input: object): WorkerEvent =>
   WorkerEvent.Hook({ session: "s", input: input as unknown as HookInput })

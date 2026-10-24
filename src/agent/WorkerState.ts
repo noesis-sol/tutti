@@ -7,18 +7,13 @@
 // stale state behind; only Idle's and Failed's `at` carries over, from the step that first made it
 // so.
 //
-// The fields the reducer reads of a message are decoded with a Schema, not trusted to the SDK's
-// types: a CLI of another version may send a message without one, and such a message is no change
-// (unreadable says why, for the host to log).
-import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Data, type Duration, Predicate, Result, Schema } from "effect"
-import {
-  endedOnLimit,
-  noTurnLimit,
-  RateLimitInfo,
-  type TurnLimit,
-  turnLimitStep,
-} from "./UsageLimits.ts"
+// The reducer folds a message as the host read it, once (src/agent/reading.ts): a message a CLI of
+// another version sent without a field it reads is Unreadable, and no change. Each reading, and
+// each event, has its handler in a table of its own, made once.
+import type { HookInput } from "@anthropic-ai/claude-agent-sdk"
+import { Data, type Duration, Predicate } from "effect"
+import type { Reading } from "./reading.ts"
+import { endedOnLimit, noTurnLimit, type TurnLimit, turnLimitStep } from "./UsageLimits.ts"
 
 /** What a working worker is doing, from its hook callbacks, as orchestra classifies it. */
 export type Doing = "testing" | "editing" | "reading" | "subagent" | "working"
@@ -75,8 +70,8 @@ export const settled = (state: WorkerState): boolean =>
  * those of the worker's session now (makeWorkers), and the reducer itself reads none.
  */
 export type WorkerEvent = Data.TaggedEnum<{
-  /** A message from the session's stream. */
-  Message: { readonly session: string; readonly message: SDKMessage }
+  /** A message from the session's stream, as the host read it. */
+  Message: { readonly session: string; readonly reading: Reading }
   /** tutti is pushing the message `uuid` into the session's inbox: it is outstanding from now. */
   Sent: { readonly session: string; readonly uuid: string }
   /** An interrupt's receipt or `cancel_async_message` cancelled these sends. */
@@ -228,66 +223,6 @@ export const initial = (checks: ReadonlyArray<string> = []): Worker => ({
   limit: noTurnLimit,
 })
 
-// The fields the reducer reads of each message it reads any of. Those it can do without are
-// optional: a result without `errors` fails with its subtype for the error.
-const ApiRetry = Schema.Struct({
-  attempt: Schema.Number,
-  max_retries: Schema.Number,
-  error_status: Schema.optional(Schema.NullOr(Schema.Number)),
-})
-const StateChanged = Schema.Struct({ state: Schema.String })
-const TasksChanged = Schema.Struct({
-  tasks: Schema.Array(
-    Schema.Struct({ task_id: Schema.String, ambient: Schema.optional(Schema.Boolean) }),
-  ),
-})
-const RateLimitEvent = Schema.Struct({ rate_limit_info: RateLimitInfo })
-const TurnResult = Schema.Struct({
-  subtype: Schema.String,
-  is_error: Schema.Boolean,
-  user_message_uuids: Schema.optional(Schema.Array(Schema.String)),
-  startup_failure_reason: Schema.optional(Schema.String),
-  api_error_status: Schema.optional(Schema.NullOr(Schema.Number)),
-  result: Schema.optional(Schema.String),
-  errors: Schema.optional(Schema.Array(Schema.String)),
-})
-
-const decodeApiRetry = Schema.decodeUnknownResult(ApiRetry)
-const decodeStateChanged = Schema.decodeUnknownResult(StateChanged)
-const decodeTasksChanged = Schema.decodeUnknownResult(TasksChanged)
-const decodeRateLimitEvent = Schema.decodeUnknownResult(RateLimitEvent)
-const decodeResult = Schema.decodeUnknownResult(TurnResult)
-
-/** The fields the reducer reads of `message`, decoded; undefined when it reads none of it. */
-const decode = (message: SDKMessage): Result.Result<unknown, Schema.SchemaError> | undefined => {
-  switch (message.type) {
-    case "system":
-      switch (message.subtype) {
-        case "api_retry":
-          return decodeApiRetry(message)
-        case "session_state_changed":
-          return decodeStateChanged(message)
-        case "background_tasks_changed":
-          return decodeTasksChanged(message)
-      }
-      return undefined
-    case "rate_limit_event":
-      return decodeRateLimitEvent(message)
-    case "result":
-      return decodeResult(message)
-  }
-  return undefined
-}
-
-/**
- * Why the reducer can't read `message`, a field it reads missing or of another type: the message is
- * no change. Undefined when it can.
- */
-export const unreadable = (message: SDKMessage): string | undefined => {
-  const decoded = decode(message)
-  return decoded !== undefined && Result.isFailure(decoded) ? decoded.failure.message : undefined
-}
-
 /**
  * A new turn: what the last one left about its retries and limit goes, so that a turn failing for
  * another reason after one refused for the limit reads as Failed, not UsageLimited; the new turn's
@@ -310,120 +245,89 @@ const done = (worker: Worker, uuids: ReadonlyArray<string>): Worker => ({
   outstanding: worker.outstanding.filter((uuid) => !uuids.includes(uuid)),
 })
 
+/** A step's handling of `value`, for `worker` at `now`. */
+type Handle<E> = (worker: Worker, value: E, now: number) => Worker
+
 /**
- * A `command_lifecycle` message's send, when it says the send is no longer outstanding: completed
- * or cancelled. It isn't in the SDK's SDKMessage union, so it is read from the raw message.
+ * A handler of each variant of `E`, by tag; looked up by the value's tag, it is called as a
+ * Handle<E>, which TypeScript can't tell from the lookup alone.
  */
-const lifecycleEnd = (message: SDKMessage): string | null => {
-  const raw = message as { readonly type: string } & Record<string, unknown>
-  if (raw.type !== "command_lifecycle" || typeof raw.command_uuid !== "string") return null
-  return raw.state === "completed" || raw.state === "cancelled" ? raw.command_uuid : null
+type Handlers<E extends { readonly _tag: string }> = {
+  readonly [K in E["_tag"]]: Handle<Extract<E, { readonly _tag: K }>>
 }
 
-const onMessage = (worker: Worker, message: SDKMessage, now: number): Worker => {
-  // A send's lifecycle isn't a message of the turn, so it leaves an api_retry be.
-  if ((message as { readonly type: string }).type === "command_lifecycle") {
-    const ended = lifecycleEnd(message)
-    return ended === null ? worker : done(worker, [ended])
-  }
-  // An api_retry holds until the turn's next message, whatever that is; a message whose fields the
-  // reducer can't read is no change, to an api_retry neither.
-  const next =
-    message.type === "system" && message.subtype === "api_retry"
-      ? worker
-      : { ...worker, retry: null }
-  switch (message.type) {
-    case "system":
-      switch (message.subtype) {
-        case "init":
-          return { ...newTurn(next), started: true }
-        case "session_state_changed": {
-          const read = decodeStateChanged(message)
-          if (Result.isFailure(read)) return worker
-          switch (read.success.state) {
-            case "running":
-              return {
-                ...(next.turn._tag === "Running" ? next : newTurn(next)),
-                requiresAction: false,
-              }
-            case "requires_action":
-              return { ...next, requiresAction: true }
-            case "idle":
-              // No turn runs or is queued. It comes with background tasks live and after an error
-              // result too (docs/spikes/01-sdk-session.md), so those are checked beside it.
-              return { ...next, idle: true, requiresAction: false }
-          }
-          return next
-        }
-        case "api_retry": {
-          const read = decodeApiRetry(message)
-          if (Result.isFailure(read)) return worker
-          const retry = read.success
-          return {
-            ...next,
-            retry: {
-              attempt: retry.attempt,
-              max: retry.max_retries,
-              status: retry.error_status ?? null,
-            },
-          }
-        }
-        case "background_tasks_changed": {
-          const read = decodeTasksChanged(message)
-          if (Result.isFailure(read)) return worker
-          const { tasks } = read.success
-          const live = tasks.map((task) => task.task_id)
-          // A task that counted and has ended, between idle and the next running: the CLI starts a
-          // turn to report it, about 70 ms after this message (docs/spikes/01-sdk-session.md).
-          const ended = next.tasks.some((task) => !live.includes(task))
-          return {
-            ...next,
-            tasks: tasks.filter((task) => task.ambient !== true).map((task) => task.task_id),
-            report: next.idle && ended && next.report === null ? now : next.report,
-          }
-        }
-      }
-      return next
-    case "rate_limit_event": {
-      const limit = turnLimitStep(next.limit, message)
-      return limit === next.limit ? worker : { ...next, limit }
+/** `worker` with no api_retry holding: any message of the turn but another api_retry ends one. */
+const unretried = (worker: Worker): Worker =>
+  worker.retry === null ? worker : { ...worker, retry: null }
+
+// What each reading of a message does. A message whose fields the reducer can't read is no change,
+// to an api_retry neither; nor is a send's lifecycle, which isn't a message of the turn.
+const onReading: Handlers<Reading> = {
+  Init: (worker) => ({ ...newTurn(unretried(worker)), started: true }),
+  State: (worker, { state }) => {
+    const next = unretried(worker)
+    switch (state) {
+      case "running":
+        return { ...(next.turn._tag === "Running" ? next : newTurn(next)), requiresAction: false }
+      case "requires_action":
+        return { ...next, requiresAction: true }
+      case "idle":
+        // No turn runs or is queued. It comes with background tasks live and after an error
+        // result too (docs/spikes/01-sdk-session.md), so those are checked beside it.
+        return { ...next, idle: true, requiresAction: false }
     }
-    case "assistant": {
-      const limit = turnLimitStep(next.limit, message)
-      return limit === next.limit ? next : { ...next, limit }
+    return next
+  },
+  Retry: (worker, { attempt, max, status }) => ({ ...worker, retry: { attempt, max, status } }),
+  Tasks: (worker, { live, counted }, now) => {
+    const next = unretried(worker)
+    // A task that counted and has ended, between idle and the next running: the CLI starts a turn
+    // to report it, about 70 ms after this message (docs/spikes/01-sdk-session.md).
+    const ended = next.tasks.some((task) => !live.includes(task))
+    return {
+      ...next,
+      tasks: counted,
+      report: next.idle && ended && next.report === null ? now : next.report,
     }
-    case "result": {
-      const read = decodeResult(message)
-      if (Result.isFailure(read)) return worker
-      const result = read.success
-      // A result that lists no sends, from a CLI that doesn't report them, answered them all.
-      const listed = result.user_message_uuids ?? next.outstanding
-      const ended = {
-        ...done(next, listed),
-        idle: false,
-        requiresAction: false,
-        tool: null,
-        subagents: [],
-      }
-      if (result.subtype !== "success" && result.startup_failure_reason !== undefined) {
-        return { ...ended, end: { closed: false, why: result.startup_failure_reason } }
-      }
-      if (!result.is_error) {
-        return { ...ended, turn: Turn.Ended() }
-      }
-      const status = result.subtype === "success" ? result.api_error_status : undefined
-      if (endedOnLimit(next.limit, status)) {
-        return { ...ended, turn: Turn.Limited() }
-      }
-      const error =
-        result.subtype === "success"
-          ? (result.result ?? result.subtype)
-          : result.errors?.join("\n") || result.subtype
-      const interrupted = result.subtype === "error_during_execution"
-      return { ...ended, turn: Turn.Failed({ error, interrupted }) }
+  },
+  RateLimit: (worker, reading) => {
+    const next = unretried(worker)
+    return { ...next, limit: turnLimitStep(next.limit, reading) }
+  },
+  Assistant: (worker, reading) => {
+    const next = unretried(worker)
+    const limit = turnLimitStep(next.limit, reading)
+    return limit === next.limit ? next : { ...next, limit }
+  },
+  Denied: unretried,
+  Result: (worker, result) => {
+    const next = unretried(worker)
+    // A result that lists no sends, from a CLI that doesn't report them, answered them all.
+    const ended = {
+      ...done(next, result.sends ?? next.outstanding),
+      idle: false,
+      requiresAction: false,
+      tool: null,
+      subagents: [],
     }
-  }
-  return next
+    if (result.startupFailure !== null) {
+      return { ...ended, end: { closed: false, why: result.startupFailure } }
+    }
+    if (result.error === null) {
+      return { ...ended, turn: Turn.Ended() }
+    }
+    if (endedOnLimit(next.limit, result.apiStatus)) {
+      return { ...ended, turn: Turn.Limited() }
+    }
+    return {
+      ...ended,
+      turn: Turn.Failed({ error: result.error, interrupted: result.interrupted }),
+    }
+  },
+  Lifecycle: (worker, { ended }) => (ended === null ? worker : done(worker, [ended])),
+  Partial: unretried,
+  Other: unretried,
+  Unreadable: (worker) => worker,
 }
 
 const onHook = (worker: Worker, input: HookInput): Worker => {
@@ -495,24 +399,29 @@ const derive = (worker: Worker, now: number): WorkerState => {
   return working()
 }
 
+// What each event does.
+const onEvent: Handlers<WorkerEvent> = {
+  Message: (worker, { reading }, now) =>
+    (onReading[reading._tag] as Handle<Reading>)(worker, reading, now),
+  Sent: (worker, { uuid }) => ({ ...worker, outstanding: [...worker.outstanding, uuid] }),
+  Cancelled: (worker, { uuids }) => done(worker, uuids),
+  Hook: (worker, { input }) => onHook(worker, input),
+  ReportLate: (worker, { since }) =>
+    worker.report === since ? { ...worker, report: null } : worker,
+  Requests: (worker, { pending }) => ({ ...worker, pending: Math.max(0, pending) }),
+  Closed: (worker) => ({ ...worker, end: { closed: true } }),
+  Ended: (worker, { why, setup }) => ({
+    ...worker,
+    end: { closed: false, why, ...(setup === true ? { setup } : {}) },
+  }),
+}
+
 /** `worker` with `event` folded in, `now` (epoch milliseconds) being when it came. */
 export const step = (worker: Worker, event: WorkerEvent, now: number): Worker => {
   if (worker.end !== null) {
     return worker
   }
-  const next = WorkerEvent.$match(event, {
-    Message: ({ message }) => onMessage(worker, message, now),
-    Sent: ({ uuid }) => ({ ...worker, outstanding: [...worker.outstanding, uuid] }),
-    Cancelled: ({ uuids }) => done(worker, uuids),
-    Hook: ({ input }) => onHook(worker, input),
-    ReportLate: ({ since }) => (worker.report === since ? { ...worker, report: null } : worker),
-    Requests: ({ pending }) => ({ ...worker, pending: Math.max(0, pending) }),
-    Closed: () => ({ ...worker, end: { closed: true as const } }),
-    Ended: ({ why, setup }) => ({
-      ...worker,
-      end: { closed: false as const, why, ...(setup === true ? { setup } : {}) },
-    }),
-  })
+  const next = (onEvent[event._tag] as Handle<WorkerEvent>)(worker, event, now)
   return { ...next, state: derive(next, now) }
 }
 

@@ -1,20 +1,22 @@
 // A nudge cancelled by an interrupt is no longer outstanding (§ 4.2, § 4.8): its command_lifecycle
-// `cancelled` answers it, and so does the worker settling, for a send only an interrupt's receipt
-// or `cancel_async_message` says was cancelled. The per-ticket fiber then goes on to its next nudge
+// `cancelled` answers it, and so does the interrupt's receipt or `cancel_async_message`, for a send
+// no message of the session says was cancelled. The per-ticket fiber then goes on to its next nudge
 // and PAUSED, rather than waiting on the nudge until the session ends.
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
+import { read } from "../src/agent/reading.ts"
 import { makeHandBacks } from "../src/run/handback.ts"
 import { makeHeld } from "../src/run/held.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
 import { Cause } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
-import { answers, idleGrace, nudgeText, untilAnswered } from "../src/run/settle.ts"
+import { idleGrace, nudgeText } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { type Worked, work } from "../src/run/work.ts"
 import { Git } from "../src/services/Git.ts"
@@ -67,12 +69,12 @@ describe("a nudge an interrupt cancels", () => {
   test("its command_lifecycle cancelled answers it; another send's doesn't", () => {
     const uuid = "00000000-0000-4000-8000-000000000002"
     const lifecycle = (state: string, command = uuid) =>
-      ({ type: "command_lifecycle", command_uuid: command, state }) as never
-    expect(answers(lifecycle("cancelled"), uuid)).toBe(true)
-    expect(answers(lifecycle("cancelled", "other"), uuid)).toBe(false)
+      read({ type: "command_lifecycle", command_uuid: command, state } as unknown as SDKMessage)
+    expect(lifecycle("cancelled")).toEqual(expect.objectContaining({ ended: uuid }))
+    expect(lifecycle("cancelled", "other")).toEqual(expect.objectContaining({ ended: "other" }))
   })
 
-  test("a send only the receipt cancels is waited for until the worker settles", async () => {
+  test("a send only the receipt cancels is waited for until the receipt", async () => {
     const ran = await scenario(
       { scripts: () => ({ [id]: [turn([])] }) },
       Effect.gen(function* () {
@@ -85,7 +87,7 @@ describe("a nudge an interrupt cancels", () => {
         )
         // The worker's steps have run out: the nudge stays queued until the interrupt cancels it.
         const uuid = yield* host.send(id, nudgeText(id), "clientComposed")
-        const waiting = yield* Effect.forkChild(untilAnswered(id, Stream.never, uuid))
+        const waiting = yield* Effect.forkChild(host.answered(id, uuid))
         yield* quiet
         expect(waiting.pollUnsafe()).toBeUndefined()
         const receipt = yield* host.interrupt(id)

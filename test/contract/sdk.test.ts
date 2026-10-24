@@ -50,6 +50,7 @@ import { paneVariable, probeEnv, workerEnv } from "../../src/agent/env.ts"
 import type { ChosenServers } from "../../src/agent/mcp.ts"
 import { noServersNote } from "../../src/agent/mcp.ts"
 import { type SessionStart, workerOptions } from "../../src/agent/options.ts"
+import { read } from "../../src/agent/reading.ts"
 import type { Transcripts } from "../../src/agent/Transcripts.ts"
 import { windowsOf } from "../../src/agent/UsageLimits.ts"
 import { initial, step, WorkerEvent, type WorkerState } from "../../src/agent/WorkerState.ts"
@@ -626,7 +627,11 @@ live.describe("Agent SDK contract: background tasks", () => {
       // the moment between the emptied set and running, until the report's idle settles it.
       let worker = initial()
       const folded = all.map((message) => {
-        worker = step(worker, WorkerEvent.Message({ session: "s", message }), Date.now())
+        worker = step(
+          worker,
+          WorkerEvent.Message({ session: "s", reading: read(message) }),
+          Date.now(),
+        )
         return worker.state._tag
       })
       expect(new Set(folded.slice(idle, report + 1))).toEqual(new Set(["Working"]))
@@ -724,7 +729,11 @@ live.describe("Agent SDK contract: background tasks", () => {
       // idle after the report settles the worker.
       let worker = initial()
       const folded = all.map((message) => {
-        worker = step(worker, WorkerEvent.Message({ session: "s", message }), Date.now())
+        worker = step(
+          worker,
+          WorkerEvent.Message({ session: "s", reading: read(message) }),
+          Date.now(),
+        )
         return worker.state._tag
       })
       expect([folded[answer], folded[report]]).toEqual(["Working", "Working"])

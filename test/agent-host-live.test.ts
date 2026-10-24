@@ -229,18 +229,14 @@ describe("AgentHost live: the inbox", () => {
         Effect.gen(function* () {
           const host = yield* AgentHost
           const attention = yield* Attention
-          const results: Array<string> = []
-          yield* host.start("t-1", session(dir))
-          yield* host.messages("t-1").pipe(
-            Stream.runForEach(({ message }) =>
-              Effect.sync(() => {
-                if (message.type === "result" && message.subtype === "success") {
-                  results.push(message.result)
-                }
-              }),
+          const files = yield* Files
+          // The turns' results, as the transcript records them.
+          const resultsNow = Effect.map(files.messages("t-1"), (items) =>
+            items.flatMap(({ message }) =>
+              message.type === "result" && message.subtype === "success" ? [message.result] : [],
             ),
-            Effect.forkChild,
           )
+          yield* host.start("t-1", session(dir))
           yield* host.send("t-1", "first", "clientComposed")
           // The turn waits on its permission request: a message sent now is queued.
           expect(yield* until("t-1", (s) => s._tag === "NeedsYou")).toEqual(
@@ -249,7 +245,7 @@ describe("AgentHost live: the inbox", () => {
           yield* host.send("t-1", "second", "clientComposed")
           yield* logShows(log, (l) => usersIn(l).length === 2)
           yield* attention.answer("r1", { _tag: "Allow" }, "screen")
-          yield* Effect.sync(() => results).pipe(
+          const results = yield* resultsNow.pipe(
             Effect.repeat({
               until: (r) => r.length === 2,
               schedule: Schedule.spaced(Duration.millis(20)),

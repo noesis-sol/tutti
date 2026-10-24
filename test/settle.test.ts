@@ -14,7 +14,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { emptyQueue, type MergeQueue } from "../src/run/mergequeue.ts"
 import { Cause, type TicketPhase, WaitFor } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
-import { answers, idleGrace, namesTicket, nudgeText, untilSettled } from "../src/run/settle.ts"
+import { idleGrace, namesTicket, nudgeText, untilSettled } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import { requeueWaiting, type Worked, work } from "../src/run/work.ts"
 import { Beads } from "../src/services/Beads.ts"
@@ -585,26 +585,6 @@ describe("untilSettled", () => {
   test("a worker the host doesn't know has gone", async () => {
     const ran = await scenario({}, untilSettled("nobody"))
     expect(resultOf(ran)._tag).toBe("Gone")
-  })
-})
-
-describe("answers", () => {
-  const uuid = "00000000-0000-4000-8000-000000000002"
-  const result = (fields: object) => ({ type: "result", subtype: "success", ...fields }) as never
-
-  test("a result listing the send, or listing no sends at all, answers it", () => {
-    expect(answers(result({ user_message_uuids: [uuid] }), uuid)).toBe(true)
-    expect(answers(result({}), uuid)).toBe(true)
-    expect(answers(result({ user_message_uuids: ["other"] }), uuid)).toBe(false)
-  })
-
-  test("its command_lifecycle completed answers it; queued or started doesn't", () => {
-    const lifecycle = (state: string, command = uuid) =>
-      ({ type: "command_lifecycle", command_uuid: command, state }) as never
-    expect(answers(lifecycle("completed"), uuid)).toBe(true)
-    expect(answers(lifecycle("queued"), uuid)).toBe(false)
-    expect(answers(lifecycle("started"), uuid)).toBe(false)
-    expect(answers(lifecycle("completed", "other"), uuid)).toBe(false)
   })
 })
 

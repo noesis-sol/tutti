@@ -6,6 +6,7 @@ import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { type Cause, Effect, Exit, Layer, Queue, SubscriptionRef } from "effect"
 import { AgentGone, makeWorkers } from "../src/agent/AgentHost.ts"
 import { closingWhy, push } from "../src/agent/AgentHostLive.ts"
+import { read } from "../src/agent/reading.ts"
 import { WorkerEvent } from "../src/agent/WorkerState.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -13,7 +14,7 @@ import { layer as logLayer } from "../src/testing/Log.ts"
 import { Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 
 const message = (fields: object) =>
-  WorkerEvent.Message({ session: "s-1", message: fields as unknown as SDKMessage })
+  WorkerEvent.Message({ session: "s-1", reading: read(fields as unknown as SDKMessage) })
 
 // A session that has started, run a turn and gone idle.
 const settled = [

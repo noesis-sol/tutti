@@ -4,7 +4,7 @@
 // organ's refusal among them.
 import type { SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk"
 import { Context, Effect, Layer, Ref } from "effect"
-import { make, type RateLimit, rateLimitOf, refusalOf, UsageLimits } from "../agent/UsageLimits.ts"
+import { make, type RateLimit, refusalOf, reportOf, UsageLimits } from "../agent/UsageLimits.ts"
 
 /** The events the test layer was reported, for a test to look at. */
 export class Reported extends Context.Service<
@@ -22,13 +22,10 @@ export const layer: Layer.Layer<UsageLimits | Reported> = Layer.effectContext(
     const events = yield* Ref.make<ReadonlyArray<RateLimit>>([])
     const recording = UsageLimits.of({
       ...usage,
-      report: (info) =>
+      report: (report) =>
         Effect.andThen(
-          Ref.update(events, (all) => {
-            const read = rateLimitOf(info)
-            return read === undefined ? all : [...all, read]
-          }),
-          usage.report(info),
+          Ref.update(events, (all) => (report.info === null ? all : [...all, report.info])),
+          usage.report(report),
         ),
       refused: (refusal) =>
         Effect.andThen(
@@ -48,5 +45,5 @@ export const scripted = (
 ): Effect.Effect<void, never, UsageLimits> =>
   Effect.gen(function* () {
     const usage = yield* UsageLimits
-    yield* Effect.forEach(events, (info) => usage.report(info), { discard: true })
+    yield* Effect.forEach(events, (info) => usage.report(reportOf(info)), { discard: true })
   })

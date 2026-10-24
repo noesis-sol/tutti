@@ -2,10 +2,11 @@
 // the SDK's control channel, messages through its queue to the host's reader fiber (tutti-nrg.42).
 import { describe, expect, test } from "bun:test"
 import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+import { read } from "../src/agent/reading.ts"
 import { initial, step, type Worker, WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 
 const sdk = (message: object): WorkerEvent =>
-  WorkerEvent.Message({ session: "s", message: message as unknown as SDKMessage })
+  WorkerEvent.Message({ session: "s", reading: read(message as unknown as SDKMessage) })
 const init = sdk({ type: "system", subtype: "init", permissionMode: "auto", session_id: "s" })
 const running = sdk({ type: "system", subtype: "session_state_changed", state: "running" })
 const idle = sdk({ type: "system", subtype: "session_state_changed", state: "idle" })

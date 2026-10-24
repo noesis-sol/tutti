@@ -12,6 +12,7 @@ import fc from "fast-check"
 import {
   make as makeUsageLimits,
   rateLimitOf,
+  reportOf,
   windowsOf,
   withFigures,
 } from "../src/agent/UsageLimits.ts"
@@ -126,13 +127,12 @@ describe("UsageLimits keeps the account's windows", () => {
     const windows = await Effect.gen(function* () {
       const usage = yield* makeUsageLimits
       yield* TestClock.setTime(1_000)
-      yield* usage.report(allowed[0]?.rate_limit_info as SDKRateLimitInfo)
+      yield* usage.report(reportOf(allowed[0]?.rate_limit_info))
       yield* TestClock.setTime(2_000)
       // A status this SDK doesn't name: the event isn't read, its windows are.
-      yield* usage.report({
-        status: "allowed_soon",
-        unifiedWindows: { five_hour: { utilization: 0.3 } },
-      } as unknown as SDKRateLimitInfo)
+      yield* usage.report(
+        reportOf({ status: "allowed_soon", unifiedWindows: { five_hour: { utilization: 0.3 } } }),
+      )
       return yield* Stream.runHead(usage.windows)
     }).pipe(Effect.provide(TestClock.layer()), Effect.runPromise)
     expect(windows._tag === "Some" ? [...windows.value] : []).toEqual([

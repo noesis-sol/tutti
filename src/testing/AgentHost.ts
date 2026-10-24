@@ -62,14 +62,13 @@ import { Attention } from "../agent/Attention.ts"
 import { activityHooks, type Hooks } from "../agent/hooks.ts"
 import { serverName } from "../agent/interviewTools.ts"
 import { type ChosenServers, inProcess, noServers } from "../agent/mcp.ts"
+import { capabilitiesOf, type Reading } from "../agent/reading.ts"
 import {
   cancelQueuedCapability,
-  capabilitiesOf,
   makeChecks,
   setupLine,
   skippedLine,
   startFailure,
-  startupFailureOf,
 } from "../agent/sessionChecks.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import { WorkerEvent } from "../agent/WorkerState.ts"
@@ -306,38 +305,40 @@ export const layer = (
       const lifecycle = (session: Running, uuid: string, state: string) =>
         emitIn(session, { type: "command_lifecycle", command_uuid: uuid, state })
 
-      // A scripted message, with what the CLI would add to it (see the header).
+      // A scripted message, with what the CLI would add to it (see the header): what the host read
+      // of it, undefined when it was held back.
       const emitScripted = (session: Running, message: SDKMessage) =>
         Effect.gen(function* () {
           if (message.type === "result") {
             const taken = yield* Ref.getAndSet(session.taken, [])
             const listed = message.user_message_uuids ?? taken
-            yield* emitIn(session, { ...message, user_message_uuids: listed })
+            const reading = yield* emitIn(session, { ...message, user_message_uuids: listed })
             for (const uuid of listed) yield* lifecycle(session, uuid, "completed")
-            return
+            return reading
           }
           const held =
             message.type === "system" &&
             message.subtype === "session_state_changed" &&
             message.state === "idle" &&
             (yield* Ref.get(session.queued)).length > 0
-          if (!held) yield* emitIn(session, message)
+          return held ? undefined : yield* emitIn(session, message)
         })
 
       // A scripted message, sent and read as the live layer reads it (see the header).
       const onMessage = (ticket: string, session: Running, message: SDKMessage) =>
         Effect.gen(function* () {
-          yield* emitScripted(session, message)
-          if (message.type === "system" && message.subtype === "init") {
-            for (const capability of capabilitiesOf(message)) session.capabilities.add(capability)
+          const reading: Reading | undefined = yield* emitScripted(session, message)
+          if (reading?._tag === "Init") {
+            for (const capability of reading.capabilities) session.capabilities.add(capability)
             if (session.initialized) return
             session.initialized = true
             const problem = yield* checks.first(message, session.servers)
             if (problem !== undefined) yield* setupProblem(ticket, session, problem)
             return
           }
-          const refused = startupFailureOf(message)
-          if (refused !== undefined) yield* gone(ticket, session, refused)
+          if (reading?._tag === "Result" && reading.startupFailure !== null) {
+            yield* gone(ticket, session, reading.startupFailure)
+          }
         }).pipe(Effect.catchDefect((defect) => log.write(skippedLine(ticket, defect))))
 
       // Calls the worker's hook callbacks for `input`: its event's, all of them or its tool's.
@@ -631,8 +632,7 @@ export const layer = (
         current: workers.current,
         begun: workers.begun,
         state: workers.state,
-        messages: workers.messages,
-        subscribe: workers.subscribe,
+        answered: workers.answered,
         workers: workers.workers,
         compactions: workers.compactions,
         processes: Effect.sync(

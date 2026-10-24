@@ -1,15 +1,16 @@
 // The UsageLimits service (§ 3.3, § 4.12): the account's rate-limit events, as every worker's
 // session reports them, the workers waiting for the limit, and whether the usage-limit hold is on.
-// AgentHost reports the `rate_limit_info` of each `rate_limit_event` its sessions emit, and each
-// worker that becomes UsageLimited or stops being so (makeWorkers); an organ call refused for the
-// limit is reported as a rejection (OrganHold, through usageLimit.ts's organHold). The run's hold
-// (src/run/usageLimit.ts) reads them and sets the hold, and organ calls are skipped while it is on.
-// Every event's `unifiedWindows` gives the account's windows (five-hour, week), which it keeps,
-// each at its latest figure, for the title line and their records (src/run/usageWindows.ts).
+// AgentHost reports what it read (src/agent/reading.ts) of each `rate_limit_event` its sessions
+// emit, and each worker that becomes UsageLimited or stops being so (makeWorkers); an organ call
+// refused for the limit is reported as a rejection (OrganHold, through usageLimit.ts's organHold).
+// The run's hold (src/run/usageLimit.ts) reads them and sets the hold, and organ calls are skipped
+// while it is on. Every event's `unifiedWindows` gives the account's windows (five-hour, week),
+// which it keeps, each at its latest figure, for the title line and their records
+// (src/run/usageWindows.ts).
 //
 // The live layer keeps them in memory, as the test layer (src/testing/UsageLimits.ts) does; a test
 // reports scripted events through it.
-import type { SDKMessage, SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk"
+import type { SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk"
 import {
   Clock,
   Context,
@@ -19,11 +20,11 @@ import {
   PubSub,
   Ref,
   Result,
-  Schema,
   type Scope,
   Stream,
   SubscriptionRef,
 } from "effect"
+import type { Reading } from "./reading.ts"
 
 /** A `rate_limit_event`'s status. */
 export type LimitStatus = SDKRateLimitInfo["status"]
@@ -45,35 +46,51 @@ export interface RateLimit {
 // milliseconds is kept, as WorkerState reads it.
 const epochMillis = (at: number): number => (at < 1e12 ? at * 1000 : at)
 
-/**
- * The fields of a `rate_limit_info` tutti reads. A CLI of another version may send one without
- * them, or with a status this SDK doesn't name: such an info isn't read.
- */
-export const RateLimitInfo = Schema.Struct({
-  status: Schema.Literals(["allowed", "allowed_warning", "rejected"]),
-  rateLimitType: Schema.optional(Schema.String),
-  resetsAt: Schema.optional(Schema.Number),
-  utilization: Schema.optional(Schema.Number),
-  isUsingOverage: Schema.optional(Schema.Boolean),
-})
+const statuses: ReadonlySet<string> = new Set<LimitStatus>([
+  "allowed",
+  "allowed_warning",
+  "rejected",
+])
 
-const decodeInfo = Schema.decodeUnknownResult(RateLimitInfo)
+/** Why `value`, an info's `field`, isn't read: it is there, but not a `type`. */
+const notA = (value: unknown, type: "string" | "number" | "boolean", field: string) =>
+  value !== undefined && typeof value !== type
+    ? `its rate_limit_info's ${field} isn't a ${type}`
+    : undefined
+
+/**
+ * The info of a `rate_limit_event` as tutti reads it, or why it can't. A CLI of another version may
+ * send one without a status, or with a status this SDK doesn't name, or a field of another type:
+ * such an info isn't read.
+ */
+export const readRateLimit = (info: unknown): Result.Result<RateLimit, string> => {
+  if (!Predicate.isObject(info)) return Result.fail("it has no rate_limit_info")
+  const { status, rateLimitType, resetsAt, utilization, isUsingOverage } = info
+  if (typeof status !== "string" || !statuses.has(status)) {
+    return Result.fail("its rate_limit_info has no status tutti knows")
+  }
+  const why =
+    notA(rateLimitType, "string", "rateLimitType") ??
+    notA(resetsAt, "number", "resetsAt") ??
+    notA(utilization, "number", "utilization") ??
+    notA(isUsingOverage, "boolean", "isUsingOverage")
+  if (why !== undefined) return Result.fail(why)
+  return Result.succeed({
+    status: status as LimitStatus,
+    limit: (rateLimitType as string | undefined) ?? null,
+    resetsAt: resetsAt === undefined ? null : epochMillis(resetsAt as number),
+    utilization: (utilization as number | undefined) ?? null,
+    overage: isUsingOverage === true,
+  })
+}
 
 /**
  * The info of a `rate_limit_event` as tutti reads it; undefined for one it can't read, without a
  * status, say: no event, for the reader.
  */
 export const rateLimitOf = (info: unknown): RateLimit | undefined => {
-  const decoded = decodeInfo(info)
-  if (Result.isFailure(decoded)) return undefined
-  const read = decoded.success
-  return {
-    status: read.status,
-    limit: read.rateLimitType ?? null,
-    resetsAt: read.resetsAt === undefined ? null : epochMillis(read.resetsAt),
-    utilization: read.utilization ?? null,
-    overage: read.isUsingOverage === true,
-  }
+  const read = readRateLimit(info)
+  return Result.isSuccess(read) ? read.success : undefined
 }
 
 /**
@@ -100,11 +117,10 @@ export const noTurnLimit: TurnLimit = {
   rateLimited: false,
 }
 
-/** `limit` with `message` read: `limit` itself when the message says nothing of the limit. */
-export const turnLimitStep = (limit: TurnLimit, message: SDKMessage): TurnLimit => {
-  if (message.type === "rate_limit_event") {
-    const info = rateLimitOf(message.rate_limit_info)
-    if (info === undefined) return limit
+/** `limit` with `reading`, of a message of the turn: `limit` itself if it says nothing of it. */
+export const turnLimitStep = (limit: TurnLimit, reading: Reading): TurnLimit => {
+  if (reading._tag === "RateLimit") {
+    const { info } = reading
     return {
       ...limit,
       seen: true,
@@ -113,15 +129,11 @@ export const turnLimitStep = (limit: TurnLimit, message: SDKMessage): TurnLimit 
       resetsAt: info.resetsAt ?? limit.resetsAt,
     }
   }
-  if (message.type === "assistant" && message.error === "rate_limit" && !limit.rateLimited) {
+  if (reading._tag === "Assistant" && reading.rateLimited && !limit.rateLimited) {
     return { ...limit, rateLimited: true }
   }
   return limit
 }
-
-/** What a turn's `messages` say of the usage limit (`turnLimitStep`, in order). */
-export const turnLimit = (messages: ReadonlyArray<SDKMessage>): TurnLimit =>
-  messages.reduce(turnLimitStep, noTurnLimit)
 
 /**
  * Whether a turn ended on the usage limit: its result's API error status (`apiStatus`) is 429, its
@@ -213,14 +225,32 @@ export const refusalOf = (refusal: Refusal): RateLimit => ({
   overage: false,
 })
 
+/**
+ * What a `rate_limit_event` gave, as its reading has it: its info, null when it couldn't be read,
+ * and the account's windows it carries, read apart from the info.
+ */
+export interface LimitReport {
+  readonly info: RateLimit | null
+  readonly windows: ReadonlyMap<string, WindowFigure>
+}
+
+/** The report a `rate_limit_info` gives, read as a worker's message is: a test's, or a script's. */
+export const reportOf = (info: unknown): LimitReport => ({
+  info: rateLimitOf(info) ?? null,
+  windows: windowsOf(info),
+})
+
 /** The workers whose turn ended on the limit (UsageLimited), by ticket: when it resets, if known. */
 export type Waiting = ReadonlyMap<string, number | null>
 
 export class UsageLimits extends Context.Service<
   UsageLimits,
   {
-    /** A worker's session emitted a `rate_limit_event` with this info; one it can't read is none. */
-    report(info: SDKRateLimitInfo): Effect.Effect<void>
+    /**
+     * A worker's session emitted a `rate_limit_event` that gave `report`: its windows are kept,
+     * and its info, when it could be read, is an event.
+     */
+    report(report: LimitReport): Effect.Effect<void>
     /** An organ's call was refused for the limit: a rejection, among the events. */
     refused(refusal: Refusal): Effect.Effect<void>
     /** The events reported from now on, for the rest of the scope. */
@@ -256,16 +286,13 @@ export const make: Effect.Effect<UsageLimits["Service"]> = Effect.gen(function* 
   const waiting = yield* SubscriptionRef.make<Waiting>(new Map())
   const windows = yield* SubscriptionRef.make<Windows>(new Map())
   return UsageLimits.of({
-    // The windows are read apart from the rest: an info this SDK can't read may still carry them.
-    report: (info) =>
+    report: ({ info, windows: figures }) =>
       Effect.gen(function* () {
-        const figures = windowsOf(info)
         if (figures.size > 0) {
           const now = yield* Clock.currentTimeMillis
           yield* SubscriptionRef.update(windows, (all) => withFigures(all, figures, now))
         }
-        const read = rateLimitOf(info)
-        if (read !== undefined) yield* PubSub.publish(events, read)
+        if (info !== null) yield* PubSub.publish(events, info)
       }),
     refused: (refusal) => Effect.asVoid(PubSub.publish(events, refusalOf(refusal))),
     subscribe: Effect.map(PubSub.subscribe(events), Stream.fromSubscription),

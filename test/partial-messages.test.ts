@@ -1,8 +1,9 @@
-// Partial messages (`stream_event`, § 4.4) are cheap to pass on: each is published to the worker's
-// subscribers, and folded into its state only while an api_retry holds, the one thing it changes.
+// Partial messages (`stream_event`, § 4.4) are cheap to pass on: each is read as Partial without
+// being looked into, and folded into its state only while an api_retry holds, the one thing it
+// changes.
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Effect, Layer, Stream, SubscriptionRef } from "effect"
+import { Effect, Layer, SubscriptionRef } from "effect"
 import { makeWorkers } from "../src/agent/AgentHost.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -23,7 +24,7 @@ const partial = (text: string) =>
     session_id: "s-1",
   })
 
-/** Emits `before`, then `partials`, into a worker's session: what its state and subscribers saw. */
+/** Emits `before`, then `partials`, into a worker's session: what its state and the host read. */
 const emitted = (before: ReadonlyArray<SDKMessage>, partials: ReadonlyArray<SDKMessage>) =>
   Effect.runPromise(
     Effect.scoped(
@@ -31,13 +32,12 @@ const emitted = (before: ReadonlyArray<SDKMessage>, partials: ReadonlyArray<SDKM
         const workers = yield* makeWorkers()
         const entry = yield* workers.open("t-1", "s-1", false)
         for (const message of before) yield* workers.emit(entry, "s-1", message)
-        const subscribed = yield* workers.subscribe("t-1")
         const worker = yield* SubscriptionRef.get(entry.worker)
-        for (const message of partials) yield* workers.emit(entry, "s-1", message)
+        const seen: Array<string> = []
+        for (const message of partials) seen.push((yield* workers.emit(entry, "s-1", message))._tag)
         const after = yield* SubscriptionRef.get(entry.worker)
-        const seen = yield* subscribed.pipe(Stream.take(partials.length), Stream.runCollect)
         return {
-          seen: seen.map((item) => item.message),
+          seen,
           folded: after !== worker,
           state: after.state,
         }
@@ -49,10 +49,10 @@ const emitted = (before: ReadonlyArray<SDKMessage>, partials: ReadonlyArray<SDKM
   )
 
 describe("partial messages", () => {
-  test("pass to the worker's subscribers without a fold of its state", async () => {
+  test("are read as Partial, without a fold of its state", async () => {
     const partials = ["a", "b", "c"].map(partial)
     const { seen, folded, state } = await emitted([init, running], partials)
-    expect(seen).toEqual(partials)
+    expect(seen).toEqual(["Partial", "Partial", "Partial"])
     expect(folded).toBe(false)
     expect(state).toMatchObject({ _tag: "Working" })
   })
@@ -60,7 +60,7 @@ describe("partial messages", () => {
   test("end an api_retry: the first is folded, Working again", async () => {
     const partials = ["a", "b"].map(partial)
     const { seen, folded, state } = await emitted([init, running, retry], partials)
-    expect(seen).toEqual(partials)
+    expect(seen).toEqual(["Partial", "Partial"])
     expect(folded).toBe(true)
     expect(state).toMatchObject({ _tag: "Working" })
   })

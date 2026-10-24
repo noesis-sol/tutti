@@ -10,10 +10,10 @@
 // SDK's types: a system/init without the permission mode or the API key source skips that check,
 // logged once in the run (uncheckedLine).
 //
-// Beside the worker's state, a message tells its host the CLI's capabilities a system/init or the
-// initialize answer lists (capabilitiesOf), and a result's startup_failure_reason, which ends the
-// worker (startupFailureOf). A start that fails says why as startFailure words it.
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+// Beside the worker's state, a message tells its host, as it was read (src/agent/reading.ts), the
+// CLI's capabilities a system/init lists, as the initialize answer does (capabilitiesOf), and a
+// result's startup_failure_reason, which ends the worker. A start that fails says why as
+// startFailure words it.
 import { type Cause, Effect, Exit, Option, Ref, Result, Schema } from "effect"
 import type { SetupProblem } from "../cli/AppConfig.ts"
 import { detail, type Line, type Log, line } from "../run/log.ts"
@@ -70,18 +70,6 @@ const messageOf = (cause: unknown): string =>
  */
 export const skippedLine = (ticket: string, defect: unknown): Line =>
   detail`${ticket}: a message tutti couldn't take in, skipped: ${messageOf(defect)}`
-
-/** The capabilities listed in `value`'s `capabilities`, when it has them. */
-export const capabilitiesOf = (value: unknown): ReadonlyArray<string> => {
-  const listed = (value as { capabilities?: unknown } | undefined)?.capabilities
-  return Array.isArray(listed) ? listed.filter((c) => typeof c === "string") : []
-}
-
-/** The startup_failure_reason of a result that has one: Claude Code refused to start. */
-export const startupFailureOf = (message: SDKMessage): string | undefined =>
-  message.type === "result" && message.subtype !== "success"
-    ? message.startup_failure_reason
-    : undefined
 
 /** Why a worker is gone, and its start failed, when Claude Code couldn't be spawned (§ 4.8). */
 export const launchFailed = "Claude Code couldn't be launched"

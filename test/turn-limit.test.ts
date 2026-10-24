@@ -6,7 +6,8 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit } from "effect"
-import { endedOnLimit, noTurnLimit, turnLimit } from "../src/agent/UsageLimits.ts"
+import { read, turnLimit } from "../src/agent/reading.ts"
+import { endedOnLimit, noTurnLimit } from "../src/agent/UsageLimits.ts"
 import { answerOf, ProbeAnswer } from "../src/agent/UsageProbe.ts"
 import { initial, step, WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 import { outcome } from "../src/organs/AgentSdkLanguageModel.ts"
@@ -22,19 +23,19 @@ const event = (status: string, extra: Record<string, unknown> = {}): SDKMessage 
 
 describe("turnLimit", () => {
   test("the last event's status wins; the limit and reset are the last said", () => {
-    const read = turnLimit([
+    const limit = turnLimit([
       event("rejected", { rateLimitType: "five_hour", resetsAt: 1_000 }),
       event("allowed"),
     ])
-    expect(read).toEqual({
+    expect(limit).toEqual({
       seen: true,
       rejected: false,
       limit: "five_hour",
       resetsAt: 1_000_000,
       rateLimited: false,
     })
-    expect(endedOnLimit(read, undefined)).toBe(false)
-    expect(endedOnLimit(read, 429)).toBe(true)
+    expect(endedOnLimit(limit, undefined)).toBe(false)
+    expect(endedOnLimit(limit, 429)).toBe(true)
   })
 
   test("an event it can't read, or any other message, changes nothing", () => {
@@ -42,8 +43,8 @@ describe("turnLimit", () => {
   })
 
   test("an assistant message's rate_limit error is the limit", () => {
-    const read = turnLimit([{ type: "assistant", error: "rate_limit" } as unknown as SDKMessage])
-    expect(endedOnLimit(read, null)).toBe(true)
+    const limit = turnLimit([{ type: "assistant", error: "rate_limit" } as unknown as SDKMessage])
+    expect(endedOnLimit(limit, null)).toBe(true)
   })
 })
 
@@ -52,7 +53,8 @@ describe("a worker, the probe and an organ agree on the fixtures", () => {
     test(name, () => {
       const messages = fixture(name)
       const worker = messages.reduce(
-        (w, message, i) => step(w, WorkerEvent.Message({ session: "s", message }), 1_000 * (i + 1)),
+        (w, message, i) =>
+          step(w, WorkerEvent.Message({ session: "s", reading: read(message) }), 1_000 * (i + 1)),
         initial(),
       )
       const resetsAt = turnLimit(messages).resetsAt

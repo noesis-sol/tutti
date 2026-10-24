@@ -38,7 +38,7 @@
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
 import { Clock, Duration, Effect, Option, Ref, Result, Stream, SubscriptionRef } from "effect"
-import { type AgentGone, AgentHost, type SessionMessage } from "../agent/AgentHost.ts"
+import { type AgentGone, AgentHost } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -72,7 +72,7 @@ import {
 import { Cause } from "./phase.ts"
 import { info, say } from "./say.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
-import { namesTicket, untilAnswered, untilSettled } from "./settle.ts"
+import { namesTicket, untilSettled } from "./settle.ts"
 import { type Fix, type SetUp, type SetUps, setUp, setupToResolve } from "./setup.ts"
 
 /** How many times a ticket's rebase conflicts are handed back to its worker in a run. */
@@ -767,11 +767,6 @@ export const give = (
         // As below: the resume put its state back at Starting.
         taken = Effect.void
       } else if (Result.isSuccess(state) && state.success._tag !== "Closed") {
-        // Subscribed to the session's messages before the send, so its turn's result can't be
-        // missed, however soon it comes. A worker ended meanwhile fails the send.
-        const heard = yield* host
-          .subscribe(id)
-          .pipe(Effect.orElseSucceed((): Stream.Stream<SessionMessage> => Stream.never))
         const sent =
           state.success._tag === "UsageLimited" && atReset !== undefined
             ? yield* sendAtReset(handBack, limit, atReset)
@@ -779,7 +774,7 @@ export const give = (
         // It left the limit without the hand-back: given as to any worker, from its state now.
         if (sent === undefined) return yield* give(handBack, limit, options)
         if (Result.isFailure(sent)) return sent.failure
-        taken = untilAnswered(id, heard, sent.success)
+        taken = host.answered(id, sent.success)
       } else {
         const failed = yield* resumeFor(id, "hand_back", prompt, what)
         if (failed !== undefined) return line`its session could not be resumed: ${failed}`

@@ -1,6 +1,6 @@
-// Messages a CLI of another version may send without the fields tutti reads: the reducer takes
-// such a message as no change, the host logs it, and a message that still dies is skipped, so the
-// worker goes on rather than going Gone.
+// Messages a CLI of another version may send without the fields tutti reads: they read as
+// Unreadable (src/agent/reading.ts), the reducer takes such a message as no change, the host logs
+// it, and a message that still dies is skipped, so the worker goes on rather than going Gone.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,12 +12,12 @@ import fc from "fast-check"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
+import { read } from "../src/agent/reading.ts"
 import { rateLimitOf } from "../src/agent/UsageLimits.ts"
 import { answerOf } from "../src/agent/UsageProbe.ts"
 import {
   initial,
   step,
-  unreadable,
   type Worker,
   WorkerEvent,
   type WorkerState,
@@ -35,7 +35,13 @@ import { testEnv } from "./env.ts"
 setDefaultTimeout(30_000)
 
 const sdk = (message: object): WorkerEvent =>
-  WorkerEvent.Message({ session: "s", message: message as unknown as SDKMessage })
+  WorkerEvent.Message({ session: "s", reading: read(message as unknown as SDKMessage) })
+
+/** Why tutti can't read `message`; undefined when it can. */
+const unreadable = (message: object): string | undefined => {
+  const reading = read(message as unknown as SDKMessage)
+  return reading._tag === "Unreadable" ? reading.why : undefined
+}
 const init = sdk({ type: "system", subtype: "init", permissionMode: "auto", session_id: "s" })
 const running = sdk({ type: "system", subtype: "session_state_changed", state: "running" })
 const idle = sdk({ type: "system", subtype: "session_state_changed", state: "idle" })
@@ -76,15 +82,15 @@ const missing: ReadonlyArray<readonly [string, object]> = [
 
 describe("WorkerState: a message missing a field it reads", () => {
   for (const [name, message] of missing) {
-    test(`${name} is no change, and unreadable says why`, () => {
+    test(`${name} is no change, and its reading says why`, () => {
       expect(step(working, sdk(message), 5000)).toEqual(working)
-      expect(unreadable(message as SDKMessage)).toBeString()
+      expect(unreadable(message)).toBeString()
     })
   }
 
   test("a result without errors fails with its subtype, the worker going on to Failed", () => {
     const message = { type: "result", subtype: "error_max_turns", is_error: true, num_turns: 3 }
-    expect(unreadable(message as unknown as SDKMessage)).toBeUndefined()
+    expect(unreadable(message)).toBeUndefined()
     const worker = fold([running, init, sdk(message), idle])
     expect(worker.state).toEqual({
       _tag: "Failed",
@@ -96,7 +102,7 @@ describe("WorkerState: a message missing a field it reads", () => {
 
   test("an api_retry without error_status is a retry without a status", () => {
     const message = { type: "system", subtype: "api_retry", attempt: 2, max_retries: 10 }
-    expect(unreadable(message as unknown as SDKMessage)).toBeUndefined()
+    expect(unreadable(message)).toBeUndefined()
     expect(step(working, sdk(message), 5000).state).toEqual({
       _tag: "Retrying",
       attempt: 2,
@@ -114,47 +120,138 @@ describe("WorkerState: a message missing a field it reads", () => {
       { type: "result", subtype: "success", is_error: false, result: "DONE" },
       { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 1 } },
     ]) {
-      expect(unreadable(message as unknown as SDKMessage)).toBeUndefined()
+      expect(unreadable(message)).toBeUndefined()
     }
   })
 
+  const kinds = [
+    { type: "system", subtype: "api_retry" },
+    { type: "system", subtype: "session_state_changed" },
+    { type: "system", subtype: "background_tasks_changed" },
+    { type: "system", subtype: "init" },
+    { type: "system", subtype: "permission_denied" },
+    { type: "rate_limit_event" },
+    { type: "result", subtype: "success" },
+    { type: "result", subtype: "error_during_execution" },
+    { type: "assistant" },
+    { type: "command_lifecycle" },
+    { type: "stream_event" },
+    { type: "user" },
+  ]
+  const fields = fc.dictionary(
+    fc.constantFrom(
+      "tasks",
+      "errors",
+      "rate_limit_info",
+      "attempt",
+      "max_retries",
+      "error_status",
+      "state",
+      "is_error",
+      "result",
+      "user_message_uuids",
+      "startup_failure_reason",
+      "api_error_status",
+      "error",
+      "command_uuid",
+      "capabilities",
+      "message",
+    ),
+    fc.anything(),
+  )
+
   test("property: no message of the types it reads, whatever its fields, throws", () => {
-    const kinds = [
-      { type: "system", subtype: "api_retry" },
-      { type: "system", subtype: "session_state_changed" },
-      { type: "system", subtype: "background_tasks_changed" },
-      { type: "system", subtype: "init" },
-      { type: "rate_limit_event" },
-      { type: "result", subtype: "success" },
-      { type: "result", subtype: "error_during_execution" },
-      { type: "assistant" },
-      { type: "command_lifecycle" },
-    ]
-    const fields = fc.dictionary(
-      fc.constantFrom(
-        "tasks",
-        "errors",
-        "rate_limit_info",
-        "attempt",
-        "max_retries",
-        "error_status",
-        "state",
-        "is_error",
-        "result",
-        "user_message_uuids",
-        "startup_failure_reason",
-        "api_error_status",
-        "error",
-        "command_uuid",
-      ),
-      fc.anything(),
-    )
     fc.assert(
       fc.property(fc.constantFrom(...kinds), fields, (kind, rest) => {
         const message = { ...rest, ...kind } as unknown as SDKMessage
         step(working, sdk(message), 5000)
         unreadable(message)
       }),
+    )
+  })
+
+  test("property: a message it can't read is no change, and is named by its type and subtype", () => {
+    fc.assert(
+      fc.property(fc.constantFrom(...kinds), fields, (kind, rest) => {
+        const message = { ...rest, ...kind } as unknown as SDKMessage
+        const reading = read(message)
+        if (reading._tag !== "Unreadable") return
+        expect(step(working, WorkerEvent.Message({ session: "s", reading }), 5000)).toEqual(working)
+        expect(reading.kind).toBe("subtype" in kind ? `${kind.type}/${kind.subtype}` : kind.type)
+        expect(reading.why).not.toBe("")
+      }),
+    )
+  })
+
+  test("property: a partial message is never looked into", () => {
+    fc.assert(
+      fc.property(fields, (rest) => {
+        expect(read({ ...rest, type: "stream_event" } as unknown as SDKMessage)._tag).toBe(
+          "Partial",
+        )
+      }),
+    )
+  })
+
+  test("property: an assistant message's calls are its tool_use blocks with an ID and an input", () => {
+    const block = fc.oneof(
+      fc.record({
+        type: fc.constantFrom("tool_use", "text", "server_tool_use"),
+        id: fc.oneof(fc.string(), fc.integer()),
+        input: fc.oneof(fc.dictionary(fc.string(), fc.jsonValue()), fc.constant(null), fc.string()),
+      }),
+      fc.anything(),
+    )
+    fc.assert(
+      fc.property(fc.array(block), fc.boolean(), (content, limited) => {
+        const message = {
+          type: "assistant",
+          message: { content },
+          ...(limited ? { error: "rate_limit" } : {}),
+        }
+        const reading = read(message as unknown as SDKMessage)
+        const calls = content.flatMap((b) => {
+          const each = b as { type?: unknown; id?: unknown; input?: unknown } | null
+          return typeof each === "object" &&
+            each !== null &&
+            !Array.isArray(each) &&
+            each.type === "tool_use" &&
+            typeof each.id === "string" &&
+            typeof each.input === "object" &&
+            each.input !== null &&
+            !Array.isArray(each.input)
+            ? [[each.id, each.input]]
+            : []
+        })
+        expect(reading).toEqual(
+          expect.objectContaining({ _tag: "Assistant", calls, rateLimited: limited }),
+        )
+      }),
+    )
+  })
+
+  test("property: a result lists the sends its user_message_uuids name, or none", () => {
+    fc.assert(
+      fc.property(
+        fc.option(fc.array(fc.uuid()), { nil: undefined }),
+        fc.boolean(),
+        (sends, error) => {
+          const message = {
+            type: "result",
+            subtype: "success",
+            is_error: error,
+            result: "DONE",
+            ...(sends === undefined ? {} : { user_message_uuids: sends }),
+          }
+          expect(read(message as unknown as SDKMessage)).toEqual(
+            expect.objectContaining({
+              _tag: "Result",
+              sends: sends ?? null,
+              error: error ? "DONE" : null,
+            }),
+          )
+        },
+      ),
     )
   })
 })

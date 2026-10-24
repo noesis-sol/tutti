@@ -15,6 +15,7 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { Attention } from "../src/agent/Attention.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
+import { read } from "../src/agent/reading.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import {
   initial,
@@ -60,7 +61,7 @@ setDefaultTimeout(30_000)
 
 // The reducer's events, as test/worker-state.test.ts has them.
 const sdk = (message: object): WorkerEvent =>
-  WorkerEvent.Message({ session: "s", message: message as unknown as SDKMessage })
+  WorkerEvent.Message({ session: "s", reading: read(message as unknown as SDKMessage) })
 const initEvent = sdk({ type: "system", subtype: "init", permissionMode: "auto", session_id: "s" })
 const running = sdk({ type: "system", subtype: "session_state_changed", state: "running" })
 const idle = sdk({ type: "system", subtype: "session_state_changed", state: "idle" })

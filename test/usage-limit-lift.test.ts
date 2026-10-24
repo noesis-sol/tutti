@@ -8,6 +8,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Duration, Effect, Exit, Fiber } from "effect"
+import { read } from "../src/agent/reading.ts"
 import { step as fold, initial, WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 import { resetLabel } from "../src/run/localTime.ts"
 import { run } from "../src/run/run.ts"
@@ -346,7 +347,7 @@ describe("the hold's reset", () => {
 
 describe("a worker's rejection", () => {
   const sdk = (message: object): WorkerEvent =>
-    WorkerEvent.Message({ session: "s", message: message as unknown as SDKMessage })
+    WorkerEvent.Message({ session: "s", reading: read(message as unknown as SDKMessage) })
   const begins = [
     sdk({ type: "system", subtype: "session_state_changed", state: "running" }),
     sdk({ type: "system", subtype: "init", permissionMode: "auto", session_id: "s" }),

@@ -1,11 +1,12 @@
 // The AgentHost service (§ 3.3, § 4.1, § 4.8): starting, resuming, messaging, interrupting,
 // closing and ending worker sessions, one session at a time per ticket. Each worker has a
 // WorkerState, folded from its session's messages, hooks and open attention requests (§ 4.2), which
-// the host keeps in a SubscriptionRef from the worker's first start until it is ended; and a stream
-// of its sessions' raw SDK messages, in the shape Transcripts records them. The host itself records
-// every message in Transcripts, so a reader that subscribes late misses nothing from the file. It
-// records there too each message it sends a worker, as it pushes it: the SDK doesn't echo them
-// (tutti doesn't ask it to replay user messages), and the worker view shows them (§ 7.5).
+// the host keeps in a SubscriptionRef from the worker's first start until it is ended. The host
+// records every message of its sessions in Transcripts, and reads it once (src/agent/reading.ts)
+// for all that takes it in. It records there too each message it sends a worker, as it pushes it:
+// the SDK doesn't echo them (tutti doesn't ask it to replay user messages), and the worker view
+// shows them (§ 7.5). Whether a send is answered is the worker's state's to say: it is outstanding
+// there from its push until a message of the session, or an interrupt, says it no longer is.
 //
 // A call Claude Code denies without asking comes as a `permission_denied` (§ 4.5), which names the
 // call's tool use but not its input: each worker keeps its last calls' inputs, from its assistant
@@ -23,17 +24,16 @@
 import type {
   McpSdkServerConfigWithInstance,
   SDKMessage,
-  SDKPermissionDeniedMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import {
   Clock,
   Context,
+  type Data,
   Deferred,
   Effect,
   Equal,
   Option,
-  Predicate,
   PubSub,
   Ref,
   Schema,
@@ -45,17 +45,10 @@ import {
 import { detail, Log } from "../run/log.ts"
 import { Spending } from "../run/spending.ts"
 import { Attention } from "./Attention.ts"
+import { type Call, type Reading, read } from "./reading.ts"
 import { Transcripts } from "./Transcripts.ts"
 import { UsageLimits } from "./UsageLimits.ts"
-import {
-  initial,
-  reportWait,
-  step,
-  unreadable,
-  type Worker,
-  WorkerEvent,
-  WorkerState,
-} from "./WorkerState.ts"
+import { initial, reportWait, step, type Worker, WorkerEvent, WorkerState } from "./WorkerState.ts"
 
 /**
  * Who wrote a message: tutti (sent `client_composed`, delivered as written, § 4.1) or a person at
@@ -103,12 +96,6 @@ export interface InterviewSetup {
 export interface Receipt {
   readonly stillQueued: ReadonlyArray<string>
   readonly cancelled: ReadonlyArray<string>
-}
-
-/** A message of a worker's session, as Transcripts records it. */
-export interface SessionMessage {
-  readonly session: string
-  readonly message: SDKMessage
 }
 
 /** A compaction of a worker's context, as its PreCompact hook reports it. */
@@ -220,15 +207,14 @@ export class AgentHost extends Context.Service<
     begun(ticket: string): Stream.Stream<boolean, AgentGone>
     /** The worker's state: now, then on each change, across its sessions, until it is ended. */
     state(ticket: string): Stream.Stream<WorkerState, AgentGone>
-    /** Its sessions' messages, from now on, until it is ended. */
-    messages(ticket: string): Stream.Stream<SessionMessage, AgentGone>
     /**
-     * Subscribes to its sessions' messages now, in the caller's fiber: the stream gives every
-     * message from then on, until the scope closes or the worker is ended. For a caller that sends
-     * the worker something and waits on its answer, which may come before a stream forked to run
-     * `messages` has subscribed.
+     * Waits until the worker's send `uuid` is no longer outstanding (§ 4.2): a message of its
+     * session, or an interrupt, said it was answered or cancelled; or its session ended, or a new
+     * one began, a resume or a start, with none of the sends before it outstanding; or the worker
+     * was ended, or the host never knew it. A send is outstanding from its push, before it reaches
+     * the session, so a wait begun once `send` has returned misses no answer, however soon it came.
      */
-    subscribe(ticket: string): Effect.Effect<Stream.Stream<SessionMessage>, AgentGone, Scope.Scope>
+    answered(ticket: string, uuid: string): Effect.Effect<void>
     /**
      * The tickets of the workers the host knows, from each one's first start until it is ended:
      * now, then on each change.
@@ -253,7 +239,6 @@ export interface WorkerEntry {
   readonly worker: SubscriptionRef.SubscriptionRef<Worker>
   /** Its state alone, set only when it changes. */
   readonly state: SubscriptionRef.SubscriptionRef<WorkerState>
-  readonly messages: PubSub.PubSub<SessionMessage>
   /** Done when the worker is ended: its streams end with it. */
   readonly ended: Deferred.Deferred<void>
   /** The inputs of its last `callsKept` tool calls, its subagents' too, by tool use ID. */
@@ -266,24 +251,9 @@ export const spendingPages = 25
 /** How many of a worker's last tool calls keep their input, for the denials that name them. */
 export const callsKept = 64
 
-/** The tool calls in an assistant message, its subagents' too: each one's ID and input. */
-const toolUses = (
-  message: SDKMessage,
-): ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]> => {
-  if (message.type !== "assistant") return []
-  const content: unknown = message.message.content
-  if (!Array.isArray(content)) return []
-  return content.flatMap((block: unknown) => {
-    const b = block as { readonly type?: unknown; readonly id?: unknown; readonly input?: unknown }
-    return b.type === "tool_use" && typeof b.id === "string" && Predicate.isObject(b.input)
-      ? [[b.id, b.input] as const]
-      : []
-  })
-}
-
-/** Keeps the message's tool calls' inputs in `calls`, the oldest going past `callsKept`. */
-const keepCalls = (calls: WorkerEntry["calls"], message: SDKMessage): void => {
-  for (const [id, input] of toolUses(message)) {
+/** Keeps the inputs of a message's tool calls, `made`, in `calls`, the oldest going past `callsKept`. */
+const keepCalls = (calls: WorkerEntry["calls"], made: ReadonlyArray<Call>): void => {
+  for (const [id, input] of made) {
     calls.delete(id)
     calls.set(id, input)
   }
@@ -292,10 +262,6 @@ const keepCalls = (calls: WorkerEntry["calls"], message: SDKMessage): void => {
     calls.delete(id)
   }
 }
-
-/** Whether `message` is a `permission_denied`: a call Claude Code denied without asking. */
-const isDenial = (message: SDKMessage): message is SDKPermissionDeniedMessage =>
-  message.type === "system" && message.subtype === "permission_denied"
 
 /** The workers a host knows, and how their state moves: what the live and test layers share. */
 export interface Workers {
@@ -314,16 +280,21 @@ export interface Workers {
    */
   readonly fold: (entry: WorkerEntry, event: WorkerEvent) => Effect.Effect<void>
   /**
-   * A message of the session `session`: recorded in Transcripts, published and folded in (a
-   * partial `stream_event` only while an api_retry holds, the one thing it changes); a
-   * `permission_denied` is recorded through Attention too, a `rate_limit_event`'s info is
-   * reported to UsageLimits, when there is one (§ 4.12), and a result goes to Spending, when there
-   * is one, for its `turn` record (§ 10).
+   * A message of the session `session`: recorded in Transcripts, read, and folded in (a partial
+   * `stream_event` only while an api_retry holds, the one thing it changes). One it can't read is
+   * logged; an assistant message's calls are kept for the denials that name them, a
+   * `permission_denied` is recorded through Attention, a `rate_limit_event` is reported to
+   * UsageLimits, when there is one (§ 4.12), and a result goes to Spending, when there is one, for
+   * its `turn` record (§ 10). What it read, for the host to read no more of it.
    */
-  readonly emit: (entry: WorkerEntry, session: string, message: SDKMessage) => Effect.Effect<void>
+  readonly emit: (
+    entry: WorkerEntry,
+    session: string,
+    message: SDKMessage,
+  ) => Effect.Effect<Reading>
   /**
    * A message sent into the session `session`, as it is pushed: recorded in Transcripts alone. The
-   * session doesn't send it back, so it isn't published, and the send is folded in as `Sent`.
+   * session doesn't send it back; the send is folded in as `Sent`.
    */
   readonly sent: (
     entry: WorkerEntry,
@@ -341,10 +312,7 @@ export interface Workers {
   readonly current: (ticket: string) => Effect.Effect<WorkerState, AgentGone>
   readonly begun: (ticket: string) => Stream.Stream<boolean, AgentGone>
   readonly state: (ticket: string) => Stream.Stream<WorkerState, AgentGone>
-  readonly messages: (ticket: string) => Stream.Stream<SessionMessage, AgentGone>
-  readonly subscribe: (
-    ticket: string,
-  ) => Effect.Effect<Stream.Stream<SessionMessage>, AgentGone, Scope.Scope>
+  readonly answered: (ticket: string, uuid: string) => Effect.Effect<void>
   /** The tickets of the workers it knows: now, then on each change. */
   readonly workers: Stream.Stream<ReadonlySet<string>>
 }
@@ -419,10 +387,11 @@ export const makeWorkers = (
         yield* fold(entry, WorkerEvent.ReportLate({ session, since }))
       }).pipe(Effect.raceFirst(Deferred.await(entry.ended)), Effect.forkIn(scope), Effect.asVoid)
 
-    // A message whose fields the worker's state reads didn't decode: it was no change (§ 4.2).
-    const misread = (ticket: string, message: SDKMessage, why: string) => {
-      const raw = message as { readonly type: unknown; readonly subtype?: unknown }
-      const kind = typeof raw.subtype === "string" ? `${raw.type}/${raw.subtype}` : `${raw.type}`
+    // A message whose fields the worker's state reads didn't read: it was no change (§ 4.2).
+    const misread = (
+      ticket: string,
+      { kind, why }: Data.TaggedEnum.Value<Reading, "Unreadable">,
+    ) => {
       const text = `a ${kind} message it couldn't read, left out of its state: ${why}`
       return Option.match(log, {
         onNone: () => Effect.logWarning(`${ticket}: ${text}`),
@@ -446,7 +415,6 @@ export const makeWorkers = (
           session: yield* Ref.make(session),
           worker: yield* SubscriptionRef.make(initial(checks)),
           state: yield* SubscriptionRef.make<WorkerState>(WorkerState.Starting()),
-          messages: yield* PubSub.unbounded<SessionMessage>(),
           ended: yield* Deferred.make<void>(),
           calls: new Map(),
         }
@@ -517,26 +485,41 @@ export const makeWorkers = (
       emit: (entry, session, message) =>
         Effect.gen(function* () {
           yield* transcripts.record(entry.ticket, session, message)
-          yield* PubSub.publish(entry.messages, { session, message })
+          const reading = read(message)
           // All a partial message can change of the worker's state is to end an api_retry, so it is
           // folded only while one holds: the rest are cheap to pass on (§ 4.4).
-          if (message.type === "stream_event") {
-            if ((yield* SubscriptionRef.get(entry.worker)).retry === null) return
-            return yield* fold(entry, WorkerEvent.Message({ session, message }))
+          if (reading._tag === "Partial") {
+            if ((yield* SubscriptionRef.get(entry.worker)).retry !== null) {
+              yield* fold(entry, WorkerEvent.Message({ session, reading }))
+            }
+            return reading
           }
-          yield* fold(entry, WorkerEvent.Message({ session, message }))
-          const why = unreadable(message)
-          if (why !== undefined) yield* misread(entry.ticket, message, why)
-          keepCalls(entry.calls, message)
-          if (isDenial(message)) {
-            yield* attention.denial(entry.ticket, message, entry.calls.get(message.tool_use_id))
+          yield* fold(entry, WorkerEvent.Message({ session, reading }))
+          switch (reading._tag) {
+            case "Unreadable":
+              yield* misread(entry.ticket, reading)
+              if (reading.windows !== undefined && Option.isSome(usage)) {
+                yield* usage.value.report({ info: null, windows: reading.windows })
+              }
+              break
+            case "Assistant":
+              keepCalls(entry.calls, reading.calls)
+              break
+            case "Denied": {
+              const denied = reading.message
+              yield* attention.denial(entry.ticket, denied, entry.calls.get(denied.tool_use_id))
+              break
+            }
+            case "RateLimit":
+              if (Option.isSome(usage)) yield* usage.value.report(reading)
+              break
+            case "Result":
+              if (Option.isSome(spending)) {
+                yield* spending.value.message(entry.ticket, session, reading.message)
+              }
+              break
           }
-          if (message.type === "rate_limit_event" && Option.isSome(usage)) {
-            yield* usage.value.report(message.rate_limit_info)
-          }
-          if (message.type === "result" && Option.isSome(spending)) {
-            yield* spending.value.message(entry.ticket, session, message)
-          }
+          return reading
         }),
       sent: (entry, session, message) => transcripts.record(entry.ticket, session, message),
       compacted: (entry, trigger) =>
@@ -577,15 +560,16 @@ export const makeWorkers = (
         Stream.unwrap(
           Effect.map(get(ticket), (entry) => until(entry, SubscriptionRef.changes(entry.state))),
         ),
-      messages: (ticket) =>
-        Stream.unwrap(
-          Effect.map(get(ticket), (entry) => until(entry, Stream.fromPubSub(entry.messages))),
-        ),
-      subscribe: (ticket) =>
-        Effect.gen(function* () {
-          const entry = yield* get(ticket)
-          const subscription = yield* PubSub.subscribe(entry.messages)
-          return until(entry, Stream.fromSubscription(subscription))
+      answered: (ticket, uuid) =>
+        Effect.suspend(() => {
+          const found = known.get(ticket)
+          if (found === undefined) return Effect.void
+          return until(
+            found,
+            SubscriptionRef.changes(found.worker).pipe(
+              Stream.takeUntil((w) => w.end !== null || !w.outstanding.includes(uuid)),
+            ),
+          ).pipe(Stream.runDrain)
         }),
       workers: SubscriptionRef.changes(knownTickets),
     }

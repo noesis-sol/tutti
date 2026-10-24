@@ -1,8 +1,8 @@
-// A worker that answers a send at once (tutti-5zpb): a caller that waits on the answer subscribes
-// to the worker's messages before the send (AgentHost.subscribe), in its own fiber, so a reply
-// published before a forked stream would have subscribed isn't missed. A worker just started is the
-// sharpest case: its script's fiber, forked by the start, takes the send and publishes its whole
-// turn before any fiber forked after it has run.
+// A worker that answers a send at once (tutti-5zpb): a caller waits on the answer with
+// AgentHost.answered, which reads the worker's state, where the send is outstanding from its push
+// until the answer, so a reply that came before the wait began isn't missed. A worker just started
+// is the sharpest case: its script's fiber, forked by the start, takes the send and plays its
+// whole turn before any fiber forked after it has run.
 import { describe, expect, test } from "bun:test"
 import { Duration, Effect, Exit, Fiber, Layer, type Scope, Stream } from "effect"
 import { TestClock } from "effect/testing"
@@ -10,7 +10,6 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { give, type HandBack } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
-import { answers } from "../src/run/settle.ts"
 import { layer as hostLayer, type Script, turn } from "../src/testing/AgentHost.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -44,56 +43,48 @@ const quiet = Effect.gen(function* () {
 })
 
 describe("a reply that comes at once", () => {
-  test("a subscription taken before the send sees every message of the turn it starts", async () => {
+  test("a wait begun once the send has returned sees its answer, however soon it came", async () => {
     const seen = await hosted(
       { [id]: [turn([])] },
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start(id, session)
-        const heard = yield* host.subscribe(id)
         const uuid = yield* host.send(id, "go", "clientComposed")
-        const fiber = yield* heard.pipe(
-          Stream.takeUntil(({ message }) => answers(message, uuid)),
-          Stream.map(({ message }): string => message.type),
-          Stream.runCollect,
-          Effect.forkChild,
-        )
+        const fiber = yield* Effect.forkChild(host.answered(id, uuid))
         yield* quiet
-        // Settled without the clock moving: nothing waited on a message already published.
+        // Answered without the clock moving: nothing waited on a message already come.
         return fiber.pollUnsafe()
       }),
     )
-    expect(seen).toBeDefined()
-    expect(seen !== undefined && Exit.isSuccess(seen) ? seen.value : seen).toEqual([
-      "command_lifecycle",
-      "command_lifecycle",
-      "system",
-      "system",
-      "result",
-    ])
+    expect(seen !== undefined && Exit.isSuccess(seen)).toBe(true)
   })
 
-  test("a subscription ends when the worker is ended, and fails for one the host doesn't know", async () => {
+  test("a wait ends when the worker is ended, and at once for one the host doesn't know", async () => {
     const ended = await hosted(
       { [id]: [turn([])] },
       Effect.gen(function* () {
         const host = yield* AgentHost
         yield* host.start(id, session)
-        const heard = yield* host.subscribe(id)
-        const fiber = yield* Effect.forkChild(Stream.runCollect(heard))
+        yield* host.send(id, "go", "clientComposed")
+        yield* host.state(id).pipe(
+          Stream.filter((state) => state._tag === "Idle"),
+          Stream.runHead,
+        )
+        // Its script's steps have run out: this send stays queued, outstanding.
+        const uuid = yield* host.send(id, "again", "clientComposed")
+        const fiber = yield* Effect.forkChild(host.answered(id, uuid))
+        yield* quiet
+        const before = fiber.pollUnsafe()
         yield* host.end(id)
-        return yield* Fiber.join(fiber)
+        yield* Fiber.join(fiber)
+        return before
       }),
     )
-    expect(ended).toEqual([])
-    const gone = await hosted(
+    expect(ended).toBeUndefined()
+    await hosted(
       {},
-      Effect.gen(function* () {
-        const host = yield* AgentHost
-        return yield* Effect.flip(host.subscribe(id))
-      }),
+      AgentHost.use((host) => host.answered(id, "u-1")),
     )
-    expect(gone._tag).toBe("AgentGone")
   })
 
   test("a hand-back the worker answers at once is taken, without waiting for its time limit", async () => {

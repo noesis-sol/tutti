@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber, Option, Queue } from "effect"
-import { UsageLimits } from "../src/agent/UsageLimits.ts"
+import { reportOf, UsageLimits } from "../src/agent/UsageLimits.ts"
 import { UiCommand } from "../src/run/commands.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
@@ -531,7 +531,9 @@ describe("the usage-limit hold's keep", () => {
         expect(yield* hold.atReset.keep("b", "fixing", "fix it")).toBeNull()
         expect(yield* hold.handBacks).toEqual(new Set())
         const usage = yield* UsageLimits
-        yield* usage.report({ status: "rejected", rateLimitType: "five_hour", resetsAt: hour })
+        yield* usage.report(
+          reportOf({ status: "rejected", rateLimitType: "five_hour", resetsAt: hour }),
+        )
         for (let i = 0; i < 2000 && !(yield* hold.held); i++) {
           yield* Effect.promise(() => Bun.sleep(2))
         }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import { AgentHost, type SessionMessage, userMessage } from "../src/agent/AgentHost.ts"
+import { AgentHost, userMessage } from "../src/agent/AgentHost.ts"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
 import { cancelQueuedCapability } from "../src/agent/sessionChecks.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
@@ -547,10 +547,6 @@ describe("what it was sent", () => {
         const host = yield* AgentHost
         yield* startAndWatch("t-1", 3)
         yield* host.close("t-1")
-        const messages = yield* host
-          .messages("t-1")
-          .pipe(Stream.take(7), Stream.runCollect, Effect.forkChild)
-        yield* Effect.yieldNow
         const resumed = yield* watch("t-1", 4)
         yield* host.resume("t-1", session(), {
           text: "Your question is answered.",
@@ -558,7 +554,6 @@ describe("what it was sent", () => {
         })
         return {
           states: yield* Fiber.join(resumed),
-          messages: yield* Fiber.join(messages),
           transcript: yield* (yield* Files).messages("t-1"),
           sent: yield* (yield* Recording).sentTo("t-1"),
         }
@@ -578,8 +573,10 @@ describe("what it was sent", () => {
       "Message",
     ])
     expect(done.sent[3]).toEqual(Sent.Resumed({ ticket: "t-1", session: session() }))
-    // The message's command_lifecycle, queued and started, the turn, and its completed before idle.
-    expect(done.messages.map((m: SessionMessage) => [m.session, m.message.type])).toEqual([
+    // The resumed session's message, its command_lifecycle, queued and started, the turn, and its
+    // completed before idle.
+    expect(done.transcript.slice(10).map((item) => [item.session, item.message.type])).toEqual([
+      ["s-1", "user"],
       ["s-1", "command_lifecycle"],
       ["s-1", "command_lifecycle"],
       ["s-1", "system"],

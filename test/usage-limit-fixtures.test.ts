@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+import { read } from "../src/agent/reading.ts"
 import { initial, step, type Worker, WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
 
 // A usage limit can't be reached on demand in the contract tests (§ 13), so these turns come from
@@ -16,7 +17,7 @@ const fixture = (name: string): ReadonlyArray<SDKMessage> =>
 const fold = (messages: ReadonlyArray<SDKMessage>, from: Worker = initial()): Worker =>
   messages.reduce(
     (worker, message, i) =>
-      step(worker, WorkerEvent.Message({ session: "s", message }), 1_000 * (i + 1)),
+      step(worker, WorkerEvent.Message({ session: "s", reading: read(message) }), 1_000 * (i + 1)),
     from,
   )
 

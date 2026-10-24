@@ -17,9 +17,8 @@
 // A worker that stops at the account's usage limit with its ticket deferred, as orchestra 0.8.1 has
 // it, has the ticket put back in progress: it waits in the usage-limit hold (usageLimit.ts) and its
 // worker carries on after the reset, rather than the ticket being set aside as deferred.
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Data, Duration, Effect, Option, Result, Schedule, Stream } from "effect"
-import { AgentHost, type SessionMessage } from "../agent/AgentHost.ts"
+import { AgentHost } from "../agent/AgentHost.ts"
 import { settled as isSettled, WorkerState } from "../agent/WorkerState.ts"
 import { Beads, type BeadsError, HumanLabel, type Issue, type Status } from "../services/Beads.ts"
 import { type Commit, Git, type GitError, type StatusEntry } from "../services/Git.ts"
@@ -200,62 +199,21 @@ export const untilSettled = (ticket: string): Effect.Effect<WorkerState, never, 
   })
 
 /**
- * Whether `message` says the send `uuid` is no longer outstanding (§ 4.2): its command_lifecycle
- * `completed` or `cancelled`, or a result listing it. A result that lists no sends at all, from a
- * CLI that doesn't report them, ended the turn it ran in, as the worker was idle when it was sent.
- */
-export const answers = (message: SDKMessage, uuid: string): boolean => {
-  const raw = message as { readonly type: string } & Record<string, unknown>
-  if (raw.type === "command_lifecycle") {
-    return raw.command_uuid === uuid && (raw.state === "completed" || raw.state === "cancelled")
-  }
-  if (raw.type !== "result") return false
-  const listed = raw.user_message_uuids
-  return !Array.isArray(listed) || listed.includes(uuid)
-}
-
-/**
- * Waits until the send `uuid`, heard on `heard`, is no longer outstanding, or the worker has settled
- * (gone or closed among them). Settled, none of its sends is outstanding (§ 4.2): that covers a send
- * an interrupt's receipt or `cancel_async_message` cancelled, which no message of the session says.
- */
-export const untilAnswered = (
-  ticket: string,
-  heard: Stream.Stream<SessionMessage>,
-  uuid: string,
-): Effect.Effect<void, never, AgentHost> =>
-  Effect.raceFirst(
-    Effect.asVoid(
-      heard.pipe(
-        Stream.filter(({ message }) => answers(message, uuid)),
-        Stream.runHead,
-      ),
-    ),
-    Effect.asVoid(untilSettled(ticket)),
-  )
-
-/**
  * Tells the worker to continue, the `n`th time, and waits until the nudge is no longer outstanding
  * (or the worker has gone); false when it couldn't be sent. Settling again is the caller's.
  */
 const nudge = (ticket: string, n: number) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const host = yield* AgentHost
-      const logs = yield* Log
-      // Subscribed to the session's messages before the send, so its turn's result can't be
-      // missed, however soon it comes.
-      const heard = yield* Effect.result(host.subscribe(ticket))
-      if (Result.isFailure(heard)) return false
-      const sent = yield* Effect.result(host.send(ticket, nudgeText(ticket), "clientComposed"))
-      if (Result.isFailure(sent)) return false
-      yield* logs.write(
-        detail`${ticket}'s worker ended its turn with the ticket still in progress; told it to continue (${n} of ${nudges})`,
-      )
-      yield* untilAnswered(ticket, heard.success, sent.success)
-      return true
-    }),
-  )
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const logs = yield* Log
+    const sent = yield* Effect.result(host.send(ticket, nudgeText(ticket), "clientComposed"))
+    if (Result.isFailure(sent)) return false
+    yield* logs.write(
+      detail`${ticket}'s worker ended its turn with the ticket still in progress; told it to continue (${n} of ${nudges})`,
+    )
+    yield* host.answered(ticket, sent.success)
+    return true
+  })
 
 /** The note on a ticket put back in progress as its worker stopped at the usage limit. */
 export const limitDeferralNote =

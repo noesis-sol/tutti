@@ -12,7 +12,7 @@ import type { Options, query, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
 import { Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import fc from "fast-check"
-import { UsageLimits } from "../src/agent/UsageLimits.ts"
+import { reportOf, UsageLimits } from "../src/agent/UsageLimits.ts"
 import {
   answerOf,
   ProbeAnswer,
@@ -214,7 +214,9 @@ const heldHold = <A>(
         show: () => Effect.void,
       })
       const usage = yield* UsageLimits
-      yield* usage.report({ status: "rejected", rateLimitType: "five_hour", ...rejection })
+      yield* usage.report(
+        reportOf({ status: "rejected", rateLimitType: "five_hour", ...rejection }),
+      )
       for (let i = 0; i < 2000 && !(yield* hold.held); i++) {
         yield* Effect.promise(() => Bun.sleep(2))
       }
@@ -266,7 +268,7 @@ describe("the hold's probe", () => {
       Effect.gen(function* () {
         yield* advance("2 minutes")
         const usage = yield* UsageLimits
-        yield* usage.report({ status: "allowed", rateLimitType: "five_hour" })
+        yield* usage.report(reportOf({ status: "allowed", rateLimitType: "five_hour" }))
         yield* untilLogged(lifted)
         expect(yield* (yield* Probed).limits).toEqual([])
       }),
@@ -284,7 +286,7 @@ describe("the hold's probe", () => {
           yield* Effect.promise(() => Bun.sleep(2))
         }
         const usage = yield* UsageLimits
-        yield* usage.report({ status: "allowed", rateLimitType: "five_hour" })
+        yield* usage.report(reportOf({ status: "allowed", rateLimitType: "five_hour" }))
         yield* untilLogged(lifted)
         // Its refusal, had it come, is never read.
         yield* Deferred.succeed(answered, ProbeAnswer.Refused({ limit: null, resetsAt: null }))
