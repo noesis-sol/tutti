@@ -195,10 +195,10 @@ describe("a ticket's session, as its worker's outcome is read", () => {
     expect(closed(ran)).toBe(false)
   })
 
-  test("closed with no change: closed", async () => {
+  test("closed with no change: closed, its worker ended", async () => {
     const ran = await working((c) => [turn([...bash(`bd close ${id}`, c.close)])])
     expect(phaseOf(ran)?._tag).toBe("Done")
-    expect(sentTags(ran).at(-1)).toBe("Closed")
+    expect(sentTags(ran).slice(-2)).toEqual(["Closed", "Ended"])
   })
 
   test("asked, once its turn has ended: closed", async () => {
@@ -226,20 +226,20 @@ describe("a ticket's session, as its worker's outcome is read", () => {
     expect(sentTags(ran).at(-1)).toBe("Closed")
   })
 
-  test("deferred: closed", async () => {
+  test("deferred: closed, its worker ended", async () => {
     const ran = await working((c) => [defers(id, { claim: c.claim, defer: c.defer })])
     expect(phaseOf(ran)?._tag).toBe("Deferred")
-    expect(sentTags(ran).at(-1)).toBe("Closed")
+    expect(sentTags(ran).slice(-2)).toEqual(["Closed", "Ended"])
   })
 
-  test("left for review: closed", async () => {
+  test("left for review: closed, its worker ended", async () => {
     const ran = await working((c) => [
       turn([run(c.commit("Change something (t-10)")), run(c.close)]),
     ])
     expect(phaseOf(ran)).toEqual(
       expect.objectContaining({ _tag: "Review", why: "CLOSED_WITHOUT_COMMIT" }),
     )
-    expect(sentTags(ran).at(-1)).toBe("Closed")
+    expect(sentTags(ran).slice(-2)).toEqual(["Closed", "Ended"])
   })
 
   test("stopped the run: left for the run's end to suspend", async () => {
@@ -334,10 +334,10 @@ const merging = (
   )
 
 describe("a ticket's session, as its merge is over", () => {
-  test("merged: closed", async () => {
+  test("merged: closed, its worker ended", async () => {
     const ran = await merging({ "a/a.go": "a\n" }, "Done")
     expect(resultOf(ran)?._tag).toBe("Done")
-    expect(sentTags(ran)).toEqual(["Started", "Closed"])
+    expect(sentTags(ran)).toEqual(["Started", "Closed", "Ended"])
   })
 
   test("set aside after a failed check that may be checked again: open", async () => {

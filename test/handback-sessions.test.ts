@@ -95,6 +95,9 @@ const sentTags = (ran: Ran<unknown>) =>
 /** Whether a's session is closed at the end: closed by tutti after its last start or resume. */
 const closedAtEnd = (ran: Ran<unknown>) => sentTags(ran).at(-1) === "Closed"
 
+/** Whether the ticket's session was closed and its worker ended last, its part in the run over. */
+const endedAtEnd = (ran: Ran<unknown>) => sentTags(ran).slice(-2).join() === "Closed,Ended"
+
 const notesOf = (ran: Ran<unknown>) => ran.issues.find((issue) => issue.id === "a")?.notes ?? ""
 
 /** Where the ticket's worktree is, once `finished` has made it: for its worker's script. */
@@ -303,7 +306,7 @@ describe("a hand-back to a worker that is gone (Gone)", () => {
     expect(ended.resumes).toBe(1)
     // The hand-back's resume is the ticket's one Gone resume of the run.
     expect(ended.goneResumed).toBe(true)
-    expect(sentTags(ran)).toEqual(["Started", "Resumed", "Message", "Closed"])
+    expect(sentTags(ran)).toEqual(["Started", "Resumed", "Message", "Closed", "Ended"])
     expect(records(ran, "resumed")).toEqual([
       expect.objectContaining({ ticket: "a", session: "session-a", why: "gone" }),
     ])
@@ -365,14 +368,14 @@ describe("a hand-back to a worker that is gone (Gone)", () => {
 })
 
 describe("the session, once a hand-back is over", () => {
-  test("conflicts resolved and merged: closed", async () => {
+  test("conflicts resolved and merged: closed, its worker ended", async () => {
     const ran = await handedBack(
       {},
       (world) => ({ a: [finishedSession(resolves(world, { "a.txt": "both\n" }))] }),
       "idle",
     )
     expect(resultOf(ran).phases.a).toEqual(expect.objectContaining({ _tag: "Done" }))
-    expect(closedAtEnd(ran)).toBe(true)
+    expect(endedAtEnd(ran)).toBe(true)
   })
 
   test("a resolution rejected, Blocked: closed", async () => {
@@ -384,7 +387,7 @@ describe("the session, once a hand-back is over", () => {
     expect(closedAtEnd(ran)).toBe(true)
   })
 
-  test("a fix rejected, Review not to be checked again: closed", async () => {
+  test("a fix rejected, Review not to be checked again: closed, its worker ended", async () => {
     // The worker's fix doesn't name the ticket.
     const ran = await handedBack(
       { checks: { fast: [ownFailure] } },
@@ -395,7 +398,7 @@ describe("the session, once a hand-back is over", () => {
     expect(resultOf(ran).phases.a).toEqual(
       expect.objectContaining({ _tag: "Review", why: "CHECKS_FAILED" }),
     )
-    expect(closedAtEnd(ran)).toBe(true)
+    expect(endedAtEnd(ran)).toBe(true)
   })
 
   test("a fix whose check fails again, Review to be checked again: open", async () => {

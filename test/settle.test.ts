@@ -218,7 +218,10 @@ describe("the outcome of a settled worker", () => {
     expectLog(ran, [
       `  ${id} closed with no change: tutti/${id} has no commits beyond main and its worktree is clean, so there is nothing to merge; worktree and branch removed`,
     ])
-    expect(ran.sent.at(-1)).toEqual(expect.objectContaining({ _tag: "Closed", ticket: id }))
+    expect(ran.sent.slice(-2)).toEqual([
+      expect.objectContaining({ _tag: "Closed", ticket: id }),
+      expect.objectContaining({ _tag: "Ended", ticket: id }),
+    ])
   })
 
   test("closed with commits that together change nothing: Done, no change", async () => {

@@ -430,6 +430,7 @@ These stay, as orchestra has them:
   - Claude Code's own transcript format (`~/.claude/projects/…`) is internal and undocumented, and tutti doesn't parse it.
 - **The latest action for its card** is the current tool call, as `Bash(scripts/check-fast.sh)`, or else the last line of assistant text.
 - **In memory**, each worker keeps a ring buffer of its last 200 items for its view.
+  - Once its ticket's part in the run is over (merged, closed with no change, deferred, left for review or dropped), the worker is ended as its session closes: `AgentHost` forgets it, and its ring and open files are let go of, once its view, if open, has closed. A run would otherwise hold them for every ticket it finished. A ticket asked or waiting for a merge keeps its worker for the resume that brings it back; a later start or resume reads the ring back from the file.
 - **Partial messages** (`stream_event`) are folded in only while that worker's view is open; otherwise they are dropped as they arrive. `includePartialMessages` is set when the session starts and can't be changed for one session, so the dropping must be cheap.
 
 ### 4.5 Attention: permission requests and questions

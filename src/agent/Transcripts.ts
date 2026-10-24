@@ -332,6 +332,8 @@ interface Worker {
   ring: Array<Item>
   /** Open views. Partial messages are folded only while there is one. */
   views: number
+  /** Released while a view was open: let go of as the last view closes. */
+  released: boolean
   /** The live messages, by the Agent call they belong to (null: the worker's own). */
   readonly live: Map<string | null, Live>
   readonly activity: Activity
@@ -392,7 +394,10 @@ export class Transcripts extends Context.Service<
       worker: string,
       limits: { readonly items: number; readonly characters: number },
     ): Effect.Effect<ReadonlyArray<Item>>
-    /** Lets go of the worker's memory and open files; a later message starts them again. */
+    /**
+     * Lets go of the worker's memory and open files, once its views have closed if any is open; a
+     * later message starts them again, from its file.
+     */
     release(worker: string): Effect.Effect<void>
   }
 >()("tutti/agent/Transcripts") {
@@ -439,12 +444,18 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
         seq: ring.at(-1)?.seq ?? 0,
         ring,
         views: 0,
+        released: false,
         live: new Map(),
         activity,
         updates: Effect.runSync(PubSub.unbounded<Update>()),
       }
       workers.set(id, worker)
       return worker
+    }
+
+    const letGo = (id: string): void => {
+      workers.delete(id)
+      storage.release(id)
     }
 
     const publish = (worker: Worker, update: Update): void => {
@@ -530,7 +541,9 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
             () =>
               Effect.sync(() => {
                 worker.views -= 1
-                if (worker.views === 0) worker.live.clear()
+                if (worker.views > 0) return
+                worker.live.clear()
+                if (worker.released && workers.get(id) === worker) letGo(id)
               }),
           )
           return {
@@ -552,12 +565,12 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
           }
           return found.slice(first).map(({ item }) => item)
         }),
+      // An open view keeps showing the worker: it is let go of as the last one closes.
       release: (id) =>
         Effect.sync(() => {
           const worker = workers.get(id)
-          if (worker !== undefined && worker.views > 0) return
-          workers.delete(id)
-          storage.release(id)
+          if (worker !== undefined && worker.views > 0) worker.released = true
+          else letGo(id)
         }),
     })
   })

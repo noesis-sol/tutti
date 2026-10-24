@@ -12,7 +12,11 @@
 //
 // fit() closes the ticket's session when its phase no longer needs it. It is called wherever a
 // ticket leaves a phase with its session open: once its worker's outcome is read (work.ts), and
-// once its merge, or the hand-back of its conflicts, is over (mergequeue.ts).
+// once its merge, or the hand-back of its conflicts, is over (mergequeue.ts). A ticket whose part
+// in the run is over (merged, closed with no change, deferred, left for review or dropped) has its
+// worker ended too: the host forgets it and Transcripts lets go of its memory and files, which a
+// run would otherwise hold for every ticket it finished. One asked or waiting for a merge keeps
+// its worker, Gone or Closed, for the resume that brings it back.
 //
 // A session tutti closed may be resumed any number of times: for a hand-back, an answered question,
 // the next run. A session that ended unexpectedly (Gone) with its ticket still in progress is
@@ -32,7 +36,7 @@ import { EventStream } from "./eventstream.ts"
 import type { HandBacks } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { type Line, Log, line, Tag, ticketLine } from "./log.ts"
-import type { TicketPhase } from "./phase.ts"
+import type { PhaseTag, TicketPhase } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
 
 /**
@@ -64,8 +68,12 @@ export const lifetime = (phase: TicketPhase, recheck = false, handBackWaits = fa
   return "closed"
 }
 
+/** The phases that end a ticket's part in the run for good: its worker is ended there. */
+const over: ReadonlySet<PhaseTag> = new Set(["Done", "Deferred", "Review"])
+
 /**
- * Closes the ticket's session when its phase no longer needs it (§ 4.8). `rechecks`, the merge
+ * Closes the ticket's session when its phase no longer needs it (§ 4.8), ending its worker when its
+ * part in the run is over. `rechecks`, the merge
  * queue's, say whether a ticket set aside after a failed check may be checked again, and
  * `handBacks` whether a blocked ticket's hand-back waits for its steered worker; without them, it
  * may not, and none does.
@@ -86,7 +94,8 @@ export const fit = (
     const waits =
       handBacks !== undefined &&
       (yield* handBacks.waiting).some((waiting) => waiting.ticket.id === ticket)
-    if (lifetime(phase, recheck, waits) === "closed") yield* host.close(ticket)
+    if (lifetime(phase, recheck, waits) !== "closed") return
+    yield* over.has(phase._tag) ? host.end(ticket) : host.close(ticket)
   })
 
 /** Why a session is resumed, as the `resumed` record has it. */

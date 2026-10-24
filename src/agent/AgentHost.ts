@@ -197,7 +197,10 @@ export class AgentHost extends Context.Service<
      * until its Claude Code has exited. Nothing happens when it has no session.
      */
     close(ticket: string): Effect.Effect<void>
-    /** Closes the worker's session if it is open and forgets the worker: its streams end. */
+    /**
+     * Closes the worker's session if it is open and forgets the worker: its streams end, and its
+     * transcript's memory and open files are let go of. A later start or resume knows it afresh.
+     */
     end(ticket: string): Effect.Effect<void>
     /**
      * The run's requires list has the entries `names` from now on, a merge having changed it: the
@@ -331,7 +334,7 @@ export interface Workers {
   readonly compactions: Stream.Stream<Compaction>
   /** Waits until the worker's state counts every one of its open attention requests. */
   readonly counted: (entry: WorkerEntry) => Effect.Effect<void>
-  /** Forgets the worker: its streams end. */
+  /** Forgets the worker: its streams end, and its transcript's memory and files are let go of. */
   readonly forget: (ticket: string) => Effect.Effect<void>
   readonly current: (ticket: string) => Effect.Effect<WorkerState, AgentGone>
   readonly begun: (ticket: string) => Stream.Stream<boolean, AgentGone>
@@ -541,6 +544,7 @@ export const makeWorkers = (
         }),
       forget: (ticket) =>
         Effect.gen(function* () {
+          yield* transcripts.release(ticket)
           const found = known.get(ticket)
           if (found === undefined) return
           known.delete(ticket)
