@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fr
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { Duration, Effect, Fiber, Layer, Ref, Schedule } from "effect"
+import { Deferred, Duration, Effect, Fiber, Layer, Ref, Schedule } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { coresVariable } from "../src/agent/env.ts"
@@ -174,6 +174,8 @@ describe("the run", () => {
         const git = yield* Git
         yield* git.addWorktree(repo, join(root, "a"), { branch: "tutti/a", base: "main" })
         const count = yield* Ref.make(0)
+        // Done once the run has set its first count, so the file changes only after that read.
+        const first = yield* Deferred.make<void>()
         const agents = yield* AgentHost
         const recording: OtherWorkersValue = {
           others: Ref.get(count),
@@ -182,6 +184,7 @@ describe("the run", () => {
               const known = yield* Effect.orElseSucceed(agents.current("a"), () => null)
               sets.push({ others: n, started: known === null ? 0 : 1 })
               yield* Ref.set(count, n)
+              yield* Deferred.succeed(first, undefined)
             }),
         }
         const fiber = yield* Effect.forkChild(
@@ -190,7 +193,7 @@ describe("the run", () => {
             Effect.provideService(OtherWorkers, recording),
           ),
         )
-        yield* Effect.promise(() => Bun.sleep(200))
+        yield* Deferred.await(first)
         writeFileSync(join(runs, "run-4242-1.json"), other(1))
         for (let i = 0; i < 20; i++) {
           yield* Effect.promise(() => Bun.sleep(20))
