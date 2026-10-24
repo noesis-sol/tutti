@@ -28,8 +28,8 @@ import {
   result,
   type SessionScript,
   sleep,
-  run as step,
   turn,
+  wait,
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { texts } from "../src/testing/Log.ts"
@@ -258,11 +258,9 @@ describe("the environment hold", () => {
 
   test("a usage-limited worker doesn't count", async () => {
     // The limit resets an hour into the run (TestClock starts at the epoch): the run waits for it.
-    const limited: SessionScript = [
-      ...hitsUsageLimit(3600),
-      step(Effect.promise(() => Bun.sleep(20))),
-      gone("its session ended"),
-    ]
+    // Its session ends once the lifted hold tells it to carry on: still UsageLimited, not gone before
+    // the run watches it for the limit, as one ending on real time could be under load.
+    const limited: SessionScript = [...hitsUsageLimit(3600), wait, gone("its session ended")]
     const ran = await runs({
       tickets: ["t-1", "t-2", "t-3"],
       scripts: (world, root) => ({
