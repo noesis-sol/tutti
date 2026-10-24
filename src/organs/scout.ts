@@ -191,6 +191,42 @@ export const globBase = (pattern: string): string => {
   return base === "" && pattern.startsWith("/") ? "/" : base === "" ? "." : base
 }
 
+// The most alternatives a Glob pattern's braces may expand to before the hook denies it.
+const braceLimit = 256
+
+/**
+ * `pattern`'s brace alternatives, `src/{a,b}` as `src/a` and `src/b`, nested ones too; undefined
+ * where a brace isn't closed or the alternatives pass `braceLimit`. A brace with no comma loses
+ * its braces too, and an escaped one expands like the rest: each yields more patterns to check.
+ */
+export const braceAlternatives = (pattern: string): Array<string> | undefined => {
+  const open = pattern.indexOf("{")
+  if (open === -1) return [pattern]
+  const parts: Array<string> = []
+  let depth = 0
+  let from = open + 1
+  for (let at = from; at < pattern.length; at++) {
+    const char = pattern[at]
+    if (char === "{") depth++
+    else if (char === "," && depth === 0) {
+      parts.push(pattern.slice(from, at))
+      from = at + 1
+    } else if (char === "}" && depth-- === 0) {
+      parts.push(pattern.slice(from, at))
+      const head = pattern.slice(0, open)
+      const tail = pattern.slice(at + 1)
+      const all: Array<string> = []
+      for (const part of parts) {
+        const expanded = braceAlternatives(`${head}${part}${tail}`)
+        if (expanded === undefined || all.length + expanded.length > braceLimit) return undefined
+        all.push(...expanded)
+      }
+      return all
+    }
+  }
+  return undefined
+}
+
 /** Why the call `input` is denied, or undefined to let it be: its tool and path arguments. */
 export const outside = (
   root: string,
@@ -220,14 +256,24 @@ export const outside = (
     case "Grep":
       return check(pathOf("path", false), "path")
     case "Glob": {
-      // The pattern may be absolute, or go up from the path: its base is checked, from the path.
+      // The pattern may be absolute, or go up from the path: each of its brace alternatives'
+      // bases is checked, from the path, as `{..,src}/*` goes up and `{/etc,src}/*` is absolute.
       const path = pathOf("path", false)
       const pattern = pathOf("pattern", true)
       if (typeof pattern !== "string") return check(null, "pattern")
-      if (pattern.split("/").includes("..")) return "Glob's pattern goes up with .."
-      const base = globBase(pattern)
-      const from = isAbsolute(base) || base.startsWith("~") ? base : join(path ?? ".", base)
-      return check(path, "path") ?? check(from, "pattern")
+      const alternatives = braceAlternatives(pattern)
+      if (alternatives === undefined)
+        return `Glob's pattern has an unclosed brace, or braces past ${braceLimit} alternatives`
+      const pathDenial = check(path, "path")
+      if (pathDenial !== undefined) return pathDenial
+      for (const alternative of alternatives) {
+        if (alternative.split("/").includes("..")) return "Glob's pattern goes up with .."
+        const base = globBase(alternative)
+        const from = isAbsolute(base) || base.startsWith("~") ? base : join(path ?? ".", base)
+        const denial = check(from, "pattern")
+        if (denial !== undefined) return denial
+      }
+      return undefined
     }
     // The tool outputFormat adds, which the scout answers with: it reads nothing.
     case answerTool:
