@@ -5,7 +5,6 @@ import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Console, Effect, Fiber, Queue, type Scope } from "effect"
 import { Command } from "effect/cli"
-import { AgentGone } from "../src/agent/AgentHost.ts"
 import { requestFile } from "../src/agent/attentionFiles.ts"
 import { planServices, tuttiWith } from "../src/cli/commands.ts"
 import type { DrainRequest } from "../src/run/drain.ts"
@@ -310,7 +309,7 @@ describe("the drain", () => {
 })
 
 describe("stops and exit codes", () => {
-  test("each stop reason's exit code is orchestra's: 4 for AGENT_FAILED, 8 for USAGE_LIMIT", () => {
+  test("each stop reason's exit code is orchestra's, 8 for USAGE_LIMIT and no TERMINAL_FAILED", () => {
     expect(stopCodes).toEqual({
       REQUIREMENTS_MISSING: 2,
       SETUP_PROBLEM: 2,
@@ -319,7 +318,6 @@ describe("stops and exit codes", () => {
       TICKET_LIMIT: 3,
       BEADS_FAILED: 4,
       GIT_FAILED: 4,
-      AGENT_FAILED: 4,
       WORKTREE_FAILED: 4,
       STATE_UNWRITABLE: 4,
       PANIC: 4,
@@ -330,9 +328,6 @@ describe("stops and exit codes", () => {
       INTERRUPTED: 130,
     })
     const stop = (error: Parameters<typeof errorStop>[1]) => errorStop("t-1", error)
-    expect(stop(new AgentGone({ ticket: "t-1", why: "exit 1" }))).toEqual(
-      expect.objectContaining({ why: "AGENT_FAILED", code: 4, ticket: "t-1" }),
-    )
     expect(
       stop(
         new GitFailed({

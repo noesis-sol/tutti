@@ -256,8 +256,8 @@ export const sayOnce = (): SayOnce => {
 // the run as it comes: no new tickets start, the running ones finish (`HOLD … no new tickets while
 // the N running finish`), and once nothing runs or merges the run ends with the first stop's line,
 // then `; also` and each of the others. The first decides the exit code, which is orchestra's: 4
-// covers Beads, git and the Agent SDK (AGENT_FAILED replaces TERMINAL_FAILED), and 8 is the usage
-// limit's.
+// covers Beads and git, without orchestra's TERMINAL_FAILED (an Agent SDK that can't start
+// sessions holds the run as ENVIRONMENT, exit 7), and 8 is the usage limit's.
 
 /** orchestra's exit codes, as tutti exits with them. */
 export const exitCodes = {
@@ -270,7 +270,7 @@ export const exitCodes = {
   setup: 2,
   /** A worker needs you: PAUSED, BLOCKED, TICKET_LIMIT. */
   stuck: 3,
-  /** Beads, git or the Agent SDK failed, or a fiber panicked. */
+  /** Beads or git failed, or a fiber panicked. */
   tool: 4,
   /** The main checkout has uncommitted changes, or left its branch. */
   dirty: 5,
@@ -297,7 +297,7 @@ export const exitMeanings: Record<keyof typeof exitCodes, string> = {
     "(SETUP_PROBLEM), or a requirement went missing as the run went (REQUIREMENTS_MISSING)",
   stuck: "a worker stopped the run (PAUSED, BLOCKED, TICKET_LIMIT) and needs attention",
   tool:
-    "a Beads, git or Agent SDK command failed (BEADS_FAILED, GIT_FAILED, AGENT_FAILED), " +
+    "a Beads or git command failed (BEADS_FAILED, GIT_FAILED), " +
     "a ticket's worktree couldn't be set up (WORKTREE_FAILED), the run's state couldn't be written " +
     "(STATE_UNWRITABLE), or a fiber panicked (PANIC)",
   dirty: "the main checkout had uncommitted changes or left its branch (DIRTY_TREE)",
@@ -320,7 +320,6 @@ export const stopCodes = {
   TICKET_LIMIT: exitCodes.stuck,
   BEADS_FAILED: exitCodes.tool,
   GIT_FAILED: exitCodes.tool,
-  AGENT_FAILED: exitCodes.tool,
   WORKTREE_FAILED: exitCodes.tool,
   STATE_UNWRITABLE: exitCodes.tool,
   PANIC: exitCodes.tool,

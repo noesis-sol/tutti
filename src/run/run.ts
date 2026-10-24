@@ -74,12 +74,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
-import {
-  type AgentGone,
-  AgentHost,
-  type AgentProtocol,
-  type AgentStartFailed,
-} from "../agent/AgentHost.ts"
+import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention, blockedAfter } from "../agent/Attention.ts"
 import { serve } from "../agent/attentionFiles.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
@@ -256,9 +251,6 @@ export type RunEnv =
   | FileSystem.FileSystem
   | ChildProcessSpawner.ChildProcessSpawner
 
-/** The errors the Agent SDK fails with. */
-type AgentError = AgentStartFailed | AgentGone | AgentProtocol
-
 /** The phases of a ticket the run is still at: the HOLD line counts them as running. */
 const running: ReadonlySet<PhaseTag> = new Set([
   "Working",
@@ -282,7 +274,7 @@ const runningIn = (state: State, over: ReadonlySet<string>): number =>
   [...state.tickets.values()].filter((entry) => waitedFor(entry, over)).length
 
 /** The stop a ticket's fiber failing with `error` stops the run for (§ 5 item 10). */
-export const errorStop = (ticket: string, error: WorkError | AgentError): StopReason => {
+export const errorStop = (ticket: string, error: WorkError): StopReason => {
   switch (error._tag) {
     case "GitFailed":
     case "GitTimedOut":
@@ -295,10 +287,6 @@ export const errorStop = (ticket: string, error: WorkError | AgentError): StopRe
       return stopFor("WORKTREE_FAILED", `${ticket}'s worktree: ${error.message}`, { ticket })
     case "StoreWriteFailed":
       return stopFor("STATE_UNWRITABLE", `${ticket}: ${error.message}`, { ticket })
-    case "AgentStartFailed":
-    case "AgentGone":
-    case "AgentProtocol":
-      return stopFor("AGENT_FAILED", `${ticket}'s worker: ${error.message}`, { ticket })
   }
 }
 

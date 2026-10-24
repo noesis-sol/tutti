@@ -153,10 +153,10 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
     {
       ...head,
       kind: "stop",
-      detail: "AGENT_FAILED",
+      detail: "GIT_FAILED",
       ticket: "a-1",
       blocked: "b",
-      text: "AGENT_FAILED: …",
+      text: "GIT_FAILED: …",
     },
   ],
   done: [{ ...head, kind: "done", text: "READY_EMPTY after 12 tickets" }],

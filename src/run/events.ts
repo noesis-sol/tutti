@@ -240,8 +240,8 @@ export const SharedMachine = Schema.Struct({
 /** A ready ticket waits for a free slot across the machine (`HOLD: MACHINE: …`), once a hold. */
 export const MachineHold = lineRecord("machine_hold")
 
-/** The words a stop's `detail` takes that are tutti's: `TERMINAL_FAILED` became `AGENT_FAILED`. */
-export const StopWord = { agentFailed: "AGENT_FAILED", usageLimit: "USAGE_LIMIT" } as const
+/** The words a stop's `detail` takes that are tutti's: orchestra's `TERMINAL_FAILED` is gone. */
+export const StopWord = { usageLimit: "USAGE_LIMIT" } as const
 
 /** The loop stopped and needs you; `detail` is the word its text starts with (`PAUSED`, …). */
 export const Stop = Schema.Struct({

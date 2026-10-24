@@ -25,7 +25,6 @@ describe("exitMeaning", () => {
     for (const word of [
       "BEADS_FAILED",
       "GIT_FAILED",
-      "AGENT_FAILED",
       "WORKTREE_FAILED",
       "STATE_UNWRITABLE",
       "PANIC",
