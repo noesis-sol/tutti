@@ -12,7 +12,7 @@
 import { type Level, swappingPerMinute } from "../run/load.ts"
 import type { LoadView, Totals } from "../run/runView.ts"
 import { type FitPart, fitParts } from "./fit.ts"
-import { cut, Line, type Look, type Segments, seg } from "./line.tsx"
+import { cut, type Look, type Segments, seg } from "./line.tsx"
 import { marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
@@ -107,8 +107,3 @@ export const loadSegments = (
     [seg(" · ", theme.styles.dim)],
   )
 }
-
-/** The load line, as loadSegments gives it. */
-export const LoadLine = ({ segments }: { readonly segments: Segments }) => (
-  <Line segments={segments} />
-)

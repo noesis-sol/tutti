@@ -7,7 +7,7 @@
 // which is drawn without it.
 import type { Totals as TotalsView } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
-import { cut, framed, Lines, type Look, type Segments, seg, widthOf } from "./line.tsx"
+import { cut, framed, type Look, type Segments, seg, widthOf } from "./line.tsx"
 import { marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
@@ -142,8 +142,3 @@ export const totalsLines = (
   oneLine
     ? [totalsLine(t, theme, width)]
     : (totalsStrip(t, theme, width) ?? [totalsLine(t, theme, width, false)])
-
-/** The totals, as totalsLines gives them. */
-export const Totals = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => (
-  <Lines lines={lines} />
-)

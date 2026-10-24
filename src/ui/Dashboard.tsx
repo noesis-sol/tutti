@@ -51,27 +51,21 @@ import {
   layoutOf,
   sectionLines,
 } from "./Card.tsx"
-import { EndOfRunBox, endOfRunLines } from "./EndOfRunBox.tsx"
+import { endOfRunLines } from "./EndOfRunBox.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
 import { Box, useInput } from "./keys.ts"
-import { LoadLine, loadSegments } from "./LoadLine.tsx"
-import { cut, Lines, Section, type Segments, seg } from "./line.tsx"
-import {
-  fewestTableLines,
-  rowsBesideCurrent,
-  TicketsTable,
-  tableLines,
-  ticketsLines,
-} from "./TicketsTable.tsx"
+import { loadSegments } from "./LoadLine.tsx"
+import { cut, Line, Lines, Section, type Segments, seg } from "./line.tsx"
+import { fewestTableLines, rowsBesideCurrent, tableLines, ticketsLines } from "./TicketsTable.tsx"
 import { TitleLine } from "./TitleLine.tsx"
 import { useHintHeight } from "./Toasts.tsx"
-import { Totals, totalsLines } from "./Totals.tsx"
+import { totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { useCommand, useRunView, useTheme } from "./useRunView.ts"
-import { WindDown, windDownSegments } from "./WindDown.tsx"
+import { windDownSegments } from "./WindDown.tsx"
 
 /** The smallest pane the whole dashboard is drawn in (§ 7.7). */
 export const minWidth = 60
@@ -96,7 +90,7 @@ export interface DashboardLayout {
   readonly title: number
   /** The load line; none when small. */
   readonly load: number
-  /** The load line's segments, as LoadLine draws them; none when small. */
+  /** The load line's segments, as loadSegments gives them; none when small. */
   readonly loadLine: Segments
   /** The blank line between the title line and the load line: 1, or 0 where the pane is short. */
   readonly gap: number
@@ -119,7 +113,7 @@ export interface DashboardLayout {
   readonly spare: number
   /** The wind-down line's: 1, there or not, so the table stays put as it comes; none when small. */
   readonly windDown: number
-  /** The wind-down line, as WindDown draws it; null while the run doesn't wind down. */
+  /** The wind-down line, as windDownSegments gives it; null while the run doesn't wind down. */
   readonly windDownLine: Segments | null
   /** The warning lines that fit. */
   readonly warnings: ReadonlyArray<Segments>
@@ -518,7 +512,7 @@ export const Dashboard = () => {
     return (
       <box flexDirection="column" width={width} height={height}>
         <Section lines={laid.totals.length}>
-          <Totals lines={laid.totals} />
+          <Lines lines={laid.totals} />
         </Section>
         <Section lines={laid.spare} />
         <Section lines={laid.hint.length}>
@@ -535,17 +529,17 @@ export const Dashboard = () => {
       </Section>
       <Section lines={laid.gap} />
       <Section lines={laid.load}>
-        <LoadLine segments={laid.loadLine} />
+        <Line segments={laid.loadLine} />
       </Section>
       <Section lines={laid.totals.length}>
-        <Totals lines={laid.totals} />
+        <Lines lines={laid.totals} />
       </Section>
       <Section lines={laid.table}>
-        <TicketsTable lines={laid.tickets} />
+        <Lines lines={laid.tickets} />
       </Section>
       <Section lines={laid.current}>
         {ending !== null ? (
-          <EndOfRunBox lines={ending} />
+          <Lines lines={ending} />
         ) : (
           <Cards
             cards={cards}
@@ -563,7 +557,7 @@ export const Dashboard = () => {
       </Section>
       <Section lines={laid.spare} />
       <Section lines={laid.windDown}>
-        {laid.windDownLine === null ? null : <WindDown segments={laid.windDownLine} />}
+        {laid.windDownLine === null ? null : <Line segments={laid.windDownLine} />}
       </Section>
       <Section lines={laid.warnings.length}>
         <Lines lines={laid.warnings} />

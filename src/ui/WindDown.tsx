@@ -6,7 +6,7 @@
 import type { WindDownMark } from "../run/phase.ts"
 import type { WindDownView } from "../run/runView.ts"
 import { firstFit } from "./fit.ts"
-import { Line, type Look, type Segments, seg } from "./line.tsx"
+import { type Look, type Segments, seg } from "./line.tsx"
 import { marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
@@ -50,8 +50,3 @@ export const windDownSegments = (view: WindDownView, theme: Theme, width: number
   }
   return firstFit(width, forms())
 }
-
-/** The wind-down line, as windDownSegments gives it. */
-export const WindDown = ({ segments }: { readonly segments: Segments }) => (
-  <Line segments={segments} />
-)

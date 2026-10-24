@@ -11,7 +11,7 @@
 // many, after which the oldest give way to a `+N earlier tickets` row. Only a resize changes it.
 // The run's summary prints the same table, every row of it and no blank one (print/summary.ts).
 import type { Card, Row } from "../run/runView.ts"
-import { fit, framed, Lines, type Segments, seg } from "./line.tsx"
+import { fit, framed, type Segments, seg } from "./line.tsx"
 import { lookOf, marks } from "./marks.ts"
 import type { Theme } from "./theme.ts"
 
@@ -101,8 +101,3 @@ export const ticketsLines = (
     ...framed(cells, [stateWidth, idWidth, aboutWidth], theme.look("frame")),
   ]
 }
-
-/** The tickets table, as ticketsLines gives it. */
-export const TicketsTable = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => (
-  <Lines lines={lines} />
-)

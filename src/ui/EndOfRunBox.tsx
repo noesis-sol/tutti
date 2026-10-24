@@ -6,7 +6,7 @@
 // the hand-back's line, then the frame and its first words, and always keeps what `q` does.
 import { conflictWaits, type Waiting } from "../run/runView.ts"
 import { firstFitting } from "./fit.ts"
-import { boxed, cut, Lines, padded, type Segments, seg, wrap } from "./line.tsx"
+import { boxed, cut, padded, type Segments, seg, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /**
@@ -70,8 +70,3 @@ export const endOfRunLines = (
   }
   return firstFitting(forms(), (lines) => lines.length <= height) ?? []
 }
-
-/** The box, as endOfRunLines gives it. */
-export const EndOfRunBox = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => (
-  <Lines lines={lines} />
-)
