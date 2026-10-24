@@ -550,7 +550,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       start: { start: ticketFiber },
       gate,
       beforeStart: requiresChecked,
-      claimRoom: machine.claimRoom,
+      room: machine.room,
       machineFull,
       carrying: Ref.get(carrying),
       ...(footprints === undefined ? {} : { footprints }),
@@ -561,7 +561,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     })
     yield* Ref.set(slots, scheduler.recheckSlot)
     yield* Ref.set(limitReached, scheduler.limitReached)
-    yield* machine.attach(scheduler)
+    // A look around the machine (machineGate.ts): the hold's end writes the queue's record.
+    const lookAround = Effect.gen(function* () {
+      if (yield* machine.lookAround(yield* scheduler.slots)) yield* scheduler.recordQueue
+    })
 
     // The run's watchers: one that dies panics the run.
     const watchers = yield* fibers.make("run")
@@ -691,7 +694,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
 
     // Held at --machine-workers, the run reads the other runs every machinePoll, and looks again once
     // one of their workers has finished; it doesn't read bd ready meanwhile.
-    if (machine.poll !== undefined) yield* watch(machine.poll)
+    if (machine.poll !== undefined) yield* watch(machine.poll(lookAround))
     // Triage's verdicts go on their tickets' rows as they come in.
     yield* watch(Stream.runForEach(triage.verdicts, showOn(status, "verdicts", Object.is)))
     // How the checks ahead of their turn to merge go shows on their tickets' cards (mergetrain.ts).
@@ -771,7 +774,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // checks and requires taken again, the carried and answered workers taken up, then the free
     // slots filled.
     const fill = Effect.gen(function* () {
-      yield* machine.lookAround
+      yield* lookAround
       yield* requeueWaiting(branches)
       // A ticket merged, which may bring what a setup that failed in a ticket's worktree needed.
       yield* retrySetups(setUps)
@@ -802,7 +805,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         }
       }
       // For the other runs to count before this one next looks around.
-      yield* machine.sayRunning
+      yield* machine.sayRunning(yield* scheduler.slots)
     })
     // Fills the free slots, after the look's other effects, then reads what they left for the end's
     // decision (runEnd.ts). A look woken only for what bd and git can't have changed, an attention

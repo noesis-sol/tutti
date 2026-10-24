@@ -3,7 +3,7 @@
 // shown on the dashboard as it comes: `· stopping` while a stop holds the run, the banners, the usage
 // line and its notice. A stop holds the run: said as it comes while tickets still run, unless its
 // line was, and the run is woken to look again.
-import { Effect, Option, Semaphore, SubscriptionRef } from "effect"
+import { Effect, Option, SubscriptionRef } from "effect"
 import type { EventStream } from "./eventstream.ts"
 import { type Holds, noHolds, raiseStop, type StopReason, type Stops, shownHolds } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
@@ -54,27 +54,22 @@ export const make = (options: {
     const { say } = yield* sayer
     const { status, notices } = options
     const holds = yield* SubscriptionRef.make<Holds>(noHolds)
-    const oneChange = yield* Semaphore.make(1)
     const now = SubscriptionRef.get(holds)
 
     const changeHolds = (change: (now: Holds) => Holds) =>
-      oneChange.withPermits(1)(
-        Effect.gen(function* () {
-          const before = yield* SubscriptionRef.get(holds)
-          const after = change(before)
-          if (after === before) return before
-          yield* SubscriptionRef.set(holds, after)
-          const { notice, ...shown } = shownHolds(after)
-          const next = { ...shown, warnings: [...notices, ...(notice === null ? [] : [notice])] }
-          yield* SubscriptionRef.updateSome(status, (now) => {
-            const { stopping, holds: banners, usage, warnings } = now
-            return same({ stopping, holds: banners, usage, warnings }, next)
-              ? Option.none()
-              : Option.some({ ...now, ...next })
-          })
-          return before
-        }),
-      )
+      SubscriptionRef.modifySomeEffect(holds, (before) => {
+        const after = change(before)
+        if (after === before) return Effect.succeed([before, Option.none()] as const)
+        const { notice, ...shown } = shownHolds(after)
+        const next = { ...shown, warnings: [...notices, ...(notice === null ? [] : [notice])] }
+        const show = SubscriptionRef.updateSome(status, (now) => {
+          const { stopping, holds: banners, usage, warnings } = now
+          return same({ stopping, holds: banners, usage, warnings }, next)
+            ? Option.none()
+            : Option.some({ ...now, ...next })
+        })
+        return Effect.as(show, [before, Option.some(after)] as const)
+      })
 
     const stopped = (
       stop: StopReason,

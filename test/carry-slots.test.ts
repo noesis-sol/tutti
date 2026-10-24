@@ -16,6 +16,7 @@ import { type RunFibers, layer as runFibersLayer } from "../src/run/fibers.ts"
 import { type Gate, openGate } from "../src/run/holds.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import type { Log } from "../src/run/log.ts"
+import type { Room } from "../src/run/machineGate.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { make, readyPoll, type Scheduler } from "../src/run/schedule.ts"
 import { Beads, type Issue } from "../src/services/Beads.ts"
@@ -66,7 +67,7 @@ const scheduler = (options: {
   readonly concurrent: number
   readonly limit?: number
   readonly gate?: Effect.Effect<Gate>
-  readonly claimRoom?: Effect.Effect<boolean>
+  readonly room?: (own: number) => Effect.Effect<Room>
   readonly carrying?: Effect.Effect<ReadonlySet<string>>
 }) =>
   Effect.gen(function* () {
@@ -77,7 +78,7 @@ const scheduler = (options: {
       scope: null,
       excludeTypes: ["epic"],
       ...(options.gate === undefined ? {} : { gate: options.gate }),
-      ...(options.claimRoom === undefined ? {} : { claimRoom: options.claimRoom }),
+      ...(options.room === undefined ? {} : { room: options.room }),
       ...(options.carrying === undefined ? {} : { carrying: options.carrying }),
       start: {
         start: (issue: Issue) => Effect.sync(() => void started.push(`dispatched ${issue.id}`)),
@@ -142,7 +143,7 @@ describe("the scheduler's carry", () => {
         const { carry, started } = yield* scheduler({
           concurrent: 3,
           gate: Ref.get(gate),
-          claimRoom: Ref.get(room),
+          room: () => Effect.map(Ref.get(room), (has): Room => (has ? "room" : "held")),
         })
         const held = yield* carry("c-1")
         yield* Ref.set(gate, openGate)

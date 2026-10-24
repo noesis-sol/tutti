@@ -79,6 +79,7 @@ import {
 } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
+import { hasRoom, type Room } from "./machineGate.ts"
 import { type Mentions, readMentions, type Sources } from "./overlap.ts"
 import { Cause, type Hold, phaseFacts, TicketPhase } from "./phase.ts"
 import { footprintOf, type Predictor } from "./predict.ts"
@@ -221,10 +222,11 @@ export interface Options {
   readonly beforeStart?: Effect.Effect<void>
   /**
    * Whether the machine has room for the ticket about to start (machineGate.ts), asked last, once
-   * the gate lets it start: the hold at --machine-workers begins, with its line and queue record,
-   * when it hasn't. Room always without it.
+   * the gate lets it start, with the slots taken (slotsTaken): the hold at --machine-workers begins,
+   * with its line, when it hasn't. The hold's start and end each write a queue record. Room always
+   * without it.
    */
-  readonly claimRoom?: Effect.Effect<boolean>
+  readonly room?: (own: number) => Effect.Effect<Room>
   /**
    * Whether the run holds a free slot at --machine-workers (machine.ts), which the queue and
    * dispatch records say with `machine_full`; never without it.
@@ -604,7 +606,6 @@ export const make = (
         }),
       )
     const beforeStart = options.beforeStart ?? Effect.void
-    const claimRoom = options.claimRoom ?? Effect.succeed(true)
     const machineFull = options.machineFull ?? Effect.succeed(false)
     const carrying = options.carrying ?? Effect.succeed(new Set<string>())
     // The queue's counts for a record, `machine_full` with them while the run holds at the cap.
@@ -628,6 +629,24 @@ export const make = (
       })
     const forget = (which: "waitSaid" | "skipSaid", id: string) =>
       remember((m) => ({ ...m, [which]: unsaid(m[which], id) }))
+    const slotsTaken = Effect.map(Effect.all([Ref.get(slots), ledger.current]), ([s, state]) =>
+      taken(s, state, options.concurrent),
+    )
+    const recordQueue = Effect.gen(function* () {
+      const solo = yield* soloNow
+      yield* events.emit({
+        kind: "queue",
+        ...(yield* recorded(yield* ledger.current, (yield* Ref.get(memo)).lastIds, solo)),
+      })
+    })
+    // Whether the machine has room for the ticket about to start: the queue record says the hold's
+    // start and end (`machine_full`).
+    const claimRoom = Effect.gen(function* () {
+      if (options.room === undefined) return true
+      const room = yield* options.room(yield* slotsTaken)
+      if (room === "began" || room === "lifted") yield* recordQueue
+      return hasRoom(room)
+    })
 
     // Shows the queue when it changed since it was last shown.
     const showQueue = Effect.suspend(() => {
@@ -1211,17 +1230,9 @@ export const make = (
         ),
       started: Effect.map(Ref.get(slots), (s) => s.started),
       running: Effect.map(Ref.get(slots), (s) => s.running),
-      slots: Effect.map(Effect.all([Ref.get(slots), ledger.current]), ([s, state]) =>
-        taken(s, state, options.concurrent),
-      ),
+      slots: slotsTaken,
       interrupt: FiberSet.clear(tickets),
       limitReached: Effect.map(Ref.get(slots), (s) => reached(s.started, options.limit)),
-      recordQueue: Effect.gen(function* () {
-        const solo = yield* soloNow
-        yield* events.emit({
-          kind: "queue",
-          ...(yield* recorded(yield* ledger.current, (yield* Ref.get(memo)).lastIds, solo)),
-        })
-      }),
+      recordQueue,
     }
   })
