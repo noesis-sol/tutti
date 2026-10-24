@@ -882,12 +882,19 @@ export const testWork = (
 
 /**
  * Files the test work `choice` calls for on `base` with bd, saying what the runners in `repo` do
- * once init has written them: a step for each ticket, filed or found
- * open from an earlier init (labelled tutti-tests, with the same title) and not filed again. A
- * ticket that can't be filed is a step saying why, naming those after it: the files init wrote
- * stand, and init run again files what is missing.
+ * once init has written them: a step for each ticket, filed or found from an earlier init
+ * (labelled tutti-tests, with the same title) and not filed again. One found open is never filed
+ * again; one found closed only where this init wrote or replaced a runner (`runnersWritten`), as
+ * runners it left alone are those the closed ticket saw to. A ticket that can't be filed is a step
+ * saying why, naming those after it: the files init wrote stand, and init run again files what is
+ * missing.
  */
-export const fileTestWork = (repo: string, choice: ChecksChoice | undefined, base: string) =>
+export const fileTestWork = (
+  repo: string,
+  choice: ChecksChoice | undefined,
+  base: string,
+  runnersWritten: boolean,
+) =>
   Effect.gen(function* () {
     const plan = testWork(choice, base, yield* readRunners(repo, choice))
     if (plan.length === 0) return []
@@ -902,10 +909,14 @@ export const fileTestWork = (repo: string, choice: ChecksChoice | undefined, bas
           .map((ticket) => `"${ticket.title}"`)
           .join(", ")} (${why}); run tutti init again to file them`,
       )
-    const filed = yield* Effect.result(beads.list({ labels: [testWorkLabel] }))
+    const filed = yield* Effect.result(beads.list({ labels: [testWorkLabel], all: true }))
     if (filed._tag === "Failure") return [notFiled(0, beadsWhy(filed.failure))]
     const open = new Map<string, string>()
-    for (const issue of filed.success) if (!open.has(issue.title)) open.set(issue.title, issue.id)
+    const closed = new Map<string, string>()
+    for (const issue of filed.success) {
+      const by = issue.status === "closed" ? closed : open
+      if (!by.has(issue.title)) by.set(issue.title, issue.id)
+    }
     const steps: Array<Step> = []
     const ids: Array<string> = []
     for (const [at, ticket] of plan.entries()) {
@@ -913,6 +924,18 @@ export const fileTestWork = (repo: string, choice: ChecksChoice | undefined, bas
       if (there !== undefined) {
         ids.push(there)
         steps.push(step("kept", label, `${there} is open: ${ticket.title}; not filed again`))
+        continue
+      }
+      const done = runnersWritten ? undefined : closed.get(ticket.title)
+      if (done !== undefined) {
+        ids.push(done)
+        steps.push(
+          step(
+            "kept",
+            label,
+            `${done} is closed: ${ticket.title}; init changed no runner, so not filed again`,
+          ),
+        )
         continue
       }
       const parent = ticket.parent === null ? undefined : ids[ticket.parent]

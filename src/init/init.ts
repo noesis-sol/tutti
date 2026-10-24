@@ -1007,13 +1007,17 @@ const initWork = <R>(options: InitOptions<R>) =>
      * The setup, written as one group so that a run never takes it half written: its files staged
      * as planSetup writes them, then written together, the settings last (./staged.ts).
      */
+    // Whether the setup wrote or replaced a runner: the test work closed before is filed again then.
+    let runnersWritten = false
     const writeSetup = Effect.gen(function* () {
       const staged = staging(fs)
       const steps = yield* planSetup.pipe(
         Effect.provideService(FileSystem.FileSystem, staged.fs),
         Effect.provideService(AtomicWriter, staged.write),
       )
+      const runners = [join(repo, fastRunner), join(repo, fullRunner)]
       yield* commitStaged(fs, repo, staged.writes(), join(repo, settingsFile))
+      runnersWritten = staged.writes().some((each) => runners.includes(each.path))
       return steps
     })
 
@@ -1074,7 +1078,9 @@ const initWork = <R>(options: InitOptions<R>) =>
             ? [
                 {
                   name: "the test work",
-                  run: fileTestWork(repo, choice, options.branch),
+                  run: Effect.suspend(() =>
+                    fileTestWork(repo, choice, options.branch, runnersWritten),
+                  ),
                   whole: false,
                   stopped: () =>
                     " while filing the test work: tutti init again files what is missing",
