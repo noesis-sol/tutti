@@ -8,6 +8,7 @@ import {
   Exit,
   FileSystem,
   Option,
+  Result,
   Schema,
   SchemaIssue,
   SchemaTransformation,
@@ -130,6 +131,16 @@ export const decodeConfig = <S extends Schema.Decoder<unknown>>(
   return Exit.fail(new ConfigFileInvalid({ problems }))
 }
 
+/**
+ * A config file's text parsed as JSON, or why it isn't: `isn't valid JSON: <what the parser said>`.
+ * Schema.fromJsonString says only that it isn't, so the parser is asked here.
+ */
+export const parseConfigJson = (text: string): Result.Result<unknown, string> =>
+  Result.try({
+    try: (): unknown => JSON.parse(text),
+    catch: (error) => `isn't valid JSON: ${error instanceof Error ? error.message : error}`,
+  })
+
 /** Reads and decodes the config file at `file`; a missing file decodes as `{}`, its defaults. */
 export const readConfigFile = <S extends Schema.Decoder<unknown>>(schema: S, file: string) =>
   Effect.gen(function* () {
@@ -145,11 +156,7 @@ export const readConfigFile = <S extends Schema.Decoder<unknown>>(schema: S, fil
       ),
     )
     if (Option.isNone(text)) return yield* decodeConfig(schema, file, {})
-    const json = yield* Effect.try({
-      try: (): unknown => JSON.parse(text.value),
-      catch: (error) =>
-        problem(`isn't valid JSON: ${error instanceof Error ? error.message : error}`),
-    })
+    const json = yield* Effect.fromResult(Result.mapError(parseConfigJson(text.value), problem))
     return yield* decodeConfig(schema, file, json)
   })
 

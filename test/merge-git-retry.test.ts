@@ -1,6 +1,6 @@
 // A git read that steers a merge is asked again a few seconds later while it fails, up to gitTries
 // reads, and its failure is "can't tell", never clean, on its branch or the base not moved
-// (merge.ts's steering, onBranch, worktreeStatus and baseSince). Each read is failed once, which
+// (branch.ts's steering, onBranch, worktreeStatus and baseSince). Each read is failed once, which
 // the merge rides out, and always, which sets the ticket aside or stops the merges. Each scenario
 // is a merge queue under TestClock, moved on gitAgainAfter at a time while the merges run.
 import { describe, expect, test } from "bun:test"

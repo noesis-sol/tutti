@@ -17,23 +17,17 @@
 // says it was skipped. Each way it can go is a full_check record (§ 10).
 import { readSync, writeSync } from "node:fs"
 import { join } from "node:path"
-import { Clock, Duration, Effect, Result, type Scope } from "effect"
+import { Clock, Duration, Effect, Result } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
-import {
-  type CheckError,
-  type CheckPassed,
-  Checks,
-  type RunOptions,
-  setupLogName,
-} from "../services/Checks.ts"
-import { Git, type GitError, gitWhy } from "../services/Git.ts"
+import { type CheckError, type CheckPassed, Checks, setupLogName } from "../services/Checks.ts"
+import { Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
-import { recorded, saidOf } from "./check.ts"
+import { flakyWarnings, howFailed, outputTo, recorded, saidOf } from "./check.ts"
 import type { fullCheckOutcomes } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import { dateClock } from "./localTime.ts"
@@ -178,25 +172,10 @@ export const filedForSuite = (issue: Issue, suite: string): boolean => {
   return title === `${fullCheckPrefix}${suite}` || issue.description.includes(suiteSaid(suite))
 }
 
-/** A commit's hash, short, for a line. */
-const short = (commit: string): string => commit.slice(0, 7)
-
 /** A time a command took, to the second: `2m5s`, `0s`. */
 const took = (millis: number): string => {
   const seconds = Math.floor(Math.max(0, millis) / 1000)
   return seconds === 0 ? "0s" : formatDuration(Duration.seconds(seconds))
-}
-
-/** How a command of the full check failed, for a line: it fails, or did not finish. */
-const howFailed = (error: CheckError): string => {
-  switch (error._tag) {
-    case "CheckFailed":
-      return "fails"
-    case "CheckTimedOut":
-      return `did not finish within ${formatDuration(error.timeLimit)}`
-    case "CheckNotRun":
-      return line`could not be run (${error.reason})`
-  }
 }
 
 /** Copies what the descriptor `from` reads to the descriptor `to`. */
@@ -311,12 +290,12 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       yield* logs.write(
         ticketLine(
           Tag.fullCheck,
-        )`running ${what} on ${base} at ${short(at)} in ${path} (time limit ${formatDuration(full.timeout)})`,
+        )`running ${what} on ${base} at ${shortHash(at)} in ${path} (time limit ${formatDuration(full.timeout)})`,
       )
       const checks = yield* Checks
       if (setup.command !== null) {
         const ran = yield* Effect.scoped(
-          Effect.flatMap(outputIn(path, setupLogName), (to) =>
+          Effect.flatMap(outputTo({ worktree: path }, setupLogName, "the full check's"), (to) =>
             recorded(
               "setup",
               undefined,
@@ -329,7 +308,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
         }
       }
       const ran = yield* Effect.scoped(
-        Effect.flatMap(outputIn(path, fullCheckLogName), (to) =>
+        Effect.flatMap(outputTo({ worktree: path }, fullCheckLogName, "the full check's"), (to) =>
           recorded("full", undefined, checks.full({ cwd: path, ...to })),
         ),
       )
@@ -339,7 +318,7 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
       }
       const text = ticketLine(
         `${Tag.fullCheck} passed`,
-      )`'${command}' on ${base} at ${short(at)} (${took(ms)})`
+      )`'${command}' on ${base} at ${shortHash(at)} (${took(ms)})`
       yield* say({ kind: "full_check", detail: "passed", text })
       if (ran.success._tag === "CheckPassed") yield* flaky(command, ran.success)
       return { outcome: "passed", at, took: ms, end: [], text } satisfies FullChecked
@@ -363,52 +342,10 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
     )
   })
 
-/**
- * Where a command run in the full check's worktree writes its whole output: `name` in its
- * .tutti/run/, opened through the symlink guard; /dev/null when it can't be opened, and the log
- * says why.
- */
-const outputIn = (
-  worktree: string,
-  name: string,
-): Effect.Effect<
-  Pick<RunOptions, "outputFile" | "outputFd">,
-  never,
-  Worktrees | Log | Scope.Scope
-> =>
-  Effect.gen(function* () {
-    const output = join(worktree, runFolder, name)
-    const opened = yield* Effect.result(
-      (yield* Worktrees).openRunFile(worktree, name, O.WRONLY | O.CREAT | O.TRUNC),
-    )
-    if (Result.isSuccess(opened)) return { outputFile: output, outputFd: opened.success }
-    yield* (yield* Log).write(
-      detail`the full check's whole output can't be kept in ${output}: ${opened.failure.message}`,
-    )
-    return { outputFile: "/dev/null" }
-  })
-
 /** FLAKY warnings for a full check that passed with tests that failed and then passed on a rerun. */
 const flaky = (command: string, passed: CheckPassed) =>
-  Effect.gen(function* () {
-    const what = line`the full check '${command}'`
-    const warnings = passed.flaky.map(
-      (test) =>
-        ticketLine(
-          Tag.flaky,
-        )`${what} passed, but a test failed and then passed on a rerun: ${test === "" ? "it doesn't say which" : test}`,
-    )
-    const more = passed.flakyCount - passed.flaky.length
-    if (more > 0) {
-      warnings.push(
-        ticketLine(
-          Tag.flaky,
-        )`${what} passed, but ${more} more tests failed and then passed on a rerun`,
-      )
-    }
-    for (const text of warnings) {
-      yield* warn(text)
-    }
+  Effect.forEach(flakyWarnings(line`the full check '${command}'`, passed), (text) => warn(text), {
+    discard: true,
   })
 
 /**
@@ -483,7 +420,7 @@ const failed = (
           : line`'${command}'`
       const text = ticketLine(
         Tag.fullCheckNotRun,
-      )`${what} ${how} on ${base} at ${short(at)}; ${filed}`
+      )`${what} ${how} on ${base} at ${shortHash(at)}; ${filed}`
       yield* say({ kind: "full_check", detail: "not run", text })
       return {
         outcome: "not run",
@@ -502,7 +439,7 @@ const failed = (
       const filed = "no ticket filed: it is not a suite's failure"
       const text = ticketLine(
         Tag.fullCheckFailed,
-      )`the setup '${error.command}', run before '${command}', ${how} on ${base} at ${short(at)}; the whole output is in ${output}; ${filed}`
+      )`the setup '${error.command}', run before '${command}', ${how} on ${base} at ${shortHash(at)}; the whole output is in ${output}; ${filed}`
       yield* logs.writeWith(
         [text, ...endLines(end)],
         events.emit({ kind: "full_check", detail: outcome, output, text }),
@@ -522,7 +459,7 @@ const failed = (
     const filing = yield* file({ ...options, at, suite, how, output, said: saidOf(error) })
     const text = ticketLine(
       Tag.fullCheckFailed,
-    )`'${command}' ${how} on ${base} at ${short(at)}, in the suite ${suite}; the whole output is in ${output}; ${filing.filed}`
+    )`'${command}' ${how} on ${base} at ${shortHash(at)}, in the suite ${suite}; the whole output is in ${output}; ${filing.filed}`
     yield* logs.writeWith(
       [text, ...endLines(end)],
       events.emit({
@@ -557,7 +494,7 @@ const file = (f: {
     const logs = yield* Log
     const command = config.settings.checks.full.command ?? ""
     const run = dateClock(f.started)
-    const where = `on ${f.base} at ${short(f.at)}, ${suiteSaid(f.suite)} of ${run}`
+    const where = `on ${f.base} at ${shortHash(f.at)}, ${suiteSaid(f.suite)} of ${run}`
     // A second ticket is easier to close than a failure nobody hears of.
     const open = yield* Effect.result(beads.list({ labels: [fullCheckLabel] }))
     if (Result.isFailure(open)) {

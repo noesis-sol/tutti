@@ -20,7 +20,7 @@ import { Deferred, Effect, Ref, Result, Stream } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { Git, type GitError } from "../services/Git.ts"
+import { Git, type GitError, shortHash } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
@@ -299,7 +299,7 @@ export const recheckDue = (
         }
         const text = ticketLine(
           Tag.recheck,
-        )`${id}'s check failed on ${options.base} at ${recheck.onto.slice(0, 7)}, which has moved on since; rebasing ${branch} and checking it once more`
+        )`${id}'s check failed on ${options.base} at ${shortHash(recheck.onto)}, which has moved on since; rebasing ${branch} and checking it once more`
         yield* info(text, id)
         const moved = yield* queue.offer(recheck.ticket, (place) => Cause.Recheck({ place }), false)
         if (Result.isSuccess(moved)) back.push(id)

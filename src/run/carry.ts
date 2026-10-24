@@ -43,7 +43,7 @@
 import { Clock, Effect, FileSystem, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
-import { Git, gitWhy } from "../services/Git.ts"
+import { Git, gitWhy, givenHash } from "../services/Git.ts"
 import { type PhaseName, Store, type TicketRecord } from "../services/Store.ts"
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
@@ -242,7 +242,7 @@ const abortLeftRebase = (
     const kept =
       attempt === ""
         ? line``
-        : line`; its resolution had got to ${attempt.slice(0, 10)}, which git keeps`
+        : line`; its resolution had got to ${givenHash(attempt)}, which git keeps`
     return line`was left mid-rebase as the last run ended, its worker resolving its conflicts: the rebase is aborted, ${branch} back as its worker left it, for its merge to hand the conflicts back afresh${kept}`
   })
 

@@ -8,7 +8,7 @@ import { Effect, Result } from "effect"
 import { type Section, section } from "../organs/evidence.ts"
 import { type Beads, type BeadsError, HumanLabel, type Issue } from "../services/Beads.ts"
 import { type CheckError, OutputBounds } from "../services/Checks.ts"
-import { Git } from "../services/Git.ts"
+import { Git, shortHash } from "../services/Git.ts"
 import { oneLine } from "../ui/oneLine.ts"
 import { failedHow } from "./check.ts"
 import type { Entry } from "./ledger.ts"
@@ -55,7 +55,7 @@ const foldersSaid = (folders: ReadonlyArray<string> | null): string => {
  * so the reviewer can tell a failure in its code from one elsewhere.
  */
 export const failedCheckSaid = (f: FailedCheck): string => {
-  const at = f.onto.slice(0, 7)
+  const at = shortHash(f.onto)
   const notRun = f.error.check === "setup" ? ", so the check did not run" : ""
   const where = f.error._tag === "CheckNotRun" ? "" : `; its output is in ${f.output}`
   const lines = [

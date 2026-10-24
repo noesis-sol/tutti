@@ -42,7 +42,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { type Commit, Git, gitWhy } from "../services/Git.ts"
+import { type Commit, Git, gitWhy, givenHash, shortHash } from "../services/Git.ts"
 import { restoreBranch } from "./branch.ts"
 import { type Checked, failedHow, saidOf } from "./check.ts"
 import {
@@ -145,8 +145,6 @@ export const makeFixes: Effect.Effect<Fixes> = Effect.gen(function* () {
 /** How many times something was done, as in `twice`. */
 export const times = (n: number): string => (n === 1 ? "once" : n === 2 ? "twice" : `${n} times`)
 
-const short = (hash: string) => hash.slice(0, 10)
-
 /** Whether the ticket's worker is at the account's usage limit. */
 const atLimit = (id: string): Effect.Effect<boolean, never, AgentHost> =>
   Effect.gen(function* () {
@@ -228,7 +226,7 @@ export const fixPrompt = (
     lines.length === 0
       ? "it printed nothing"
       : `${stop.error._tag !== "CheckNotRun" && stop.error.failingLines.length > 0 ? "these lines say what failed:" : "it ends:"}\n${lines.join("\n")}`
-  const listed = (landed ?? []).map((commit) => `${commit.hash.slice(0, 7)} ${commit.subject}`)
+  const listed = (landed ?? []).map((commit) => `${shortHash(commit.hash)} ${commit.subject}`)
   const shown =
     landed === undefined || listed.length === 0
       ? "(git could not list them)"
@@ -257,7 +255,7 @@ export const fixPrompt = (
     `tutti: ${base} moved on while you worked, and ${branch} was rebased onto it; now ` +
     `${failedHow(stop.error)} on it. Its whole output is in ${stop.output}; ${said}\n\n` +
     `What landed on ${base} since your branch was cut (git log --oneline ` +
-    `${stop.head.slice(0, 7)}..${stop.onto.slice(0, 7)}):\n${shown}\n\n` +
+    `${shortHash(stop.head)}..${shortHash(stop.onto)}):\n${shown}\n\n` +
     `Fix ${branch} so that the check passes, keeping the intent of both your change and what ` +
     `landed on ${base}. ${steps}`
   )
@@ -329,7 +327,7 @@ export const verifyFixed = (
         if (commits.length === 0) return Verified.Unchanged()
         const other = commits.find((commit) => !namesTicket(commit.message, id))
         if (other !== undefined) {
-          return reject(line`its worker's commit ${short(other.hash)} does not name ${id}`)
+          return reject(line`its worker's commit ${givenHash(other.hash)} does not name ${id}`)
         }
         const n = commits.length
         return Verified.Fixed({ commits: n === 1 ? "1 commit" : `${n} commits` })
@@ -358,13 +356,13 @@ export const undoFix = (stop: CheckStop): Effect.Effect<string, never, MergeEnv>
       case "Dirty":
         return line`; ${worktree} is left as its worker left it`
       case "OffBranch":
-        return line`; ${branch} is left at ${short(restored.at)}, as ${worktree} has ${restored.on}`
+        return line`; ${branch} is left at ${givenHash(restored.at)}, as ${worktree} has ${restored.on}`
       case "Unknown":
-        return line`; ${branch} is left at ${short(restored.at)}, as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
+        return line`; ${branch} is left at ${givenHash(restored.at)}, as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
       case "ResetFailed":
-        return line`; ${branch} could not be reset to ${short(to)}, where the check failed, and is left at ${short(restored.at)}`
+        return line`; ${branch} could not be reset to ${givenHash(to)}, where the check failed, and is left at ${givenHash(restored.at)}`
       case "Reset":
-        return line`; ${branch} was reset to ${short(to)}, where the check failed (its worker's attempt is ${short(restored.from)})`
+        return line`; ${branch} was reset to ${givenHash(to)}, where the check failed (its worker's attempt is ${givenHash(restored.from)})`
     }
   })
 

@@ -50,7 +50,7 @@ import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
 import type { CheckError, Checks } from "../services/Checks.ts"
-import { Git, type GitError, gitWhy, type StatusEntry } from "../services/Git.ts"
+import { Git, type GitError, gitWhy, type StatusEntry, shortHash } from "../services/Git.ts"
 import { allChanges, checkoutChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { type BadTicketId, cleanupWhy, Worktrees } from "../services/Worktrees.ts"
@@ -97,7 +97,7 @@ import {
   whyNotHandBack,
 } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
-import { branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
+import { type Arg, branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import { Cause, Detail } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
@@ -251,9 +251,24 @@ const services = Effect.all({
   events: EventStream,
 })
 
-/** Sets the ticket aside for review, Merging → Review, with its note, warn record and log line. */
-const aside = (ticket: FinishedTicket, why: string, short: string, text: Line) =>
-  leaveForReview(ticket.id, { why, detail: short, text })
+/** `<tag>: <id> closed, but …`, the line of a ticket its merge sets aside or blocks. */
+const closedButLine =
+  (ticket: FinishedTicket, tag: string) =>
+  (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>): Line =>
+    ticketLine(tag)`${ticket.id} closed, but ${line(strings, ...args)}`
+
+/**
+ * Sets the ticket aside for review, Merging → Review{tag}, `short` its warn record's detail, with
+ * its note and the line `<tag>: <id> closed, but …`.
+ */
+const closedBut =
+  (ticket: FinishedTicket, tag: string, short: string) =>
+  (strings: TemplateStringsArray, ...args: ReadonlyArray<Arg>) =>
+    leaveForReview(ticket.id, {
+      why: tag,
+      detail: short,
+      text: closedButLine(ticket, tag)(strings, ...args),
+    })
 
 /** The ticket can't merge until you act: Merging → Blocked, with `record` and its line beside it. */
 const block = (ticket: FinishedTicket, why: string, record: Said) =>
@@ -356,11 +371,11 @@ export const notePass = (
 
 /**
  * Sets the ticket aside, DIRTY_WORKTREE, when its worktree has uncommitted changes to tracked files,
- * `text` saying so of them, `why` in short: neither a rebase nor a check can go on with them there,
- * as only the branch's commits reach the base. A status git can't read, asked gitTries times, can't
- * show them not there: the ticket is set aside, GIT_FAILED, the other merges going on. True when it
- * did. `read`: the status the merge read already, nothing having run in the worktree since; it is
- * read here without one.
+ * `text` saying so of them after `<id> closed, but`, `why` in short: neither a rebase nor a check
+ * can go on with them there, as only the branch's commits reach the base. A status git can't read,
+ * asked gitTries times, can't show them not there: the ticket is set aside, GIT_FAILED, the other
+ * merges going on. True when it did. `read`: the status the merge read already, nothing having run
+ * in the worktree since; it is read here without one.
  */
 const setAsideDirty = (
   ticket: FinishedTicket,
@@ -374,17 +389,14 @@ const setAsideDirty = (
       case "Clean":
         return false
       case "Dirty":
-        yield* aside(ticket, Tag.dirtyWorktree, why, text(status.files))
+        yield* closedBut(ticket, Tag.dirtyWorktree, why)`${text(status.files)}`
         return true
       case "Unknown":
-        yield* aside(
+        yield* closedBut(
           ticket,
           Tag.gitFailed,
           "git could not read its worktree",
-          ticketLine(
-            Tag.gitFailed,
-          )`${ticket.id} closed, but git could not read the status of ${ticket.worktree} (${gitTries} tries): ${gitWhy(status.error)}, so it can't be shown to have no uncommitted changes; ${ticket.branch} is not merged, its worktree left for review`,
-        )
+        )`git could not read the status of ${ticket.worktree} (${gitTries} tries): ${gitWhy(status.error)}, so it can't be shown to have no uncommitted changes; ${ticket.branch} is not merged, its worktree left for review`
         return true
     }
   })
@@ -400,9 +412,7 @@ const setAsideLeftDirty = (ticket: FinishedTicket, read?: WorktreeStatus) =>
   setAsideDirty(
     ticket,
     (files) =>
-      ticketLine(
-        Tag.dirtyWorktree,
-      )`${ticket.id} closed, but its setup or check left uncommitted changes to ${files} in ${ticket.worktree}, so ${ticket.branch} passed with changes that would not merge; worktree left for review (have the setup and check leave tracked files as they are, as a frozen-lockfile install does; undo the changes, check, merge)`,
+      line`its setup or check left uncommitted changes to ${files} in ${ticket.worktree}, so ${ticket.branch} passed with changes that would not merge; worktree left for review (have the setup and check leave tracked files as they are, as a frozen-lockfile install does; undo the changes, check, merge)`,
     "its setup or check changed tracked files",
     read,
   )
@@ -452,9 +462,7 @@ const rebaseAndCheck = (
     const dirty = yield* setAsideDirty(
       ticket,
       (files) =>
-        ticketLine(
-          Tag.dirtyWorktree,
-        )`${id} closed, but ${worktree} has uncommitted changes to ${files}, so ${branch} can't be rebased onto ${base}, which moved on while it ran; worktree left for review (commit or undo them, rebase onto ${base}, check, merge)`,
+        line`${worktree} has uncommitted changes to ${files}, so ${branch} can't be rebased onto ${base}, which moved on while it ran; worktree left for review (commit or undo them, rebase onto ${base}, check, merge)`,
       undefined,
       status,
     )
@@ -499,14 +507,11 @@ const rebaseAndCheck = (
         yield* notHandedBack(stop, options, not, memory.handBacks)
         return setAsideOutcome
       }
-      yield* aside(
+      yield* closedBut(
         ticket,
         Tag.rebaseFailed,
         "rebase failed",
-        ticketLine(
-          Tag.rebaseFailed,
-        )`${id} closed, but git could not rebase ${branch} onto ${base}, which moved on while it ran: ${gitWhy(error)}; worktree ${worktree} left for review`,
-      )
+      )`git could not rebase ${branch} onto ${base}, which moved on while it ran: ${gitWhy(error)}; worktree ${worktree} left for review`
       return setAsideOutcome
     }
     const dropped = yield* unchanged(
@@ -569,14 +574,11 @@ const setUpAndCheck = (
         ? yield* Effect.result(steering(git.revParse(options.repo, branch)))
         : Result.succeed(now)
     if (Result.isFailure(read)) {
-      yield* aside(
+      yield* closedBut(
         ticket,
         Tag.gitFailed,
         "git could not read its branch",
-        ticketLine(
-          Tag.gitFailed,
-        )`${id} closed, but git could not tell where ${branch} is (${gitTries} tries): ${gitWhy(read.failure)}, so it can't be checked as it would merge; worktree ${ticket.worktree} left for review`,
-      )
+      )`git could not tell where ${branch} is (${gitTries} tries): ${gitWhy(read.failure)}, so it can't be checked as it would merge; worktree ${ticket.worktree} left for review`
       return setAsideOutcome
     }
     const at = read.success
@@ -703,14 +705,11 @@ export const checksFailed = (
     const where = error._tag === "CheckNotRun" ? "" : line` (output is in ${output})`
     const again = (yield* rechecks.rechecked(ticket.id)) ? " again" : ""
     const later = yield* keepForRecheck(ticket, options, rechecks, onto, error)
-    yield* aside(
+    yield* closedBut(
       ticket,
       Tag.checksFailed,
       `${checksFailedDetail(error)}${again}`,
-      ticketLine(
-        Tag.checksFailed,
-      )`${ticket.id} closed, but ${failedHow(error)}${again} on ${branchOn(ticket.branch, options.base, onTop)}${tried}; worktree ${ticket.worktree} left for review${where}${later}`,
-    )
+    )`${failedHow(error)}${again} on ${branchOn(ticket.branch, options.base, onTop)}${tried}; worktree ${ticket.worktree} left for review${where}${later}`
     const said = saidOf(error)
     if (said.length > 0) yield* log.write(...said.map((each) => detail`  ${each}`))
     yield* noteFailedCheck(ticket, options, rechecks, onto, error, output, onTop)
@@ -722,9 +721,10 @@ export const checksFailed = (
  */
 export const keptChanging = (ticket: FinishedTicket, what: string) =>
   Effect.gen(function* () {
-    const text = ticketLine(
+    const text = closedButLine(
+      ticket,
       Tag.mergeConflict,
-    )`${ticket.id} closed, but ${what} while its checks ran (commits made by hand?); worktree ${ticket.worktree} left for review`
+    )`${what} while its checks ran (commits made by hand?); worktree ${ticket.worktree} left for review`
     yield* block(ticket, Tag.mergeConflict, {
       kind: "warn",
       ticket: ticket.id,
@@ -769,26 +769,20 @@ export const prepare = (
     }
     const on = yield* onBranch(ticket)
     if (on._tag === "OffBranch") {
-      yield* aside(
+      yield* closedBut(
         ticket,
         Tag.offBranch,
         `worktree not on ${branch}`,
-        ticketLine(
-          Tag.offBranch,
-        )`${id} closed, but its worktree ${worktree} has ${on.on}, not ${branch}; worktree left for review`,
-      )
+      )`its worktree ${worktree} has ${on.on}, not ${branch}; worktree left for review`
       return Prepared.Over({})
     }
     // Only its worktree can't be read: the ticket is set aside, the other merges going on.
     if (on._tag === "Unknown") {
-      yield* aside(
+      yield* closedBut(
         ticket,
         Tag.gitFailed,
         "git could not read its worktree",
-        ticketLine(
-          Tag.gitFailed,
-        )`${id} closed, but git could not tell what its worktree ${worktree} has checked out (${gitTries} tries): ${gitWhy(on.error)}; ${branch} is not merged, its worktree left for review`,
-      )
+      )`git could not tell what its worktree ${worktree} has checked out (${gitTries} tries): ${gitWhy(on.error)}; ${branch} is not merged, its worktree left for review`
       return Prepared.Over({})
     }
     // Where its branch is, git can't tell: the merges hold.
@@ -811,14 +805,11 @@ export const prepare = (
       const at = yield* Effect.result(steering(git.revParse(repo, branch)))
       if (Result.isFailure(at)) return yield* lost(at.failure)
       if (at.success !== mark.orig) {
-        yield* aside(
+        yield* closedBut(
           ticket,
           Tag.rebaseFailed,
           "rebase failed",
-          ticketLine(
-            Tag.rebaseFailed,
-          )`${id} closed, but ${branch} was rebased onto ${mark.behind} to be checked ahead of its turn and could not be put back as its worker left it, at ${mark.orig.slice(0, 7)}, so it may have the commits of ${mark.behind}; worktree ${worktree} left for review`,
-        )
+        )`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn and could not be put back as its worker left it, at ${shortHash(mark.orig)}, so it may have the commits of ${mark.behind}; worktree ${worktree} left for review`
         return Prepared.Over({})
       }
     }
@@ -834,7 +825,7 @@ export const prepare = (
         if (moved === maxPasses) return yield* keptChanging(ticket, `${branch} kept changing`)
         moved++
         yield* log.write(
-          detail`${branch} moved on to ${to.slice(0, 7)} while its check ran on ${from.slice(0, 7)}: checking it again`,
+          detail`${branch} moved on to ${shortHash(to)} while its check ran on ${shortHash(from)}: checking it again`,
         )
         checked = undefined
         return undefined
@@ -908,9 +899,7 @@ export const prepare = (
         // The check runs in its worktree, but only its commits merge: changes left uncommitted
         // there would be checked with them and never reach the base.
         const dirty = (files: ReadonlyArray<string>) =>
-          ticketLine(
-            Tag.dirtyWorktree,
-          )`${id} closed, but ${worktree} has uncommitted changes to ${files}, so ${branch}, on top of ${base}, can't be checked as it would merge; worktree left for review (commit or undo them, check, merge)`
+          line`${worktree} has uncommitted changes to ${files}, so ${branch}, on top of ${base}, can't be checked as it would merge; worktree left for review (commit or undo them, check, merge)`
         if (unchecked !== undefined) {
           if (yield* setAsideDirty(ticket, dirty, undefined, status)) {
             return Prepared.Over({})
@@ -940,9 +929,7 @@ export const prepare = (
             // Unchecked, it merges as committed: changes left uncommitted would never reach the
             // base, and git would refuse to remove the worktree after the merge.
             const left = (files: ReadonlyArray<string>) =>
-              ticketLine(
-                Tag.dirtyWorktree,
-              )`${id} closed, but ${worktree} has uncommitted changes to ${files}, which would not merge with ${branch}; worktree left for review (commit or undo them, merge)`
+              line`${worktree} has uncommitted changes to ${files}, which would not merge with ${branch}; worktree left for review (commit or undo them, merge)`
             if (yield* setAsideDirty(ticket, left, undefined, status)) {
               return Prepared.Over({})
             }
@@ -1308,7 +1295,7 @@ export const fastForward = (
     }
     if (head.success !== at) {
       yield* log.write(
-        detail`${branch} moved on to ${head.success.slice(0, 7)} after its check passed on ${at.slice(0, 7)}: checking it again before it merges`,
+        detail`${branch} moved on to ${shortHash(head.success)} after its check passed on ${shortHash(at)}: checking it again before it merges`,
       )
       return FastForward.Moved({ to: head.success })
     }
@@ -1341,7 +1328,7 @@ export const fastForward = (
         BaseMoved: ({ to }) =>
           Effect.as(
             log.write(
-              detail`${base} moved on to ${to.slice(0, 7)} before ${branch} fast-forwarded onto ${onto.slice(0, 7)}: rebasing and checking it again before it merges`,
+              detail`${base} moved on to ${shortHash(to)} before ${branch} fast-forwarded onto ${shortHash(onto)}: rebasing and checking it again before it merges`,
             ),
             FastForward.BaseMoved({ to }),
           ),
@@ -1369,7 +1356,7 @@ export const fastForward = (
       const now = yield* Effect.result(git.revParse(repo, base))
       hash = Result.isSuccess(now) ? now.success : onto
     }
-    const short = hash.slice(0, 7)
+    const short = shortHash(hash)
     const named = commit === undefined ? short : line`${short} ${commit.subject}`
     yield* retire(ticket, options, {
       cause: Cause.FastForwarded({ commit: hash }),

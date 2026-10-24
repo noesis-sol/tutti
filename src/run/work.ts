@@ -25,7 +25,7 @@ import { Clock, Effect, Ref, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError, beadsWhy, type Status } from "../services/Beads.ts"
-import { type Git, type GitError, gitWhy } from "../services/Git.ts"
+import { type Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { type TicketWorktree, Worktrees } from "../services/Worktrees.ts"
 import { dropNothingDone, leaveForReview, nothingLeft, putAside } from "./aside.ts"
@@ -286,7 +286,7 @@ export const conclude = (
           detail: "closed with uncommitted changes",
           text: ticketLine(
             Tag.closedUncommitted,
-          )`${id} closed (${reading.commit.hash.slice(0, 7)} ${reading.commit.subject}) but ${path} has uncommitted changes: ${shown}${andMore}; worktree left for review (commit or remove them)`,
+          )`${id} closed (${shortHash(reading.commit.hash)} ${reading.commit.subject}) but ${path} has uncommitted changes: ${shown}${andMore}; worktree left for review (commit or remove them)`,
         })
         break
       }

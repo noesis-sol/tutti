@@ -43,7 +43,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { Git, gitWhy } from "../services/Git.ts"
+import { Git, gitWhy, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
@@ -276,13 +276,13 @@ export const putBackLeft = (
         yield* log.write(
           ticketLine(
             Tag.rebaseFailed,
-          )`${id}: ${branch} could not be put back as its worker left it, at ${mark.orig.slice(0, 7)}, after a run that was killed left it rebased onto ${mark.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
+          )`${id}: ${branch} could not be put back as its worker left it, at ${shortHash(mark.orig)}, after a run that was killed left it rebased onto ${mark.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
         )
         continue
       }
       yield* clearAhead(id)
       yield* log.write(
-        detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn by a run that was killed before its turn: put back as its worker left it, at ${mark.orig.slice(0, 7)}`,
+        detail`${branch} was rebased onto ${mark.behind} to be checked ahead of its turn by a run that was killed before its turn: put back as its worker left it, at ${shortHash(mark.orig)}`,
       )
     }
   })
@@ -640,7 +640,7 @@ export const make = (
             yield* log.write(
               ticketLine(
                 Tag.rebaseFailed,
-              )`${id}: ${branch} could not be put back as its worker left it, at ${run.orig.slice(0, 7)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
+              )`${id}: ${branch} could not be put back as its worker left it, at ${shortHash(run.orig)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
             )
           }
           yield* update((now) => withoutRuns(now, left))
@@ -736,7 +736,7 @@ export const make = (
             detail: "rebase failed",
             text: ticketLine(
               Tag.rebaseFailed,
-            )`${id} closed, but ${branch} could not be put back as its worker left it, at ${ended.orig.slice(0, 7)}, after it was rebased onto ${ended.behind} to be checked ahead of its turn: ${why}; worktree ${worktree} left for review`,
+            )`${id} closed, but ${branch} could not be put back as its worker left it, at ${shortHash(ended.orig)}, after it was rebased onto ${ended.behind} to be checked ahead of its turn: ${why}; worktree ${worktree} left for review`,
           })
           return Prepared.Over({})
         }

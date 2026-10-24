@@ -23,6 +23,7 @@ import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
   type CheckError,
+  type CheckPassed,
   type CheckResult,
   Checks,
   checkLogName,
@@ -35,7 +36,7 @@ import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { noteWritten } from "./checkWrote.ts"
 import { type checkSuites, tenths } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
-import { Log, line, Tag, ticketLine } from "./log.ts"
+import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { warn } from "./say.ts"
 
 /** How a ticket's merge check went. */
@@ -116,13 +117,18 @@ export const failedHow = (error: CheckError): string => {
     error.check === "setup"
       ? line`the setup '${error.command}', run before the check,`
       : line`'${error.command}'`
+  return `${what} ${howFailed(error)}`
+}
+
+/** How a command failed, for a line naming it: it fails, did not finish, or could not be run. */
+export const howFailed = (error: CheckError): string => {
   switch (error._tag) {
     case "CheckFailed":
-      return `${what} fails`
+      return "fails"
     case "CheckTimedOut":
-      return `${what} did not finish within ${formatDuration(error.timeLimit)}`
+      return `did not finish within ${formatDuration(error.timeLimit)}`
     case "CheckNotRun":
-      return `${what} could not be run (${line`${error.reason}`})`
+      return line`could not be run (${error.reason})`
   }
 }
 
@@ -137,10 +143,11 @@ export const saidOf = (error: CheckError): ReadonlyArray<string> =>
 /**
  * Where a command run in the ticket's worktree writes its whole output, for the scope: `name` in its
  * .tutti/run/, opened through the symlink guard and handed over as its descriptor; /dev/null when it
- * can't be opened, and the log says why, `whose` naming the command's output.
+ * can't be opened, and the log says why, `whose` naming the command's output, on the ticket's line;
+ * on a detail line for a worktree of no ticket's (`id` left out), as the full check's.
  */
 export const outputTo = (
-  ticket: CheckedTicket,
+  ticket: Pick<CheckedTicket, "worktree"> & { readonly id?: string },
   name: string,
   whose: string,
 ): Effect.Effect<
@@ -161,10 +168,37 @@ export const outputTo = (
         ? line`a symbolic link stands at ${opened.failure.path}`
         : line`${opened.failure.message}`
     yield* log.write(
-      ticketLine(ticket.id)`${whose} whole output can't be kept in ${output}: ${why}`,
+      ticket.id === undefined
+        ? detail`${whose} whole output can't be kept in ${output}: ${why}`
+        : ticketLine(ticket.id)`${whose} whole output can't be kept in ${output}: ${why}`,
     )
     return { outputFile: "/dev/null" }
   })
+
+/**
+ * The FLAKY warnings of `what`, a check that passed with tests that failed and then passed on a
+ * rerun: one for each test it names, and one for those it counts beyond them.
+ */
+export const flakyWarnings = (
+  what: string,
+  passed: Pick<CheckPassed, "flaky" | "flakyCount">,
+): ReadonlyArray<Line> => {
+  const warnings = passed.flaky.map(
+    (test) =>
+      ticketLine(
+        Tag.flaky,
+      )`${what} passed, but a test failed and then passed on a rerun: ${test === "" ? "it doesn't say which" : test}`,
+  )
+  const more = passed.flakyCount - passed.flaky.length
+  if (more > 0) {
+    warnings.push(
+      ticketLine(
+        Tag.flaky,
+      )`${what} passed, but ${more} more tests failed and then passed on a rerun`,
+    )
+  }
+  return warnings
+}
 
 /** The Store metadata key marking a ticket's branch as rebased by tutti and not checked since. */
 export const uncheckedKey = "rebased_unchecked"
@@ -314,21 +348,7 @@ export const checkOnce = (
         const after = status === undefined ? {} : { after: status }
         if (result._tag === "NoCheckCommand") return Checked.Unchecked(after)
         const what = line`${ticket.id}'s check '${result.command}'`
-        const flaky = result.flaky.map(
-          (test) =>
-            ticketLine(
-              Tag.flaky,
-            )`${what} passed, but a test failed and then passed on a rerun: ${test === "" ? "it doesn't say which" : test}`,
-        )
-        const more = result.flakyCount - result.flaky.length
-        if (more > 0) {
-          flaky.push(
-            ticketLine(
-              Tag.flaky,
-            )`${what} passed, but ${more} more tests failed and then passed on a rerun`,
-          )
-        }
-        for (const warning of flaky) {
+        for (const warning of flakyWarnings(what, result)) {
           yield* warn(warning, ticket.id)
         }
         return Checked.Passed({ command: result.command, ...after })

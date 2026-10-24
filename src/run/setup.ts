@@ -38,7 +38,7 @@ import { join } from "node:path"
 import { Data, Effect, Option, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { decodeConfig, formatDuration } from "../project/configFile.ts"
+import { decodeConfig, parseConfigJson } from "../project/configFile.ts"
 import { type Requirement, Settings, settingsFile } from "../project/settings.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
 import { type CheckError, Checks, setupLogName } from "../services/Checks.ts"
@@ -53,7 +53,7 @@ import {
   writeRunFile,
 } from "../services/Worktrees.ts"
 import { gitReads } from "./branch.ts"
-import { outputTo, recorded } from "./check.ts"
+import { howFailed, outputTo, recorded } from "./check.ts"
 import { noteWritten } from "./checkWrote.ts"
 import type { EventStream } from "./eventstream.ts"
 import { settingsGlobMatch } from "./glob.ts"
@@ -472,18 +472,6 @@ export const setUpWorktree = (
     return WorktreeSetUp.Passed()
   })
 
-/** How a setup failed, for a line: `fails`, did not finish, or could not be run. */
-export const setupHow = (error: CheckError): string => {
-  switch (error._tag) {
-    case "CheckFailed":
-      return "fails"
-    case "CheckTimedOut":
-      return `did not finish within ${formatDuration(error.timeLimit)}`
-    case "CheckNotRun":
-      return line`could not be run (${error.reason})`
-  }
-}
-
 /** How many tickets the run has merged. */
 export const mergedCount = (state: LedgerState): number =>
   [...state.tickets.values()].filter(
@@ -516,7 +504,7 @@ export const leaveSetupFailed = (
     const ledger = yield* Ledger
     const { id } = ticket
     const { command, output } = failed
-    const how = setupHow(failed.error)
+    const how = howFailed(failed.error)
     let notReopened = false
     if (ticket.status !== undefined && ticket.status !== "open") {
       const reopened = yield* Effect.result(beads.update(id, { status: "open" }))
@@ -681,16 +669,10 @@ export const takeSettings = (
     let taken: Settings | undefined
     if (Result.isFailure(read)) problem = read.failure.message
     else {
-      const parsed = (() => {
-        try {
-          return { json: JSON.parse(read.success) as unknown }
-        } catch (error) {
-          return { error: `it isn't valid JSON: ${error instanceof Error ? error.message : error}` }
-        }
-      })()
-      if ("error" in parsed) problem = parsed.error
+      const parsed = parseConfigJson(read.success)
+      if (Result.isFailure(parsed)) problem = `it ${parsed.failure}`
       else {
-        const decoded = yield* Effect.result(decodeConfig(Settings, settingsFile, parsed.json))
+        const decoded = yield* Effect.result(decodeConfig(Settings, settingsFile, parsed.success))
         if (Result.isSuccess(decoded)) taken = decoded.success
         else {
           problem = decoded.failure.problems

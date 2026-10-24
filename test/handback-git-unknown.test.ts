@@ -1,4 +1,4 @@
-// What a hand-back does where git can't say (merge.ts's onBranch and baseSince): a base git can't
+// What a hand-back does where git can't say (branch.ts's onBranch and baseSince): a base git can't
 // read, asked gitTries times, is never taken for one that didn't move, so what the worker left goes
 // back to its merge; a worktree whose HEAD git can't read is never taken for one on its branch, so
 // the worker's fix or resolution isn't accepted on it and its branch is never reset. Settling a

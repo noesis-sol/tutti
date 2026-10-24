@@ -27,7 +27,13 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Beads } from "../services/Beads.ts"
 import type { Checks } from "../services/Checks.ts"
-import type { Commit, Git, GitError, StatusEntry } from "../services/Git.ts"
+import {
+  type Commit,
+  type Git,
+  type GitError,
+  type StatusEntry,
+  shortHash,
+} from "../services/Git.ts"
 import { Store, type StoreWriteFailed } from "../services/Store.ts"
 import { timeoutAwake } from "../services/Wake.ts"
 import {
@@ -134,7 +140,7 @@ const capped = (lines: ReadonlyArray<string>): ReadonlyArray<string> =>
 
 /** A commit as `git log --oneline` shows it, its subject on one line. */
 const commitLine = (commit: Commit): string =>
-  `${commit.hash.slice(0, 7)} ${sanitizeLine(commit.subject)}`
+  `${shortHash(commit.hash)} ${sanitizeLine(commit.subject)}`
 
 /** A file as `git status --short` shows it, its paths on one line. */
 const statusLine = (entry: StatusEntry): string =>

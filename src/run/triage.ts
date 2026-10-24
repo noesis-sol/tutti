@@ -48,7 +48,7 @@ import {
   type Verdict,
 } from "../organs/triage.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
-import { Git, gitWhy } from "../services/Git.ts"
+import { Git, gitWhy, shortHash } from "../services/Git.ts"
 import { allChangeEntries } from "../services/gitStatus.ts"
 import type { EnvironmentHold } from "./environment.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -195,7 +195,7 @@ export const make = (options: {
           Effect.catch((error) => Effect.succeed(`(git status failed: ${gitWhy(error)})`)),
         )
         const commits = yield* git.log(path, options.base).pipe(
-          Effect.map((list) => orNone(list.map((c) => `${c.hash.slice(0, 7)} ${c.subject}`))),
+          Effect.map((list) => orNone(list.map((c) => `${shortHash(c.hash)} ${c.subject}`))),
           Effect.catch((error) => Effect.succeed(`(git log failed: ${gitWhy(error)})`)),
         )
         const files = yield* git.changedFiles(path, options.base).pipe(

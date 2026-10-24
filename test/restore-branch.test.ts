@@ -1,4 +1,4 @@
-// merge.ts's restoreBranch, the one way a ticket's branch is put back (after a rejected hand-back,
+// branch.ts's restoreBranch, the one way a ticket's branch is put back (after a rejected hand-back,
 // by the merge train, before a branch is removed): a rebase in progress aborted, then the branch
 // reset when it is elsewhere and its worktree is clean and on it, each outcome tagged for its
 // caller to say in its own words. Run against the in-memory Git.

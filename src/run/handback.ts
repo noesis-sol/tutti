@@ -44,7 +44,7 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { Git, type GitError, gitWhy } from "../services/Git.ts"
+import { Git, type GitError, gitWhy, givenHash } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { awakeSince } from "../services/Wake.ts"
@@ -407,8 +407,6 @@ export interface HandBack {
 const doneWords = (mode: HandBackMode): string =>
   mode === "resolving" ? "its rebase has finished" : "its fix is committed"
 
-const short = (hash: string) => hash.slice(0, 10)
-
 /**
  * What the worker is told when its hand-back is past its time limit, `limit`, with what it was
  * asked done already: its branch, at commit `at`, is taken as it is, to be checked with `check`.
@@ -423,7 +421,7 @@ export const handBackTaken = (
   const what = handBack.mode === "resolving" ? "rebase has finished" : "fix is committed"
   return (
     `tutti: the ${limit} for this hand-back is up, and your ${what}, so tutti has stopped you ` +
-    `and takes ${branch} as it is now, at ${short(at)}, to check with '${check}' and merge. ` +
+    `and takes ${branch} as it is now, at ${givenHash(at)}, to check with '${check}' and merge. ` +
     `Leave ${worktree} as it is: no more commits, no amending, no git commands in it, ` +
     "no ticket changes. Say DONE."
   )
@@ -436,7 +434,7 @@ export const handBackTaken = (
  */
 export const handBackOver = (handBack: HandBack, limit: string, attempt: string): string => {
   const { id, branch, worktree } = handBack.ticket
-  const to = short(handBack.to)
+  const to = givenHash(handBack.to)
   const back =
     handBack.mode === "resolving"
       ? `aborts the rebase if it is still in progress, puts ${branch} back at ${to}, where it was before the rebase,`
@@ -444,7 +442,7 @@ export const handBackOver = (handBack: HandBack, limit: string, attempt: string)
   const kept =
     attempt === ""
       ? "Nothing of your attempt was committed, so none of it is kept."
-      : `Your attempt so far is commit ${short(attempt)}, which git keeps (git show ${short(attempt)}).`
+      : `Your attempt so far is commit ${givenHash(attempt)}, which git keeps (git show ${givenHash(attempt)}).`
   return (
     `tutti: the ${limit} for this hand-back is up, so tutti has stopped you and ends it: it ${back} ` +
     `and sets ${id} aside for review. ${kept} Don't work on it any more: no git commands in ` +
@@ -936,8 +934,7 @@ export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, M
   Effect.gen(function* () {
     const { branch, worktree } = stop.ticket
     const to = stop.head
-    const short = (hash: string) => hash.slice(0, 10)
-    const was = line`it was at ${short(to)} before the rebase`
+    const was = line`it was at ${givenHash(to)} before the rebase`
     const restored = yield* restoreBranch(stop.ticket, to)
     switch (restored._tag) {
       case "AbortFailed":
@@ -949,13 +946,13 @@ export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, M
       case "Dirty":
         return line`${branch} is left as its worker left it (${was})`
       case "OffBranch":
-        return line`${branch} is left at ${short(restored.at)} (${was}), as ${worktree} has ${restored.on}`
+        return line`${branch} is left at ${givenHash(restored.at)} (${was}), as ${worktree} has ${restored.on}`
       case "Unknown":
-        return line`${branch} is left at ${short(restored.at)} (${was}), as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
+        return line`${branch} is left at ${givenHash(restored.at)} (${was}), as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
       case "ResetFailed":
-        return line`${branch} could not be reset to ${short(to)}, where it was before the rebase; it is left at ${short(restored.at)}`
+        return line`${branch} could not be reset to ${givenHash(to)}, where it was before the rebase; it is left at ${givenHash(restored.at)}`
       case "Reset":
-        return line`${branch} was reset to ${short(to)}, where it was before the rebase (its worker's attempt is ${short(restored.from)})`
+        return line`${branch} was reset to ${givenHash(to)}, where it was before the rebase (its worker's attempt is ${givenHash(restored.from)})`
     }
   })
 

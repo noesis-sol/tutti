@@ -25,6 +25,7 @@ import type { LatestAction } from "../agent/Transcripts.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Issue } from "../services/Beads.ts"
+import { shortHash } from "../services/Git.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import { type ProbeView, probeLabel, probeWorker } from "./environment.ts"
 import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
@@ -736,7 +737,7 @@ const noteOf = (entry: Entry, title: string, branch: string): string => {
   if (entry.phase._tag !== "Done") return title
   const outcome = entry.phase.outcome
   return outcome._tag === "Merged"
-    ? `${sanitizeLine(outcome.commit.slice(0, 7))} merged into ${branch}`
+    ? `${sanitizeLine(shortHash(outcome.commit))} merged into ${branch}`
     : "no change to merge"
 }
 

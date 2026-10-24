@@ -1,6 +1,6 @@
 // How a failed read, or a write git was kept from, is made again: a few times in all, a few
 // seconds apart, as a Schedule for Effect.retry. Each policy is named once, where its reads are:
-// merge.ts's gitAgain for the git reads that steer a merge, schedule.ts's readAgain for bd's.
+// branch.ts's gitAgain for the git reads that steer a merge, schedule.ts's readAgain for bd's.
 import { type Duration, Effect, Schedule } from "effect"
 
 /** How a failing effect is made again: up to `tries` times in all, `after` apart. */
