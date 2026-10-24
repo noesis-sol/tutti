@@ -134,9 +134,9 @@ export interface MergeOptions {
   readonly noMore: Effect.Effect<string | undefined>
   /**
    * Where a hand-back due to a worker at the account's usage limit waits for the limit to lift: the
-   * usage-limit hold, which sends it at the reset (handback.ts's give). Without it, it is sent at once.
+   * usage-limit hold, which sends it at the reset (handback.ts's give). Without it, it is sent at once (noReset).
    */
-  readonly atReset?: AtReset
+  readonly atReset: AtReset
   /**
    * Whether the machine is loaded now: the run holds at --machine-workers, or its last load reading
    * has it pressed (load.ts's pressing). A hand-back's time limit leaves out the time it is, up to

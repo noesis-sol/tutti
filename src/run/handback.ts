@@ -480,6 +480,13 @@ export interface AtReset {
   waits<A, E, R>(id: string, wait: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
 }
 
+/** No usage-limit hold to wait on: a hand-back is sent at once, its wait for the limit its own. */
+export const noReset: AtReset = {
+  keep: () => Effect.succeed(null),
+  takeBack: () => Effect.succeed(false),
+  waits: (_id, wait) => wait,
+}
+
 /** Why a hand-back kept for the reset isn't sent: you steered its worker meanwhile. */
 const steeredWhile = "you steered its worker while it waited for the usage limit"
 
@@ -557,7 +564,7 @@ interface Late {
  * every loadEvery) left out too, up to `limit` again, as orchestra 0.9.0 has it. Each time the
  * worker is seen at the limit, git is asked whether it has done what it was asked, its turn having
  * ended on the limit as it finished (a turn that has ended can't change git): "taken" when it has.
- * Late once the time is up. Its wait for the limit is one of `options.atReset`'s, when given.
+ * Late once the time is up. Its wait for the limit is one of `options.atReset`'s.
  */
 const clock = (
   handBack: HandBack,
@@ -614,7 +621,7 @@ const clock = (
         detail`${id}'s worker is at the usage limit on its hand-back: it carries on once the limit lifts, the wait not counting toward the ${formatDuration(limit)}`,
       )
       const lifted = whenState(id, (state) => !isLimited(state))
-      yield* atReset === undefined ? lifted : atReset.waits(id, lifted)
+      yield* atReset.waits(id, lifted)
     }
   })
 
@@ -737,7 +744,7 @@ const sendAtReset = (
  * outstanding and the worker has settled, within `limit` from the push, the time its worker waits at
  * the account's usage limit not counting, nor the time the machine is loaded meanwhile
  * (`options.loaded`), up to `limit` again (clock). A worker at the limit already is handed it once
- * the limit lifts, by `options.atReset` when given (sendAtReset). A worker at the limit with what it
+ * the limit lifts, by `options.atReset` (sendAtReset). A worker at the limit with what it
  * was asked done in git has given its answer; one past the limit is stopped (endLate), the line
  * saying how much more the machine's load gave it. Why it wasn't done; undefined when what it left
  * is to be looked at.
@@ -762,7 +769,7 @@ export const give = (
         taken = Effect.void
       } else if (Result.isSuccess(state) && state.success._tag !== "Closed") {
         const sent =
-          state.success._tag === "UsageLimited" && atReset !== undefined
+          state.success._tag === "UsageLimited"
             ? yield* sendAtReset(handBack, limit, atReset)
             : yield* sendNow(id, prompt)
         // It left the limit without the hand-back: given as to any worker, from its state now.

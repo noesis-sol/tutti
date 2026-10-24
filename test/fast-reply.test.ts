@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { Duration, Effect, Exit, Fiber, Layer, type Scope, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
-import { give, type HandBack } from "../src/run/handback.ts"
+import { give, type HandBack, noReset } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
 import { layer as hostLayer, type Script, turn } from "../src/testing/AgentHost.ts"
@@ -110,7 +110,10 @@ describe("a reply that comes at once", () => {
         // Just started, its state Starting: the hand-back is sent to its open session, and its
         // script's fiber, forked by the start, answers it before any fiber give forks has run.
         yield* host.start(id, session)
-        return yield* give(handBack, Duration.minutes(30), { loaded: Effect.succeed(false) })
+        return yield* give(handBack, Duration.minutes(30), {
+          atReset: noReset,
+          loaded: Effect.succeed(false),
+        })
       }).pipe(Effect.provide(Ledger.layer)) as Effect.Effect<
         string | undefined,
         unknown,

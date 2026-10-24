@@ -50,7 +50,14 @@ import { Git } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
 import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from "./checkback.ts"
 import { RunFibers } from "./fibers.ts"
-import { type HandBacks, handOver, makeHandBacks, type RebaseStop, resolve } from "./handback.ts"
+import {
+  type HandBacks,
+  handOver,
+  makeHandBacks,
+  noReset,
+  type RebaseStop,
+  resolve,
+} from "./handback.ts"
 import { mergedByHand as handMerged } from "./handMerged.ts"
 import { type Held, makeHeld } from "./held.ts"
 import { Ledger } from "./ledger.ts"
@@ -170,6 +177,7 @@ export const make = (
     const options: MergeOptions = {
       ...given,
       noMore: given.noMore ?? Effect.succeed(undefined),
+      atReset: given.atReset ?? noReset,
       loaded: given.loaded ?? Effect.succeed(false),
       recheckSlot: given.recheckSlot ?? (() => Effect.succeed(true)),
       setUps: given.setUps ?? (yield* makeSetUps),
