@@ -35,7 +35,7 @@
 // list before the next ticket starts (requires.ts).
 import { unlinkSync } from "node:fs"
 import { join } from "node:path"
-import { Effect, Option, Ref, Result } from "effect"
+import { Data, Effect, Option, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { decodeConfig, formatDuration } from "../project/configFile.ts"
@@ -245,13 +245,16 @@ export const fileList = (files: ReadonlyArray<string>): string =>
     : line`${files.slice(0, maxFilesNamed)} and ${files.length - maxFilesNamed} more`
 
 /** How the setup before a ticket's check went. */
-export type SetUp =
+export type SetUp = Data.TaggedEnum<{
   /** No setup command is set, or no file it is for changed: nothing ran. */
-  | { readonly _tag: "Unneeded" }
+  Unneeded: Record<never, never>
   /** `after`: its worktree's status read as it ended, if git read one (noteWritten). */
-  | { readonly _tag: "Passed"; readonly after?: ReadonlyArray<StatusEntry> }
+  Passed: { readonly after?: ReadonlyArray<StatusEntry> }
   /** It failed, timed out or couldn't run; `output` is where its whole output is. */
-  | { readonly _tag: "Failed"; readonly error: CheckError; readonly output: string }
+  Failed: { readonly error: CheckError; readonly output: string }
+}>
+
+export const SetUp = Data.taggedEnum<SetUp>()
 
 /**
  * A worker's own commits on the ticket's branch since it closed the ticket, whose changes to a setup
@@ -286,7 +289,7 @@ export const setUp = (
 ): Effect.Effect<SetUp, never, Checks | Git | Worktrees | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
-    if (command === null) return { _tag: "Unneeded" } satisfies SetUp
+    if (command === null) return SetUp.Unneeded()
     const git = yield* Git
     const from = yield* setUps.from(ticket.id, fork)
     const read = yield* Effect.all(
@@ -320,7 +323,7 @@ export const setUp = (
         if (hit.length > 0) why.push(line`${fileList(hit)} changed in its worker's ${fix.what}`)
       }
     }
-    if (why.length === 0) return { _tag: "Unneeded" } satisfies SetUp
+    if (why.length === 0) return SetUp.Unneeded()
     const what = why.join(" and ")
     if (fix === undefined && !ahead) {
       yield* (yield* Ledger).refine(ticket.id, Detail.Step({ step: "setup" }))
@@ -349,25 +352,23 @@ export const setUp = (
       }),
     )
     if (Result.isFailure(ran)) {
-      return { _tag: "Failed", error: ran.failure, output } satisfies SetUp
+      return SetUp.Failed({ error: ran.failure, output })
     }
-    if (ran.success._tag === "NoCheckCommand") return { _tag: "Unneeded" } satisfies SetUp
+    if (ran.success._tag === "NoCheckCommand") return SetUp.Unneeded()
     yield* setUps.set(ticket.id, onto, head)
-    return { _tag: "Passed", ...(after === undefined ? {} : { after }) } satisfies SetUp
+    return SetUp.Passed(after === undefined ? {} : { after })
   })
 
 /** How the setup before a ticket's worker went. */
-export type WorktreeSetUp =
+export type WorktreeSetUp = Data.TaggedEnum<{
   /** No setup command is set, or the worktree's dependencies are set up already: nothing ran. */
-  | { readonly _tag: "Unneeded" }
-  | { readonly _tag: "Passed" }
+  Unneeded: Record<never, never>
+  Passed: Record<never, never>
   /** `command` failed, timed out or couldn't run; `output` is where its whole output is. */
-  | {
-      readonly _tag: "Failed"
-      readonly command: string
-      readonly error: CheckError
-      readonly output: string
-    }
+  Failed: { readonly command: string; readonly error: CheckError; readonly output: string }
+}>
+
+export const WorktreeSetUp = Data.taggedEnum<WorktreeSetUp>()
 
 /** What the mark of a setup in the worktree holds; undefined when there is none. */
 const markIn = (worktree: string): Effect.Effect<string | undefined> =>
@@ -420,7 +421,7 @@ export const setUpWorktree = (
 ): Effect.Effect<WorktreeSetUp, never, Checks | Git | Worktrees | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
-    if (command === null) return { _tag: "Unneeded" } satisfies WorktreeSetUp
+    if (command === null) return WorktreeSetUp.Unneeded()
     const git = yield* Git
     const { id, path, branch } = worktree
     const at = yield* Effect.result(git.revParse(repo, branch))
@@ -434,7 +435,7 @@ export const setUpWorktree = (
       what = line`the last setup in its worktree didn't finish; running '${command}' there again`
     } else {
       const last = yield* setUps.worktree(id)
-      if (last === undefined) return { _tag: "Unneeded" } satisfies WorktreeSetUp
+      if (last === undefined) return WorktreeSetUp.Unneeded()
       const changed =
         now === "" ? undefined : yield* Effect.result(git.filesBetween(repo, last, now))
       let why: string
@@ -442,7 +443,7 @@ export const setUpWorktree = (
         why = "git could not say what changed since its dependencies were last set up"
       } else {
         const hit = setupFilesIn(changed.success, files)
-        if (hit.length === 0) return { _tag: "Unneeded" } satisfies WorktreeSetUp
+        if (hit.length === 0) return WorktreeSetUp.Unneeded()
         why = line`${fileList(hit)} changed since its dependencies were last set up`
       }
       what = line`${why}; running '${command}' in its worktree`
@@ -463,11 +464,11 @@ export const setUpWorktree = (
     )
     if (Result.isFailure(ran)) {
       yield* writeMark(id, path, failedMark)
-      return { _tag: "Failed", command, error: ran.failure, output } satisfies WorktreeSetUp
+      return WorktreeSetUp.Failed({ command, error: ran.failure, output })
     }
     if (now !== "") yield* setUps.setWorktree(id, now)
     yield* dropMark(id, path)
-    return { _tag: "Passed" } satisfies WorktreeSetUp
+    return WorktreeSetUp.Passed()
   })
 
 /** How a setup failed, for a line: `fails`, did not finish, or could not be run. */
@@ -506,7 +507,7 @@ export interface SetupTicket {
 export const leaveSetupFailed = (
   ticket: SetupTicket,
   worktree: string,
-  failed: Extract<WorktreeSetUp, { readonly _tag: "Failed" }>,
+  failed: Data.TaggedEnum.Value<WorktreeSetUp, "Failed">,
   setUps: SetUps,
 ): Effect.Effect<void, never, Beads | Ledger | Log | EventStream> =>
   Effect.gen(function* () {

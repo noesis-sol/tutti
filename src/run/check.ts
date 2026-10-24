@@ -18,7 +18,7 @@
 // keeps the commit of each ticket's branch its check last passed on (Passes), so a branch checked
 // as its worker fixed it, or resolved its rebase, isn't checked again while it stays on top.
 import { join } from "node:path"
-import { Clock, Effect, Predicate, Ref, Result, type Schema, type Scope } from "effect"
+import { Clock, Data, Effect, Predicate, Ref, Result, type Schema, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
@@ -39,20 +39,19 @@ import { Log, line, Tag, ticketLine } from "./log.ts"
 import { warn } from "./say.ts"
 
 /** How a ticket's merge check went. */
-export type Checked =
+export type Checked = Data.TaggedEnum<{
   /**
    * It passed; `command` is the check that ran. `after`: its worktree's status read as it ended, if
    * git read one (checkWrote.ts's noteWritten), for its caller to look for changes it left.
    */
-  | {
-      readonly _tag: "Passed"
-      readonly command: string
-      readonly after?: ReadonlyArray<StatusEntry>
-    }
+  Passed: { readonly command: string; readonly after?: ReadonlyArray<StatusEntry> }
   /** No check command is set: the rebased code merges unchecked. `after`, as Passed's. */
-  | { readonly _tag: "Unchecked"; readonly after?: ReadonlyArray<StatusEntry> }
+  Unchecked: { readonly after?: ReadonlyArray<StatusEntry> }
   /** It failed, timed out or couldn't run; `output` is where its whole output is. */
-  | { readonly _tag: "Failed"; readonly error: CheckError; readonly output: string }
+  Failed: { readonly error: CheckError; readonly output: string }
+}>
+
+export const Checked = Data.taggedEnum<Checked>()
 
 /** Which check a `check` record is of (§ 10). */
 export type CheckSuite = (typeof checkSuites)[number]
@@ -309,12 +308,11 @@ export const checkOnce = (
           how.train === true ? { train: true } : {},
         )
         if (ran._tag === "Failure") {
-          return { _tag: "Failed", error: ran.failure, output: to.outputFile } satisfies Checked
+          return Checked.Failed({ error: ran.failure, output: to.outputFile })
         }
         const result = ran.success
         const after = status === undefined ? {} : { after: status }
-        if (result._tag === "NoCheckCommand")
-          return { _tag: "Unchecked", ...after } satisfies Checked
+        if (result._tag === "NoCheckCommand") return Checked.Unchecked(after)
         const what = line`${ticket.id}'s check '${result.command}'`
         const flaky = result.flaky.map(
           (test) =>
@@ -333,7 +331,7 @@ export const checkOnce = (
         for (const warning of flaky) {
           yield* warn(warning, ticket.id)
         }
-        return { _tag: "Passed", command: result.command, ...after } satisfies Checked
+        return Checked.Passed({ command: result.command, ...after })
       }),
     )
   })

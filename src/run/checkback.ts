@@ -36,7 +36,7 @@
 // MERGE_CONFLICT after a resolution (the branch put back as the ticket closed it), its line and
 // notes saying what came of each attempt. A failure that can't be handed back is set aside at once,
 // its line saying why.
-import { Effect, Ref, Result } from "effect"
+import { Data, Effect, Ref, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -156,38 +156,56 @@ const atLimit = (id: string): Effect.Effect<boolean, never, AgentHost> =>
   })
 
 /**
+ * Why a failed check isn't handed back to the ticket's worker: check hand-backs are turned off,
+ * which leaves nothing to say (Off), or as `why` says (Not).
+ */
+export type FixRefusal = Data.TaggedEnum<{
+  Off: Record<never, never>
+  Not: { readonly why: string }
+}>
+
+export const FixRefusal = Data.taggedEnum<FixRefusal>()
+
+/** What `refusal` says of why its failure isn't handed back: nothing when hand-backs are off. */
+export const refusalWhy = (refusal: FixRefusal): string | undefined =>
+  FixRefusal.$match(refusal, { Off: () => undefined, Not: ({ why }) => why })
+
+/**
  * Why `stop`'s failure can't be handed back to the ticket's worker, the `fixed`th time so far:
- * undefined when it can, "" when check hand-backs are turned off (nothing to say). While the run
- * holds or winds down it takes on no more work, as `options.noMore` says, but for a worker at the
- * account's usage limit while that limit alone holds the run: it is handed the failure once the
- * limit lifts.
+ * undefined when it can. While the run holds or winds down it takes on no more work, as
+ * `options.noMore` says, but for a worker at the account's usage limit while that limit alone holds
+ * the run: it is handed the failure once the limit lifts.
  */
 export const whyNotFix = (
   stop: CheckStop,
   options: MergeOptions,
   fixed: number,
-): Effect.Effect<string | undefined, never, MergeEnv> =>
+): Effect.Effect<FixRefusal | undefined, never, MergeEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const ledger = yield* Ledger
     const { id } = stop.ticket
+    const not = (why: string) => FixRefusal.Not({ why })
     const most = config.settings.merge.check_hand_backs
-    if (most === 0) return ""
-    if (fixed >= most) return `it was handed back to its worker ${times(fixed)} already`
+    if (most === 0) return FixRefusal.Off()
+    if (fixed >= most) return not(`it was handed back to its worker ${times(fixed)} already`)
     if (stop.error._tag === "CheckTimedOut") {
-      return "it did not finish, so there is no failure to show its worker"
+      return not("it did not finish, so there is no failure to show its worker")
     }
     if (stop.error._tag === "CheckNotRun") {
-      return "it could not be run, so there is no failure to show its worker"
+      return not("it could not be run, so there is no failure to show its worker")
     }
-    if (stop.at === "" || stop.head === "") return "git could not say what the check failed on"
+    if (stop.at === "" || stop.head === "") return not("git could not say what the check failed on")
     const noMore = options.noMore === undefined ? undefined : yield* options.noMore
     // A worker at the usage limit takes it once the limit lifts (handback.ts's give).
-    if (noMore !== undefined && !(noMore === usageHolds && (yield* atLimit(id)))) return noMore
+    if (noMore !== undefined && !(noMore === usageHolds && (yield* atLimit(id)))) {
+      return not(noMore)
+    }
     const state = yield* ledger.current
-    if (state.windDown !== null) return "the run is winding down"
-    if (state.tickets.get(id)?.steered === true) return "you have steered its worker"
-    return yield* workerAway(id)
+    if (state.windDown !== null) return not("the run is winding down")
+    if (state.tickets.get(id)?.steered === true) return not("you have steered its worker")
+    const away = yield* workerAway(id)
+    return away === undefined ? undefined : not(away)
   })
 
 /** The most commits a check hand-back lists of those that landed on the base. */
@@ -280,10 +298,13 @@ export const handOverFix = (
  * What the worker left after a check hand-back: its fix, the branch as the check failed on it (it
  * found nothing to fix), or why it is rejected.
  */
-export type Verified =
-  | { readonly _tag: "Fixed"; readonly commits: string }
-  | { readonly _tag: "Unchanged" }
-  | { readonly _tag: "Rejected"; readonly why: string }
+export type Verified = Data.TaggedEnum<{
+  Fixed: { readonly commits: string }
+  Unchanged: Record<never, never>
+  Rejected: { readonly why: string }
+}>
+
+export const Verified = Data.taggedEnum<Verified>()
 
 /**
  * Looks at what the worker left after `stop`'s failure was handed back, without taking its word for
@@ -297,7 +318,7 @@ export const verifyFixed = (
   Effect.gen(function* () {
     const git = yield* Git
     const { id, branch } = stop.ticket
-    const reject = (why: string) => ({ _tag: "Rejected", why }) satisfies Verified
+    const reject = (why: string) => Verified.Rejected({ why })
     const read = yield* Effect.result(
       Effect.gen(function* () {
         const dirty = yield* leftClean(stop.ticket, "fixing")
@@ -306,13 +327,13 @@ export const verifyFixed = (
           return reject(line`its worker rewrote the commits on ${branch} rather than add to them`)
         }
         const commits = yield* git.log(options.repo, stop.at, branch)
-        if (commits.length === 0) return { _tag: "Unchanged" } satisfies Verified
+        if (commits.length === 0) return Verified.Unchanged()
         const other = commits.find((commit) => !namesTicket(commit.message, id))
         if (other !== undefined) {
           return reject(line`its worker's commit ${short(other.hash)} does not name ${id}`)
         }
         const n = commits.length
-        return { _tag: "Fixed", commits: n === 1 ? "1 commit" : `${n} commits` } satisfies Verified
+        return Verified.Fixed({ commits: n === 1 ? "1 commit" : `${n} commits` })
       }),
     )
     return Result.isSuccess(read)
@@ -348,16 +369,16 @@ export const undoFix = (stop: CheckStop): Effect.Effect<string, never, MergeEnv>
     }
   })
 
-/** What came of the hand-backs, `tries` in turn, for a line or a note; `not`, why no more. */
-const handedBack = (tries: ReadonlyArray<string>, not: string): string => {
+/** What came of the hand-backs, `tries` in turn, for a line or a note; `not`, why no more, if said. */
+const handedBack = (tries: ReadonlyArray<string>, not?: string): string => {
   const each = tries.map((tried, i) => `(${i + 1}) ${tried}`).join("; ")
-  const more = not === "" ? "" : `; not handed back again: ${not}`
+  const more = not === undefined ? "" : `; not handed back again: ${not}`
   return `handed back to its worker to fix ${times(tries.length)}: ${each}${more}`
 }
 
 /**
  * Sets the ticket aside after its failure was handed back `tries.length` times, the last failure as
- * `stop` says and `not` saying why it went back no more: Fixing → Review with CHECKS_FAILED after a
+ * `stop` says and `not` saying why it went back no more, unless the tries say it already: Fixing → Review with CHECKS_FAILED after a
  * clean rebase, or on a branch on top of the base already, Fixing{afterResolution} → Blocked with MERGE_CONFLICT after a resolution, its notes
  * saying what came of each attempt.
  */
@@ -366,7 +387,7 @@ export const setAside = (
   options: MergeOptions,
   memory: MergeMemory,
   tries: ReadonlyArray<string>,
-  not: string,
+  not?: string,
 ) =>
   Effect.gen(function* () {
     const beads = yield* Beads
@@ -395,11 +416,24 @@ export const setAside = (
     )
   })
 
+/**
+ * How a check on what its worker left after a check hand-back ended: the fix verified and checked
+ * (Verified), the ticket set aside (Aside), or the check failing on the fix, `stop`, to be handed
+ * back again (Again).
+ */
+export type FixEnd = Data.TaggedEnum<{
+  Verified: Record<never, never>
+  Aside: Record<never, never>
+  Again: { readonly stop: CheckStop }
+}>
+
+export const FixEnd = Data.taggedEnum<FixEnd>()
+
 /** How a check hand-back ended: the fix verified and checked, or the ticket set aside. */
-export type Fixed = "verified" | "aside"
+export type Fixed = Data.TaggedEnum.Value<FixEnd, "Verified" | "Aside">
 
 /** What its worker left on a check hand-back that is to be checked: a fix, or nothing. */
-export type Left = Exclude<Verified, { readonly _tag: "Rejected" }>
+export type Left = Data.TaggedEnum.Value<Verified, "Fixed" | "Unchanged">
 
 /** What its worker left, `left`, in a few words: `1 commit`, or `nothing`. */
 export const committed = (left: Left): string => (left._tag === "Fixed" ? left.commits : "nothing")
@@ -421,10 +455,10 @@ export const fixPassed = (
 
 /**
  * What came of the check, or the setup before it, on what its worker left after `stop`'s failure
- * was handed back, `left`, `tries` saying what came of the hand-backs before it: "verified" when it
- * passes; "aside" when its worker committed nothing and it fails again, or it fails with no
- * hand-back left, the ticket set aside; else the failure on the fix, to be handed back again, its
- * `tried` saying what came of each hand-back so far. `at`: the commit checked, its branch's as the
+ * was handed back, `left`, `tries` saying what came of the hand-backs before it: Verified when it
+ * passes; Aside when its worker committed nothing and it fails again, or it fails with no
+ * hand-back left, the ticket set aside; else Again, the failure on the fix to be handed back
+ * again, its `tried` saying what came of each hand-back so far. `at`: the commit checked, its branch's as the
  * setup started ("" when git couldn't say), where a failure stops.
  */
 export const afterFix = (
@@ -435,15 +469,15 @@ export const afterFix = (
   options: MergeOptions,
   memory: MergeMemory,
   at: string,
-): Effect.Effect<"verified" | "aside" | CheckStop, never, MergeEnv> =>
+): Effect.Effect<FixEnd, never, MergeEnv> =>
   checked._tag === "Failed"
     ? fixFailed(stop, left, checked.error, checked.output, tries, options, memory, at)
-    : Effect.as(fixPassed(stop.ticket, left), "verified" as const)
+    : Effect.as(fixPassed(stop.ticket, left), FixEnd.Verified())
 
 /**
  * What came of a check, or the setup before it, that failed (`error`, its output in `output`) on
- * what its worker left after `stop`'s failure was handed back, as afterFix says: "aside", the
- * ticket set aside, or the failure on the fix, to be handed back again.
+ * what its worker left after `stop`'s failure was handed back, as afterFix says: Aside, the ticket
+ * set aside, or Again, the failure on the fix, to be handed back again.
  */
 export const fixFailed = (
   stop: CheckStop,
@@ -454,7 +488,7 @@ export const fixFailed = (
   options: MergeOptions,
   memory: MergeMemory,
   at: string,
-): Effect.Effect<"aside" | CheckStop, never, MergeEnv> =>
+): Effect.Effect<Data.TaggedEnum.Value<FixEnd, "Aside" | "Again">, never, MergeEnv> =>
   Effect.gen(function* () {
     const { id } = stop.ticket
     const how = failedHow(error)
@@ -465,7 +499,7 @@ export const fixFailed = (
       ]
       const again = { ...stop, error, output }
       yield* setAside(again, options, memory, tried, "its worker found nothing to fix")
-      return "aside"
+      return FixEnd.Aside()
     }
     const tried = [
       ...tries,
@@ -473,9 +507,9 @@ export const fixFailed = (
     ]
     const next: CheckStop = { ...stop, at, error, output, tried }
     const not = yield* whyNotFix(next, options, yield* memory.fixes.count(id))
-    if (not === undefined) return next
-    yield* setAside(next, options, memory, tried, not)
-    return "aside"
+    if (not === undefined) return FixEnd.Again({ stop: next })
+    yield* setAside(next, options, memory, tried, refusalWhy(not))
+    return FixEnd.Aside()
   })
 
 /**
@@ -528,29 +562,21 @@ export const fixCheck = (
         options,
       )
       const verified =
-        why === undefined
-          ? yield* verifyFixed(stop, options)
-          : ({ _tag: "Rejected", why } satisfies Verified)
+        why === undefined ? yield* verifyFixed(stop, options) : Verified.Rejected({ why })
       if (verified._tag === "Rejected") {
-        yield* setAside(
-          stop,
-          options,
-          memory,
-          [...tries, `${verified.why}${yield* undoFix(stop)}`],
-          "",
-        )
-        return "aside"
+        yield* setAside(stop, options, memory, [...tries, `${verified.why}${yield* undoFix(stop)}`])
+        return FixEnd.Aside()
       }
       const fix: Fix = { what: "fix", from: stop.at }
       const did = line`committed ${committed(verified)}`
       const rest = Effect.succeed({ fixed: verified, tries })
-      if (yield* carryIfBaseMoved(stop, did, fix, rest, options, memory)) return "verified"
+      if (yield* carryIfBaseMoved(stop, did, fix, rest, options, memory)) return FixEnd.Verified()
       const { at, checked } = yield* checkWithFix(stop, fix, options, memory)
       const after = yield* afterFix(stop, verified, checked, tries, options, memory, at)
-      if (after === "verified" || after === "aside") return after
-      if (!(yield* handOverFix(after, options, memory.fixes))) return "aside"
-      stop = after
-      tries = after.tried ?? []
+      if (after._tag !== "Again") return after
+      if (!(yield* handOverFix(after.stop, options, memory.fixes))) return FixEnd.Aside()
+      stop = after.stop
+      tries = after.stop.tried ?? []
     }
   })
 
@@ -587,9 +613,9 @@ export const fixResolution = (
       return yield* fixCheck(stop, options, memory)
     }
     const why = failedResolved(rebase, error, output)
-    const tail =
-      not === undefined || not === "" ? "" : line`; not handed back to its worker: ${not}`
-    const before = tries.length === 0 ? "" : `; before that, it was ${handedBack(tries, "")}`
+    const said = not === undefined ? undefined : refusalWhy(not)
+    const tail = said === undefined ? "" : line`; not handed back to its worker: ${said}`
+    const before = tries.length === 0 ? "" : `; before that, it was ${handedBack(tries)}`
     yield* rejectResolution(rebase, options, `${why}${tail}${before}`)
-    return "aside"
+    return FixEnd.Aside()
   })

@@ -49,7 +49,7 @@ import { Store } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
 import { aheadKey, clearAhead, markAhead, rebasedAheadOf } from "./ahead.ts"
 import { leaveForReview } from "./aside.ts"
-import { checkOnce, clearUnchecked, failedHow } from "./check.ts"
+import { Checked, checkOnce, clearUnchecked, failedHow } from "./check.ts"
 import { RunFibers } from "./fibers.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import {
@@ -62,7 +62,7 @@ import {
   type MergeMemory,
   type MergeOptions,
   onBranch,
-  type Prepared,
+  Prepared,
   type Restored,
   restoreBranch,
   stopOver,
@@ -488,7 +488,7 @@ export const make = (
         if (!ranSetUp) yield* mark(checking)
         const checked =
           setup._tag === "Failed"
-            ? ({ _tag: "Failed", error: setup.error, output: setup.output } as const)
+            ? Checked.Failed({ error: setup.error, output: setup.output })
             : yield* checkOnce(checking.ticket, { suite: "merge", train: true })
         if (checked._tag !== "Failed") {
           const passed = yield* save({ ...checking, step: Step.Passed({ head, setUp: ranSetUp }) })
@@ -719,7 +719,7 @@ export const make = (
             "git failed",
             line`could not tell where ${branch} is, after it was rebased to be checked ahead of its turn: ${gitWhy(at.failure)}; ${branch} is not merged, its worktree ${worktree} left for review`,
           )
-          return { _tag: "Over", stop } satisfies Prepared
+          return Prepared.Over({ stop })
         }
         const now = merged(yield* Effect.result(git.revParse(repo, base)))
         const step = ended.step
@@ -743,7 +743,7 @@ export const make = (
               Tag.rebaseFailed,
             )`${id} closed, but ${branch} could not be put back as its worker left it, at ${ended.orig.slice(0, 7)}, after it was rebased onto ${ended.behind} to be checked ahead of its turn: ${why}; worktree ${worktree} left for review`,
           })
-          return { _tag: "Over" } satisfies Prepared
+          return Prepared.Over({})
         }
         if (back === undefined) return undefined
         const which = now

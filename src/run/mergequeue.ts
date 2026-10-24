@@ -365,7 +365,7 @@ export const make = (
               options,
               memory,
             )
-            return fixed === "verified"
+            return fixed._tag === "Verified"
           }
           return resolved._tag === "Verified"
         })
@@ -377,7 +377,10 @@ export const make = (
     const fixBack = (stop: CheckStop) =>
       Effect.gen(function* () {
         const handed = yield* handOverFix(stop, options, fixes)
-        const work = Effect.map(fixCheck(stop, options, memory), (fixed) => fixed === "verified")
+        const work = Effect.map(
+          fixCheck(stop, options, memory),
+          (fixed) => fixed._tag === "Verified",
+        )
         yield* underWay(stop.ticket.id, handed, work, stop.ticket)
       })
 

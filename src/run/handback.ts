@@ -37,7 +37,7 @@
 // A conflict that can't be handed back is Blocked at once, its rebase aborted, and the MERGE_CONFLICT
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
-import { Clock, Duration, Effect, Option, Ref, Result, Stream, SubscriptionRef } from "effect"
+import { Clock, Data, Duration, Effect, Option, Ref, Result, Stream, SubscriptionRef } from "effect"
 import { type AgentGone, AgentHost } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -969,17 +969,19 @@ export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, M
  * the caller to close as unchanged, closeUnchanged), the ticket blocked, or the resolution verified
  * but its check, or the setup before it, failing, for checkback.ts to hand back or block.
  */
-export type Resolved =
-  | { readonly _tag: "Verified" }
-  | { readonly _tag: "Unchanged"; readonly unchanged: Unchanged }
-  | { readonly _tag: "Blocked" }
-  | {
-      readonly _tag: "CheckFailed"
-      readonly error: CheckError
-      readonly output: string
-      /** The commit checked, its branch's as the setup started; "" when git couldn't say. */
-      readonly at: string
-    }
+export type Resolved = Data.TaggedEnum<{
+  Verified: Record<never, never>
+  Unchanged: { readonly unchanged: Unchanged }
+  Blocked: Record<never, never>
+  CheckFailed: {
+    readonly error: CheckError
+    readonly output: string
+    /** The commit checked, its branch's as the setup started; "" when git couldn't say. */
+    readonly at: string
+  }
+}>
+
+export const Resolved = Data.taggedEnum<Resolved>()
 
 /** Why a resolution whose check fails is rejected, for its lines and notes. */
 export const failedResolved = (stop: RebaseStop, error: CheckError, output: string): string => {
@@ -1057,7 +1059,7 @@ export const resolve = (
           : `its worker found the changes of ${branch} on ${base} already and skipped them in the rebase`,
       )
       if (nothing._tag === "Unchanged") {
-        return { _tag: "Unchanged", unchanged: nothing } satisfies Resolved
+        return Resolved.Unchanged({ unchanged: nothing })
       }
       // Checked once, where it merges: a check on stop.onto would be run again on the branch
       // rebased.
@@ -1067,18 +1069,13 @@ export const resolve = (
         tries: before?.tries ?? [],
       }))
       if (yield* carryIfBaseMoved(stop, line`finished the rebase`, fix, tries, options, memory)) {
-        return { _tag: "Verified" } satisfies Resolved
+        return Resolved.Verified()
       }
       yield* logs.write(detail`${id}'s worker finished the rebase; checking it with '${check}'`)
       const { at, checked } = yield* checkWithFix(stop, fix, options, memory)
-      if (checked._tag !== "Failed") return { _tag: "Verified" } satisfies Resolved
-      return {
-        _tag: "CheckFailed",
-        error: checked.error,
-        output: checked.output,
-        at,
-      } satisfies Resolved
+      if (checked._tag !== "Failed") return Resolved.Verified()
+      return Resolved.CheckFailed({ error: checked.error, output: checked.output, at })
     }
     yield* rejectResolution(stop, options, why)
-    return { _tag: "Blocked" } satisfies Resolved
+    return Resolved.Blocked()
   })
