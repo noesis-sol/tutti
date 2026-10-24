@@ -15,6 +15,7 @@ import fc from "fast-check"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { Attention, emptyTally } from "../src/agent/Attention.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { deniedShownFor, Transcripts } from "../src/agent/Transcripts.ts"
 import type { WorkerState } from "../src/agent/WorkerState.ts"
@@ -356,7 +357,9 @@ describe("the live host", () => {
       }).pipe(
         Effect.provide(
           host.pipe(
-            Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+            Layer.provideMerge(
+              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            ),
             Layer.provideMerge(
               Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
             ),

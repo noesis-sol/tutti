@@ -10,6 +10,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Fiber, Layer, Option, Schedule, Stream } from "effect"
 import { AgentHost, AgentStartFailed, makeWorkers } from "../src/agent/AgentHost.ts"
 import { closedWhy, layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { read } from "../src/agent/reading.ts"
 import { WorkerEvent, WorkerState } from "../src/agent/WorkerState.ts"
@@ -59,7 +60,9 @@ const run = <A, E>(
     effect({ dir, log }).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
           ),

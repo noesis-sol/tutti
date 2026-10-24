@@ -25,7 +25,7 @@
 // because the session went (Gone), or with the layer's scope, ends the prompt, closes the query
 // (the SDK ends Claude Code's stdin, then sends SIGTERM after its grace, docs/spikes/02-sdk-
 // lifecycle.md § 2) and waits for the subprocess to exit, killing its process group, and its
-// descendants' (killTree), if it hasn't within closeLimit (its SessionProcess's closeAndWait). A
+// descendants' (killTree), if it hasn't within closeLimit (ClaudeCode's adapter does this). A
 // stream that ends or fails without tutti closing it, or a result with a startup_failure_reason,
 // makes the worker Gone, its reason ending with what Claude Code last wrote to stderr.
 //
@@ -50,14 +50,10 @@
 import { randomUUID } from "node:crypto"
 import { availableParallelism } from "node:os"
 import { join } from "node:path"
-import {
-  type McpSdkServerConfigWithInstance,
-  type Options,
-  type Query,
-  query,
-  type SDKControlInterruptResponse,
-  type SDKMessage,
-  type SDKUserMessage,
+import type {
+  McpSdkServerConfigWithInstance,
+  SDKMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import {
   Cause,
@@ -98,15 +94,21 @@ import {
   type Workers,
 } from "./AgentHost.ts"
 import type { Attention } from "./Attention.ts"
-import { queryThrew } from "./claudeBinary.ts"
+import {
+  BilledAs,
+  ClaudeCode,
+  type ClaudeSession,
+  type SessionSpec,
+  type WorkerShare,
+} from "./ClaudeCode.ts"
 import { readContextUsage } from "./contextUsage.ts"
-import { coreShare, workerEnv } from "./env.ts"
-import { serverName } from "./interviewTools.ts"
-import { type ChosenServers, inProcess, noServers, withOwn } from "./mcp.ts"
+import { coreShare } from "./env.ts"
+import { type ChosenServers, withOwn } from "./mcp.ts"
 import {
   changingNotes,
   interviewOptions,
   type SessionStart,
+  type WorkerCallbacks,
   workerCallbacks,
   workerOptions,
 } from "./options.ts"
@@ -121,12 +123,8 @@ import {
   skippedLine,
   startFailure,
 } from "./sessionChecks.ts"
-import {
-  type SessionProcess,
-  stderrQuoted,
-  withSessionProcess,
-  withStderr,
-} from "./sessionProcess.ts"
+import { kindOf, SessionKind, serversOf } from "./sessionKind.ts"
+import { stderrQuoted, withStderr } from "./sessionProcess.ts"
 import type { Transcripts } from "./Transcripts.ts"
 import { projectHasSkills } from "./unusedTools.ts"
 import { WorkerEvent } from "./WorkerState.ts"
@@ -164,21 +162,6 @@ export const interruptLimit: Duration.Duration = Duration.seconds(10)
 export const unansweredWhy = (limit: Duration.Duration): string =>
   `it didn't answer an interrupt within ${Duration.format(limit)}`
 
-/**
- * The Query's control requests its runtime has and its types lack (SDK 0.3.301, § 4.8):
- * `interrupt({ cancelQueued })`, and `cancelAsyncMessage(uuid)`, the `cancel_async_message` control
- * request, which answers whether it dropped the message from the queue.
- */
-export interface QueuedControls {
-  interrupt(options?: {
-    readonly cancelQueued?: boolean
-  }): Promise<SDKControlInterruptResponse | undefined>
-  cancelAsyncMessage(uuid: string): Promise<boolean>
-}
-
-/** `query`'s controls, through the local type. */
-export const queuedControls = (query: Query): QueuedControls => query as unknown as QueuedControls
-
 /** How long a session's mcpServerStatus() has to be answered before its start goes on unchecked. */
 export const statusLimit: Duration.Duration = Duration.seconds(10)
 
@@ -207,11 +190,9 @@ export interface LiveOptions {
   readonly cores?: number
   /** How long an interrupt's control requests have to be answered; interruptLimit. */
   readonly interruptLimit?: Duration.Duration
-  /** The Agent SDK's query(), which a test stands in for. */
-  readonly query?: typeof query
 }
 
-// A session whose query tutti has made: its handle, from Claude Code's spawn until it has exited.
+// A session tutti has opened: its handle, from Claude Code's spawn until it has exited.
 interface Live {
   readonly ticket: string
   readonly sessionId: string
@@ -219,12 +200,10 @@ interface Live {
   readonly servers: ChosenServers
   readonly entry: WorkerEntry
   readonly inbox: Queue.Queue<SDKUserMessage, Cause.Done>
-  readonly query: Query
-  readonly abort: AbortController
+  /** The session, opened through ClaudeCode in its lifecycle's scope. */
+  readonly claude: ClaudeSession
   /** Its lifecycle's scope: closing it closes the session. */
   readonly scope: Scope.Closeable
-  /** Claude Code's process, spawned by the SDK as query() is called. */
-  readonly process: SessionProcess
   /** The CLI's capabilities, from its initialize answer and each system/init. */
   readonly capabilities: Set<string>
   /** The startup_failure_reason of a result it sent. */
@@ -322,15 +301,23 @@ const startWhy = (cause: Cause.Cause<unknown>): string => {
 const failedWhy = (message: string, stderr: string): string =>
   withStderr(isLaunchFailure(message) ? launchFailed : `${endedWhy}: ${message}`, stderr)
 
+/** What a session of one kind is given (planOf). */
+interface Plan {
+  readonly servers: ChosenServers
+  readonly options: SessionSpec
+  /** A worker's changing notes (changingNotes); none for the probe or an interview. */
+  readonly notes: string | undefined
+}
+
 /**
- * The live AgentHost, over the Agent SDK, its workers' sessions set up by `options` and AppConfig.
+ * The live AgentHost, over ClaudeCode, its workers' sessions set up by `options` and AppConfig.
  */
 export const layer = (
   options: LiveOptions,
 ): Layer.Layer<
   AgentHost,
   never,
-  AppConfig | Attention | Transcripts | Log | FileSystem.FileSystem
+  AppConfig | ClaudeCode | Attention | Transcripts | Log | FileSystem.FileSystem
 > =>
   Layer.effect(
     AgentHost,
@@ -338,21 +325,19 @@ export const layer = (
       const config = yield* AppConfig
       const log = yield* Log
       const fs = yield* FileSystem.FileSystem
+      const claudeCode = yield* ClaudeCode
       const workers = yield* makeWorkers(checkCommands(config.settings))
       const scope = yield* Effect.scope
       const services = yield* Effect.context<Attention | Transcripts>()
       const otherWorkers = yield* OtherWorkers
       const cores = options.cores ?? availableParallelism()
-      const openQuery = options.query ?? query
-      // A session's environment, its share of the cores taken as it starts, from the other runs'
-      // workers the run last read: one started as another run begins keeps more than its share.
-      const envNow = Effect.map(otherWorkers.others, (others) =>
-        workerEnv({
-          subscription: options.account.subscription,
-          billing: config.billing,
+      // A session's share of the machine, its share of the cores taken as it starts, from the other
+      // runs' workers the run last read: one started as another run begins keeps more than its share.
+      const shareNow = Effect.map(
+        otherWorkers.others,
+        (others): WorkerShare => ({
           checkTimeout: config.settings.checks.fast.timeout,
           cores: coreShare(cores, config.settings.concurrent, others, config.machineWorkers),
-          ...(options.env === undefined ? {} : { env: options.env }),
         }),
       )
       // Whether workers keep Skill (§ 4.1), decided once, from the main checkout, as the run begins.
@@ -440,8 +425,7 @@ export const layer = (
       const setupProblem = (session: Live, problem: string) =>
         Effect.gen(function* () {
           yield* log.write(setupLine(session.ticket, problem))
-          yield* session.process.kill
-          session.abort.abort()
+          yield* session.claude.kill
           yield* gone(session, problem, true)
         })
 
@@ -482,7 +466,7 @@ export const layer = (
        * token-count calls). An answer that doesn't come, or can't be read, leaves the last figure.
        */
       const measure = (session: Live) =>
-        Effect.tryPromise(() => session.query.getContextUsage({ detail: "summary" })).pipe(
+        session.claude.contextUsage.pipe(
           Effect.flatMap((answer) => {
             const usage = readContextUsage(answer)
             return usage === undefined ? Effect.void : workers.measured(session.entry, usage)
@@ -495,7 +479,7 @@ export const layer = (
        * for makes the worker Gone.
        */
       const read = (session: Live) =>
-        Stream.fromAsyncIterable(session.query, (cause) => cause).pipe(
+        session.claude.messages.pipe(
           Stream.runForEach((message) =>
             onMessage(session, message).pipe(
               Effect.catchDefect((defect) => log.write(skippedLine(session.ticket, defect))),
@@ -506,18 +490,11 @@ export const layer = (
             gone(
               session,
               Exit.isSuccess(exit)
-                ? withStderr(endedWhy, session.process.stderrTail(stderrQuoted))
-                : failedWhy(causeMessage(exit.cause), session.process.stderrTail(stderrQuoted)),
+                ? withStderr(endedWhy, session.claude.stderrTail(stderrQuoted))
+                : failedWhy(causeMessage(exit.cause), session.claude.stderrTail(stderrQuoted)),
             ),
           ),
         )
-
-      /** Closes the session: the prompt ends, the query closes, and Claude Code exits. */
-      const shut = (session: Live) =>
-        Effect.gen(function* () {
-          yield* Queue.end(session.inbox)
-          yield* session.process.closeAndWait(() => session.query.close(), closeLimit)
-        })
 
       /**
        * The ticket's session `sessionId`, Starting in a scope of its own, once the ticket has no
@@ -597,6 +574,66 @@ export const layer = (
           return yield* Effect.failCause(exit.cause)
         })
 
+      /**
+       * What the ticket's session is given, by its kind: its MCP servers (serversOf, a worker's
+       * with tutti's own server), its options and its changing notes.
+       */
+      const planOf = (
+        ticket: string,
+        session: Session,
+        how: SessionStart,
+        callbacks: WorkerCallbacks,
+      ): Effect.Effect<Plan> =>
+        Effect.gen(function* () {
+          const kind = kindOf(session)
+          const given = serversOf(kind, options.servers)
+          const requiresNow = yield* Ref.get(requires)
+          const worker = (prompt: WorkerPrompt | null, servers: ChosenServers) =>
+            workerOptions({
+              config,
+              ticket,
+              worktree: session.cwd,
+              prompt,
+              servers,
+              skills,
+              readme,
+              requires: requiresNow,
+              callbacks,
+              session: how,
+            })
+          return yield* SessionKind.$match(kind, {
+            Worker: () =>
+              Effect.gen(function* () {
+                const servers =
+                  options.ownServer === undefined
+                    ? given
+                    : withOwn(given, requiresServerName, yield* options.ownServer(session.cwd))
+                return {
+                  servers,
+                  options: worker(options.prompt, servers),
+                  notes: changingNotes(
+                    { config, servers, readme, requires: requiresNow },
+                    options.prompt,
+                  ),
+                }
+              }),
+            Probe: () =>
+              Effect.succeed({ servers: given, options: worker(null, given), notes: undefined }),
+            Interview: (setup) =>
+              Effect.succeed({
+                servers: given,
+                options: interviewOptions({
+                  config,
+                  setup,
+                  chrome: options.servers.chrome === true,
+                  callbacks,
+                  session: how,
+                }),
+                notes: undefined,
+              }),
+          })
+        })
+
       const make = (ticket: string, session: Session, how: SessionStart, of: Scope.Closeable) =>
         Effect.gen(function* () {
           const there = yield* fs.exists(session.cwd).pipe(Effect.orElseSucceed(() => false))
@@ -618,81 +655,42 @@ export const layer = (
             services,
           )
           const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
-          const abort = new AbortController()
-          const env = yield* envNow
-          const setup = session.interview
-          const servers =
-            setup !== undefined
-              ? inProcess(serverName, setup.server, options.servers.chrome === true)
-              : session.probe === true
-                ? noServers
-                : options.ownServer === undefined
-                  ? options.servers
-                  : withOwn(
-                      options.servers,
-                      requiresServerName,
-                      yield* options.ownServer(session.cwd),
-                    )
-          const prompt = session.probe === true ? null : options.prompt
-          const requiresNow = yield* Ref.get(requires)
-          // A worker's changing notes; none for the probe or an interview.
-          const notes =
-            setup !== undefined || prompt === null
-              ? undefined
-              : changingNotes({ config, servers, readme, requires: requiresNow }, prompt)
-          const asked: Options =
-            setup !== undefined
-              ? interviewOptions({
-                  config,
-                  setup,
-                  chrome: options.servers.chrome === true,
-                  callbacks,
-                  session: how,
-                  env,
-                  abortController: abort,
-                })
-              : workerOptions({
-                  config,
-                  ticket,
-                  worktree: session.cwd,
-                  prompt,
-                  servers,
-                  skills,
-                  readme,
-                  requires: requiresNow,
-                  callbacks,
-                  session: how,
-                  env,
-                  abortController: abort,
-                })
-          const { options: sdkOptions, process: claude } = withSessionProcess(asked)
+          const share = yield* shareNow
+          const { servers, options: spec, notes } = yield* planOf(ticket, session, how, callbacks)
           const startupFailure = yield* Deferred.make<string>()
           // Claude Code, spawned, is closed with the session's scope, though the start is cancelled.
           const opened = yield* Effect.uninterruptible(
             Effect.gen(function* () {
-              // The SDK's query() throws as it is called when it finds no Claude Code to run.
-              const handle = yield* Effect.try({
-                try: () =>
-                  openQuery({
-                    prompt: Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
-                    options: sdkOptions,
-                  }),
-                catch: (cause) => new AgentStartFailed({ ticket, reason: queryThrew(cause) }),
-              })
+              // No Claude Code to run fails the start.
+              const claude = yield* claudeCode
+                .open({
+                  options: spec,
+                  prompt: Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
+                  billedAs: BilledAs.Workers({ subscription: options.account.subscription }),
+                  ...(options.env === undefined ? {} : { env: options.env }),
+                  share,
+                  onStderr: callbacks.stderr,
+                  closeLimit,
+                })
+                .pipe(
+                  Scope.provide(of),
+                  Effect.mapError(
+                    (error) => new AgentStartFailed({ ticket, reason: error.reason }),
+                  ),
+                )
+              // Closing the session ends its prompt first, and then closes it.
+              yield* Scope.addFinalizer(of, Queue.end(inbox))
               const opened: Live = {
                 ticket,
                 sessionId,
                 servers,
                 entry,
                 inbox,
-                query: handle,
-                abort,
+                claude,
                 scope: of,
-                process: claude,
                 capabilities: new Set(),
                 startupFailure,
               }
-              yield* Scope.addFinalizer(of, shut(opened))
               yield* Effect.sync(() => {
                 const current = sessions.get(ticket)
                 if (current?._tag === "Starting" && current.scope === of) {
@@ -707,10 +705,7 @@ export const layer = (
           )
           const reader = yield* read(opened).pipe(Effect.forkIn(of))
 
-          const initialized = yield* Effect.tryPromise({
-            try: () => opened.query.initializationResult(),
-            catch: (cause): unknown => cause,
-          }).pipe(
+          const initialized = yield* opened.claude.initialization.pipe(
             timeoutAwake({
               duration: startLimit,
               orElse: () => Effect.fail(`no answer within ${Duration.format(startLimit)}`),
@@ -721,7 +716,7 @@ export const layer = (
             for (const capability of capabilitiesOf(initialized.value)) {
               opened.capabilities.add(capability)
             }
-            const status = yield* Effect.tryPromise(() => opened.query.mcpServerStatus()).pipe(
+            const status = yield* opened.claude.mcpStatus.pipe(
               Effect.timeout(statusLimit),
               Effect.option,
             )
@@ -741,7 +736,7 @@ export const layer = (
           const reason = startFailure(
             refused,
             causeMessage(initialized.cause),
-            claude.stderrTail(stderrQuoted),
+            opened.claude.stderrTail(stderrQuoted),
           )
           yield* gone(opened, reason)
           return yield* new AgentStartFailed({
@@ -781,14 +776,15 @@ export const layer = (
         Effect.gen(function* () {
           const ticket = session.ticket
           const cancelQueued = session.capabilities.has(cancelQueuedCapability)
-          const controls = queuedControls(session.query)
-          const response = yield* Effect.tryPromise({
-            try: () => controls.interrupt({ cancelQueued }),
-            catch: (cause) =>
-              liveOf(sessions.get(ticket)) === session
-                ? new AgentProtocol({ ticket, detail: `interrupt failed: ${messageOf(cause)}` })
-                : new AgentGone({ ticket, why: "its session ended during the interrupt" }),
-          })
+          const response = yield* session.claude
+            .interrupt(cancelQueued)
+            .pipe(
+              Effect.mapError((error) =>
+                liveOf(sessions.get(ticket)) === session
+                  ? new AgentProtocol({ ticket, detail: `interrupt failed: ${error.reason}` })
+                  : new AgentGone({ ticket, why: "its session ended during the interrupt" }),
+              ),
+            )
           const stillQueued = response?.still_queued ?? []
           // Without cancelQueued, each message still queued is cancelled at once, before the
           // interrupted turn's result starts the next turn; one that runs all the same, refused
@@ -798,7 +794,7 @@ export const layer = (
             : yield* Effect.forEach(
                 stillQueued,
                 (uuid) =>
-                  Effect.tryPromise(() => controls.cancelAsyncMessage(uuid)).pipe(
+                  session.claude.cancelQueued(uuid).pipe(
                     Effect.orElseSucceed(() => false),
                     Effect.map((cancelled) => (cancelled === true ? [uuid] : [])),
                   ),
@@ -824,7 +820,7 @@ export const layer = (
           const why = unansweredWhy(interruptWithin)
           yield* log.write(detail`${session.ticket}: ${why}`)
           yield* gone(session, why)
-          session.abort.abort()
+          yield* session.claude.abort
           return yield* new AgentGone({ ticket: session.ticket, why })
         })
 
@@ -889,9 +885,8 @@ export const layer = (
         processes: Effect.sync(() => {
           const pids = new Map<string, number>()
           for (const [ticket, lifecycle] of sessions) {
-            const child = liveOf(lifecycle)?.process.child()
-            if (child?.pid !== undefined && child.exitCode === null && child.signalCode === null)
-              pids.set(ticket, child.pid)
+            const pid = liveOf(lifecycle)?.claude.pid()
+            if (pid !== undefined) pids.set(ticket, pid)
           }
           return pids
         }),

@@ -61,8 +61,7 @@ import {
 import { Attention } from "../agent/Attention.ts"
 import { readContextUsage } from "../agent/contextUsage.ts"
 import { activityHooks, type Hooks } from "../agent/hooks.ts"
-import { serverName } from "../agent/interviewTools.ts"
-import { type ChosenServers, inProcess, noServers } from "../agent/mcp.ts"
+import { type ChosenServers, noServers } from "../agent/mcp.ts"
 import { capabilitiesOf, type Reading } from "../agent/reading.ts"
 import {
   cancelQueuedCapability,
@@ -71,6 +70,7 @@ import {
   skippedLine,
   startFailure,
 } from "../agent/sessionChecks.ts"
+import { kindOf, serversOf } from "../agent/sessionKind.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
 import { WorkerEvent } from "../agent/WorkerState.ts"
 import { Log } from "../run/log.ts"
@@ -506,12 +506,7 @@ export const layer = (
               ...(refused === undefined ? {} : { startupFailureReason: refused }),
             })
           }
-          const given =
-            session.interview !== undefined
-              ? inProcess(serverName, session.interview.server, servers.chrome === true)
-              : session.probe === true
-                ? noServers
-                : servers
+          const given = serversOf(kindOf(session), servers)
           const problem =
             first?._tag === "StopAtStart"
               ? first.why

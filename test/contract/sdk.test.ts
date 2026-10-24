@@ -44,9 +44,10 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Option, Schedule, Stream } from "effect"
 import { startProbe } from "../../src/agent/Account.ts"
 import { AgentHost, AgentStartFailed, userMessage } from "../../src/agent/AgentHost.ts"
-import { layer as liveLayer, queuedControls } from "../../src/agent/AgentHostLive.ts"
+import { layer as liveLayer } from "../../src/agent/AgentHostLive.ts"
 import { Attention, type AttentionRequest, type Policy } from "../../src/agent/Attention.ts"
-import { paneVariable, probeEnv, workerEnv } from "../../src/agent/env.ts"
+import { ClaudeCode, queuedControls } from "../../src/agent/ClaudeCode.ts"
+import { paneVariable, workerEnv } from "../../src/agent/env.ts"
 import type { ChosenServers } from "../../src/agent/mcp.ts"
 import { noServersNote } from "../../src/agent/mcp.ts"
 import { type SessionStart, workerOptions } from "../../src/agent/options.ts"
@@ -163,7 +164,11 @@ const run = <A, E>(
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(setup.policy ?? waitForTest), transcriptsLayer()),
+            Layer.mergeAll(
+              attentionLayer(setup.policy ?? waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer,
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
@@ -216,23 +221,24 @@ const direct = (repo: string, cwd: string, how: SessionStart): Direct => {
   }
   const q = query({
     prompt: inbox(),
-    options: workerOptions({
-      config: configFor(repo),
-      ticket,
-      worktree: cwd,
-      prompt: workerPrompt,
-      servers: noServers,
-      skills: false,
-      callbacks: {
-        canUseTool: async (_tool, input) => ({ behavior: "allow", updatedInput: input }),
-        onElicitation: async () => ({ action: "decline" }),
-        hooks: {},
-        stderr: () => {},
-      },
-      session: how,
+    options: {
+      ...workerOptions({
+        config: configFor(repo),
+        ticket,
+        worktree: cwd,
+        prompt: workerPrompt,
+        servers: noServers,
+        skills: false,
+        callbacks: {
+          canUseTool: async (_tool, input) => ({ behavior: "allow", updatedInput: input }),
+          onElicitation: async () => ({ action: "decline" }),
+          hooks: {},
+          stderr: () => {},
+        },
+        session: how,
+      }),
       env: workerEnv({ subscription: true, billing: "subscription", env: hostEnv() }),
-      abortController: new AbortController(),
-    }),
+    },
   })
   const messages: Array<SDKMessage> = []
   const ended = (async () => {
@@ -1467,8 +1473,11 @@ live.describe("Agent SDK contract: the account probe", () => {
         join(dir, ".claude", "settings.json"),
         JSON.stringify({ permissions: { allow: ["Bash(echo contract)"] } }),
       )
+      const config = configFor(dir)
       const found = await Effect.runPromise(
-        startProbe({ config: configFor(dir), env: probeEnv({ env: hostEnv() }) }),
+        startProbe({ config, env: hostEnv() }).pipe(
+          Effect.provide(ClaudeCode.layer.pipe(Layer.provide(configLayer(config)))),
+        ),
       )
       // untrustedFiles holds what ignoresAllowRules matched in the probe's stderr.
       expect(found.untrustedFiles).toHaveLength(1)

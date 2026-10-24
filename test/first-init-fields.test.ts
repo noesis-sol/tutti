@@ -12,6 +12,7 @@ import fc from "fast-check"
 import type { Billing } from "../src/agent/Account.ts"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { type ChosenServers, checkInit, noServersNote, unlistedProblem } from "../src/agent/mcp.ts"
 import { uncheckedLine } from "../src/agent/sessionChecks.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
@@ -137,7 +138,6 @@ const settle = async (
       ...testEnv,
       FAKE_CLAUDE_SCENARIO: JSON.stringify({ log: join(dir, "fake.jsonl") }),
     },
-    query: without(fields),
   })
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -160,7 +160,13 @@ const settle = async (
     }).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layerWith(without(fields)),
+            ),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
           ),

@@ -7,6 +7,7 @@ import { Duration, Effect, Layer, Schedule } from "effect"
 import fc from "fast-check"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { probeOptions, type WorkerCallbacks, workerOptions } from "../src/agent/options.ts"
 import {
@@ -52,8 +53,6 @@ const optionsWith = (skills: boolean, askUserQuestion = true) => {
     skills,
     callbacks,
     session: { _tag: "New", sessionId: "s" },
-    env: {},
-    abortController: new AbortController(),
   })
 }
 
@@ -125,9 +124,6 @@ describe("the tools workers never use", () => {
   test("the login probe's session denies them and Skill", () => {
     const options = probeOptions({
       config: appConfig(),
-      env: {},
-      stderr: () => {},
-      abortController: new AbortController(),
     })
     expect(options.disallowedTools).toEqual([...unusedTools, "Skill"])
   })
@@ -233,7 +229,9 @@ const workerArgs = (dir: string): Promise<ReadonlyArray<string>> => {
       Effect.map((args) => args ?? []),
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(
               logLayer(),

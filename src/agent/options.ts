@@ -1,7 +1,8 @@
 // A worker session's SDK options (§ 4.1), as a pure function of the run's configuration, the
-// ticket, its worktree, the worker prompt, the chosen MCP servers, the session's callbacks, its
-// environment and its session ID: `sessionId` for a new session, `resume` for a resumed one, never
-// both (claude refuses the pair, docs/spikes/02-sdk-lifecycle.md).
+// ticket, its worktree, the worker prompt, the chosen MCP servers, the session's callbacks and its
+// session ID: `sessionId` for a new session, `resume` for a resumed one, never both (claude refuses
+// the pair, docs/spikes/02-sdk-lifecycle.md). They are a SessionSpec: what the session is, without
+// its launch (the environment, the executable, the spawn, the abort), which ClaudeCode adds.
 // The login probe's (§ 4.13) and the feature interview's (§ 4.10) are made from the same shared
 // options.
 //
@@ -27,7 +28,6 @@ import type {
   CanUseTool,
   HookCallbackMatcher,
   OnElicitation,
-  Options,
   SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
@@ -44,6 +44,7 @@ import { killTree } from "../services/processTree.ts"
 import { reap, reapGrace } from "../services/reaper.ts"
 import type { InterviewSetup } from "./AgentHost.ts"
 import { Attention } from "./Attention.ts"
+import type { SessionSpec } from "./ClaudeCode.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
 import { qualifiedToolNames, serverName } from "./interviewTools.ts"
 import { type ChosenServers, chromeArgs, hasOwn, mcpServers } from "./mcp.ts"
@@ -70,7 +71,7 @@ export interface WorkerCallbacks {
 
 /** What a worker's options are made from. */
 export interface WorkerOptionsInput {
-  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
+  readonly config: Pick<AppConfigValue, "repo" | "settings">
   readonly ticket: string
   /** The ticket's worktree, the session's folder. */
   readonly worktree: string
@@ -88,9 +89,6 @@ export interface WorkerOptionsInput {
   readonly requires?: ReadonlyArray<string>
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
-  /** workerEnv()'s environment (§ 4.13). */
-  readonly env: Record<string, string>
-  readonly abortController: AbortController
 }
 
 /**
@@ -134,10 +132,7 @@ export const spawnInOwnProcessGroup =
 
 /** What every session tutti starts with the workers' options is given: a worker's or the probe's. */
 interface SharedInput {
-  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
-  readonly env: Record<string, string>
-  readonly stderr: (data: string) => void
-  readonly abortController: AbortController
+  readonly config: Pick<AppConfigValue, "repo" | "settings">
   /** Whether the session gets Claude in Chrome: the project's choice, never the probe's. */
   readonly chrome: boolean
   /** Whether the session keeps Skill, the project having skills (projectHasSkills). */
@@ -148,8 +143,7 @@ interface SharedInput {
  * The options a worker's session and the login probe's share (§ 4.13: the probe runs with the
  * workers' options), so the two can't drift: the settings Claude Code reads, the permission mode,
  * model and effort, strict MCP config and Chrome (chromeArgs), the tools denied (the unused ones,
- * deniedTools, and AskUserQuestion when workers.ask_user_question is off), the environment, and the
- * spawn into a process group.
+ * deniedTools, and AskUserQuestion when workers.ask_user_question is off).
  */
 const sharedOptions = (input: SharedInput) => {
   const workers = input.config.settings.workers
@@ -165,12 +159,7 @@ const sharedOptions = (input: SharedInput) => {
       ...deniedTools(input.skills),
       ...(workers.ask_user_question ? [] : [askUserQuestionTool]),
     ],
-    stderr: input.stderr,
-    env: input.env,
-    ...(input.config.claude === null ? {} : { pathToClaudeCodeExecutable: input.config.claude }),
-    spawnClaudeCodeProcess: spawnInOwnProcessGroup(input.stderr),
-    abortController: input.abortController,
-  } satisfies Options
+  } satisfies SessionSpec
 }
 
 /**
@@ -214,15 +203,12 @@ export const changingNotes = (
  * A worker session's SDK options (§ 4.1). A worker whose servers have tutti's own (withOwn) is told
  * of its requires tools, and is allowed requires_readme without asking (allowRequiresReadme).
  */
-export const workerOptions = (input: WorkerOptionsInput): Options => {
+export const workerOptions = (input: WorkerOptionsInput): SessionSpec => {
   const { callbacks } = input
   const own = hasOwn(input.servers, requiresServerName)
   return {
     ...sharedOptions({
       config: input.config,
-      env: input.env,
-      stderr: callbacks.stderr,
-      abortController: input.abortController,
       chrome: input.servers.chrome === true,
       skills: input.skills,
     }),
@@ -259,12 +245,7 @@ export const workerOptions = (input: WorkerOptionsInput): Options => {
 
 /** What the login probe's options are made from. */
 export interface ProbeOptionsInput {
-  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
-  /** probeEnv()'s environment (§ 4.13): the workers' without ANTHROPIC_API_KEY. */
-  readonly env: Record<string, string>
-  /** Every line the probe's Claude Code writes to stderr. */
-  readonly stderr: (data: string) => void
-  readonly abortController: AbortController
+  readonly config: Pick<AppConfigValue, "repo" | "settings">
 }
 
 /**
@@ -273,7 +254,7 @@ export interface ProbeOptionsInput {
  * session ID, permission callbacks or hooks: nothing it could call them for. Nor does it need Skill,
  * whatever skills the project has.
  */
-export const probeOptions = (input: ProbeOptionsInput): Options => ({
+export const probeOptions = (input: ProbeOptionsInput): SessionSpec => ({
   ...sharedOptions({ ...input, chrome: false, skills: false }),
   cwd: input.config.repo,
   mcpServers: {},
@@ -309,16 +290,13 @@ export const allowOwnTools: HookCallbackMatcher = {
 
 /** What an interview's options are made from. */
 export interface InterviewOptionsInput {
-  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
+  readonly config: Pick<AppConfigValue, "repo" | "settings">
   readonly setup: InterviewSetup
   /** Whether workers.mcp_servers chose Claude in Chrome: the interview gets it as workers do. */
   readonly chrome: boolean
   /** The interview's callbacks, as a worker's (workerCallbacks): AskUserQuestion goes to Attention. */
   readonly callbacks: WorkerCallbacks
   readonly session: SessionStart
-  /** workerEnv()'s environment (§ 4.13). */
-  readonly env: Record<string, string>
-  readonly abortController: AbortController
 }
 
 /**
@@ -327,15 +305,12 @@ export interface InterviewOptionsInput {
  * subagent inherits it), and tutti's in-process server is its one MCP server, its three tools
  * allowed without asking (allowOwnTools), and Chrome when the project chose it. The interview's instructions are appended to the claude_code preset.
  */
-export const interviewOptions = (input: InterviewOptionsInput): Options => {
+export const interviewOptions = (input: InterviewOptionsInput): SessionSpec => {
   const { callbacks } = input
   // The workers' denied tools are theirs: the interview's are its whole set, and it always has
   // AskUserQuestion.
   const { disallowedTools: _, ...shared } = sharedOptions({
     config: input.config,
-    env: input.env,
-    stderr: callbacks.stderr,
-    abortController: input.abortController,
     chrome: input.chrome,
     skills: false,
   })

@@ -18,6 +18,7 @@ import {
 } from "../scripts/test.ts"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import {
   coreShare,
   coresVariable,
@@ -191,7 +192,9 @@ const sessionShare = (concurrent: number, cores: number) => {
     }).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
           ),

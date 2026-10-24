@@ -44,6 +44,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
+import { SessionKind } from "../agent/sessionKind.ts"
 import { settled as isSettled, type WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -368,7 +369,7 @@ export const make = (options: {
           host.start(probeWorker, {
             sessionId: crypto.randomUUID(),
             cwd: config.repo,
-            probe: true,
+            kind: SessionKind.Probe(),
           }),
           host.send(probeWorker, probePrompt(file), "clientComposed"),
         ),

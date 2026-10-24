@@ -8,6 +8,7 @@ import { Argument, Command, Flag } from "effect/cli"
 import pkg from "../../package.json" with { type: "json" }
 import { Account } from "../agent/Account.ts"
 import { answerWords } from "../agent/attentionFiles.ts"
+import { ClaudeCode } from "../agent/ClaudeCode.ts"
 import { buildTarget, resolveClaude } from "../agent/claudeBinary.ts"
 import { claudeConfigFile } from "../agent/mcp.ts"
 import { answer, list, show, showJson, takenLine } from "../answer/answer.ts"
@@ -730,6 +731,7 @@ const runInit = (cwd: string, flags: InitFlags) =>
           Organs.layer.pipe(
             Layer.provideMerge(languageModelLayer({ account: probed })),
             Layer.provideMerge(Layer.succeed(OrganCost, organCost)),
+            Layer.provideMerge(ClaudeCode.layer),
             Layer.provideMerge(Layer.mergeAll(withConfig, quietLog)),
           ),
         ),

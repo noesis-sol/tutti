@@ -14,6 +14,7 @@ import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import type { Attention } from "../src/agent/Attention.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { cancelQueuedCapability } from "../src/agent/sessionChecks.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
@@ -211,7 +212,9 @@ const overFake = <A, E>(
     effect(log).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(
               logLayer(),

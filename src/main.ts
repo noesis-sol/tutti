@@ -35,6 +35,7 @@ import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
+import { ClaudeCode } from "./agent/ClaudeCode.ts"
 import { BranchEnv, branchEnv } from "./agent/env.ts"
 import { requiresServerFor } from "./agent/requiresTools.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
@@ -153,6 +154,9 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     ),
   )
   const second = Layer.mergeAll(
+    // The one port every Claude Code session tutti opens goes through: workers', organs' and the
+    // usage probe's.
+    ClaudeCode.layer,
     Checks.layer,
     // What the workers' turns spent (§ 10), for the host's turn records and the ledger's sums.
     Spending.layer,

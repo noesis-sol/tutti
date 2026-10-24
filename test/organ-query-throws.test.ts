@@ -8,6 +8,7 @@ import type { query } from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
 import { Cause, Effect, Exit, Layer } from "effect"
 import { AiError, LanguageModel } from "effect/ai"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { queryThrew } from "../src/agent/claudeBinary.ts"
 import { layer, OrganCall } from "../src/organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "../src/organs/OrganCost.ts"
@@ -38,7 +39,8 @@ const run = (error: unknown) => {
   return Effect.runPromise(
     Effect.all([call, Effect.flatMap(OrganCost, (costs) => costs.total)]).pipe(
       Effect.provide(
-        layer({ account: { subscription: true }, env: testEnv, query: throwing(error) }).pipe(
+        layer({ account: { subscription: true }, env: testEnv }).pipe(
+          Layer.provideMerge(ClaudeCode.layerWith(throwing(error))),
           Layer.provideMerge(
             Layer.mergeAll(costLayer(), configLayer(appConfig({}, dir)), BunServices.layer),
           ),

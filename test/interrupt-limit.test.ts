@@ -12,6 +12,7 @@ import { Duration, Effect, Layer, Schedule, Stream } from "effect"
 import { AgentGone, AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer, unansweredWhy } from "../src/agent/AgentHostLive.ts"
 import type { Attention } from "../src/agent/Attention.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
 import type { WorkerState } from "../src/agent/WorkerState.ts"
@@ -68,7 +69,9 @@ const overFake = <A, E>(
     effect(dir).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(
               ledgerLayer(),

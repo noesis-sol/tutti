@@ -16,8 +16,9 @@ import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic"
 import { Clock, Effect, Exit, type FileSystem, Layer, Redacted, Result, Stream } from "effect"
 import { AiError, LanguageModel } from "effect/ai"
 import { FetchHttpClient, type HttpClient } from "effect/http"
+import type { ClaudeCode } from "../agent/ClaudeCode.ts"
 import { apiKeySet, apiKeyVariable } from "../agent/env.ts"
-import { type AppConfig, SetupProblem } from "../cli/AppConfig.ts"
+import { SetupProblem } from "../cli/AppConfig.ts"
 import {
   layer as agentSdkLayer,
   type LiveOptions,
@@ -194,7 +195,7 @@ export const chosenLayer = (
 ): Layer.Layer<
   LanguageModel.LanguageModel,
   SetupProblem,
-  AppConfig | OrganCost | FileSystem.FileSystem
+  ClaudeCode | OrganCost | FileSystem.FileSystem
 > => {
   const chosen = organProvider(options.env ?? process.env)
   if (Result.isFailure(chosen)) {

@@ -9,6 +9,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Deferred, Duration, Effect, Fiber, Layer, Ref, Schedule } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { coresVariable } from "../src/agent/env.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
@@ -90,7 +91,9 @@ const sharesAsOthersRun = (others: readonly [number, number, number], machineWor
     }).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(
               logLayer(),

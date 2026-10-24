@@ -19,7 +19,7 @@
 // resumed session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so
 // resume takes the message that carries it on.
 //
-// The live layer is src/agent/AgentHostLive.ts (over the Agent SDK); the test layer is
+// The live layer is src/agent/AgentHostLive.ts (over ClaudeCode, the Agent SDK's port); the test layer is
 // src/testing/AgentHost.ts, which replays scripted sessions and records what it was sent.
 import type {
   McpSdkServerConfigWithInstance,
@@ -47,6 +47,7 @@ import { Spending } from "../run/spending.ts"
 import { Attention } from "./Attention.ts"
 import type { ContextUsage } from "./contextUsage.ts"
 import { type Call, type Reading, read } from "./reading.ts"
+import type { SessionKind } from "./sessionKind.ts"
 import { Transcripts } from "./Transcripts.ts"
 import { UsageLimits } from "./UsageLimits.ts"
 import { initial, reportWait, step, type Worker, WorkerEvent, WorkerState } from "./WorkerState.ts"
@@ -69,16 +70,8 @@ export interface Message {
 export interface Session {
   readonly sessionId: string
   readonly cwd: string
-  /**
-   * A session with no ticket, the environment probe's (§ 4.9): no MCP servers and no worker
-   * prompt, in the main checkout.
-   */
-  readonly probe?: true
-  /**
-   * The feature interview's session (§ 4.10), in the main checkout: its instructions and tutti's
-   * own MCP server in place of the worker prompt and the workers' servers.
-   */
-  readonly interview?: InterviewSetup
+  /** What it is for (sessionKind.ts); a worker's when left out. */
+  readonly kind?: SessionKind
 }
 
 /** What an interview's session is given beside the workers' options (§ 4.10). */

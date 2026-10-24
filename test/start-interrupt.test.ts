@@ -8,6 +8,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Fiber, Layer, Scheduler } from "effect"
 import { AgentHost, AgentStartFailed } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -35,7 +36,9 @@ const run = <A, E>(effect: (dir: string) => Effect.Effect<A, E, AgentHost>): Pro
     effect(dir).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
           ),

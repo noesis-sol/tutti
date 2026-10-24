@@ -13,7 +13,7 @@ import { LanguageModel } from "effect/ai"
 import { startProbe } from "../src/agent/Account.ts"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { endedWhy, layer as liveLayer } from "../src/agent/AgentHostLive.ts"
-import { probeEnv } from "../src/agent/env.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServers } from "../src/agent/mcp.ts"
 import { withSessionProcess, withStderr } from "../src/agent/sessionProcess.ts"
 import { UsageProbe } from "../src/agent/UsageProbe.ts"
@@ -153,7 +153,9 @@ const withHost = <A, E>(
     effect(dir).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
           ),
@@ -209,7 +211,11 @@ describe("what Claude Code last wrote to stderr, in the reason its session faile
 
   test("a login probe whose Claude Code exits as it starts fails saying it", async () => {
     const { config, env } = fakeWith({ stderrAtStart: "Error: bad binary\n", exitAtStart: 1 })
-    const exit = await Effect.runPromiseExit(startProbe({ config, env: probeEnv({ env }) }))
+    const exit = await Effect.runPromiseExit(
+      startProbe({ config, env }).pipe(
+        Effect.provide(ClaudeCode.layer.pipe(Layer.provide(configLayer(config)))),
+      ),
+    )
     const { reason } = failureOf(exit)
     expect(reason).toContain("exited with code 1")
     expect(reason).toContain("Error: bad binary")
@@ -235,6 +241,7 @@ describe("an organ's or the usage probe's turn cut short", () => {
         ),
         Effect.provide(
           organLayer({ account: { subscription: true }, env }).pipe(
+            Layer.provideMerge(ClaudeCode.layer),
             Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
           ),
         ),
@@ -265,6 +272,7 @@ describe("an organ's or the usage probe's turn cut short", () => {
         ),
         Effect.provide(
           UsageProbe.layer({ account: { subscription: true }, env }).pipe(
+            Layer.provideMerge(ClaudeCode.layer),
             Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
           ),
         ),

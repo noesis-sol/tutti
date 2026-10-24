@@ -268,8 +268,6 @@ const rules = (config: AppConfigValue): string => {
       stderr: () => {},
     },
     session: { _tag: "New", sessionId: "s" },
-    env: {},
-    abortController: new AbortController(),
   })
   const system = options.systemPrompt
   if (typeof system !== "object" || Array.isArray(system) || system.type !== "preset") {

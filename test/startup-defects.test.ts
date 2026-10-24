@@ -12,6 +12,7 @@ import fc from "fast-check"
 import { Account, AccountProbeFailed, startProbeWith } from "../src/agent/Account.ts"
 import { AgentHost, AgentStartFailed } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { queryThrew } from "../src/agent/claudeBinary.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
@@ -152,7 +153,9 @@ describe("the startup checks: a defect in a check", () => {
   })
 
   test("the login probe's query() throwing fails it with what to do", async () => {
-    const account = Account.layerWith(startProbeWith(throwing(noBinary)), { PATH: "/usr/bin" })
+    const account = Account.layerWith(startProbeWith(), { PATH: "/usr/bin" }).pipe(
+      Layer.provide(ClaudeCode.layerWith(throwing(noBinary))),
+    )
     const failure = failed(
       await run({
         account: Layer.provide(
@@ -176,7 +179,6 @@ describe("AgentHost live: query() throwing as the session starts", () => {
       servers: { servers: [], note: noServersNote },
       account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
       env: testEnv,
-      query: throwing(noBinary),
     })
     const { exit, state } = await Effect.runPromise(
       Effect.gen(function* () {
@@ -188,7 +190,13 @@ describe("AgentHost live: query() throwing as the session starts", () => {
       }).pipe(
         Effect.provide(
           host.pipe(
-            Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+            Layer.provideMerge(
+              Layer.mergeAll(
+                attentionLayer(waitForTest),
+                transcriptsLayer(),
+                ClaudeCode.layerWith(throwing(noBinary)),
+              ),
+            ),
             Layer.provideMerge(
               Layer.mergeAll(
                 logLayer(),

@@ -13,6 +13,7 @@ import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { AgentHost, userMessage } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
@@ -166,7 +167,9 @@ describe("the live host records what it sends", () => {
       }).pipe(
         Effect.provide(
           host.pipe(
-            Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+            Layer.provideMerge(
+              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            ),
             Layer.provideMerge(
               Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
             ),

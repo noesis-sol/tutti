@@ -11,6 +11,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { Organs } from "../src/organs/Organs.ts"
@@ -118,7 +119,12 @@ describe("the live host's PreCompact callback", () => {
         Effect.provide(
           host.pipe(
             Layer.provideMerge(
-              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), Ledger.layer),
+              Layer.mergeAll(
+                attentionLayer(waitForTest),
+                transcriptsLayer(),
+                ClaudeCode.layer,
+                Ledger.layer,
+              ),
             ),
             Layer.provideMerge(
               Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),

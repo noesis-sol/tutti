@@ -12,6 +12,7 @@ import type { Options, query, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
 import { Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import fc from "fast-check"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { reportOf, UsageLimits } from "../src/agent/UsageLimits.ts"
 import {
   answerOf,
@@ -147,7 +148,8 @@ describe("the live probe", () => {
       return { answer, log: yield* texts }
     }).pipe(
       Effect.provide(
-        UsageProbe.layerWith(open, { account: { subscription: true }, env: {} }).pipe(
+        UsageProbe.layer({ account: { subscription: true }, env: {} }).pipe(
+          Layer.provideMerge(ClaudeCode.layerWith(open)),
           Layer.provideMerge(Layer.mergeAll(configLayer(), organCostLayer(), BunServices.layer)),
         ),
       ),

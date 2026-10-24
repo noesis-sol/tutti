@@ -1,5 +1,5 @@
 // A Claude Code process tutti spawns for the SDK, a worker's, the login probe's, the usage probe's
-// or an organ's, kept one way (§ 3.2): spawned into a process group of its own
+// or an organ's, kept one way by ClaudeCode's adapter (§ 3.2): spawned into a process group of its own
 // (spawnInOwnProcessGroup), the end of its stderr kept for the reason a session failed, and its
 // exit waited for once its session is closed, its group killed when it doesn't come in time. A
 // setup problem or an unwanted turn kills the group at once, without the SDK's grace.

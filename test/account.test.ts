@@ -398,7 +398,7 @@ describe("the probe", () => {
     expect(found.permissionMode).toEqual({ requested: "acceptEdits", inEffect: "acceptEdits" })
   })
 
-  test("starts its session with the workers' settings and without the key", async () => {
+  test("starts its session with the workers' settings, from tutti's environment", async () => {
     const started: Array<ProbeOptions> = []
     const settings = {
       ...defaultSettings,
@@ -417,10 +417,8 @@ describe("the probe", () => {
     expect(options?.config.settings.workers.permission_mode).toBe("auto")
     expect(options?.config.settings.workers.model).toBe("haiku")
     expect(options?.config.settings.workers.effort).toBe("low")
-    expect(options?.config.claude).toBe("/opt/claude")
-    expect(options?.env).not.toHaveProperty("ANTHROPIC_API_KEY")
-    expect(options?.env.PATH).toBe("/usr/bin")
-    expect(options?.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe("1")
+    // ClaudeCode removes the key from it, billing the session as the login probe.
+    expect(options?.env).toEqual({ PATH: "/usr/bin", ANTHROPIC_API_KEY: key })
   })
 
   test("a session that doesn't start fails the probe", async () => {

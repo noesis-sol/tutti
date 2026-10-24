@@ -18,6 +18,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { type ChosenServers, checkInit, hasOwn, noServersNote, withOwn } from "../src/agent/mcp.ts"
 import { allowRequiresReadme, type WorkerCallbacks, workerOptions } from "../src/agent/options.ts"
 import {
@@ -28,6 +29,7 @@ import {
   requiresServerFor,
   requiresServerName,
 } from "../src/agent/requiresTools.ts"
+import { SessionKind } from "../src/agent/sessionKind.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { builtInWorkerPrompt, requiresNote } from "../src/project/prompt.ts"
 import { requiresEnd, requiresStart } from "../src/project/requires.ts"
@@ -193,8 +195,6 @@ const optionsWith = (servers: ChosenServers) =>
     readme: true,
     callbacks,
     session: { _tag: "New", sessionId: "11111111-1111-4111-8111-111111111111" },
-    env: {},
-    abortController: new AbortController(),
   })
 
 /** The text appended to the preset in `options`. */
@@ -296,7 +296,6 @@ describe("the live AgentHost with ownServer", () => {
         }),
       account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
       env: testEnv,
-      query: recording,
     })
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -305,13 +304,19 @@ describe("the live AgentHost with ownServer", () => {
           agents.start("t-1", {
             sessionId: "11111111-1111-4111-8111-111111111111",
             cwd: dir,
-            ...(probe ? { probe: true as const } : {}),
+            ...(probe ? { kind: SessionKind.Probe() } : {}),
           }),
         )
       }).pipe(
         Effect.provide(
           host.pipe(
-            Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+            Layer.provideMerge(
+              Layer.mergeAll(
+                attentionLayer(waitForTest),
+                transcriptsLayer(),
+                ClaudeCode.layerWith(recording),
+              ),
+            ),
             Layer.provideMerge(
               Layer.mergeAll(
                 logLayer(),

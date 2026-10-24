@@ -7,6 +7,7 @@ import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { type Duration, Effect, type Exit, FileSystem, Layer } from "effect"
 import { LanguageModel } from "effect/ai"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { layer, OrganCall } from "../src/organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "../src/organs/OrganCost.ts"
 import type { Log } from "../src/run/log.ts"
@@ -45,6 +46,7 @@ const run = <A, E>(
           account: { subscription: true },
           env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
         }).pipe(
+          Layer.provideMerge(ClaudeCode.layer),
           Layer.provideMerge(
             Layer.mergeAll(
               costLayer(),

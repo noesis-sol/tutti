@@ -7,11 +7,9 @@ import { expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { query } from "@anthropic-ai/claude-agent-sdk"
-import { Duration, Effect } from "effect"
-import { probeEnv } from "../src/agent/env.ts"
+import { Duration, Effect, Layer } from "effect"
+import { BilledAs, ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { probeOptions } from "../src/agent/options.ts"
-import { withSessionProcess } from "../src/agent/sessionProcess.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { testEnv } from "./env.ts"
 import { live } from "./gates.ts"
@@ -22,30 +20,29 @@ async function* nothing(signal: AbortSignal): AsyncGenerator<never> {
 }
 
 /**
- * Starts a probe session in `repo`, as the probe does, and returns what it answers, untyped: its
- * initialization result and its settings.
+ * Starts a probe session in `repo`, as the probe does, through ClaudeCode, and returns what it
+ * answers, untyped: its initialization result and its settings (getSettings()).
  */
-const answers = async (repo: string): Promise<{ init: unknown; settings: unknown }> => {
-  const abortController = new AbortController()
-  const { options, process } = withSessionProcess(
-    probeOptions({
-      config: TestAppConfig.appConfig({}, repo),
-      env: probeEnv({ env: testEnv }),
-      stderr: () => {},
-      abortController,
-    }),
-  )
-  const session = query({ prompt: nothing(abortController.signal), options })
-  try {
-    const init: unknown = await session.initializationResult()
-    const getSettings = (session as { getSettings?: () => Promise<unknown> }).getSettings
-    expect(typeof getSettings).toBe("function")
-    const settings = await getSettings?.call(session)
+const answers = (repo: string): Promise<{ init: unknown; settings: unknown }> => {
+  const config = TestAppConfig.appConfig({}, repo)
+  return Effect.gen(function* () {
+    const ended = new AbortController()
+    yield* Effect.addFinalizer(() => Effect.sync(() => ended.abort()))
+    const session = yield* (yield* ClaudeCode).open({
+      options: probeOptions({ config }),
+      prompt: nothing(ended.signal),
+      billedAs: BilledAs.LoginProbe(),
+      env: testEnv,
+      closeLimit: Duration.seconds(10),
+    })
+    const init: unknown = yield* session.initialization
+    const settings = yield* session.settings
     return { init, settings }
-  } finally {
-    await Effect.runPromise(process.closeAndWait(() => session.close(), Duration.seconds(10)))
-    abortController.abort()
-  }
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(ClaudeCode.layer.pipe(Layer.provide(TestAppConfig.layer(config)))),
+    Effect.runPromise,
+  )
 }
 
 live.describe("the probe's untyped answers", () => {
@@ -65,6 +62,8 @@ live.describe("the probe's untyped answers", () => {
 
       const { init, settings } = await answers(repo)
 
+      // A Query without getSettings() answers undefined.
+      expect(settings).toBeDefined()
       const errors = (settings as { errors?: unknown }).errors
       expect(Array.isArray(errors)).toBe(true)
       const entries = errors as Array<Record<string, unknown>>

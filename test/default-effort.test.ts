@@ -32,11 +32,7 @@ const server = { type: "sdk", name: "tutti", instance: {} } as McpSdkServerConfi
 
 /** The effort of a worker's, the probe's and the interview's options under `config`. */
 const effortsOf = (config: AppConfigValue) => {
-  const shared = {
-    config,
-    env: { PATH: "/usr/bin" },
-    abortController: new AbortController(),
-  }
+  const shared = { config }
   const session = { _tag: "New", sessionId: "s" } as const
   return {
     worker: workerOptions({
@@ -49,7 +45,7 @@ const effortsOf = (config: AppConfigValue) => {
       callbacks,
       session,
     }).effort,
-    probe: probeOptions({ ...shared, stderr: () => {} }).effort,
+    probe: probeOptions(shared).effort,
     interview: interviewOptions({
       ...shared,
       setup: { prompt: "Talk it through.", server },

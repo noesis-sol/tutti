@@ -22,28 +22,18 @@ const configWith = (
   }
 }
 
-const env = { PATH: "/usr/bin", CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" }
-
-const probeFor = (
-  config: AppConfigValue = configWith(),
-  stderr: (data: string) => void = () => {},
-  abortController = new AbortController(),
-) => probeOptions({ config, env, stderr, abortController })
+const probeFor = (config: AppConfigValue = configWith()) => probeOptions({ config })
 
 describe("probeOptions", () => {
   test("the probe's options are the workers', in the main checkout, field by field", () => {
-    const stderr = (_: string) => {}
-    const abortController = new AbortController()
     const options = probeFor(
       configWith(
         { model: "opus", effort: "high", ask_user_question: false },
         { claude: "/opt/claude/bin/claude" },
       ),
-      stderr,
-      abortController,
     )
-    const { spawnClaudeCodeProcess, ...rest } = options
-    expect(rest).toEqual({
+    // The executable, the environment, the stderr, the abort and the spawn are ClaudeCode's.
+    expect(options).toEqual({
       cwd: "/work/project",
       projectConfigRoot: "/work/project",
       settingSources: ["user", "project", "local"],
@@ -55,13 +45,7 @@ describe("probeOptions", () => {
       extraArgs: { "no-chrome": null },
       disallowedTools: [...unusedTools, "Skill", "AskUserQuestion"],
       persistSession: false,
-      stderr,
-      env,
-      pathToClaudeCodeExecutable: "/opt/claude/bin/claude",
-      abortController,
     })
-    expect(rest.abortController).toBe(abortController)
-    expect(typeof spawnClaudeCodeProcess).toBe("function")
   })
 
   test("it has no prompt, session, callbacks, hooks or MCP servers of a worker's", () => {
@@ -102,16 +86,13 @@ describe("probeOptions", () => {
             { permission_mode, model, effort, ask_user_question },
             { claude },
           )
-          const abortController = new AbortController()
           const {
-            spawnClaudeCodeProcess: _probeSpawn,
             cwd: _probeCwd,
             mcpServers: _probeServers,
             persistSession: _persist,
             ...probe
-          } = probeOptions({ config, env, stderr, abortController })
+          } = probeOptions({ config })
           const {
-            spawnClaudeCodeProcess: _workerSpawn,
             cwd: _workerCwd,
             mcpServers: _workerServers,
             systemPrompt: _system,
@@ -131,8 +112,6 @@ describe("probeOptions", () => {
             skills: false,
             callbacks: workerCallbacks,
             session: { _tag: "New", sessionId: "s" },
-            env,
-            abortController,
           })
           expect(probe).toEqual(worker)
         },
@@ -142,9 +121,7 @@ describe("probeOptions", () => {
 
   test("Claude Code starts in a process group of its own, its stderr and process reported", async () => {
     const received: Array<string> = []
-    const { options, process } = withSessionProcess(
-      probeFor(configWith(), (data) => received.push(data)),
-    )
+    const { options, process } = withSessionProcess({ stderr: (data) => received.push(data) })
     const child = options.spawnClaudeCodeProcess?.({
       command: "/bin/sh",
       args: ["-c", 'echo "$$ $(ps -o pgid= -p $$)"; echo oops >&2'],

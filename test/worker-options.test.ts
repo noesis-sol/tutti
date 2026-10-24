@@ -57,11 +57,7 @@ const configWith = (
   }
 }
 
-const optionsFor = (
-  session: SessionStart,
-  config: AppConfigValue = configWith(),
-  abortController = new AbortController(),
-) =>
+const optionsFor = (session: SessionStart, config: AppConfigValue = configWith()) =>
   workerOptions({
     config,
     ticket: "tutti-abc.1",
@@ -71,20 +67,16 @@ const optionsFor = (
     skills: false,
     callbacks,
     session,
-    env: { PATH: "/usr/bin", CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
-    abortController,
   })
 
 describe("workerOptions", () => {
   test("a new session's options are § 4.1's block, field by field", () => {
-    const abortController = new AbortController()
     const options = optionsFor(
       { _tag: "New", sessionId: "11111111-2222-4333-8444-555555555555" },
       configWith({ model: "opus", effort: "high" }, { claude: "/opt/claude/bin/claude" }),
-      abortController,
     )
-    const { spawnClaudeCodeProcess, ...rest } = options
-    expect(rest).toEqual({
+    // The executable, the environment, the stderr, the abort and the spawn are ClaudeCode's.
+    expect(options).toEqual({
       cwd: "/work/project-tutti/tutti-abc.1",
       projectConfigRoot: "/work/project",
       settingSources: ["user", "project", "local"],
@@ -110,17 +102,10 @@ describe("workerOptions", () => {
       hooks,
       forwardSubagentText: true,
       includePartialMessages: true,
-      stderr,
-      env: { PATH: "/usr/bin", CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
-      pathToClaudeCodeExecutable: "/opt/claude/bin/claude",
-      abortController,
     })
-    expect(rest.canUseTool).toBe(canUseTool)
-    expect(rest.onElicitation).toBe(onElicitation)
-    expect(rest.hooks).toBe(hooks)
-    expect(rest.stderr).toBe(stderr)
-    expect(rest.abortController).toBe(abortController)
-    expect(typeof spawnClaudeCodeProcess).toBe("function")
+    expect(options.canUseTool).toBe(canUseTool)
+    expect(options.onElicitation).toBe(onElicitation)
+    expect(options.hooks).toBe(hooks)
   })
 
   test("a resumed session's options resume its ID, with no sessionId", () => {
@@ -131,8 +116,8 @@ describe("workerOptions", () => {
     expect(fresh.sessionId).toBe("drawn-session")
     expect("resume" in fresh).toBe(false)
     // Everything else is the same for both.
-    const { resume: _r, spawnClaudeCodeProcess: _s1, ...resumed } = options
-    const { sessionId: _i, spawnClaudeCodeProcess: _s2, ...started } = fresh
+    const { resume: _r, ...resumed } = options
+    const { sessionId: _i, ...started } = fresh
     expect(resumed).toEqual(started)
   })
 
@@ -147,11 +132,10 @@ describe("workerOptions", () => {
     }
   })
 
-  test("Claude Code's defaults are left to it: no model, effort or executable when unset", () => {
+  test("Claude Code's defaults are left to it: no model or effort when unset", () => {
     const options = optionsFor({ _tag: "New", sessionId: "s" }, configWith({ effort: null }))
     expect("model" in options).toBe(false)
     expect("effort" in options).toBe(false)
-    expect("pathToClaudeCodeExecutable" in options).toBe(false)
   })
 
   test("AskUserQuestion is disallowed only when workers.ask_user_question is false", () => {
@@ -175,8 +159,6 @@ describe("workerOptions", () => {
       skills: false,
       callbacks,
       session: { _tag: "New", sessionId: "s" },
-      env: {},
-      abortController: new AbortController(),
     })
     expect(options.mcpServers).toEqual({})
     expect(options.strictMcpConfig).toBe(true)
@@ -194,8 +176,6 @@ describe("workerOptions", () => {
           skills: false,
           callbacks,
           session: { _tag: "New", sessionId: "s" },
-          env: {},
-          abortController: new AbortController(),
         })
         const system = options.systemPrompt
         if (typeof system !== "object" || Array.isArray(system) || system.type !== "preset") {

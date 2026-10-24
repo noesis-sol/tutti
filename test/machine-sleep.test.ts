@@ -11,6 +11,7 @@ import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as hostLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { addRecord, figuresLines, noFigures } from "../src/run/figures.ts"
@@ -285,7 +286,9 @@ describe("commands and sessions across a sleep", () => {
     })
     const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
     const layer = host.pipe(
-      Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+      Layer.provideMerge(
+        Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+      ),
       Layer.provideMerge(
         Layer.mergeAll(
           ledgerLayer(),

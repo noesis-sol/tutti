@@ -9,6 +9,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Cause, Effect, Exit, Layer, Redacted, Result, Schema } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import fc from "fast-check"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import {
   apiEffort,
   callConfig,
@@ -111,6 +112,7 @@ const organsWith = (
 ) =>
   Organs.layer.pipe(
     Layer.provideMerge(chosenLayer({ account: { subscription: true }, env, http })),
+    Layer.provideMerge(ClaudeCode.layer),
     Layer.provideMerge(Layer.mergeAll(costLayer(), configLayer(config), BunServices.layer)),
   )
 

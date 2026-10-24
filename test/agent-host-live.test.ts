@@ -8,6 +8,7 @@ import type { Billing } from "../src/agent/Account.ts"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { endedWhy, layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { type ChosenServers, noServersNote, notGivenProblem } from "../src/agent/mcp.ts"
 import { apiKeyProblem } from "../src/agent/sessionChecks.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
@@ -130,7 +131,11 @@ const run = <A, E>(
       Effect.provide(
         host.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(attentionLayer(setup.policy ?? waitForTest), transcriptsLayer()),
+            Layer.mergeAll(
+              attentionLayer(setup.policy ?? waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layer,
+            ),
           ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),

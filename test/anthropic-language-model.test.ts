@@ -10,6 +10,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Cause, Effect, Exit, Layer, Schema, Stream } from "effect"
 import { LanguageModel } from "effect/ai"
 import { FetchHttpClient, type HttpClient } from "effect/http"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { OrganCall } from "../src/organs/AgentSdkLanguageModel.ts"
 import {
   chosenLayer,
@@ -193,6 +194,7 @@ const provider = (config = configWith()) =>
     Layer.provideMerge(
       chosenLayer({ account: { subscription: true }, env: anthropic, http: toFake }),
     ),
+    Layer.provideMerge(ClaudeCode.layer),
     Layer.provideMerge(
       Layer.mergeAll(
         costLayer().pipe(Layer.provideMerge(eventsLayer())),

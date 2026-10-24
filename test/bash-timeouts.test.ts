@@ -10,6 +10,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Schedule } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { bashTimeouts, probeEnv, workerEnv, workerVariables } from "../src/agent/env.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
@@ -137,7 +138,9 @@ describe("a worker's session", () => {
       }).pipe(
         Effect.provide(
           host.pipe(
-            Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+            Layer.provideMerge(
+              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            ),
             Layer.provideMerge(
               Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
             ),

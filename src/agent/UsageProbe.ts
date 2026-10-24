@@ -16,7 +16,7 @@
 //
 // Each try spends a model request, about a hundredth of a cent on haiku: its cost goes to OrganCost
 // as an organ call's, `ORGAN usage-probe: $0.0001 in 1 turn, 1.4s`.
-import { query, type SDKMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk"
+import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk"
 import {
   Clock,
   Context,
@@ -28,14 +28,12 @@ import {
   type Scope,
   Stream,
 } from "effect"
-import { AppConfig } from "../cli/AppConfig.ts"
 import { costOf, organOptions } from "../organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
 import type { AccountProbe } from "./Account.ts"
-import { queryThrew } from "./claudeBinary.ts"
-import { workerEnv } from "./env.ts"
+import { BilledAs, ClaudeCode } from "./ClaudeCode.ts"
 import { turnLimit } from "./reading.ts"
-import { organCloseLimit, withSessionProcess, withStderr } from "./sessionProcess.ts"
+import { organCloseLimit } from "./sessionProcess.ts"
 import { endedOnLimit } from "./UsageLimits.ts"
 
 /** What the account answered the probe. Times are epoch milliseconds. */
@@ -107,78 +105,51 @@ export class UsageProbe extends Context.Service<
     probe(limit: string | null): Effect.Effect<ProbeAnswer>
   }
 >()("tutti/agent/UsageProbe") {
-  /** The layer over `open`, the SDK's query(): the live layer's is the Agent SDK's. */
-  static readonly layerWith = (
-    open: typeof query,
+  /** The live layer, over Claude Code. */
+  static readonly layer = (
     options: LiveOptions,
-  ): Layer.Layer<UsageProbe, never, AppConfig | OrganCost | FileSystem.FileSystem> =>
+  ): Layer.Layer<UsageProbe, never, ClaudeCode | OrganCost | FileSystem.FileSystem> =>
     Layer.effect(
       UsageProbe,
       Effect.gen(function* () {
-        const config = yield* AppConfig
+        const claudeCode = yield* ClaudeCode
         const fs = yield* FileSystem.FileSystem
-        const env = workerEnv({
-          subscription: options.account.subscription,
-          billing: config.billing,
-          ...(options.env === undefined ? {} : { env: options.env }),
-        })
 
         /** One Claude Code session of the probe's turn, in a fresh temp folder. */
         const session: ProbeSession = ({ limit, answered }) =>
           Effect.gen(function* () {
             const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "tutti-usage-probe-" })
-            const abortController = new AbortController()
-            const { options: sdkOptions, process } = withSessionProcess({
-              ...organOptions({
-                turn: { systemPrompt: probeSystemPrompt, userText: [probeMessage] },
-                jsonSchema: undefined,
-                call: { organ: probeOrgan, model: probeModel(limit) },
-                cwd,
-                env,
-                claude: config.claude,
-                abortController,
-                partial: false,
-                stderr: () => {},
-              }),
-              maxTurns: 1,
-            })
-            const q = yield* Effect.acquireRelease(
-              Effect.try({
-                try: () =>
-                  open({
-                    prompt: (async function* () {
-                      yield {
-                        type: "user" as const,
-                        message: { role: "user" as const, content: probeMessage },
-                        parent_tool_use_id: null,
-                      }
-                    })(),
-                    options: sdkOptions,
-                  }),
-                catch: queryThrew,
-              }),
-              // A turn not over is unwanted: its Claude Code is killed at once, not given the
-              // SDK's grace. Either way the probe ends once its process has exited.
-              (q) =>
-                Effect.gen(function* () {
-                  if (!answered()) {
-                    yield* process.kill
-                    abortController.abort()
-                  }
-                  yield* process.closeAndWait(() => q.close(), organCloseLimit)
+            const claude = yield* claudeCode.open({
+              options: {
+                ...organOptions({
+                  turn: { systemPrompt: probeSystemPrompt, userText: [probeMessage] },
+                  jsonSchema: undefined,
+                  call: { organ: probeOrgan, model: probeModel(limit) },
+                  cwd,
+                  partial: false,
                 }),
-            )
-            const failed = (cause: unknown) =>
-              withStderr(messageOf(cause), process.stderrTail(stderrLimit))
-            return Stream.fromAsyncIterable(q, failed)
+                maxTurns: 1,
+              },
+              prompt: (async function* () {
+                yield {
+                  type: "user" as const,
+                  message: { role: "user" as const, content: probeMessage },
+                  parent_tool_use_id: null,
+                }
+              })(),
+              billedAs: BilledAs.Workers({ subscription: options.account.subscription }),
+              ...(options.env === undefined ? {} : { env: options.env }),
+              closeLimit: organCloseLimit,
+            })
+            // A turn not over is unwanted: its Claude Code is killed at once, not given the SDK's
+            // grace. Either way the probe ends once its process has exited.
+            yield* Effect.addFinalizer(() => (answered() ? Effect.void : claude.kill))
+            return claude.messages.pipe(Stream.mapError((error) => error.quoted(stderrLimit)))
           })
 
         return yield* probeWith(session)
       }),
     )
-
-  /** The live layer, over the Agent SDK. */
-  static readonly layer = (options: LiveOptions) => UsageProbe.layerWith(query, options)
 }
 
 /** The probe a session is asked to play. */

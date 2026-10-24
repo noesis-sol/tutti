@@ -11,6 +11,7 @@ import { Duration, Effect, Layer, Option, Stream } from "effect"
 import fc from "fast-check"
 import { AgentHost, makeWorkers } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { read } from "../src/agent/reading.ts"
 import { rateLimitOf } from "../src/agent/UsageLimits.ts"
@@ -367,7 +368,6 @@ const settle = async (
       ...testEnv,
       FAKE_CLAUDE_SCENARIO: JSON.stringify({ turns, log: join(dir, "fake.jsonl") }),
     },
-    query: openQuery,
   })
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -386,7 +386,13 @@ const settle = async (
     }).pipe(
       Effect.provide(
         host.pipe(
-          Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+          Layer.provideMerge(
+            Layer.mergeAll(
+              attentionLayer(waitForTest),
+              transcriptsLayer(),
+              ClaudeCode.layerWith(openQuery),
+            ),
+          ),
           Layer.provideMerge(
             Layer.mergeAll(logLayer(), eventsLayer(), configLayer(config), BunServices.layer),
           ),

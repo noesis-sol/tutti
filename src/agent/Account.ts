@@ -11,18 +11,17 @@
 // side by side in its cause, so a startup check can report every problem at once.
 //
 // Claude Code 2.1.301 doesn't put the skipped settings files in its initialization result, as the
-// SDK's docs suggest: the session's settings (getSettings(), not in the SDK's types) list them. The
-// probe reads both. Only its stderr says the main checkout isn't trusted, so the probe reads every
+// SDK's docs suggest: the session's settings (ClaudeSession's settings) list them. The probe reads
+// both. Only its stderr says the main checkout isn't trusted, so the probe reads every
 // line of it until the session's process has exited.
-import { query } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Context, Duration, Effect, Layer, Predicate, Schema } from "effect"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
 import type { permissionModes } from "../project/settings.ts"
-import { queryThrew } from "./claudeBinary.ts"
-import { apiKeySet, apiKeyVariable, probeEnv } from "./env.ts"
+import { BilledAs, ClaudeCode } from "./ClaudeCode.ts"
+import { apiKeySet, apiKeyVariable } from "./env.ts"
 import { probeOptions } from "./options.ts"
-import { stderrQuoted, withSessionProcess, withStderr } from "./sessionProcess.ts"
+import { stderrQuoted } from "./sessionProcess.ts"
 
 /** Not logged in to Claude, and no API key to use instead. */
 export class NotLoggedIn extends Schema.TaggedError<NotLoggedIn>()("NotLoggedIn", {}) {
@@ -319,15 +318,15 @@ export const assess = (
 /** The options of the probe session: the workers', with no MCP server and no key. */
 export interface ProbeOptions {
   /** The run's configuration, whose workers' settings the probe's session is started with. */
-  readonly config: Pick<AppConfigValue, "repo" | "settings" | "claude">
-  /** probeEnv()'s environment: the workers' without ANTHROPIC_API_KEY. */
-  readonly env: Record<string, string>
+  readonly config: Pick<AppConfigValue, "repo" | "settings">
+  /** tutti's environment, the probe's is made from: the workers' without ANTHROPIC_API_KEY. */
+  readonly env: Readonly<Record<string, string | undefined>>
 }
 
 /** Starts a probe session and reads what it says of itself. */
-export type StartProbe = (
+export type StartProbe<R = never> = (
   options: ProbeOptions,
-) => Effect.Effect<Initialization, AccountProbeFailed>
+) => Effect.Effect<Initialization, AccountProbeFailed, R>
 
 /** How long the probe session has to start and answer. */
 export const probeTimeout = Duration.minutes(1)
@@ -349,56 +348,40 @@ export interface ProbeLimits {
 }
 
 /**
- * The probe over `open`, the SDK's query(): one session, closed once it has answered, its stderr
- * read until its process has exited, since the stderr and the answers arrive on different pipes.
- * A query() that throws as it is called, as the SDK's does when it finds no Claude Code, fails it.
+ * The probe over ClaudeCode: one session, closed once it has answered, its stderr read until its
+ * process has exited, since the stderr and the answers arrive on different pipes. A session that
+ * can't be launched, as when there is no Claude Code, fails it.
  */
 export const startProbeWith =
   (
-    open: typeof query,
     limits: ProbeLimits = { timeout: probeTimeout, closeLimit: probeCloseLimit },
-  ): StartProbe =>
+  ): StartProbe<ClaudeCode> =>
   (options) =>
     Effect.gen(function* () {
+      const claudeCode = yield* ClaudeCode
       const stderr: Array<string> = []
-      const answers = yield* Effect.acquireUseRelease(
-        Effect.try({
-          try: () => {
-            const abortController = new AbortController()
-            const { options: sdkOptions, process } = withSessionProcess(
-              probeOptions({
-                config: options.config,
-                env: options.env,
-                stderr: (data) => stderr.push(data),
-                abortController,
-              }),
-            )
-            const session = open({ prompt: nothing(abortController.signal), options: sdkOptions })
-            return { session, abortController, process }
-          },
-          catch: (cause) => new AccountProbeFailed({ reason: queryThrew(cause) }),
-        }),
-        ({ session, process }) =>
-          Effect.tryPromise({
-            try: async () => {
-              const init = await session.initializationResult()
-              // Not in the SDK's types: the session's settings, with the files it skipped.
-              const getSettings = (session as { getSettings?: () => Promise<unknown> }).getSettings
-              const settings =
-                getSettings === undefined ? undefined : await getSettings.call(session)
-              return { init, settings }
-            },
-            catch: (cause) => cause,
+      const answers = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const ended = new AbortController()
+          const session = yield* claudeCode
+            .open({
+              options: probeOptions({ config: options.config }),
+              prompt: nothing(ended.signal),
+              billedAs: BilledAs.LoginProbe(),
+              env: options.env,
+              onStderr: (data) => stderr.push(data),
+              closeLimit: limits.closeLimit,
+            })
+            .pipe(Effect.mapError((error) => new AccountProbeFailed({ reason: error.reason })))
+          // Its prompt ends once the session is closed.
+          yield* Effect.addFinalizer(() => Effect.sync(() => ended.abort()))
+          return yield* Effect.all({
+            init: session.initialization,
+            settings: session.settings,
           }).pipe(
             // What Claude Code last wrote to stderr says why, where the SDK says only its exit code.
             Effect.mapError(
-              (cause) =>
-                new AccountProbeFailed({
-                  reason: withStderr(
-                    cause instanceof Error ? cause.message : String(cause),
-                    process.stderrTail(stderrQuoted),
-                  ),
-                }),
+              (error) => new AccountProbeFailed({ reason: error.quoted(stderrQuoted) }),
             ),
             Effect.timeoutOrElse({
               duration: limits.timeout,
@@ -409,18 +392,14 @@ export const startProbeWith =
                   }),
                 ),
             }),
-          ),
-        ({ session, abortController, process }) =>
-          Effect.gen(function* () {
-            yield* process.closeAndWait(() => session.close(), limits.closeLimit)
-            abortController.abort()
-          }),
+          )
+        }),
       )
       return readInitialization(answers.init, answers.settings, stderr.join(""))
     })
 
-/** The live probe, over the Agent SDK. */
-export const startProbe: StartProbe = startProbeWith(query)
+/** The live probe, over Claude Code. */
+export const startProbe: StartProbe<ClaudeCode> = startProbeWith()
 
 export class Account extends Context.Service<
   Account,
@@ -431,10 +410,10 @@ export class Account extends Context.Service<
 >()("tutti/agent/Account") {
   /**
    * The layer with `start` for the probe session, and `env` as tutti's environment: the live
-   * layer's are the Agent SDK and process.env.
+   * layer's are startProbe, over ClaudeCode, and process.env.
    */
-  static readonly layerWith = (
-    start: StartProbe,
+  static readonly layerWith = <R = never>(
+    start: StartProbe<R>,
     env: Readonly<Record<string, string | undefined>> = process.env,
   ) =>
     Layer.effect(
@@ -442,8 +421,9 @@ export class Account extends Context.Service<
       Effect.gen(function* () {
         const config = yield* AppConfig
         const { workers } = config.settings
+        const services = yield* Effect.context<R>()
         const probe = Effect.gen(function* () {
-          const init = yield* start({ config, env: probeEnv({ env }) })
+          const init = yield* Effect.provideContext(start({ config, env }), services)
           return yield* assess(init, {
             keySet: apiKeySet(env),
             billing: config.billing,
@@ -455,5 +435,6 @@ export class Account extends Context.Service<
       }),
     )
 
-  static readonly layer = Account.layerWith(startProbe)
+  /** The live layer, over the Agent SDK. */
+  static readonly layer = Account.layerWith(startProbe).pipe(Layer.provide(ClaudeCode.layer))
 }

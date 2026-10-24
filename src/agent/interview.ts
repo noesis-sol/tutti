@@ -35,6 +35,7 @@ import {
   type InterviewTools,
   makeInterviewTools,
 } from "./interviewTools.ts"
+import { SessionKind } from "./sessionKind.ts"
 
 /** The name AgentHost knows the interview's session by, as a ticket's worker is known by its ID. */
 export const interviewWorker = "tutti-interview"
@@ -144,7 +145,7 @@ export const startInterview = (
     yield* host.start(interviewWorker, {
       sessionId,
       cwd: config.repo,
-      interview: { prompt: interviewPrompt, server: tools.server },
+      kind: SessionKind.Interview({ prompt: interviewPrompt, server: tools.server }),
     })
     const first = yield* firstMessage(description)
     yield* host

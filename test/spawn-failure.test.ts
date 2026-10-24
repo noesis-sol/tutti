@@ -15,6 +15,7 @@ import { Effect, Exit, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
@@ -89,7 +90,9 @@ const withHost = <A, E>(
   const dir = folder("work")
   const log = join(dir, "fake.jsonl")
   const host = liveLayer(hostOptions(log)).pipe(
-    Layer.provideMerge(Layer.mergeAll(attentionLayer(allowAll), transcriptsLayer())),
+    Layer.provideMerge(
+      Layer.mergeAll(attentionLayer(allowAll), transcriptsLayer(), ClaudeCode.layer),
+    ),
     Layer.provideMerge(
       Layer.mergeAll(
         logLayer(),
@@ -174,7 +177,12 @@ describe("a failed spawn", () => {
           }
         }).pipe(
           Effect.provide(
-            Layer.merge(Ledger.layer, liveLayer(hostOptions(join(root, "fake.jsonl")))),
+            Layer.merge(
+              Ledger.layer,
+              liveLayer(hostOptions(join(root, "fake.jsonl"))).pipe(
+                Layer.provide(ClaudeCode.layer),
+              ),
+            ),
           ),
         ),
       ),
@@ -245,7 +253,7 @@ describe("a session whose folder isn't there", () => {
         return yield* Effect.exit(
           resume("t-1", "suspended", "Carry on.", line`t-1 was suspended as the last run ended`),
         )
-      }).pipe(Effect.provide(liveLayer(hostOptions(log)))),
+      }).pipe(Effect.provide(liveLayer(hostOptions(log)).pipe(Layer.provide(ClaudeCode.layer)))),
     )
     if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
     const failed = startFailedOf(ran.exit.value)

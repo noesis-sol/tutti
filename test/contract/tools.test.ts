@@ -73,14 +73,13 @@ const initTools = async (
     skills,
     callbacks,
     session: { _tag: "New", sessionId: crypto.randomUUID() },
-    env: hostEnv(),
-    abortController: new AbortController(),
   })
   const session = query({
     prompt: "Reply with the single word OK.",
     options: {
       ...options,
       ...(denying && disallowedTools !== undefined ? { disallowedTools } : {}),
+      env: hostEnv(),
       persistSession: false,
     },
   })

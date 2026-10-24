@@ -312,8 +312,6 @@ describe("the requires list a worker is told", () => {
         stderr: () => {},
       },
       session: { _tag: "New", sessionId: "11111111-2222-4333-8444-555555555555" },
-      env: { PATH: "/usr/bin" },
-      abortController: new AbortController(),
     })
     const system = options.systemPrompt
     const append = typeof system === "object" && "append" in system ? system.append : ""

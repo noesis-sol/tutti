@@ -14,6 +14,7 @@ import type { HookInput, HookJSONOutput } from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer } from "effect"
 import fc from "fast-check"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { layer as liveModel, organOptions } from "../src/organs/AgentSdkLanguageModel.ts"
 import { type OrganError, Organs } from "../src/organs/Organs.ts"
 import {
@@ -182,11 +183,7 @@ describe("the scout's options", () => {
       jsonSchema: { type: "object" },
       call: { organ: "scout", ...(organ.reads === undefined ? {} : { reads: organ.reads }) },
       cwd: root,
-      env: {},
-      claude: null,
-      abortController: new AbortController(),
       partial: false,
-      stderr: () => {},
     })
     expect(options).toMatchObject({
       tools: ["Read", "Glob", "Grep"],
@@ -245,6 +242,7 @@ describe("the scout's options", () => {
                 env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) },
               }),
             ),
+            Layer.provideMerge(ClaudeCode.layer),
             Layer.provideMerge(
               Layer.mergeAll(
                 costLayer(),

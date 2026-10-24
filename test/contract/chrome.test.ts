@@ -78,9 +78,8 @@ const firstInit = async (servers: ChosenServers): Promise<SDKSystemMessage> => {
         skills: false,
         callbacks,
         session: { _tag: "New", sessionId: crypto.randomUUID() },
-        env: hostEnv(),
-        abortController: new AbortController(),
       }),
+      env: hostEnv(),
       persistSession: false,
     },
   })

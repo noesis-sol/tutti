@@ -32,13 +32,12 @@
 // the test layer's (src/testing/Organs.ts) plays canned SDK messages.
 //
 // Which organ is calling, and its model and effort, the organ framework says with OrganCall.
-import {
-  type EffortLevel,
-  type Options,
-  query,
-  type SDKMessage,
-  type SDKResultMessage,
-  type SDKUserMessage,
+import type {
+  EffortLevel,
+  Options,
+  SDKMessage,
+  SDKResultMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Clock, Context, DateTime, Effect, FileSystem, Layer, type Scope, Stream } from "effect"
 import {
@@ -49,14 +48,11 @@ import {
   type Response,
 } from "effect/ai"
 import type { AccountProbe } from "../agent/Account.ts"
-import { queryThrew } from "../agent/claudeBinary.ts"
-import { workerEnv } from "../agent/env.ts"
+import { BilledAs, ClaudeCode, type SessionSpec } from "../agent/ClaudeCode.ts"
 import { chromeArgs } from "../agent/mcp.ts"
-import { spawnInOwnProcessGroup } from "../agent/options.ts"
 import { turnLimit } from "../agent/reading.ts"
-import { organCloseLimit, withSessionProcess, withStderr } from "../agent/sessionProcess.ts"
+import { organCloseLimit } from "../agent/sessionProcess.ts"
 import { endedOnLimit } from "../agent/UsageLimits.ts"
-import { AppConfig } from "../cli/AppConfig.ts"
 import { type Cost, OrganCost } from "./OrganCost.ts"
 
 const module = "AgentSdkLanguageModel"
@@ -146,21 +142,15 @@ export interface OrganOptionsInput {
   readonly call: OrganCallConfig
   /** The folder the session runs in: a fresh private temp folder, or `call.reads`'s. */
   readonly cwd: string
-  /** workerEnv()'s environment (§ 4.13). */
-  readonly env: Record<string, string>
-  /** The Claude Code to run (--claude); the embedded one when null. */
-  readonly claude: string | null
-  readonly abortController: AbortController
   /** Partial messages, for streamText. */
   readonly partial: boolean
-  readonly stderr: (data: string) => void
 }
 
 /**
  * An organ session's SDK options (§ 6.1): isolated, in a temp folder, one turn. An organ that reads
  * (§ 6.3) gets its tools, its hooks and its budget.
  */
-export const organOptions = (input: OrganOptionsInput): Options => ({
+export const organOptions = (input: OrganOptionsInput): SessionSpec => ({
   systemPrompt: input.turn.systemPrompt,
   tools: input.call.reads === undefined ? [] : [...input.call.reads.tools],
   ...(input.call.reads === undefined
@@ -173,17 +163,12 @@ export const organOptions = (input: OrganOptionsInput): Options => ({
   permissionPrompts: "none",
   persistSession: false,
   cwd: input.cwd,
-  env: input.env,
-  abortController: input.abortController,
   includePartialMessages: input.partial,
   ...(input.call.model === undefined ? {} : { model: input.call.model }),
   ...(input.call.effort === undefined ? {} : { effort: input.call.effort }),
   ...(input.jsonSchema === undefined
     ? {}
     : { outputFormat: { type: "json_schema", schema: input.jsonSchema } }),
-  stderr: input.stderr,
-  ...(input.claude === null ? {} : { pathToClaudeCodeExecutable: input.claude }),
-  spawnClaudeCodeProcess: spawnInOwnProcessGroup(input.stderr),
 })
 
 const userMessage = (texts: ReadonlyArray<string>): SDKUserMessage => ({
@@ -625,28 +610,21 @@ export interface LiveOptions {
   readonly account: Pick<AccountProbe, "subscription">
   /** tutti's environment, organs' is made from; process.env by default. */
   readonly env?: Readonly<Record<string, string | undefined>>
-  /** The Agent SDK's query(), which a test stands in for. */
-  readonly query?: typeof query
 }
 
-/** How much of Claude Code's stderr an error quotes, at most. */
-const stderrLimit = 2000
-
-/** The live LanguageModel over the Agent SDK, its costs recorded in OrganCost. */
+/** The live LanguageModel over Claude Code, its costs recorded in OrganCost. */
 export const layer = (
   options: LiveOptions,
-): Layer.Layer<LanguageModel.LanguageModel, never, AppConfig | OrganCost | FileSystem.FileSystem> =>
+): Layer.Layer<
+  LanguageModel.LanguageModel,
+  never,
+  ClaudeCode | OrganCost | FileSystem.FileSystem
+> =>
   Layer.effect(
     LanguageModel.LanguageModel,
     Effect.gen(function* () {
-      const config = yield* AppConfig
+      const claudeCode = yield* ClaudeCode
       const fs = yield* FileSystem.FileSystem
-      const openQuery = options.query ?? query
-      const env = workerEnv({
-        subscription: options.account.subscription,
-        billing: config.billing,
-        ...(options.env === undefined ? {} : { env: options.env }),
-      })
 
       /**
        * One Claude Code session of the turn, in a fresh private temp folder, or the one the organ
@@ -663,51 +641,32 @@ export const layer = (
                   fail(method, new AiError.UnknownError({ description: messageOf(error) })),
                 ),
               ))
-          const abortController = new AbortController()
-          const { options, process } = withSessionProcess(
-            organOptions({
-              turn,
-              jsonSchema,
-              call,
-              cwd,
-              env,
-              claude: config.claude,
-              abortController,
-              partial,
-              stderr: () => {},
-            }),
-          )
-          // query() throws as it is called when there is no Claude Code for the platform.
-          const q = yield* Effect.try({
-            try: () =>
-              openQuery({
-                prompt: (async function* () {
-                  yield userMessage(turn.userText)
-                })(),
-                options,
-              }),
-            catch: (cause) =>
-              fail(method, new AiError.UnknownError({ description: queryThrew(cause) })),
-          })
-          // A turn not over is unwanted: its Claude Code is killed at once, not given the SDK's
-          // grace. Either way the call ends once its process has exited, before its folder goes.
-          yield* Effect.addFinalizer(() =>
-            Effect.gen(function* () {
-              if (!ended()) {
-                yield* process.kill
-                abortController.abort()
-              }
-              yield* process.closeAndWait(() => q.close(), organCloseLimit)
-            }),
-          )
-          const failed = (error: unknown) =>
-            fail(
-              method,
-              new AiError.UnknownError({
-                description: withStderr(messageOf(error), process.stderrTail(stderrLimit)),
-              }),
+          // No Claude Code for the platform fails the call. The call ends once its Claude Code
+          // has exited, before its folder goes.
+          const claude = yield* claudeCode
+            .open({
+              options: organOptions({ turn, jsonSchema, call, cwd, partial }),
+              prompt: (async function* () {
+                yield userMessage(turn.userText)
+              })(),
+              billedAs: BilledAs.Workers({ subscription: options.account.subscription }),
+              ...(options.env === undefined ? {} : { env: options.env }),
+              closeLimit: organCloseLimit,
+            })
+            .pipe(
+              Effect.mapError((error) =>
+                fail(method, new AiError.UnknownError({ description: error.reason })),
+              ),
             )
-          return Stream.fromAsyncIterable(q, failed)
+          // A turn not over is unwanted: its Claude Code is killed at once, not given the SDK's
+          // grace.
+          yield* Effect.addFinalizer(() => (ended() ? Effect.void : claude.kill))
+          // What Claude Code last wrote to stderr says why, where the SDK says only its exit code.
+          return claude.messages.pipe(
+            Stream.mapError((error) =>
+              fail(method, new AiError.UnknownError({ description: error.quoted() })),
+            ),
+          )
         })
 
       return yield* make(session)

@@ -2,8 +2,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { query } from "@anthropic-ai/claude-agent-sdk"
-import { Duration, Effect, Exit } from "effect"
+import { Duration, Effect, Exit, Layer } from "effect"
 import {
   AccountProbeFailed,
   type Initialization,
@@ -12,8 +11,8 @@ import {
   probeTimeout,
   startProbeWith,
 } from "../src/agent/Account.ts"
-import { probeEnv } from "../src/agent/env.ts"
-import { appConfig } from "../src/testing/AppConfig.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
+import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { testEnv } from "./env.ts"
 
 // The login probe, startProbe in src/agent/Account.ts, over the Agent SDK's query() with the fake
@@ -41,11 +40,12 @@ const live: ProbeLimits = { timeout: probeTimeout, closeLimit: probeCloseLimit }
 const probe = async (scenario: Scenario, limits: ProbeLimits = live) => {
   const dir = mkdtempSync(join(tmpdir(), "tutti-account-probe-"))
   const log = join(dir, "fake.jsonl")
-  const env = probeEnv({
-    env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log }) },
-  })
+  const env = { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify({ ...scenario, log }) }
+  const config = appConfig({ claude: fake }, dir)
   const exit = await Effect.runPromiseExit(
-    startProbeWith(query, limits)({ config: appConfig({ claude: fake }, dir), env }),
+    startProbeWith(limits)({ config, env }).pipe(
+      Effect.provide(ClaudeCode.layer.pipe(Layer.provide(configLayer(config)))),
+    ),
   )
   return { exit, entries: entries(log), log }
 }

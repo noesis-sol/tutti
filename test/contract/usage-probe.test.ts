@@ -5,6 +5,7 @@
 import { expect } from "bun:test"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer } from "effect"
+import { ClaudeCode } from "../../src/agent/ClaudeCode.ts"
 import { paneVariable } from "../../src/agent/env.ts"
 import { probeOrgan, UsageProbe } from "../../src/agent/UsageProbe.ts"
 import { layer as configLayer } from "../../src/testing/AppConfig.ts"
@@ -33,6 +34,7 @@ live.describe("the usage probe", () => {
       }).pipe(
         Effect.provide(
           UsageProbe.layer({ account: { subscription: true }, env: hostEnv() }).pipe(
+            Layer.provideMerge(ClaudeCode.layer),
             Layer.provideMerge(Layer.mergeAll(configLayer(), organCostLayer(), BunServices.layer)),
           ),
         ),

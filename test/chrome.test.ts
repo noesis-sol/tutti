@@ -32,7 +32,6 @@ import * as TestAccount from "../src/testing/Account.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 
 const config = appConfig({}, "/work/project")
-const env = { PATH: "/usr/bin" }
 const callbacks: WorkerCallbacks = {
   canUseTool: async () => ({ behavior: "allow", updatedInput: {} }),
   onElicitation: async () => ({ action: "decline" }),
@@ -52,8 +51,6 @@ const worker = (servers: ChosenServers) =>
     skills: false,
     callbacks,
     session: { _tag: "New", sessionId: "s" },
-    env,
-    abortController: new AbortController(),
   })
 
 const interview = (chrome: boolean) =>
@@ -63,8 +60,6 @@ const interview = (chrome: boolean) =>
     chrome,
     callbacks,
     session: { _tag: "New", sessionId: "s" },
-    env,
-    abortController: new AbortController(),
   })
 
 describe("Chrome's arguments", () => {
@@ -86,23 +81,14 @@ describe("Chrome's arguments", () => {
   })
 
   test("the login probe and an organ never get it", () => {
-    const probe = probeOptions({
-      config,
-      env,
-      stderr: () => {},
-      abortController: new AbortController(),
-    })
+    const probe = probeOptions({ config })
     expect(probe.extraArgs).toEqual(off)
     const organ = organOptions({
       turn: { systemPrompt: "Answer.", userText: ["Hi."] },
       jsonSchema: undefined,
       call: { organ: "triage" },
       cwd: "/tmp",
-      env,
-      claude: null,
-      abortController: new AbortController(),
       partial: false,
-      stderr: () => {},
     })
     expect(organ.extraArgs).toEqual(off)
   })

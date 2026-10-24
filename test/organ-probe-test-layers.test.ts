@@ -10,6 +10,7 @@ import { Duration, Effect, Exit, Fiber, Layer, Schema } from "effect"
 import { type AiError, LanguageModel, type Prompt } from "effect/ai"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { ProbeAnswer, probeOrgan, UsageProbe } from "../src/agent/UsageProbe.ts"
 import {
   limitOf,
@@ -181,8 +182,9 @@ describe("the test layers and the live ones", () => {
     await fc.assert(
       fc.asyncProperty(anyTurn, async (turn) => {
         const live = await generate(
-          liveLayer({ account: { subscription: true }, env: {}, query: scriptedQuery(turn) }).pipe(
+          liveLayer({ account: { subscription: true }, env: {} }).pipe(
             Layer.provideMerge(OrganCost.layer),
+            Layer.provide(ClaudeCode.layerWith(scriptedQuery(turn))),
             Layer.provide(Layer.mergeAll(configLayer(appConfig()), BunServices.layer)),
           ),
         )
@@ -202,9 +204,11 @@ describe("the test layers and the live ones", () => {
             return { answer, log: yield* texts }
           }).pipe(Effect.provide(layer.pipe(Layer.provideMerge(logLayer()))), Effect.runPromise)
         const live = await probing(
-          UsageProbe.layerWith(scriptedQuery(turn), { account: { subscription: true }, env: {} })
-            .pipe(Layer.provideMerge(OrganCost.layer))
-            .pipe(Layer.provide(Layer.mergeAll(configLayer(appConfig()), BunServices.layer))),
+          UsageProbe.layer({ account: { subscription: true }, env: {} }).pipe(
+            Layer.provideMerge(OrganCost.layer),
+            Layer.provide(ClaudeCode.layerWith(scriptedQuery(turn))),
+            Layer.provide(Layer.mergeAll(configLayer(appConfig()), BunServices.layer)),
+          ),
         )
         const canned = await probing(probeLayer([turn]))
         expect(canned).toEqual(live)

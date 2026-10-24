@@ -8,6 +8,7 @@ import { Deferred, Duration, Effect, Layer, Schedule, Stream, SubscriptionRef } 
 import fc from "fast-check"
 import { AgentHost, type Session } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import {
   featureLead,
   featureRequestFile,
@@ -148,8 +149,6 @@ describe("interviewOptions", () => {
             chrome: false,
             callbacks,
             session: { _tag: resume ? "Resume" : "New", sessionId: "s-1" },
-            env: { PATH: "/usr/bin" },
-            abortController: new AbortController(),
           }),
         }
       }).pipe(
@@ -210,7 +209,6 @@ describe("interviewOptions", () => {
     expect(options.canUseTool).toBe(callbacks.canUseTool)
     expect(options.onElicitation).toBe(callbacks.onElicitation)
     expect(options.permissionMode).toBe(defaultSettings.workers.permission_mode)
-    expect(options.env).toEqual({ PATH: "/usr/bin" })
   })
 
   test("a resumed interview resumes its session", async () => {
@@ -528,7 +526,9 @@ describe("startInterview, with the scripted host", () => {
         return yield* effect(repo, ready).pipe(
           Effect.provide(
             scriptedHost({ [interviewWorker]: script(ready) }).pipe(
-              Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+              Layer.provideMerge(
+                Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+              ),
               Layer.provideMerge(
                 Layer.mergeAll(
                   logLayer(),
@@ -585,9 +585,11 @@ describe("startInterview, with the scripted host", () => {
     const session = (started?._tag === "Started" ? started.session : undefined) as Session
     expect(session.sessionId).toBe(interview.sessionId)
     expect(session.cwd).toBe(repo)
-    expect(session.interview?.prompt).toBe(interviewPrompt)
-    expect(session.interview?.server).toBe(interview.tools.server)
-    expect(session.interview?.server).toMatchObject({ type: "sdk", name: serverName })
+    const kind = session.kind
+    if (kind?._tag !== "Interview") throw new Error(`not an interview's session: ${kind?._tag}`)
+    expect(kind.prompt).toBe(interviewPrompt)
+    expect(kind.server).toBe(interview.tools.server)
+    expect(kind.server).toMatchObject({ type: "sdk", name: serverName })
 
     // The description: saved, and sent wrapped as the first message, composed by tutti.
     expect(readFileSync(join(repo, featureRequestFile), "utf8")).toBe(
@@ -759,7 +761,9 @@ describe("the interview's session, with the live host over the fake Claude Code"
       }).pipe(
         Effect.provide(
           host.pipe(
-            Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+            Layer.provideMerge(
+              Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer(), ClaudeCode.layer),
+            ),
             Layer.provideMerge(
               Layer.mergeAll(
                 logLayer(),

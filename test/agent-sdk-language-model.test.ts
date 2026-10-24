@@ -6,6 +6,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Schedule, Schema, Stream } from "effect"
 import { type AiError, LanguageModel, Prompt } from "effect/ai"
 import fc from "fast-check"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import {
   layer,
   OrganCall,
@@ -86,6 +87,7 @@ const run = async <A, E>(
             FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario),
           },
         }).pipe(
+          Layer.provideMerge(ClaudeCode.layer),
           Layer.provideMerge(
             Layer.mergeAll(
               costLayer(),
@@ -212,17 +214,12 @@ describe("AgentSdkLanguageModel", () => {
   })
 
   test("the options name every isolation setting", () => {
-    const abortController = new AbortController()
     const options = organOptions({
       turn: { systemPrompt: "S", userText: ["U"] },
       jsonSchema: { type: "object" },
       call: { organ: "plan" },
       cwd: "/tmp/x",
-      env: { A: "1" },
-      claude: null,
-      abortController,
       partial: false,
-      stderr: () => {},
     })
     expect(options).toMatchObject({
       systemPrompt: "S",
@@ -232,13 +229,10 @@ describe("AgentSdkLanguageModel", () => {
       permissionPrompts: "none",
       persistSession: false,
       cwd: "/tmp/x",
-      env: { A: "1" },
       outputFormat: { type: "json_schema", schema: { type: "object" } },
     })
-    expect(options.abortController).toBe(abortController)
     expect(options.mcpServers).toBeUndefined()
     expect(options.model).toBeUndefined()
-    expect(options.pathToClaudeCodeExecutable).toBeUndefined()
   })
 
   test("a text answer is the result's text", async () => {

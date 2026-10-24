@@ -160,7 +160,7 @@ describe("the environment hold", () => {
     const probeStart = ran.sent.find(
       (sent) => sent._tag === "Started" && sent.ticket === probeWorker,
     )
-    expect(probeStart).toMatchObject({ session: { cwd: ran.repo, probe: true } })
+    expect(probeStart).toMatchObject({ session: { cwd: ran.repo, kind: { _tag: "Probe" } } })
     expect(readFileSync(join(ran.repo, runFolder, probeFile), "utf8")).toBe("ok\n")
     for (const id of ["t-1", "t-2"]) {
       const issue = ran.issues.find((each) => each.id === id)
@@ -385,8 +385,6 @@ describe("the probe's session", () => {
         stderr: () => {},
       },
       session: { _tag: "New", sessionId: "s" } as never,
-      env: {},
-      abortController: new AbortController(),
     })
     expect(options.mcpServers).toEqual({})
     expect(options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", snapshot: true })

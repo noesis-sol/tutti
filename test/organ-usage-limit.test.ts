@@ -8,6 +8,7 @@ import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { type Duration, Effect, Exit, Fiber, Layer, Schema } from "effect"
 import { AiError, LanguageModel, type Prompt } from "effect/ai"
+import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { layer, limitOf, OrganCall } from "../src/organs/AgentSdkLanguageModel.ts"
 import { make, OrganFailed, Organs, refusalOf } from "../src/organs/Organs.ts"
 import { resetLabel } from "../src/run/localTime.ts"
@@ -68,6 +69,7 @@ describe("AgentSdkLanguageModel on the usage limit", () => {
             account: { subscription: true },
             env: { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(fakeScenario) },
           }).pipe(
+            Layer.provideMerge(ClaudeCode.layer),
             Layer.provideMerge(
               Layer.mergeAll(
                 costLayer(),
