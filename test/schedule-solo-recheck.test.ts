@@ -39,7 +39,7 @@ const footprints: Footprints = {
 const shown = (p: TicketPhase | undefined): string =>
   p === undefined ? "none" : p._tag === "HeldBack" ? `HeldBack:${p.why}` : p._tag
 
-/** t-2's phase after a fill, with r, closed and waiting to merge, checked once more in a slot or not. */
+/** t-2's phase after a fill, with r closed: checked once more in a slot, or waiting to merge. */
 const t2After = (r: Seed, rechecked: boolean, withFootprints: boolean) =>
   run(
     [r, { id: "t-2", priority: 1, metadata: { files: ["src/b.ts"] } }],
@@ -60,7 +60,8 @@ const t2After = (r: Seed, rechecked: boolean, withFootprints: boolean) =>
             ),
         },
       })
-      yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
+      // One checked once more waits in Review, its check failed, until it takes its slot.
+      if (!rechecked) yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
       const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
       yield* schedule.fill
       const state = yield* ledger.current
@@ -109,4 +110,33 @@ test("a ticket checked once more without the solo label lets one beside it start
     t2: "Working",
     solo: [],
   })
+})
+
+/** Whether r2 is checked once more, and c carried over, beside r as t2After has it, none in line. */
+const besideR = (rechecked: boolean) =>
+  run(
+    [solo, { id: "r2", status: "closed" }, { id: "c", status: "in_progress" }],
+    Effect.gen(function* () {
+      const ledger = yield* Ledger
+      const schedule = yield* make({
+        concurrent: 3,
+        limit: 40,
+        scope: null,
+        excludeTypes: ["epic"],
+        start: { start: () => Effect.never },
+      })
+      if (!rechecked) yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
+      const took = rechecked ? yield* schedule.recheckSlot("r", Effect.never) : false
+      const r2 = yield* schedule.recheckSlot("r2", Effect.never)
+      const c = yield* schedule.carry("c", Effect.succeed(Effect.never))
+      return { took, r2, c, running: [...(yield* schedule.running)] }
+    }),
+  )
+
+test("a solo ticket checked once more keeps the next recheck and a carried worker out", async () => {
+  expect(await besideR(true)).toEqual({ took: true, r2: false, c: false, running: ["r"] })
+})
+
+test("a solo ticket past its work without a slot keeps a recheck and a carried worker out", async () => {
+  expect(await besideR(false)).toEqual({ took: false, r2: false, c: false, running: [] })
 })
