@@ -180,7 +180,7 @@ const PathsInString = Schema.fromJsonString(Paths)
 const BdError = Schema.fromJsonString(Schema.Struct({ error: Schema.String }))
 
 /** The error bd show --json gives for an ID it has no issue for (bd 1.3). */
-const noSuchIssueError = "no issues found matching the provided IDs"
+export const noSuchIssueError = "no issues found matching the provided IDs"
 
 /** The metadata as an object: {} when it is neither an object nor one encoded in a string. */
 const metadataOf = (raw: unknown): Readonly<Record<string, unknown>> =>
@@ -356,6 +356,38 @@ export const saysNoSuchIssue = (stdout: string): boolean =>
     onSome: (error) => error.error === noSuchIssueError,
   })
 
+/** What bd printed and how it exited: what a call is judged by. */
+export interface BdOutput {
+  readonly exitCode: number
+  readonly stdout: string
+  readonly stderr: string
+}
+
+/** bd failing with this output: it has no such issue when its stdout says so. */
+export const bdFailed = (command: string, output: BdOutput): BeadsFailed =>
+  new BeadsFailed({
+    command,
+    exitCode: output.exitCode,
+    stderr: output.stderr,
+    noSuchIssue: saysNoSuchIssue(output.stdout),
+  })
+
+/** A read is bd's answer when its output decodes, whatever bd's exit code. */
+export const judgeRead = <A>(
+  command: string,
+  output: BdOutput,
+  decode: (command: string, stdout: string) => Effect.Effect<A, BeadsUnreadable | BeadsFailed>,
+): Effect.Effect<A, BeadsUnreadable | BeadsFailed> =>
+  decode(command, output.stdout).pipe(
+    Effect.catchTag("BeadsUnreadable", (unreadable) =>
+      Effect.fail(output.exitCode === 0 ? unreadable : bdFailed(command, output)),
+    ),
+  )
+
+/** An update is done when bd exits 0. */
+export const judgeWrite = (command: string, output: BdOutput): Effect.Effect<void, BeadsFailed> =>
+  output.exitCode === 0 ? Effect.void : Effect.fail(bdFailed(command, output))
+
 export interface ReadyOptions {
   /** Only this issue's descendants. */
   readonly parent?: string
@@ -508,36 +540,28 @@ export class Beads extends Context.Service<
           )
         }
 
-        const failed = (shown: string, output: Output) =>
-          new BeadsFailed({
-            command: shown,
-            exitCode: output.exitCode,
-            stderr: output.stderr,
-            noSuchIssue: saysNoSuchIssue(output.stdout),
-          })
-
         // bd's stdout past exec's cap lost its start, so it isn't decoded: it would fail as "not
         // JSON", or worse, decode as the last issues of a list. bd exiting 0 says so; failing, it
         // fails with its exit code.
-        const decodeWhole = <A>(
-          shown: string,
-          output: Output,
-          decode: (
-            command: string,
-            stdout: string,
-          ) => Effect.Effect<A, BeadsUnreadable | BeadsFailed>,
-        ) =>
-          output.truncated.stdout
-            ? Effect.fail(
-                new BeadsUnreadable({
-                  command: shown,
-                  reason: outputCut(maxOutputBytes, "bd's"),
-                  output: "",
-                }),
-              )
-            : decode(shown, output.stdout)
+        const whole =
+          <A>(
+            output: Output,
+            decode: (
+              command: string,
+              stdout: string,
+            ) => Effect.Effect<A, BeadsUnreadable | BeadsFailed>,
+          ) =>
+          (command: string, stdout: string) =>
+            output.truncated.stdout
+              ? Effect.fail(
+                  new BeadsUnreadable({
+                    command,
+                    reason: outputCut(maxOutputBytes, "bd's"),
+                    output: "",
+                  }),
+                )
+              : decode(command, stdout)
 
-        // A read is bd's answer when its output decodes, whatever bd's exit code.
         const read = <A>(
           args: ReadonlyArray<string>,
           decode: (
@@ -546,24 +570,17 @@ export class Beads extends Context.Service<
           ) => Effect.Effect<A, BeadsUnreadable | BeadsFailed>,
         ) =>
           Effect.flatMap(bd(args, limits.read), ({ shown, output }) =>
-            decodeWhole(shown, output, decode).pipe(
-              Effect.catchTag("BeadsUnreadable", (unreadable) =>
-                Effect.fail(output.exitCode === 0 ? unreadable : failed(shown, output)),
-              ),
-            ),
+            judgeRead(shown, output, whole(output, decode)),
           )
 
-        // An update is done when bd exits 0.
         const write = (args: ReadonlyArray<string>) =>
           Effect.flatMap(bd(args, limits.write), ({ shown, output }) =>
-            output.exitCode === 0
-              ? Effect.succeed({ shown, output })
-              : Effect.fail(failed(shown, output)),
+            Effect.as(judgeWrite(shown, output), { shown, output }),
           )
 
         const writeIssue = (args: ReadonlyArray<string>) =>
           Effect.flatMap(write(args), ({ shown, output }) =>
-            decodeWhole(shown, output, decodeIssue),
+            whole(output, decodeIssue)(shown, output.stdout),
           )
 
         const show = (id: string) =>

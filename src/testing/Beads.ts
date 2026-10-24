@@ -6,21 +6,30 @@
 // as bd ready does. bd close refuses an issue with a live blocker or a child that isn't closed, and
 // so does this. Time comes from Effect's Clock, so TestClock moves it. A test can also make the
 // next call of any bd command fail or time out, as the test Git layer's fail does, which is how
-// scenarios reach bd failing part-way through a run.
+// scenarios reach bd failing part-way through a run. Its answers are bd's --json output, decoded
+// and judged as the live layer does, so a fault's output reaches the same judgement.
 import { Clock, Context, Effect, Layer, Ref } from "effect"
 import {
+  type BdOutput,
   Beads,
   type BeadsError,
-  BeadsFailed,
+  type BeadsFailed,
   BeadsTimedOut,
-  type Dependency,
+  type BeadsUnreadable,
+  bdFailed,
   type DependencyType,
+  decodeDependencies,
+  decodeIssue,
+  decodeIssues,
+  decodeQuestions,
   HumanLabel,
   type Issue,
+  issueFor,
+  judgeRead,
+  judgeWrite,
   type ListOptions,
-  MetadataKey,
-  metadataList,
   type NewIssue,
+  noSuchIssueError,
   type ReadyOptions,
   type Status,
   type Update,
@@ -50,7 +59,12 @@ export interface Seed {
   readonly closeReason?: string
 }
 
-/** A failure to give the next call of a bd command, instead of what it would do. */
+/**
+ * What bd gives the next call of a command instead of what it would, judged as the live layer
+ * judges bd's output: a read whose stdout decodes is bd's answer whatever the exit code, and one
+ * whose stdout says bd has no such issue fails with noSuchIssue; a write that exits 0 is done, its
+ * stdout decoded as the issue it gives (a write that gives none changes nothing).
+ */
 export interface Fault {
   /**
    * Only a call about this issue: the ID it is given, or the parent bd list or bd ready lists
@@ -59,11 +73,17 @@ export interface Fault {
   readonly id?: string
   /** The call times out (BeadsTimedOut) instead of failing (BeadsFailed). */
   readonly timedOut?: boolean
+  /** 1 by default. */
   readonly exitCode?: number
   readonly stderr?: string
+  /** "" by default. */
+  readonly stdout?: string
   /** How many calls fail; 1 by default, every one with Infinity. */
   readonly times?: number
 }
+
+/** bd's stdout as bd show --json answers an ID it has no issue for, for a Fault's stdout. */
+export const noSuchIssueStdout = JSON.stringify({ error: noSuchIssueError })
 
 /** The bd commands a Fault's id is the parent of, not the issue. */
 const listsUnder: ReadonlySet<string> = new Set(["list", "ready", "create"])
@@ -108,17 +128,74 @@ export class Backlog extends Context.Service<
     put(seed: Seed): Effect.Effect<void>
     /**
      * Makes the next call of the bd command op (`list`, `show`, `update`, `label add`, `dep list`,
-     * `human list`, …) fail.
+     * `human list`, …) give the fault's output, which fails it unless it decodes.
      */
     fail(op: string, fault?: Fault): Effect.Effect<void>
   }
 >()("tutti/testing/Beads/Backlog") {}
 
-const notFound = (command: string, id: string) =>
-  new BeadsFailed({ command, exitCode: 1, stderr: `Issue ${id} not found`, noSuchIssue: true })
-
 const parentOf = (issue: Stored): string | undefined =>
   issue.links.find((link) => link.type === "parent-child")?.id
+
+/** The command line a call of op about id shows. */
+const commandOf = (op: string, id: string | undefined) =>
+  `bd ${op}${id === undefined ? "" : listsUnder.has(op) ? ` --parent=${id}` : ` ${id}`} --json`
+
+type Decode<A> = (
+  command: string,
+  stdout: string,
+) => Effect.Effect<A, BeadsUnreadable | BeadsFailed>
+
+/** The issue's own fields as bd's JSON gives them. */
+const bdFields = (issue: Stored) => ({
+  id: issue.id,
+  title: issue.title,
+  description: issue.description,
+  design: issue.design,
+  acceptance_criteria: issue.acceptance,
+  notes: issue.notes,
+  status: issue.status,
+  priority: issue.priority,
+  issue_type: issue.type,
+  assignee: issue.assignee,
+  labels: issue.labels,
+  ...(parentOf(issue) === undefined ? {} : { parent: parentOf(issue) }),
+  metadata: issue.metadata,
+  created_at: issue.createdAt,
+  ...(issue.deferUntil === undefined ? {} : { defer_until: issue.deferUntil }),
+  close_reason: issue.closeReason,
+})
+
+/** The issue as bd ready, bd list and bd's writes give it: its links, by ID. */
+const brief = (issue: Stored) => ({
+  ...bdFields(issue),
+  dependencies: issue.links.map((link) => ({
+    issue_id: issue.id,
+    depends_on_id: link.id,
+    type: link.type,
+  })),
+})
+
+/** The issue as bd show gives it: each issue it links to, without its own links. */
+const full = (issues: ReadonlyMap<string, Stored>, issue: Stored) => ({
+  ...bdFields(issue),
+  dependencies: issue.links.flatMap((link) => {
+    const other = issues.get(link.id)
+    return other === undefined ? [] : [linked(other, link.type)]
+  }),
+})
+
+/** An issue as bd show and bd dep list give one linked to another. */
+const linked = (issue: Stored, type: DependencyType) => ({
+  ...bdFields(issue),
+  dependency_type: type,
+})
+
+/** The issue as bd show gives it, decoded as the live layer decodes it. */
+const shown = (issues: ReadonlyMap<string, Stored>, issue: Stored): Effect.Effect<Issue> =>
+  Effect.orDie(
+    issueFor(issue.id, commandOf("show", issue.id), JSON.stringify([full(issues, issue)])),
+  )
 
 const withLink = (
   links: Stored["links"],
@@ -170,40 +247,6 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
       )
       let seq = seeds.length
 
-      /** The issue in the form bd ready and bd list give it: its links, by ID. */
-      const brief = (issue: Stored): Issue => ({
-        id: issue.id,
-        title: issue.title,
-        description: issue.description,
-        design: issue.design,
-        acceptance: issue.acceptance,
-        notes: issue.notes,
-        status: issue.status,
-        priority: issue.priority,
-        type: issue.type,
-        assignee: issue.assignee,
-        labels: issue.labels,
-        ...(parentOf(issue) === undefined ? {} : { parent: parentOf(issue) as string }),
-        dependencies: issue.links.map((link) => ({ id: link.id, type: link.type })),
-        metadata: issue.metadata,
-        files: metadataList(issue.metadata, MetadataKey.files),
-        predictedFiles: metadataList(issue.metadata, MetadataKey.predictedFiles),
-        createdAt: issue.createdAt,
-        ...(issue.deferUntil === undefined ? {} : { deferUntil: issue.deferUntil }),
-        closeReason: issue.closeReason,
-      })
-
-      /** The issue in the form bd show gives it: each issue it links to, without its own links. */
-      const full = (issues: ReadonlyMap<string, Stored>, issue: Stored): Issue => ({
-        ...brief(issue),
-        dependencies: issue.links.flatMap((link): Array<Dependency> => {
-          const other = issues.get(link.id)
-          return other === undefined
-            ? []
-            : [{ id: link.id, type: link.type, issue: { ...brief(other), dependencies: [] } }]
-        }),
-      })
-
       const ancestors = (issues: ReadonlyMap<string, Stored>, issue: Stored): Array<Stored> => {
         const found: Array<Stored> = []
         const seen = new Set([issue.id])
@@ -248,32 +291,50 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
         return open === 0 ? undefined : `cannot close ${issue.id}: ${open} open child issue(s)`
       }
 
+      /** bd's output for a call that went through. */
+      const ok = (value: unknown): BdOutput => ({
+        exitCode: 0,
+        stdout: JSON.stringify(value),
+        stderr: "",
+      })
+
       /**
-       * Changes the issue, or fails as bd does when it has none by that ID, or when the change
-       * would close it and bd refuses to.
+       * bd show's failure for an ID the backlog has no issue for: the live layer shows each issue a
+       * write is about first, and fails the write with it.
        */
-      const change = (command: string, id: string, f: (issue: Stored) => Stored) =>
-        Effect.flatMap(
-          Ref.modify(state, (issues): [Issue | BeadsFailed, Map<string, Stored>] => {
-            const issue = issues.get(id)
-            if (issue === undefined) return [notFound(command, id), issues]
-            const changed = f(issue)
-            const refusal =
-              changed.status === "closed" && issue.status !== "closed"
-                ? refusesToClose(issues, issue)
-                : undefined
-            if (refusal !== undefined) {
-              const refused = new BeadsFailed({
-                command,
-                exitCode: 1,
-                stderr: refusal,
-                noSuchIssue: false,
-              })
-              return [refused, issues]
-            }
-            return [brief(changed), new Map(issues).set(id, changed)]
-          }),
-          (issue) => (issue instanceof BeadsFailed ? Effect.fail(issue) : Effect.succeed(issue)),
+      const missing = (id: string): BdOutput => ({
+        exitCode: 1,
+        stdout: noSuchIssueStdout,
+        stderr: `Issue ${id} not found`,
+      })
+      const confirm = (issues: ReadonlyMap<string, Stored>, ids: ReadonlyArray<string>) =>
+        Effect.forEach(
+          ids,
+          (id) =>
+            issues.has(id)
+              ? Effect.void
+              : Effect.fail(bdFailed(commandOf("show", id), missing(id))),
+          { discard: true },
+        )
+
+      /** Changes the issue, as bd's write gives it, unless the change would close it and bd refuses to. */
+      const change = (id: string, f: (issue: Stored) => Stored) =>
+        Effect.flatMap(Ref.get(state), (issues) =>
+          Effect.andThen(
+            confirm(issues, [id]),
+            Ref.modify(state, (issues): [BdOutput, Map<string, Stored>] => {
+              const issue = issues.get(id) as Stored
+              const changed = f(issue)
+              const refusal =
+                changed.status === "closed" && issue.status !== "closed"
+                  ? refusesToClose(issues, issue)
+                  : undefined
+              if (refusal !== undefined) {
+                return [{ exitCode: 1, stdout: "", stderr: refusal }, issues]
+              }
+              return [ok([brief(changed)]), new Map(issues).set(id, changed)]
+            }),
+          ),
         )
 
       const ready = (options: ReadyOptions = {}) =>
@@ -294,27 +355,27 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
                 }),
               ),
           )
-          return [...issues.values()]
-            .filter(
-              (issue) =>
-                isReady(issues, issue, now) &&
-                (options.parent === undefined || isDescendant(issues, issue, options.parent)) &&
-                !issue.labels.some((label) => options.excludeLabels?.includes(label)) &&
-                !options.excludeTypes?.includes(issue.type),
-            )
-            .sort(byPriorityThen(false))
-            .map(brief)
+          return ok(
+            [...issues.values()]
+              .filter(
+                (issue) =>
+                  isReady(issues, issue, now) &&
+                  (options.parent === undefined || isDescendant(issues, issue, options.parent)) &&
+                  !issue.labels.some((label) => options.excludeLabels?.includes(label)) &&
+                  !options.excludeTypes?.includes(issue.type),
+              )
+              .sort(byPriorityThen(false))
+              .map(brief),
+          )
         })
 
       const show = (id: string) =>
-        Effect.flatMap(Ref.get(state), (issues) => {
+        Effect.map(Ref.get(state), (issues) => {
           const issue = issues.get(id)
-          return issue === undefined
-            ? Effect.fail(notFound(`bd show ${id} --json`, id))
-            : Effect.succeed(full(issues, issue))
+          return issue === undefined ? missing(id) : ok([full(issues, issue)])
         })
 
-      const list = (options: ListOptions = {}) =>
+      const listed = (options: ListOptions = {}) =>
         Effect.map(Ref.get(state), (issues) =>
           [...issues.values()]
             .filter(
@@ -329,12 +390,11 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
                     Object.hasOwn(issue.metadata, key) && metadataIs(issue.metadata[key], value),
                 ),
             )
-            .sort(byPriorityThen(true))
-            .map(brief),
+            .sort(byPriorityThen(true)),
         )
 
       const update = (id: string, update: Update) =>
-        change(`bd update ${id}`, id, (issue) => {
+        change(id, (issue) => {
           const metadata: Record<string, unknown> = { ...issue.metadata, ...update.setMetadata }
           for (const key of update.unsetMetadata ?? []) delete metadata[key]
           return {
@@ -350,25 +410,23 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
         })
 
       const addLink = (id: string, link: { readonly id: string; readonly type: DependencyType }) =>
-        Effect.gen(function* () {
-          const command = `bd dep add ${id} ${link.id}`
-          const issues = yield* Ref.get(state)
-          if (!issues.has(link.id)) return yield* notFound(command, link.id)
-          yield* change(command, id, (issue) => ({ ...issue, links: withLink(issue.links, link) }))
-        })
+        Effect.flatMap(Ref.get(state), (issues) =>
+          Effect.andThen(
+            confirm(issues, [link.id]),
+            change(id, (issue) => ({ ...issue, links: withLink(issue.links, link) })),
+          ),
+        )
 
       const create = (issue: NewIssue) =>
         Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis
           const issues = yield* Ref.get(state)
-          for (const id of [
+          yield* confirm(issues, [
             ...(issue.parent === undefined ? [] : [issue.parent]),
             ...(issue.blockedBy ?? []),
             ...(issue.blocks ?? []),
             ...(issue.discoveredFrom ?? []),
-          ]) {
-            if (!issues.has(id)) return yield* notFound("bd create", id)
-          }
+          ])
           // bd numbers a subticket after its parent: <parent>.1, <parent>.2, …
           const children = [...issues.values()].filter(
             (other) => issue.parent !== undefined && parentOf(other) === issue.parent,
@@ -398,62 +456,110 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
           )
           yield* Ref.update(state, (issues) => new Map(issues).set(id, stored))
           for (const blocked of issue.blocks ?? []) yield* addLink(blocked, { id, type: "blocks" })
-          return brief(stored)
+          return ok(brief(stored))
         })
+
+      const dependencies = (
+        id: string,
+        options: Parameters<Beads["Service"]["dependencies"]>[1] = {},
+      ) =>
+        Effect.flatMap(Ref.get(state), (issues) =>
+          Effect.as(
+            confirm(issues, [id]),
+            ok(
+              (options.direction === "up"
+                ? [...issues.values()].flatMap((other) =>
+                    other.links
+                      .filter((link) => link.id === id)
+                      .map((link) => [other, link.type] as const),
+                  )
+                : (issues.get(id) as Stored).links.flatMap((link) => {
+                    const other = issues.get(link.id)
+                    return other === undefined ? [] : [[other, link.type] as const]
+                  })
+              )
+                .filter(([, type]) => options.type === undefined || type === options.type)
+                .map(([other, type]) => linked(other, type)),
+            ),
+          ),
+        )
 
       const faults: Array<{ readonly op: string; readonly fault: Fault; left: number }> = []
 
-      /** The call, or bd's failure when a test made the next call of op (about id) fail. */
-      const faultable = <A>(
+      /**
+       * What bd gives the call of op (about id), or what a test made it give instead, judged as the
+       * live layer judges bd's output and decoded as it decodes it.
+       */
+      const answer = <A>(
         kind: "read" | "write",
         op: string,
         id: string | undefined,
-        call: Effect.Effect<A, BeadsError>,
+        call: Effect.Effect<BdOutput, BeadsError>,
+        decode: Decode<A>,
       ): Effect.Effect<A, BeadsError> =>
         Effect.suspend(() => {
+          const command = commandOf(op, id)
           const found = faults.find(
             (each) => each.op === op && (each.fault.id === undefined || each.fault.id === id),
           )
-          if (found === undefined) return call
-          found.left -= 1
-          if (found.left <= 0) faults.splice(faults.indexOf(found), 1)
-          const { fault } = found
-          const about = id === undefined ? "" : listsUnder.has(op) ? ` --parent=${id}` : ` ${id}`
-          const command = `bd ${op}${about} --json`
-          return Effect.fail(
-            fault.timedOut
-              ? new BeadsTimedOut({ command, timeLimit: TimeLimit[kind] })
-              : new BeadsFailed({
-                  command,
-                  exitCode: fault.exitCode ?? 1,
-                  stderr: fault.stderr ?? `Error: bd ${op} failed`,
-                  noSuchIssue: false,
-                }),
+          if (found !== undefined) {
+            found.left -= 1
+            if (found.left <= 0) faults.splice(faults.indexOf(found), 1)
+          }
+          const fault = found?.fault
+          const output: Effect.Effect<BdOutput, BeadsError> =
+            fault === undefined
+              ? call
+              : fault.timedOut
+                ? Effect.fail(new BeadsTimedOut({ command, timeLimit: TimeLimit[kind] }))
+                : Effect.succeed({
+                    exitCode: fault.exitCode ?? 1,
+                    stdout: fault.stdout ?? "",
+                    stderr: fault.stderr ?? `Error: bd ${op} failed`,
+                  })
+          return Effect.flatMap(output, (output) =>
+            kind === "read"
+              ? judgeRead(command, output, decode)
+              : Effect.andThen(judgeWrite(command, output), decode(command, output.stdout)),
           )
         })
 
+      const nothing: Decode<void> = () => Effect.void
+      const decodeShow =
+        (id: string): Decode<Issue> =>
+        (command, stdout) =>
+          issueFor(id, command, stdout)
+
       const beads = Beads.of({
-        ready: (options) => faultable("read", "ready", options?.parent, ready(options)),
-        show: (id) => faultable("read", "show", id, show(id)),
-        list: (options) => faultable("read", "list", options?.parent, list(options)),
-        update: (id, changes) => faultable("write", "update", id, update(id, changes)),
+        ready: (options) => answer("read", "ready", options?.parent, ready(options), decodeIssues),
+        show: (id) => answer("read", "show", id, show(id), decodeShow(id)),
+        list: (options) =>
+          answer(
+            "read",
+            "list",
+            options?.parent,
+            Effect.map(listed(options), (issues) => ok(issues.map(brief))),
+            decodeIssues,
+          ),
+        update: (id, changes) => answer("write", "update", id, update(id, changes), decodeIssue),
         close: (id, reason) =>
-          faultable(
+          answer(
             "write",
             "close",
             id,
-            change(`bd close ${id}`, id, (issue) => ({
+            change(id, (issue) => ({
               ...issue,
               status: "closed",
               closeReason: reason ?? issue.closeReason,
             })),
+            decodeIssue,
           ),
         defer: (id, deferral = {}) =>
-          faultable(
+          answer(
             "write",
             "defer",
             id,
-            change(`bd defer ${id}`, id, (issue) => {
+            change(id, (issue) => {
               const { deferUntil: _, ...rest } = issue
               return {
                 ...rest,
@@ -465,94 +571,76 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
                     : appended(issue.notes, deferral.reason),
               }
             }),
+            decodeIssue,
           ),
         addLabel: (id, label) =>
-          faultable(
+          answer(
             "write",
             "label add",
             id,
-            Effect.asVoid(
-              change(`bd label add ${id} ${label}`, id, (issue) => ({
-                ...issue,
-                labels: issue.labels.includes(label) ? issue.labels : [...issue.labels, label],
-              })),
-            ),
+            change(id, (issue) => ({
+              ...issue,
+              labels: issue.labels.includes(label) ? issue.labels : [...issue.labels, label],
+            })),
+            nothing,
           ),
         removeLabel: (id, label) =>
-          faultable(
+          answer(
             "write",
             "label remove",
             id,
-            Effect.asVoid(
-              change(`bd label remove ${id} ${label}`, id, (issue) => ({
-                ...issue,
-                labels: issue.labels.filter((other) => other !== label),
-              })),
-            ),
+            change(id, (issue) => ({
+              ...issue,
+              labels: issue.labels.filter((other) => other !== label),
+            })),
+            nothing,
           ),
         addDependency: (id, dependsOn, type = "blocks") =>
-          faultable("write", "dep add", id, addLink(id, { id: dependsOn, type })),
-        dependencies: (id, options = {}) =>
-          faultable(
-            "read",
-            "dep list",
-            id,
-            Effect.flatMap(show(id), (issue) =>
-              Effect.map(Ref.get(state), (issues) => {
-                const linked: ReadonlyArray<Dependency> =
-                  options.direction === "up"
-                    ? [...issues.values()].flatMap((other) =>
-                        other.links
-                          .filter((link) => link.id === id)
-                          .map((link) => ({
-                            id: other.id,
-                            type: link.type,
-                            issue: { ...brief(other), dependencies: [] },
-                          })),
-                      )
-                    : issue.dependencies
-                return linked.filter(
-                  (link) => options.type === undefined || link.type === options.type,
-                )
-              }),
-            ),
-          ),
-        create: (issue) => faultable("write", "create", issue.parent, create(issue)),
+          answer("write", "dep add", id, addLink(id, { id: dependsOn, type }), nothing),
+        dependencies: (id, options) =>
+          answer("read", "dep list", id, dependencies(id, options), decodeDependencies),
+        create: (issue) => answer("write", "create", issue.parent, create(issue), decodeIssue),
         questions: () =>
-          faultable(
+          answer(
             "read",
             "human list",
             undefined,
-            Effect.map(list(), (issues) =>
-              issues.filter((issue) => issue.labels.includes(HumanLabel)),
-            ),
+            Effect.map(listed(), (issues) => {
+              const questions = issues.filter((issue) => issue.labels.includes(HumanLabel))
+              // bd human list gives null, not [], when there are none.
+              return ok(questions.length === 0 ? null : questions.map(brief))
+            }),
+            decodeQuestions,
           ),
         metadata: (id) =>
-          faultable(
-            "read",
-            "show",
-            id,
-            Effect.map(show(id), (issue) => issue.metadata),
+          answer("read", "show", id, show(id), (command, stdout) =>
+            Effect.map(issueFor(id, command, stdout), (issue) => issue.metadata),
           ),
         setMetadata: (id, key, value) =>
-          faultable(
+          answer(
             "write",
             "update",
             id,
-            Effect.asVoid(update(id, { setMetadata: { [key]: value } })),
+            update(id, { setMetadata: { [key]: value } }),
+            (command, stdout) => Effect.asVoid(decodeIssue(command, stdout)),
           ),
         unsetMetadata: (id, key) =>
-          faultable("write", "update", id, Effect.asVoid(update(id, { unsetMetadata: [key] }))),
+          answer("write", "update", id, update(id, { unsetMetadata: [key] }), (command, stdout) =>
+            Effect.asVoid(decodeIssue(command, stdout)),
+          ),
       })
 
       const backlog = Backlog.of({
-        issues: Effect.map(Ref.get(state), (issues) =>
-          [...issues.values()].sort((a, b) => a.seq - b.seq).map((issue) => full(issues, issue)),
+        issues: Effect.flatMap(Ref.get(state), (issues) =>
+          Effect.forEach(
+            [...issues.values()].sort((a, b) => a.seq - b.seq),
+            (issue) => shown(issues, issue),
+          ),
         ),
         get: (id) =>
-          Effect.map(Ref.get(state), (issues) => {
+          Effect.flatMap(Ref.get(state), (issues) => {
             const issue = issues.get(id)
-            return issue === undefined ? undefined : full(issues, issue)
+            return issue === undefined ? Effect.succeed(undefined) : shown(issues, issue)
           }),
         put: (seed) =>
           Effect.flatMap(Clock.currentTimeMillis, (now) =>
