@@ -9,6 +9,7 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Exit, Fiber, Queue, type Scope } from "effect"
+import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
 import { askedWhy, questionKey } from "../src/run/carry.ts"
 import { UiCommand } from "../src/run/commands.ts"
@@ -712,7 +713,7 @@ describe("the end of a run while a worker waits on you (D19)", () => {
 describe("a steered worker", () => {
   test("gets no automatic message: no nudge, no resume when gone; the next run resumes it", async () => {
     const mine = "Leave the cache alone for now."
-    const uuid = "11111111-2222-4333-8444-555555555555"
+    const uuid = "11111111-2222-4333-8444-555555555555" as MessageUuid
     const ran = await runs({
       backlog: backlog().ticket("a").seeds,
       worktrees: ["a"],

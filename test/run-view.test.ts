@@ -12,6 +12,7 @@ import {
 } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
+import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { WorkerState } from "../src/agent/WorkerState.ts"
 import { makeCommands, offer, resolve, UiCommand } from "../src/run/commands.ts"
@@ -518,7 +519,10 @@ describe("commands", () => {
           openA: resolve(UiCommand.OpenWorker({ ticket: "a" }), now),
           answer: resolve(UiCommand.Answer({ requestId: "r1", answer: { _tag: "Deny" } }), now),
           answered: resolve(UiCommand.Answer({ requestId: "r9", answer: { _tag: "Deny" } }), now),
-          message: resolve(UiCommand.SendMessage({ ticket: "a", text: "hi", uuid: "u-1" }), now),
+          message: resolve(
+            UiCommand.SendMessage({ ticket: "a", text: "hi", uuid: "u-1" as MessageUuid }),
+            now,
+          ),
           drain: resolve(UiCommand.Drain(), now),
         }
       }),

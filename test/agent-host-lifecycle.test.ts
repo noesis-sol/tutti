@@ -226,10 +226,10 @@ describe("makeWorkers: events of an earlier session", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const workers = yield* makeWorkers()
-          const first = yield* workers.open("t-1", "a", false)
+          const first = yield* workers.open("t-1", { session: "a", resumed: false })
           yield* workers.fold(first, WorkerEvent.Closed({ session: "a" }))
           const closed = yield* workers.current("t-1")
-          const entry = yield* workers.open("t-1", "b", false)
+          const entry = yield* workers.open("t-1", { session: "b", resumed: false })
           // The first session's last words, after the second has started.
           yield* workers.fold(entry, WorkerEvent.Ended({ session: "a", why: "late" }))
           yield* workers.fold(entry, WorkerEvent.Sent({ session: "a", uuid: "u-1" }))

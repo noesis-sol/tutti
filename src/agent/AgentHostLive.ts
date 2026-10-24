@@ -49,7 +49,6 @@
 // reach it in the resume's message instead (resumedNotes): when they differ from those its session
 // was started or last resumed with in this run, or when it was started in an earlier run, which
 // may have had others.
-import { randomUUID } from "node:crypto"
 import { availableParallelism } from "node:os"
 import { join } from "node:path"
 import type { McpSdkServerConfigWithInstance, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
@@ -82,6 +81,7 @@ import {
   AgentProtocol,
   AgentStartFailed,
   type Message,
+  MessageUuid,
   makeWorkers,
   type Receipt,
   type Session,
@@ -270,9 +270,9 @@ export const push = (
     readonly claude: Pick<ClaudeSession, "send">
   },
   message: Message,
-): Effect.Effect<string, AgentGone> =>
+): Effect.Effect<MessageUuid, AgentGone> =>
   Effect.gen(function* () {
-    const uuid = message.uuid ?? randomUUID()
+    const uuid = message.uuid ?? MessageUuid.draw()
     // Outstanding before the CLI can see it, so its turn's result can't come first.
     yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
     const sdk = userMessage(message, { uuid, session: session.sessionId })
@@ -665,7 +665,10 @@ export const layer = (
             })
           }
           const sessionId = session.sessionId
-          const entry = yield* workers.open(ticket, sessionId, how._tag === "Resume")
+          const entry = yield* workers.open(ticket, {
+            session: sessionId,
+            resumed: how._tag === "Resume",
+          })
           // What the SDK calls back into tutti runs in the session's scope, which ends it.
           const fibers = yield* Scope.provide(sessionFibers, of)
           const callbacks = yield* Effect.provideContext(
@@ -869,7 +872,7 @@ export const layer = (
           Effect.flatMap(
             begin(ticket, session, { _tag: "Resume", sessionId: session.sessionId }),
             ({ opened, problem, notes }) => {
-              if (problem !== undefined) return Effect.succeed(message.uuid ?? randomUUID())
+              if (problem !== undefined) return Effect.succeed(message.uuid ?? MessageUuid.draw())
               const sent =
                 notes === undefined || notesGiven.get(ticket) === notes
                   ? push(workers, opened, message)

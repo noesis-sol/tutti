@@ -11,6 +11,7 @@ import { createTestRenderer } from "@opentui/core/testing"
 import { Deferred, Effect, Fiber, Layer, Option, Queue, Stream, SubscriptionRef } from "effect"
 import fc from "fast-check"
 import { act } from "react"
+import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { interviewWorker } from "../src/agent/interview.ts"
 import { Filing } from "../src/agent/interviewTools.ts"
@@ -244,7 +245,7 @@ describe("the Interview view", () => {
         UiCommand.SendMessage({
           ticket: interviewWorker,
           text: "Beside it.",
-          uuid: expect.any(String) as unknown as string,
+          uuid: expect.any(String) as unknown as MessageUuid,
         }),
       ])
     })
@@ -356,7 +357,7 @@ const filed: FiledPlan = {
 }
 
 /** The uuid the composer drew for your answer. */
-const sentUuid = "5d1f6a3e-2222-4c8e-9a51-6f0d1f0b2a02"
+const sentUuid = "5d1f6a3e-2222-4c8e-9a51-6f0d1f0b2a02" as MessageUuid
 
 /** The interview's session's system/init. */
 const interviewInit = init({ mcp_servers: [{ name: "tutti", status: "connected", source: "sdk" }] })

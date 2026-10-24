@@ -59,12 +59,27 @@ import { initial, reportWait, step, type Worker, WorkerEvent, WorkerState } from
  */
 export type From = "clientComposed" | "human"
 
+declare const messageUuidBrand: unique symbol
+
+/**
+ * The uuid a message to a worker is sent under, which its session's results and an interrupt's
+ * receipt name it by: a type of its own, so it can't be passed for a ticket or a session beside it.
+ */
+export type MessageUuid = ReturnType<typeof crypto.randomUUID> & {
+  readonly [messageUuidBrand]: true
+}
+
+export const MessageUuid = {
+  /** A new message's uuid. */
+  draw: (): MessageUuid => crypto.randomUUID() as MessageUuid,
+} as const
+
 /** A message for a worker. */
 export interface Message {
   readonly text: string
   readonly from: From
   /** The uuid to send it with, drawn by the caller (the composer, § 7.5); drawn here when left out. */
-  readonly uuid?: string | undefined
+  readonly uuid?: MessageUuid | undefined
 }
 
 /** A session to start or resume: its ID, drawn by the caller, and where it runs (the worktree). */
@@ -103,12 +118,12 @@ export interface Compaction {
 /** The SDK user message that carries `message`, stamped `uuid`, into session `session`. */
 export const userMessage = (
   message: Message,
-  { uuid, session }: { readonly uuid: string; readonly session: string },
+  { uuid, session }: { readonly uuid: MessageUuid; readonly session: string },
 ): SDKUserMessage => ({
   type: "user",
   message: { role: "user", content: message.text },
   parent_tool_use_id: null,
-  uuid: uuid as SDKUserMessage["uuid"] & string,
+  uuid,
   session_id: session,
   ...(message.from === "clientComposed"
     ? { client_composed: true as const }
@@ -165,14 +180,14 @@ export class AgentHost extends Context.Service<
       ticket: string,
       session: Session,
       message: Message,
-    ): Effect.Effect<string, AgentStartFailed>
+    ): Effect.Effect<MessageUuid, AgentStartFailed>
     /**
      * Pushes a message into the worker's inbox: the CLI may fold it into the running turn or queue
      * it, alone or sharing a turn with another (§ 4.1). Its uuid, the message's when given, which
      * the session's results and an interrupt's receipt name it by. Fails when the worker has no
      * open session, or it is closing: the message didn't go.
      */
-    send(ticket: string, message: Message): Effect.Effect<string, AgentGone>
+    send(ticket: string, message: Message): Effect.Effect<MessageUuid, AgentGone>
     /**
      * Interrupts the worker's turn and cancels the messages queued behind it (§ 4.8); open requests
      * are withdrawn. The receipt.
@@ -212,7 +227,7 @@ export class AgentHost extends Context.Service<
      * was ended, or the host never knew it. A send is outstanding from its push, before it reaches
      * the session, so a wait begun once `send` has returned misses no answer, however soon it came.
      */
-    answered(ticket: string, uuid: string): Effect.Effect<void>
+    answered(ticket: string, uuid: MessageUuid): Effect.Effect<void>
     /**
      * The tickets of the workers the host knows, from each one's first start until it is ended:
      * now, then on each change.
@@ -274,7 +289,10 @@ export interface Workers {
    * counted into its state from then on. A `resumed` session's totals are seeded into Spending, when
    * there is one, from its last result in the ticket's transcript; a new session has none there.
    */
-  readonly open: (ticket: string, session: string, resumed: boolean) => Effect.Effect<WorkerEntry>
+  readonly open: (
+    ticket: string,
+    opened: { readonly session: string; readonly resumed: boolean },
+  ) => Effect.Effect<WorkerEntry>
   readonly get: (ticket: string) => Effect.Effect<WorkerEntry, AgentGone>
   /**
    * Folds `event` into the worker's state, at the clock's time, unless it is of an earlier session
@@ -458,7 +476,7 @@ export const makeWorkers = (
         return Option.some(left)
       })
 
-    const open = (ticket: string, session: string, resumed: boolean) =>
+    const open: Workers["open"] = (ticket, { session, resumed }) =>
       Effect.gen(function* () {
         if (resumed) yield* seedSpending(ticket, session)
         // A new session's context starts empty: the last one's figure is no longer its.

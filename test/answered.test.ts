@@ -29,7 +29,7 @@ const waited = (then: (workers: Workers, entry: WorkerEntry) => Effect.Effect<vo
     Effect.scoped(
       Effect.gen(function* () {
         const workers = yield* makeWorkers()
-        const entry = yield* workers.open("t-1", "s-1", false)
+        const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
         yield* workers.emit(entry, "s-1", sdk({ type: "system", subtype: "init" }))
         yield* workers.fold(entry, WorkerEvent.Sent({ session: "s-1", uuid }))
         const fiber = yield* Effect.forkChild(workers.answered("t-1", uuid))
@@ -110,7 +110,7 @@ describe("a send is answered", () => {
   test("not by a message of an earlier session", async () => {
     const done = await waited((workers, entry) =>
       Effect.gen(function* () {
-        yield* workers.open("t-1", "s-2", true)
+        yield* workers.open("t-1", { session: "s-2", resumed: true })
         yield* workers.fold(entry, WorkerEvent.Sent({ session: "s-2", uuid: "u-2" }))
         yield* workers.emit(
           entry,
@@ -127,9 +127,9 @@ describe("a send is answered", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const workers = yield* makeWorkers()
-          const entry = yield* workers.open("t-1", "s-1", false)
+          const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
           yield* workers.fold(entry, WorkerEvent.Sent({ session: "s-1", uuid }))
-          yield* workers.open("t-1", "s-2", true)
+          yield* workers.open("t-1", { session: "s-2", resumed: true })
           const fiber = yield* Effect.forkChild(workers.answered("t-1", uuid))
           yield* quiet
           return {

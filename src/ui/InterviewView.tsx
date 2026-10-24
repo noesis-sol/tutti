@@ -19,6 +19,7 @@
 // (transcriptView.ts); the hint wraps as its does.
 import { useTerminalDimensions } from "@opentui/react"
 import { createContext, useContext, useEffect, useState } from "react"
+import { MessageUuid } from "../agent/AgentHost.ts"
 import { interviewWorker } from "../agent/interview.ts"
 import { type Filing, filedSomething } from "../agent/interviewTools.ts"
 import { settled as hasSettled } from "../agent/WorkerState.ts"
@@ -214,7 +215,7 @@ export const InterviewView = () => {
   )
   const selection = useSelection(transcript, panel)
   const send = (text: string) => {
-    const uuid = crypto.randomUUID()
+    const uuid = MessageUuid.draw()
     sends.sent({ uuid, ticket: interviewWorker, text })
     command(UiCommand.SendMessage({ ticket: interviewWorker, text, uuid }))
     return true

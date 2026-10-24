@@ -38,7 +38,7 @@
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
 import { Clock, Data, Duration, Effect, Option, Ref, Result, Stream, SubscriptionRef } from "effect"
-import { type AgentGone, AgentHost } from "../agent/AgentHost.ts"
+import { type AgentGone, AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -467,7 +467,7 @@ export interface AtReset {
     id: string,
     mode: HandBackMode,
     prompt: string,
-  ): Effect.Effect<Effect.Effect<string | undefined, AgentGone> | null>
+  ): Effect.Effect<Effect.Effect<MessageUuid | undefined, AgentGone> | null>
   /** Takes back the ticket's hand-back kept for the reset: false once the reset has sent it. */
   takeBack(id: string): Effect.Effect<boolean>
   /**
@@ -681,7 +681,7 @@ const endLate = (
   })
 
 /** The hand-back sent to the ticket's worker: its send's uuid, or why it wasn't, for a line. */
-type Sent = Result.Result<string, string>
+type Sent = Result.Result<MessageUuid, string>
 
 /** Sends the ticket's worker its hand-back, `prompt`, now. */
 const sendNow = (id: string, prompt: string): Effect.Effect<Sent, never, AgentHost> =>

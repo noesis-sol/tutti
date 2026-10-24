@@ -5,6 +5,7 @@
 // conflict now, File as ticket, and leaving the view. The pieces in Head, Story and Panel take
 // plain props from it.
 import { useEffect, useRef } from "react"
+import { MessageUuid } from "../../agent/AgentHost.ts"
 import { settled as hasSettled } from "../../agent/WorkerState.ts"
 import { UiCommand } from "../../run/commands.ts"
 import { holdsMessages } from "../../run/held.ts"
@@ -91,7 +92,7 @@ export const useWorkerScreen = (viewed: string): WorkerScreen => {
       input.toasts.show(finishedWords(viewed).toast)
       return false
     }
-    const uuid = crypto.randomUUID()
+    const uuid = MessageUuid.draw()
     sends.sent({ uuid, ticket: found.ticket, text })
     command(UiCommand.SendMessage({ ticket: found.ticket, text, uuid }))
     return true

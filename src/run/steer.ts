@@ -20,7 +20,7 @@
 //   MERGE_CONFLICT, goes back in the merge queue (Blocked → ToMerge, HandedOver), is rebased again,
 //   and its conflict is handed back with the steered check waived for that once (handback.ts).
 import { Effect, Result } from "effect"
-import { AgentHost } from "../agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { EventStream } from "./eventstream.ts"
 import type { RebaseStop } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
@@ -61,8 +61,7 @@ export const steer = (ticket: string, by: "message" | "interrupt") =>
  */
 export const sendMessage = (
   ticket: string,
-  text: string,
-  uuid: string,
+  { text, uuid }: { readonly text: string; readonly uuid: MessageUuid },
 ): Effect.Effect<boolean, never, SteerEnv> =>
   Effect.gen(function* () {
     const host = yield* AgentHost

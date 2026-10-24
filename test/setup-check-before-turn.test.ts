@@ -11,7 +11,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Exit, Layer, Option, Stream } from "effect"
 import fc from "fast-check"
 import type { Billing } from "../src/agent/Account.ts"
-import { AgentHost } from "../src/agent/AgentHost.ts"
+import { AgentHost, MessageUuid } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import {
@@ -161,7 +161,7 @@ describe("AgentHost live: the setup check before the first turn", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const sessionId = crypto.randomUUID()
-        const uuid = crypto.randomUUID()
+        const uuid = MessageUuid.draw()
         const sent = yield* host.resume(
           "t-1",
           { sessionId, cwd: dir },

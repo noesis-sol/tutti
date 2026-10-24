@@ -24,6 +24,7 @@
 // message is never sent to a ticket that went to merge after its phase was read. The mark, not the
 // permit, spans the move, so a merge's `over` doesn't wait on an offer that waits on the ledger.
 import { Effect, Ref, Semaphore } from "effect"
+import type { MessageUuid } from "../agent/AgentHost.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger, showsCard } from "./ledger.ts"
 import { detail, type Log } from "./log.ts"
@@ -34,7 +35,7 @@ import { lengthOf, type SteerEnv, sendMessage, steer } from "./steer.ts"
 /** A message you sent a merging ticket's worker, held under the uuid the composer drew for it. */
 export interface HeldMessage {
   readonly text: string
-  readonly uuid: string
+  readonly uuid: MessageUuid
 }
 
 /** Whether a ticket in `phase` holds your messages: waiting to merge or merging. */
@@ -59,12 +60,12 @@ export interface Held {
    * Holds your message to the ticket's worker when its ticket waits to merge or merges, its worker
    * steered first: whether it did. One that isn't held is for steer.ts to send.
    */
-  hold(ticket: string, text: string, uuid: string): Effect.Effect<boolean, never, SteerEnv>
+  hold(ticket: string, message: HeldMessage): Effect.Effect<boolean, never, SteerEnv>
   /**
    * Holds your message as `hold` does, or sends it to the ticket's worker as steer.ts does, its
    * ticket's phase read and the message sent under one permit: no ticket goes to merge between.
    */
-  holdOrSend(ticket: string, text: string, uuid: string): Effect.Effect<void, never, SteerEnv>
+  holdOrSend(ticket: string, message: HeldMessage): Effect.Effect<void, never, SteerEnv>
   /**
    * Runs `effect`, which moves the ticket into the merge queue, the ticket marked going meanwhile:
    * a message `holdOrSend` decided to send is sent before it, and one after it is held. A move the
@@ -92,7 +93,7 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
   // The tickets going into the merge queue, their phases not moved yet (`entering`).
   const going = yield* Ref.make<ReadonlySet<string>>(new Set())
   // Holds the message when its ticket's phase does, or it is going, under the permit its caller took.
-  const holding = (ticket: string, text: string, uuid: string) =>
+  const holding = (ticket: string, message: HeldMessage) =>
     Effect.gen(function* () {
       const entry = (yield* (yield* Ledger).current).tickets.get(ticket)
       if (entry === undefined) return false
@@ -100,18 +101,18 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
       yield* steer(ticket, "message")
       yield* Ref.update(
         ref,
-        (all) => new Map([...all, [ticket, [...(all.get(ticket) ?? []), { text, uuid }]]]),
+        (all) => new Map([...all, [ticket, [...(all.get(ticket) ?? []), message]]]),
       )
-      const said = heldLine(ticket, text, entry.phase)
+      const said = heldLine(ticket, message.text, entry.phase)
       yield* info(said, ticket)
       return true
     })
-  const hold: Held["hold"] = (ticket, text, uuid) => permit.withPermit(holding(ticket, text, uuid))
-  const holdOrSend: Held["holdOrSend"] = (ticket, text, uuid) =>
+  const hold: Held["hold"] = (ticket, message) => permit.withPermit(holding(ticket, message))
+  const holdOrSend: Held["holdOrSend"] = (ticket, message) =>
     permit.withPermit(
       Effect.gen(function* () {
-        if (yield* holding(ticket, text, uuid)) return
-        yield* sendMessage(ticket, text, uuid)
+        if (yield* holding(ticket, message)) return
+        yield* sendMessage(ticket, message)
       }),
     )
   const over: Held["over"] = (ticket) =>
@@ -124,7 +125,7 @@ export const makeHeld: Effect.Effect<Held> = Effect.gen(function* () {
         if (held.length === 0) return
         yield* Ref.update(ref, (all) => new Map([...all].filter(([id]) => id !== ticket)))
         if (entry !== undefined && showsCard(entry)) {
-          for (const message of held) yield* sendMessage(ticket, message.text, message.uuid)
+          for (const message of held) yield* sendMessage(ticket, message)
           return
         }
         const said = notSentLine(ticket, held.length)

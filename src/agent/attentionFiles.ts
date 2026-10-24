@@ -435,7 +435,15 @@ export interface ServeOptions {
 }
 
 /** A line for an answer file the run refused. */
-const refusedLine = (request: string, reason: string, ticket?: string): log.Line =>
+const refusedLine = ({
+  request,
+  reason,
+  ticket,
+}: {
+  readonly request: string
+  readonly reason: string
+  readonly ticket?: string | undefined
+}): log.Line =>
   ticket === undefined
     ? log.tagged("ANSWER_REFUSED")`tutti answer for request ${request}: ${reason}`
     : log.ticketLine(
@@ -522,7 +530,7 @@ export const serve = (
           ),
         )
         removeUnder(repo, answerFile(id))
-        yield* logs.write(refusedLine(id, reason, ticket))
+        yield* logs.write(refusedLine({ request: id, reason, ticket }))
       })
 
     const take = (id: string) =>

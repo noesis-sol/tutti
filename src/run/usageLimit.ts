@@ -51,7 +51,7 @@ import {
   Semaphore,
   Stream,
 } from "effect"
-import { type AgentGone, AgentHost } from "../agent/AgentHost.ts"
+import { type AgentGone, AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { type RateLimit, UsageLimits, type Waiting } from "../agent/UsageLimits.ts"
 import { type ProbeAnswer, UsageProbe } from "../agent/UsageProbe.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
@@ -203,7 +203,7 @@ interface Kept {
   readonly mode: HandBackMode
   readonly prompt: string
   readonly steered: boolean
-  readonly sent: Deferred.Deferred<string | undefined, AgentGone>
+  readonly sent: Deferred.Deferred<MessageUuid | undefined, AgentGone>
 }
 
 /** When the held limit is expected to have reset. Times are epoch milliseconds. */
@@ -709,7 +709,7 @@ export const make = (options: {
       Effect.gen(function* () {
         if ((yield* Ref.get(state)).hold._tag === "Free") return null
         const steered = (yield* ledger.current).tickets.get(ticket)?.steered === true
-        const sent = yield* Deferred.make<string | undefined, AgentGone>()
+        const sent = yield* Deferred.make<MessageUuid | undefined, AgentGone>()
         yield* Ref.update(
           kept,
           (all) => new Map([...all, [ticket, { mode, prompt, steered, sent }]]),

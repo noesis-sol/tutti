@@ -3,7 +3,7 @@
 // under it until its phase has moved, so its message is held, never sent into its merge.
 import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, Exit, Fiber, Layer, Result, type Scope } from "effect"
-import { AgentHost } from "../src/agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../src/agent/AgentHost.ts"
 import { heldLine, makeHeld } from "../src/run/held.ts"
 import { Ledger, make as makeLedger } from "../src/run/ledger.ts"
 import { Tag } from "../src/run/log.ts"
@@ -20,7 +20,7 @@ import { Repository } from "../src/testing/Git.ts"
 import { backlog, type Env, type Ran, scenario } from "./harness.ts"
 
 const options = { repo: "/repo", base: "main" }
-const yours = "11111111-2222-4333-8444-555555555555"
+const yours = "11111111-2222-4333-8444-555555555555" as MessageUuid
 const words = "Also cover the empty case 🙂"
 
 const resultOf = <A>(ran: Ran<A>): A => {
@@ -75,7 +75,7 @@ describe("holding a message or sending it", () => {
         Effect.gen(function* () {
           const held = yield* makeHeld
           yield* working
-          yield* held.holdOrSend("a", words, yours)
+          yield* held.holdOrSend("a", { text: words, uuid: yours })
           return {
             steered: (yield* (yield* Ledger).current).tickets.get("a")?.steered,
             held: yield* held.messages,
@@ -101,7 +101,7 @@ describe("holding a message or sending it", () => {
           const kept = yield* held.entering(
             "a",
             Effect.gen(function* () {
-              yield* held.holdOrSend("a", words, yours)
+              yield* held.holdOrSend("a", { text: words, uuid: yours })
               const kept = (yield* held.messages).get("a")
               yield* ledger.transition("a", Move.Verified({ place: 1 }))
               return kept
@@ -130,7 +130,7 @@ describe("holding a message or sending it", () => {
           const moved = yield* held.entering(
             "a",
             Effect.andThen(
-              held.holdOrSend("a", words, yours),
+              held.holdOrSend("a", { text: words, uuid: yours }),
               ledger.transition("a", Move.ItsTurn()),
             ),
           )
@@ -175,7 +175,7 @@ describe("holding a message or sending it", () => {
         const a = yield* working
         const offered = yield* Effect.forkChild(queue.offer(a, undefined, false))
         yield* Deferred.await(entered)
-        yield* queue.held.holdOrSend("a", words, yours)
+        yield* queue.held.holdOrSend("a", { text: words, uuid: yours })
         const before = (yield* ledger.current).tickets.get("a")?.phase._tag
         yield* Deferred.succeed(open, undefined)
         yield* Fiber.join(offered)

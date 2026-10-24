@@ -11,7 +11,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Fiber, Layer, Option, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
-import { AgentHost, userMessage } from "../src/agent/AgentHost.ts"
+import { AgentHost, type MessageUuid, userMessage } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
@@ -64,7 +64,10 @@ const itemsOf = (messages: ReadonlyArray<SDKMessage>): ReadonlyArray<Item> =>
 
 /** A message sent to the worker, as the host records it. */
 const sent = (text: string, uuid: string) =>
-  userMessage({ text, from: "human" }, { uuid, session }) as unknown as SDKMessage
+  userMessage(
+    { text, from: "human" },
+    { uuid: uuid as MessageUuid, session },
+  ) as unknown as SDKMessage
 
 const said = (words: string) =>
   sdk({
@@ -107,7 +110,7 @@ describe("the scripted host records what it sends", () => {
         const uuid = yield* host.send("t-1", {
           text: "Please add tests too.",
           from: "human",
-          uuid: "u-1",
+          uuid: "u-1" as MessageUuid,
         })
         yield* Fiber.join(settled)
         return {
@@ -117,12 +120,12 @@ describe("the scripted host records what it sends", () => {
         }
       }),
     )
-    expect(done.uuid).toBe("u-1")
+    expect(done.uuid).toBe("u-1" as MessageUuid)
     const [first, second] = done.transcript
     expect(first?.message).toEqual(
       userMessage(
         { text: "Please add tests too.", from: "human" },
-        { uuid: "u-1", session: "s-1" },
+        { uuid: "u-1" as MessageUuid, session: "s-1" },
       ),
     )
     expect(first?.session).toBe("s-1")
@@ -168,7 +171,7 @@ describe("the live host records what it sends", () => {
         const second = yield* agents.send("t-1", {
           text: "And the docs.",
           from: "human",
-          uuid: "u-2",
+          uuid: "u-2" as MessageUuid,
         })
         yield* idle
         return { first, second, items: yield* (yield* Files).messages("t-1") }
@@ -204,7 +207,10 @@ describe("the live host records what it sends", () => {
         { text: "Work on t-1.", from: "clientComposed" },
         { uuid: done.first, session: sessionId },
       ),
-      userMessage({ text: "And the docs.", from: "human" }, { uuid: "u-2", session: sessionId }),
+      userMessage(
+        { text: "And the docs.", from: "human" },
+        { uuid: "u-2" as MessageUuid, session: sessionId },
+      ),
     ])
     expect(users.every((item) => item.session === sessionId)).toBe(true)
     // Each before the result of the turn it started.

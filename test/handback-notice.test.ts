@@ -10,6 +10,7 @@ import { join } from "node:path"
 import { createTestRenderer } from "@opentui/core/testing"
 import { Effect, Exit, Fiber, Queue, Scope, Stream, SubscriptionRef } from "effect"
 import { act } from "react"
+import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import { Attention } from "../src/agent/Attention.ts"
 import { Transcripts } from "../src/agent/Transcripts.ts"
 import { makeCommands, UiCommand } from "../src/run/commands.ts"
@@ -310,7 +311,7 @@ describe("the run feeds the screen the hand-backs waiting", () => {
           UiCommand.SendMessage({
             ticket: "a",
             text: "Keep it small",
-            uuid: "11111111-2222-4333-8444-555555555555",
+            uuid: "11111111-2222-4333-8444-555555555555" as MessageUuid,
           }),
         )
         yield* answer("a")

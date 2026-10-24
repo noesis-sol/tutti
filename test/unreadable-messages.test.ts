@@ -286,7 +286,7 @@ describe("a result it can't read", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const workers = yield* makeWorkers()
-          const entry = yield* workers.open("t-1", "s-1", false)
+          const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
           for (const message of results) yield* workers.emit(entry, "s-1", message)
           return yield* (yield* Spending).ofTicket("t-1")
         }),

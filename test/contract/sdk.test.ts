@@ -43,7 +43,7 @@ import {
 import { BunServices } from "@effect/platform-bun"
 import { Duration, Effect, Layer, Option, Schedule, Stream } from "effect"
 import { startProbe } from "../../src/agent/Account.ts"
-import { AgentHost, AgentStartFailed, userMessage } from "../../src/agent/AgentHost.ts"
+import { AgentHost, AgentStartFailed, MessageUuid, userMessage } from "../../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../../src/agent/AgentHostLive.ts"
 import { Attention, type AttentionRequest, type Policy } from "../../src/agent/Attention.ts"
 import { ClaudeCode, queuedControls } from "../../src/agent/ClaudeCode.ts"
@@ -254,7 +254,7 @@ const direct = (repo: string, cwd: string, how: SessionStart): Direct => {
     messages,
     ended,
     send: (text) => {
-      const uuid = randomUUID()
+      const uuid = MessageUuid.draw()
       pending.push(userMessage({ text, from: "clientComposed" }, { uuid, session: how.sessionId }))
       nudge()
       return uuid

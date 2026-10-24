@@ -30,7 +30,7 @@ const emitted = (before: ReadonlyArray<SDKMessage>, partials: ReadonlyArray<SDKM
     Effect.scoped(
       Effect.gen(function* () {
         const workers = yield* makeWorkers()
-        const entry = yield* workers.open("t-1", "s-1", false)
+        const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
         for (const message of before) yield* workers.emit(entry, "s-1", message)
         const worker = yield* SubscriptionRef.get(entry.worker)
         const seen: Array<string> = []

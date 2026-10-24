@@ -23,7 +23,7 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk"
 import { Context, type Duration, Effect, FileSystem, Layer, Option, Ref } from "effect"
 import type { Billing, PermissionModeInEffect } from "../agent/Account.ts"
-import { AgentHost } from "../agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
 import { layer as liveLayer, resumedNotes } from "../agent/AgentHostLive.ts"
 import type { Attention } from "../agent/Attention.ts"
 import { LaunchFailed } from "../agent/ClaudeCode.ts"
@@ -69,7 +69,8 @@ export const withoutNotes = (text: string): string => {
 }
 
 // A message's uuid, as the SDK's UUID type has them: the nth is ...-000000000001 and so on.
-const uuidOf = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`
+const uuidOf = (n: number): MessageUuid =>
+  `00000000-0000-4000-8000-${String(n).padStart(12, "0")}` as MessageUuid
 
 /** What `layer` takes beside the scripts. */
 export interface Options {
@@ -210,7 +211,7 @@ export const layer = (
           )
         })
 
-      const uuid = (given: string | undefined) =>
+      const uuid = (given: MessageUuid | undefined) =>
         given === undefined ? Effect.map(draw, uuidOf) : Effect.succeed(given)
 
       const host = AgentHost.of({

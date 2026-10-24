@@ -100,7 +100,10 @@ export const make = (options: {
               return yield* wakeUp
             case "SendMessage":
               // Held while its ticket waits to merge or merges, so its branch stays as checked.
-              return yield* queue.held.holdOrSend(command.ticket, command.text, command.uuid)
+              return yield* queue.held.holdOrSend(command.ticket, {
+                text: command.text,
+                uuid: command.uuid,
+              })
             case "Interrupt":
               // It cancels the messages held for the worker too, as the view says (held.ts).
               yield* queue.held.cancel(command.ticket)

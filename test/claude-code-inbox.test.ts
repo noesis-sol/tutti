@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import type { Query, query, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Duration, Effect, Exit, Layer, Scope } from "effect"
-import { userMessage } from "../src/agent/AgentHost.ts"
+import { type MessageUuid, userMessage } from "../src/agent/AgentHost.ts"
 import { BilledAs, ClaudeCode, type ClaudeSession, type Launch } from "../src/agent/ClaudeCode.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 
@@ -31,9 +31,12 @@ const launch = (fields: Partial<Launch> = {}): Launch => ({
 
 const hello = userMessage(
   { text: "Hello.", from: "clientComposed" },
-  { uuid: "u-1", session: "s-1" },
+  { uuid: "u-1" as MessageUuid, session: "s-1" },
 )
-const more = userMessage({ text: "More.", from: "human" }, { uuid: "u-2", session: "s-1" })
+const more = userMessage(
+  { text: "More.", from: "human" },
+  { uuid: "u-2" as MessageUuid, session: "s-1" },
+)
 
 /** Opens a session over `open` in a scope of its own, which `use` may close. */
 const withSession = <A>(

@@ -6,6 +6,7 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Deferred, Effect, Fiber, Queue, type Scope } from "effect"
+import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import { UiCommand } from "../src/run/commands.ts"
 import { cancelledLine, heldLine, notSentLine } from "../src/run/held.ts"
 import { line, Tag } from "../src/run/log.ts"
@@ -123,9 +124,9 @@ test("SendMessage during a merge is held, Interrupt cancels it, and once merged 
           yield* Effect.promise(() => Bun.sleep(10))
         })
       yield* until("a's check", () => Deferred.isDone(checking))
-      yield* send(UiCommand.SendMessage({ ticket: "a", text: first, uuid: "u-1" }))
+      yield* send(UiCommand.SendMessage({ ticket: "a", text: first, uuid: "u-1" as MessageUuid }))
       yield* send(UiCommand.Interrupt({ ticket: "a" }))
-      yield* send(UiCommand.SendMessage({ ticket: "a", text: second, uuid: "u-2" }))
+      yield* send(UiCommand.SendMessage({ ticket: "a", text: second, uuid: "u-2" as MessageUuid }))
       yield* Deferred.succeed(gate, undefined)
       for (let i = 0; i < 3; i++) {
         yield* advance("1 minute")

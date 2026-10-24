@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { type Cause, Effect, Exit, Layer, Queue, SubscriptionRef } from "effect"
-import { AgentGone, makeWorkers } from "../src/agent/AgentHost.ts"
+import { AgentGone, type MessageUuid, makeWorkers } from "../src/agent/AgentHost.ts"
 import { closingWhy, push } from "../src/agent/AgentHostLive.ts"
 import { read } from "../src/agent/reading.ts"
 import { WorkerEvent } from "../src/agent/WorkerState.ts"
@@ -24,12 +24,12 @@ const settled = [
 ]
 
 /** Pushes "hello" as `uuid` into an idle session, its inbox `ended` or not: what came of it. */
-const pushed = (ended: boolean, uuid: string) =>
+const pushed = (ended: boolean, uuid: MessageUuid) =>
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const workers = yield* makeWorkers()
-        const entry = yield* workers.open("t-1", "s-1", false)
+        const entry = yield* workers.open("t-1", { session: "s-1", resumed: false })
         for (const event of settled) yield* workers.fold(entry, event)
         const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
         if (ended) yield* Queue.end(inbox)
@@ -55,8 +55,8 @@ const pushed = (ended: boolean, uuid: string) =>
 
 describe("push", () => {
   test("into an open inbox: its uuid, recorded, queued and outstanding", async () => {
-    const { exit, recorded, queued, outstanding, state } = await pushed(false, "u-1")
-    expect(exit).toEqual(Exit.succeed("u-1"))
+    const { exit, recorded, queued, outstanding, state } = await pushed(false, "u-1" as MessageUuid)
+    expect(exit).toEqual(Exit.succeed("u-1" as MessageUuid))
     expect(recorded).toBe(1)
     expect(queued).toBe(1)
     expect(outstanding).toEqual(["u-1"])
@@ -64,7 +64,7 @@ describe("push", () => {
   })
 
   test("into an inbox the session's close ended: AgentGone, nothing recorded, still Idle", async () => {
-    const { exit, recorded, outstanding, state } = await pushed(true, "u-1")
+    const { exit, recorded, outstanding, state } = await pushed(true, "u-1" as MessageUuid)
     expect(exit).toEqual(Exit.fail(new AgentGone({ ticket: "t-1", why: closingWhy })))
     expect(recorded).toBe(0)
     expect(outstanding).toEqual([])

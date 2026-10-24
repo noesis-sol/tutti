@@ -8,6 +8,7 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Exit, Fiber, Layer, Queue, Result, type Scope, SubscriptionRef } from "effect"
+import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import { Attention } from "../src/agent/Attention.ts"
 import { resolve, UiCommand } from "../src/run/commands.ts"
 import {
@@ -334,7 +335,7 @@ const steered = (
         UiCommand.SendMessage({
           ticket: "a",
           text: "Keep it small",
-          uuid: "11111111-2222-4333-8444-555555555555",
+          uuid: "11111111-2222-4333-8444-555555555555" as MessageUuid,
         }),
       )
       const request = yield* requestOf

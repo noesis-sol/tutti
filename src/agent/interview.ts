@@ -28,7 +28,7 @@ import type { Beads } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
 import { runFolder, writeRunFile } from "../services/Worktrees.ts"
 import { type Plan, startOnQuestion } from "../ui/questions.ts"
-import { type AgentGone, AgentHost, AgentStartFailed } from "./AgentHost.ts"
+import { type AgentGone, AgentHost, AgentStartFailed, type MessageUuid } from "./AgentHost.ts"
 import { sessionFibers } from "./callbacks.ts"
 import {
   type Filing,
@@ -109,7 +109,7 @@ export interface Interview {
   /** What file_feature has filed, now and on each change. */
   readonly filing: SubscriptionRef.SubscriptionRef<Filing>
   /** Sends what you typed in the composer, with the uuid the composer drew, if it drew one: its uuid. */
-  send(text: string, uuid?: string): Effect.Effect<string, AgentGone>
+  send(text: string, uuid?: MessageUuid): Effect.Effect<MessageUuid, AgentGone>
   /**
    * Waits for the interview's end: once file_feature has filed the epic and the session's turns
    * are over, closes the session and gives the epic to offer; or the session's end without it.

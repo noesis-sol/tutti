@@ -4,6 +4,7 @@
 // captured in a handler: the run loop resolves them against the state as it is when it takes the
 // command, so a key pressed as a worker finishes can't reach another one (OpenTUI #1660).
 import { Data, type Effect, Queue, Result, Schema } from "effect"
+import type { MessageUuid } from "../agent/AgentHost.ts"
 import type { Answer as AttentionAnswer, AttentionRequest } from "../agent/Attention.ts"
 import { keepsWorker, type State } from "./ledger.ts"
 
@@ -19,7 +20,7 @@ export type UiCommand = Data.TaggedEnum<{
    * Send your message to the ticket's worker, which becomes steered (§ 4.3), with the uuid the
    * composer drew for it: its `queued` mark waits for that send by it (§ 7.5).
    */
-  SendMessage: { readonly ticket: string; readonly text: string; readonly uuid: string }
+  SendMessage: { readonly ticket: string; readonly text: string; readonly uuid: MessageUuid }
   /** Interrupt the turn of the ticket's worker; it becomes steered. */
   Interrupt: { readonly ticket: string }
   /** Hand a steered worker back to the run, and the conflict waiting for it, if one is (§ 4.3). */

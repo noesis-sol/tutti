@@ -9,7 +9,7 @@ import { TextareaRenderable } from "@opentui/core"
 import { Effect, Layer, Queue } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
-import { AgentHost } from "../src/agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../src/agent/AgentHost.ts"
 import { type Item, transcriptVersion } from "../src/agent/Transcripts.ts"
 import { type WorkerState, WorkerState as WS } from "../src/agent/WorkerState.ts"
 import { type Commands, makeCommands, type UiCommand } from "../src/run/commands.ts"
@@ -547,7 +547,7 @@ describe("what the transcript says was taken", () => {
 
 describe("the message's uuid", () => {
   test("a message is sent with the uuid the composer drew", async () => {
-    const uuid = "7f3c1e2a-0000-4000-8000-000000000042"
+    const uuid = "7f3c1e2a-0000-4000-8000-000000000042" as MessageUuid
     const sent = await Effect.runPromise(
       Effect.gen(function* () {
         const host = yield* AgentHost

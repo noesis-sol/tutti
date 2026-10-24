@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { Duration, Effect, Exit, Fiber, Layer, type Scope, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import { AgentHost } from "../src/agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../src/agent/AgentHost.ts"
 import { give, type HandBack, noReset } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
@@ -84,7 +84,7 @@ describe("a reply that comes at once", () => {
     expect(ended).toBeUndefined()
     await hosted(
       {},
-      AgentHost.use((host) => host.answered(id, "u-1")),
+      AgentHost.use((host) => host.answered(id, "u-1" as MessageUuid)),
     )
   })
 

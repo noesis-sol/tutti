@@ -4,7 +4,7 @@
 // saying so if its worker has finished.
 import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, Exit, type Scope, Stream } from "effect"
-import { AgentHost } from "../src/agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../src/agent/AgentHost.ts"
 import { heldLine, makeHeld, notSentLine } from "../src/run/held.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import { Tag } from "../src/run/log.ts"
@@ -45,7 +45,7 @@ const withCheck = {
   },
 } satisfies Setup
 
-const yours = "11111111-2222-4333-8444-555555555555"
+const yours = "11111111-2222-4333-8444-555555555555" as MessageUuid
 const words = "Also cover the empty case 🙂"
 
 const resultOf = <A>(ran: Ran<A>): A => {
@@ -135,7 +135,7 @@ describe("a message to the worker of a ticket that merges", () => {
           yield* repository.commit(repository.dir, "Land something else", { "b.txt": "b\n" })
           yield* queue.offer(a)
           yield* until(checking("a"))
-          expect(yield* queue.held.hold("a", words, yours)).toBe(true)
+          expect(yield* queue.held.hold("a", { text: words, uuid: yours })).toBe(true)
           expect((yield* ledger.current).tickets.get("a")?.steered).toBe(true)
           expect((yield* queue.held.messages).get("a")).toEqual([{ text: words, uuid: yours }])
           yield* Deferred.succeed(gate, undefined)
@@ -167,7 +167,7 @@ describe("a message to the worker of a ticket that merges", () => {
   test("waiting to merge, is sent once its merge is over and its conflict waits for you", async () => {
     const gate = Deferred.makeUnsafe<void>()
     const gated: Scripted = Effect.as(Deferred.await(gate), passed("fast"))
-    const second = "00000000-0000-4000-8000-0000000000a2"
+    const second = "00000000-0000-4000-8000-0000000000a2" as MessageUuid
     const ran = await scenario(
       {
         backlog: backlog().ticket("a").ticket("b").seeds,
@@ -191,8 +191,8 @@ describe("a message to the worker of a ticket that merges", () => {
           // Behind b, not checked ahead of its turn.
           yield* queue.offer(a, undefined, false)
           expect((yield* ledger.current).tickets.get("a")?.phase._tag).toBe("ToMerge")
-          expect(yield* queue.held.hold("a", words, yours)).toBe(true)
-          expect(yield* queue.held.hold("a", "and two", second)).toBe(true)
+          expect(yield* queue.held.hold("a", { text: words, uuid: yours })).toBe(true)
+          expect(yield* queue.held.hold("a", { text: "and two", uuid: second })).toBe(true)
           yield* Deferred.succeed(gate, undefined)
           yield* queue.settled
           return {
@@ -269,7 +269,7 @@ describe("a message held for a worker you released meanwhile", () => {
           yield* queue.offer(b)
           yield* until(checking("b"))
           yield* queue.offer(a, undefined, false)
-          expect(yield* queue.held.hold("a", words, yours)).toBe(true)
+          expect(yield* queue.held.hold("a", { text: words, uuid: yours })).toBe(true)
           // Released, its worker takes the conflict its merge stops on.
           yield* ledger.release("a")
           yield* Deferred.succeed(gate, undefined)
@@ -308,8 +308,8 @@ describe("the held messages", () => {
           const held = yield* makeHeld
           yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
           yield* ledger.transition("a", Move.Dispatched())
-          expect(yield* held.hold("a", words, yours)).toBe(false)
-          expect(yield* held.hold("nobody", words, yours)).toBe(false)
+          expect(yield* held.hold("a", { text: words, uuid: yours })).toBe(false)
+          expect(yield* held.hold("nobody", { text: words, uuid: yours })).toBe(false)
           return { steered: (yield* ledger.current).tickets.get("a")?.steered, held }
         }),
       ),
@@ -329,7 +329,7 @@ describe("the held messages", () => {
           yield* ledger.transition("a", Move.Ready(), { title: "Ticket a" })
           yield* ledger.transition("a", Move.Dispatched())
           yield* ledger.transition("a", Move.Verified({ place: 1 }))
-          expect(yield* held.hold("a", words, yours)).toBe(true)
+          expect(yield* held.hold("a", { text: words, uuid: yours })).toBe(true)
           yield* held.over("a")
           const kept = (yield* held.messages).get("a")
           yield* ledger.transition("a", Move.ItsTurn())

@@ -6,6 +6,7 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Exit, Fiber, Queue, type Scope, SubscriptionRef } from "effect"
+import type { MessageUuid } from "../src/agent/AgentHost.ts"
 import { Attention } from "../src/agent/Attention.ts"
 import { UiCommand } from "../src/run/commands.ts"
 import { line } from "../src/run/log.ts"
@@ -149,7 +150,7 @@ describe("the screen's commands after the run's end", () => {
           UiCommand.SendMessage({
             ticket: "a",
             text: "Keep it small",
-            uuid: "11111111-2222-4333-8444-555555555555",
+            uuid: "11111111-2222-4333-8444-555555555555" as MessageUuid,
           }),
         )
         const request = yield* requestOf

@@ -9,7 +9,7 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Exit, Fiber, Queue, Result, type Scope, Stream } from "effect"
-import { AgentHost } from "../src/agent/AgentHost.ts"
+import { AgentHost, type MessageUuid } from "../src/agent/AgentHost.ts"
 import { Attention } from "../src/agent/Attention.ts"
 import { resolve, UiCommand } from "../src/run/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
@@ -77,7 +77,7 @@ const tiny = backlog().ticket(id, { title: "One ticket" })
 
 /** What you type: its emoji is one character, as the MESSAGE line counts them. */
 const secret = "Look at the flaky test in undo.ts first 🙂"
-const yours = "11111111-2222-4333-8444-555555555555"
+const yours = "11111111-2222-4333-8444-555555555555" as MessageUuid
 
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-steer-${name}-`)))
 
@@ -209,7 +209,7 @@ describe("a message you send", () => {
       () =>
         Effect.gen(function* () {
           yield* untilSent(1)
-          expect(yield* sendMessage(id, secret, yours)).toBe(true)
+          expect(yield* sendMessage(id, { text: secret, uuid: yours })).toBe(true)
           const entry = (yield* (yield* Ledger).current).tickets.get(id)
           expect(entry?.steered).toBe(true)
           expect(entry?.lastMessage).toBe(0)
@@ -249,8 +249,14 @@ describe("a message you send", () => {
       () =>
         Effect.gen(function* () {
           yield* untilSent(1)
-          yield* sendMessage(id, "one", "00000000-0000-4000-8000-0000000000a1")
-          yield* sendMessage(id, "two!", "00000000-0000-4000-8000-0000000000a2")
+          yield* sendMessage(id, {
+            text: "one",
+            uuid: "00000000-0000-4000-8000-0000000000a1" as MessageUuid,
+          })
+          yield* sendMessage(id, {
+            text: "two!",
+            uuid: "00000000-0000-4000-8000-0000000000a2" as MessageUuid,
+          })
           yield* advance("1 minute")
         }),
     )
@@ -266,7 +272,7 @@ describe("a message you send", () => {
         const ledger = yield* Ledger
         yield* ledger.transition(id, Move.Ready(), { title: ticket.title })
         yield* ledger.transition(id, Move.Dispatched())
-        expect(yield* sendMessage(id, secret, yours)).toBe(false)
+        expect(yield* sendMessage(id, { text: secret, uuid: yours })).toBe(false)
         return yield* ledger.current
       }).pipe(Effect.provide(Ledger.layer)),
     )
@@ -293,12 +299,18 @@ describe("a steered worker", () => {
       (fiber) =>
         Effect.gen(function* () {
           yield* untilSent(1)
-          yield* sendMessage(id, "first", "00000000-0000-4000-8000-0000000000b1")
+          yield* sendMessage(id, {
+            text: "first",
+            uuid: "00000000-0000-4000-8000-0000000000b1" as MessageUuid,
+          })
           // Its turn ends, and its answer to your message: idle from 1 minute in.
           yield* advance("1 minute")
           yield* quiet
           yield* advance("5 minutes")
-          yield* sendMessage(id, "second", "00000000-0000-4000-8000-0000000000b2")
+          yield* sendMessage(id, {
+            text: "second",
+            uuid: "00000000-0000-4000-8000-0000000000b2" as MessageUuid,
+          })
           yield* quiet
           // 14 minutes since it first went idle, 9 since your last message.
           yield* advance(Duration.subtract(idleGrace, Duration.minutes(1)))
@@ -326,7 +338,10 @@ describe("a steered worker", () => {
       () =>
         Effect.gen(function* () {
           yield* untilSent(1)
-          yield* sendMessage(id, "wait", "00000000-0000-4000-8000-0000000000c1")
+          yield* sendMessage(id, {
+            text: "wait",
+            uuid: "00000000-0000-4000-8000-0000000000c1" as MessageUuid,
+          })
           yield* advance("1 minute")
           yield* untilSent(2)
           // Idle with its ticket in progress, and steered: nothing more is sent.
@@ -406,7 +421,7 @@ describe("an interrupt", () => {
       () =>
         Effect.gen(function* () {
           yield* untilSent(1)
-          yield* sendMessage(id, secret, yours)
+          yield* sendMessage(id, { text: secret, uuid: yours })
           yield* interrupt(id)
           yield* quiet
           yield* advance(idleGrace)
@@ -656,7 +671,7 @@ describe("a steered worker blocked on its waiting hand-back", () => {
         expect(yield* takes(message)).toBe(true)
         expect(yield* takes(UiCommand.Interrupt({ ticket: "a" }))).toBe(true)
         expect(yield* takes(UiCommand.Release({ ticket: "a" }))).toBe(true)
-        const sent = yield* sendMessage("a", secret, yours)
+        const sent = yield* sendMessage("a", { text: secret, uuid: yours })
         yield* untilSettled("a")
         const interrupted = yield* interrupt("a")
         const handed = yield* releaseAndHandOver("a", queue, options)
