@@ -5,10 +5,11 @@
 // How one is shown depends on where tutti runs. In a local session it is the desktop's own: on macOS
 // `osascript`, titled with the repository's folder name in Notification Center, and on Linux
 // `notify-send` when it is installed. Otherwise, over ssh or where neither is there, it is OSC 9 or
-// OSC 777 written to the terminal, where the terminal is one known to show them (iTerm2, kitty,
-// Ghostty, WezTerm, foot), so that notifications work over ssh. Not both: a local iTerm2 would
-// show each notice twice. Over ssh the desktop command would show on the remote machine, if
-// anywhere, so the terminal's notification is used instead.
+// OSC 777 written to the terminal, where the terminal is one known to show them (Tty's `terminals`:
+// iTerm2, kitty, Ghostty, WezTerm, foot), so that notifications work over ssh. Not both: a local
+// iTerm2 would show each notice twice. Over ssh the desktop command would show on the remote
+// machine, if anywhere, so the terminal's notification is used instead. Which terminal it is,
+// inside tmux or not, over ssh or not: the Tty says, read once at startup.
 //
 // Notifications are off with `--notify=false`, `TUTTI_NOTIFY=0` or `"notify": false` in the user
 // config: AppConfig's `notify`. Text is sanitised (§ 7.10). A notice is shown in the background,
@@ -27,7 +28,7 @@ import {
   run,
 } from "./exec.ts"
 import { installedOnPath } from "./onPath.ts"
-import { Tty, type TtyValue } from "./Tty.ts"
+import { type Osc, Tty, type TtyValue } from "./Tty.ts"
 
 export class Notifier extends Context.Service<
   Notifier,
@@ -47,9 +48,6 @@ export const notifyLimit: Duration.Duration = Duration.seconds(10)
 /** The desktop's own notification command. */
 export type Desktop = "osascript" | "notify-send"
 
-/** The terminal's notification sequence: iTerm2's OSC 9, or rxvt's OSC 777 with a title. */
-export type Osc = "9" | "777"
-
 /** How notices are shown: through the desktop's command, or written to the terminal. */
 export type Route =
   | { readonly _tag: "Desktop"; readonly command: Desktop }
@@ -59,52 +57,9 @@ export type Route =
 /** What the environment tells of where tutti runs. */
 export interface Where {
   readonly platform: NodeJS.Platform
-  readonly env: (name: string) => string | undefined
   /** Whether a command of this name is on the PATH. */
   readonly installed: (command: string) => boolean
-  readonly tty: Pick<TtyValue, "stdoutIsTty" | "dumb" | "term">
-}
-
-const set = (env: Where["env"], name: string): boolean => {
-  const value = env(name)
-  return value !== undefined && value !== ""
-}
-
-/** Whether the session is over ssh: sshd sets these for the session's processes. */
-export const overSsh = (env: Where["env"]): boolean =>
-  set(env, "SSH_CONNECTION") || set(env, "SSH_CLIENT") || set(env, "SSH_TTY")
-
-/**
- * The notification sequence the terminal shows, read from the environment: undefined for one not
- * known to show either. TERM and LC_TERMINAL reach an ssh session (iTerm2 sets LC_TERMINAL, which
- * ssh sends with the other LC_ variables); TERM_PROGRAM and the terminals' own variables tell a
- * local one, and inside tmux, whose TERM_PROGRAM and TERM are its own, they are what is left.
- */
-export const oscOf = (env: Where["env"]): Osc | undefined => {
-  const term = (env("TERM") ?? "").toLowerCase()
-  const program = (env("TERM_PROGRAM") ?? "").toLowerCase()
-  if (
-    program === "iterm.app" ||
-    env("LC_TERMINAL") === "iTerm2" ||
-    set(env, "ITERM_SESSION_ID") ||
-    term === "xterm-kitty" ||
-    set(env, "KITTY_WINDOW_ID")
-  ) {
-    return "9"
-  }
-  if (
-    program === "ghostty" ||
-    program === "wezterm" ||
-    term === "xterm-ghostty" ||
-    term === "wezterm" ||
-    term === "foot" ||
-    term.startsWith("foot-") ||
-    set(env, "GHOSTTY_RESOURCES_DIR") ||
-    set(env, "WEZTERM_PANE")
-  ) {
-    return "777"
-  }
-  return undefined
+  readonly tty: Pick<TtyValue, "stdoutIsTty" | "dumb" | "osc" | "tmux" | "overSsh">
 }
 
 /**
@@ -113,13 +68,13 @@ export const oscOf = (env: Where["env"]): Osc | undefined => {
  * known to show one; otherwise not at all.
  */
 export const routeOf = (where: Where): Route => {
-  if (!overSsh(where.env)) {
+  if (!where.tty.overSsh) {
     if (where.platform === "darwin") return { _tag: "Desktop", command: "osascript" }
     if (where.platform === "linux" && where.installed("notify-send")) {
       return { _tag: "Desktop", command: "notify-send" }
     }
   }
-  const osc = where.tty.stdoutIsTty && !where.tty.dumb ? oscOf(where.env) : undefined
+  const osc = where.tty.stdoutIsTty && !where.tty.dumb ? where.tty.osc : undefined
   return osc === undefined ? { _tag: "None" } : { _tag: "Osc", osc }
 }
 
@@ -213,7 +168,6 @@ export const make = Effect.fn("Notifier.make")(function* (environment: Environme
   const log = yield* Log
   const route: Route = config.notify ? routeOf(environment) : { _tag: "None" }
   const title = sanitizeLine(basename(config.repo))
-  const tmux = set(environment.env, "TMUX")
   const fibers = yield* FiberSet.make()
   // Added after the set, so it runs before the set's own finalizer interrupts what is left.
   yield* Effect.addFinalizer(() =>
@@ -238,7 +192,7 @@ export const make = Effect.fn("Notifier.make")(function* (environment: Environme
       }
       case "Osc":
         return environment
-          .write(oscSequence(route.osc, title, notice, tmux))
+          .write(oscSequence(route.osc, title, notice, environment.tty.tmux))
           .pipe(
             Effect.catch((error) =>
               log.write(tagged(Tag.notifyFailed)`OSC ${route.osc}: ${error.message}`),
@@ -257,7 +211,7 @@ export const make = Effect.fn("Notifier.make")(function* (environment: Environme
   })
 })
 
-/** The live layer: this process's platform, environment, PATH and stdout. */
+/** The live layer: this process's platform, terminal (Tty), PATH and stdout. */
 export const layer: Layer.Layer<
   Notifier,
   never,
@@ -271,7 +225,6 @@ export const layer: Layer.Layer<
     >()
     return yield* make({
       platform: process.platform,
-      env: (name) => process.env[name],
       installed: installedOnPath,
       tty,
       run: (command) => run(command).pipe(Effect.provideContext(context)),

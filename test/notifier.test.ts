@@ -9,7 +9,6 @@ import {
   Notifier,
   notifySendArgs,
   osascriptArgs,
-  oscOf,
   oscSequence,
   type Route,
   routeOf,
@@ -18,23 +17,22 @@ import {
 import { appConfig, layer as appConfigLayer } from "../src/testing/AppConfig.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { Captured, layer as capturedLayer } from "../src/testing/Notifier.ts"
+import { tty } from "../src/testing/Tty.ts"
 import { sanitizeLine } from "../src/ui/sanitize.ts"
 
 const ESC = "\x1b"
 const BEL = "\x07"
 
-const envOf =
-  (variables: Readonly<Record<string, string>>) =>
-  (name: string): string | undefined =>
-    variables[name]
-
+/** Where tutti runs: its Tty read from `env` (over TERM=xterm-256color), as the live layer's is. */
 const where = (
-  overrides: Partial<Omit<Where, "env">> & { env?: Readonly<Record<string, string>> } = {},
+  overrides: Partial<Omit<Where, "tty">> & {
+    env?: Readonly<Record<string, string>>
+    stdoutIsTty?: boolean
+  } = {},
 ): Where => ({
   platform: overrides.platform ?? "darwin",
-  env: envOf(overrides.env ?? {}),
   installed: overrides.installed ?? (() => false),
-  tty: overrides.tty ?? { stdoutIsTty: true, dumb: false, term: "xterm-256color" },
+  tty: tty({ env: overrides.env ?? {}, stdoutIsTty: overrides.stdoutIsTty ?? true }),
 })
 
 const ssh = { SSH_CONNECTION: "10.0.0.2 52144 10.0.0.1 22" }
@@ -88,20 +86,12 @@ describe("routeOf", () => {
     ],
     [
       "over ssh from kitty, stdout not a terminal",
-      where({
-        platform: "linux",
-        env: { ...ssh, TERM: "xterm-kitty" },
-        tty: { stdoutIsTty: false, dumb: false, term: "xterm-kitty" },
-      }),
+      where({ platform: "linux", env: { ...ssh, TERM: "xterm-kitty" }, stdoutIsTty: false }),
       { _tag: "None" },
     ],
     [
       "over ssh with TERM=dumb",
-      where({
-        platform: "linux",
-        env: { ...ssh, LC_TERMINAL: "iTerm2" },
-        tty: { stdoutIsTty: true, dumb: true, term: "dumb" },
-      }),
+      where({ platform: "linux", env: { ...ssh, LC_TERMINAL: "iTerm2", TERM: "dumb" } }),
       { _tag: "None" },
     ],
     [
@@ -113,32 +103,6 @@ describe("routeOf", () => {
   for (const [name, at, route] of cases) {
     test(name, () => {
       expect(routeOf(at)).toEqual(route)
-    })
-  }
-})
-
-describe("oscOf", () => {
-  const cases: ReadonlyArray<[Record<string, string>, "9" | "777" | undefined]> = [
-    [{ TERM_PROGRAM: "iTerm.app" }, "9"],
-    [{ LC_TERMINAL: "iTerm2" }, "9"],
-    [{ ITERM_SESSION_ID: "w0t0p0:1" }, "9"],
-    [{ TERM: "xterm-kitty" }, "9"],
-    // inside tmux, whose TERM and TERM_PROGRAM are its own
-    [{ TERM: "tmux-256color", TERM_PROGRAM: "tmux", KITTY_WINDOW_ID: "1" }, "9"],
-    [{ TERM_PROGRAM: "ghostty" }, "777"],
-    [{ TERM: "xterm-ghostty" }, "777"],
-    [{ TERM: "tmux-256color", TERM_PROGRAM: "tmux", GHOSTTY_RESOURCES_DIR: "/x" }, "777"],
-    [{ TERM_PROGRAM: "WezTerm" }, "777"],
-    [{ TERM: "screen", WEZTERM_PANE: "0" }, "777"],
-    [{ TERM: "foot" }, "777"],
-    [{ TERM: "xterm-256color" }, undefined],
-    [{ TERM_PROGRAM: "Apple_Terminal" }, undefined],
-    [{ TERM_PROGRAM: "vscode" }, undefined],
-    [{}, undefined],
-  ]
-  for (const [env, osc] of cases) {
-    test(`${JSON.stringify(env)} is ${osc ?? "none"}`, () => {
-      expect(oscOf(envOf(env))).toBe(osc)
     })
   }
 })

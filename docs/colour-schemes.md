@@ -205,8 +205,8 @@ when its output isn't a terminal, it carries no colours at all.
 The colour depth comes from the environment only:
 
 - `COLORTERM=truecolor` or `24bit`, or a `TERM` of `xterm-kitty`, `xterm-ghostty`, `alacritty`,
-  `wezterm`, `foot` or `contour`, or one ending in `-direct`, `-truecolor` or `-24bit`: exact
-  colours.
+  `wezterm`, `foot` (or `foot-` and more, such as `foot-extra`) or `contour`, or one ending in
+  `-direct`, `-truecolor` or `-24bit`: exact colours.
 - A `TERM` with `256color` in it, such as `xterm-256color`: the nearest of the 256 colours.
 - Anything else: fewer than 256 colours. The dashboard needs 256, so the run prints plain log lines,
   saying why: `Plain output: the terminal reports fewer than 256 colours (TERM=…); the dashboard

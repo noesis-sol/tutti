@@ -1238,6 +1238,7 @@ At 4 minutes the run holds as usual (`BLOCKED`). The run ends as usual (D19), su
 - **The minimum size** is 60×16. Below it the dashboard shows only the totals line and the hint, as orchestra's smallest layout does.
 - **The Kitty keyboard protocol** is used where detected, with the legacy encoding otherwise. Bindings avoid keys that legacy encodings can't tell apart. The composer's `Alt+Enter` has `Ctrl+J` as its alternative.
 - **Over ssh**, colour depth is trusted only from the environment, so `COLORTERM=truecolor` is documented.
+- **The terminals tutti knows** are one table, `terminals` in `src/services/Tty.ts`: each row says how a terminal is recognised (its `TERM`s, its `TERM_PROGRAM`s, variables of its own such as `KITTY_WINDOW_ID` or `LC_TERMINAL=iTerm2`), the notification sequence it shows (§7.9) and whether it draws RGB, which only a `TERM` naming it counts for. `Tty` reads the environment once, at startup: the colour depth, that sequence, whether tutti runs inside tmux (`TMUX`) and whether over ssh (`SSH_CONNECTION`, `SSH_CLIENT`, `SSH_TTY`); the Notifier takes them from it. Adding a terminal is one row.
 
 ### 7.8 Bracketed paste
 

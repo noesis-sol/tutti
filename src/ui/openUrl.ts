@@ -11,8 +11,8 @@
 // open has passed: `xdg-open` may wait on the browser it started, which would go with its group.
 import { Duration, Effect } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { overSsh } from "../services/Notifier.ts"
 import { installedOnPath } from "../services/onPath.ts"
+import { overSshOf } from "../services/Tty.ts"
 import type { Clipboard, Where } from "./clipboard.ts"
 
 /** What opening the URL in the browser toasts. */
@@ -45,7 +45,7 @@ const set = (env: Where["env"], name: string): boolean => {
  * `xdg-open` in a Wayland or X session, when it is installed; otherwise copied.
  */
 export const openerOf = (where: Where): Opener => {
-  if (!overSsh(where.env)) {
+  if (!overSshOf(where.env)) {
     if (where.platform === "darwin") return { _tag: "Command", command: "open" }
     const display = set(where.env, "WAYLAND_DISPLAY") || set(where.env, "DISPLAY")
     if (where.platform === "linux" && display && where.installed("xdg-open")) {

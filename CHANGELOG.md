@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The terminals tutti knows are one table, read once (§ 7.7, § 7.9; `src/services/Tty.ts`'s `terminals`, `src/services/Notifier.ts`'s `routeOf`; tutti-rvzn.11): the Notifier had its own list of the terminals that show OSC 9 or 777 and Tty one of those that draw RGB, and the Notifier read `TMUX` and sshd's variables itself. Now each row of `terminals` says how a terminal is recognised, its sequence and whether it draws RGB, the Tty gains `osc`, `tmux` and `overSsh`, and `routeOf` takes them from it. `TERM=foot-extra` (and any `foot-…`) is now truecolor, as plain `foot` was, rather than fewer than 256 colours. `test/tty.test.ts` covers the table, with each row recognised by each of its own names.
+
 ## [0.2.1] - 2026-10-24
 
 - The title pill reads ` Tutti `, capitalised as orchestra's reads `Orchestra`, on the dashboard's title line, in the run's summary and on init's title (§ 7.2, § 7.11; `src/ui/TitleLine.tsx`, `src/print/summary.ts`, `src/print/initSummary.ts`; tutti-y2wf). The command, `tutti --version` and the log stay lower case.

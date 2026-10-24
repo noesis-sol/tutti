@@ -18,8 +18,8 @@ import { useRenderer } from "@opentui/react"
 import { Duration, Effect, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { useContext, useEffect } from "react"
-import { type Where as NotifierWhere, overSsh } from "../services/Notifier.ts"
 import { installedOnPath } from "../services/onPath.ts"
+import { type Env, overSshOf } from "../services/Tty.ts"
 import type { ToastStore } from "./Toasts.tsx"
 import { ShellContext } from "./useRunView.ts"
 
@@ -45,7 +45,12 @@ export type Copier =
   | { readonly _tag: "Osc52" }
 
 /** What the environment tells of where tutti runs. */
-export type Where = Pick<NotifierWhere, "platform" | "env" | "installed">
+export interface Where {
+  readonly platform: NodeJS.Platform
+  readonly env: Env
+  /** Whether a command of this name is on the PATH. */
+  readonly installed: (command: string) => boolean
+}
 
 const set = (env: Where["env"], name: string): boolean => {
   const value = env(name)
@@ -58,7 +63,7 @@ const set = (env: Where["env"], name: string): boolean => {
  * installed; otherwise OSC 52.
  */
 export const copierOf = (where: Where): Copier => {
-  if (!overSsh(where.env)) {
+  if (!overSshOf(where.env)) {
     if (where.platform === "darwin") return { _tag: "Command", command: "pbcopy", args: [] }
     if (where.platform === "linux") {
       if (set(where.env, "WAYLAND_DISPLAY") && where.installed("wl-copy")) {

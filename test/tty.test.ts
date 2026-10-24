@@ -5,10 +5,13 @@ import {
   type ColourDepth,
   colourDepthOf,
   fromEnvironment,
+  type Osc,
+  oscOf,
   outputMode,
   type PlainReason,
   plainReasonLine,
   Tty,
+  terminals,
 } from "../src/services/Tty.ts"
 import { layer as testLayer, tty } from "../src/testing/Tty.ts"
 
@@ -29,9 +32,6 @@ describe("colourDepthOf", () => {
     [undefined, "rxvt-unicode-256color", "256"],
     [undefined, "xterm-direct", "truecolor"],
     [undefined, "tmux-direct", "truecolor"],
-    [undefined, "xterm-kitty", "truecolor"],
-    [undefined, "xterm-ghostty", "truecolor"],
-    [undefined, "alacritty", "truecolor"],
     [undefined, "xterm", "fewer"],
     [undefined, "xterm-color", "fewer"],
     [undefined, "xterm-16color", "fewer"],
@@ -61,6 +61,69 @@ describe("colourDepthOf", () => {
         expect(colourDepthOf({ COLORTERM: "truecolor", TERM })).toBe("truecolor")
       }),
     )
+  })
+})
+
+describe("the terminals tutti knows", () => {
+  const size = Effect.succeed({ columns: 80, rows: 24 })
+  const read = (env: Readonly<Record<string, string>>) =>
+    fromEnvironment({ stdinIsTty: true, stdoutIsTty: true, env: (name) => env[name], size })
+
+  const cases: ReadonlyArray<[Record<string, string>, Osc | undefined, ColourDepth]> = [
+    [{ TERM: "xterm-256color", TERM_PROGRAM: "iTerm.app" }, "9", "256"],
+    // iTerm2 over ssh: LC_TERMINAL is sent with the other LC_ variables
+    [{ TERM: "xterm-256color", LC_TERMINAL: "iTerm2" }, "9", "256"],
+    [{ TERM: "xterm-256color", LC_TERMINAL: "iterm2" }, undefined, "256"],
+    [{ TERM: "xterm-256color", ITERM_SESSION_ID: "w0t0p0:1" }, "9", "256"],
+    [{ TERM: "xterm-kitty" }, "9", "truecolor"],
+    [{ TERM: " XTERM-Kitty " }, "9", "truecolor"],
+    // inside tmux, whose TERM and TERM_PROGRAM are its own
+    [{ TERM: "tmux-256color", TERM_PROGRAM: "tmux", KITTY_WINDOW_ID: "1" }, "9", "256"],
+    [{ TERM: "xterm-256color", TERM_PROGRAM: "ghostty" }, "777", "256"],
+    [{ TERM: "xterm-ghostty" }, "777", "truecolor"],
+    [{ TERM: "tmux-256color", TERM_PROGRAM: "tmux", GHOSTTY_RESOURCES_DIR: "/x" }, "777", "256"],
+    [{ TERM: "xterm-256color", TERM_PROGRAM: "WezTerm" }, "777", "256"],
+    [{ TERM: "wezterm" }, "777", "truecolor"],
+    [{ TERM: "screen", WEZTERM_PANE: "0" }, "777", "fewer"],
+    [{ TERM: "foot" }, "777", "truecolor"],
+    [{ TERM: "foot-extra" }, "777", "truecolor"],
+    [{ TERM: "footy" }, undefined, "fewer"],
+    [{ TERM: "alacritty" }, undefined, "truecolor"],
+    [{ TERM: "contour" }, undefined, "truecolor"],
+    [{ TERM: "xterm-256color" }, undefined, "256"],
+    [{ TERM: "xterm-256color", TERM_PROGRAM: "Apple_Terminal" }, undefined, "256"],
+    [{ TERM: "xterm-256color", TERM_PROGRAM: "vscode" }, undefined, "256"],
+    [{ TERM: "xterm-256color", ITERM_SESSION_ID: "" }, undefined, "256"],
+    [{}, undefined, "fewer"],
+  ]
+  for (const [env, osc, depth] of cases) {
+    const shows = osc === undefined ? "no OSC" : `OSC ${osc}`
+    test(`${JSON.stringify(env)} shows ${shows}, ${depth}`, () => {
+      expect(read(env)).toMatchObject({ osc, colourDepth: depth })
+      expect(oscOf((name) => env[name])).toBe(osc)
+    })
+  }
+
+  test("each row is recognised by each of its TERMs, TERM_PROGRAMs and variables", () => {
+    for (const terminal of terminals) {
+      const envs: ReadonlyArray<Record<string, string>> = [
+        ...(terminal.term ?? []).map((term) => ({ TERM: term.replace(/\*$/, "extra") })),
+        ...(terminal.program ?? []).map((program) => ({ TERM_PROGRAM: program })),
+        ...(terminal.envVar ?? []).map((variable) => {
+          const [name = variable, value = "1"] = variable.split("=")
+          return { [name]: value }
+        }),
+      ]
+      for (const env of envs) {
+        expect([terminal.name, oscOf((name) => env[name])]).toEqual([terminal.name, terminal.osc])
+        if (env.TERM !== undefined) {
+          expect([terminal.name, colourDepthOf(env)]).toEqual([
+            terminal.name,
+            terminal.truecolor ? "truecolor" : colourDepthOf({ TERM: "xterm" }),
+          ])
+        }
+      }
+    }
   })
 })
 
@@ -140,6 +203,20 @@ describe("fromEnvironment", () => {
 
   test("an empty NO_COLOR or TERM counts as unset", () => {
     expect(read({ TERM: "", NO_COLOR: "" })).toMatchObject({ noColor: false, term: undefined })
+  })
+
+  test("TMUX is inside tmux", () => {
+    expect(read({ TERM: "tmux-256color", TMUX: "/tmp/tmux-501/default,1,0" }).tmux).toBe(true)
+    expect(read({ TERM: "tmux-256color", TMUX: "" }).tmux).toBe(false)
+    expect(read({ TERM: "tmux-256color" }).tmux).toBe(false)
+  })
+
+  test("any of sshd's variables is over ssh", () => {
+    expect(read({ SSH_CONNECTION: "10.0.0.2 52144 10.0.0.1 22" }).overSsh).toBe(true)
+    expect(read({ SSH_CLIENT: "10.0.0.2 52144 22" }).overSsh).toBe(true)
+    expect(read({ SSH_TTY: "/dev/pts/3" }).overSsh).toBe(true)
+    expect(read({ SSH_CONNECTION: "", SSH_TTY: "" }).overSsh).toBe(false)
+    expect(read({ TERM: "xterm-256color" }).overSsh).toBe(false)
   })
 
   test("the streams' TTYs come through", () => {
