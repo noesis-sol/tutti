@@ -68,6 +68,11 @@ export interface Issue {
   /** The issue this one is a subticket of (a parent-child link). */
   readonly parent?: string
   readonly dependencies: ReadonlyArray<Dependency>
+  /**
+   * The issues that depend on this one, each with how it links (`blocks`: this one blocks it), as
+   * bd show gives them asked for its dependents; absent from every other read.
+   */
+  readonly dependents?: ReadonlyArray<Dependency>
   /** The custom metadata, an object; bd gives it as one or as one encoded in a string. */
   readonly metadata: Readonly<Record<string, unknown>>
   /** The files the metadata lists under `files`, in any of the forms `metadataList` reads. */
@@ -165,6 +170,8 @@ const BdIssue = Schema.Struct({
   dependencies: Schema.optionalKey(
     Schema.NullOr(Schema.Array(Schema.Union([BdLink, BdLinkedIssue]))),
   ),
+  /** bd show --include-dependents's: the issues that depend on this one. */
+  dependents: Schema.optionalKey(Schema.NullOr(Schema.Array(BdLinkedIssue))),
 })
 
 type BdFields = Schema.Schema.Type<typeof BdLinkedIssue> | Schema.Schema.Type<typeof BdIssue>
@@ -239,15 +246,25 @@ const toIssue = (bd: BdFields, dependencies: ReadonlyArray<Dependency>): Issue =
   }
 }
 
-const fromBd = (bd: Schema.Schema.Type<typeof BdIssue>): Issue =>
-  toIssue(
+const fromBd = (bd: Schema.Schema.Type<typeof BdIssue>): Issue => ({
+  ...toIssue(
     bd,
     (bd.dependencies ?? []).map((dependency) =>
       "depends_on_id" in dependency
         ? { id: dependency.depends_on_id, type: dependency.type }
         : { id: dependency.id, type: dependency.dependency_type, issue: toIssue(dependency, []) },
     ),
-  )
+  ),
+  ...(bd.dependents == null
+    ? {}
+    : {
+        dependents: bd.dependents.map((dependent) => ({
+          id: dependent.id,
+          type: dependent.dependency_type,
+          issue: toIssue(dependent, []),
+        })),
+      }),
+})
 
 /** At most `max` characters of text, for an error. */
 const clip = (value: string, max: number): string =>
@@ -395,6 +412,11 @@ export interface ReadyOptions {
   readonly excludeTypes?: ReadonlyArray<string>
 }
 
+export interface ShowOptions {
+  /** The issues that depend on it too (bd show --include-dependents), as `dependents`. */
+  readonly dependents?: boolean
+}
+
 export interface ListOptions {
   /** Closed issues too; bd list leaves them out otherwise. */
   readonly all?: boolean
@@ -458,8 +480,8 @@ export class Beads extends Context.Service<
   {
     /** bd ready: the open issues not blocked, nor deferred until later, in bd's order. */
     ready(options?: ReadyOptions): Effect.Effect<ReadonlyArray<Issue>, BeadsError>
-    /** bd show: the issue, with the issues it depends on. */
-    show(id: string): Effect.Effect<Issue, BeadsError>
+    /** bd show: the issue, with the issues it depends on, and with `dependents` those on it. */
+    show(id: string, options?: ShowOptions): Effect.Effect<Issue, BeadsError>
     /** bd list: the issues that aren't closed, or every one with `all`. */
     list(options?: ListOptions): Effect.Effect<ReadonlyArray<Issue>, BeadsError>
     update(id: string, update: Update): Effect.Effect<Issue, BeadsError>
@@ -583,8 +605,11 @@ export class Beads extends Context.Service<
             whole(output, decodeIssue)(shown, output.stdout),
           )
 
-        const show = (id: string) =>
-          read(["show", id, "--json"], (command, stdout) => issueFor(id, command, stdout))
+        const show = (id: string, options: ShowOptions = {}) =>
+          read(
+            ["show", id, "--json", ...(options.dependents ? ["--include-dependents"] : [])],
+            (command, stdout) => issueFor(id, command, stdout),
+          )
 
         // bd's writes, like its show, act on an issue whose ID starts with the one they are given:
         // each ID is shown first, and bd having no issue by one fails the write before it is made.

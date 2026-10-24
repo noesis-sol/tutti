@@ -369,10 +369,16 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
           )
         })
 
-      const show = (id: string) =>
+      const show = (id: string, dependents = false) =>
         Effect.map(Ref.get(state), (issues) => {
           const issue = issues.get(id)
-          return issue === undefined ? missing(id) : ok([full(issues, issue)])
+          if (issue === undefined) return missing(id)
+          if (!dependents) return ok([full(issues, issue)])
+          // bd show --include-dependents: the issues with a link to this one.
+          const on = [...issues.values()].flatMap((other) =>
+            other.links.filter((link) => link.id === id).map((link) => linked(other, link.type)),
+          )
+          return ok([{ ...full(issues, issue), dependents: on }])
         })
 
       const listed = (options: ListOptions = {}) =>
@@ -532,7 +538,8 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
 
       const beads = Beads.of({
         ready: (options) => answer("read", "ready", options?.parent, ready(options), decodeIssues),
-        show: (id) => answer("read", "show", id, show(id), decodeShow(id)),
+        show: (id, options) =>
+          answer("read", "show", id, show(id, options?.dependents === true), decodeShow(id)),
         list: (options) =>
           answer(
             "read",

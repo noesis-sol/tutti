@@ -282,7 +282,8 @@ When the run ends, the dashboard closes and the main screen gets:
   opens the whole ticket in their place: the description, design, acceptance criteria as a
   checklist, notes, links and labels, in a frame up to 60% of the pane that `PgUp`, `PgDn` and the
   wheel scroll, `↓ N more lines` at its foot while there is more. Opening it reads the ticket from
-  bd again, so notes added during the run show. `t`, a click on `▴ less`, or `Esc` closes it.
+  bd again, so notes added during the run, and the tickets it blocks, show. `t`, a click on
+  `▴ less`, or `Esc` closes it.
 - **The transcript.** What the worker writes is drawn as Markdown. Each tool call is one line, its
   result at the right: `✓`, an error's first line, or `+N −M` for an edit. Selected with the arrows
   and opened with `Enter` or a click, a call shows an edit's diff, a command's output (400 lines at

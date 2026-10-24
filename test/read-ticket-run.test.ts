@@ -1,7 +1,8 @@
 // The worker view's ticket through the run (§ 7.5, tutti-cxgo.1): the run keeps the issue bd gave
 // as it took the ticket up on its ledger entry, so the view's card has its description at once, and
 // ReadTicket, which the view offers as its whole ticket opens, reads it again with bd show, so the
-// notes added during the run reach the card. Ticket text is sanitised as it enters RunView.
+// notes added during the run and the tickets it blocks reach the card. Ticket text is sanitised as
+// it enters RunView.
 import { expect, test } from "bun:test"
 import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -29,12 +30,14 @@ test("the card has the issue from the start, and ReadTicket brings the notes add
   const ran = await scenario(
     {
       config: { repo, settings: { ...appConfig().settings, concurrent: 1 }, limit: 1 },
-      backlog: backlog().ticket("a", {
-        description: "Read the second file \x1b]0;title\x07too.",
-        acceptance: "- Both files read",
-        type: "bug",
-        priority: 1,
-      }).seeds,
+      backlog: backlog()
+        .ticket("a", {
+          description: "Read the second file \x1b]0;title\x07too.",
+          acceptance: "- Both files read",
+          type: "bug",
+          priority: 1,
+        })
+        .ticket("b", { blockedBy: ["a"] }).seeds,
       git: { dir: repo },
       worktrees: { root },
       scripts: (world: World): Scripts => ({
@@ -116,4 +119,7 @@ test("the card has the issue from the start, and ReadTicket brings the notes add
   })
   expect(again.notes).toContain("Found the second file.")
   expect(again.description).toBe("Read the second file too.")
+  // Read again, with what it blocks, which bd ready didn't give.
+  expect(first.links).toEqual([])
+  expect(again.links).toEqual([{ type: "blocks", id: "b", dependent: true }])
 }, 30_000)

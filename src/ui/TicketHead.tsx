@@ -14,7 +14,7 @@
 import type { OptimizedBuffer, Renderable, ScrollBoxRenderable } from "@opentui/core"
 import { type RefObject, useRef, useState } from "react"
 import { UiCommand } from "../run/commands.ts"
-import type { TicketText } from "../run/runView.ts"
+import type { TicketLink, TicketText } from "../run/runView.ts"
 import { clickable } from "./click.ts"
 import { minHeight } from "./Dashboard.tsx"
 import {
@@ -152,15 +152,20 @@ export const descriptionLines = (
   }
 }
 
-/** What a link is called in the whole ticket: `parent`, `blocked by`, `discovered from`, … */
-export const linkWord = (type: string): string => {
-  switch (type) {
+/**
+ * What a link is called in the whole ticket: `parent`, `blocked by`, `discovered from`, …; one
+ * from a ticket that depends on this one, `blocks`, `child`, `found` …
+ */
+export const linkWord = (link: TicketLink): string => {
+  switch (link.type) {
     case "parent-child":
-      return "parent"
+      return link.dependent ? "child" : "parent"
     case "blocks":
-      return "blocked by"
+      return link.dependent ? "blocks" : "blocked by"
+    case "discovered-from":
+      return link.dependent ? "found" : "discovered from"
     default:
-      return type.replace(/[-_]/g, " ")
+      return link.type.replace(/[-_]/g, " ")
   }
 }
 
@@ -196,7 +201,7 @@ export const checklist = (text: string): string => {
 export const wholeTicket = (issue: TicketText): string => {
   const section = (name: string, text: string): ReadonlyArray<string> =>
     text.trim() === "" ? [] : [`### ${name}\n\n${fenced(text.trim())}`]
-  const links = issue.links.map((link) => `${linkWord(link.type)} ${escapeMarkdown(link.id)}`)
+  const links = issue.links.map((link) => `${linkWord(link)} ${escapeMarkdown(link.id)}`)
   return [
     issue.description.trim() === "" ? "*No description.*" : fenced(issue.description.trim()),
     ...section("Design", issue.design),

@@ -248,15 +248,20 @@ export interface Row {
   readonly verdict: string | null
 }
 
-/** A link of a ticket's to another, as bd show gives it: `parent-child`, `blocks`, … */
+/**
+ * A link of a ticket's to another, as bd show gives it: `parent-child`, `blocks`, …; `dependent`
+ * when the other depends on this one (bd show --include-dependents).
+ */
 export interface TicketLink {
   readonly type: string
   readonly id: string
+  readonly dependent?: true
 }
 
 /**
  * A ticket's issue as its worker view shows it (§ 7.5): the text a ticket author or a worker wrote,
- * sanitised (§ 7.10), its several lines kept. Its links are its parent first, then the rest.
+ * sanitised (§ 7.10), its several lines kept. Its links are its parent first, then what it depends
+ * on, then what depends on it.
  */
 export interface TicketText {
   /** bd's issue type: task, bug, feature, …; "" when bd gives none. */
@@ -289,10 +294,17 @@ export const ticketText = (issue: Issue): TicketText => {
     acceptance: sanitize(issue.acceptance),
     notes: sanitize(issue.notes),
     labels: issue.labels.map(sanitizeLine),
-    links: [...parent, ...others].map((link) => ({
-      type: sanitizeLine(link.type),
-      id: sanitizeLine(link.id),
-    })),
+    links: [
+      ...[...parent, ...others].map((link) => ({
+        type: sanitizeLine(link.type),
+        id: sanitizeLine(link.id),
+      })),
+      ...(issue.dependents ?? []).map((link) => ({
+        type: sanitizeLine(link.type),
+        id: sanitizeLine(link.id),
+        dependent: true as const,
+      })),
+    ],
   }
   ticketTexts.set(issue, text)
   return text

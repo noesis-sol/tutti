@@ -272,6 +272,17 @@ describe("the ticket's description in the head", () => {
     )
   })
 
+  test("the control when the ticket's one more thing is a ticket it blocks", async () => {
+    await scene(
+      issueOf({ description: "Read it.", dependents: [{ id: "t-5", type: "blocks" }] }),
+      { width: 80, height: 24 },
+      async ({ rendered }) => {
+        const frame = await until(rendered, has("Reading the scripts."))
+        expect(linesOf(frame)[1]?.endsWith("▾ whole ticket  t")).toBe(true)
+      },
+    )
+  })
+
   test("no description: No description., faint, with the control only when there is more", async () => {
     await scene(issueOf(), { width: 80, height: 24 }, async ({ rendered }) => {
       const frame = await until(rendered, has("Reading the scripts."))
@@ -313,6 +324,7 @@ const whole = issueOf({
     { id: "t-0", type: "parent-child" },
     { id: "t-9", type: "blocks" },
   ],
+  dependents: [{ id: "t-5", type: "blocks" }],
 })
 
 describe("the whole ticket", () => {
@@ -331,7 +343,7 @@ describe("the whole ticket", () => {
         expect(open.chars).toContain("Acceptance")
         expect(open.chars).toContain("☐ Account bookmarks are indexed under their own label")
         expect(open.chars).toContain("☑ Bookmarks still are")
-        expect(open.chars).toContain("Links  parent t-0 · blocked by t-9")
+        expect(open.chars).toContain("Links  parent t-0 · blocked by t-9 · blocks t-5")
         expect(open.chars).not.toContain("▾ whole ticket")
         // At most 60% of the pane; the transcript keeps its line.
         const panel = lines.filter((line) => /^ {2}[╭│╰]/.test(line))
@@ -560,7 +572,7 @@ describe("the description's and the whole ticket's text", () => {
     expect(markdown).toContain("### Design\n\nRead **both** files in `lib.ts`.")
     expect(markdown).toContain("### Acceptance")
     expect(markdown).toContain("### Notes\n\nStarted on the reader.")
-    expect(markdown).toContain("**Links**  parent t-0 · blocked by t-9")
+    expect(markdown).toContain("**Links**  parent t-0 · blocked by t-9 · blocks t-5")
     expect(markdown).toContain("**Labels**  bookmarks")
     expect(wholeTicket(ticketText(issueOf()))).toBe("*No description.*")
   })

@@ -56,7 +56,7 @@ export interface ScreenCommands {
 const readTicket = (ticket: string): Effect.Effect<void, never, Beads | Ledger> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
-    const read = yield* Effect.result((yield* Beads).show(ticket))
+    const read = yield* Effect.result((yield* Beads).show(ticket, { dependents: true }))
     if (Result.isSuccess(read)) return yield* ledger.readIssue(ticket, read.success)
     yield* Effect.logDebug(`could not read ${ticket} again: ${beadsWhy(read.failure)}`)
   })
