@@ -635,9 +635,33 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
         }),
       ).pipe(Effect.provideContext(context))
 
-    const taking = Effect.map(
-      Effect.all([currentStops, Ref.get(ending), usage.held]),
-      ([all, ended, held]) => all.first === null && !ended && !held,
+    // A merge that changed the requires list has it checked again before the next ticket starts
+    // (requires.ts): what is still missing stops the run as at its start, the running tickets
+    // finishing first. Each ask whether the run takes a ticket checks it first, so that a merge
+    // during a look's fill is checked before the fill starts another; one check at a time, so that
+    // an ask while one runs waits for its answer.
+    const requiresChecking = yield* Semaphore.make(1)
+    const requiresContext = yield* Effect.context<
+      WorkEnv | FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner
+    >()
+    const requiresChecked = requiresChecking
+      .withPermit(
+        Effect.gen(function* () {
+          if (!(yield* setUps.requiresDue)) return
+          const missing = yield* runRequires(yield* setUps.requires, {
+            repo: config.repo,
+            installLimit: config.settings.checks.fast.timeout,
+          })
+          if (missing !== "") yield* stopped(stopFor("REQUIREMENTS_MISSING", missing))
+        }),
+      )
+      .pipe(Effect.provideContext(requiresContext))
+    const taking = Effect.andThen(
+      requiresChecked,
+      Effect.map(
+        Effect.all([currentStops, Ref.get(ending), usage.held]),
+        ([all, ended, held]) => all.first === null && !ended && !held,
+      ),
     )
 
     // The machine's other tutti and orchestra runs (machine.ts): the run registers among them, says
@@ -1148,16 +1172,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       // first, each in a slot: each is done but for its merge, and others may wait on it. One left
       // for a hold, a solo ticket or a slot is due again at a later look (recheck.ts).
       yield* queue.recheck
-      // A merge that changed the requires list has it checked again before the next ticket starts
-      // (requires.ts): what is still missing stops the run as at its start, the running tickets
-      // finishing first.
-      if (yield* setUps.requiresDue) {
-        const missing = yield* runRequires(yield* setUps.requires, {
-          repo: config.repo,
-          installLimit: config.settings.checks.fast.timeout,
-        })
-        if (missing !== "") yield* stopped(stopFor("REQUIREMENTS_MISSING", missing))
-      }
+      // The requires list a merge changed, checked before anything starts (requiresChecked).
+      yield* requiresChecked
       // The workers carried over that waited for a slot, then the answered tickets, come back
       // before new ones start, each in a slot of its own and counting toward no limit (carry.ts,
       // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
