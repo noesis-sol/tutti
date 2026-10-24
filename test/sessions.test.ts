@@ -20,8 +20,9 @@ import {
   WaitFor,
 } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
-import { carryOnText, GoneResume, lifetime, resume, resumeGone } from "../src/run/sessions.ts"
+import { GoneResume, lifetime, resume, resumeGone } from "../src/run/sessions.ts"
 import type { StartTicket } from "../src/run/start.ts"
+import { goneText } from "../src/run/told.ts"
 import { type Worked, work } from "../src/run/work.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
@@ -375,7 +376,7 @@ describe("a session that ended unexpectedly (Gone)", () => {
     expect(sessions).toHaveLength(2)
     expect(sessions[1]).toEqual(sessions[0])
     expect(sentTags(ran)).toEqual(["Started", "Message", "Resumed", "Message"])
-    expect(sentTexts(ran).at(-1)).toBe(carryOnText(id))
+    expect(sentTexts(ran).at(-1)).toBe(goneText(id))
     expect(records(ran, "resumed")).toEqual([
       expect.objectContaining({ ticket: id, why: "gone", session: expect.any(String) }),
     ])

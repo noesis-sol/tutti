@@ -13,16 +13,8 @@ import { step as fold, initial, WorkerEvent, WorkerState } from "../src/agent/Wo
 import { resetLabel } from "../src/run/localTime.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
-import { nudgeText } from "../src/run/settle.ts"
-import {
-  carryOnText,
-  Hold,
-  liftAfter,
-  liftTime,
-  Reset,
-  resetOf,
-  retryEvery,
-} from "../src/run/usageLimit.ts"
+import { nudgeText, resetText } from "../src/run/told.ts"
+import { Hold, liftAfter, liftTime, Reset, resetOf, retryEvery } from "../src/run/usageLimit.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   apiErrorResult,
@@ -180,9 +172,7 @@ describe("when the hold lifts", () => {
       "USAGE_LIMIT lifted",
       "  t-1: the usage limit has reset; its worker carries on",
     ])
-    expect(messagesTo(ran.sent, "t-1").filter((text) => text === carryOnText("t-1"))).toHaveLength(
-      2,
-    )
+    expect(messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1"))).toHaveLength(2)
   })
 
   test("an unknown reset lifts, with workers still running, once a session says it is allowed", async () => {

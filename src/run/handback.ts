@@ -71,6 +71,7 @@ import { info, say } from "./say.ts"
 import { type ResumeWhy, resume } from "./sessions.ts"
 import { namesTicket, untilSettled } from "./settle.ts"
 import { type Fix, type SetUp, type SetUps, setUp, setupToResolve } from "./setup.ts"
+import { resolvePrompt } from "./told.ts"
 
 /** How many times a ticket's rebase conflicts are handed back to its worker in a run. */
 export const maxHandBacks = 2
@@ -258,27 +259,6 @@ export const workerAway = (
     const saved = yield* store.ticket(id)
     return saved?.session === undefined ? "its worker has no session to resume" : undefined
   })
-
-/**
- * What the worker is asked to do with a rebase stopped on conflicts, as orchestra asks it: the
- * tests of its change and of the files that conflicted, the whole check left to tutti's, which
- * follows; `setup` says when to run the project's setup, if it is to (setup.ts's setupToResolve).
- */
-export const resolvePrompt = (stop: RebaseStop, base: string, check: string, setup = ""): string =>
-  `tutti: ${base} moved on while you worked; rebasing ${stop.ticket.branch} onto it stopped on ` +
-  `conflicts in ${stop.files.join(", ")}. ` +
-  `Resolve them keeping the intent of both your change and what landed on ${base}, ` +
-  "then git add the files and run GIT_EDITOR=true git rebase --continue; " +
-  "if the rebase stops on another commit, resolve that one the same way. " +
-  `If ${base} has a commit's change already, wholly or as the part that conflicts, run git rebase ` +
-  "--skip for that commit instead of resolving it. " +
-  setup +
-  "Once the rebase has finished, run the tests of the code you changed and of the files that " +
-  "conflicted in the foreground until they pass, since the commits that applied cleanly may " +
-  "break them too; fold any fix into the branch's last commit with git commit --amend --no-edit. " +
-  `Leave the whole check, '${check}', to tutti: it runs it on the branch next. ` +
-  "Don't do anything else: no new commits beyond the rebase, no merge, no push, no ticket changes. " +
-  "Say DONE when the rebase is complete and those tests pass."
 
 /** The MERGE_CONFLICT line of a ticket whose conflicts aren't resolved, saying why. */
 const conflictLine = (stop: RebaseStop, base: string, why: string): Line => {

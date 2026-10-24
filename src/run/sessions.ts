@@ -39,6 +39,7 @@ import { Ledger } from "./ledger.ts"
 import { type Line, Log, line, Tag, ticketLine } from "./log.ts"
 import { factsOf, type Lifetime, type TicketPhase } from "./phase.ts"
 import type { Rechecks } from "./recheck.ts"
+import { goneText } from "./told.ts"
 
 /**
  * What the ticket's session is while the ticket is in `phase`; `recheck` says whether a ticket set
@@ -126,11 +127,6 @@ export const resume = (
     return uuid
   })
 
-/** What a worker whose session went is told as it is resumed. */
-export const carryOnText = (id: string): string =>
-  `tutti: your session ended unexpectedly with ${id} still in progress, and this is it resumed. ` +
-  `Carry on with ${id} where you left off, as your instructions say.`
-
 /** How the resume of a session that ended unexpectedly went. */
 export type GoneResume = Data.TaggedEnum<{
   /** Resumed and told to carry on: the message's uuid. */
@@ -159,7 +155,7 @@ export const resumeGone = (
       resume(
         ticket,
         "gone",
-        carryOnText(ticket),
+        goneText(ticket),
         line`${ticket}'s worker is gone (${why}) with the ticket in progress`,
       ),
     )

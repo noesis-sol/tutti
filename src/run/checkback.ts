@@ -57,6 +57,7 @@ import {
   rejectResolution,
   workerAway,
 } from "./handback.ts"
+
 import { usageHolds } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { branchOn, detail, fixing, Log, line } from "./log.ts"
@@ -72,6 +73,7 @@ import { Move } from "./phase.ts"
 import { info } from "./say.ts"
 import { namesTicket } from "./settle.ts"
 import type { Fix } from "./setup.ts"
+import { fixPrompt } from "./told.ts"
 
 /**
  * A check that failed on a finished ticket's branch rebased onto the base, or on top of it already
@@ -205,62 +207,6 @@ export const whyNotFix = (
     const away = yield* workerAway(id)
     return away === undefined ? undefined : not(away)
   })
-
-/** The most commits a check hand-back lists of those that landed on the base. */
-export const maxLanded = 30
-
-/**
- * What the worker is asked to do with the failure on its rebased branch, as orchestra asks it: what
- * failed, what the output says, and what the rebase brought in from the base (`landed`, newest
- * first; undefined when git couldn't list it). On a branch on top of the base already, nothing
- * landed, and the prompt says only that the check fails before it merges.
- */
-export const fixPrompt = (
-  stop: CheckStop,
-  base: string,
-  check: string,
-  landed: ReadonlyArray<Commit> | undefined,
-): string => {
-  const { id, branch } = stop.ticket
-  const lines = saidOf(stop.error)
-  const said =
-    lines.length === 0
-      ? "it printed nothing"
-      : `${stop.error._tag !== "CheckNotRun" && stop.error.failingLines.length > 0 ? "these lines say what failed:" : "it ends:"}\n${lines.join("\n")}`
-  const listed = (landed ?? []).map((commit) => `${shortHash(commit.hash)} ${commit.subject}`)
-  const shown =
-    landed === undefined || listed.length === 0
-      ? "(git could not list them)"
-      : listed.length > maxLanded
-        ? [...listed.slice(0, maxLanded), `… and ${listed.length - maxLanded} more`].join("\n")
-        : listed.join("\n")
-  // What failed and the tests of its change: the whole check is tutti's, run next (orchestra
-  // 0.8.5).
-  const steps =
-    "Run what failed (the tests or other checks the output names) and the tests of the code you " +
-    `changed in the foreground until they pass, then commit the fix on ${branch} with ${id} in ` +
-    `the commit message. Leave the whole check, '${check}', to tutti: it runs it on the branch ` +
-    "next. " +
-    "Don't do anything else: no rebase, no amending or rewriting of commits, no merge, no push, " +
-    "no ticket changes, and no uncommitted changes left. Say DONE when the fix is committed. " +
-    `If what failed passes without a change, the failure not coming from ${branch}, commit ` +
-    "nothing and say DONE: tutti runs the check again."
-  if (stop.onTop === true) {
-    return (
-      `tutti: Before ${branch} merges into ${base}, ${failedHow(stop.error)} on it. ` +
-      `Its whole output is in ${stop.output}; ${said}\n\n` +
-      `Fix ${branch} so that the check passes. ${steps}`
-    )
-  }
-  return (
-    `tutti: ${base} moved on while you worked, and ${branch} was rebased onto it; now ` +
-    `${failedHow(stop.error)} on it. Its whole output is in ${stop.output}; ${said}\n\n` +
-    `What landed on ${base} since your branch was cut (git log --oneline ` +
-    `${shortHash(stop.head)}..${shortHash(stop.onto)}):\n${shown}\n\n` +
-    `Fix ${branch} so that the check passes, keeping the intent of both your change and what ` +
-    `landed on ${base}. ${steps}`
-  )
-}
 
 /**
  * Hands `stop`'s failure back: the ticket Merging, Resolving or Fixing → Fixing, its attempt

@@ -4,11 +4,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
 import { resumedNotes } from "../src/agent/AgentHostLive.ts"
-import { answeredText } from "../src/run/asked.ts"
-import { askedWhy, carryOnText, questionKey } from "../src/run/carry.ts"
+import { askedWhy, questionKey } from "../src/run/carry.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { readAgainAfter } from "../src/run/schedule.ts"
+import { answeredText, resumedText } from "../src/run/told.ts"
 import { Beads, BeadsFailed } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store, type TicketRecord } from "../src/services/Store.ts"
@@ -170,7 +170,7 @@ describe("carry-over: a suspended worker", () => {
     expectPhases(ran, { "t-1": "Done" })
     // The saved session, resumed: no new one is drawn.
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
-    expect(textsOf(ran, "t-1")).toEqual([carryOnText("t-1", "quit")])
+    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1", "quit")])
     // Its session began in the last run: it is told its standing rules' notes as they are now first.
     const [sent] = ran.sent.flatMap((each) => (each._tag === "Message" ? [each.message] : []))
     expect(String(sent?.message.content)).toStartWith(resumedNotes("").trimEnd())
@@ -203,7 +203,7 @@ describe("carry-over: a suspended worker", () => {
     })
     expectPhases(ran, { "t-1": "Done" })
     const [told] = textsOf(ran, "t-1")
-    expect(told).toStartWith(carryOnText("t-1", "TICKET_LIMIT"))
+    expect(told).toStartWith(resumedText("t-1", "TICKET_LIMIT"))
     expect(told).toContain("You have about 1h for this ticket")
     expect(told).toContain("This run works on e-1 and its subtickets only.")
   })

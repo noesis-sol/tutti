@@ -33,6 +33,7 @@ import type { MergeEnv } from "./merge.ts"
 import { readAgain } from "./schedule.ts"
 import { resumeGone } from "./sessions.ts"
 import type { StartedWorker } from "./start.ts"
+import { nudgeText } from "./told.ts"
 
 /** How many times a worker that left its ticket in progress is told to continue. */
 export const nudges = 2
@@ -45,11 +46,6 @@ export const idleGrace: Duration.Duration = Duration.minutes(10)
 
 /** The label of a ticket closed but not merged, which still holds the tickets it blocks (§ 4.8). */
 export const unmergedLabel = "unmerged"
-
-/** The continue nudge, sent client_composed. */
-export const nudgeText = (id: string): string =>
-  `tutti: your ticket ${id} is still in progress. Continue; if something blocks you, ask or ` +
-  "defer as your instructions say."
 
 const isIdChar = (c: string): boolean => /^[A-Za-z0-9_]$/.test(c)
 

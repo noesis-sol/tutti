@@ -13,7 +13,7 @@ import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { carryOnHandBack, carryOnText } from "../src/run/usageLimit.ts"
+import { resetHandBackText, resetText } from "../src/run/told.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -316,8 +316,8 @@ describe("the usage limit during a hand-back", () => {
     ])
     const [handBack, ...after] = composed(ran)
     expect(handBack).toContain("rebasing tutti/b onto it stopped on conflicts in shared.txt")
-    expect(after).toEqual([carryOnHandBack("b", "tutti/b", "resolving", "main")])
-    expect(after).not.toContain(carryOnText("b"))
+    expect(after).toEqual([resetHandBackText("b", "tutti/b", "resolving", "main")])
+    expect(after).not.toContain(resetText("b"))
     expect(interrupted(ran)).toBe(false)
   })
 
@@ -531,10 +531,10 @@ describe("what the worker is told", () => {
   })
 
   test("the carry-on after the reset names the hand-back, not the ticket", () => {
-    expect(carryOnHandBack("b", "tutti/b", "fixing", "main")).toBe(
+    expect(resetHandBackText("b", "tutti/b", "fixing", "main")).toBe(
       "tutti: the account's usage limit has reset. Carry on where you left off with the failing check tutti handed back to you, fixing tutti/b so that it passes and committing the fix, as tutti's message asked, not with b itself, which you closed already. If you had finished that before the limit, check that git shows it done and say DONE.",
     )
-    expect(carryOnHandBack("b", "tutti/b", "resolving", "main")).toContain(
+    expect(resetHandBackText("b", "tutti/b", "resolving", "main")).toContain(
       "with the rebase of tutti/b onto main tutti handed back to you, resolving its conflicts",
     )
   })

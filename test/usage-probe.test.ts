@@ -25,7 +25,8 @@ import { Ledger } from "../src/run/ledger.ts"
 import { resetLabel } from "../src/run/localTime.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard } from "../src/run/screen.ts"
-import { carryOnText, make as makeUsageHold } from "../src/run/usageLimit.ts"
+import { resetText } from "../src/run/told.ts"
+import { make as makeUsageHold } from "../src/run/usageLimit.ts"
 import { Git } from "../src/services/Git.ts"
 import { claimsAndCloses, hitsUsageLimit, type Sent } from "../src/testing/AgentHost.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
@@ -379,9 +380,7 @@ describe("a run whose probe is refused", () => {
       "USAGE_LIMIT lifted",
       "  t-1: the usage limit has reset; its worker carries on",
     ])
-    expect(messagesTo(ran.sent, "t-1").filter((text) => text === carryOnText("t-1"))).toHaveLength(
-      1,
-    )
+    expect(messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1"))).toHaveLength(1)
   })
 
   test("refused with no reset, with nothing else running, waits for the next try", async () => {
@@ -403,8 +402,6 @@ describe("a run whose probe is refused", () => {
       "USAGE_LIMIT lifted",
       "  t-1: the usage limit has reset; its worker carries on",
     ])
-    expect(messagesTo(ran.sent, "t-1").filter((text) => text === carryOnText("t-1"))).toHaveLength(
-      1,
-    )
+    expect(messagesTo(ran.sent, "t-1").filter((text) => text === resetText("t-1"))).toHaveLength(1)
   })
 })

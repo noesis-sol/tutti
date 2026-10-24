@@ -23,7 +23,7 @@ import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { makeRechecks } from "../src/run/recheck.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
-import { idleGrace, nudgeText, untilSettled } from "../src/run/settle.ts"
+import { idleGrace, untilSettled } from "../src/run/settle.ts"
 import type { StartTicket } from "../src/run/start.ts"
 import {
   handBackNow,
@@ -33,6 +33,7 @@ import {
   releaseAndHandOver,
   sendMessage,
 } from "../src/run/steer.ts"
+import { nudgeText } from "../src/run/told.ts"
 import { type Worked, work } from "../src/run/work.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"

@@ -12,7 +12,7 @@ import { UiCommand } from "../src/run/commands.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
-import { carryOnText } from "../src/run/usageLimit.ts"
+import { resetText } from "../src/run/told.ts"
 import { Git } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { claimsAndCloses, hitsUsageLimit } from "../src/testing/AgentHost.ts"
@@ -125,6 +125,6 @@ describe("quitting during the usage-limit wait", () => {
     const texts1 = toT1.flatMap((sent) =>
       sent._tag === "Message" ? [String(sent.message.message.content)] : [],
     )
-    expect(texts1).not.toContain(carryOnText("t-1"))
+    expect(texts1).not.toContain(resetText("t-1"))
   })
 })

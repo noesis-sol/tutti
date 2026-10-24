@@ -13,7 +13,7 @@ import { fullCheckLabel } from "../src/run/fullcheck.ts"
 import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { carryOnText } from "../src/run/usageLimit.ts"
+import { resetText } from "../src/run/told.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import { writeRunFile } from "../src/services/Worktrees.ts"
@@ -781,7 +781,7 @@ describe("the usage-limit hold", () => {
       "lifted",
       "HOLD: USAGE_LIMIT lifted",
     ])
-    expect(composed(ran, "a")).toEqual([carryOnText("a")])
+    expect(composed(ran, "a")).toEqual([resetText("a")])
     expect(pathOf(ran, "a")).toEqual(["Queued", "Working", "ToMerge", "Merging", "Done"])
   })
 

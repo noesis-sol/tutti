@@ -7,8 +7,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunFileSystem } from "@effect/platform-bun"
 import { Context, Effect, Fiber, Layer } from "effect"
-import { carriedTickets, carryOnText, crashedWhy } from "../src/run/carry.ts"
+import { carriedTickets, crashedWhy } from "../src/run/carry.ts"
 import { run } from "../src/run/run.ts"
+import { resumedText } from "../src/run/told.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   type RunStamp,
@@ -142,6 +143,6 @@ describe("a crashed run's records after the next run's first write", () => {
         ? [withoutNotes(String(sent.message.message.content))]
         : [],
     )
-    expect(texts).toEqual([carryOnText("t-1", crashedWhy)])
+    expect(texts).toEqual([resumedText("t-1", crashedWhy)])
   })
 })

@@ -12,7 +12,7 @@ import { UiCommand } from "../src/run/commands.ts"
 import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { ScreenInputs } from "../src/run/screen.ts"
-import { carryOnHandBack, carryOnText } from "../src/run/usageLimit.ts"
+import { resetHandBackText, resetText } from "../src/run/told.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -317,8 +317,8 @@ describe("a worker at the usage limit already", () => {
       "tutti: main moved on while you worked, and tutti/b was rebased onto it",
     )
     expect(rest).toEqual([])
-    expect(composed(ran)).not.toContain(carryOnHandBack("b", "tutti/b", "fixing", "main"))
-    expect(composed(ran)).not.toContain(carryOnText("b"))
+    expect(composed(ran)).not.toContain(resetHandBackText("b", "tutti/b", "fixing", "main"))
+    expect(composed(ran)).not.toContain(resetText("b"))
     expect(interrupted(ran)).toBe(false)
   })
 

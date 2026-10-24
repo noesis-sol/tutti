@@ -78,6 +78,7 @@ import {
 } from "./log.ts"
 import type { TicketPhase } from "./phase.ts"
 import { countdown, type RunHold, type Usage } from "./runView.ts"
+import { resetHandBackText, resetText } from "./told.ts"
 
 /** How long after its reset the hold is lifted (§ 4.12). */
 export const liftAfter: Duration.Duration = Duration.minutes(1)
@@ -97,32 +98,6 @@ export const holdWord = "USAGE_LIMIT"
 /** A limit's name as the lines say it: `five-hour` for `five_hour`; null, the account's usage. */
 export const limitName = (limit: string | null): string =>
   limit === null ? "account's usage" : limit.replaceAll("_", "-")
-
-/** The message a worker waiting for the limit is sent once it has reset. */
-export const carryOnText = (id: string): string =>
-  `tutti: the account's usage limit has reset. Carry on with your ticket ${id} where you left off.`
-
-/**
- * The message a worker waiting for the limit on its hand-back onto `base` (handback.ts) is sent once
- * it has reset: the hand-back to carry on with, not its ticket, which it closed already, as orchestra
- * tells it.
- */
-export const carryOnHandBack = (
-  id: string,
-  branch: string,
-  mode: HandBackMode,
-  base: string,
-): string => {
-  const what =
-    mode === "resolving"
-      ? `the rebase of ${branch} onto ${base} tutti handed back to you, resolving its conflicts, finishing it and running the tests`
-      : `the failing check tutti handed back to you, fixing ${branch} so that it passes and committing the fix`
-  return (
-    `tutti: the account's usage limit has reset. Carry on where you left off with ${what}, ` +
-    `as tutti's message asked, not with ${id} itself, which you closed already. ` +
-    "If you had finished that before the limit, check that git shows it done and say DONE."
-  )
-}
 
 /**
  * What the run's closing line says of a hand-back kept for the reset and never sent, the run ending
@@ -502,10 +477,10 @@ export const make = (options: {
     const carryOn = (ticket: string, phase: TicketPhase["_tag"] | undefined) =>
       Effect.gen(function* () {
         if (phase === "ToMerge" || phase === "Merging" || phase === "Done") return null
-        if (phase !== "Resolving" && phase !== "Fixing") return carryOnText(ticket)
+        if (phase !== "Resolving" && phase !== "Fixing") return resetText(ticket)
         const branch = (yield* store.ticket(ticket))?.branch ?? "your branch"
         const mode = phase === "Resolving" ? "resolving" : "fixing"
-        return carryOnHandBack(ticket, branch, mode, options.base)
+        return resetHandBackText(ticket, branch, mode, options.base)
       })
 
     // At the reset: the hold lifted, and each worker waiting for it told to carry on.

@@ -60,6 +60,7 @@ import { descendants } from "./scope.ts"
 import { resume, workerGone } from "./sessions.ts"
 import { openQuestion } from "./settle.ts"
 import { runFacts, type StartedWorker } from "./start.ts"
+import { resumedText } from "./told.ts"
 import { mergedSince, namedCommit } from "./unmerged.ts"
 import { follow, type WorkEnv } from "./work.ts"
 
@@ -71,15 +72,6 @@ export const askedWhy = "asked"
 
 /** Why a ticket a crashed run left in state.json is carried over, as its carry-on message says. */
 export const crashedWhy = "crashed"
-
-/** What a suspended worker is told as the next run resumes its session. */
-export const carryOnText = (id: string, why: string, facts: ReadonlyArray<string> = []): string =>
-  [
-    `tutti: the last run ended (${why}) while you were working on ${id}, and interrupted you; ` +
-      `this run resumes your session. Carry on with ${id} where you left off, as your ` +
-      "instructions say.",
-    ...facts,
-  ].join("\n\n")
 
 export type CarryOptions = AnswerOptions
 
@@ -453,7 +445,7 @@ const takeUp = (
           resume(
             id,
             "suspended",
-            carryOnText(id, why, facts),
+            resumedText(id, why, facts),
             record.suspended === undefined
               ? line`${id} was in progress as the last run crashed`
               : line`${id} was suspended as the last run ended (${why})`,

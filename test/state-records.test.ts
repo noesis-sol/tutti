@@ -6,8 +6,9 @@ import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber } from "effect"
-import { carryOnText, crashedWhy } from "../src/run/carry.ts"
+import { crashedWhy } from "../src/run/carry.ts"
 import { type Outcome, run } from "../src/run/run.ts"
+import { resumedText } from "../src/run/told.ts"
 import { Git } from "../src/services/Git.ts"
 import { type RunStamp, type State, Store, type TicketRecord } from "../src/services/Store.ts"
 import {
@@ -249,7 +250,7 @@ describe("state.json: what a crashed run left", () => {
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-1": "Done" })
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
-    expect(textsOf(ran, "t-1")).toEqual([carryOnText("t-1", crashedWhy)])
+    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1", crashedWhy)])
     expectLog(ran, [
       /^ {2}RESUMED: t-1 was in progress as the last run crashed; resuming its session session-t-1 \(worktree .*t-1\)$/,
     ])
@@ -316,7 +317,7 @@ describe("state.json: what a crashed run left", () => {
     })
     expectPhases(ran, { "t-1": "Done" })
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
-    expect(textsOf(ran, "t-1")).toEqual([carryOnText("t-1", crashedWhy)])
+    expect(textsOf(ran, "t-1")).toEqual([resumedText("t-1", crashedWhy)])
   })
 
   test("a record a run that ended left, with its phase, isn't taken for a crash's", async () => {

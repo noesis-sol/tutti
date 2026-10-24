@@ -11,7 +11,7 @@ import { usageLimitNote } from "../src/project/prompt.ts"
 import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { limitDeferralNote } from "../src/run/settle.ts"
-import { carryOnText } from "../src/run/usageLimit.ts"
+import { resetText } from "../src/run/told.ts"
 import { Beads, type Status } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import {
@@ -160,7 +160,7 @@ describe("a ticket deferred as its worker stops at the usage limit", () => {
         (each) =>
           each._tag === "Message" &&
           each.ticket === "t-1" &&
-          String(each.message.message.content) === carryOnText("t-1"),
+          String(each.message.message.content) === resetText("t-1"),
       ),
     ).toHaveLength(1)
   })

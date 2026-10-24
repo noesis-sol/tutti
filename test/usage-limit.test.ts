@@ -10,15 +10,8 @@ import { line } from "../src/run/log.ts"
 import { run } from "../src/run/run.ts"
 import { countdown, type RunView } from "../src/run/runView.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
-import { nudgeText } from "../src/run/settle.ts"
-import {
-  carryOnText,
-  holdNotice,
-  liftAfter,
-  limitName,
-  limitStop,
-  organHold,
-} from "../src/run/usageLimit.ts"
+import { nudgeText, resetText } from "../src/run/told.ts"
+import { holdNotice, liftAfter, limitName, limitStop, organHold } from "../src/run/usageLimit.ts"
 import { Git } from "../src/services/Git.ts"
 import {
   claimsAndCloses,
@@ -285,7 +278,7 @@ describe("the usage-limit hold", () => {
     expect(held?.totals.queueHeld).toBe(true)
     // Each worker waiting for it was told to carry on, once, and never nudged.
     for (const id of ["t-1", "t-2"]) {
-      expect(messagesTo(ran.sent, id).filter((text) => text === carryOnText(id))).toHaveLength(1)
+      expect(messagesTo(ran.sent, id).filter((text) => text === resetText(id))).toHaveLength(1)
       expect(messagesTo(ran.sent, id)).not.toContain(nudgeText(id))
     }
     expect(usageNotices(ran.notices)).toEqual([
@@ -362,7 +355,7 @@ describe("the usage-limit hold", () => {
     const records = ran.events.filter((r) => r.kind === "stop" || r.kind === "suspended")
     expect(records.map((r) => r.kind)).toEqual(["suspended", "stop"])
     expect(records[1]).toMatchObject({ detail: "USAGE_LIMIT", text: stop })
-    expect(messagesTo(ran.sent, "t-1")).not.toContain(carryOnText("t-1"))
+    expect(messagesTo(ran.sent, "t-1")).not.toContain(resetText("t-1"))
   })
 
   test("a shorter --usage-limit-wait ends a run a reset within 6h would hold", async () => {

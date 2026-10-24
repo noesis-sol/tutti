@@ -27,12 +27,8 @@ import { Move } from "./phase.ts"
 import { fit, resume } from "./sessions.ts"
 import { openQuestion } from "./settle.ts"
 import type { StartedWorker } from "./start.ts"
+import { answeredText } from "./told.ts"
 import { follow, type WorkEnv, type WorkError, type Worked, type WorkOptions } from "./work.ts"
-
-/** What a worker whose question is answered is told as its session is resumed. */
-export const answeredText = (id: string, question: string, title: string): string =>
-  `tutti: your question ${question} (${title}) is answered. Read the answer with bd show ` +
-  `${question}, then carry on with ${id} as your instructions say.`
 
 export interface AnswerOptions extends WorkOptions {
   /**

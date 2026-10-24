@@ -10,8 +10,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Exit, Fiber, Queue, type Scope } from "effect"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
-import { answeredText } from "../src/run/asked.ts"
-import { askedWhy, carryOnText, questionKey } from "../src/run/carry.ts"
+import { askedWhy, questionKey } from "../src/run/carry.ts"
 import { UiCommand } from "../src/run/commands.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import { type Left, RunFibers } from "../src/run/fibers.ts"
@@ -20,8 +19,7 @@ import type { PhaseTag } from "../src/run/phase.ts"
 import { type QuitRequest, quitBy } from "../src/run/quit.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import type { Dashboard, ScreenInputs } from "../src/run/screen.ts"
-import { carryOnText as goneText } from "../src/run/sessions.ts"
-import { nudgeText } from "../src/run/settle.ts"
+import { answeredText, goneText, nudgeText, resumedText } from "../src/run/told.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
@@ -487,7 +485,7 @@ describe("quit mid-run, and the next run", () => {
     expectRun(second, 0, { a: "Done", b: "Done", c: "Done" })
     for (const id of ["a", "b"]) {
       expect(sessionsOf(second, id)).toEqual([`Resumed ${first.state.tickets[id]?.session}`])
-      expect(textsOf(second, id)).toEqual([carryOnText(id, "quit")])
+      expect(textsOf(second, id)).toEqual([resumedText(id, "quit")])
     }
     expect(sessionsOf(second, "c")).toEqual([])
     expect(records(second, "dispatch")).toEqual([])
@@ -632,7 +630,7 @@ describe("a worker gone", () => {
     // The next run resumes it again, and it finishes.
     expectRun(second, 0, { t: "Done" })
     expect(sessionsOf(second, "t")).toEqual([`Resumed ${session}`])
-    expect(textsOf(second, "t")).toEqual([carryOnText("t", "PAUSED")])
+    expect(textsOf(second, "t")).toEqual([resumedText("t", "PAUSED")])
     expectLines(second, [resumedLine("t", "PAUSED"), closedLine("t")])
     expect(second.state.tickets).toEqual({})
   }, 30_000)
@@ -702,7 +700,7 @@ describe("the end of a run while a worker waits on you (D19)", () => {
 
     expectRun(second, 0, { a: "Done" })
     expect(sessionsOf(second, "a")).toEqual([`Resumed ${first.state.tickets.a?.session}`])
-    expect(textsOf(second, "a")).toEqual([carryOnText("a", "waiting on you")])
+    expect(textsOf(second, "a")).toEqual([resumedText("a", "waiting on you")])
     const again = records(second, "attention").filter((record) => record.ticket === "a")
     expect(again).toHaveLength(1)
     expect(again[0]?.request).not.toBe(asked[0]?.request)
@@ -767,7 +765,7 @@ describe("a steered worker", () => {
     // The next run is the run's again: it resumes the worker and tells it to carry on.
     expectRun(second, 0, { a: "Done" })
     expect(sessionsOf(second, "a")).toEqual([`Resumed ${first.state.tickets.a?.session}`])
-    expect(textsOf(second, "a")).toEqual([carryOnText("a", "PAUSED")])
+    expect(textsOf(second, "a")).toEqual([resumedText("a", "PAUSED")])
     expect(second.log.some((text) => text.includes("STEERED"))).toBe(false)
     expectLines(second, [resumedLine("a", "PAUSED"), closedLine("a")])
   }, 30_000)
