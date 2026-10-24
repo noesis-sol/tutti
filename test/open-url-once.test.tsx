@@ -1,5 +1,6 @@
-// Open URL pressed again while the opener runs (§ 4.5): the second press is ignored, so it opens no
-// second tab and sends no second Accept; once the open has resolved, a press opens it again.
+// Open URL pressed again while the opener runs (§ 4.5): the second press is ignored, in the view
+// it was pressed in or another, so it opens no second tab and sends no second Accept; once the open
+// has resolved, a press opens it again.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
@@ -13,6 +14,7 @@ import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import type { Opened, UrlOpener } from "../src/ui/openUrl.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
+import { emptyTranscript, type TranscriptFeed } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { type Rendered, withRender } from "./render.ts"
 
@@ -83,11 +85,23 @@ const heldOpener = () => {
   return { opener, urls, finish: (how: Opened) => finish(how) }
 }
 
+/** A transcript feed with nothing in it, for the worker view. */
+const feed: TranscriptFeed = {
+  open: () => ({
+    state: external(emptyTranscript),
+    older: () => {},
+    scrolledBack: () => {},
+    follow: () => {},
+    close: () => {},
+  }),
+}
+
 const taken = (commands: Commands) => Effect.runSync(Queue.clear(commands))
 
 /**
  * The dashboard over a URL elicitation with `opener`, settled and Open URL focused; runs `body`
- * with the commands sent, the rendered tree and Enter, which presses Open URL.
+ * with the commands sent, the rendered tree, Enter, which presses Open URL, and the way to the
+ * worker view.
  */
 const onOpenUrl = async (
   opener: UrlOpener,
@@ -95,24 +109,33 @@ const onOpenUrl = async (
     readonly commands: Commands
     readonly rendered: Rendered
     readonly press: () => Promise<void>
+    /** Opens the ticket's worker view and focuses its panel's Open URL once it has settled. */
+    readonly toWorkerView: () => Promise<void>
   }) => Promise<void>,
 ) => {
   const commands = Effect.runSync(makeCommands)
+  const screen = external<Screen>(Screen.Dashboard())
   let at = began
   const value = {
     view: external(viewOf([elicitation])),
-    screen: external<Screen>(Screen.Dashboard()),
+    screen,
     commands,
     appearance: external<Appearance>("dark"),
     themeOf,
     now: () => at,
     urlOpener: opener,
+    transcripts: feed,
   }
-  await withRender(<Root value={value} />, { width: 80, height: 40 }, async (rendered) => {
+  await withRender(<Root value={value} />, { width: 100, height: 40 }, async (rendered) => {
     at += settle
     await rendered.input((setup) => setup.mockInput.pressTab())
     const press = () => rendered.input((setup) => setup.mockInput.pressEnter())
-    await body({ commands, rendered, press })
+    const toWorkerView = async () => {
+      await rendered.input(() => screen.set(Screen.Worker({ ticket: "t-1" })))
+      at += settle
+      await rendered.input((setup) => setup.mockInput.pressTab())
+    }
+    await body({ commands, rendered, press, toWorkerView })
   })
 }
 
@@ -124,6 +147,18 @@ describe("Open URL pressed again", () => {
     await onOpenUrl(held.opener, async ({ commands, rendered, press }) => {
       await press()
       await press()
+      await press()
+      expect(held.urls).toEqual([url])
+      await rendered.input(() => held.finish("opened"))
+      expect(taken(commands)).toEqual([accept])
+    })
+  })
+
+  test("in the worker view while the dashboard's press opens it sends one Accept", async () => {
+    const held = heldOpener()
+    await onOpenUrl(held.opener, async ({ commands, rendered, press, toWorkerView }) => {
+      await press()
+      await toWorkerView()
       await press()
       expect(held.urls).toEqual([url])
       await rendered.input(() => held.finish("opened"))

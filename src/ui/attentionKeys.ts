@@ -15,7 +15,13 @@ import { type Answer, type AttentionRequest, allowsForRun } from "../agent/Atten
 import { UiCommand } from "../run/commands.ts"
 import type { Card } from "../run/runView.ts"
 import { Box, useInput } from "./keys.ts"
-import { type Opened, openedToast, urlCopiedToast, urlFailedToast } from "./openUrl.ts"
+import {
+  type Opened,
+  openedToast,
+  type UrlOpener,
+  urlCopiedToast,
+  urlFailedToast,
+} from "./openUrl.ts"
 import { sanitizeLine } from "./sanitize.ts"
 import { useKeyState } from "./useKeyState.ts"
 import { ShellContext, useClock, useCommand, useLatestRunView } from "./useRunView.ts"
@@ -199,11 +205,26 @@ export const urlToOpen = (request: AttentionRequest, answer: Answer): string | u
     : undefined
 
 /**
+ * The requests whose URL is opening, by the UrlOpener opening it, until it resolves: one set for
+ * the shell, which every view answering through it shares.
+ */
+const openingBy = new WeakMap<UrlOpener, Set<string>>()
+
+const openingOf = (opener: UrlOpener): Set<string> => {
+  const known = openingBy.get(opener)
+  if (known !== undefined) return known
+  const made = new Set<string>()
+  openingBy.set(opener, made)
+  return made
+}
+
+/**
  * Sends `answer` to the request `request` names, if it is still open in the RunView as it is now;
  * else drops it with a toast. Accepting a URL elicitation opens its URL first, with the shell's
  * UrlOpener, and toasts how: the Accept is sent once it is opened or copied, if the request is
  * still open then, and not when it was neither. Another Accept of a request whose URL is still
- * opening is ignored, so a second press opens no second tab and sends no second Accept.
+ * opening is ignored, in any view, so a second press opens no second tab and sends no second
+ * Accept.
  */
 export const useSendAnswer = (): ((
   request: { readonly id: string; readonly ticket: string },
@@ -213,8 +234,6 @@ export const useSendAnswer = (): ((
   const latest = useLatestRunView()
   const { toasts } = useInput()
   const opener = useContext(ShellContext)?.urlOpener
-  // The requests whose URL is opening, until the opener resolves.
-  const opening = useRef(new Set<string>())
   const openOf = (id: string) => latest().requests.find((open) => open.id === id)
   const send = (request: { readonly id: string; readonly ticket: string }, answer: Answer) => {
     if (openOf(request.id) !== undefined) {
@@ -225,10 +244,11 @@ export const useSendAnswer = (): ((
     const open = openOf(request.id)
     const url = open === undefined ? undefined : urlToOpen(open, answer)
     if (opener === undefined || url === undefined) return send(request, answer)
-    if (opening.current.has(request.id)) return
-    opening.current.add(request.id)
+    const opening = openingOf(opener)
+    if (opening.has(request.id)) return
+    opening.add(request.id)
     const opened = (how: Opened) => {
-      opening.current.delete(request.id)
+      opening.delete(request.id)
       if (how === "failed") return toasts.show(urlFailedToast, { failure: true })
       toasts.show(how === "opened" ? openedToast : urlCopiedToast)
       send(request, answer)
