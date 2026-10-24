@@ -4,7 +4,6 @@
 // attention card and hint in the terminal's own variant, drawn by the dashboard's own lines and
 // printed in the theme's ANSI styles; then anything that keeps the scheme from being used. Such a
 // problem fails the command, so that a scheme can be checked in CI.
-import { type RGBA, TextAttributes } from "@opentui/core"
 import { Console, Effect } from "effect"
 import type { AttentionRequest } from "../agent/Attention.ts"
 import { WorkerState } from "../agent/WorkerState.ts"
@@ -15,12 +14,11 @@ import { attentionLines } from "../ui/AttentionCard.tsx"
 import { defaultFocus } from "../ui/attentionKeys.ts"
 import { cardLines, contentOf } from "../ui/Card.tsx"
 import { hintSegments } from "../ui/Hint.tsx"
-import { type Segments, seg } from "../ui/line.tsx"
+import { paint, type Segments, seg } from "../ui/line.tsx"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { ticketsLines } from "../ui/TicketsTable.tsx"
 import {
   type Appearance,
-  ansiOf,
   appearanceOf,
   backgroundRoles,
   type Colour,
@@ -64,39 +62,6 @@ export const colourText = (colour: Colour): string => {
       return "default"
   }
 }
-
-/** A colour for OpenTUI as the ANSI sequence that sets it. */
-const ansiOfRgba = (rgba: RGBA, layer: "fg" | "bg", depth: ColourDepth): string => {
-  switch (rgba.intent) {
-    case "default":
-      return ansiOf({ _tag: "Default" }, layer, depth)
-    case "indexed":
-      return ansiOf({ _tag: "Slot", slot: rgba.slot }, layer, depth)
-    case "rgb": {
-      const hex = rgba
-        .toInts()
-        .slice(0, 3)
-        .map((n) => n.toString(16).padStart(2, "0"))
-        .join("")
-      return ansiOf({ _tag: "Hex", hex: `#${hex.toUpperCase()}` }, layer, depth)
-    }
-  }
-}
-
-/** A dashboard line in ANSI: each segment in its look, as the renderer would draw it. */
-export const ansiLine = (segments: Segments, theme: Theme): string =>
-  segments
-    .map(({ text, look }) => {
-      if (look === null) return text
-      const open = [
-        look.attributes & TextAttributes.BOLD ? "\x1b[1m" : "",
-        look.attributes & TextAttributes.DIM ? "\x1b[2m" : "",
-        theme.noColor || look.fg === undefined ? "" : ansiOfRgba(look.fg, "fg", theme.depth),
-        theme.noColor || look.bg === undefined ? "" : ansiOfRgba(look.bg, "bg", theme.depth),
-      ].join("")
-      return open === "" ? text : `${open}${text}\x1b[0m`
-    })
-    .join("")
 
 /** The role table's columns: the role, where it comes from, and each variant's sample. */
 const roleWidth = Math.max(...roles.map((role) => role.length))
@@ -245,11 +210,11 @@ const mockLines = (theme: Theme, width: number, now: number): ReadonlyArray<stri
       focus: defaultFocus(permission(now)),
     }),
     [],
-    ...ticketsLines(rows, theme, width, rows.length + 3),
+    ...ticketsLines(rows, theme, width, { fill: false }),
     [],
     hintSegments(hintKeys, theme, width),
   ]
-  return lines.map((line) => ansiLine(line, theme))
+  return lines.map(paint)
 }
 
 /** The preview's lines: the scheme, its roles, the mock, then what keeps it from being used. */

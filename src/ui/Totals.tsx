@@ -6,7 +6,7 @@
 // The workers are on the load line above the strip (LoadLine.tsx), and on the one line, `▶ n/N`,
 // which is drawn without it.
 import type { Totals as TotalsView } from "../run/runView.ts"
-import { cut, framed, frameLook, Lines, type Look, type Segments, seg, widthOf } from "./line.tsx"
+import { cut, framed, Lines, type Look, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /** How much of Set aside's triage note the strip says: ` · ◆ n triaged`, ` · ◆ n`, or none. */
@@ -94,7 +94,7 @@ export const totalsStrip = (
   for (const triage of ["full", "short", "none"] as const) {
     const all = cells(t, theme, triage)
     const widths = cellWidths(all.map(widthOf), bare, width)
-    if (widths !== null) return framed([all], widths, frameLook(theme))
+    if (widths !== null) return framed([all], widths, theme.look("frame"))
   }
   return null
 }

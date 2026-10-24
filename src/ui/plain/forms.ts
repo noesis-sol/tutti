@@ -8,6 +8,7 @@
 // They are written without OpenTUI, in the theme's ANSI styles, and read their answers a line at
 // a time, taking from the input no more than the lines they ask for.
 import { Effect, Option, type Scope } from "effect"
+import { paint } from "../line.tsx"
 import {
   confirmHint,
   describeDescription,
@@ -15,7 +16,6 @@ import {
   FormCancelled,
   noDescription,
   type Plan,
-  paintLine,
   planLines,
   startDescription,
   startOptions,
@@ -257,7 +257,7 @@ export const planConfirmation = (
 ): Effect.Effect<boolean, FormCancelled> =>
   Effect.gen(function* () {
     io.write("\n")
-    for (const line of planLines(plan, io.theme)) io.write(`${paintLine(line)}\n`)
+    for (const line of planLines(plan, io.theme)) io.write(`${paint(line)}\n`)
     io.write("\n")
     return yield* confirm(io, { question })
   })

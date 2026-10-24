@@ -1,10 +1,9 @@
 // The quit box (D15, § 4.8, § 7.3): Ctrl+C opens it, over the view. `s` stops after the running
 // tickets (Drain, orchestra's drain), `q` quits now (Quit{now}), `Esc` cancels; a second Ctrl+C
 // quits now (Input.tsx's global keys).
-import { TextAttributes } from "@opentui/core"
 import { UiCommand } from "../run/commands.ts"
 import { useInput, useLayer } from "./keys.ts"
-import { frameLook, seg } from "./line.tsx"
+import { seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { useCommand, useTheme } from "./useRunView.ts"
 
@@ -48,9 +47,9 @@ export const QuitBox = () => {
   const answers = useAnswers()
   return (
     <Modal
-      frame={frameLook(theme)}
+      frame={theme.look("frame")}
       paragraphs={[
-        seg(quitQuestion, { fg: undefined, bg: undefined, attributes: TextAttributes.BOLD }),
+        seg(quitQuestion, theme.look(null, "bold")),
         seg(""),
         seg(quitAbout, theme.styles.dim),
       ]}

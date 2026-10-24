@@ -2,16 +2,19 @@
 // dashboard has closed, whose alternate screen took the dashboard with it: the title, the totals,
 // the run's figures (figures.ts) and every ticket of the run, as wide as the terminal and as long
 // as they are, then the closing line and a scoped run's scope line. Its styles are § 7.11's ("The summary", and the title line,
-// totals strip and ticket rows as the dashboard draws them), from the theme's styles only.
+// totals strip and ticket rows as the dashboard draws them), from the theme's styles only. Its
+// lines are the dashboard's text, segments painted as ANSI (line.tsx's paint); the ticket rows are
+// the dashboard's table itself, every row of it.
 //
 // Ticket IDs, titles and the words of a stop can quote a worker's or a ticket author's text, so
 // all of it is sanitised to one line here (§ 7.10).
-import { Data, Duration, type Effect } from "effect"
-import { formatDuration } from "../project/configFile.ts"
+import { Data, type Effect } from "effect"
 import { type FiguresLine, labelWidth } from "../run/figures.ts"
 import type { Row, Totals } from "../run/runView.ts"
-import { oneLine } from "../ui/oneLine.ts"
+import { fit, framed, paint, type Segments, seg, widthOf } from "../ui/line.tsx"
 import { sanitizeLine } from "../ui/sanitize.ts"
+import { ticketsLines } from "../ui/TicketsTable.tsx"
+import { runTime } from "../ui/TitleLine.tsx"
 import type { Style, Theme } from "../ui/theme.ts"
 import type { Printer } from "./organLine.ts"
 
@@ -55,114 +58,40 @@ export const Ending = Data.taggedEnum<Ending>()
 /** The narrowest the summary is drawn. */
 export const minWidth = 40
 
-/** The run's time to the second: `2m5s`, `45s`, `1h12m`. */
-export const runTime = (millis: number): string => {
-  const seconds = Math.floor(Math.max(0, millis) / 1000)
-  return seconds === 0 ? "0s" : formatDuration(Duration.seconds(seconds))
-}
-
-/** `text` sanitised, on one line, cut to `width` columns with `…` when it is wider (`oneLine`). */
-export const fit = (text: string, width: number): string =>
-  oneLine(sanitizeLine(text), Math.max(width, 1))
-
-/** `text` padded with spaces to `width` columns. */
-const pad = (text: string, width: number): string =>
-  text + " ".repeat(Math.max(width - Bun.stringWidth(text), 0))
-
-/** The row style of each status word, as § 7.11's ticket rows give them, and whether the rest of
- * the row is faint, as a finished ticket's is. */
-export const rowLooks: Readonly<
-  Record<string, { readonly style: StyleOf; readonly faint: boolean }>
-> = {
-  working: { style: "picked", faint: false },
-  editing: { style: "picked", faint: false },
-  reading: { style: "picked", faint: false },
-  subagent: { style: "picked", faint: false },
-  starting: { style: "picked", faint: false },
-  testing: { style: "testing", faint: false },
-  done: { style: "closed", faint: true },
-  deferred: { style: "deferred", faint: true },
-  review: { style: "deferred", faint: true },
-  resolving: { style: "deferred", faint: false },
-  fixing: { style: "deferred", faint: false },
-  retrying: { style: "deferred", faint: false },
-  limit: { style: "deferred", faint: false },
-  stopped: { style: "stop", faint: false },
-  blocked: { style: "stop", faint: false },
-  "for you": { style: "stop", faint: false },
-  "allow?": { style: "stop", faint: false },
-  "answer?": { style: "stop", faint: false },
-  "to merge": { style: "toMerge", faint: false },
-  merging: { style: "merging", faint: false },
-  waiting: { style: "dim", faint: true },
-  queued: { style: "dim", faint: true },
-  "held back": { style: "dim", faint: true },
-}
-
-export type StyleOf =
-  | "picked"
-  | "testing"
-  | "closed"
-  | "deferred"
-  | "stop"
-  | "toMerge"
-  | "merging"
-  | "dim"
-
-/** A rounded frame's lines around `cells`, rows of columns `widths` wide, padded a space each side. */
-const framed = (
-  rows: ReadonlyArray<ReadonlyArray<string>>,
-  widths: ReadonlyArray<number>,
-  frame: (text: string) => string,
-): ReadonlyArray<string> => {
-  const edge = (left: string, join: string, right: string) =>
-    frame(left + widths.map((w) => "─".repeat(w + 2)).join(join) + right)
-  return [
-    edge("╭", "┬", "╮"),
-    ...rows.map(
-      (cells) =>
-        frame("│") +
-        cells.map((cell, i) => ` ${pad(cell, widths[i] ?? 0)} `).join(frame("│")) +
-        frame("│"),
-    ),
-    edge("╰", "┴", "╯"),
-  ]
-}
-
 /** The summary's parts in `theme`'s styles, `width` columns wide. */
 const parts = (theme: Theme, width: number) => {
   const { styles } = theme
   const w = Math.max(width, minWidth)
-  const frameOpen = theme.ansi("frame")
-  const frame = (text: string) => (frameOpen === "" ? text : `${frameOpen}${text}\x1b[0m`)
-  const zero = (text: string) => styles.dim.paint(text)
+  const zero = (text: string) => seg(text, styles.dim)
 
   /** The pill, the version, the branch, a scoped run's ticket and the run's time. */
-  const title = (s: Summary): string => {
-    const pill = styles.title.paint(" Tutti ")
+  const title = (s: Summary): Segments => {
+    const head = [seg(" Tutti ", styles.title), seg(" ")]
     const version = fit(s.version, Math.max(w - 8, 1))
     const scoped = s.scope === null ? "" : ` · ticket ${sanitizeLine(s.scope)}`
     const used = 8 + Bun.stringWidth(version) + 3
     const where = fit(`${sanitizeLine(s.branch)}${scoped} · ${runTime(s.took)}`, w - used)
     return used >= w
-      ? `${pill} ${styles.dim.paint(version)}`
-      : `${pill} ${styles.dim.paint(version)}   ${styles.dim.paint(where)}`
+      ? [...head, seg(version, styles.dim)]
+      : [...head, seg(version, styles.dim), seg("   "), seg(where, styles.dim)]
   }
 
   /** The totals strip: a column a total, its label faint over its count; zeros faint. */
-  const totals = (t: Totals): ReadonlyArray<string> => {
-    const count = (n: number, mark: string, style: Style) =>
-      n === 0 ? zero("0") : style.paint(`${mark} ${n}`)
+  const totals = (t: Totals): ReadonlyArray<Segments> => {
+    const count = (n: number, mark: string, style: Style): Segments => [
+      n === 0 ? zero("0") : seg(`${mark} ${n}`, style),
+    ]
     const setAside = t.deferred + t.review
-    const workers =
+    const workers: Segments =
       t.workers === 0
-        ? zero(`0 of ${t.slots}`)
-        : `${styles.picked.paint(String(t.workers))}${styles.dim.paint(` of ${t.slots}`)}`
-    const queue =
-      (t.queued === 0 ? zero("0") : String(t.queued)) +
-      (t.heldBack > 0 ? styles.heldBack.paint(` · ${t.heldBack} held back`) : "") +
-      (t.queueHeld ? styles.windDown.paint(" · held") : "")
-    const columns: ReadonlyArray<readonly [string, string]> = [
+        ? [zero(`0 of ${t.slots}`)]
+        : [seg(String(t.workers), styles.picked), seg(` of ${t.slots}`, styles.dim)]
+    const queue: Segments = [
+      t.queued === 0 ? zero("0") : seg(String(t.queued)),
+      ...(t.heldBack > 0 ? [seg(` · ${t.heldBack} held back`, styles.heldBack)] : []),
+      ...(t.queueHeld ? [seg(" · held", styles.windDown)] : []),
+    ]
+    const columns: ReadonlyArray<readonly [string, Segments]> = [
       ["Completed", count(t.completed, "✓", styles.closed)],
       ["Set aside", count(setAside, "↷", styles.deferred)],
       ["Needs you", count(t.needsYou, "?", styles.stop)],
@@ -170,30 +99,29 @@ const parts = (theme: Theme, width: number) => {
       ["In queue", queue],
     ]
     const natural = columns.map(([label, value]) =>
-      Math.max(Bun.stringWidth(label), Bun.stringWidth(value)),
+      Math.max(Bun.stringWidth(label), widthOf(value)),
     )
     const need = natural.reduce((sum, n) => sum + n + 3, 1)
     if (need > w) {
       // Too narrow for the strip: the totals on one line.
-      const one = (n: number, mark: string, style: Style) => style.paint(`${mark} ${n}`)
-      return [
-        ` ${[
-          one(t.completed, "✓", styles.closed),
-          one(setAside, "↷", styles.deferred),
-          one(t.needsYou, "?", styles.stop),
-          `${one(t.workers, "▶", styles.picked)}${styles.dim.paint(`/${t.slots}`)}`,
-          styles.dim.paint(`queue ${t.queued}`),
-        ].join(styles.dim.paint(" · "))}`,
+      const one = (n: number, mark: string, style: Style) => seg(`${mark} ${n}`, style)
+      const each: ReadonlyArray<Segments> = [
+        [one(t.completed, "✓", styles.closed)],
+        [one(setAside, "↷", styles.deferred)],
+        [one(t.needsYou, "?", styles.stop)],
+        [one(t.workers, "▶", styles.picked), seg(`/${t.slots}`, styles.dim)],
+        [seg(`queue ${t.queued}`, styles.dim)],
       ]
+      return [[seg(" "), ...each.flatMap((part, i) => (i === 0 ? part : [zero(" · "), ...part]))]]
     }
     const extra = w - need
     const widths = natural.map(
       (n, i) => n + Math.floor(extra / natural.length) + (i < extra % natural.length ? 1 : 0),
     )
     return framed(
-      [columns.map(([label]) => styles.dim.paint(label)), columns.map(([, value]) => value)],
+      [columns.map(([label]) => [seg(label, styles.dim)]), columns.map(([, value]) => value)],
       widths,
-      frame,
+      theme.look("frame"),
     )
   }
 
@@ -201,48 +129,29 @@ const parts = (theme: Theme, width: number) => {
    * The run's figures under the totals, a line each: its label faint, then its parts ` · ` apart,
    * an estimate in its colour; the parts that don't fit cut, the first of them with `…`.
    */
-  const figures = (lines: ReadonlyArray<FiguresLine>): ReadonlyArray<string> =>
+  const figures = (lines: ReadonlyArray<FiguresLine>): ReadonlyArray<Segments> =>
     lines.map((each) => {
       let room = w - 2 - (labelWidth + 2)
-      let drawn = ""
+      const drawn: Array<Segments[number]> = [
+        seg("  "),
+        seg(each.label.padEnd(labelWidth + 2), styles.dim),
+      ]
       for (const [i, part] of each.parts.entries()) {
         const gap = i === 0 ? 0 : 3
         if (room <= gap) break
         const text = sanitizeLine(part.text)
         const shown = Bun.stringWidth(text) <= room - gap ? text : fit(text, room - gap)
-        const painted = part.estimate === true ? styles.estimate.paint(shown) : shown
-        drawn += (gap === 0 ? "" : styles.dim.paint(" · ")) + painted
+        if (gap > 0) drawn.push(seg(" · ", styles.dim))
+        drawn.push(seg(shown, part.estimate === true ? styles.estimate : null))
         room -= gap + Bun.stringWidth(shown)
         if (shown !== text) break
       }
-      return `  ${styles.dim.paint(each.label.padEnd(labelWidth + 2))}${drawn}`
+      return drawn
     })
 
-  /** The Tickets label and its table: every row, its glyph, word and ID in its state's style. */
-  const tickets = (rows: ReadonlyArray<Row>): ReadonlyArray<string> => {
-    const stateWidth = 11
-    const idWidth = Math.min(
-      Math.max(7, ...rows.map((row) => Bun.stringWidth(row.label))),
-      Math.max(Math.floor(w / 3), 7),
-      // Room left for the note's eight columns at the least, so the table is never wider than w.
-      w - 4 - (stateWidth + 2) - 2 - 2 - 8,
-    )
-    const aboutWidth = w - 4 - (stateWidth + 2) - (idWidth + 2) - 2
-    const cells = rows.map((row) => {
-      const look = rowLooks[row.word] ?? { style: "dim", faint: false }
-      const style = styles[look.style]
-      const about = fit(row.note, aboutWidth)
-      return [
-        style.paint(fit(`${row.mark} ${row.word}`, stateWidth)),
-        style.paint(fit(row.label, idWidth)),
-        look.faint ? styles.dim.paint(about) : about,
-      ]
-    })
-    return [
-      `  ${styles.tickets.paint("Tickets")}`,
-      ...framed(cells, [stateWidth, idWidth, aboutWidth], frame),
-    ]
-  }
+  /** The Tickets label and the dashboard's table under it: every row, and no blank one. */
+  const tickets = (rows: ReadonlyArray<Row>): ReadonlyArray<Segments> =>
+    ticketsLines(rows, theme, w, { fill: false })
 
   return { title, totals, figures, tickets }
 }
@@ -254,11 +163,13 @@ const parts = (theme: Theme, width: number) => {
 export const summary = (s: Summary, theme: Theme, width: number): string => {
   const p = parts(theme, width)
   return [
-    "",
+    [],
     p.title(s),
     ...p.totals(s.totals),
     ...(s.rows.length === 0 ? [] : [...p.figures(s.figures), ...p.tickets(s.rows)]),
-  ].join("\n")
+  ]
+    .map(paint)
+    .join("\n")
 }
 
 /** `1 ticket`, `n tickets` or `no tickets`. */
@@ -286,17 +197,22 @@ export const headline = (text: string, limit: number | null, tickets: number): s
 export const closing = (ending: Ending, theme: Theme): string => {
   const { styles } = theme
   const [text, scope] = splitScope(sanitizeLine(ending.text))
-  const first =
+  const first: Segments =
     ending._tag === "Stopped"
-      ? styles.stop.paint(`■ ${text}`)
-      : `${styles.closed.paint(`♪ ${headline(text, ending.limit, ending.tickets)}`)}  ${styles.dim.paint(
-          ending.took >= 1000
-            ? `${ticketCount(ending.tickets)} · ${runTime(ending.took)}`
-            : ticketCount(ending.tickets),
-        )}`
-  if (scope === null) return first
+      ? [seg(`■ ${text}`, styles.stop)]
+      : [
+          seg(`♪ ${headline(text, ending.limit, ending.tickets)}`, styles.closed),
+          seg("  "),
+          seg(
+            ending.took >= 1000
+              ? `${ticketCount(ending.tickets)} · ${runTime(ending.took)}`
+              : ticketCount(ending.tickets),
+            styles.dim,
+          ),
+        ]
+  if (scope === null) return paint(first)
   const style = scope.startsWith("SCOPE_DONE") ? styles.done : styles.deferred
-  return `${first}\n${style.paint(`  ${scope}`)}`
+  return `${paint(first)}\n${paint([seg(`  ${scope}`, style)])}`
 }
 
 /** A closing line's text and its scope part, `SCOPE_DONE: …` or `SCOPE_OPEN: …`, if it has one. */

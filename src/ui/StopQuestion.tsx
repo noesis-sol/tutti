@@ -5,7 +5,6 @@
 //
 // The question is the one asked when `s` was pressed (its Box's `windingDown`), so `y` does what
 // the box says even if the run changes its mind before the answer.
-import { TextAttributes } from "@opentui/core"
 import { UiCommand } from "../run/commands.ts"
 import { drainWords } from "../run/drain.ts"
 import { useInput, useLayer } from "./keys.ts"
@@ -81,15 +80,10 @@ export const StopQuestion = ({ windingDown }: { readonly windingDown: boolean })
     windingDown,
     cards.map((card) => card.label),
   )
-  const notice = theme.rgba("notice")
   return (
     <Modal
-      frame={{ fg: notice, bg: undefined, attributes: 0 }}
-      paragraphs={[
-        seg(words.ask, { fg: notice, bg: undefined, attributes: TextAttributes.BOLD }),
-        seg(""),
-        seg(words.about),
-      ]}
+      frame={theme.look("notice")}
+      paragraphs={[seg(words.ask, theme.look("notice", "bold")), seg(""), seg(words.about)]}
       choices={[
         { name: "y", does: words.yes, run: answers.yes },
         { name: "n", does: words.no, run: answers.no },

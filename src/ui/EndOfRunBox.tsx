@@ -5,7 +5,7 @@
 // it keeps to the lines it is given: it names fewer workers, the rest as `+N more`, then leaves out
 // the hand-back's line, then the frame and its first words, and always keeps what `q` does.
 import { conflictWaits, type Waiting } from "../run/runView.ts"
-import { boxed, cut, Lines, padded, roleLook, type Segments, seg, wrap } from "./line.tsx"
+import { boxed, cut, Lines, padded, type Segments, seg, wrap } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /**
@@ -46,7 +46,7 @@ export const endOfRunLines = (
   height: number = Number.POSITIVE_INFINITY,
 ): ReadonlyArray<Segments> => {
   const inner = Math.max(width - 4, 1)
-  const look = roleLook(theme, "needsYou")
+  const look = theme.look("needsYou")
   const about = wrap([seg(endOfRunAbout, theme.styles.dim)], inner, { long: "line" })
   const conflict = waiting.some((worker) => worker.asks.includes(conflictWaits))
     ? wrap([seg(endOfRunConflict, theme.styles.dim)], inner, { long: "line" })

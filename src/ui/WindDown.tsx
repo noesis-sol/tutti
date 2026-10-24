@@ -5,7 +5,7 @@
 // narrow pane drops `, no new tickets`, then the count, then the words, then all but the squares.
 import type { WindDownMark } from "../run/phase.ts"
 import type { WindDownView } from "../run/runView.ts"
-import { Line, type Look, roleLook, type Segments, seg, widthOf } from "./line.tsx"
+import { Line, type Look, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 const markLook = (mark: WindDownMark, theme: Theme): Look => {
@@ -16,7 +16,7 @@ const markLook = (mark: WindDownMark, theme: Theme): Look => {
     case "done":
       return styles.done
     case "needsYou":
-      return roleLook(theme, "needsYou")
+      return theme.look("needsYou")
     case "faint":
       return styles.dim
   }
@@ -34,7 +34,7 @@ export const windDownSegments = (view: WindDownView, theme: Theme, width: number
   const spaced = (count: number): Segments =>
     squares.slice(0, count).flatMap((each, i) => (i === 0 ? [each] : [seg(" "), each]))
   const lead = [seg("  "), ...spaced(squares.length), seg("  ")]
-  const words = seg("Winding down", roleLook(theme, "windingDown", true))
+  const words = seg("Winding down", theme.look("windingDown", "bold"))
   const rests =
     view.running === 0
       ? ["nothing running, ending now"]

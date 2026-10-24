@@ -43,7 +43,7 @@ import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
 import { clickable, Field, Hint, Themed } from "./Form.tsx"
 import { InputGuards } from "./keys.ts"
-import { seg, styled, wrap } from "./line.tsx"
+import { type Segments, seg, styled, wrap } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Style, Theme } from "./theme.ts"
@@ -433,7 +433,7 @@ const Title = ({ theme, repo }: { readonly theme: Theme; readonly repo: string }
   <text>
     {initTitle(theme, repo).map((part, at) => (
       // biome-ignore lint/suspicious/noArrayIndexKey: the parts are fixed
-      <span key={at} {...(part.style === null ? {} : styled(part.style))}>
+      <span key={at} {...(part.look === null ? {} : styled(part.look))}>
         {part.text}
       </span>
     ))}
@@ -445,17 +445,17 @@ export const stepperParts = (
   theme: Theme,
   steps: ReadonlyArray<StepName>,
   at: number,
-): ReadonlyArray<{ readonly text: string; readonly style: Style }> => {
+): Segments => {
   const { closed, organ, done } = theme.styles
   const { faint } = theme.form
-  if (steps.length === 1) return [{ text: steps[0] ?? "", style: organ }]
+  if (steps.length === 1) return [seg(steps[0] ?? "", organ)]
   return steps.flatMap((name, index) => [
-    ...(index === 0 ? [] : [{ text: " ──── ", style: index <= at ? done : faint }]),
+    ...(index === 0 ? [] : [seg(" ──── ", index <= at ? done : faint)]),
     index < at
-      ? { text: `✓ ${name}`, style: closed }
+      ? seg(`✓ ${name}`, closed)
       : index === at
-        ? { text: `● ${name}`, style: organ }
-        : { text: `○ ${name}`, style: faint },
+        ? seg(`● ${name}`, organ)
+        : seg(`○ ${name}`, faint),
   ])
 }
 
@@ -552,7 +552,7 @@ export const InitView = ({
           <text>
             {stepperParts(theme, screen.steps, screen.at).map((part, at) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: the parts are fixed for the step
-              <span key={at} {...styled(part.style)}>
+              <span key={at} {...(part.look === null ? {} : styled(part.look))}>
                 {part.text}
               </span>
             ))}

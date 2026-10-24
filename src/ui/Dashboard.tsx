@@ -330,7 +330,7 @@ export const Dashboard = () => {
         <Totals lines={laid.totals} />
       </Section>
       <Section lines={laid.table}>
-        <TicketsTable lines={ticketsLines(rows, theme, width, laid.table)} />
+        <TicketsTable lines={ticketsLines(rows, theme, width, { lines: laid.table })} />
       </Section>
       <Section lines={laid.current}>
         {ending !== null ? (

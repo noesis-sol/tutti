@@ -6,7 +6,7 @@
 import { type MouseEvent, RGBA } from "@opentui/core"
 import { useState } from "react"
 import { useLayer } from "./keys.ts"
-import { boxed, cut, frameLook, Lines, padded, type Segments, seg, widthOf } from "./line.tsx"
+import { boxed, cut, Lines, padded, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 
 /** The dashboard's keys, and what each does. */
@@ -82,7 +82,7 @@ export const keyHelpLines = (
       ),
     ],
     boxWidth,
-    frameLook(theme),
+    theme.look("frame"),
   )
 }
 

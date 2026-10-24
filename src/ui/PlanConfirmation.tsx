@@ -52,7 +52,7 @@ export const PlanConfirmation = ({
               ? " "
               : line.map((segment, part) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: as the lines
-                  <span key={part} {...(segment.style === null ? {} : styled(segment.style))}>
+                  <span key={part} {...(segment.look === null ? {} : styled(segment.look))}>
                     {segment.text}
                   </span>
                 ))}

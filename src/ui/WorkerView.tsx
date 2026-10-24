@@ -89,7 +89,6 @@ import {
   Lines,
   padded,
   plainFg,
-  roleLook,
   Section,
   type Segments,
   seg,
@@ -348,14 +347,14 @@ const markSegments = (mark: Mark, theme: Theme, room: number): Segments => {
     case "Pending":
       return []
     case "Done":
-      return [seg("✓", roleLook(theme, "done"))]
+      return [seg("✓", theme.look("done"))]
     case "Error":
-      return cut([seg(mark.line, roleLook(theme, "needsYou"))], Math.max(room, 1))
+      return cut([seg(mark.line, theme.look("needsYou"))], Math.max(room, 1))
     case "Edit":
       return [
-        seg(`+${mark.added}`, roleLook(theme, "added")),
+        seg(`+${mark.added}`, theme.look("added")),
         seg(" "),
-        seg(`−${mark.removed}`, roleLook(theme, "removed")),
+        seg(`−${mark.removed}`, theme.look("removed")),
       ]
   }
 }
@@ -759,7 +758,7 @@ export const panelParts = (
     ...faint(reason),
     ...rows,
   ]
-  const frame = roleLook(theme, "needsYou")
+  const frame = theme.look("needsYou")
   const border = options.selected ? "heavy" : "rounded"
   const lines = boxed(above, options.width, frame, border)
   return {
@@ -826,7 +825,7 @@ export const handBackLines = (
       [press],
     ],
     options.width,
-    roleLook(theme, "notice"),
+    theme.look("notice"),
     options.selected ? "heavy" : "rounded",
   )
 }
@@ -1293,7 +1292,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     ],
   })
 
-  const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
+  const rule: Segments = [seg("─".repeat(inner), theme.look("frame"))]
   const head = (now: number, spin: string): Segments => {
     if (card === undefined) return [seg(`${sanitizeLine(viewed)} has no worker`, theme.styles.dim)]
     // Once its card has gone, the head says finished, its time stopped where the view first saw it

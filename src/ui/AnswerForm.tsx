@@ -35,7 +35,7 @@ import { staleToast, useSendAnswer } from "./attentionKeys.ts"
 import { clickable } from "./click.ts"
 import { hintSegments } from "./Hint.tsx"
 import { useInput, useLayer } from "./keys.ts"
-import { cut, Line, plainFg, roleLook, type Segments, seg, styled } from "./line.tsx"
+import { cut, Line, plainFg, type Segments, seg, styled } from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
@@ -200,7 +200,7 @@ const FormBody = ({
   )
 
   const { form: looks } = theme
-  const frame = roleLook(theme, "needsYou")
+  const frame = theme.look("needsYou")
   const outer = Math.max(Math.min(width - 4, formWidth), 16)
   const inner = outer - 4
   // The body's lines: each field's title lines and rows, a blank line between fields.

@@ -5,17 +5,7 @@ import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
 import { renderMarkdown } from "../src/print/markdown.ts"
-import { fit } from "../src/print/summary.ts"
-import {
-  boxed,
-  cut,
-  roleLook,
-  type Segments,
-  seg,
-  tabWidth,
-  widthOf,
-  wrap,
-} from "../src/ui/line.tsx"
+import { boxed, cut, fit, type Segments, seg, tabWidth, widthOf, wrap } from "../src/ui/line.tsx"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { PanelBox, panelParts } from "../src/ui/WorkerView.tsx"
 import { renderFrame } from "./render.ts"
@@ -164,7 +154,7 @@ describe("a frame around text with tabs", () => {
         const lines = boxed(
           texts.map((each) => [seg(each)]),
           w,
-          roleLook(theme, "frame"),
+          theme.look("frame"),
         )
         for (const line of lines) {
           expect(widthOf(line)).toBe(w)

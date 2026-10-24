@@ -17,7 +17,6 @@
 // PgUp/PgDn and `g`/`G` scroll; `i` or a click focuses the composer; `?` shows the keys.
 // The transcript, the panel, the selection, the composer and these keys are the worker view's
 // (transcriptView.ts); the hint wraps as its does.
-import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { interviewWorker } from "../agent/interview.ts"
@@ -29,7 +28,7 @@ import { Composer, QueuedLines, queuedLines } from "./Composer.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, useInput, useLayer } from "./keys.ts"
-import { Line, roleLook, Section, type Segments, seg } from "./line.tsx"
+import { Line, Section, type Segments, seg } from "./line.tsx"
 import { Modal } from "./Modal.tsx"
 import { sanitizeLine } from "./sanitize.ts"
 import {
@@ -116,15 +115,10 @@ export const LeaveQuestion = ({
   readonly no: () => void
 }) => {
   const theme = useTheme()
-  const notice = theme.rgba("notice")
   return (
     <Modal
-      frame={{ fg: notice, bg: undefined, attributes: 0 }}
-      paragraphs={[
-        seg(leaveQuestion, { fg: notice, bg: undefined, attributes: TextAttributes.BOLD }),
-        seg(""),
-        seg(leaveAbout),
-      ]}
+      frame={theme.look("notice")}
+      paragraphs={[seg(leaveQuestion, theme.look("notice", "bold")), seg(""), seg(leaveAbout)]}
       choices={[
         { name: "y", does: "end it", run: yes },
         { name: "n", does: "keep talking", run: no },
@@ -217,7 +211,7 @@ export const InterviewView = () => {
   )
   const help = useTranscriptKeys({ transcript, panel, selection, composer, back: leave })
 
-  const rule: Segments = [seg("─".repeat(inner), roleLook(theme, "frame"))]
+  const rule: Segments = [seg("─".repeat(inner), theme.look("frame"))]
   const { styles } = theme
   const head = (now: number, spin: string): Segments =>
     card === undefined

@@ -11,7 +11,7 @@ import { emptyStatus, project, type RunView } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { endOfRunLines, endOfRunText } from "../src/ui/EndOfRunBox.tsx"
-import { roleLook, widthOf } from "../src/ui/line.tsx"
+import { widthOf } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue } from "../src/ui/useRunView.ts"
 import { type Frame, renderFrame, withRender } from "./render.ts"
@@ -226,7 +226,7 @@ describe("the end-of-run box on the dashboard", () => {
     const lines = endOfRunLines(viewOf(["tut-9a1"]).endOfRun ?? [], theme, 60)
     const corner = lines[0]?.[0]
     expect(corner?.text.startsWith("╭")).toBe(true)
-    expect(corner?.look?.fg?.toInts()).toEqual(roleLook(theme, "needsYou").fg?.toInts())
+    expect(corner?.look?.fg?.toInts()).toEqual(theme.look("needsYou").fg?.toInts())
   })
 
   test("q ends the run with the box shown, and does nothing without it", async () => {

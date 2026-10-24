@@ -121,7 +121,7 @@ describe("RunView", () => {
 
   test("the tickets table draws the label", () => {
     const view = viewOf([], [], [evil])
-    const lines = ticketsLines(view.rows, themeOf("dark"), 80, 6)
+    const lines = ticketsLines(view.rows, themeOf("dark"), 80, { lines: 6 })
     const text = lines.map((line) => line.map((s) => s.text).join(""))
     expect(text.some((line) => line.includes(`${shown} `))).toBe(true)
     expect(text.some(unsafe)).toBe(false)

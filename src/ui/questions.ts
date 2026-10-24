@@ -5,8 +5,9 @@
 // A plan is an organ's words, or tickets' from bd: each of its texts is sanitised (§ 7.10) before
 // it is shown, and kept on one line where a line is all it has.
 import { Data, Schema } from "effect"
+import { type Segments, seg } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
-import type { Style, Theme } from "./theme.ts"
+import type { Theme } from "./theme.ts"
 
 /** A form was cancelled: Esc or Ctrl+C in the renderer, the end of input (Ctrl+D) in a line form. */
 export class FormCancelled extends Schema.TaggedError<FormCancelled>()("FormCancelled", {}) {}
@@ -115,25 +116,14 @@ export const startOnQuestion = (epic: string, tickets: number): string =>
 /** The confirmation's answers: y or yes; n, no or nothing. */
 export const confirmHint = "[y/N]"
 
-/** A run of text in one style, or the terminal's own (null). */
-export interface Segment {
-  readonly text: string
-  readonly style: Style | null
-}
-
-/** A line of segments. */
-export type Line = ReadonlyArray<Segment>
-
 /** `text`, a plan's, printable and on one line, its runs of white space one space. */
 const oneLine = (text: string): string => sanitizeLine(text).split(/\s+/).filter(Boolean).join(" ")
-
-const seg = (text: string, style: Style | null = null): Segment => ({ text, style })
 
 /**
  * The plan's lines, in `theme`: the epic and its description, then each ticket with its type,
  * priority, files and the tickets it waits for, then the notes. As orchestra's showPlan.
  */
-export const planLines = (plan: Plan, theme: Theme): ReadonlyArray<Line> => {
+export const planLines = (plan: Plan, theme: Theme): ReadonlyArray<Segments> => {
   const { form, styles } = theme
   const tickets = plan.tickets.map((ticket) => ({
     key: oneLine(ticket.key),
@@ -149,7 +139,7 @@ export const planLines = (plan: Plan, theme: Theme): ReadonlyArray<Line> => {
     text + " ".repeat(Math.max(0, to - Bun.stringWidth(text)))
   const indent = " ".repeat(width + 4)
   const description = sanitize(plan.epic.description).replaceAll("\t", "  ").trim()
-  const lines: Array<Line> = [
+  const lines: Array<Segments> = [
     [seg("Epic: ", form.fieldTitle), seg(oneLine(plan.epic.title))],
     ...(description === "" ? [] : description.split("\n")).map((line) => [
       seg(`  ${line.trimEnd()}`, form.description),
@@ -181,9 +171,3 @@ export const planLines = (plan: Plan, theme: Theme): ReadonlyArray<Line> => {
   }
   return lines
 }
-
-/** A line in ANSI, each segment painted in its style. */
-export const paintLine = (line: Line): string =>
-  line
-    .map((segment) => (segment.style === null ? segment.text : segment.style.paint(segment.text)))
-    .join("")

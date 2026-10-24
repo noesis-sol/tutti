@@ -85,17 +85,7 @@ export const Toasts = ({ store }: { readonly store: ToastStore }) => {
   if (toasts.length === 0) return null
   const room = Math.max(width - 2, 0)
   const lines = toasts.map((toast) =>
-    cut(
-      [
-        seg(
-          ` ${toast.text} `,
-          toast.failure
-            ? { fg: theme.rgba("needsYou"), bg: undefined, attributes: 0 }
-            : theme.styles.dim,
-        ),
-      ],
-      room,
-    ),
+    cut([seg(` ${toast.text} `, toast.failure ? theme.look("needsYou") : theme.styles.dim)], room),
   )
   return (
     <box

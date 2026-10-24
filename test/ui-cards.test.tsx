@@ -30,7 +30,7 @@ import {
 import { moveHighlight } from "../src/ui/Dashboard.tsx"
 import { hintSegments } from "../src/ui/Hint.tsx"
 import { keyHelpLines } from "../src/ui/KeyHelp.tsx"
-import { type Look, roleLook, type Segments, widthOf } from "../src/ui/line.tsx"
+import { type Look, type Segments, widthOf } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external, type ShellValue, spinnerAt, spinnerFrames } from "../src/ui/useRunView.ts"
 import { windDownSegments } from "../src/ui/WindDown.tsx"
@@ -189,7 +189,7 @@ describe("a card for each status", () => {
     sameLook(lookOf(lines, "▸ Bash(scripts/check-fast.sh)"), theme.styles.dim)
     const frame = lines[0]?.[0]?.look
     if (frame === undefined || frame === null) throw new Error("no frame")
-    sameLook(frame, roleLook(theme, "live"))
+    sameLook(frame, theme.look("live"))
   })
 
   test("each status as § 4.2 words it, in § 7.11's style", () => {
@@ -219,9 +219,9 @@ describe("a card for each status", () => {
       [
         "failed",
         cardOf(working, states(WS.Failed({ at: now, error: "x", interrupted: false }))),
-        roleLook(theme, "needsYou"),
+        theme.look("needsYou"),
       ],
-      ["gone", cardOf(working, states(WS.Gone({ why: "exited" }))), roleLook(theme, "needsYou")],
+      ["gone", cardOf(working, states(WS.Gone({ why: "exited" }))), theme.look("needsYou")],
       [
         "permission — waiting for you",
         cardOf(working, { requests: [permission("r1", "t-1")] }),
@@ -273,21 +273,21 @@ describe("a card for each status", () => {
 
   test("a worker waiting for you is framed needsYou; one whose turn ended, frame", () => {
     const waiting = drawn(cardOf(working, { requests: [permission("r1", "t-1")] }))
-    sameLook(lookOf(waiting, "╭────────────────────────────────────────────────╮"), {
-      ...roleLook(theme, "needsYou"),
-    })
+    sameLook(
+      lookOf(waiting, "╭────────────────────────────────────────────────╮"),
+      theme.look("needsYou"),
+    )
     const idle = drawn(cardOf(working, states(WS.Idle({ at: now }))))
-    sameLook(lookOf(idle, "╭────────────────────────────────────────────────╮"), {
-      fg: theme.rgba("frame"),
-      bg: undefined,
-      attributes: 0,
-    })
+    sameLook(
+      lookOf(idle, "╭────────────────────────────────────────────────╮"),
+      theme.look("frame"),
+    )
   })
 
   test("steered beside the status, emphasis", () => {
     const lines = drawn(cardOf(working, { ...states(WS.Idle({ at: now })), steered: true }))
     expect(textOf(lines).split("\n")[2]).toBe("│ • t-1  done  steered  1m07s                    │")
-    sameLook(lookOf(lines, "steered"), roleLook(theme, "emphasis"))
+    sameLook(lookOf(lines, "steered"), theme.look("emphasis"))
   })
 
   test("a denied call on the action line, notice", () => {
@@ -315,7 +315,7 @@ describe("a card for each status", () => {
       ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
       "
     `)
-    sameLook(lookOf(lines, "┃"), roleLook(theme, "live", true))
+    sameLook(lookOf(lines, "┃"), theme.look("live", "bold"))
   })
 
   test("the box with no worker: picking the next ticket…, or stopping…", () => {
@@ -329,7 +329,7 @@ describe("a card for each status", () => {
     const stopping = idleBox(true, theme, spin, 40)
     expect(textOf(stopping)).toContain("│ ⣾ stopping…")
     sameLook(lookOf(stopping, "stopping…"), theme.styles.dim)
-    sameLook(lookOf(stopping, "⣾"), roleLook(theme, "live"))
+    sameLook(lookOf(stopping, "⣾"), theme.look("live"))
   })
 
   test("elapsed times", () => {
@@ -473,7 +473,7 @@ describe("the Current section", () => {
     // The card of the oldest request is highlighted, with none chosen (§ 4.5). Any worker in the
     // box waiting for you frames it needsYou.
     const lines = compactLines(view.cards, theme, { now, spin, width: 80, highlighted: "tut-zq4" })
-    sameLook(lookOf(lines, `╭${"─".repeat(78)}╮`), roleLook(theme, "needsYou"))
+    sameLook(lookOf(lines, `╭${"─".repeat(78)}╮`), theme.look("needsYou"))
     expect(lines[2]?.[0]?.text).toBe("┃")
   })
 
@@ -646,7 +646,7 @@ describe("the wind-down line", () => {
       theme.styles.windDown,
       theme.styles.windDown,
       theme.styles.done,
-      roleLook(theme, "needsYou"),
+      theme.look("needsYou"),
       theme.styles.dim,
     ]
     looks.forEach((look, i) => {
@@ -654,7 +654,7 @@ describe("the wind-down line", () => {
       if (mark === undefined || mark === null) throw new Error("no mark")
       sameLook(mark, look)
     })
-    sameLook(lookOf([line], "Winding down"), roleLook(theme, "windingDown", true))
+    sameLook(lookOf([line], "Winding down"), theme.look("windingDown", "bold"))
     sameLook(lookOf([line], " · 2 running, no new tickets"), theme.styles.dim)
   })
 

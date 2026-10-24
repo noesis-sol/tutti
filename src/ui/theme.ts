@@ -626,7 +626,12 @@ export interface Style {
   readonly open: string
   /** `text` in the style, reset after it. */
   readonly paint: (text: string) => string
+  /** The style bold as well, as a heavy frame is; itself when it is bold. */
+  readonly bold: () => Style
 }
+
+/** How heavy a role's look is. */
+export type Weight = "regular" | "bold"
 
 /** Whether a colour is drawn as the text or behind it. */
 export type Layer = "fg" | "bg"
@@ -641,6 +646,12 @@ export interface Theme {
   readonly styles: { readonly [S in StyleName]: Style }
   /** The forms' styles, from the form roles. */
   readonly form: { readonly [S in FormStyleName]: Style }
+  /**
+   * A role's colour as the text's, regular or bold, for what no style of orchestra's draws: a
+   * frame, a mark; null for the text's own colour. Built once: the same role and weight give the
+   * same look, a style's own where one draws the same.
+   */
+  readonly look: (role: Role | null, weight?: Weight) => Style
   /** A role's colour for OpenTUI. */
   readonly rgba: (role: Role, layer?: Layer) => RGBA
   /** A role's colour as an ANSI sequence; empty under NO_COLOR, and unstyled. */
@@ -692,11 +703,25 @@ export const makeTheme = (
   const styled = options.styled ?? true
   const colourOf = (role: Role): Colour =>
     noColor ? { _tag: "Default" } : scheme.colours[role][appearance]
-  const rgba = (role: Role, layer: Layer = backgroundRoles.has(role) ? "bg" : "fg") =>
-    rgbaOf(colourOf(role), layer)
+  // Each colour is made once: parsing a hex and allocating an RGBA per draw is what a tick can't spend.
+  const rgbas = new Map<string, RGBA>()
+  const rgba = (role: Role, layer: Layer = backgroundRoles.has(role) ? "bg" : "fg") => {
+    const key = `${layer}:${role}`
+    const known = rgbas.get(key)
+    if (known !== undefined) return known
+    const made = rgbaOf(colourOf(role), layer)
+    rgbas.set(key, made)
+    return made
+  }
   const ansi = (role: Role, layer: Layer = backgroundRoles.has(role) ? "bg" : "fg") =>
     noColor || !styled ? "" : ansiOf(colourOf(role), layer, depth)
+  // Each style is made once, so that the same spec gives the same style: a line's runs of one look
+  // are one run, as `===` tells them.
+  const made = new Map<string, Style>()
   const style = (spec: StyleSpec): Style => {
+    const key = [spec.fg, spec.bg, spec.bold, spec.faint, spec.italic === true, spec.focus].join()
+    const known = made.get(key)
+    if (known !== undefined) return known
     // A faint style with a colour is faint only where its colour is the default, and then in the
     // text's own colour, as tutti's other faint text; any other colour is drawn as is, not faint.
     const faint = spec.faint && (spec.fg === null || colourOf(spec.fg)._tag === "Default")
@@ -719,13 +744,16 @@ export const makeTheme = (
           fg === null ? "" : ansi(fg, "fg"),
           spec.bg === null ? "" : ansi(spec.bg, "bg"),
         ].join("")
-    return {
+    const drawn: Style = {
       fg: fg === null ? undefined : rgba(fg, "fg"),
       bg: spec.bg === null ? undefined : rgba(spec.bg, "bg"),
       attributes,
       open,
       paint: (text) => (open === "" ? text : `${open}${text}\x1b[0m`),
+      bold: () => (bold ? drawn : style({ ...spec, bold: true })),
     }
+    made.set(key, drawn)
+    return drawn
   }
   const styles = Object.fromEntries(
     styleNames.map((name) => [name, style(styleSpecs[name])]),
@@ -733,5 +761,7 @@ export const makeTheme = (
   const form = Object.fromEntries(
     formStyleNames.map((name) => [name, style(formStyleSpecs[name])]),
   ) as Theme["form"]
-  return { scheme, appearance, depth, noColor, styled, styles, form, rgba, ansi }
+  const look = (role: Role | null, weight: Weight = "regular") =>
+    style(spec(role, weight === "bold" ? { bold: true } : {}))
+  return { scheme, appearance, depth, noColor, styled, styles, form, look, rgba, ansi }
 }

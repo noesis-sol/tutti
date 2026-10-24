@@ -148,7 +148,9 @@ describe("dashboardLayout", () => {
           expect([laid.title, laid.load, laid.windDown, laid.hint.length]).toEqual([2, 1, 1, 1])
           expect(laid.table === 0 || laid.table >= fewestTableLines).toBe(true)
           if (laid.table > 0) {
-            expect(ticketsLines(view.rows, theme, width, laid.table)).toHaveLength(laid.table)
+            expect(ticketsLines(view.rows, theme, width, { lines: laid.table })).toHaveLength(
+              laid.table,
+            )
           }
           if (laid.ending !== null) {
             expect(laid.ending.length).toBe(laid.current)

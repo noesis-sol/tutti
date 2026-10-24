@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test"
 import { PassThrough } from "node:stream"
 import { Effect, Exit, Option } from "effect"
 import fc from "fast-check"
+import { paint } from "../src/ui/line.tsx"
 import {
   confirm,
   type LineIO,
@@ -14,14 +15,7 @@ import {
   streamInput,
   text,
 } from "../src/ui/plain/forms.ts"
-import {
-  fileQuestion,
-  type Plan,
-  paintLine,
-  planLines,
-  TicketCount,
-  type Work,
-} from "../src/ui/questions.ts"
+import { fileQuestion, type Plan, planLines, TicketCount, type Work } from "../src/ui/questions.ts"
 import { makeTheme, orchestra, type Theme } from "../src/ui/theme.ts"
 
 const plainTheme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
@@ -260,7 +254,7 @@ describe("the plan confirmation as lines", () => {
               notes: [description],
             },
             plainTheme,
-          ).map((line) => unstyled(paintLine(line)))
+          ).map((line) => unstyled(paint(line)))
           for (const line of lines) {
             // biome-ignore lint/suspicious/noControlCharactersInRegex: what must not be there
             expect(line).not.toMatch(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/)

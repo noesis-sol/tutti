@@ -9,7 +9,7 @@
 // A card in the compact one-line layout can't show its request: Enter on it opens the Answer box,
 // the same card over the middle of the pane, with the same keys. Shift+D opens the reason box, a
 // small field for the reason a denial gives the worker. The keys are attentionKeys.ts's.
-import { type InputRenderable, RGBA, TextAttributes } from "@opentui/core"
+import { type InputRenderable, RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useSyncExternalStore } from "react"
 import type { Card } from "../run/runView.ts"
@@ -32,7 +32,6 @@ import {
   type Look,
   padded,
   plainFg,
-  roleLook,
   type Segment,
   type Segments,
   seg,
@@ -100,7 +99,7 @@ export const attentionLines = (
   return boxed(
     [...head, ...requestLines(card, theme, options.focus)],
     options.width,
-    roleLook(theme, "needsYou"),
+    theme.look("needsYou"),
     border,
   )
 }
@@ -294,7 +293,7 @@ export const ReasonBox = ({
     const reason = typed.trim()
     answer({ id: requestId, ticket }, { _tag: "Deny", ...(reason === "" ? {} : { reason }) })
   }
-  const frame: Look = roleLook(theme, "needsYou")
+  const frame: Look = theme.look("needsYou")
   const outer = Math.max(Math.min(width - 4, modalMaxWidth), 12)
   const inner = outer - 4
   const bar = seg("│", frame)
@@ -321,11 +320,7 @@ export const ReasonBox = ({
         flexDirection="column"
       >
         <Line segments={[seg(`╭${rule}╮`, frame)]} />
-        <Line
-          segments={row([
-            seg(reasonQuestion(label), { ...frame, attributes: TextAttributes.BOLD }),
-          ])}
-        />
+        <Line segments={row([seg(reasonQuestion(label), frame.bold())])} />
         <Line segments={row([])} />
         <box flexDirection="row" height={1}>
           <Line segments={[bar, seg(" "), seg("> ", theme.form.selector)]} />

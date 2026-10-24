@@ -10,8 +10,7 @@ import { homedir } from "node:os"
 import type { InitSummary } from "../init/init.ts"
 import { cancelledLine, signOff } from "../init/init.ts"
 import { marks, type Step, type StepKind } from "../init/steps.ts"
-import { wrapText } from "../ui/line.tsx"
-import type { Line } from "../ui/questions.ts"
+import { boxed, paint, type Segments, seg, wrapText } from "../ui/line.tsx"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Style, Theme } from "../ui/theme.ts"
 
@@ -22,26 +21,23 @@ export const tildify = (path: string, home: string = homedir()): string =>
     : path
 
 /** init's title: the pill, `init`, and the repository it sets up. */
-export const initTitle = (theme: Theme, repo: string): Line => {
+export const initTitle = (theme: Theme, repo: string): Segments => {
   const { title, organ } = theme.styles
   return [
-    { text: " Tutti ", style: title },
-    { text: " ", style: null },
-    { text: "init", style: organ },
-    { text: "  ", style: null },
-    { text: sanitizeLine(tildify(repo)), style: theme.form.faint },
+    seg(" Tutti ", title),
+    seg(" "),
+    seg("init", organ),
+    seg("  "),
+    seg(sanitizeLine(tildify(repo)), theme.form.faint),
   ]
 }
 
 /** What init says under its title. */
 export const initAbout = " Sets this project up for tutti, in .tutti/."
 
-const painted = (line: Line): string =>
-  line.map((part) => (part.style === null ? part.text : part.style.paint(part.text))).join("")
-
 /** The title as the line forms and the summary print it: a blank line above, init's words under. */
 export const initHeader = (theme: Theme, repo: string): string =>
-  ["", painted(initTitle(theme, repo)), theme.form.faint.paint(initAbout), ""].join("\n")
+  ["", paint(initTitle(theme, repo)), theme.form.faint.paint(initAbout), ""].join("\n")
 
 /** How long the scout has looked, as its spinner says it: m:ss. */
 export const scoutClock = (millis: number): string => {
@@ -63,12 +59,6 @@ const markStyle = (theme: Theme, kind: StepKind): Style => {
   return { done: closed, kept: theme.form.faint, missing: stop, caution: deferred }[kind]
 }
 
-const bold = (text: string): string => `\x1b[1m${text}\x1b[0m`
-
-/** `text` after the ANSI sequence `open`, reset after it; as it is where `open` is empty. */
-const paintWith = (open: string, text: string): string =>
-  open === "" ? text : `${open}${text}\x1b[0m`
-
 /**
  * The Next box `width` columns wide: `items` numbered, the part of each after a newline (a command)
  * on a line of its own.
@@ -76,36 +66,18 @@ const paintWith = (open: string, text: string): string =>
 const nextBox = (theme: Theme, items: ReadonlyArray<string>, width: number): Array<string> => {
   const { organ, key } = theme.styles
   const { faint } = theme.form
-  const frame = theme.ansi("pill", "fg")
   const inner = Math.max(width - 4, leastWidth)
-  const rows: Array<{ readonly plain: string; readonly text: string }> = [
-    { plain: "Next", text: organ.paint("Next") },
-  ]
+  const rows: Array<Segments> = [[seg("Next", organ)]]
   items.forEach((item, at) => {
     const [said = "", ...commands] = item.split("\n")
     const number = `${at + 1}.`
     const indent = " ".repeat(number.length + 1)
     wrapText(sanitizeLine(said), inner - indent.length).forEach((line, n) => {
-      rows.push(
-        n === 0
-          ? { plain: `${number} ${line}`, text: `${faint.paint(number)} ${line}` }
-          : { plain: `${indent}${line}`, text: `${indent}${line}` },
-      )
+      rows.push(n === 0 ? [seg(number, faint), seg(` ${line}`)] : [seg(`${indent}${line}`)])
     })
-    for (const command of commands) {
-      const shown = sanitizeLine(command)
-      rows.push({ plain: `${indent}${shown}`, text: `${indent}${key.paint(shown)}` })
-    }
+    for (const command of commands) rows.push([seg(indent), seg(sanitizeLine(command), key)])
   })
-  const side = paintWith(frame, "│")
-  return [
-    paintWith(frame, `╭${"─".repeat(inner + 2)}╮`),
-    ...rows.map(
-      (row) =>
-        `${side} ${row.text}${" ".repeat(Math.max(0, inner - Bun.stringWidth(row.plain)))} ${side}`,
-    ),
-    paintWith(frame, `╰${"─".repeat(inner + 2)}╯`),
-  ]
+  return boxed(rows, inner + 4, theme.look("pill")).map(paint)
 }
 
 /** `steps` as the summary lists them, `width` columns wide, in `theme`'s styles. */
@@ -122,7 +94,7 @@ export const initSteps = (
     const label = sanitizeLine(each.label)
     const [first, ...rest] = each.detail === "" ? [] : detail
     // The label bold whatever the colours, as the other faces are (§ 7.11).
-    const head = `  ${markStyle(theme, each.kind).paint(marks[each.kind])} ${bold(label)}`
+    const head = `  ${markStyle(theme, each.kind).paint(marks[each.kind])} ${theme.look(null, "bold").paint(label)}`
     lines.push(
       first === undefined
         ? head

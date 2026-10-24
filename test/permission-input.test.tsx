@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { AttentionRequest } from "../src/agent/Attention.ts"
-import { roleLook, type Segments, widthOf } from "../src/ui/line.tsx"
+import { type Segments, widthOf } from "../src/ui/line.tsx"
 import { permissionLines } from "../src/ui/requestInput.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
 import { PanelBox, panelParts } from "../src/ui/WorkerView.tsx"
@@ -124,8 +124,8 @@ describe("a permission request's input in the worker view", () => {
       " export const undo = () => stack.pop()",
       "replace_all: true",
     ])
-    expect(lines[1]?.[0]?.look).toEqual(roleLook(theme, "removed"))
-    expect(lines[2]?.[0]?.look).toEqual(roleLook(theme, "added"))
+    expect(lines[1]?.[0]?.look).toEqual(theme.look("removed"))
+    expect(lines[2]?.[0]?.look).toEqual(theme.look("added"))
   })
 
   test("an Edit's lines that start like a diff's headers are shown as any other", () => {

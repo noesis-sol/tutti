@@ -4,12 +4,19 @@
 // banners, the usage (or, short of a limit, the account's windows) and the holds. A narrow pane
 // drops the badge first, then the branch and the time, then shortens the usage, and keeps the holds'
 // words longest.
-import { runTime } from "../print/summary.ts"
+import { Duration } from "effect"
+import { formatDuration } from "../project/configFile.ts"
 import { resetLabel } from "../run/localTime.ts"
 import { type Banner, countdown, type TitleView, type UsageWindow } from "../run/runView.ts"
 import { cut, Line, type Segment, type Segments, seg, widthOf } from "./line.tsx"
 import type { Theme } from "./theme.ts"
 import { useNow, useRunViewPart, useTheme } from "./useRunView.ts"
+
+/** The run's time to the second, on the title line and in the summary: `2m5s`, `45s`, `1h12m`. */
+export const runTime = (millis: number): string => {
+  const seconds = Math.floor(Math.max(0, millis) / 1000)
+  return seconds === 0 ? "0s" : formatDuration(Duration.seconds(seconds))
+}
 
 /** The narrowest the branch and the time are shown, cut. */
 const minWhere = 8

@@ -22,7 +22,8 @@ import { formatDuration } from "../project/configFile.ts"
 import { type FeaturePlan, filePlan, filingFailedLines, needsAnswers } from "../project/planFile.ts"
 import type { Beads } from "../services/Beads.ts"
 import type { Git } from "../services/Git.ts"
-import { FormCancelled, fileQuestion, type Plan, paintLine, planLines } from "../ui/questions.ts"
+import { paint } from "../ui/line.tsx"
+import { FormCancelled, fileQuestion, type Plan, planLines } from "../ui/questions.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import type { Theme } from "../ui/theme.ts"
 import { exitCodes } from "./holds.ts"
@@ -249,7 +250,7 @@ export const planAndFile = <E = never>(
       // The confirmation.
       const shown = shownPlan(plan)
       const printPlan = io.printer.print(
-        ["", ...planLines(shown, io.theme).map(paintLine), ""].join("\n"),
+        ["", ...planLines(shown, io.theme).map(paint), ""].join("\n"),
       )
       if (feature.yes) {
         yield* printPlan

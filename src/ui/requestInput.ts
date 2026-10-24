@@ -3,7 +3,7 @@
 // a Bash command as its own lines, an Edit as its diff, a Write as its path and content, and what
 // else the input holds as key and value lines.
 import type { AttentionRequest } from "../agent/Attention.ts"
-import { type Look, roleLook, type Segments, seg, wrap } from "./line.tsx"
+import { type Look, type Segments, seg, wrap } from "./line.tsx"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
 import type { Theme } from "./theme.ts"
 import { lineDiff } from "./transcriptItems.ts"
@@ -97,8 +97,8 @@ const diffLines = (
   width: number,
 ): ReadonlyArray<Segments> => {
   const looks: Readonly<Record<string, Look | null>> = {
-    "-": roleLook(theme, "removed"),
-    "+": roleLook(theme, "added"),
+    "-": theme.look("removed"),
+    "+": theme.look("added"),
     " ": null,
   }
   const sides = (text: string) => (text === "" ? [] : linesOf(text))

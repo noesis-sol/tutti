@@ -1,26 +1,17 @@
 // A line of the dashboard as segments of text, each in a style of the theme's, measured and cut to
 // the pane's width before it is drawn, so that no line wraps (§ 7.2). Frames are drawn as text too,
 // as orchestra's Lip Gloss tables are: a rounded frame of columns with their borders shared.
-import { RGBA, TextAttributes } from "@opentui/core"
+import { RGBA } from "@opentui/core"
 import { createContext, memo, type ReactNode, useContext } from "react"
-import { orchestra, type Role, rgbaOf, type Style, type Theme } from "./theme.ts"
+import { oneLine } from "./oneLine.ts"
+import { sanitizeLine } from "./sanitize.ts"
+import { orchestra, rgbaOf, type Style, type Theme } from "./theme.ts"
 
-/** What a segment is drawn in: a style's colours and attributes. */
-export type Look = Pick<Style, "fg" | "bg" | "attributes">
-
-/** The look of frames: the theme's `frame` role. */
-export const frameLook = (theme: Theme): Look => ({
-  fg: theme.rgba("frame"),
-  bg: undefined,
-  attributes: 0,
-})
-
-/** A role's colour, bold or not, for what no style of orchestra's draws: a frame, a mark. */
-export const roleLook = (theme: Theme, role: Role, bold = false): Look => ({
-  fg: theme.rgba(role),
-  bg: undefined,
-  attributes: bold ? TextAttributes.BOLD : 0,
-})
+/**
+ * What a segment is drawn in: a style of the theme's (its `styles`, `form` or `look`), for OpenTUI
+ * and as ANSI alike, so that one line is drawn in the renderer or printed.
+ */
+export type Look = Style
 
 /** Text in a look; null for the terminal's own. */
 export type Segment = Piece<Look | null>
@@ -277,6 +268,14 @@ export const wrapText = (text: string, width: number): ReadonlyArray<string> =>
     line.map((each) => each.text).join(""),
   )
 
+/** `text` sanitised, on one line, cut to `width` columns with `…` when it is wider (`oneLine`). */
+export const fit = (text: string, width: number): string =>
+  oneLine(sanitizeLine(text), Math.max(width, 1))
+
+/** A line as ANSI, for output outside the renderer: each segment painted in its look. */
+export const paint = (line: Segments): string =>
+  line.map((each) => (each.look === null ? each.text : each.look.paint(each.text))).join("")
+
 /** `segments` padded with spaces to `width` columns. */
 export const padded = (segments: Segments, width: number): Segments => {
   const flat = expanded(segments)
@@ -414,7 +413,7 @@ export const boxed = (
 
 /** A frame's look: heavy is bold as well. */
 const borderLook = (frame: Look, border: Border): Look =>
-  border === "heavy" ? { ...frame, attributes: frame.attributes | TextAttributes.BOLD } : frame
+  border === "heavy" ? frame.bold() : frame
 
 /**
  * `lines` between the sides of boxed's frame, `width` wide, without its top and bottom: for a box

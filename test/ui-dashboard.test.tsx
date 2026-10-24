@@ -546,7 +546,7 @@ describe("untrusted text", () => {
           const lines = [
             titleSegments(view.title, view.banners, now, theme, width),
             ...totalsLines(view.totals, theme, width, false),
-            ...ticketsLines(view.rows, theme, width, fewestTableLines),
+            ...ticketsLines(view.rows, theme, width, { lines: fewestTableLines }),
             ...warningLines(view.warnings, theme, width),
           ]
           for (const line of lines) {

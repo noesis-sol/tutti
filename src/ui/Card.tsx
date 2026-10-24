@@ -14,7 +14,6 @@
 // their tickets, statuses, times and memory lined up as columns, each as wide as the widest.
 // A card whose worker has a request open grows to show it and its buttons (AttentionCard.tsx).
 // With no card, a box says what the run does: `picking the next ticket…`, or `stopping…`.
-import { TextAttributes } from "@opentui/core"
 import { memo, useCallback, useMemo } from "react"
 import { pad } from "../run/localTime.ts"
 import type { Card } from "../run/runView.ts"
@@ -25,11 +24,9 @@ import {
   type Border,
   boxed,
   boxSides,
-  frameLook,
   Line,
   Lines,
   type Look,
-  roleLook,
   type Segment,
   type Segments,
   seg,
@@ -104,9 +101,9 @@ export const statusLook = (card: Card, theme: Theme): Look => {
     case "Idle":
       return styles.done
     case "Failed":
-      return state.interrupted ? styles.deferred : roleLook(theme, "needsYou")
+      return state.interrupted ? styles.deferred : theme.look("needsYou")
     case "Gone":
-      return roleLook(theme, "needsYou")
+      return theme.look("needsYou")
   }
   if (card.phase._tag !== "Working") return styles.dim
   switch (card.phase.activity) {
@@ -142,14 +139,14 @@ const markOf = (card: Card, theme: Theme, spin: string) => {
 /** The card's frame: `needsYou` when it waits for you, `live` while its worker works. */
 const frameOf = (card: Card, theme: Theme): Look =>
   waitsForYou(card)
-    ? roleLook(theme, "needsYou")
+    ? theme.look("needsYou")
     : card.motion === "spinner"
-      ? roleLook(theme, "live")
-      : frameLook(theme)
+      ? theme.look("live")
+      : theme.look("frame")
 
 /** `steered` beside a status, `emphasis`, when you steered the card's worker. */
 const steeredOf = (card: Card, theme: Theme): Segments =>
-  card.steered ? [seg("  "), seg("steered", roleLook(theme, "emphasis"))] : []
+  card.steered ? [seg("  "), seg("steered", theme.look("emphasis"))] : []
 
 /** The cells of a card's first line but its mark: its ticket, status, elapsed time and memory. */
 interface HeadCells {
@@ -292,8 +289,7 @@ const compactLine = (
 ]
 
 /** The compact box's left bar on the highlighted card's line: heavy, bold, in the box's colour. */
-const heavyBar = (frame: Look) =>
-  seg("┃", { ...frame, attributes: frame.attributes | TextAttributes.BOLD })
+const heavyBar = (frame: Look) => seg("┃", frame.bold())
 
 /**
  * The cards the compact box has a line for in `lines` lines, its frame included: all of them when
@@ -333,10 +329,10 @@ export const compactLines = (
   },
 ): ReadonlyArray<Segments> => {
   const frame = cards.some(waitsForYou)
-    ? roleLook(theme, "needsYou")
+    ? theme.look("needsYou")
     : cards.some((card) => card.motion === "spinner")
-      ? roleLook(theme, "live")
-      : frameLook(theme)
+      ? theme.look("live")
+      : theme.look("frame")
   const shown = compactShown(cards, options.highlighted, options.lines ?? cards.length + 2)
   const more = cards.length - shown.length
   // The tickets, statuses and times line up as columns, each as wide as the widest.
@@ -369,13 +365,13 @@ export const idleBox = (
   boxed(
     [
       [
-        seg(spin, roleLook(theme, "live")),
+        seg(spin, theme.look("live")),
         seg(" "),
         seg(stopping ? "stopping…" : "picking the next ticket…", theme.styles.dim),
       ],
     ],
     width,
-    frameLook(theme),
+    theme.look("frame"),
   )
 
 /** How the Current section is laid out in `room` lines, `width` wide. */

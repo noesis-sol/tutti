@@ -18,7 +18,7 @@
 //
 // The prompt (`>`) is drawn `formAccent`, the cursor `formSelected`, the placeholder
 // `formPlaceholder`, the text `formText`.
-import { type BoxRenderable, TextAttributes, type TextareaRenderable } from "@opentui/core"
+import type { BoxRenderable, TextareaRenderable } from "@opentui/core"
 import { Predicate } from "effect"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "../agent/Transcripts.ts"
@@ -369,15 +369,10 @@ export const InterruptQuestion = ({
   readonly no: () => void
 }) => {
   const words = interruptWords(ticket)
-  const notice = theme.rgba("notice")
   return (
     <Modal
-      frame={{ fg: notice, bg: undefined, attributes: 0 }}
-      paragraphs={[
-        seg(words.ask, { fg: notice, bg: undefined, attributes: TextAttributes.BOLD }),
-        seg(""),
-        seg(words.about),
-      ]}
+      frame={theme.look("notice")}
+      paragraphs={[seg(words.ask, theme.look("notice", "bold")), seg(""), seg(words.about)]}
       choices={[
         { name: "y", does: "interrupt", run: yes },
         { name: "n", does: "keep going", run: no },
