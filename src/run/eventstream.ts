@@ -5,8 +5,10 @@
 // is refused rather than written through. A stream that can't be opened or written is warned about
 // once; the run goes on, and later records are still tried. A write cut short (on ENOSPC, say)
 // leaves part of a record without its newline: the newline is written at once, or, where that
-// fails too, ahead of the next record, so only the cut record is lost, not the one after it.
-import { writeSync } from "node:fs"
+// fails too, ahead of the next record, so only the cut record is lost, not the one after it. A file
+// an earlier run left so cut, its last byte not a newline, is ended the same way, ahead of the
+// first record of this run.
+import { fstatSync, readSync, writeSync } from "node:fs"
 import { Clock, Context, Effect, Layer, Result } from "effect"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { runFolder } from "../services/Worktrees.ts"
@@ -25,6 +27,19 @@ export const notRecorded = (reason: string): string =>
   `events not recorded in ${eventsFile}: ${reason}; the run goes on, and later failures aren't logged`
 
 const newline = 0x0a
+
+// Whether the file at `fd` ends in part of a record: it has bytes and the last isn't a newline. A
+// file that can't be read is taken as ended, which at worst runs the next record onto its line.
+const endsTorn = (fd: number): boolean => {
+  try {
+    const size = fstatSync(fd).size
+    if (size === 0) return false
+    const last = Buffer.alloc(1)
+    return readSync(fd, last, 0, 1, size - 1) === 1 && last[0] !== newline
+  } catch {
+    return false
+  }
+}
 
 const reasonOf = (error: unknown): string =>
   error instanceof Error ? error.message : typeof error === "string" ? error : String(error)
@@ -59,14 +74,15 @@ export class EventStream extends Context.Service<
             return warn(notRecorded(reason))
           })
 
-        // Nothing is made through a link in .tutti/run's path, which openUnder refuses too.
+        // Nothing is made through a link in .tutti/run's path, which openUnder refuses too. The file
+        // is opened to read as well, for its last byte; O_APPEND still puts every write at its end.
         const fd = yield* Effect.acquireRelease(
           Effect.suspend(() => {
             const why = makeFoldersUnder(options.repo, runFolder)
             return why === undefined ? Effect.void : Effect.fail(why)
           }).pipe(
             Effect.andThen(
-              openUnder(options.repo, eventsFile, O.WRONLY | O.APPEND | O.CREAT, 0o644).pipe(
+              openUnder(options.repo, eventsFile, O.RDWR | O.APPEND | O.CREAT, 0o644).pipe(
                 Effect.mapError((error) => error.message),
               ),
             ),
@@ -76,8 +92,9 @@ export class EventStream extends Context.Service<
         )
 
         const writeTo = options.writeSync ?? writeSync
-        // Whether the file ends in part of a record, cut short, that the next write ends first.
-        let torn = false
+        // Whether the file ends in part of a record, cut short, that the next write ends first: by
+        // this run, or by an earlier one killed mid-write.
+        let torn = fd !== undefined && endsTorn(fd)
         // Writes `bytes` in one write, and returns how many were written; a throw writes none.
         const writeOnce = (bytes: Uint8Array): number => {
           const written = writeTo(fd as number, bytes)
