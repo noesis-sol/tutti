@@ -37,7 +37,12 @@ const triageAnswer = (costUsd: number) =>
   answered({ cause: "the tests fail" }, { total_cost_usd: costUsd, session_id: "triage" })
 
 describe("a scenario's OrganCost", () => {
-  test("adds the probe's cost and an organ's it adds in one total", async () => {
+  // Built apart (local), the organs' layer shares none of the scenario's layers' memoized builds:
+  // it finds the scenario's OrganCost in its context.
+  test.each([
+    ["built with the scenario's layers", { local: false }],
+    ["built apart from them", { local: true }],
+  ])("adds the probe's cost and an organ's it adds in one total, %s", async (_, options) => {
     const ran = await scenario(
       { usageProbe: [probeTurn(0.01)] },
       Effect.gen(function* () {
@@ -45,6 +50,7 @@ describe("a scenario's OrganCost", () => {
         yield* Effect.flatMap(Organs, (organs) => organs.ask(triage, [])).pipe(
           Effect.provide(
             Organs.layer.pipe(Layer.provideMerge(cannedLayer({ triage: triageAnswer(0.02) }))),
+            options,
           ),
         )
         return yield* (yield* OrganCost).total
