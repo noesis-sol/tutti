@@ -136,7 +136,7 @@ import { putBackLeft } from "./mergetrain.ts"
 import type { TicketPhase } from "./phase.ts"
 import { make as makePredictor } from "./predict.ts"
 import { interruptedText, panicLines, type QuitRequest } from "./quit.ts"
-import { make as makeQuits, type Quitting } from "./quitting.ts"
+import { make as makeQuits, Quitting, quitStop } from "./quitting.ts"
 import { dropRechecks } from "./recheck.ts"
 import { type ReportOut, type ReportRun, runReport } from "./report.ts"
 import { failedChecksSection, followUpsSection } from "./reportEvidence.ts"
@@ -338,7 +338,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const panicked = (where: string, stop: StopReason, defect: unknown) =>
       Effect.andThen(
         logs.write(...panicLines(where, defect)),
-        Deferred.succeed(quitting, { panic: stop }),
+        Deferred.succeed(quitting, Quitting.Panic({ stop })),
       )
     // Each worker's compactions are counted and logged (compactions.ts), from before any worker
     // starts or is carried over; a watcher that dies panics the run.
@@ -883,10 +883,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // Quitting's last step: the run ends INTERRUPTED (exit 130), or PANIC (exit 4), before any
     // stop the run had.
     if (quit !== null) {
-      const stop =
-        "panic" in quit
-          ? quit.panic
-          : stopFor("INTERRUPTED", interruptedText(quit.request.how, saved, handedBack))
+      const stop = quitStop(quit, ({ how }) => interruptedText(how, saved, handedBack))
       yield* changeHolds((now) => changeStops(now, (all) => putFirst(all, stop)))
     }
     yield* changeHolds((now) => changeStops(now, (all) => extendFirst(all, neverSent)))

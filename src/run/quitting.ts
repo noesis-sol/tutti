@@ -6,7 +6,7 @@
 // waited for quitWait at most; a merge in its protected step finishes, one before it is cut short;
 // the organ calls are aborted. The tickets' fibers and the hand-backs stop before the interrupts, so
 // that none acts on an interrupted turn.
-import { Deferred, Effect, Option, Ref, Result, Stream, type SubscriptionRef } from "effect"
+import { Data, Deferred, Effect, Option, Ref, Result, Stream, type SubscriptionRef } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention } from "../agent/Attention.ts"
 import { Store } from "../services/Store.ts"
@@ -36,7 +36,24 @@ import { endRecord } from "./spending.ts"
 import type { Triage } from "./triage.ts"
 
 /** Why the run quits: a request to quit now, or a panic in one of its fibers (§ 4.8, § 7.4). */
-export type Quitting = { readonly request: QuitRequest } | { readonly panic: StopReason }
+export type Quitting = Data.TaggedEnum<{
+  /** A request to quit: SIGINT's, SIGTERM's or SIGHUP's, the quit box's `q`. */
+  Quit: { readonly request: QuitRequest }
+  /** A panic in one of the run's fibers: its PANIC stop. */
+  Panic: { readonly stop: StopReason }
+}>
+
+export const Quitting = Data.taggedEnum<Quitting>()
+
+/**
+ * The stop `quit` ends the run with: a panic's PANIC, or INTERRUPTED for a request to quit, its text
+ * `text` says of the request.
+ */
+export const quitStop = (quit: Quitting, text: (request: QuitRequest) => string): StopReason =>
+  Quitting.$match(quit, {
+    Quit: ({ request }) => stopFor("INTERRUPTED", text(request)),
+    Panic: ({ stop }) => stop,
+  })
 
 export interface Quits {
   /** Hears a request to quit: the first quits, the second warns, the third ends tutti at once. */
@@ -106,7 +123,10 @@ export const make = (options: {
         let n = yield* Ref.updateAndGet(asked, (n) => n + 1)
         // A panic that already quit the run makes the first request the second: it says what is
         // under way, and the next exits at once.
-        if (heard(n) === "quit" && !(yield* Deferred.succeed(quitting, { request }))) {
+        if (
+          heard(n) === "quit" &&
+          !(yield* Deferred.succeed(quitting, Quitting.Quit({ request })))
+        ) {
           n = yield* Ref.updateAndGet(asked, (n) => n + 1)
         }
         switch (heard(n)) {
@@ -147,10 +167,7 @@ export const make = (options: {
       Effect.gen(function* () {
         const workers = yield* openWorkers
         yield* waitFor(workers.map((ticket) => ({ ticket, what: "worker" as const })))
-        if ("request" in quit) {
-          const text = quitLine(quit.request, workers)
-          yield* warn(text)
-        }
+        if (quit._tag === "Quit") yield* warn(quitLine(quit.request, workers))
         yield* options.scheduler.interrupt
         yield* refuseAnswers
         yield* queue.hold

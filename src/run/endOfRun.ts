@@ -22,13 +22,13 @@ import { drainedLine } from "./drain.ts"
 import { EventStream } from "./eventstream.ts"
 import { type FiguresLine, figuresLines, figuresText } from "./figures.ts"
 import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
-import { firstStop, type StopReason, type Stops, stopFor, stopsLine } from "./holds.ts"
+import { firstStop, type Stops, stopsLine } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { closedAfter } from "./merge.ts"
 import { finished } from "./notices.ts"
 import { Move, stopsAtEnd, type TicketPhase } from "./phase.ts"
-import type { Quitting } from "./quitting.ts"
+import { Quitting, quitStop } from "./quitting.ts"
 import { emptyStatus, project, type Row, type Totals } from "./runView.ts"
 import { sayer } from "./say.ts"
 import type { Scheduler } from "./schedule.ts"
@@ -196,7 +196,10 @@ export const make = (options: {
 
     const suspend: EndOfRun["suspend"] = ({ quit, over, asking, stops, open }) =>
       Effect.gen(function* () {
-        const ended = quit === null ? null : "panic" in quit ? quit.panic.why : "quit"
+        const ended =
+          quit === null
+            ? null
+            : Quitting.$match(quit, { Quit: () => "quit", Panic: ({ stop }) => stop.why })
         const whyOf = (entry: { readonly ticket: string; readonly phase: TicketPhase }) =>
           entry.phase._tag === "Working" && over.has(entry.ticket)
             ? "TICKET_LIMIT"
@@ -334,8 +337,7 @@ export const make = (options: {
     // The stop of a quit, or a panic, after the loop: `when` it came, written and recorded.
     const lateStop = (late: Quitting, when: string) =>
       Effect.gen(function* () {
-        const stop: StopReason =
-          "panic" in late ? late.panic : stopFor("INTERRUPTED", `quit ${late.request.how} ${when}`)
+        const stop = quitStop(late, ({ how }) => `quit ${how} ${when}`)
         yield* say({ kind: "stop", detail: stop.why, text: stop.text })
         return { said: [stop.text], sections: [], after: "", code: stop.code } satisfies Checked
       })

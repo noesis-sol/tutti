@@ -970,7 +970,7 @@ Merging a ticket rebases it again if more landed meanwhile, so a ticket can go f
 #### In the code
 
 - **The types.** `TicketPhase` is a tagged union, an Effect `Data.TaggedEnum` with a Schema for the event stream. It lives with its transitions in `src/run/phase.ts`.
-- **The transition table is data**, the table above. One function, `transition(phase, cause)`, returns the next phase or an `InvalidTransition`. Every phase change in the run loop goes through it; nothing assigns a phase directly.
+- **The transition table is data**, the table above. One function, `transition(phase, move)`, the move a row's When (`src/run/phase.ts`'s `Move`), returns the next phase or an `InvalidTransition`. Every phase change in the run loop goes through it; nothing assigns a phase directly.
 - **An invalid transition is a bug.** It is logged once as `PHASE_BUG: <id> <from> → <to> (<cause>)`, the ticket keeps its phase, and tests fail on it.
 - **The ledger** (§3.4) holds each ticket's phase. `RunView`'s rows, cards and totals are derived from the phases and the workers' states, never kept separately.
 - **Every transition writes a `phase` record** to the event stream (§10). The kinds that orchestra already had (`dispatch`, `closed`, `deferred`, …) are still written beside it, so its scripts and skill keep working.
