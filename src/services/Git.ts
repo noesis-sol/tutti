@@ -262,7 +262,8 @@ export class Git extends Context.Service<
     /**
      * git rebase: rebases the branch checked out in worktree onto `onto`. Stopped on conflicts, it
      * fails with RebaseConflict and is left in progress; failing otherwise, timing out or interrupted,
-     * it is aborted, and the branch is as it was.
+     * it is aborted, and the branch is as it was. No other branch moves, whatever rebase.updateRefs
+     * says.
      */
     rebase(worktree: string, onto: string): Effect.Effect<void, GitError | RebaseConflict>
     /** git rebase --abort: puts back the branch a stopped rebase was rewriting. */
@@ -484,13 +485,16 @@ export class Git extends Context.Service<
             Effect.ignore,
           )
 
+        // --no-update-refs: with the user's rebase.updateRefs set, git would move every other branch
+        // that points into the rebased range (a backup, orchestra's wt/<id>) along with this one,
+        // and putting the branch back resets only this one.
         const rebase = (worktree: string, onto: string) =>
           writer.withLock(
             Effect.gen(function* () {
               const { shown, output } = yield* git(
                 "rebase",
                 worktree,
-                ["rebase", "--no-autostash", ...revisions([onto])],
+                ["rebase", "--no-autostash", "--no-update-refs", ...revisions([onto])],
                 limits.write,
               ).pipe(Effect.tapError(() => abandonRebase(worktree)))
               if (output.exitCode === 0) return
