@@ -6,9 +6,10 @@
 // Every write goes through one fiber, which takes the changes queued and commits them in order: it
 // writes the whole state to a temporary file in the same folder, fsyncs it, and renames it over
 // `state.json` (writeFileUnder, through the symlink guard). A crash at any point leaves either the
-// old file or the new one, never a mix. An update returns once its change is on disk, so a session
+// old file or the new one, never a mix. It is read through the guard too (openUnder). An update returns once its change is on disk, so a session
 // ID saved before its session starts survives a crash (§ 4.8). Readers get the last committed
 // state.
+import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import {
   type Cause,
@@ -17,14 +18,21 @@ import {
   Effect,
   Exit,
   Fiber,
-  FileSystem,
   Layer,
   Queue,
   Ref,
   Result,
   Schema,
 } from "effect"
-import { makeFoldersUnder, type Refusal, writeFileUnder } from "../native/libc.ts"
+import {
+  close,
+  LibcError,
+  makeFoldersUnder,
+  O,
+  openUnder,
+  type Refusal,
+  writeFileUnder,
+} from "../native/libc.ts"
 
 /** The carry-over file, relative to the project's top (§ 9.1). */
 export const stateFile = join(".tutti", "run", "state.json")
@@ -192,7 +200,7 @@ export class Store extends Context.Service<
     Layer.effect(
       Store,
       Effect.gen(function* () {
-        const read = yield* readState(statePath(options.repo))
+        const read = yield* readState(options.repo)
         const committed = yield* Ref.make(read)
         const writes = yield* Queue.unbounded<Write>()
         const commit = commitWrites(options.repo, options.run, committed)
@@ -264,21 +272,33 @@ export const parseState = (file: string, text: string): Effect.Effect<State, Sto
     return yield* new StoreUnreadable({ file, reason: issues(exit.cause) || "it doesn't decode" })
   })
 
-/** Reads the state.json at `file`: `emptyState` when there is none. */
-export const readState = (file: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const text = yield* fs
-      .readFileString(file)
-      .pipe(
-        Effect.catchTag("PlatformError", (error) =>
-          error.reason._tag === "NotFound"
-            ? Effect.succeed(undefined)
-            : Effect.fail(new StoreUnreadable({ file, reason: error.message })),
-        ),
-      )
-    return text === undefined ? emptyState : yield* parseState(file, text)
-  })
+/**
+ * Reads state.json below `repo` through the symlink guard (openUnder, § 9.1): `emptyState` when
+ * there is none, .tutti or .tutti/run missing too. A symbolic link at .tutti, .tutti/run or
+ * state.json, which a merged ticket can leave there, is refused rather than read through, as is
+ * anything there but a regular file: StoreUnreadable, saying why and quoting nothing behind it.
+ */
+export const readState = (repo: string): Effect.Effect<State, StoreUnreadable> => {
+  const file = statePath(repo)
+  const unreadable = (reason: string) => new StoreUnreadable({ file, reason })
+  return Effect.acquireUseRelease(
+    openUnder(repo, stateFile, O.RDONLY).pipe(
+      Effect.catchIf(
+        (error) => error instanceof LibcError && error.code === "ENOENT",
+        () => Effect.succeed(undefined),
+      ),
+      Effect.mapError((error) => unreadable(error.message)),
+    ),
+    (fd) =>
+      fd === undefined
+        ? Effect.succeed(emptyState)
+        : Effect.try({
+            try: () => readFileSync(fd, "utf8"),
+            catch: (error) => unreadable(error instanceof Error ? error.message : String(error)),
+          }).pipe(Effect.flatMap((text) => parseState(file, text))),
+    (fd) => (fd === undefined ? Effect.void : Effect.ignore(close(fd))),
+  )
+}
 
 /**
  * Writes `text`, a state's (stateText), to state.json below `repo` atomically and through the

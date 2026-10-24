@@ -140,11 +140,12 @@ describe("the log", () => {
 describe("state.json", () => {
   const run = { pid: 4242, started: "2026-10-23T08:31:00Z", version: "0.1.0" }
   const session = { session: "s-1", worktree: "/w/demo-1", branch: "tutti/demo-1" }
-  const saved = (repo: string) =>
+  /** Saves a session with the live Store of `repo`, after `meanwhile` once the Store has read. */
+  const saved = (repo: string, meanwhile: () => void = () => {}) =>
     Effect.runPromiseExit(
-      Effect.flatMap(Store, (store) => store.saveSession("demo-1", session)).pipe(
-        Effect.provide(Store.layer({ repo, run }).pipe(Layer.provide(BunFileSystem.layer))),
-      ),
+      Effect.flatMap(Store, (store) =>
+        Effect.andThen(Effect.sync(meanwhile), store.saveSession("demo-1", session)),
+      ).pipe(Effect.provide(Store.layer({ repo, run }).pipe(Layer.provide(BunFileSystem.layer)))),
     )
 
   test("is written below .tutti/run, made where it is missing", async () => {
@@ -156,9 +157,10 @@ describe("state.json", () => {
   test("a link at state.json is StoreWriteFailed, and its target is left as it was", async () => {
     const { repo, outside, target } = places()
     mkdirSync(join(repo, ".tutti/run"), { recursive: true })
-    // A link to a file that isn't there yet: reading the state finds none.
-    symlinkSync(join(outside, "new"), join(repo, stateFile))
-    const error = failureOf(await saved(repo))
+    // Left once the run has read the state, which a link refuses too.
+    const error = failureOf(
+      await saved(repo, () => symlinkSync(join(outside, "new"), join(repo, stateFile))),
+    )
     expect(error).toBeInstanceOf(StoreWriteFailed)
     expect((error as StoreWriteFailed).reason).toContain("is a symbolic link")
     expect(lstatSync(join(repo, stateFile)).isSymbolicLink()).toBe(true)
@@ -168,8 +170,7 @@ describe("state.json", () => {
   test("a link at .tutti/run is StoreWriteFailed, and nothing is made through it", async () => {
     const { repo, outside, target } = places()
     mkdirSync(join(repo, ".tutti"))
-    symlinkSync(outside, join(repo, ".tutti/run"))
-    const error = failureOf(await saved(repo))
+    const error = failureOf(await saved(repo, () => symlinkSync(outside, join(repo, ".tutti/run"))))
     expect(error).toBeInstanceOf(StoreWriteFailed)
     expect((error as StoreWriteFailed).reason).toContain(".tutti/run is a symbolic link")
     untouched(outside, target)

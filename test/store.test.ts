@@ -216,7 +216,7 @@ describe("the single writer", () => {
     )
     expect(state.tickets.counter?.metadata).toEqual({ count: tickets.length })
     const read = value(
-      await Effect.runPromiseExit(Effect.provide(readState(statePath(repo)), BunFileSystem.layer)),
+      await Effect.runPromiseExit(readState(repo)),
     )
     expect(read).toEqual(state)
     for (const id of tickets) expect(read.tickets[id]?.branch).toBe(`wt/${id}`)
@@ -231,7 +231,7 @@ describe("the single writer", () => {
           const store = yield* Store
           yield* store.saveSession("demo-1", session)
           // The run hasn't ended: what a run started after a crash here would read.
-          return yield* readState(statePath(repo))
+          return yield* readState(repo)
         }),
       ),
     )
