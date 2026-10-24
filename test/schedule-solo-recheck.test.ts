@@ -140,3 +140,22 @@ test("a solo ticket checked once more keeps the next recheck and a carried worke
 test("a solo ticket past its work without a slot keeps a recheck and a carried worker out", async () => {
   expect(await besideR(false)).toEqual({ took: false, r2: false, c: false, running: [] })
 })
+
+test("a solo ticket past its work without a slot keeps a carried worker out, before any fill", async () => {
+  const carried = await run(
+    [solo, { id: "c", status: "in_progress" }],
+    Effect.gen(function* () {
+      const ledger = yield* Ledger
+      const schedule = yield* make({
+        concurrent: 3,
+        limit: 40,
+        scope: null,
+        excludeTypes: ["epic"],
+        start: { start: () => Effect.never },
+      })
+      yield* ledger.transition("r", Cause.Unmerged({ place: 1 }))
+      return yield* schedule.carry("c", Effect.succeed(Effect.never))
+    }),
+  )
+  expect(carried).toBe(false)
+})
