@@ -35,6 +35,7 @@ import {
   Fiber,
   FiberSet,
   Option,
+  Ref,
   Result,
   type Scope,
   Semaphore,
@@ -116,6 +117,12 @@ const aheadOf: (step: Step) => string | undefined = Step.$match({
   Stopped: () => undefined,
 })
 
+/** Where a train stopped before its check ended is: Stopped, unless it had got past its check. */
+const stoppedStep = (step: Step): Step =>
+  step._tag === "Rebasing" || step._tag === "Checking"
+    ? Step.Stopped({ head: headOf(step), setUp: setUpOf(step) })
+    : step
+
 /** A ticket checked ahead of its turn: where it was rebased, and how its check goes. */
 interface Run {
   readonly ticket: FinishedTicket
@@ -123,13 +130,66 @@ interface Run {
   readonly behind: string
   /** The commit it was rebased onto: `behind` as it is checked. */
   readonly onto: string
-  fiber: Fiber.Fiber<void> | undefined
   /** Its branch's commit before the rebase, as its worker left it; "" until it is read. */
-  orig: string
+  readonly orig: string
   /** Where its branch left the base before the rebase, for the setup. */
-  fork: string
-  step: Step
+  readonly fork: string
+  readonly step: Step
 }
+
+/**
+ * The trains, as the train fibers, the merge in its turn and the board share them: changed in one
+ * step each, those that read and change more than one ticket under the train's lock.
+ */
+interface Trains {
+  /** The tickets waiting for their first turn, which may be checked ahead of it. */
+  readonly ahead: ReadonlyMap<string, FinishedTicket>
+  /** The tickets checked ahead of their turn. */
+  readonly runs: ReadonlyMap<string, Run>
+  /** The fibers checking them, each added as its train starts, under the lock. */
+  readonly fibers: ReadonlyMap<string, Fiber.Fiber<void>>
+  /**
+   * The tickets whose turn has taken their train, until it has ended: it is no longer stopped with
+   * the others, nor left by the merges stopping, its turn putting its branch back.
+   */
+  readonly boarding: ReadonlySet<string>
+  /** The branch of the ticket whose turn it is, at the commit its check runs or passed on. */
+  readonly checking: { readonly branch: string; readonly at: string } | undefined
+  /** Set once the trains are left: none starts again. */
+  readonly stopped: boolean
+}
+
+const noTrains: Trains = {
+  ahead: new Map(),
+  runs: new Map(),
+  fibers: new Map(),
+  boarding: new Set(),
+  checking: undefined,
+  stopped: false,
+}
+
+/** The trains with the run of `id` changed by `change`; as they are when it has none. */
+const withRun = (trains: Trains, id: string, change: (run: Run) => Run): Trains => {
+  const run = trains.runs.get(id)
+  return run === undefined ? trains : { ...trains, runs: new Map(trains.runs).set(id, change(run)) }
+}
+
+/** The trains with `ids`' runs, and their fibers, gone. */
+const withoutRuns = (trains: Trains, ids: ReadonlyArray<string>): Trains => {
+  const runs = new Map(trains.runs)
+  const fibers = new Map(trains.fibers)
+  const boarding = new Set(trains.boarding)
+  for (const id of ids) {
+    runs.delete(id)
+    fibers.delete(id)
+    boarding.delete(id)
+  }
+  return { ...trains, runs, fibers, boarding }
+}
+
+/** The fibers of the trains not boarding, which the line's changes stop. */
+const unboarded = (trains: Trains): ReadonlyArray<Fiber.Fiber<void>> =>
+  [...trains.fibers].flatMap(([id, fiber]) => (trains.boarding.has(id) ? [] : [fiber]))
 
 /**
  * Why a branch the train rebased was not put back as restoreBranch says, for the lines that say so;
@@ -278,12 +338,10 @@ export const make = (
     const { repo, base } = options
     const size = config.settings.merge.train
     const machineFull = options.machineFull ?? Effect.succeed(false)
-    // The tickets waiting for their first turn, which may be checked ahead of it.
-    const ahead = new Map<string, FinishedTicket>()
-    // The tickets checked ahead of their turn.
-    const runs = new Map<string, Run>()
-    // The branch of the ticket whose turn it is, at the commit its check runs or passed on.
-    let checking: { readonly branch: string; readonly at: string } | undefined
+    // The trains (Trains), each change one step.
+    const trains = yield* Ref.make(noTrains)
+    const update = (change: (now: Trains) => Trains) => Ref.update(trains, change)
+    const runOf = (id: string) => Effect.map(Ref.get(trains), (now) => now.runs.get(id))
     // How the checks ahead of their turn go, by ticket, for the dashboard.
     const shown = yield* SubscriptionRef.make<ReadonlyMap<string, CheckAhead>>(new Map())
     const show = (run: Run, step: CheckAhead["step"] | undefined) =>
@@ -295,9 +353,8 @@ export const make = (
         else next.set(id, { step, behind: run.behind })
         return Option.some(next)
       })
-    // Set once the trains are left: none starts again.
-    let stopped = false
-    // Starting trains, and leaving them, one at a time.
+    // Starting trains, stopping them as the line changes, and leaving them, one at a time: a train
+    // started is never missed by a stop.
     const lock = yield* Semaphore.make(1)
     const set = yield* (yield* RunFibers).make<void, never>("merge train")
 
@@ -311,146 +368,157 @@ export const make = (
         setUp: setUpOf(run.step),
       })
 
-    // Stops the train without waiting for it: its turn puts its branch back.
-    const cancel = (run: Run) => Effect.sync(() => run.fiber?.interruptUnsafe())
-    const cancelAll = Effect.suspend(() =>
-      Effect.forEach([...runs.values()], cancel, { discard: true }),
-    )
+    // The train's run, saved for the others to read as it is now.
+    const save = (run: Run) =>
+      Effect.as(
+        update((now) => withRun(now, run.ticket.id, () => run)),
+        run,
+      )
 
-    // Rebases the ticket's branch onto run.onto in its worktree, as its turn would, and says whether
-    // it is to be checked there, Checking, or NotRebased: not when its worktree isn't ready for a rebase (its turn says why),
-    // it doesn't rebase cleanly (the rebase is aborted), or its commits change nothing on top of the
-    // branch ahead (it is put back, for its turn to close it as unchanged). Where git can't tell, it
-    // is put back, or isn't rebased, and its turn asks again. Run with interruption off: once begun,
-    // the rebase finishes, or is undone, and the branch's commits are known for its turn.
-    const rebaseAhead = (run: Run): Effect.Effect<void, never, MergeEnv> =>
+    // Stops the trains without waiting for them: their turns put their branches back.
+    const cancel = (fibers: ReadonlyArray<Fiber.Fiber<void>>) =>
+      Effect.sync(() => {
+        for (const fiber of fibers) fiber.interruptUnsafe()
+      })
+
+    // Rebases the ticket's branch onto run.onto in its worktree, as its turn would, and gives the run
+    // with its branch's commits read and its step: Checking, to be checked there, or NotRebased: not
+    // when its worktree isn't ready for a rebase (its turn says why), it doesn't rebase cleanly (the
+    // rebase is aborted), or its commits change nothing on top of the branch ahead (it is put back,
+    // for its turn to close it as unchanged). Where git can't tell, it is put back, or isn't
+    // rebased, and its turn asks again. Run with interruption off: once begun, the rebase finishes,
+    // or is undone, and the branch's commits are known for its turn.
+    const rebaseAhead = (run: Run): Effect.Effect<Run, never, MergeEnv> =>
       Effect.gen(function* () {
         const { id, branch, worktree } = run.ticket
-        const notRebased = (head = "") => {
-          run.step = Step.NotRebased({ head })
-        }
+        const notRebased = (from: Run, head = ""): Run => ({
+          ...from,
+          step: Step.NotRebased({ head }),
+        })
         // Asked once: its turn asks again, and this step can't be interrupted.
-        if ((yield* onBranch(run.ticket, 1))._tag !== "OnBranch") return notRebased()
+        if ((yield* onBranch(run.ticket, 1))._tag !== "OnBranch") return notRebased(run)
         const status = yield* Effect.result(git.status(worktree))
         if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
-          return notRebased()
+          return notRebased(run)
         }
         const before = yield* Effect.result(
           Effect.all({ orig: git.revParse(repo, branch), fork: git.mergeBase(repo, base, branch) }),
         )
-        if (Result.isFailure(before)) return notRebased()
-        run.orig = before.success.orig
-        run.fork = before.success.fork
+        if (Result.isFailure(before)) return notRebased(run)
+        const read: Run = { ...run, orig: before.success.orig, fork: before.success.fork }
         // Marked before git touches the branch: a run killed before it is put back leaves the mark.
-        yield* mark(run)
-        const rebased = yield* Effect.result(git.rebase(worktree, run.onto))
+        yield* mark(read)
+        const rebased = yield* Effect.result(git.rebase(worktree, read.onto))
         if (Result.isFailure(rebased)) {
           yield* abandonRebase(worktree)
           yield* clearAhead(id)
           yield* log.write(
-            detail`${branch} is not checked ahead of its turn: it does not rebase cleanly onto ${run.behind}`,
+            detail`${branch} is not checked ahead of its turn: it does not rebase cleanly onto ${read.behind}`,
           )
-          return notRebased()
+          return notRebased(read)
         }
         const head = yield* Effect.result(git.revParse(repo, branch))
-        if (Result.isFailure(head)) return notRebased()
-        yield* mark(run, head.success)
-        const changed = yield* Effect.result(git.changedFiles(repo, run.onto, branch))
+        if (Result.isFailure(head)) return notRebased(read)
+        yield* mark(read, head.success)
+        const changed = yield* Effect.result(git.changedFiles(repo, read.onto, branch))
         if (Result.isSuccess(changed) && changed.success.length > 0) {
-          run.step = Step.Checking({ head: head.success, setUp: false })
-          return
+          return { ...read, step: Step.Checking({ head: head.success, setUp: false }) }
         }
         // Changing nothing on top of the branch ahead, or git can't tell: put back for its turn.
-        const why = notBack(worktree, yield* restoreBranch(run.ticket, run.orig, 1))
+        const why = notBack(worktree, yield* restoreBranch(read.ticket, read.orig, 1))
         if (why === undefined) {
-          notRebased()
           yield* clearAhead(id)
-        } else {
-          notRebased(head.success)
-          yield* Effect.logDebug(`${id}: ${why}`)
+          return notRebased(read)
         }
+        yield* Effect.logDebug(`${id}: ${why}`)
+        return notRebased(read, head.success)
       })
 
     // The trains behind the ticket in line are stopped: its own check failed ahead of its turn.
     const cancelBehind = (id: string) =>
-      Effect.gen(function* () {
-        const waiting = yield* options.waiting
-        const at = waiting.indexOf(id)
-        if (at < 0) return
-        for (const behind of waiting.slice(at + 1)) {
-          const run = runs.get(behind)
-          if (run !== undefined) yield* cancel(run)
-        }
-      })
+      lock.withPermit(
+        Effect.gen(function* () {
+          const waiting = yield* options.waiting
+          const at = waiting.indexOf(id)
+          if (at < 0) return
+          const now = yield* Ref.get(trains)
+          const behind = new Set(waiting.slice(at + 1))
+          yield* cancel(
+            [...now.fibers].flatMap(([each, fiber]) =>
+              behind.has(each) && !now.boarding.has(each) ? [fiber] : [],
+            ),
+          )
+        }),
+      )
 
     // Rebases the ticket's branch onto run.onto and checks it there, the setup first when a
     // dependency file changed, as its turn would, and records how it went. A check that fails says
     // nothing of the ticket: it is checked again in its turn, on the base it merges onto.
-    const runTrain = (run: Run) =>
+    const runTrain = (first: Run) =>
       Effect.gen(function* () {
-        const { branch } = run.ticket
-        yield* show(run, "rebase")
-        yield* Effect.uninterruptible(rebaseAhead(run))
-        if (run.step._tag !== "Checking") return yield* show(run, undefined)
-        const { head } = run.step
-        yield* show(run, "check")
+        const { branch } = first.ticket
+        yield* show(first, "rebase")
+        const rebased = yield* Effect.uninterruptible(Effect.flatMap(rebaseAhead(first), save))
+        if (rebased.step._tag !== "Checking") return yield* show(rebased, undefined)
+        const { head } = rebased.step
+        yield* show(rebased, "check")
         yield* start
         yield* log.write(
-          detail`checking ${branch} ahead of its turn to merge, rebased onto ${run.behind} as it is checked`,
+          detail`checking ${branch} ahead of its turn to merge, rebased onto ${rebased.behind} as it is checked`,
         )
-        run.step = Step.Checking({ head, setUp: true })
-        yield* mark(run)
+        const setting = yield* save({ ...rebased, step: Step.Checking({ head, setUp: true }) })
+        yield* mark(setting)
         const setup = yield* setUp(
-          run.ticket,
+          setting.ticket,
           options,
           memory.setUps,
-          run.fork === "" ? run.onto : run.fork,
-          run.onto,
+          setting.fork === "" ? setting.onto : setting.fork,
+          setting.onto,
           undefined,
           true,
         )
-        if (setup._tag === "Unneeded") {
-          run.step = Step.Checking({ head, setUp: false })
-          yield* mark(run)
-        }
-        const { setUp: ranSetUp } = run.step
+        const ranSetUp = setup._tag !== "Unneeded"
+        const checking = ranSetUp
+          ? setting
+          : yield* save({ ...setting, step: Step.Checking({ head, setUp: false }) })
+        if (!ranSetUp) yield* mark(checking)
         const checked =
           setup._tag === "Failed"
             ? ({ _tag: "Failed", error: setup.error, output: setup.output } as const)
-            : yield* checkOnce(run.ticket, { suite: "merge", train: true })
+            : yield* checkOnce(checking.ticket, { suite: "merge", train: true })
         if (checked._tag !== "Failed") {
-          run.step = Step.Passed({ head, setUp: ranSetUp })
-          yield* show(run, "passed")
+          const passed = yield* save({ ...checking, step: Step.Passed({ head, setUp: ranSetUp }) })
+          yield* show(passed, "passed")
           if (checked._tag === "Passed") {
             yield* log.write(
-              detail`'${checked.command}' passes on ${branch} ahead of its turn, on top of ${run.behind}`,
+              detail`'${checked.command}' passes on ${branch} ahead of its turn, on top of ${passed.behind}`,
             )
           }
           return
         }
         const where =
           checked.error._tag === "CheckNotRun" ? "" : line` (output is in ${checked.output})`
-        run.step = Step.Failed({
-          head,
-          setUp: ranSetUp,
-          why: line`${failedHow(checked.error)} on ${branch} on top of it${where}`,
+        const failed = yield* save({
+          ...checking,
+          step: Step.Failed({
+            head,
+            setUp: ranSetUp,
+            why: line`${failedHow(checked.error)} on ${branch} on top of it${where}`,
+          }),
         })
-        yield* show(run, "failed")
+        yield* show(failed, "failed")
         yield* log.write(
-          detail`${failedHow(checked.error)} on ${branch} ahead of its turn, on top of ${run.behind}${where}; it is checked again in its turn`,
+          detail`${failedHow(checked.error)} on ${branch} ahead of its turn, on top of ${failed.behind}${where}; it is checked again in its turn`,
         )
-        yield* cancelBehind(run.ticket.id)
+        yield* cancelBehind(failed.ticket.id)
       }).pipe(
         // Stopped before its check ended: it shows no more. One past its check keeps how it went.
         Effect.onInterrupt(() =>
           Effect.andThen(
-            Effect.sync(() => {
-              const step = run.step
-              if (step._tag === "Rebasing" || step._tag === "Checking") {
-                run.step = Step.Stopped({ head: headOf(step), setUp: setUpOf(step) })
-              }
-            }),
-            show(run, undefined),
+            update((now) =>
+              withRun(now, first.ticket.id, (run) => ({ ...run, step: stoppedStep(run.step) })),
+            ),
+            show(first, undefined),
           ),
         ),
       )
@@ -462,36 +530,29 @@ export const make = (
     // behind a ticket not checked ahead, or whose train failed.
     const start: Effect.Effect<void> = lock.withPermit(
       Effect.gen(function* () {
+        const { stopped, checking } = yield* Ref.get(trains)
         if (stopped || size <= 0 || config.settings.checks.fast.command === null) return
         if (checking === undefined || (yield* machineFull)) return
         let { branch: behind, at: onto } = checking
         for (const id of (yield* options.waiting).slice(0, size)) {
-          const ticket = ahead.get(id)
+          const ticket = (yield* Ref.get(trains)).ahead.get(id)
           if (ticket === undefined) break
-          let run = runs.get(id)
-          if (run === undefined) {
-            const made: Run = {
-              ticket,
-              behind,
-              onto,
-              fiber: undefined,
-              orig: "",
-              fork: "",
-              step: Step.Rebasing(),
-            }
-            runs.set(id, made)
-            made.fiber = yield* FiberSet.run(
+          if ((yield* runOf(id)) === undefined) {
+            const made: Run = { ticket, behind, onto, orig: "", fork: "", step: Step.Rebasing() }
+            yield* update((now) => ({ ...now, runs: new Map(now.runs).set(id, made) }))
+            const fiber = yield* FiberSet.run(
               set,
               guard(
                 `${id}'s check ahead of its turn`,
                 runTrain(made).pipe(Effect.provideContext(context)),
               ),
             )
-            run = made
+            yield* update((now) => ({ ...now, fibers: new Map(now.fibers).set(id, fiber) }))
           }
+          const run = yield* runOf(id)
           // On another commit than the one ahead as it is now, or not rebased onto it (yet).
-          const next = aheadOf(run.step)
-          if (run.onto !== onto || next === undefined) break
+          const next = run === undefined ? undefined : aheadOf(run.step)
+          if (run?.onto !== onto || next === undefined) break
           behind = ticket.branch
           onto = next
         }
@@ -518,38 +579,50 @@ export const make = (
     const watch: CheckWatch = {
       starts: (ticket, at) =>
         Effect.andThen(
-          Effect.sync(() => {
-            // The trains on another commit of its branch are stopped: it no longer merges so.
-            const was = checking
-            checking = { branch: ticket.branch, at }
-            return was !== undefined && was.at !== at
-          }),
-          (moved) => Effect.andThen(moved ? cancelAll : Effect.void, start),
+          lock.withPermit(
+            Effect.gen(function* () {
+              const was = yield* Ref.getAndUpdate(trains, (now) => ({
+                ...now,
+                checking: { branch: ticket.branch, at },
+              }))
+              // The trains on another commit of its branch are stopped: it no longer merges so.
+              if (was.checking !== undefined && was.checking.at !== at) {
+                yield* cancel(unboarded(was))
+              }
+            }),
+          ),
+          start,
         ),
       // Those on top of a branch that fails are stopped; on one that passes, they go on.
       ends: (passed) =>
         passed
           ? Effect.void
-          : Effect.andThen(
-              Effect.sync(() => {
-                checking = undefined
-              }),
-              cancelAll,
+          : lock.withPermit(
+              Effect.flatMap(
+                Ref.updateAndGet(trains, (now) => ({ ...now, checking: undefined })),
+                (now) => cancel(unboarded(now)),
+              ),
             ),
     }
 
     const leave: Effect.Effect<void> = lock
       .withPermit(
         Effect.gen(function* () {
-          stopped = true
-          checking = undefined
-          const left = [...runs.values()]
-          runs.clear()
-          ahead.clear()
-          for (const run of left) if (run.fiber !== undefined) yield* cancel(run)
-          for (const run of left) {
-            if (run.fiber !== undefined) yield* Fiber.await(run.fiber)
-            const { id, branch, worktree } = run.ticket
+          const was = yield* Ref.getAndUpdate(trains, (now) => ({
+            ...now,
+            stopped: true,
+            checking: undefined,
+            ahead: new Map(),
+          }))
+          const left = [...was.runs.keys()].filter((id) => !was.boarding.has(id))
+          yield* cancel(unboarded(was))
+          for (const id of left) {
+            const fiber = was.fibers.get(id)
+            if (fiber !== undefined) yield* Fiber.await(fiber)
+            // As its train left it.
+            const run = yield* runOf(id)
+            if (run === undefined) continue
+            const { branch, worktree } = run.ticket
             const at = yield* Effect.result(git.revParse(repo, branch))
             const back = Result.isSuccess(at) ? yield* putBack(run, at.success) : undefined
             const why = Result.isFailure(at)
@@ -571,6 +644,7 @@ export const make = (
               )`${id}: ${branch} could not be put back as its worker left it, at ${run.orig.slice(0, 7)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
             )
           }
+          yield* update((now) => withoutRuns(now, left))
           // Each stopped, or ended before it was: none shows.
           yield* SubscriptionRef.set(shown, new Map())
         }),
@@ -597,95 +671,119 @@ export const make = (
       }
     }
 
+    // The ticket's train, taken by its turn, once it has ended: `run` as it was taken.
+    const boarded = (
+      run: Run,
+      fiber: Fiber.Fiber<void>,
+      restore: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>,
+    ): Effect.Effect<Prepared | undefined, never, MergeEnv> =>
+      Effect.gen(function* () {
+        const { ticket } = run
+        const { id, branch, worktree } = ticket
+        // Where git can't say where the base is, the branch ahead is taken for one that didn't
+        // merge.
+        const merged = (at: Result.Result<string, unknown>) =>
+          Result.isSuccess(at) && at.success === run.onto
+        if (merged(yield* Effect.result(git.revParse(repo, base)))) {
+          // While it is checked, the tickets behind it may be checked ahead on top of it, as on
+          // the check of a ticket in its turn.
+          const next = aheadOf(((yield* runOf(id)) ?? run).step)
+          if (next !== undefined) {
+            yield* update((now) => ({ ...now, checking: { branch, at: next } }))
+            yield* start
+          }
+        } else yield* cancel([fiber])
+        const waited = yield* Effect.exit(restore(Fiber.await(fiber)))
+        yield* show(run, undefined)
+        if (Exit.isFailure(waited)) {
+          // Quitting, before its turn's merge began: put back for the next run. Its branch is read
+          // once its train has ended, as a rebase under way finishes first and moves it.
+          yield* cancel([fiber])
+          yield* Fiber.await(fiber)
+          const left = yield* Effect.result(git.revParse(repo, branch))
+          if (Result.isSuccess(left)) yield* putBack((yield* runOf(id)) ?? run, left.success)
+          return yield* Effect.interrupt
+        }
+        // As its train left it.
+        const ended = (yield* runOf(id)) ?? run
+        const at = yield* Effect.result(git.revParse(repo, branch))
+        if (Result.isFailure(at)) {
+          // The branch may have the commits of the branch ahead, which didn't merge.
+          const stop = yield* stopOver(
+            ticket,
+            "GIT_FAILED",
+            "git failed",
+            line`could not tell where ${branch} is, after it was rebased to be checked ahead of its turn: ${gitWhy(at.failure)}; ${branch} is not merged, its worktree ${worktree} left for review`,
+          )
+          return { _tag: "Over", stop } satisfies Prepared
+        }
+        const now = merged(yield* Effect.result(git.revParse(repo, base)))
+        const step = ended.step
+        if (step._tag === "Passed" && at.success === step.head && now) {
+          yield* memory.passes.set(id, step.head)
+          yield* clearUnchecked(id)
+          yield* clearAhead(id)
+          yield* log.write(
+            detail`${branch} was checked ahead of its turn on top of ${ended.behind}, which merged as it was checked: merging it with no further check`,
+          )
+          return undefined
+        }
+        const back = yield* putBack(ended, at.success)
+        yield* watch.ends(false)
+        const why = back === undefined ? undefined : notBack(worktree, back)
+        if (why !== undefined) {
+          yield* leaveForReview(id, {
+            why: Tag.rebaseFailed,
+            detail: "rebase failed",
+            text: ticketLine(
+              Tag.rebaseFailed,
+            )`${id} closed, but ${branch} could not be put back as its worker left it, at ${ended.orig.slice(0, 7)}, after it was rebased onto ${ended.behind} to be checked ahead of its turn: ${why}; worktree ${worktree} left for review`,
+          })
+          return { _tag: "Over" } satisfies Prepared
+        }
+        if (back === undefined) return undefined
+        const which = now
+          ? line`which merged as it was checked, but ${blame(step)}`
+          : "which did not merge as it was checked"
+        yield* log.write(
+          detail`${branch} was checked ahead of its turn on top of ${ended.behind}, ${which}: put back as its worker left it`,
+        )
+        return undefined
+      })
+
     const board = (ticket: FinishedTicket): Effect.Effect<Prepared | undefined> =>
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
-          const { id, branch, worktree } = ticket
-          const run = runs.get(id)
-          ahead.delete(id)
-          if (run === undefined) return undefined
-          runs.delete(id)
-          // Where git can't say where the base is, the branch ahead is taken for one that didn't
-          // merge.
-          const merged = (at: Result.Result<string, unknown>) =>
-            Result.isSuccess(at) && at.success === run.onto
-          if (merged(yield* Effect.result(git.revParse(repo, base)))) {
-            // While it is checked, the tickets behind it may be checked ahead on top of it, as on
-            // the check of a ticket in its turn.
-            const next = aheadOf(run.step)
-            if (next !== undefined) {
-              checking = { branch, at: next }
-              yield* start
-            }
-          } else yield* cancel(run)
-          const fiber = run.fiber as Fiber.Fiber<void>
-          const waited = yield* Effect.exit(restore(Fiber.await(fiber)))
-          yield* show(run, undefined)
-          if (Exit.isFailure(waited)) {
-            // Quitting, before its turn's merge began: put back for the next run. Its branch is read
-            // once its train has ended, as a rebase under way finishes first and moves it.
-            yield* cancel(run)
-            yield* Fiber.await(fiber)
-            const left = yield* Effect.result(git.revParse(repo, branch))
-            if (Result.isSuccess(left)) yield* putBack(run, left.success)
-            return yield* Effect.interrupt
-          }
-          const at = yield* Effect.result(git.revParse(repo, branch))
-          if (Result.isFailure(at)) {
-            // The branch may have the commits of the branch ahead, which didn't merge.
-            const stop = yield* stopOver(
-              ticket,
-              "GIT_FAILED",
-              "git failed",
-              line`could not tell where ${branch} is, after it was rebased to be checked ahead of its turn: ${gitWhy(at.failure)}; ${branch} is not merged, its worktree ${worktree} left for review`,
-            )
-            return { _tag: "Over", stop } satisfies Prepared
-          }
-          const now = merged(yield* Effect.result(git.revParse(repo, base)))
-          const step = run.step
-          if (step._tag === "Passed" && at.success === step.head && now) {
-            yield* memory.passes.set(id, step.head)
-            yield* clearUnchecked(id)
-            yield* clearAhead(id)
-            yield* log.write(
-              detail`${branch} was checked ahead of its turn on top of ${run.behind}, which merged as it was checked: merging it with no further check`,
-            )
-            return undefined
-          }
-          const back = yield* putBack(run, at.success)
-          yield* watch.ends(false)
-          const why = back === undefined ? undefined : notBack(worktree, back)
-          if (why !== undefined) {
-            yield* leaveForReview(id, {
-              why: Tag.rebaseFailed,
-              detail: "rebase failed",
-              text: ticketLine(
-                Tag.rebaseFailed,
-              )`${id} closed, but ${branch} could not be put back as its worker left it, at ${run.orig.slice(0, 7)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${why}; worktree ${worktree} left for review`,
-            })
-            return { _tag: "Over" } satisfies Prepared
-          }
-          if (back === undefined) return undefined
-          const which = now
-            ? line`which merged as it was checked, but ${blame(step)}`
-            : "which did not merge as it was checked"
-          yield* log.write(
-            detail`${branch} was checked ahead of its turn on top of ${run.behind}, ${which}: put back as its worker left it`,
+          const { id } = ticket
+          // Taken under the lock, so that no train is started or left meanwhile: it is no longer in
+          // line, and its train, if it has one, is its turn's from then on.
+          const taken = yield* lock.withPermit(
+            Ref.modify(trains, (now): [readonly [Run, Fiber.Fiber<void>] | undefined, Trains] => {
+              const ahead = new Map(now.ahead)
+              ahead.delete(id)
+              const run = now.runs.get(id)
+              const fiber = now.fibers.get(id)
+              if (run === undefined || fiber === undefined) {
+                return [undefined, withoutRuns({ ...now, ahead }, [id])]
+              }
+              return [[run, fiber], { ...now, ahead, boarding: new Set(now.boarding).add(id) }]
+            }),
           )
-          return undefined
+          if (taken === undefined) return undefined
+          return yield* boarded(taken[0], taken[1], restore).pipe(
+            Effect.ensuring(update((now) => withoutRuns(now, [id]))),
+          )
         }),
       ).pipe(Effect.provideContext(context))
 
     return {
       ...watch,
       mayCheckAhead: (ticket) =>
-        Effect.sync(() => {
-          if (!stopped) ahead.set(ticket.id, ticket)
-        }),
+        update((now) =>
+          now.stopped ? now : { ...now, ahead: new Map(now.ahead).set(ticket.id, ticket) },
+        ),
       start,
-      holderDone: Effect.sync(() => {
-        checking = undefined
-      }),
+      holderDone: update((now) => ({ ...now, checking: undefined })),
       board,
       leave,
       checksAhead: SubscriptionRef.changes(shown),
