@@ -52,7 +52,7 @@ import {
   sectionLines,
 } from "./Card.tsx"
 import { EndOfRunBox, endOfRunLines } from "./EndOfRunBox.tsx"
-import { Hint, hintSegments } from "./Hint.tsx"
+import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, type KeyBinding, useInput, useLayer } from "./keys.ts"
 import { LoadLine, loadSegments } from "./LoadLine.tsx"
@@ -112,8 +112,8 @@ export interface DashboardLayout {
   readonly windDown: number
   /** The warning lines that fit. */
   readonly warnings: ReadonlyArray<Segments>
-  /** The hint's line. */
-  readonly hint: number
+  /** The hint's lines that fit, every key it names, wrapped as the views wrap theirs (§ 7.5). */
+  readonly hint: ReadonlyArray<Segments>
 }
 
 /**
@@ -125,6 +125,8 @@ export interface DashboardLayout {
  * tableLines), or left out where that doesn't fit (beside the box, where its fewest don't); then
  * the blank line over the load line, the first to go, before any line with something on it; and
  * Current, or the box, takes the rest. Below the minimum size, the hint and the totals on one line.
+ * The hint is laid out with `d` and `a` where a request's buttons may be drawn; where they aren't
+ * (drawnHint), a hint the shorter for it gives its lines to the blank ones above the foot.
  */
 export const dashboardLayout = (
   view: RunView,
@@ -140,7 +142,10 @@ export const dashboardLayout = (
     return got
   }
   const small = width < minWidth || height < minHeight
-  const hint = take(1)
+  const hintOf = (buttons: boolean) => hintLines(drawnHint(view.hint, buttons), theme, width)
+  // Below the minimum size and behind the end-of-run box no card's buttons are drawn.
+  const allHint = hintOf(!small && view.endOfRun === null)
+  const hint = allHint.slice(0, take(allHint.length))
   const allTotals = totalsLines(view.totals, theme, width, small)
   if (small) {
     const totals = allTotals.slice(0, take(allTotals.length))
@@ -178,7 +183,11 @@ export const dashboardLayout = (
   }
   const layout = layoutOf(cards, width, room)
   const current = Math.min(sectionLines(layout, cards.length), room)
-  return { ...drawn, current, cards: layout, ending: null, spare: room - current }
+  const spare = room - current
+  if (layout._tag === "Cards") return { ...drawn, current, cards: layout, ending: null, spare }
+  const fewer = hintOf(false).slice(0, hint.length)
+  const freed = hint.length - fewer.length
+  return { ...drawn, hint: fewer, current, cards: layout, ending: null, spare: spare + freed }
 }
 
 /**
@@ -291,7 +300,6 @@ export const Dashboard = () => {
     ...[1, 2, 3, 4].flatMap((n) => key([String(n)], pick(n))),
   ])
 
-  const hint = hintSegments(drawnHint(view.hint, buttons), theme, width)
   if (small) {
     return (
       <box flexDirection="column" width={width} height={height}>
@@ -299,8 +307,8 @@ export const Dashboard = () => {
           <Totals lines={laid.totals} />
         </Section>
         <Section lines={laid.spare} />
-        <Section lines={laid.hint}>
-          <Hint segments={hint} />
+        <Section lines={laid.hint.length}>
+          <Lines lines={laid.hint} />
         </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} /> : null}
       </box>
@@ -348,8 +356,8 @@ export const Dashboard = () => {
       <Section lines={laid.warnings.length}>
         <Lines lines={laid.warnings} />
       </Section>
-      <Section lines={laid.hint}>
-        <Hint segments={hint} />
+      <Section lines={laid.hint.length}>
+        <Lines lines={laid.hint} />
       </Section>
       {help ? <KeyHelp theme={theme} width={width} height={height} /> : null}
     </box>

@@ -127,7 +127,7 @@ const sectionsOf = (laid: DashboardLayout): ReadonlyArray<number> => [
   laid.spare,
   laid.windDown,
   laid.warnings.length,
-  laid.hint,
+  laid.hint.length,
 ]
 
 describe("dashboardLayout", () => {
@@ -145,7 +145,7 @@ describe("dashboardLayout", () => {
           expect(laid.warnings.length).toBeLessThanOrEqual(view.warnings.length)
           if (laid.small) return
           // The pane at its minimum holds the title, the totals, the foot and Current at its fewest.
-          expect([laid.title, laid.load, laid.windDown, laid.hint]).toEqual([2, 1, 1, 1])
+          expect([laid.title, laid.load, laid.windDown, laid.hint.length]).toEqual([2, 1, 1, 1])
           expect(laid.table === 0 || laid.table >= fewestTableLines).toBe(true)
           if (laid.table > 0) {
             expect(ticketsLines(view.rows, theme, width, laid.table)).toHaveLength(laid.table)
@@ -176,7 +176,7 @@ describe("dashboardLayout", () => {
   test("below the minimum size, only the totals and the hint", () => {
     const laid = dashboardLayout(emptyView, theme, 59, 30)
     expect(laid.small).toBe(true)
-    expect([laid.totals.length, laid.hint, laid.spare]).toEqual([1, 1, 28])
+    expect([laid.totals.length, laid.hint.length, laid.spare]).toEqual([1, 1, 28])
     expect(dashboardLayout(emptyView, theme, 80, 1).totals).toHaveLength(0)
   })
 
