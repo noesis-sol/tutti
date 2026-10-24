@@ -1,11 +1,12 @@
 // init's plain output sanitised (§ 7.10): a step's plain line (stepLine), which may carry bd's
-// stderr, and init's lines on stderr, which may name an unknown key from a committed settings file,
+// stderr, the plain summary's Next lines, which may repeat it, and init's lines on stderr, which may name an unknown key from a committed settings file,
 // keep no escape sequence or control character a terminal would act on; a refusal keeps its lines.
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { failedEnding, stderrText } from "../src/cli/commands.ts"
+import { summaryLines } from "../src/init/init.ts"
 import { InitFailed, step, stepLine } from "../src/init/steps.ts"
 import { testEnv } from "./env.ts"
 import { slow } from "./gates.ts"
@@ -36,6 +37,20 @@ describe("a step's plain line", () => {
   test("a step with plain text as it was", () => {
     expect(stepLine(step("done", "Beads", "ran bd init"))).toBe("✓ Beads  ran bd init")
     expect(stepLine(step("kept", "settings", ""))).toBe("• settings")
+  })
+})
+
+describe("the plain summary's Next lines", () => {
+  test("a missing step's detail repeated there sanitised, each line kept", () => {
+    const lines = summaryLines({
+      steps: [step("missing", "settings", `unknown key "${hostile}"`)],
+      next: [`Fix what's missing above (settings: unknown key "${hostile}").`, "Then\nrun tutti."],
+      ready: false,
+    })
+    for (const line of lines) expect(controls(line)).toBe(false)
+    expect(lines).toContain(`  Fix what's missing above (settings: unknown key "red evil  over").`)
+    expect(lines).toContain("  Then")
+    expect(lines).toContain("  run tutti.")
   })
 })
 

@@ -48,6 +48,7 @@ import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
 import { TimeLimit } from "../services/exec.ts"
 import { RunLock } from "../services/RunLock.ts"
 import type { FormCancelled } from "../ui/questions.ts"
+import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import {
   applySkill,
@@ -1110,7 +1111,10 @@ export const signOff = (ready: boolean): string =>
 /** What init says when its form was cancelled. */
 export const cancelledLine = "Cancelled; nothing was changed."
 
-/** The summary as plain lines: the steps, then what's left for you, then the sign-off. */
+/**
+ * The summary as plain lines: the steps, then what's left for you, then the sign-off; what's left
+ * sanitised a line each (§ 7.10), as it may repeat a missing step's detail.
+ */
 export const summaryLines = (summary: InitSummary): ReadonlyArray<string> => [
   ...summary.steps.map(stepLine),
   ...(summary.next.length === 0
@@ -1118,7 +1122,9 @@ export const summaryLines = (summary: InitSummary): ReadonlyArray<string> => [
     : [
         "",
         "Next:",
-        ...summary.next.flatMap((line) => line.split("\n").map((part) => `  ${part}`)),
+        ...summary.next.flatMap((line) =>
+          line.split("\n").map((part) => `  ${sanitizeLine(part)}`),
+        ),
       ]),
   "",
   signOff(summary.ready),
