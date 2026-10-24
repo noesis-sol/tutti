@@ -15,16 +15,17 @@
 // where the permission mode sees them (the classifier, a person, Bash's rules and the sandbox), in
 // the workers' environment; tutti running them, the permission request would show only the tool's
 // input, the entries' names. Each session gets a server of its own (an SDK server serves one
-// session), made for its worktree; the handlers run with the services the maker was given, and stop
-// with the call (its abort signal). A list the settings refuse, a name not in it, or a README whose
-// markers don't pair is a tool error saying why.
+// session), made for its worktree; the handlers run in the session's fibers with the services the
+// maker was given, and stop with the call (its abort signal), as both servers' do (callbacks.ts). A
+// list the settings refuse, a name not in it, a README whose markers don't pair, or a defect, is a
+// tool error saying why.
 import {
   createSdkMcpServer,
   type McpSdkServerConfigWithInstance,
   type SdkMcpToolDefinition,
   tool,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Effect, type FileSystem, Predicate } from "effect"
+import { Effect, type FileSystem } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { z } from "zod"
 import {
@@ -42,6 +43,7 @@ import {
   sameRequires,
   says,
 } from "../run/requires.ts"
+import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "./callbacks.ts"
 import { serverName } from "./interviewTools.ts"
 
 /** The worker's server's name, the interview's: its tools are `mcp__tutti__<name>` to Claude Code. */
@@ -65,18 +67,6 @@ export interface RequiresTools {
   readonly server: McpSdkServerConfigWithInstance
 }
 
-type Answer = Awaited<ReturnType<SdkMcpToolDefinition["handler"]>>
-
-const answer = (text: string): Answer => ({ content: [{ type: "text", text }] })
-
-const refusal = (text: string): Answer => ({ content: [{ type: "text", text }], isError: true })
-
-/** The abort signal an MCP call's `extra` carries, if it carries one. */
-const signalOf = (extra: unknown): AbortSignal | undefined => {
-  const signal = Predicate.hasProperty(extra, "signal") ? extra.signal : undefined
-  return signal instanceof AbortSignal ? signal : undefined
-}
-
 /** The worktree's settings, or the refusal saying what is wrong with them, as `tutti requires` says it. */
 const settingsIn = (worktree: string) =>
   Effect.map(Effect.result(readSettings(worktree)), (read) =>
@@ -84,7 +74,7 @@ const settingsIn = (worktree: string) =>
       ? read
       : {
           _tag: "Failure" as const,
-          failure: refusal(
+          failure: toolRefusal(
             read.failure.problems
               .map(
                 (problem) =>
@@ -147,12 +137,13 @@ export const checkIn = (
     if (unknown.length > 0) {
       const has =
         list.length === 0 ? "it has no entries" : `it has ${list.map((r) => r.name).join(", ")}`
-      return refusal(
+      return toolRefusal(
         `Not in the requires list in ${settingsFile}: ${unknown.join(", ")}; ${has}. Add an entry for it there first.`,
       )
     }
     const due = names.length === 0 ? list : list.filter((r) => names.includes(r.name))
-    if (due.length === 0) return answer(`No requirements: ${settingsFile} has no 'requires' list.`)
+    if (due.length === 0)
+      return toolAnswer(`No requirements: ${settingsFile} has no 'requires' list.`)
     // The main checkout's list; none where it can't be read, so that tutti runs nothing then.
     const read = yield* Effect.result(readSettings(repo))
     const base = read._tag === "Success" ? read.success.requires : []
@@ -175,7 +166,7 @@ export const checkIn = (
     })
     const yours = due.some((r) => !found.has(r) && appliesOn(r, process.platform))
     const missing = missingOf(report).map((res) => res.requirement.name)
-    return answer(
+    return toolAnswer(
       [
         ...lines,
         ...(missing.length === 0
@@ -198,8 +189,8 @@ export const readmeIn = (worktree: string) =>
     const settings = yield* settingsIn(worktree)
     if (settings._tag === "Failure") return settings.failure
     const written = yield* Effect.result(writeReadmeRequires(worktree, settings.success.requires))
-    if (written._tag === "Failure") return refusal(written.failure)
-    return answer(
+    if (written._tag === "Failure") return toolRefusal(written.failure)
+    return toolAnswer(
       written.success
         ? `Wrote the requires list into ${readmeName}, between ${requiresStart} and ${requiresEnd}: commit it with the list.`
         : `${readmeName}'s section is the requires list's already.`,
@@ -208,25 +199,16 @@ export const readmeIn = (worktree: string) =>
 
 /**
  * The requires tools of the worker in `worktree`, the main checkout at `repo`, and the server over
- * them. Their handlers run with the services they were made with.
+ * them. Their handlers run in the session's `fibers` (toolHandler), with the services they were made
+ * with.
  */
 export const makeRequiresTools = (
   repo: string,
   worktree: string,
+  fibers: SessionFibers,
 ): Effect.Effect<RequiresTools, never, RequiresToolsServices> =>
   Effect.gen(function* () {
-    const context = yield* Effect.context<RequiresToolsServices>()
-    const run = (effect: Effect.Effect<Answer, never, RequiresToolsServices>, extra: unknown) => {
-      const signal = signalOf(extra)
-      return Effect.runPromiseWith(context)(
-        effect.pipe(
-          Effect.catchCause((cause) =>
-            Effect.succeed(refusal(`tutti couldn't do it: ${Cause.pretty(cause)}`)),
-          ),
-        ),
-        signal === undefined ? undefined : { signal },
-      )
-    }
+    const run = yield* toolHandler<RequiresToolsServices>(fibers)
 
     const check = tool(
       "requires_check",
@@ -256,14 +238,15 @@ export const makeRequiresTools = (
 
 /**
  * The maker of a worker's server for the live AgentHost's ownServer, the main checkout at `repo`:
- * for each worktree, its requires tools' server, run with the services this was given.
+ * for each worktree, its requires tools' server, run in the session's fibers with the services this
+ * was given.
  */
 export const requiresServerFor = (repo: string) =>
   Effect.map(
     Effect.context<RequiresToolsServices>(),
     (context) =>
-      (worktree: string): Effect.Effect<McpSdkServerConfigWithInstance> =>
-        makeRequiresTools(repo, worktree).pipe(
+      (worktree: string, fibers: SessionFibers): Effect.Effect<McpSdkServerConfigWithInstance> =>
+        makeRequiresTools(repo, worktree, fibers).pipe(
           Effect.map((tools) => tools.server),
           Effect.provideContext(context),
         ),

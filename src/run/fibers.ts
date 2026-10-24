@@ -8,6 +8,8 @@
 // ticket's watchers while its worker settles (work.ts's watchLimit and timeLimit, settle.ts's
 // undeferAtLimit), the view's projection (runView.ts), the screen's followers (screen.ts), the
 // interview's (interview.ts), the keep-awake command (keepAwake.ts) and the SIGTSTP log (quit.ts).
+// So does a session's own FiberSet, in the session's scope, that the SDK's callbacks run in
+// (src/agent/callbacks.ts).
 import { Context, Effect, FiberSet, Layer, type Scope } from "effect"
 
 /** A registered set that still holds fibers. */

@@ -12,6 +12,7 @@ import {
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
+import { openFibers } from "./fibers.ts"
 
 // Allow for this run passes only the addRules suggestions that allow (§ 4.5): in the session spike
 // a Write suggested only setMode acceptEdits, and passing setMode back switched the session to
@@ -26,7 +27,7 @@ const requestFor = (
   Effect.runPromise(
     Effect.gen(function* () {
       const attention = yield* Attention
-      const canUseTool = yield* attention.request("tut-1")
+      const canUseTool = yield* attention.request("tut-1", openFibers())
       const controller = new AbortController()
       const sdk = {
         signal: controller.signal,

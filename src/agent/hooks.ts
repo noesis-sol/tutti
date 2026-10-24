@@ -1,7 +1,7 @@
 // A worker's in-process hook callbacks (§ 4.2): PreToolUse, PostToolUse, PostToolUseFailure,
 // PermissionDenied, SubagentStart, SubagentStop and PreCompact. They tell tutti what the worker is doing and when it compacts. They
 // run while the tool call waits, so each returns at once with no decision ({}), records in a fiber
-// of its own, and never fails: an error inside one, thrown or failed, is logged and swallowed, as
+// of the session's FiberSet (callbacks.ts), and never fails: an error inside one, thrown or failed, is logged and swallowed, as
 // orchestra's hooks always exit 0.
 //
 // One more PreToolUse callback, matcher Agent, keeps the verifier in the foreground (§ 4.1): agents
@@ -18,7 +18,8 @@ import type {
   HookJSONOutput,
   PreCompactHookInput,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Effect, Predicate } from "effect"
+import { Cause, Effect, FiberSet, Predicate } from "effect"
+import type { SessionFibers } from "./callbacks.ts"
 
 /** The hook events a worker's activity comes from. */
 export const activityEvents = [
@@ -77,17 +78,17 @@ export const hookFailed = (ticket: string, event: string, cause: string): string
   `${ticket}'s ${event} hook failed to record: ${cause}`
 
 /**
- * The hook callbacks of `ticket`'s worker, recording to `recorder` in the current context, with
- * the verifier's PreToolUse callback after its activity one. `warn` is told of a failure to
- * record; Effect's logger is by default.
+ * The hook callbacks of `ticket`'s worker, recording to `recorder` in the current context as fibers
+ * of the session's `fibers`, with the verifier's PreToolUse callback after its activity one. `warn`
+ * is told of a failure to record; Effect's logger is by default.
  */
 export const activityHooks = (
   ticket: string,
   recorder: Recorder,
+  fibers: SessionFibers,
   warn: (message: string) => Effect.Effect<void> = (message) => Effect.logWarning(message),
 ): Effect.Effect<Hooks> =>
-  Effect.map(Effect.context<never>(), (context) => {
-    const run = Effect.runForkWith(context)
+  Effect.map(FiberSet.runtime(fibers)(), (run) => {
     const record = (input: HookInput, recording: () => Effect.Effect<void, unknown>) =>
       Effect.suspend(recording).pipe(
         Effect.catchCause((cause) =>

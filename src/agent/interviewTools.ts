@@ -8,8 +8,9 @@
 //   does, and answers with the epic's ID. There is no feature.json: what was filed is kept in
 //   `filing`, which the interview watches.
 //
-// Each handler runs an Effect with the services it was made with and answers in text; a call tutti
-// refuses, or one bd fails, is a tool error saying why. file_feature files once: a call while
+// Each handler runs an Effect in the interview's fibers, with the services it was made with, and
+// answers in text, stopping with the call, as the workers' requires tools do (callbacks.ts); a call
+// tutti refuses, one bd fails, or a defect, is a tool error saying why. file_feature files once: a call while
 // another files, or after one filed something, is refused, so a feature is never filed twice.
 import {
   createSdkMcpServer,
@@ -32,6 +33,7 @@ import {
 } from "../project/planFile.ts"
 import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
+import { type SessionFibers, toolAnswer, toolHandler, toolRefusal } from "./callbacks.ts"
 
 /** The interview's MCP server's name: its tools are `mcp__tutti__<name>` to Claude Code. */
 export const serverName = "tutti"
@@ -72,12 +74,6 @@ export interface InterviewTools {
   readonly server: McpSdkServerConfigWithInstance
   readonly filing: SubscriptionRef.SubscriptionRef<Filing>
 }
-
-type Answer = Awaited<ReturnType<SdkMcpToolDefinition["handler"]>>
-
-const answer = (text: string): Answer => ({ content: [{ type: "text", text }] })
-
-const refusal = (text: string): Answer => ({ content: [{ type: "text", text }], isError: true })
 
 /** One line of tickets_list: ID, status, priority, type, title, and the epic it is under. */
 export const ticketLine = (issue: Issue): string =>
@@ -181,18 +177,17 @@ export const filedText = (plan: FeaturePlan, filed: FiledPlan): string =>
 
 /**
  * The interview's tools for the main checkout `repo`, and the server over them. Their handlers run
- * with the Beads and Git they were made with.
+ * in the interview's `fibers` (toolHandler), with the Beads and Git they were made with.
  */
 export const makeInterviewTools = (
   repo: string,
+  fibers: SessionFibers,
 ): Effect.Effect<InterviewTools, never, Beads | Git> =>
   Effect.gen(function* () {
-    const context = yield* Effect.context<Beads | Git>()
     const beads = yield* Beads
     const git = yield* Git
     const filing = yield* SubscriptionRef.make<Filing>(Filing.None())
-    const run = (effect: Effect.Effect<Answer, never, Beads | Git>) =>
-      Effect.runPromiseWith(context)(effect)
+    const run = yield* toolHandler<Beads | Git>(fibers)
 
     const ticketsList = tool(
       "tickets_list",
@@ -205,7 +200,7 @@ export const makeInterviewTools = (
         parent: z.string().optional().describe("Only the subtickets of this epic"),
         all: z.boolean().optional().describe("Closed tickets too"),
       },
-      (args) =>
+      (args, extra) =>
         run(
           beads
             .list({
@@ -215,7 +210,7 @@ export const makeInterviewTools = (
             })
             .pipe(
               Effect.map((issues) =>
-                answer(
+                toolAnswer(
                   issues.length === 0
                     ? "No tickets."
                     : [
@@ -227,9 +222,10 @@ export const makeInterviewTools = (
                 ),
               ),
               Effect.catch((error) =>
-                Effect.succeed(refusal(`bd couldn't list the tickets: ${beadsWhy(error)}`)),
+                Effect.succeed(toolRefusal(`bd couldn't list the tickets: ${beadsWhy(error)}`)),
               ),
             ),
+          extra,
         ),
       { annotations: { readOnlyHint: true } },
     )
@@ -238,14 +234,15 @@ export const makeInterviewTools = (
       "ticket_show",
       "Shows one Beads ticket: its fields, description, design, acceptance criteria and notes.",
       { id: z.string().describe("The ticket's ID") },
-      (args) =>
+      (args, extra) =>
         run(
           beads.show(args.id).pipe(
-            Effect.map((issue) => answer(ticketText(issue))),
+            Effect.map((issue) => toolAnswer(ticketText(issue))),
             Effect.catch((error) =>
-              Effect.succeed(refusal(`bd couldn't show ${args.id}: ${beadsWhy(error)}`)),
+              Effect.succeed(toolRefusal(`bd couldn't show ${args.id}: ${beadsWhy(error)}`)),
             ),
           ),
+          extra,
         ),
       { annotations: { readOnlyHint: true } },
     )
@@ -254,7 +251,7 @@ export const makeInterviewTools = (
       "file_feature",
       "Files the feature the user agreed to: the epic, its tickets as the epic's children, and the links between them. tutti checks the proposal first and files nothing if it refuses it. Answers with the epic's ID. Call it once.",
       featureShape,
-      (args) => run(fileOnce(args)),
+      (args, extra) => run(fileOnce(args), extra),
     )
 
     /** file_feature: checks the proposal, then files it, once. */
@@ -265,13 +262,15 @@ export const makeInterviewTools = (
         )
         switch (before._tag) {
           case "Filing":
-            return refusal("The feature is being filed by another call; nothing more was filed.")
+            return toolRefusal(
+              "The feature is being filed by another call; nothing more was filed.",
+            )
           case "Filed":
-            return refusal(
+            return toolRefusal(
               `The feature is already filed as epic ${before.filed.epic}; nothing more was filed.`,
             )
           case "Stopped":
-            return refusal(
+            return toolRefusal(
               "Filing the feature already stopped partway; nothing more was filed. Tell the user what was filed.",
             )
         }
@@ -281,7 +280,7 @@ export const makeInterviewTools = (
         const checked = validatePlan(planOf(input), tracked)
         if (Result.isFailure(checked)) {
           yield* SubscriptionRef.set(filing, Filing.None())
-          return refusal(
+          return toolRefusal(
             [
               "tutti refused the proposal; nothing was filed. Fix these and call file_feature again:",
               ...checked.failure.map((reason) => `- ${reason}`),
@@ -294,10 +293,10 @@ export const makeInterviewTools = (
           const failed = filed.failure
           const nothing = failed.filed.length === 0 && !failed.mayHaveFiled
           yield* SubscriptionRef.set(filing, nothing ? Filing.None() : Filing.Stopped({ failed }))
-          return refusal(filingFailedLines(failed).join("\n"))
+          return toolRefusal(filingFailedLines(failed).join("\n"))
         }
         yield* SubscriptionRef.set(filing, Filing.Filed({ plan, filed: filed.success }))
-        return answer(filedText(plan, filed.success))
+        return toolAnswer(filedText(plan, filed.success))
       }).pipe(
         // Once started, filing runs to its end, so `filing` always says what was filed.
         Effect.uninterruptible,

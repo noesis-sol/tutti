@@ -6,6 +6,7 @@ import { Attention, type AttentionRequest, allowsForRun } from "../src/agent/Att
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
+import { openFibers } from "./fibers.ts"
 
 // In default mode a removal the safety check holds reaches canUseTool with decisionReasonType
 // "safetyCheck" and suppressAlwaysAllowRule, but without defaultToNo (§ 4.5, the session spike).
@@ -15,7 +16,7 @@ const requestFor = (command: string, options: Record<string, unknown>) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const attention = yield* Attention
-      const canUseTool = yield* attention.request("tut-1")
+      const canUseTool = yield* attention.request("tut-1", openFibers())
       const controller = new AbortController()
       const sdk = {
         signal: controller.signal,

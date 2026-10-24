@@ -4,7 +4,16 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import type { CanUseTool, OnElicitation } from "@anthropic-ai/claude-agent-sdk"
 import { BunServices } from "@effect/platform-bun"
-import { Deferred, Duration, Effect, Layer, Schedule, Stream, SubscriptionRef } from "effect"
+import {
+  Deferred,
+  Duration,
+  Effect,
+  Layer,
+  Schedule,
+  type Scope,
+  Stream,
+  SubscriptionRef,
+} from "effect"
 import fc from "fast-check"
 import { AgentHost, type Session } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
@@ -58,6 +67,7 @@ import { layer as memoryGit } from "../src/testing/Git.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { openFibers } from "./fibers.ts"
 
 /** A new folder, its real path: the main checkout, where .tutti/run/ is written. */
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-interview-")))
@@ -113,7 +123,7 @@ const withTools = <A, E>(
   const backlog = beadsLayer(options.seeds ?? [])
   const beads = options.beads === undefined ? backlog : Layer.provideMerge(options.beads, backlog)
   return Effect.runPromise(
-    Effect.flatMap(makeInterviewTools("/repo"), effect).pipe(
+    Effect.flatMap(makeInterviewTools("/repo", openFibers()), effect).pipe(
       Effect.provide(Layer.mergeAll(beads, memoryGit({ dir: "/repo", files: repoFiles }))),
     ),
   )
@@ -132,7 +142,7 @@ describe("interviewOptions", () => {
 
   const optionsFor = (askUserQuestion: boolean, resume = false) =>
     Effect.runPromise(
-      Effect.map(makeInterviewTools("/work/project"), (tools) => {
+      Effect.map(makeInterviewTools("/work/project", openFibers()), (tools) => {
         const base = appConfig({}, "/work/project")
         const config = {
           ...base,
@@ -517,13 +527,18 @@ describe("startInterview, with the scripted host", () => {
     effect: (
       repo: string,
       ready: Deferred.Deferred<InterviewTools>,
-    ) => Effect.Effect<A, E, AgentHost | Recording | Backlog | Beads | AppConfig | Git>,
+    ) => Effect.Effect<
+      A,
+      E,
+      AgentHost | Recording | Backlog | Beads | AppConfig | Git | Scope.Scope
+    >,
   ) => {
     const repo = folder()
     return Effect.runPromise(
       Effect.gen(function* () {
         const ready = yield* Deferred.make<InterviewTools>()
         return yield* effect(repo, ready).pipe(
+          Effect.scoped,
           Effect.provide(
             scriptedHost({ [interviewWorker]: script(ready) }).pipe(
               Layer.provideMerge(
@@ -761,6 +776,7 @@ describe("the interview's session, with the live host over the fake Claude Code"
           .find((r) => r?.subtype === "initialize")
         return { args, initialize, state }
       }).pipe(
+        Effect.scoped,
         Effect.provide(
           host.pipe(
             Layer.provideMerge(

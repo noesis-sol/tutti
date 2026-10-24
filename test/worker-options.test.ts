@@ -28,6 +28,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { Files, layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { openFibers } from "./fibers.ts"
 
 const canUseTool: CanUseTool = async () => ({ behavior: "allow" })
 const onElicitation: OnElicitation = async () => ({ action: "decline" })
@@ -277,7 +278,11 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 describe("activityHooks", () => {
   test("covers § 4.2's events, each with one callback for every tool", async () => {
     const hooks = await Effect.runPromise(
-      activityHooks("t", { activity: () => Effect.void, compaction: () => Effect.void }),
+      activityHooks(
+        "t",
+        { activity: () => Effect.void, compaction: () => Effect.void },
+        openFibers(),
+      ),
     )
     expect(Object.keys(hooks).sort()).toEqual([...activityEvents].sort())
     for (const event of activityEvents) {
@@ -292,10 +297,14 @@ describe("activityHooks", () => {
     const activity: Array<string> = []
     const compactions: Array<string> = []
     const hooks = await Effect.runPromise(
-      activityHooks("t", {
-        activity: (input) => Effect.sync(() => activity.push(input.hook_event_name)),
-        compaction: (input) => Effect.sync(() => compactions.push(input.trigger)),
-      }),
+      activityHooks(
+        "t",
+        {
+          activity: (input) => Effect.sync(() => activity.push(input.hook_event_name)),
+          compaction: (input) => Effect.sync(() => compactions.push(input.trigger)),
+        },
+        openFibers(),
+      ),
     )
     expect(await callbackFor(hooks, "PreToolUse")(preToolUse, "toolu_1", signal)).toEqual({})
     expect(await callbackFor(hooks, "PreCompact")(preCompact, undefined, signal)).toEqual({})
@@ -307,16 +316,20 @@ describe("activityHooks", () => {
   test("returns {} at once while recording is still going on", async () => {
     let started = false
     const hooks = await Effect.runPromise(
-      activityHooks("t", {
-        activity: () =>
-          Effect.andThen(
-            Effect.sync(() => {
-              started = true
-            }),
-            Effect.never,
-          ),
-        compaction: () => Effect.never,
-      }),
+      activityHooks(
+        "t",
+        {
+          activity: () =>
+            Effect.andThen(
+              Effect.sync(() => {
+                started = true
+              }),
+              Effect.never,
+            ),
+          compaction: () => Effect.never,
+        },
+        openFibers(),
+      ),
     )
     const result = await Promise.race([
       callbackFor(hooks, "PreToolUse")(preToolUse, "toolu_1", signal),
@@ -353,7 +366,7 @@ describe("activityHooks", () => {
     test(`a recorder that ${how} is logged, and the callback still returns {}`, async () => {
       const warnings: Array<string> = []
       const hooks = await Effect.runPromise(
-        activityHooks("tutti-abc.1", recorder, (message) =>
+        activityHooks("tutti-abc.1", recorder, openFibers(), (message) =>
           Effect.sync(() => warnings.push(message)),
         ),
       )
@@ -377,6 +390,7 @@ describe("activityHooks", () => {
           activity: () => Effect.fail("no state"),
           compaction: (input) => Effect.sync(() => compactions.push(input.trigger)),
         },
+        openFibers(),
         () => Effect.void,
       ),
     )
@@ -387,8 +401,11 @@ describe("activityHooks", () => {
 
   test("a warning that fails too is swallowed", async () => {
     const hooks = await Effect.runPromise(
-      activityHooks("t", { activity: () => Effect.fail("no"), compaction: () => Effect.void }, () =>
-        Effect.die("the log is gone"),
+      activityHooks(
+        "t",
+        { activity: () => Effect.fail("no"), compaction: () => Effect.void },
+        openFibers(),
+        () => Effect.die("the log is gone"),
       ),
     )
     expect(await callbackFor(hooks, "PostToolUse")(preToolUse, "toolu_1", signal)).toEqual({})
@@ -410,6 +427,7 @@ describe("activityHooks", () => {
                 activity: () => outcomes[outcome] ?? Effect.void,
                 compaction: () => outcomes[outcome] ?? Effect.void,
               },
+              openFibers(),
               () => Effect.void,
             ),
           )
@@ -426,10 +444,14 @@ describe("workerCallbacks", () => {
     const recorded: Array<string> = []
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const callbacks = yield* workerCallbacks("tutti-abc.1", {
-          activity: (input) => Effect.sync(() => recorded.push(input.hook_event_name)),
-          compaction: () => Effect.void,
-        })
+        const callbacks = yield* workerCallbacks(
+          "tutti-abc.1",
+          {
+            activity: (input) => Effect.sync(() => recorded.push(input.hook_event_name)),
+            compaction: () => Effect.void,
+          },
+          openFibers(),
+        )
         callbacks.stderr("warning: something\n")
         const files = yield* Files
         expect(

@@ -9,6 +9,7 @@ import {
   verifierAgent,
   verifierMatcher,
 } from "../src/agent/hooks.ts"
+import { openFibers } from "./fibers.ts"
 
 const signal = { signal: new AbortController().signal }
 
@@ -32,7 +33,11 @@ const verifierCall = {
 /** The verifier's matcher among the hooks activityHooks gives. */
 const verifierHooks = async () => {
   const hooks: Hooks = await Effect.runPromise(
-    activityHooks("t", { activity: () => Effect.void, compaction: () => Effect.void }),
+    activityHooks(
+      "t",
+      { activity: () => Effect.void, compaction: () => Effect.void },
+      openFibers(),
+    ),
   )
   return hooks.PreToolUse?.filter((matcher) => matcher.matcher !== undefined) ?? []
 }

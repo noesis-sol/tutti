@@ -11,6 +11,7 @@ import { Effect } from "effect"
 import fc from "fast-check"
 import { checkIn, makeRequiresTools, yoursToRun } from "../src/agent/requiresTools.ts"
 import type { Requirement } from "../src/project/settings.ts"
+import { openFibers } from "./fibers.ts"
 
 const run = <A, E>(effect: Effect.Effect<A, E, BunServices.BunServices>) =>
   Effect.runPromise(effect.pipe(Effect.provide(BunServices.layer)))
@@ -120,7 +121,7 @@ describe("requires_check on a branch's entries", () => {
   test("the worker's server answers so too", async () => {
     const repo = checkout([])
     const worktree = checkout([tell("x")])
-    const tools = await run(makeRequiresTools(repo, worktree))
+    const tools = await run(makeRequiresTools(repo, worktree, openFibers()))
     const check = tools.tools[0]
     if (check === undefined) throw new Error("no requires_check")
     expect(said(await check.handler({}, {}))).toContain("x: new on your branch")

@@ -18,7 +18,7 @@
 // and offers the epic and its tickets with `Start the run on <epic> (N tickets)? [y/N]`; the
 // Interview view (src/ui/InterviewView.tsx) shows the chat and the question.
 import { randomUUID } from "node:crypto"
-import { Data, Effect, Option, Ref, Result, Stream, SubscriptionRef } from "effect"
+import { Data, Effect, Option, Ref, Result, type Scope, Stream, SubscriptionRef } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { evidenceId } from "../organs/evidence.ts"
 import { type FeaturePlan, type FiledPlan, maxPlanned } from "../project/planFile.ts"
@@ -29,6 +29,7 @@ import type { Git } from "../services/Git.ts"
 import { runFolder, writeRunFile } from "../services/Worktrees.ts"
 import { type Plan, startOnQuestion } from "../ui/questions.ts"
 import { type AgentGone, AgentHost, AgentStartFailed } from "./AgentHost.ts"
+import { sessionFibers } from "./callbacks.ts"
 import {
   type Filing,
   filedSomething,
@@ -124,10 +125,11 @@ export interface Interview {
  * Starts the interview on `description`, as typed at the start question: saves it to
  * .tutti/run/feature-request.md, starts the session in the main checkout and sends it the first
  * message. A description that can't be saved fails the start, as a session that doesn't start does.
+ * Its tools' calls are fibers of the caller's scope, the interview's, which outlasts the session.
  */
 export const startInterview = (
   description: string,
-): Effect.Effect<Interview, AgentStartFailed, AgentHost | AppConfig | Beads | Git> =>
+): Effect.Effect<Interview, AgentStartFailed, AgentHost | AppConfig | Beads | Git | Scope.Scope> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const host = yield* AgentHost
@@ -140,7 +142,7 @@ export const startInterview = (
         reason: `${featureRequestFile} could not be written: ${saved.failure.message}`,
       })
     }
-    const tools = yield* makeInterviewTools(config.repo)
+    const tools = yield* makeInterviewTools(config.repo, yield* sessionFibers)
     const sessionId = randomUUID()
     yield* host.start(interviewWorker, {
       sessionId,

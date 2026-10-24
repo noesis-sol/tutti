@@ -1,5 +1,6 @@
-// The Attention service (§ 4.5): where a worker waits on a person. `request(ticket)` gives a
-// session's canUseTool callback and `elicitation(ticket)` its onElicitation. Each call becomes an
+// The Attention service (§ 4.5): where a worker waits on a person. `request(ticket, fibers)` gives a
+// session's canUseTool callback and `elicitation(ticket, fibers)` its onElicitation, their calls
+// fibers of the session's FiberSet (callbacks.ts), which closing it interrupts. Each call becomes an
 // AttentionRequest in its worker's queue, oldest first, and the callback awaits a Deferred that an
 // answer, from the screen or `tutti answer`, resolves. Answers map to the SDK's results exactly as
 // § 4.5's table says; a request whose signal aborts is removed, and an answer to a request that is
@@ -31,6 +32,7 @@ import {
   Deferred,
   Duration,
   Effect,
+  FiberSet,
   Layer,
   Ref,
   Schema,
@@ -44,6 +46,7 @@ import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { AnswerWord } from "./attentionFiles.ts"
+import type { SessionFibers } from "./callbacks.ts"
 import { aboutOf } from "./tools.ts"
 
 /** The tool whose calls are questions rather than permission requests. */
@@ -429,10 +432,10 @@ interface Open {
 export class Attention extends Context.Service<
   Attention,
   {
-    /** The canUseTool callback for the ticket's session. */
-    request(ticket: string): Effect.Effect<CanUseTool>
-    /** The onElicitation callback for the ticket's session. */
-    elicitation(ticket: string): Effect.Effect<OnElicitation>
+    /** The canUseTool callback for the ticket's session, its calls fibers of `fibers`. */
+    request(ticket: string, fibers: SessionFibers): Effect.Effect<CanUseTool>
+    /** The onElicitation callback for the ticket's session, its calls fibers of `fibers`. */
+    elicitation(ticket: string, fibers: SessionFibers): Effect.Effect<OnElicitation>
     /** Answers the open request `request`; fails NotOpen when it is no longer open. */
     answer(request: string, answer: Answer, via: Via): Effect.Effect<void, NotOpen | DoesNotFit>
     /** The open requests, every worker's, oldest first. */
@@ -865,19 +868,17 @@ export const make = (
       })
 
     return Attention.of({
-      request: (ticket) =>
+      request: (ticket, fibers) =>
         Effect.gen(function* () {
-          const context = yield* Effect.context<never>()
+          const run = yield* FiberSet.runtimePromise(fibers)()
           const callback = yield* Ref.getAndUpdate(made, (n) => n + 1)
-          return (toolName, input, sdk) =>
-            Effect.runPromiseWith(context)(canUseTool(ticket, callback, toolName, input, sdk))
+          return (toolName, input, sdk) => run(canUseTool(ticket, callback, toolName, input, sdk))
         }),
-      elicitation: (ticket) =>
+      elicitation: (ticket, fibers) =>
         Effect.gen(function* () {
-          const context = yield* Effect.context<never>()
+          const run = yield* FiberSet.runtimePromise(fibers)()
           const callback = yield* Ref.getAndUpdate(made, (n) => n + 1)
-          return (request, sdk) =>
-            Effect.runPromiseWith(context)(onElicitation(ticket, callback, request, sdk.signal))
+          return (request, sdk) => run(onElicitation(ticket, callback, request, sdk.signal))
         }),
       answer,
       current: Effect.map(SubscriptionRef.get(opened), requests),

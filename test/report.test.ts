@@ -37,6 +37,7 @@ import { layer as gitLayer, Repository } from "../src/testing/Git.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
 import { makeTheme, orchestra } from "../src/ui/theme.ts"
+import { openFibers } from "./fibers.ts"
 
 const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
 
@@ -131,7 +132,7 @@ const report = async (setup: Setup = {}) => {
       yield* ledger.transition("t-2", Move.Defer({ why: "deferred by its worker" }))
       // t-1's worker asks twice and is denied once, and Claude Code denies it three calls.
       const attention = yield* Attention
-      const ask = yield* attention.request("t-1")
+      const ask = yield* attention.request("t-1", openFibers())
       const sdk = { signal: new AbortController().signal, toolUseID: "toolu_1", requestId: "req" }
       const question = {
         questions: [{ question: "Which?", options: [{ label: "This" }], multiSelect: false }],

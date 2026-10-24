@@ -21,6 +21,7 @@ import { checkRequires } from "../src/run/requires.ts"
 import { Checks } from "../src/services/Checks.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
 import { testEnv, withVariable } from "./env.ts"
+import { openFibers } from "./fibers.ts"
 
 // Real processes.
 setDefaultTimeout(30_000)
@@ -145,7 +146,7 @@ describe("what tutti runs on a branch's behalf", () => {
         requires: [{ name: "given", check: 'test "$TUTTI_GIVEN" = given', install: "false" }],
       }),
     )
-    const tools = await inBranchEnv(makeRequiresTools(repo, repo))
+    const tools = await inBranchEnv(makeRequiresTools(repo, repo, openFibers()))
     const check = tools.tools[0]
     if (check === undefined) throw new Error("no requires_check")
     const answer = await check.handler({}, {})

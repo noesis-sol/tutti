@@ -53,6 +53,7 @@ import type { Log } from "../src/run/log.ts"
 import { layer as attentionLayer } from "../src/testing/Attention.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { openFibers } from "./fibers.ts"
 
 type Env = Attention | Log | EventStream | Captured
 
@@ -118,7 +119,7 @@ const ask = (
   Effect.gen(function* () {
     const attention = yield* Attention
     const before = (yield* attention.current).length
-    const canUseTool = yield* attention.request(ticket)
+    const canUseTool = yield* attention.request(ticket, openFibers())
     const result = canUseTool(tool, input, options)
     const open = yield* attention.open.pipe(
       Stream.filter((all) => all.length > before),

@@ -4,6 +4,7 @@ import { Effect } from "effect"
 import { activityEvents, activityHooks } from "../src/agent/hooks.ts"
 import { read } from "../src/agent/reading.ts"
 import { type Doing, initial, step, WorkerEvent } from "../src/agent/WorkerState.ts"
+import { openFibers } from "./fibers.ts"
 
 // A call that fails (a check exiting non-zero) or is denied ends with PostToolUseFailure or
 // PermissionDenied, not PostToolUse: the card goes back to working then too (§ 4.2).
@@ -42,10 +43,14 @@ describe("a failed or denied tool call", () => {
   test("the worker's hooks record both events", async () => {
     const recorded: Array<string> = []
     const hooks = await Effect.runPromise(
-      activityHooks("t", {
-        activity: (input) => Effect.sync(() => recorded.push(input.hook_event_name)),
-        compaction: () => Effect.void,
-      }),
+      activityHooks(
+        "t",
+        {
+          activity: (input) => Effect.sync(() => recorded.push(input.hook_event_name)),
+          compaction: () => Effect.void,
+        },
+        openFibers(),
+      ),
     )
     expect(activityEvents).toContain("PostToolUseFailure")
     expect(activityEvents).toContain("PermissionDenied")

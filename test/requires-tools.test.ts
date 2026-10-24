@@ -40,6 +40,7 @@ import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { testEnv } from "./env.ts"
+import { openFibers } from "./fibers.ts"
 
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "tutti-requires-tools-")))
 
@@ -139,7 +140,7 @@ describe("requires_readme", () => {
 describe("the worker's server", () => {
   test("is tutti's in-process server, its tools called through it", async () => {
     const dir = worktree([marker("made")], "# P\n")
-    const tools = await run(makeRequiresTools(dir, dir))
+    const tools = await run(makeRequiresTools(dir, dir, openFibers()))
     expect(tools.server.type).toBe("sdk")
     expect(tools.server.name).toBe(requiresServerName)
     expect(tools.tools.map((t) => t.name)).toEqual(["requires_check", "requires_readme"])
@@ -151,7 +152,7 @@ describe("the worker's server", () => {
 
   test("a call aborted stops its install", async () => {
     const dir = worktree([{ name: "slow", check: "test -f done", install: "sleep 30; touch done" }])
-    const tools = await run(makeRequiresTools(dir, dir))
+    const tools = await run(makeRequiresTools(dir, dir, openFibers()))
     const abort = new AbortController()
     const call = tools.tools[0]?.handler({}, { signal: abort.signal })
     setTimeout(() => abort.abort(), 200)
@@ -164,8 +165,8 @@ describe("the worker's server", () => {
   test("main's maker gives each session a server of its own", async () => {
     const dir = worktree([])
     const make = await run(requiresServerFor(dir))
-    const first = await Effect.runPromise(make(dir))
-    const second = await Effect.runPromise(make(dir))
+    const first = await Effect.runPromise(make(dir, openFibers()))
+    const second = await Effect.runPromise(make(dir, openFibers()))
     expect(first.name).toBe(requiresServerName)
     expect(first.instance).not.toBe(second.instance)
   })

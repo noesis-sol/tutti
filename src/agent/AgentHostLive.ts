@@ -97,6 +97,7 @@ import {
   type SessionSpec,
   type WorkerShare,
 } from "./ClaudeCode.ts"
+import { type SessionFibers, sessionFibers } from "./callbacks.ts"
 import { readContextUsage } from "./contextUsage.ts"
 import { coreShare } from "./env.ts"
 import { type ChosenServers, withOwn } from "./mcp.ts"
@@ -172,9 +173,13 @@ export interface LiveOptions {
   readonly servers: ChosenServers
   /**
    * tutti's own in-process MCP server for a worker in the worktree given, with its requires tools
-   * (requiresServerFor, § 4.11), each session's its own, beside `servers`; none when left out.
+   * (requiresServerFor, § 4.11), each session's its own, its calls fibers of the session's, beside
+   * `servers`; none when left out.
    */
-  readonly ownServer?: (worktree: string) => Effect.Effect<McpSdkServerConfigWithInstance>
+  readonly ownServer?: (
+    worktree: string,
+    fibers: SessionFibers,
+  ) => Effect.Effect<McpSdkServerConfigWithInstance>
   /** What the account probe found: how workers are billed, and whether there's a subscription login. */
   readonly account: Pick<AccountProbe, "billing" | "subscription">
   /** tutti's environment, workers' is made from; process.env by default. */
@@ -593,6 +598,7 @@ export const layer = (
         session: Session,
         how: SessionStart,
         callbacks: WorkerCallbacks,
+        fibers: SessionFibers,
       ): Effect.Effect<Plan> =>
         Effect.gen(function* () {
           const kind = kindOf(session)
@@ -617,7 +623,11 @@ export const layer = (
                 const servers =
                   options.ownServer === undefined
                     ? given
-                    : withOwn(given, requiresServerName, yield* options.ownServer(session.cwd))
+                    : withOwn(
+                        given,
+                        requiresServerName,
+                        yield* options.ownServer(session.cwd, fibers),
+                      )
                 return {
                   servers,
                   options: worker(options.prompt, servers),
@@ -655,17 +665,27 @@ export const layer = (
           }
           const sessionId = session.sessionId
           const entry = yield* workers.open(ticket, sessionId, how._tag === "Resume")
+          // What the SDK calls back into tutti runs in the session's scope, which ends it.
+          const fibers = yield* Scope.provide(sessionFibers, of)
           const callbacks = yield* Effect.provideContext(
-            workerCallbacks(ticket, {
-              activity: (input) =>
-                workers.fold(entry, WorkerEvent.Hook({ session: sessionId, input })),
-              // Counted and logged by the run; triage reads it from the transcript's compact_boundary.
-              compaction: (input) => workers.compacted(entry, input.trigger),
-            }),
+            workerCallbacks(
+              ticket,
+              {
+                activity: (input) =>
+                  workers.fold(entry, WorkerEvent.Hook({ session: sessionId, input })),
+                // Counted and logged by the run; triage reads it from the transcript's compact_boundary.
+                compaction: (input) => workers.compacted(entry, input.trigger),
+              },
+              fibers,
+            ),
             services,
           )
           const share = yield* shareNow
-          const { servers, options: spec, notes } = yield* planOf(ticket, session, how, callbacks)
+          const {
+            servers,
+            options: spec,
+            notes,
+          } = yield* planOf(ticket, session, how, callbacks, fibers)
           const startupFailure = yield* Deferred.make<string>()
           const initialized = yield* Deferred.make<boolean>()
           // Claude Code, spawned, is closed with the session's scope, though the start is cancelled.

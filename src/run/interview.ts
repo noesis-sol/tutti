@@ -234,7 +234,10 @@ export const interview = <E>(
     return how === "no"
       ? InterviewOutcome.Ended({ why: ended.why, filing: ended.filing })
       : InterviewOutcome.Left({ filing: ended.filing, quit: how === "quit" })
-  })
+  }).pipe(
+    // The interview's scope, which its tools' calls end with.
+    Effect.scoped,
+  )
 
 /** What an interview that ran nothing says, on stdout and stderr, and the exit code it ends with. */
 export interface InterviewEnding {

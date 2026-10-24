@@ -29,6 +29,7 @@ import type { Log } from "../src/run/log.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { openFibers } from "./fibers.ts"
 
 type Env = Attention | Log | EventStream
 
@@ -75,7 +76,11 @@ const ask = (
   Effect.gen(function* () {
     const attention = yield* Attention
     const before = (yield* attention.current).length
-    const result = (callback ?? (yield* attention.request(ticket)))("Bash", rm, options)
+    const result = (callback ?? (yield* attention.request(ticket, openFibers())))(
+      "Bash",
+      rm,
+      options,
+    )
     const open = yield* attention.open.pipe(
       Stream.filter((all) => all.length > before),
       Stream.runHead,
@@ -145,7 +150,7 @@ describe("Attention: answers refused once the run's end stops a ticket", () => {
     const seen = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const session = yield* attention.request("a")
+        const session = yield* attention.request("a", openFibers())
         yield* attention.refuse("a")
         const { request } = yield* ask("a", sdkOptions(), session)
         return { refused: yield* allow(request), open: (yield* attention.current).length }

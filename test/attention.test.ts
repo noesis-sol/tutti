@@ -30,6 +30,7 @@ import type { Log } from "../src/run/log.ts"
 import { allowAll, layer as attentionLayer, denyAll } from "../src/testing/Attention.ts"
 import { Captured, layer as eventsLayer } from "../src/testing/EventStream.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
+import { openFibers } from "./fibers.ts"
 
 type Env = Attention | Log | EventStream | Captured
 
@@ -96,7 +97,7 @@ const ask = (
   Effect.gen(function* () {
     const attention = yield* Attention
     const before = (yield* attention.current).length
-    const canUseTool = yield* attention.request(ticket)
+    const canUseTool = yield* attention.request(ticket, openFibers())
     const result = canUseTool(tool, input, options)
     const open = yield* openRequests(before + 1)
     return { result, request: open[open.length - 1] as AttentionRequest }
@@ -348,7 +349,7 @@ describe("Attention: rules allowed for this run", () => {
         )
         yield* answer(first.request, { _tag: "AllowForRun" })
         yield* settled(first.result)
-        const canUseTool = yield* attention.request("tut-2")
+        const canUseTool = yield* attention.request("tut-2", openFibers())
         const later = yield* settled(
           canUseTool("Bash", bash, sdkOptions({ suggestions: [bashRule(bash.command)] })),
         )
@@ -477,7 +478,7 @@ describe("Attention: stale answers and withdrawn requests", () => {
     const seen = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const canUseTool = yield* attention.request("tut-1")
+        const canUseTool = yield* attention.request("tut-1", openFibers())
         const outcome = yield* settled(canUseTool("Bash", bash, options))
         return { outcome, open: (yield* attention.current).length }
       }),
@@ -499,7 +500,7 @@ describe("Attention: elicitations", () => {
   const elicit = (request: ElicitationRequest, controller = new AbortController()) =>
     Effect.gen(function* () {
       const attention = yield* Attention
-      const onElicitation = yield* attention.elicitation("tut-1")
+      const onElicitation = yield* attention.elicitation("tut-1", openFibers())
       const result = onElicitation(request, { signal: controller.signal, requestId: "x" })
       const open = yield* openRequests(1)
       return { result, request: open[0] as AttentionRequest, controller }
@@ -640,7 +641,7 @@ describe("Attention's test layer", () => {
     const results = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const canUseTool = yield* attention.request("tut-1")
+        const canUseTool = yield* attention.request("tut-1", openFibers())
         const allowed = yield* settled(canUseTool("Bash", bash, sdkOptions()))
         const chosen = yield* settled(
           canUseTool(
@@ -668,8 +669,8 @@ describe("Attention's test layer", () => {
     const results = await run(
       Effect.gen(function* () {
         const attention = yield* Attention
-        const canUseTool = yield* attention.request("tut-1")
-        const onElicitation = yield* attention.elicitation("tut-1")
+        const canUseTool = yield* attention.request("tut-1", openFibers())
+        const onElicitation = yield* attention.elicitation("tut-1", openFibers())
         return {
           denied: yield* settled(canUseTool("Bash", bash, sdkOptions())),
           declined: yield* Effect.promise(() =>

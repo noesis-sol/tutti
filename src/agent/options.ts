@@ -45,6 +45,7 @@ import { reap, reapGrace } from "../services/reaper.ts"
 import type { InterviewSetup } from "./AgentHost.ts"
 import { Attention } from "./Attention.ts"
 import type { SessionSpec } from "./ClaudeCode.ts"
+import type { SessionFibers } from "./callbacks.ts"
 import { activityHooks, type Hooks, type Recorder } from "./hooks.ts"
 import { qualifiedToolNames, serverName } from "./interviewTools.ts"
 import { type ChosenServers, chromeArgs, hasOwn, mcpServers } from "./mcp.ts"
@@ -339,15 +340,18 @@ export const interviewOptions = (input: InterviewOptionsInput): SessionSpec => {
   }
 }
 
-/** The callbacks of `ticket`'s worker, from Attention and Transcripts, its hooks recording to `recorder`. */
-export const workerCallbacks = (ticket: string, recorder: Recorder) =>
+/**
+ * The callbacks of `ticket`'s worker, from Attention and Transcripts, its hooks recording to
+ * `recorder`, each call a fiber of the session's `fibers`.
+ */
+export const workerCallbacks = (ticket: string, recorder: Recorder, fibers: SessionFibers) =>
   Effect.gen(function* () {
     const attention = yield* Attention
     const transcripts = yield* Transcripts
     return {
-      canUseTool: yield* attention.request(ticket),
-      onElicitation: yield* attention.elicitation(ticket),
-      hooks: yield* activityHooks(ticket, recorder),
+      canUseTool: yield* attention.request(ticket, fibers),
+      onElicitation: yield* attention.elicitation(ticket, fibers),
+      hooks: yield* activityHooks(ticket, recorder, fibers),
       stderr: transcripts.stderr(ticket),
     } satisfies WorkerCallbacks
   })
