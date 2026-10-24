@@ -18,8 +18,8 @@
 //
 // The prompt (`>`) is drawn `formAccent`, the cursor `formSelected`, the placeholder
 // `formPlaceholder`, the text `formText`.
-import { TextAttributes, type TextareaRenderable } from "@opentui/core"
-import { type RefObject, useEffect, useMemo, useState } from "react"
+import { type BoxRenderable, TextAttributes, type TextareaRenderable } from "@opentui/core"
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "../agent/Transcripts.ts"
 import { AttentionLines, type ButtonSegment } from "./AttentionCard.tsx"
 import { cut, Line, padded, type Segments, seg, widthOf } from "./line.tsx"
@@ -273,7 +273,10 @@ export const Composer = ({
   readonly theme: Theme
   /** The field, which the view focuses and blurs as keys come. */
   readonly field: RefObject<TextareaRenderable | null>
-  /** Its height, as many lines as what you typed takes, `composerLines` at most; the view's to keep. */
+  /**
+   * Its height, as many lines as what you typed takes at the field's width, `composerLines` at
+   * most; the view's to keep.
+   */
   readonly lines: number
   readonly setLines: (lines: number) => void
   readonly focused: boolean
@@ -288,9 +291,13 @@ export const Composer = ({
   readonly placeholder?: (focused: boolean) => string
 }) => {
   const { form } = theme
+  // The row's width the field was last fitted to.
+  const width = useRef(0)
+  // The field's wrapped lines, all of them: its virtualLineCount counts only those it shows.
   const fit = () => {
     const box = field.current
-    const count = box === null ? 1 : Math.max(box.lineCount, box.virtualLineCount)
+    const count =
+      box === null ? 1 : Math.max(box.lineCount, box.editorView.getTotalVirtualLineCount())
     const next = Math.min(Math.max(count, 1), composerLines)
     if (next !== lines) setLines(next)
   }
@@ -308,6 +315,13 @@ export const Composer = ({
       flexDirection="row"
       height={lines}
       flexShrink={0}
+      // A narrower pane wraps what you typed onto more lines, a wider one onto fewer. The field
+      // takes no size change of its own, and has its new width only once the row's is laid out.
+      onSizeChange={function (this: BoxRenderable) {
+        if (this.width === width.current) return
+        width.current = this.width
+        queueMicrotask(() => field.current !== null && fit())
+      }}
       onMouseDown={(event) => {
         if (event.button !== 0) return
         event.stopPropagation()
@@ -319,6 +333,8 @@ export const Composer = ({
         ref={field}
         focused={focused}
         flexGrow={1}
+        // The row's width less the prompt's, not what you typed's: a long line wraps, not overflows.
+        flexBasis={0}
         height={lines}
         wrapMode="word"
         keyBindings={descriptionKeys}
