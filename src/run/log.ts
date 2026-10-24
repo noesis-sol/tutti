@@ -450,7 +450,7 @@ export const undated = (dated: string): string => dated.replace(stamped, "")
 export type Sink = "none" | "stdout"
 
 /** Prints the dated lines to stdout, through Effect's Console, when `sink` says so. */
-export const toSink = (sink: Sink, lines: ReadonlyArray<string>): Effect.Effect<void> =>
+const toSink = (sink: Sink, lines: ReadonlyArray<string>): Effect.Effect<void> =>
   sink === "stdout"
     ? Console.consoleWith((console) =>
         Effect.sync(() => {
@@ -463,7 +463,7 @@ export const toSink = (sink: Sink, lines: ReadonlyArray<string>): Effect.Effect<
  * The run's lines as kept, in memory for the reviewer: appended in place, as a run of a few hundred
  * tickets writes tens of thousands of lines, with where its START block ends.
  */
-export const keptLines = () => {
+const keptLines = () => {
   const lines: Array<Kept> = []
   let startBlockEnd = 0
   return {

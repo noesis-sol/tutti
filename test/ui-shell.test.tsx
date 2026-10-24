@@ -381,8 +381,8 @@ describe("the run", () => {
   test("is plain when Tty says so, or with --plain", async () => {
     for (const setup of [
       { tty: tty({ stdoutIsTty: false }) },
-      { tty: tty({ dumb: true }) },
-      { tty: tty({ colourDepth: "fewer" }) },
+      { tty: tty({ env: { TERM: "dumb" } }) },
+      { tty: tty({ env: { TERM: "xterm" } }) },
       { tty: tty(), config: { plain: true } },
     ] satisfies ReadonlyArray<Setup>) {
       const { views } = resultOf(await runWith(setup))

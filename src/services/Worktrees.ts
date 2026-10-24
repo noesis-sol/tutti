@@ -141,6 +141,27 @@ export interface TicketWorktree {
 }
 
 /**
+ * The ticket's worktree at `path`, from what preparing it found: its worktree there already
+ * (`existing`), else its branch left without one (`branchLeft`), and what an earlier attempt left
+ * in it (`earlier`), counted only where one of them was there.
+ */
+export const found = (
+  id: string,
+  path: string,
+  left: { readonly existing: boolean; readonly branchLeft: boolean; readonly earlier: Earlier },
+): TicketWorktree => {
+  const reused = left.existing || left.branchLeft
+  return {
+    id,
+    branch: branchOf(id),
+    path,
+    reused,
+    fresh: !left.existing,
+    earlier: reused ? left.earlier : nothingEarlier,
+  }
+}
+
+/**
  * Adds `/.tutti/run/` to the info/exclude in the git folder `commonDir`, unless it has it, keeping
  * every other line. info/exclude is shared by every worktree and never committed, so the run files
  * are ignored even on a branch cut before .tutti/.gitignore was committed. The file is rewritten
@@ -339,13 +360,13 @@ export class Worktrees extends Context.Service<
                 const existing = yield* worktreeOf(branch)
                 if (existing !== undefined) {
                   const earlier = yield* earlierIn(existing.path)
-                  return { id, branch, path: existing.path, reused: true, fresh: false, earlier }
+                  return found(id, existing.path, { existing: true, branchLeft: true, earlier })
                 }
                 const path = join(root, id)
                 const branchLeft = yield* git.branchExists(repo, branch)
                 yield* git.addWorktree(repo, path, branchLeft ? { branch } : { branch, base })
                 const earlier = branchLeft ? yield* earlierIn(path) : nothingEarlier
-                return { id, branch, path, reused: branchLeft, fresh: true, earlier }
+                return found(id, path, { existing: false, branchLeft, earlier })
               }),
             )
           })

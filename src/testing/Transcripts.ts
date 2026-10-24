@@ -1,4 +1,5 @@
-// Transcripts' test layer (§ 3.3): the files in memory, with the live layer's operations. Each
+// Transcripts' test layer (§ 3.3): the files in memory, with the live layer's operations: a worker
+// whose ID can't name a folder has nothing written, as live, without live's warning. Each
 // worker's transcript is kept as the lines messages.jsonl would hold, so what a test reads back has
 // been through the file's encoding. Time comes from Effect's Clock, so TestClock moves it.
 import { Context, Effect, Layer } from "effect"
@@ -37,6 +38,7 @@ export const layer = (
         stderr: (worker, text) => stderr.set(worker, (stderr.get(worker) ?? "") + text),
         linesBackward: (worker) => [...(lines.get(worker) ?? [])].reverse(),
         release: () => {},
+        refused: () => {},
       })
       const files = Files.of({
         messages: (worker) =>

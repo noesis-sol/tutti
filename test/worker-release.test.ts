@@ -52,6 +52,7 @@ const counting = () => {
     release: () => {
       counts.released += 1
     },
+    refused: () => {},
   }
   return { storage, counts }
 }

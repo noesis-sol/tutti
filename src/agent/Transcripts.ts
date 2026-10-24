@@ -132,7 +132,10 @@ export interface View {
   readonly updates: Stream.Stream<Update>
 }
 
-/** Where transcripts are kept: the files, or memory for tests. Its operations never throw. */
+/**
+ * Where transcripts are kept: the files, or memory for tests. Its operations never throw. It is
+ * asked only of workers whose ID can name a folder: makeTranscripts tells it of the others.
+ */
 export interface Storage {
   /** Appends `line`, an encoded item, to the worker's transcript. */
   readonly append: (worker: string, line: string) => void
@@ -142,6 +145,28 @@ export interface Storage {
   readonly linesBackward: (worker: string) => Iterable<string>
   /** Lets go of what it holds for the worker (open files). */
   readonly release: (worker: string) => void
+  /** Told of a write to the worker's `file` not made, as its ID can't name a folder: `problem`. */
+  readonly refused: (worker: string, file: string, problem: string) => void
+}
+
+// checked asks `storage` only of workers whose ID can name a folder, as a worker's files are under
+// one named after it: a write for any other is refused, and it has nothing to read back.
+const checked = (storage: Storage): Storage => {
+  const write =
+    (fileOf: (worker: string) => string, to: (worker: string, text: string) => void) =>
+    (worker: string, text: string) => {
+      const problem = ticketIdProblem(worker)
+      if (problem === undefined) to(worker, text)
+      else storage.refused(worker, fileOf(worker), problem)
+    }
+  return {
+    append: write(messagesFile, storage.append),
+    stderr: write(stderrFile, storage.stderr),
+    linesBackward: (worker) =>
+      ticketIdProblem(worker) === undefined ? storage.linesBackward(worker) : [],
+    release: storage.release,
+    refused: storage.refused,
+  }
 }
 
 // asRecord reads a value of an SDK message whose shape this tutti may not know, without trusting it.
@@ -440,8 +465,9 @@ export class Transcripts extends Context.Service<
 }
 
 /** The service over `storage`: what the live layer and the test layer share. */
-export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Service"]> =>
+export const makeTranscripts = (given: Storage): Effect.Effect<Transcripts["Service"]> =>
   Effect.sync(() => {
+    const storage = checked(given)
     const workers = new Map<string, Worker>()
     // The workers let go of, until something starts them again: their latest action is none, so
     // the dashboard's poll doesn't read them back into memory.
@@ -657,12 +683,6 @@ export const fileStorage = (repo: string, failed: (message: string) => void): Fi
   const fdOf = (worker: string, file: string): number | undefined => {
     const known = open.get(file)
     if (known !== undefined) return known ?? undefined
-    const problem = ticketIdProblem(worker)
-    if (problem !== undefined) {
-      open.set(file, null)
-      fail(worker, file, problem)
-      return undefined
-    }
     // Stops at a link, which openUnder then refuses, naming it.
     makeFoldersUnder(repo, `${runFolder}/workers/${worker}`)
     const result = Effect.runSync(
@@ -718,7 +738,6 @@ export const fileStorage = (repo: string, failed: (message: string) => void): Fi
     append: (worker, line) => write(worker, messagesFile(worker), line),
     stderr: (worker, text) => write(worker, stderrFile(worker), text),
     linesBackward: function* (worker) {
-      if (ticketIdProblem(worker) !== undefined) return
       const result = Effect.runSync(Effect.result(openUnder(repo, messagesFile(worker), O.RDONLY)))
       if (Result.isFailure(result)) {
         const error = result.failure
@@ -740,6 +759,7 @@ export const fileStorage = (repo: string, failed: (message: string) => void): Fi
       closeFile(messagesFile(worker))
       closeFile(stderrFile(worker))
     },
+    refused: fail,
     closeAll: () => {
       for (const file of [...open.keys()]) closeFile(file)
     },

@@ -67,15 +67,17 @@ describe("colourDepthOf", () => {
 describe("outputMode", () => {
   test("a TTY on both streams with 256 colours or more gets the dashboard", () => {
     expect(outputMode(tty(), false)).toEqual({ _tag: "Dashboard" })
-    expect(outputMode(tty({ colourDepth: "truecolor" }), false)).toEqual({ _tag: "Dashboard" })
+    expect(outputMode(tty({ env: { COLORTERM: "truecolor" } }), false)).toEqual({
+      _tag: "Dashboard",
+    })
   })
 
   const reasons: ReadonlyArray<[PlainReason, Parameters<typeof tty>[0], boolean]> = [
     ["flag", {}, true],
     ["stdinNotTty", { stdinIsTty: false }, false],
     ["stdoutNotTty", { stdoutIsTty: false }, false],
-    ["dumb", { dumb: true, term: "dumb", colourDepth: "fewer" }, false],
-    ["fewerColours", { term: "xterm", colourDepth: "fewer" }, false],
+    ["dumb", { env: { TERM: "dumb" } }, false],
+    ["fewerColours", { env: { TERM: "xterm" } }, false],
   ]
   for (const [reason, overrides, plain] of reasons) {
     test(`plain for ${reason}`, () => {
@@ -84,14 +86,16 @@ describe("outputMode", () => {
   }
 
   test("--plain is the reason over any other", () => {
-    expect(outputMode(tty({ stdinIsTty: false, stdoutIsTty: false, dumb: true }), true)).toEqual({
+    expect(
+      outputMode(tty({ stdinIsTty: false, stdoutIsTty: false, env: { TERM: "dumb" } }), true),
+    ).toEqual({
       _tag: "Plain",
       reason: "flag",
     })
   })
 
   test("NO_COLOR alone keeps the dashboard", () => {
-    expect(outputMode(tty({ noColor: true }), false)).toEqual({ _tag: "Dashboard" })
+    expect(outputMode(tty({ env: { NO_COLOR: "1" } }), false)).toEqual({ _tag: "Dashboard" })
   })
 })
 
@@ -145,7 +149,7 @@ describe("fromEnvironment", () => {
 })
 
 test("the test layer provides its fixed value", () => {
-  const value = tty({ colourDepth: "truecolor", size: { columns: 60, rows: 16 } })
+  const value = tty({ env: { COLORTERM: "truecolor" }, size: { columns: 60, rows: 16 } })
   const seen = Effect.runSync(
     Effect.gen(function* () {
       const tty = yield* Tty
