@@ -15,12 +15,12 @@
 // .tutti/reports/<start time>.md, then printed with the post-run printer (§ 7.1) under an organ
 // line. It is skipped with --review=false and when the run was quit (§ 4.8). While the usage-limit
 // hold is on it can't run (§ 4.12): a hold lifted before the end lets it run, and one that held the
-// run to its end skips it. Ctrl+C, which interrupts it, skips it too.
+// run to its end skips it. Ctrl+C, which interrupts it, skips it too; a defect is REVIEW_FAILED.
 import { join } from "node:path"
-import { Clock, Effect } from "effect"
+import { Cause, Clock, Effect, Result } from "effect"
 import { Attention, type Tally } from "../agent/Attention.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { makeFoldersUnder, writeFileUnder } from "../native/libc.ts"
+import { makeFoldersUnder, type Refusal, writeFileUnder } from "../native/libc.ts"
 import { type InputPart, type Section, section } from "../organs/evidence.ts"
 import { dollars, OrganCost, type Total } from "../organs/OrganCost.ts"
 import { type OrganError, OrganHold, type Organs, skippedLine } from "../organs/Organs.ts"
@@ -37,7 +37,7 @@ import { exitCodes, exitMeanings } from "./holds.ts"
 import { type Entry, Ledger } from "./ledger.ts"
 import { clock, clockFrom, reportName, span } from "./localTime.ts"
 import * as log from "./log.ts"
-import { filed, type Kept, type Line, Log, line, Tag, tagged } from "./log.ts"
+import { causeWhy, filed, type Kept, type Line, Log, line, Tag, tagged } from "./log.ts"
 import { counting, type ReportSection, type TicketPhase } from "./phase.ts"
 
 /** Where the reports go, below the repository. */
@@ -602,6 +602,16 @@ const organFailure = (error: OrganError): string => {
 }
 
 /**
+ * Why the report wasn't saved, on one line: the refusal's first line, a defect's message, or
+ * `interrupted` for a Ctrl+C alone.
+ */
+export const notSavedWhy = (cause: Cause.Cause<Refusal>): string => {
+  if (Cause.hasInterruptsOnly(cause)) return "interrupted"
+  const error = Cause.findError(cause)
+  return Result.isSuccess(error) ? (error.success.message.split("\n")[0] ?? "") : causeWhy(cause)
+}
+
+/**
  * The run report, at the end of the run: gathered, written by the reviewer, saved to
  * .tutti/reports/<start time>.md and printed, each step said on the printer, or by the log alone
  * where it prints there too (ReportOut.logged). Nothing at all when
@@ -631,16 +641,17 @@ export const runReport = (
       Effect.onInterrupt(() => step.done("Run report skipped")),
     )
     if (written._tag === "Failure") {
-      const reason = written.cause.reasons.find((r) => r._tag === "Fail")
-      if (reason === undefined) return yield* step.done("Run report skipped")
-      const error = reason.error
-      if (error._tag === "OrganSkipped") {
+      // Ctrl+C skips it; a defect in gathering or reviewing, which organs don't turn into errors,
+      // is REVIEW_FAILED with the defect's message.
+      if (Cause.hasInterruptsOnly(written.cause)) return yield* step.done("Run report skipped")
+      const error = Cause.findError(written.cause)
+      if (Result.isSuccess(error) && error.success._tag === "OrganSkipped") {
         // The organ has written the reviewer's skipped line.
         return yield* out.logged === true
           ? step.drop
           : step.done("Run report skipped: the usage limit holds the run")
       }
-      const message = reviewFailed`${organFailure(error)}`
+      const message = reviewFailed`${Result.isSuccess(error) ? organFailure(error.success) : causeWhy(written.cause)}`
       yield* logs.write(message)
       return yield* out.logged === true ? step.drop : step.warn(message)
     }
@@ -665,8 +676,7 @@ export const runReport = (
       ),
     )
     if (saved._tag === "Failure") {
-      const reason = saved.cause.reasons.find((r) => r._tag === "Fail")
-      const why = reason === undefined ? "interrupted" : (reason.error.message.split("\n")[0] ?? "")
+      const why = notSavedWhy(saved.cause)
       yield* logs.write(reportNotSaved(why))
       return yield* unlogged(out.printer.warn(`Report not saved: ${why}`))
     }
