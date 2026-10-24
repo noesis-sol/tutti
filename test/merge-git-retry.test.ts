@@ -117,7 +117,7 @@ describe("a read failed once is asked again, and the merges go on", () => {
       Effect.gen(function* () {
         worktree = a.worktree
         yield* (yield* Repository).write(a.worktree, { "a.txt": "a fix left uncommitted\n" })
-        // The first status is the look for a change of its own; the second, the one that steers.
+        // The look for a change of its own fails, so the status that steers is read, failing once.
         yield* failing("status", { dir: a.worktree, times: 2, stderr: "fatal: took too long" })
       }),
     )

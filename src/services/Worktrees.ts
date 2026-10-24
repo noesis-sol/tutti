@@ -14,7 +14,7 @@
 // commit. So every link on the way is refused, wherever it points, with RunFilesOutside.
 import { readSync, writeSync } from "node:fs"
 import { join } from "node:path"
-import { Context, Effect, FileSystem, Layer, Schema, type Scope } from "effect"
+import { Context, Effect, FileSystem, Layer, Result, Schema, type Scope } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import {
   close,
@@ -281,11 +281,14 @@ export class Worktrees extends Context.Service<
     /**
      * Removes the ticket's worktree and then its branch, each when there is one. git refuses a
      * worktree with changes and a branch the base doesn't have, unless forced; `untracked` forces
-     * the worktree's removal only, as when its only changes are files its checks wrote.
+     * the worktree's removal only, as when its only changes are files its checks wrote. `at`: the
+     * ticket's worktree, as its caller knows it on its branch, removed without looking for it first;
+     * looked for when git can't remove it there. git forgets worktrees whose folder was deleted
+     * only when no worktree has the branch, as one of them may hold it.
      */
     remove(
       id: string,
-      options?: { readonly force?: boolean; readonly untracked?: boolean },
+      options?: { readonly force?: boolean; readonly untracked?: boolean; readonly at?: string },
     ): Effect.Effect<void, BadTicketId | GitError>
     /**
      * A new worktree in a folder of its own under the worktrees' folder, its name starting with
@@ -374,7 +377,11 @@ export class Worktrees extends Context.Service<
 
         const remove = (
           id: string,
-          removal: { readonly force?: boolean; readonly untracked?: boolean } = {},
+          removal: {
+            readonly force?: boolean
+            readonly untracked?: boolean
+            readonly at?: string
+          } = {},
         ) =>
           Effect.gen(function* () {
             yield* checkTicketId(id)
@@ -383,10 +390,19 @@ export class Worktrees extends Context.Service<
             const forceWorktree = force || removal.untracked === true
             yield* writer.withLock(
               Effect.gen(function* () {
-                const existing = yield* worktreeOf(branch)
-                if (existing !== undefined)
-                  yield* git.removeWorktree(repo, existing.path, { force: forceWorktree })
-                yield* git.pruneWorktrees(repo)
+                const at = removal.at
+                const removed =
+                  at !== undefined &&
+                  Result.isSuccess(
+                    yield* Effect.result(git.removeWorktree(repo, at, { force: forceWorktree })),
+                  )
+                if (!removed) {
+                  const existing = yield* worktreeOf(branch)
+                  if (existing !== undefined)
+                    yield* git.removeWorktree(repo, existing.path, { force: forceWorktree })
+                  // A worktree whose folder was deleted holds its branch until git forgets it.
+                  else yield* git.pruneWorktrees(repo)
+                }
                 if (yield* git.branchExists(repo, branch))
                   yield* git.deleteBranch(repo, branch, { force })
               }),

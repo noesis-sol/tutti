@@ -1056,7 +1056,9 @@ export const resolve = (
           ? `the commits on ${branch}, taken together, change nothing`
           : `its worker found the changes of ${branch} on ${base} already and skipped them in the rebase`,
       )
-      if (nothing !== undefined) return { _tag: "Unchanged", unchanged: nothing } satisfies Resolved
+      if (nothing._tag === "Unchanged") {
+        return { _tag: "Unchanged", unchanged: nothing } satisfies Resolved
+      }
       // Checked once, where it merges: a check on stop.onto would be run again on the branch
       // rebased.
       const fix: Fix = { what: "resolution", from: stop.head }

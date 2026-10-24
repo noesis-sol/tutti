@@ -20,7 +20,7 @@ import { Deferred, Effect, Ref, Result, Stream } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
 import { Beads, type Issue } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { Git } from "../services/Git.ts"
+import { Git, type GitError } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import type { EventStream } from "./eventstream.ts"
 import { Ledger } from "./ledger.ts"
@@ -197,13 +197,11 @@ export const dropRechecks = (
     return dropped
   })
 
-/** Whether the base has moved on from `onto`: on from it, not merely elsewhere. */
-const movedOn = (options: MergeOptions, onto: string) =>
+/** Whether the base, at `base` now, has moved on from `onto`: on from it, not merely elsewhere. */
+const movedOn = (options: MergeOptions, onto: string, base: string) =>
   Effect.gen(function* () {
-    const git = yield* Git
-    const base = yield* git.revParse(options.repo, options.base)
     // On a base moved back, its branch would fast-forward unchecked.
-    return base !== onto && (yield* git.mergeBase(options.repo, onto, base)) === onto
+    return base !== onto && (yield* (yield* Git).mergeBase(options.repo, onto, base)) === onto
   }).pipe(Effect.orElseSucceed(() => false))
 
 /**
@@ -267,9 +265,12 @@ export const recheckDue = (
 ): Effect.Effect<ReadonlyArray<string>, never, Beads | Git | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const back: Array<string> = []
+    // Where the base is, read once for every ticket waiting, when one is due a look.
+    let base: Result.Result<string, GitError> | undefined
     for (const recheck of yield* rechecks.waiting) {
       if (yield* notNow(queue, options)) break
-      if (!(yield* movedOn(options, recheck.onto))) continue
+      base ??= yield* Effect.result((yield* Git).revParse(options.repo, options.base))
+      if (Result.isFailure(base) || !(yield* movedOn(options, recheck.onto, base.success))) continue
       const { id, branch } = recheck.ticket
       // Its slot is held from before its offer until its merge is over: a slot that waited for
       // nothing to start waiting would see it out of the queue before it went in.

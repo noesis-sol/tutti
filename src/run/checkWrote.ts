@@ -8,7 +8,7 @@
 // untracked file that was there before tutti's setup or check, its worker's (even one its worker's
 // own run of the check made), keeps the worktree as it was: it may be work its worker didn't commit.
 import { Effect, Result } from "effect"
-import { Git } from "../services/Git.ts"
+import { Git, type StatusEntry } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { readRunFile, writeRunFile } from "../services/Worktrees.ts"
 
@@ -18,14 +18,13 @@ export const checkWroteName = "check-wrote"
 /** The most of the list read: a longer one, cut short, isn't trusted. */
 const mostListed = 1 << 20
 
-/** The untracked files in the worktree, outside .tutti/run/; undefined when git can't say. */
-const untrackedIn = (
+/** The worktree's status, as git read it; undefined when git can't say. */
+const statusIn = (
   worktree: string,
-): Effect.Effect<ReadonlySet<string> | undefined, never, Git> =>
-  Effect.gen(function* () {
-    const status = yield* Effect.result((yield* Git).status(worktree))
-    return Result.isSuccess(status) ? new Set(untrackedFiles(status.success)) : undefined
-  })
+): Effect.Effect<ReadonlyArray<StatusEntry> | undefined, never, Git> =>
+  Effect.map(Effect.result(Effect.flatMap(Git, (git) => git.status(worktree))), (status) =>
+    Result.isSuccess(status) ? status.success : undefined,
+  )
 
 /** The files listed in the worktree's check-wrote, NUL-separated; none when it can't be read whole. */
 const listed = (worktree: string): Effect.Effect<ReadonlySet<string>> =>
@@ -40,17 +39,22 @@ const listed = (worktree: string): Effect.Effect<ReadonlySet<string>> =>
  * Runs `effect`, a setup or check in the worktree, and adds the untracked files it made there to
  * its check-wrote list. Nothing is added when git can't read the worktree before or after, or
  * when `effect` fails or is interrupted: no file is taken for one tutti wrote that it may not have.
+ * `read` is given the worktree's status read after it, when git read one, for its caller to go on
+ * with rather than read it again.
  */
 export const noteWritten = <A, E, R>(
   worktree: string,
   effect: Effect.Effect<A, E, R>,
+  read?: (after: ReadonlyArray<StatusEntry>) => void,
 ): Effect.Effect<A, E, R | Git> =>
   Effect.gen(function* () {
-    const before = yield* untrackedIn(worktree)
+    const before = yield* statusIn(worktree)
     const result = yield* effect
-    const after = before === undefined ? undefined : yield* untrackedIn(worktree)
-    if (before === undefined || after === undefined) return result
-    const made = [...after].filter((file) => !before.has(file))
+    const status = before === undefined ? undefined : yield* statusIn(worktree)
+    if (before === undefined || status === undefined) return result
+    read?.(status)
+    const earlier = new Set(untrackedFiles(before))
+    const made = untrackedFiles(status).filter((file) => !earlier.has(file))
     if (made.length === 0) return result
     const known = yield* listed(worktree)
     const all = [...new Set([...known, ...made])].sort()

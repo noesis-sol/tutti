@@ -58,7 +58,7 @@ import type { EventStream } from "./eventstream.ts"
 import { settingsGlobMatch } from "./glob.ts"
 import { Ledger, type State as LedgerState } from "./ledger.ts"
 import { detail, type Line, Log, line, Tag, ticketLine } from "./log.ts"
-import { beadsWhy, type FinishedTicket, type MergeOptions } from "./merge.ts"
+import { beadsWhy, type FinishedTicket, gitReads, type MergeOptions } from "./merge.ts"
 import { Cause, Detail } from "./phase.ts"
 import { sameRequires } from "./requires.ts"
 import { warn } from "./say.ts"
@@ -268,7 +268,8 @@ export interface Fix {
  * the run's setup files names (setUps.now), or, after its worker's `fix`, the branch's commits since
  * then do, or git can't say whether they do; Merging{setup} while it runs, unless it is for a `fix`
  * (checked again in Fixing or Resolving), or `ahead` of its turn to merge (mergetrain.ts), its
- * branch rebased onto the branch ahead of it at `onto` and its phase left as it is.
+ * branch rebased onto the branch ahead of it at `onto` and its phase left as it is. `at`: the commit
+ * its branch is at, as its caller read it just before; it is read here without it.
  */
 export const setUp = (
   ticket: FinishedTicket,
@@ -278,15 +279,25 @@ export const setUp = (
   onto: string,
   fix?: Fix,
   ahead = false,
+  at?: string,
 ): Effect.Effect<SetUp, never, Checks | Git | Worktrees | Ledger | Log | EventStream> =>
   Effect.gen(function* () {
     const { command, files } = yield* setUps.now
     if (command === null) return { _tag: "Unneeded" } satisfies SetUp
     const git = yield* Git
     const from = yield* setUps.from(ticket.id, fork)
-    const changed = yield* Effect.result(git.changedFiles(options.repo, from, onto))
-    const at = yield* Effect.result(git.revParse(options.repo, ticket.branch))
-    const head = Result.isSuccess(at) ? at.success : ""
+    const read = yield* Effect.all(
+      {
+        changed: Effect.result(git.changedFiles(options.repo, from, onto)),
+        head:
+          at === undefined
+            ? Effect.result(git.revParse(options.repo, ticket.branch))
+            : Effect.succeed(Result.succeed(at)),
+      },
+      gitReads,
+    )
+    const { changed } = read
+    const head = Result.isSuccess(read.head) ? read.head.success : ""
     const why: Array<string> = []
     const rebased = Result.isSuccess(changed) ? setupFilesIn(changed.success, files) : []
     if (Result.isFailure(changed)) why.push("git could not say what the rebase changed")

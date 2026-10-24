@@ -29,7 +29,7 @@ import {
   OutputBounds,
   type RunOptions,
 } from "../services/Checks.ts"
-import type { Git } from "../services/Git.ts"
+import type { Git, StatusEntry } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { noteWritten } from "./checkWrote.ts"
@@ -40,10 +40,17 @@ import { warn } from "./say.ts"
 
 /** How a ticket's merge check went. */
 export type Checked =
-  /** It passed; `command` is the check that ran. */
-  | { readonly _tag: "Passed"; readonly command: string }
-  /** No check command is set: the rebased code merges unchecked. */
-  | { readonly _tag: "Unchecked" }
+  /**
+   * It passed; `command` is the check that ran. `after`: its worktree's status read as it ended, if
+   * git read one (checkWrote.ts's noteWritten), for its caller to look for changes it left.
+   */
+  | {
+      readonly _tag: "Passed"
+      readonly command: string
+      readonly after?: ReadonlyArray<StatusEntry>
+    }
+  /** No check command is set: the rebased code merges unchecked. `after`, as Passed's. */
+  | { readonly _tag: "Unchecked"; readonly after?: ReadonlyArray<StatusEntry> }
   /** It failed, timed out or couldn't run; `output` is where its whole output is. */
   | { readonly _tag: "Failed"; readonly error: CheckError; readonly output: string }
 
@@ -282,17 +289,22 @@ export const checkOnce = (
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const to = yield* outputTo(ticket, checkLogName, "the check's")
+        let status: ReadonlyArray<StatusEntry> | undefined
         const ran = yield* recorded(
           how.suite,
           ticket.id,
-          noteWritten(ticket.worktree, checks.fast({ cwd: ticket.worktree, ...to })),
+          noteWritten(ticket.worktree, checks.fast({ cwd: ticket.worktree, ...to }), (after) => {
+            status = after
+          }),
           how.train === true ? { train: true } : {},
         )
         if (ran._tag === "Failure") {
           return { _tag: "Failed", error: ran.failure, output: to.outputFile } satisfies Checked
         }
         const result = ran.success
-        if (result._tag === "NoCheckCommand") return { _tag: "Unchecked" } satisfies Checked
+        const after = status === undefined ? {} : { after: status }
+        if (result._tag === "NoCheckCommand")
+          return { _tag: "Unchecked", ...after } satisfies Checked
         const what = line`${ticket.id}'s check '${result.command}'`
         const flaky = result.flaky.map(
           (test) =>
@@ -311,7 +323,7 @@ export const checkOnce = (
         for (const warning of flaky) {
           yield* warn(warning, ticket.id)
         }
-        return { _tag: "Passed", command: result.command } satisfies Checked
+        return { _tag: "Passed", command: result.command, ...after } satisfies Checked
       }),
     )
   })

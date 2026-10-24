@@ -56,6 +56,7 @@ import {
   abandonRebase,
   type CheckWatch,
   type FinishedTicket,
+  gitReads,
   gitWhy,
   type MergeEnv,
   type MergeMemory,
@@ -402,7 +403,10 @@ export const make = (
           return notRebased(run)
         }
         const before = yield* Effect.result(
-          Effect.all({ orig: git.revParse(repo, branch), fork: git.mergeBase(repo, base, branch) }),
+          Effect.all(
+            { orig: git.revParse(repo, branch), fork: git.mergeBase(repo, base, branch) },
+            gitReads,
+          ),
         )
         if (Result.isFailure(before)) return notRebased(run)
         const read: Run = { ...run, orig: before.success.orig, fork: before.success.fork }
