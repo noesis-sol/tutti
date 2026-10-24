@@ -10,7 +10,7 @@ describe("quitStop", () => {
     const stop = quitStop(Quitting.Quit({ request: quitBy("SIGTERM") }), ({ how }) => `quit ${how}`)
     expect(stop).toEqual(stopFor("INTERRUPTED", "quit by SIGTERM"))
     expect(stop.code).toBe(130)
-    expect(stop.text).toBe("INTERRUPTED: quit by SIGTERM")
+    expect<string>(stop.text).toBe("INTERRUPTED: quit by SIGTERM")
   })
 
   test("the text is given the request itself", () => {
