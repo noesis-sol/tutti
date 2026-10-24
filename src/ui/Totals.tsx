@@ -82,24 +82,31 @@ export const totalsLine = (
  * with Set aside's triage note cut to ` · ◆ n` and then left out. The first three cells are as wide
  * as each other, up to a fifth of the strip, and the queue's takes the rest; where that leaves the
  * queue too little, they give up their width down to the widest's, then each down to its own, so
- * that they line up while they can.
+ * that they line up while they can. The triage note doesn't set the others' width: Set aside goes
+ * past them where it makes the cell wider, so that the queue keeps the room (tutti-iolm).
  */
 export const totalsStrip = (
   t: TotalsView,
   theme: Theme,
   width: number,
 ): ReadonlyArray<Segments> | null => {
+  const bare = cells(t, theme, "none").slice(0, -1).map(widthOf)
   for (const triage of ["full", "short", "none"] as const) {
     const all = cells(t, theme, triage)
-    const widths = cellWidths(all.map(widthOf), width)
+    const widths = cellWidths(all.map(widthOf), bare, width)
     if (widths !== null) return framed([all], widths, frameLook(theme))
   }
   return null
 }
 
-/** The cells' widths in a strip `width` wide, from their own, or null where they don't fit. */
+/**
+ * The cells' widths in a strip `width` wide, from their own, or null where they don't fit; the
+ * first three line up at a fifth of the strip, or the widest of `aligned`, their widths without the
+ * triage note, where that is wider.
+ */
 const cellWidths = (
   natural: ReadonlyArray<number>,
+  aligned: ReadonlyArray<number>,
   width: number,
 ): ReadonlyArray<number> | null => {
   // Each cell's padding and the bar after it, and the frame's first bar.
@@ -109,7 +116,7 @@ const cellWidths = (
   const widthsAt = (least: number) => firsts.map((n) => Math.max(n, least))
   const sum = (ns: ReadonlyArray<number>) => ns.reduce((total, n) => total + n, 0)
   if (sum(firsts) + queue > room) return null
-  let least = Math.max(Math.floor(room / 5), ...firsts)
+  let least = Math.max(Math.floor(room / 5), ...aligned)
   while (least > 0 && sum(widthsAt(least)) + queue > room) least -= 1
   const widths = widthsAt(least)
   return [...widths, room - sum(widths)]

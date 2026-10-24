@@ -117,7 +117,9 @@ One strip for the run, each count beside its label on one line, a zero faint:
   `· held` while the run takes no new tickets.
 
 The first three cells are as wide as each other, up to a fifth of the strip, and In queue takes the
-rest; as the pane narrows they give up width, but never below what each says. The workers are on the
+rest; as the pane narrows they give up width, but never below what each says. Set aside's triage
+note doesn't widen the others: where it makes Set aside wider than they are, Set aside goes past
+them and In queue keeps the room. The workers are on the
 load line above. A pane too narrow for the strip gets the totals on one line:
 `✓ 2 · ↷ 1 · ? 1 · queue 9 of 16`, and a pane too small for the dashboard, which has no load line,
 `✓ 2 · ↷ 1 · ? 1 · ▶ 3/3 · queue 9 of 16`.
