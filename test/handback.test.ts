@@ -11,7 +11,7 @@ import { untilSettled } from "../src/run/settle.ts"
 import { resolvePrompt } from "../src/run/told.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import {
@@ -222,7 +222,7 @@ const resolvingLine =
 
 describe("a resolution accepted", () => {
   test("is verified, checked, and merges: Merging → Resolving → ToMerge → Done", async () => {
-    let tip = ""
+    let tip = "" as Sha
     const ran = await conflicted(
       {},
       (world) => ({ a: [finishedSession(resolves(world, "a", { "a.txt": "both\n" }))] }),
@@ -357,7 +357,7 @@ describe("a resolution accepted", () => {
 
 describe("a resolution rejected", () => {
   test("a rebase left unfinished: Blocked, the rebase aborted, the notes saying why", async () => {
-    let tip = ""
+    let tip = "" as Sha
     const ran = await conflicted(
       {},
       () => ({ a: [finishedSession(turn([]))] }),
@@ -395,7 +395,7 @@ describe("a resolution rejected", () => {
   })
 
   test("a commit made besides the rebase: rejected, the branch reset to where it was", async () => {
-    let tip = ""
+    let tip = "" as Sha
     const ran = await conflicted(
       {},
       (world) => ({
@@ -601,9 +601,9 @@ describe("the prompt", () => {
   test("names the files, the tests to run and the check left to tutti, as orchestra's does", () => {
     const stop: RebaseStop = {
       ticket: { id: "a", title: "A", branch: "tutti/a", worktree: "/w/a" },
-      onto: "abc",
-      fork: "123",
-      head: "def",
+      onto: "abc" as Sha,
+      fork: "123" as Sha,
+      head: "def" as Sha,
       own: 1,
       files: ["a.ts", "b.ts"],
     }

@@ -21,7 +21,7 @@ import { TicketPhase } from "../src/run/phase.ts"
 import { type Outcome, run as runTutti } from "../src/run/run.ts"
 import { emptyStatus, project } from "../src/run/runView.ts"
 import { type Dashboard, Screen, type ScreenInputs } from "../src/run/screen.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import {
   canUseTool,
   init,
@@ -44,9 +44,9 @@ import { advance, backlog, type Env, type Ran, scenario, type World } from "./ha
 
 const stopOf = (id: string): RebaseStop => ({
   ticket: { id, title: `Ticket ${id}`, branch: `tutti/${id}`, worktree: `/w/${id}` },
-  onto: "abc",
-  fork: "def",
-  head: "123",
+  onto: "abc" as Sha,
+  fork: "def" as Sha,
+  head: "123" as Sha,
   own: 1,
   files: [`${id}.txt`],
 })

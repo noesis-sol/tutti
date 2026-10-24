@@ -24,7 +24,7 @@ import {
   specOf,
   start,
 } from "../src/run/start.ts"
-import type { Commit, StatusEntry } from "../src/services/Git.ts"
+import type { Commit, Sha, StatusEntry } from "../src/services/Git.ts"
 import { Store, type TicketRecord } from "../src/services/Store.ts"
 import { type Earlier, nothingEarlier } from "../src/services/Worktrees.ts"
 import { failStart, turn } from "../src/testing/AgentHost.ts"
@@ -43,7 +43,7 @@ const message = (fields: Partial<FirstMessage> = {}): FirstMessage => ({
 })
 
 const commit = (hash: string, subject: string): Commit => ({
-  hash,
+  hash: hash as Sha,
   subject,
   message: `${subject}\n`,
 })

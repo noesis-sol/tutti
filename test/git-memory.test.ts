@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Fiber, Layer, ManagedRuntime, Option } from "effect"
-import { Git, GitFailed, GitTimedOut, GitWriter, RebaseConflict } from "../src/services/Git.ts"
+import {
+  Git,
+  GitFailed,
+  GitTimedOut,
+  GitWriter,
+  RebaseConflict,
+  type Sha,
+} from "../src/services/Git.ts"
 import { layer as memoryLayer, Repository } from "../src/testing/Git.ts"
 import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
@@ -25,13 +32,13 @@ interface Fixture {
   readonly dir: string
   /** A path beside the repository, for a worktree. */
   readonly beside: (name: string) => string
-  commit(message: string, files?: Readonly<Record<string, string>>, dir?: string): string
+  commit(message: string, files?: Readonly<Record<string, string>>, dir?: string): Sha
   write(files: Readonly<Record<string, string>>, dir?: string): void
   /** git add the paths. */
   stage(paths: ReadonlyArray<string>, dir?: string): void
   /** A new worktree beside the repository, on a new branch from base; its path. */
   worktree(branch: string, base?: string): string
-  head(rev?: string, dir?: string): string
+  head(rev?: string, dir?: string): Sha
   detach(dir: string): void
   /** Deletes a worktree's folder behind git's back. */
   removeFolder(path: string): void

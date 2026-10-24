@@ -4,7 +4,7 @@
 // ticket's first message, with the facts of its start, is start.ts's firstMessage.
 import { type Commit, shortHash } from "../services/Git.ts"
 import { failedHow, saidOf } from "./check.ts"
-import type { CheckStop } from "./checkback.ts"
+import type { HandedCheck } from "./checkback.ts"
 import type { HandBackMode, RebaseStop } from "./handback.ts"
 
 /** The continue nudge (settle.ts), to a worker idle with its ticket still in progress. */
@@ -94,7 +94,7 @@ export const maxLanded = 30
  * landed, and the prompt says only that the check fails before it merges.
  */
 export const fixPrompt = (
-  stop: CheckStop,
+  stop: HandedCheck,
   base: string,
   check: string,
   landed: ReadonlyArray<Commit> | undefined,

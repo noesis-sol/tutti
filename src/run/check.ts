@@ -30,7 +30,7 @@ import {
   OutputBounds,
   type RunOptions,
 } from "../services/Checks.ts"
-import { type Git, isHash, type StatusEntry } from "../services/Git.ts"
+import { type Git, Sha, type StatusEntry } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { noteWritten } from "./checkWrote.ts"
@@ -205,10 +205,10 @@ export const uncheckedKey = "rebased_unchecked"
 
 /** Where a branch marked rebased and unchecked was before tutti rebased it. */
 export interface Unchecked {
-  /** Where it left the base, for the setup (setup.ts). */
-  readonly fork: string
-  /** Its commit; "" when git couldn't say. */
-  readonly head: string
+  /** Where it left the base, for the setup (setup.ts); undefined when git couldn't say. */
+  readonly fork: Sha | undefined
+  /** Its commit; undefined when git couldn't say. */
+  readonly head: Sha | undefined
 }
 
 /**
@@ -218,10 +218,7 @@ export interface Unchecked {
 export const uncheckedOf = (value: Schema.Json | undefined): Unchecked | undefined => {
   if (value === undefined || value === null) return undefined
   const fields: Readonly<Record<string, unknown>> = Predicate.isObject(value) ? value : {}
-  const hash = (key: string) => {
-    const field = Object.hasOwn(fields, key) ? fields[key] : undefined
-    return typeof field === "string" && isHash(field) ? field : ""
-  }
+  const hash = (key: string) => Sha.parse(Object.hasOwn(fields, key) ? fields[key] : undefined)
   return { fork: hash("fork"), head: hash("head") }
 }
 
@@ -235,7 +232,12 @@ export const markUnchecked = (
 ): Effect.Effect<void, never, Store> =>
   Effect.gen(function* () {
     const store = yield* Store
-    yield* Effect.ignore(store.setMetadata(id, uncheckedKey, { ...unchecked }))
+    const { fork, head } = unchecked
+    const mark = {
+      ...(fork === undefined ? {} : { fork }),
+      ...(head === undefined ? {} : { head }),
+    }
+    yield* Effect.ignore(store.setMetadata(id, uncheckedKey, mark))
   })
 
 /** The field of the mark saying its rebase's conflicts were handed back to its worker. */

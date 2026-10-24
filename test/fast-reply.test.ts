@@ -10,6 +10,7 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { give, type HandBack, noReset } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { line } from "../src/run/log.ts"
+import type { Sha } from "../src/services/Git.ts"
 import { layer as hostLayer, type Script, turn } from "../src/testing/AgentHost.ts"
 import { allowAll, layer as attentionLayer } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
@@ -93,8 +94,8 @@ describe("a reply that comes at once", () => {
       mode: "resolving",
       prompt: "Resolve the conflicts.",
       what: line`its conflicts handed back`,
-      onto: "main",
-      to: "main",
+      onto: "main" as Sha,
+      to: "main" as Sha,
       done: Effect.succeed(false),
     }
     const ran = await scenario(

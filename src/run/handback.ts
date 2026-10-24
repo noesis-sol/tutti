@@ -44,11 +44,11 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { Git, type GitError, gitWhy, givenHash } from "../services/Git.ts"
+import { Git, type GitError, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { awakeSince } from "../services/Wake.ts"
-import { baseSince, branchHead, onBranch, restoreBranch } from "./branch.ts"
+import { attemptAt, baseSince, branchHead, leftAt, onBranch, restoreBranch } from "./branch.ts"
 import { type Checked, failedHow, markHandedBack, runMergeCheck } from "./check.ts"
 import type { Carried } from "./checkback.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -80,15 +80,21 @@ export const maxHandBacks = 2
 export interface RebaseStop {
   readonly ticket: FinishedTicket
   /** The base's commit the branch was being rebased onto. */
-  readonly onto: string
+  readonly onto: Sha
   /** Where the branch left the base before the rebase, for the setup (setup.ts). */
-  readonly fork: string
-  /** The branch's commit before the rebase; "" when git couldn't say. */
-  readonly head: string
-  /** How many commits of its own the branch had then; -1 when git couldn't say. */
-  readonly own: number
+  readonly fork: Sha
+  /** The branch's commit before the rebase; undefined when git couldn't say. */
+  readonly head: Sha | undefined
+  /** How many commits of its own the branch had then; undefined when git couldn't say. */
+  readonly own: number | undefined
   /** The files the rebase stopped on. */
   readonly files: ReadonlyArray<string>
+}
+
+/** A RebaseStop git could say the branch of, as one handed back to its worker is (toHandBack). */
+export interface HandedRebase extends RebaseStop {
+  readonly head: Sha
+  readonly own: number
 }
 
 /** How many times each ticket has had a kind of hand-back in a run. */
@@ -201,19 +207,23 @@ export interface NotHandedBack {
 }
 
 /**
- * Why `stop` can't be handed back to the ticket's worker, the `handedBack`th time so far; undefined
- * when it can. `waived`: you handed it over, so a steered worker takes it (§ 4.3).
+ * `stop`, to be handed back to the ticket's worker, the `handedBack`th time so far; or why it can't
+ * be. `waived`: you handed it over, so a steered worker takes it (§ 4.3).
  */
-export const whyNotHandBack = (
+export const toHandBack = (
   stop: RebaseStop,
   handedBack: number,
   waived = false,
-): Effect.Effect<NotHandedBack | undefined, never, AppConfig | AgentHost | Ledger | Store> =>
+): Effect.Effect<
+  Result.Result<HandedRebase, NotHandedBack>,
+  never,
+  AppConfig | AgentHost | Ledger | Store
+> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const ledger = yield* Ledger
     const { id } = stop.ticket
-    const not = (why: string, waits = false) => ({ why, waits }) satisfies NotHandedBack
+    const not = (why: string, waits = false) => Result.fail({ why, waits })
     if (!config.settings.merge.resolve_conflicts) return not("resolving conflicts is turned off")
     if (config.settings.checks.fast.command === null) {
       return not("there is no check command in .tutti/settings.json to check a resolution with")
@@ -221,14 +231,15 @@ export const whyNotHandBack = (
     if (handedBack >= maxHandBacks) {
       return not(`it was handed back to its worker ${handedBack} times already`)
     }
-    if (stop.head === "" || stop.own < 1 || stop.files.length === 0) {
+    const { head, own } = stop
+    if (head === undefined || own === undefined || own < 1 || stop.files.length === 0) {
       return not("git could not say what the rebase stopped on")
     }
     if (!waived && (yield* ledger.current).tickets.get(id)?.steered === true) {
       return not("you have steered its worker, so the hand-back waits in its view", true)
     }
     const busy = yield* workerAway(id)
-    return busy === undefined ? undefined : not(busy)
+    return busy === undefined ? Result.succeed({ ...stop, head, own }) : not(busy)
   })
 
 /** What a Gone worker whose session was resumed once in this run already is, for a line. */
@@ -375,9 +386,9 @@ export interface HandBack {
   /** The RESUMED line's start, should its session be resumed for it. */
   readonly what: Line
   /** The base's commit the branch was rebased onto, or is on top of. */
-  readonly onto: string
+  readonly onto: Sha
   /** The commit the branch is put back at should the hand-back fail. */
-  readonly to: string
+  readonly to: Sha
   /**
    * Whether git shows what the worker was asked done, its worker not settled: the rebase finished,
    * with the branch on top of the base, or a fix committed.
@@ -391,19 +402,21 @@ const doneWords = (mode: HandBackMode): string =>
 
 /**
  * What the worker is told when its hand-back is past its time limit, `limit`, with what it was
- * asked done already: its branch, at commit `at`, is taken as it is, to be checked with `check`.
+ * asked done already: its branch, at commit `at` (undefined when git couldn't say), is taken as it
+ * is, to be checked with `check`.
  */
 export const handBackTaken = (
   handBack: HandBack,
   limit: string,
-  at: string,
+  at: Sha | undefined,
   check: string,
 ): string => {
   const { branch, worktree } = handBack.ticket
   const what = handBack.mode === "resolving" ? "rebase has finished" : "fix is committed"
+  const where = at === undefined ? "" : `, at ${givenHash(at)}`
   return (
     `tutti: the ${limit} for this hand-back is up, and your ${what}, so tutti has stopped you ` +
-    `and takes ${branch} as it is now, at ${givenHash(at)}, to check with '${check}' and merge. ` +
+    `and takes ${branch} as it is now${where}, to check with '${check}' and merge. ` +
     `Leave ${worktree} as it is: no more commits, no amending, no git commands in it, ` +
     "no ticket changes. Say DONE."
   )
@@ -412,9 +425,13 @@ export const handBackTaken = (
 /**
  * What the worker is told when its hand-back is past its time limit, `limit`, and not done: the
  * hand-back is over, its branch put back at `handBack.to` and its ticket set aside, its attempt, the
- * commit it had got to ("" for none), kept in git.
+ * commit it had got to (undefined for none), kept in git.
  */
-export const handBackOver = (handBack: HandBack, limit: string, attempt: string): string => {
+export const handBackOver = (
+  handBack: HandBack,
+  limit: string,
+  attempt: Sha | undefined,
+): string => {
   const { id, branch, worktree } = handBack.ticket
   const to = givenHash(handBack.to)
   const back =
@@ -422,7 +439,7 @@ export const handBackOver = (handBack: HandBack, limit: string, attempt: string)
       ? `aborts the rebase if it is still in progress, puts ${branch} back at ${to}, where it was before the rebase,`
       : `puts ${branch} back at ${to}, where the check failed,`
   const kept =
-    attempt === ""
+    attempt === undefined
       ? "Nothing of your attempt was committed, so none of it is kept."
       : `Your attempt so far is commit ${givenHash(attempt)}, which git keeps (git show ${givenHash(attempt)}).`
   return (
@@ -649,14 +666,14 @@ const endLate = (
       const check = config.settings.checks.fast.command ?? ""
       yield* interruptWith(
         id,
-        handBackTaken(handBack, after, Result.isSuccess(at) ? at.success : "", check),
+        handBackTaken(handBack, after, Result.isSuccess(at) ? at.success : undefined, check),
       )
       return undefined
     }
     const head = yield* Effect.result(git.revParse(worktree, "HEAD"))
     const attempt =
       Result.isFailure(head) || head.success === handBack.to || head.success === handBack.onto
-        ? ""
+        ? undefined
         : head.success
     yield* interruptWith(id, handBackOver(handBack, after, attempt))
     yield* logs.write(detail`${id}'s worker was stopped and told its hand-back is over`)
@@ -865,16 +882,20 @@ export const carryIfBaseMoved = (
 
 /**
  * The setup, if need be, and the merge's check on the branch its worker left after a hand-back,
- * its `fix`, in place: the commit checked, its branch's as the setup starts ("" when git couldn't
- * say), so that one its worker makes while it runs is checked before it merges, and how it went,
- * that commit kept in the memory's passes when it passed.
+ * its `fix`, in place: the commit checked, its branch's as the setup starts (undefined when git
+ * couldn't say), so that one its worker makes while it runs is checked before it merges, and how it
+ * went, that commit kept in the memory's passes when it passed.
  */
 export const checkWithFix = (
   stop: Stopped,
   fix: Fix,
   options: MergeTarget,
   memory: MergeMemory,
-): Effect.Effect<{ readonly at: string; readonly checked: SetUp | Checked }, never, MergeEnv> =>
+): Effect.Effect<
+  { readonly at: Sha | undefined; readonly checked: SetUp | Checked },
+  never,
+  MergeEnv
+> =>
   Effect.gen(function* () {
     const at = yield* branchHead(stop.ticket, options)
     const setup = yield* setUp(stop.ticket, options, memory.setUps, {
@@ -898,7 +919,7 @@ export const checkWithFix = (
  * Undefined when it passes.
  */
 export const verifyResolved = (
-  stop: RebaseStop,
+  stop: HandedRebase,
   options: MergeTarget,
 ): Effect.Effect<string | undefined, never, Git> =>
   Effect.gen(function* () {
@@ -933,7 +954,7 @@ export const verifyResolved = (
  * rebase in progress aborted, and the branch reset when it is elsewhere and the worktree is clean
  * and on it. What it did, for the lines and notes.
  */
-export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, Git> =>
+export const undoResolution = (stop: HandedRebase): Effect.Effect<string, never, Git> =>
   Effect.gen(function* () {
     const { branch, worktree } = stop.ticket
     const to = stop.head
@@ -949,13 +970,13 @@ export const undoResolution = (stop: RebaseStop): Effect.Effect<string, never, G
       case "Dirty":
         return line`${branch} is left as its worker left it (${was})`
       case "OffBranch":
-        return line`${branch} is left at ${givenHash(restored.at)} (${was}), as ${worktree} has ${restored.on}`
+        return line`${branch} is left ${leftAt(restored.at)} (${was}), as ${worktree} has ${restored.on}`
       case "Unknown":
-        return line`${branch} is left at ${givenHash(restored.at)} (${was}), as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
+        return line`${branch} is left ${leftAt(restored.at)} (${was}), as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
       case "ResetFailed":
-        return line`${branch} could not be reset to ${givenHash(to)}, where it was before the rebase; it is left at ${givenHash(restored.at)}`
+        return line`${branch} could not be reset to ${givenHash(to)}, where it was before the rebase; it is left ${leftAt(restored.at)}`
       case "Reset":
-        return line`${branch} was reset to ${givenHash(to)}, where it was before the rebase (its worker's attempt is ${givenHash(restored.from)})`
+        return line`${branch} was reset to ${givenHash(to)}, where it was before the rebase${attemptAt(restored.from)}`
     }
   })
 
@@ -971,8 +992,8 @@ export type Resolved = Data.TaggedEnum<{
   CheckFailed: {
     readonly error: CheckError
     readonly output: string
-    /** The commit checked, its branch's as the setup started; "" when git couldn't say. */
-    readonly at: string
+    /** The commit checked, its branch's as the setup started; undefined when git couldn't say. */
+    readonly at: Sha | undefined
   }
 }>
 
@@ -989,7 +1010,7 @@ export const failedResolved = (stop: RebaseStop, error: CheckError, output: stri
  * its notes saying why, and the ticket Blocked (MERGE_CONFLICT), by `by` (see block).
  */
 export const rejectResolution = (
-  stop: RebaseStop,
+  stop: HandedRebase,
   options: MergeTarget,
   why: string,
   by: "Block" | "Aside" = "Block",
@@ -1019,7 +1040,7 @@ export const rejectResolution = (
  * saying why.
  */
 export const resolve = (
-  stop: RebaseStop,
+  stop: HandedRebase,
   options: MergeOptions,
   memory: MergeMemory,
 ): Effect.Effect<Resolved, never, MergeEnv> =>

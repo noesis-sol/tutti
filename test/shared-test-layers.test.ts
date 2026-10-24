@@ -10,6 +10,7 @@ import { TestClock } from "effect/testing"
 import { makeTranscripts, type Storage, Transcripts } from "../src/agent/Transcripts.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { Log, line } from "../src/run/log.ts"
+import type { Sha } from "../src/services/Git.ts"
 import {
   AlreadyRunning,
   type Holder,
@@ -212,7 +213,10 @@ describe("the Tty test layer", () => {
 
 describe("the Worktrees test layer", () => {
   test("found counts reuse and what was left as live does", () => {
-    const earlier = { commits: [{ hash: "abc", subject: "Start", message: "Start\n" }], status: [] }
+    const earlier = {
+      commits: [{ hash: "abc" as Sha, subject: "Start", message: "Start\n" }],
+      status: [],
+    }
     const at = (existing: boolean, branchLeft: boolean) =>
       found("t-1", "/w/t-1", { existing, branchLeft, earlier })
     expect(at(true, true)).toMatchObject({ reused: true, fresh: false, earlier })
@@ -229,7 +233,10 @@ describe("the Worktrees test layer", () => {
 
   test("a branch left without its worktree is reused in a fresh folder, until removed", async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "tutti-shared-layers-")))
-    const earlier = { commits: [{ hash: "abc", subject: "Start", message: "Start\n" }], status: [] }
+    const earlier = {
+      commits: [{ hash: "abc" as Sha, subject: "Start", message: "Start\n" }],
+      status: [],
+    }
     const [first, again] = await Effect.runPromise(
       Effect.gen(function* () {
         const worktrees = yield* Worktrees

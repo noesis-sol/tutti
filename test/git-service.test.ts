@@ -13,6 +13,7 @@ import {
   parseStatus,
   parseWorktrees,
   RebaseConflict,
+  type Sha,
   splitNul,
 } from "../src/services/Git.ts"
 import { slow } from "./gates.ts"
@@ -113,7 +114,9 @@ describe("reading git's -z output", () => {
         const output = commits
           .map((commit) => `${commit.hash}\0${commit.subject}\0${commit.message}\0`)
           .join("")
-        expect(parseLog(output)).toEqual(commits)
+        expect(parseLog(output)).toEqual(
+          commits.map((commit) => ({ ...commit, hash: commit.hash as Sha })),
+        )
       }),
     )
   })
@@ -159,9 +162,9 @@ describe("reading git's -z output", () => {
       "",
     ].join("\0")
     expect(parseWorktrees(output)).toEqual([
-      { path: "/repo", head: "111", branch: "main", prunable: false },
-      { path: "/wt/a b", head: "222", prunable: false },
-      { path: "/wt/gone", head: "333", branch: "wt/demo-1", prunable: true },
+      { path: "/repo", head: "111" as Sha, branch: "main", prunable: false },
+      { path: "/wt/a b", head: "222" as Sha, prunable: false },
+      { path: "/wt/gone", head: "333" as Sha, branch: "wt/demo-1", prunable: true },
     ])
     fc.assert(
       fc.property(fc.array(field.filter((path) => !path.startsWith("\n"))), (paths) => {

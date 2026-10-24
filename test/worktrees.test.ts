@@ -14,7 +14,7 @@ import { basename, dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer } from "effect"
 import fc from "fast-check"
-import { Git, GitWriter } from "../src/services/Git.ts"
+import { Git, GitWriter, type Sha } from "../src/services/Git.ts"
 import {
   BadTicketId,
   branchOf,
@@ -196,7 +196,10 @@ describe("the temp-folder layer", () => {
   test("makes a folder per ticket, reuses it with what the script left, and removes it", async () => {
     const root = tempDir("tutti-layer-")
     const calls: Array<WorktreeCall> = []
-    const earlier = { commits: [{ hash: "abc", subject: "Start", message: "Start\n" }], status: [] }
+    const earlier = {
+      commits: [{ hash: "abc" as Sha, subject: "Start", message: "Start\n" }],
+      status: [],
+    }
     const layer = tempLayer({ root, earlier: { "t-1": earlier } }, calls)
     const [first, second] = await Effect.runPromise(
       Effect.provide(

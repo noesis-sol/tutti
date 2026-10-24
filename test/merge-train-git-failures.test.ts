@@ -7,7 +7,7 @@ import { Deferred, Effect, Exit, Logger, References, type Scope, Stream } from "
 import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
-import { aheadKey, putBackLeft, type RebasedAhead } from "../src/run/mergetrain.ts"
+import { aheadJson, aheadKey, putBackLeft, type RebasedAhead } from "../src/run/mergetrain.ts"
 import { Move, type PhaseTag } from "../src/run/phase.ts"
 import { makeSetUps } from "../src/run/setup.ts"
 import { Beads } from "../src/services/Beads.ts"
@@ -71,13 +71,13 @@ describe("a branch a killed run left rebased ahead of its turn, as the next run 
       const onto = yield* repository.head("tutti/a")
       if (conflict) yield* repository.conflict(`tutti/${id}`, [`${id}.txt`])
       yield* Effect.ignore(git.rebase(worktree, onto))
-      const head = conflict ? "" : yield* repository.head(`tutti/${id}`)
+      const head = conflict ? undefined : yield* repository.head(`tutti/${id}`)
       const mark: RebasedAhead = { orig, onto, head, behind: "tutti/a", setUp: false }
       yield* store.updateTicket(id, (record) => ({
         ...record,
         worktree,
         branch: `tutti/${id}`,
-        metadata: { ...record.metadata, [aheadKey]: { ...mark } },
+        metadata: { ...record.metadata, [aheadKey]: aheadJson(mark) },
       }))
       return { worktree, orig }
     })

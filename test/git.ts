@@ -5,6 +5,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { Sha } from "../src/services/Git.ts"
 
 export interface Repo {
   /** The main checkout, with its path resolved (as git prints it, /private/var on macOS). */
@@ -12,7 +13,7 @@ export interface Repo {
   /** Runs git in dir (the main checkout by default) and returns its stdout; throws when it fails. */
   git(args: ReadonlyArray<string>, dir?: string): string
   /** Writes the files (paths relative to dir), stages them and commits; returns the commit's hash. */
-  commit(message: string, files?: Readonly<Record<string, string>>, dir?: string): string
+  commit(message: string, files?: Readonly<Record<string, string>>, dir?: string): Sha
   /** Writes the files, relative to dir, without staging them. */
   write(files: Readonly<Record<string, string>>, dir?: string): void
   /** A new branch at start (HEAD by default), not checked out. */
@@ -20,7 +21,7 @@ export interface Repo {
   /** A new worktree at a fresh path beside the repository, on a new branch from base; its path. */
   worktree(branch: string, base?: string): string
   /** The full hash rev names in dir. */
-  head(rev?: string, dir?: string): string
+  head(rev?: string, dir?: string): Sha
 }
 
 /** A fresh repository on branch `main`, with one commit holding README.md. */
@@ -45,14 +46,14 @@ export const makeRepo = (): Repo => {
     }
   }
 
-  const head = (rev = "HEAD", cwd = dir): string =>
-    git(["rev-parse", "--verify", "--end-of-options", rev], cwd).trim()
+  const head = (rev = "HEAD", cwd = dir): Sha =>
+    Sha.of(git(["rev-parse", "--verify", "--end-of-options", rev], cwd))
 
   const commit = (
     message: string,
     files: Readonly<Record<string, string>> = {},
     cwd = dir,
-  ): string => {
+  ): Sha => {
     write(files, cwd)
     git(["add", "--all"], cwd)
     git(["commit", "--quiet", "--allow-empty", "-m", message], cwd)

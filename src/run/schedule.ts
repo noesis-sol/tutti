@@ -43,7 +43,7 @@ import {
   Semaphore,
 } from "effect"
 import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
-import { Git } from "../services/Git.ts"
+import { Git, type Sha } from "../services/Git.ts"
 import { branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import { type Again, retrying } from "./again.ts"
 import type { ClosedBranches } from "./closedBranches.ts"
@@ -155,7 +155,7 @@ export const footprintsOf = (options: {
       )
     // The files git lists, read again only once the checkout's commit moves, as a merge moves it:
     // a fill comes on almost every wake. What git failing gives is read again the next time.
-    const listed = yield* Ref.make<{ readonly at: string; readonly files: RepoFiles } | undefined>(
+    const listed = yield* Ref.make<{ readonly at: Sha; readonly files: RepoFiles } | undefined>(
       undefined,
     )
     const read = git.trackedFiles(options.repo).pipe(
@@ -168,11 +168,13 @@ export const footprintsOf = (options: {
     )
     return {
       repo: Effect.gen(function* () {
-        const at = yield* git.revParse(options.repo, "HEAD").pipe(Effect.orElseSucceed(() => ""))
+        const at = yield* git
+          .revParse(options.repo, "HEAD")
+          .pipe(Effect.orElseSucceed(() => undefined))
         const known = yield* Ref.get(listed)
-        if (at !== "" && known?.at === at) return known.files
+        if (at !== undefined && known?.at === at) return known.files
         const files = yield* read
-        if (at !== "") yield* Ref.set(listed, { at, files })
+        if (at !== undefined) yield* Ref.set(listed, { at, files })
         return files
       }).pipe(
         Effect.orElseSucceed(() => repoFiles(undefined, options.checkCommands, [], sharedFiles)),

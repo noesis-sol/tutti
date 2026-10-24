@@ -8,7 +8,7 @@ import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Move } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -267,8 +267,8 @@ describe("the rebased-and-unchecked mark", () => {
 describe("uncheckedOf", () => {
   test("reads a mark's fork and head", () => {
     expect(uncheckedOf({ fork: "abc1234", head: "def5678" })).toEqual({
-      fork: "abc1234",
-      head: "def5678",
+      fork: "abc1234" as Sha,
+      head: "def5678" as Sha,
     })
   })
 
@@ -278,8 +278,11 @@ describe("uncheckedOf", () => {
   })
 
   test("takes only a commit hash for a commit", () => {
-    expect(uncheckedOf({ fork: "--upload-pack=x", head: 7 })).toEqual({ fork: "", head: "" })
-    expect(uncheckedOf(["abc1234"])).toEqual({ fork: "", head: "" })
+    expect(uncheckedOf({ fork: "--upload-pack=x", head: 7 })).toEqual({
+      fork: undefined,
+      head: undefined,
+    })
+    expect(uncheckedOf(["abc1234"])).toEqual({ fork: undefined, head: undefined })
   })
 
   test("gives a mark, its commits hashes or none, for any JSON a hand left there", () => {
@@ -289,7 +292,9 @@ describe("uncheckedOf", () => {
         if (value === null) return mark === undefined
         return (
           mark !== undefined &&
-          [mark.fork, mark.head].every((each) => each === "" || /^[0-9a-f]{7,64}$/.test(each))
+          [mark.fork, mark.head].every(
+            (each) => each === undefined || /^[0-9a-f]{7,64}$/.test(each),
+          )
         )
       }),
     )

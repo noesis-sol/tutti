@@ -12,7 +12,7 @@ import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed, Checks, CheckTimedOut } from "../src/services/Checks.ts"
 import { ProcessGroups } from "../src/services/exec.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { passed, type Scripted } from "../src/testing/Checks.ts"
@@ -389,7 +389,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
   })
 
   test("REBASE_FAILED: git refuses the rebase without stopping on conflicts", async () => {
-    let tip = ""
+    let tip: Sha | undefined
     const ran = await mergeOne((ticket) =>
       Effect.gen(function* () {
         const repository = yield* Repository
@@ -408,7 +408,7 @@ describe("each failure lands in its phase, with orchestra's log line", () => {
   })
 
   test("MERGE_CONFLICT: the rebase is aborted, the branch put back, and the ticket Blocked", async () => {
-    let tip = ""
+    let tip: Sha | undefined
     let worktree = ""
     const ran = await scenario(
       { backlog: backlog().ticket("a").seeds, config: noCheck },
@@ -802,7 +802,7 @@ describe("an interrupt", () => {
 
   test("during the rebase aborts it, putting the branch back, and leaves the ticket ToMerge", async () => {
     const started = Deferred.makeUnsafe<void>()
-    let tip = ""
+    let tip: Sha | undefined
     const ran = await interrupted(
       { backlog: backlog().ticket("a").seeds },
       (queue, close) =>
@@ -847,7 +847,7 @@ describe("an interrupt", () => {
   test("as a conflict's rebase is being aborted still puts the branch back", async () => {
     const aborting = Deferred.makeUnsafe<void>()
     const gate = Deferred.makeUnsafe<void>()
-    let tip = ""
+    let tip: Sha | undefined
     let worktree = ""
     const ran = await interrupted(
       { backlog: backlog().ticket("a").seeds },

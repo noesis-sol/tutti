@@ -6,8 +6,8 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Fiber, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import { gitAgainAfter } from "../src/run/branch.ts"
-import { type RebaseStop, undoResolution } from "../src/run/handback.ts"
-import { Git } from "../src/services/Git.ts"
+import { type HandedRebase, undoResolution } from "../src/run/handback.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 
 const worktree = "/worktrees/a"
@@ -43,10 +43,10 @@ const undo = (
       const to = yield* repository.commit(worktree, "Do a (a)", { "a.txt": "a\n" })
       const attempt = yield* repository.commit(worktree, "Resolve a (a)", { "a.txt": "tried\n" })
       yield* arrange(to)
-      const stop: RebaseStop = {
+      const stop: HandedRebase = {
         ticket: { id: "a", title: "a", branch, worktree },
-        onto: "",
-        fork: "",
+        onto: "" as Sha,
+        fork: "" as Sha,
         head: to,
         own: 1,
         files: ["a.txt"],

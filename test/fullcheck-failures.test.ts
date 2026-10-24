@@ -132,7 +132,7 @@ describe("FULL_CHECK_NOT_RUN: no worktree for it", () => {
     })
     const result = checked(ran)
     expect(result).toEqual(
-      expect.objectContaining({ outcome: "not run", at: "", took: 0, end: [] }),
+      expect.objectContaining({ outcome: "not run", at: undefined, took: 0, end: [] }),
     )
     expectLog(ran, [
       "  FULL_CHECK_NOT_RUN: 'scripts/check-full.sh' could not run on main: no worktree for it (fatal: bad revision 'main')",

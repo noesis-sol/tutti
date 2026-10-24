@@ -92,7 +92,7 @@ export const gitTooOld = (output: string): string | null => {
 export interface Worktree {
   readonly path: string
   /** The commit checked out; absent in a bare repository. */
-  readonly head?: string
+  readonly head?: Sha
   /** The branch checked out, without `refs/heads/`; absent on a detached HEAD. */
   readonly branch?: string
   /** Its folder is gone, and `git worktree prune` would forget it. */
@@ -101,7 +101,7 @@ export interface Worktree {
 
 export interface Commit {
   /** The full hash. */
-  readonly hash: string
+  readonly hash: Sha
   readonly subject: string
   /** The whole message, subject included. */
   readonly message: string
@@ -112,6 +112,23 @@ export interface Commit {
  * option or a range.
  */
 export const isHash = (text: string): boolean => /^[0-9a-f]{7,64}$/.test(text)
+
+declare const shaBrand: unique symbol
+
+/**
+ * A commit's hash, as git gave it (revParse, mergeBase, log) or Sha.parse read it: a type of its
+ * own, so a hash can't be passed for a ticket, a branch or another string beside it. Where git
+ * couldn't say what the commit is, there is none (undefined), not an empty one.
+ */
+export type Sha = string & { readonly [shaBrand]: true }
+
+export const Sha = {
+  /** `text` as a commit hash, abbreviated or whole; undefined when it isn't one. */
+  parse: (text: unknown): Sha | undefined =>
+    typeof text === "string" && isHash(text) ? (text as Sha) : undefined,
+  /** The hash git printed for a commit, trimmed: what git says is a hash. */
+  of: (said: string): Sha => said.trim() as Sha,
+} as const
 
 /** A commit's hash as a line names it: its first 7 characters, as git abbreviates it. */
 export const shortHash = (hash: string): string => hash.slice(0, 7)
@@ -148,7 +165,7 @@ export const parseUnion = (output: string): ReadonlyArray<string> => {
 /** Reads `git worktree list --porcelain -z`: attribute lines ended by NULs, a worktree's last by two. */
 export const parseWorktrees = (output: string): ReadonlyArray<Worktree> => {
   const worktrees: Array<Worktree> = []
-  let current: { path: string; head?: string; branch?: string; prunable: boolean } | undefined
+  let current: { path: string; head?: Sha; branch?: string; prunable: boolean } | undefined
   for (const line of output.split("\0")) {
     if (line.startsWith("worktree ")) {
       if (current !== undefined) worktrees.push(current)
@@ -157,7 +174,7 @@ export const parseWorktrees = (output: string): ReadonlyArray<Worktree> => {
     }
     if (current === undefined) continue
     if (line.startsWith("HEAD ")) {
-      current.head = line.slice("HEAD ".length)
+      current.head = Sha.of(line.slice("HEAD ".length))
     } else if (line.startsWith("branch ")) {
       const ref = line.slice("branch ".length)
       current.branch = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref
@@ -476,8 +493,8 @@ export const rebaseFolders: ReadonlyArray<string> = ["rebase-merge", "rebase-app
 export const resetTo =
   <E1, E2>(
     writer: GitWriter["Service"],
-    revParse: (dir: string, rev: string) => Effect.Effect<string, E1>,
-    reset: (dir: string, hash: string) => Effect.Effect<void, E2>,
+    revParse: (dir: string, rev: string) => Effect.Effect<Sha, E1>,
+    reset: (dir: string, hash: Sha) => Effect.Effect<void, E2>,
   ) =>
   (worktree: string, to: string): Effect.Effect<void, E1 | E2> =>
     writer.withLock(Effect.flatMap(revParse(worktree, to), (hash) => reset(worktree, hash)))
@@ -492,7 +509,7 @@ export const parseLog = (output: string): ReadonlyArray<Commit> => {
   for (let i = 0; i + 2 < fields.length; i += 3) {
     const hash = (fields[i] ?? "").replace(/^\n+/, "")
     if (hash === "") continue
-    commits.push({ hash, subject: fields[i + 1] ?? "", message: fields[i + 2] ?? "" })
+    commits.push({ hash: Sha.of(hash), subject: fields[i + 1] ?? "", message: fields[i + 2] ?? "" })
   }
   return commits
 }
@@ -600,7 +617,7 @@ export class Git extends Context.Service<
      */
     resetBranch(worktree: string, to: string): Effect.Effect<void, GitError>
     /** git merge-base: the best common ancestor of a and b, as a full hash. */
-    mergeBase(repo: string, a: string, b: string): Effect.Effect<string, GitError>
+    mergeBase(repo: string, a: string, b: string): Effect.Effect<Sha, GitError>
     /**
      * Whether base holds branch's changes already: merging branch into it would change nothing, as
      * after the branch was squash-merged or its commits cherry-picked onto base. git merge-tree
@@ -647,7 +664,7 @@ export class Git extends Context.Service<
       paths: ReadonlyArray<string>,
     ): Effect.Effect<ReadonlyArray<string>, GitError>
     /** git rev-parse --verify: the full hash `rev` names; GitFailed when it names none. */
-    revParse(dir: string, rev: string): Effect.Effect<string, GitError>
+    revParse(dir: string, rev: string): Effect.Effect<Sha, GitError>
     /**
      * git show-ref --verify --quiet refs/heads/<branch>: whether the branch is there. Its exit 1 is
      * a missing branch, whatever git said; any other failure is git's.
@@ -761,7 +778,7 @@ export class Git extends Context.Service<
           Effect.asVoid(write(gitCall(gitOps.abortRebase), worktree))
 
         const revParse = (dir: string, rev: string) =>
-          Effect.map(read(gitCall(gitOps.revParse, rev), dir), (out) => out.trim())
+          Effect.map(read(gitCall(gitOps.revParse, rev), dir), Sha.of)
 
         const branchExists = (repo: string, branch: string) => {
           const call = gitCall(gitOps.branchExists, branch)
@@ -836,7 +853,7 @@ export class Git extends Context.Service<
           abandonRebase,
           resetBranch,
           mergeBase: (repo, a, b) =>
-            Effect.map(read(gitCall(gitOps.mergeBase, a, b), repo), (out) => out.trim()),
+            Effect.map(read(gitCall(gitOps.mergeBase, a, b), repo), Sha.of),
           holds: (repo, base, branch) =>
             Effect.gen(function* () {
               const call = gitCall(gitOps.holds, base, branch)

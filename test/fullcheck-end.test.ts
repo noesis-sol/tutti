@@ -27,7 +27,7 @@ import type { Line } from "../src/run/log.ts"
 import { reportsDir } from "../src/run/report.ts"
 import { finish, run } from "../src/run/run.ts"
 import { CheckFailed, CheckOutput } from "../src/services/Checks.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { claimsAndCloses } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import {
@@ -257,7 +257,7 @@ describe("a full check that passed with flaky tests", () => {
 /** A full check that failed in `suite`, its output ending with `end`. */
 const failedWith = (end: ReadonlyArray<string>, suite = "e2e"): FullChecked => ({
   outcome: "failed",
-  at: "abcdef0123",
+  at: "abcdef0123" as Sha,
   took: 1000,
   suite,
   output: "/repo/.tutti/run/check-full.log",

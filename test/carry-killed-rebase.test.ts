@@ -11,7 +11,7 @@ import { Effect, Fiber } from "effect"
 import fc from "fast-check"
 import { handedBackOf, markHandedBack, uncheckedKey, uncheckedOf } from "../src/run/check.ts"
 import { type Outcome, run } from "../src/run/run.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { type RunStamp, type State, Store, type TicketRecord } from "../src/services/Store.ts"
 import { Repository } from "../src/testing/Git.ts"
 import { backlog, expectExitCode, expectLog, expectPhases, type Ran, scenario } from "./harness.ts"
@@ -175,7 +175,7 @@ describe("the hand-back on the mark", () => {
   test("is noted on a mark, which keeps where the branch was", async () => {
     const mark = await marked({ fork: "abc1234", head: "def5678" })
     expect(handedBackOf(mark)).toBe(true)
-    expect(uncheckedOf(mark)).toEqual({ fork: "abc1234", head: "def5678" })
+    expect(uncheckedOf(mark)).toEqual({ fork: "abc1234" as Sha, head: "def5678" as Sha })
   })
 
   test("leaves no mark where there was none", async () => {

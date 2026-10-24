@@ -11,12 +11,12 @@ import fc from "fast-check"
 import { Ledger } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { make as makeQueue } from "../src/run/mergequeue.ts"
-import { aheadKey, type RebasedAhead, rebasedAheadOf } from "../src/run/mergetrain.ts"
+import { aheadJson, aheadKey, type RebasedAhead, rebasedAheadOf } from "../src/run/mergetrain.ts"
 import { Move } from "../src/run/phase.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { makeSetUps, offBaseKey } from "../src/run/setup.ts"
 import { Beads } from "../src/services/Beads.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { type RunStamp, type State, Store, type TicketRecord } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
@@ -69,10 +69,10 @@ const crashRecord = (root: string): TicketRecord => ({
 
 interface Left {
   /** b's branch as its worker left it, and as the train rebased it. */
-  readonly orig: string
-  readonly head: string
+  readonly orig: Sha
+  readonly head: Sha
   /** tutti/a as b was rebased onto it. */
-  readonly onto: string
+  readonly onto: Sha
 }
 
 interface Ended {
@@ -120,7 +120,7 @@ const afterKill = async (
       const onto = yield* repository.head("tutti/a")
       yield* git.rebase(join(root, "b"), onto)
       const left = { orig, onto, head: yield* repository.head("tutti/b") }
-      yield* store.setMetadata("b", aheadKey, { ...mark(left) })
+      yield* store.setMetadata("b", aheadKey, aheadJson(mark(left)))
       yield* before(join(root, "b"))
       const fiber = yield* Effect.forkChild(
         Effect.scoped(run({ version: "0.1.0-test", base: "main" })),
@@ -159,7 +159,7 @@ describe("a branch a killed run left rebased ahead of its turn", () => {
     const ended = await afterKill((left) => ({
       orig: left.orig,
       onto: left.onto,
-      head: "",
+      head: undefined,
       behind: "tutti/a",
       setUp: false,
     }))
@@ -254,7 +254,7 @@ describe("a train's mark in state.json", () => {
         }
         return { ...passed("fast"), command: check }
       })
-    let orig = ""
+    let orig: Sha | undefined
     const ran = await scenario(
       {
         config: { settings: { ...settings, merge: { ...settings.merge, train: 1 } } },
@@ -279,7 +279,7 @@ describe("a train's mark in state.json", () => {
     const mark = rebasedAheadOf(during as Parameters<typeof rebasedAheadOf>[0])
     expect(mark?.orig).toBe(orig)
     expect(mark?.behind).toBe("tutti/a")
-    expect(mark?.head).not.toBe("")
+    expect(mark?.head).toBeDefined()
     expect(mark?.head).not.toBe(orig)
     expect(ran.exit.value).toBeUndefined()
   })
@@ -294,7 +294,7 @@ describe("the setups' mark of dependencies set up off the base", () => {
       const saved = (yield* store.metadata("b"))[offBaseKey]
       const next = yield* makeSetUps
       const carried = yield* next.off("b")
-      yield* next.set("b", "abc1234", "def5678")
+      yield* next.set("b", "abc1234" as Sha, "def5678" as Sha)
       return {
         saved,
         carried,
@@ -327,15 +327,21 @@ describe("rebasedAheadOf", () => {
         behind: "tutti/a",
         setUp: true,
       }),
-    ).toEqual({ orig: "abc1234", onto: "bcd2345", head: "cde3456", behind: "tutti/a", setUp: true })
+    ).toEqual({
+      orig: "abc1234" as Sha,
+      onto: "bcd2345" as Sha,
+      head: "cde3456" as Sha,
+      behind: "tutti/a",
+      setUp: true,
+    })
     expect(rebasedAheadOf(undefined)).toBeUndefined()
     expect(rebasedAheadOf(null)).toBeUndefined()
     expect(rebasedAheadOf({ head: "cde3456" })).toBeUndefined()
     expect(rebasedAheadOf({ orig: "--upload-pack=x" })).toBeUndefined()
     expect(rebasedAheadOf({ orig: "abc1234", head: 7, setUp: "yes" })).toEqual({
-      orig: "abc1234",
-      onto: "",
-      head: "",
+      orig: "abc1234" as Sha,
+      onto: undefined,
+      head: undefined,
       behind: "the branch ahead of it",
       setUp: false,
     })
@@ -347,9 +353,9 @@ describe("rebasedAheadOf", () => {
         const mark = rebasedAheadOf(value as Parameters<typeof rebasedAheadOf>[0])
         if (mark === undefined) return
         for (const hash of [mark.orig, mark.onto, mark.head]) {
-          expect(hash === "" || /^[0-9a-f]{7,64}$/.test(hash)).toBe(true)
+          expect(hash === undefined || /^[0-9a-f]{7,64}$/.test(hash)).toBe(true)
         }
-        expect(mark.orig).not.toBe("")
+        expect(mark.orig).toBeDefined()
       }),
     )
   })

@@ -36,7 +36,7 @@ import {
 import { nudgeText } from "../src/run/told.ts"
 import { type Worked, work } from "../src/run/work.ts"
 import { Beads } from "../src/services/Beads.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import {
@@ -591,9 +591,9 @@ describe("HandBackNow", () => {
         const none = yield* handBackNow("a", queue, options)
         const stop: RebaseStop = {
           ticket: { id: "a", title: "Ticket a", branch: "tutti/a", worktree: "/w/a" },
-          onto: "abc",
-          fork: "def",
-          head: "123",
+          onto: "abc" as Sha,
+          fork: "def" as Sha,
+          head: "123" as Sha,
           own: 1,
           files: ["a.txt"],
         }

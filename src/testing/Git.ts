@@ -27,6 +27,7 @@ import {
   RebaseConflict,
   rebaseFolders,
   resetTo,
+  Sha,
   type StatusEntry,
   type Worktree,
 } from "../services/Git.ts"
@@ -67,7 +68,7 @@ export class Repository extends Context.Service<
      * Writes the files in dir, stages everything (git add --all) and commits on its HEAD, as a
      * worker's commit would; the commit's hash. A commit may be empty.
      */
-    commit(dir: string, message: string, files?: Files): Effect.Effect<string>
+    commit(dir: string, message: string, files?: Files): Effect.Effect<Sha>
     /** Writes the files in dir's working tree without staging them. */
     write(dir: string, files: Files): Effect.Effect<void>
     /** git add: stages the paths, or every change, untracked files included. */
@@ -87,7 +88,7 @@ export class Repository extends Context.Service<
     /** Makes the next call of op (`rebase`, `merge --ff-only`, `status`, …) fail. */
     fail(op: GitOp, fault?: Fault): Effect.Effect<void>
     /** The full hash rev names, in dir (the main checkout by default). */
-    head(rev?: string, dir?: string): Effect.Effect<string>
+    head(rev?: string, dir?: string): Effect.Effect<Sha>
     /** The files of the commit rev names. */
     tree(rev: string, dir?: string): Effect.Effect<Tree>
     /** A file in dir's working tree, if it has one. */
@@ -108,8 +109,8 @@ export interface Seed {
 }
 
 interface CommitObject {
-  readonly hash: string
-  readonly parents: ReadonlyArray<string>
+  readonly hash: Sha
+  readonly parents: ReadonlyArray<Sha>
   readonly message: string
   readonly tree: Tree
   readonly seq: number
@@ -119,7 +120,7 @@ interface Rebasing {
   /** The branch being rebased; absent when HEAD was detached. */
   readonly branch?: string
   /** Where HEAD was before, which an abort puts back. */
-  readonly orig: string
+  readonly orig: Sha
   /** The commit it stopped on, and those left to replay after it. */
   readonly stopped: CommitObject
   readonly remaining: ReadonlyArray<CommitObject>
@@ -128,7 +129,7 @@ interface Rebasing {
 interface Checkout {
   readonly path: string
   readonly seq: number
-  head: { readonly branch: string } | { readonly detached: string }
+  head: { readonly branch: string } | { readonly detached: Sha }
   index: Map<string, string>
   work: Map<string, string>
   /** Conflicted paths and their status codes: UU, AA, DU or UD. */
@@ -217,38 +218,40 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
     Effect.gen(function* () {
       const writer = GitWriter.make(yield* Semaphore.make(1))
       const main = normalize(seed.dir ?? "/repo")
-      const commits = new Map<string, CommitObject>()
-      const branches = new Map<string, string>()
+      const commits = new Map<Sha, CommitObject>()
+      const branches = new Map<string, Sha>()
       const checkouts = new Map<string, Checkout>()
       const forced = new Map<string, ReadonlyArray<string>>()
       const faults: Array<{ op: GitOp; fault: Fault; left: number }> = []
       const calls: Array<Call> = []
       let seq = 0
 
-      const newCommit = (parents: ReadonlyArray<string>, message: string, tree: Tree): string => {
+      const newCommit = (parents: ReadonlyArray<Sha>, message: string, tree: Tree): Sha => {
         seq += 1
-        const hash = createHash("sha1")
-          .update(`${seq}\0${parents.join(" ")}\0${message}`)
-          .digest("hex")
+        const hash = Sha.of(
+          createHash("sha1")
+            .update(`${seq}\0${parents.join(" ")}\0${message}`)
+            .digest("hex"),
+        )
         commits.set(hash, { hash, parents, message, tree: new Map(tree), seq })
         return hash
       }
 
-      const commitOf = (hash: string): CommitObject => {
+      const commitOf = (hash: Sha): CommitObject => {
         const commit = commits.get(hash)
         if (commit === undefined) throw new Error(`no commit ${hash}`)
         return commit
       }
 
-      const treeOf = (hash: string): Tree => commitOf(hash).tree
+      const treeOf = (hash: Sha): Tree => commitOf(hash).tree
 
-      const headOf = (checkout: Checkout): string =>
+      const headOf = (checkout: Checkout): Sha =>
         "branch" in checkout.head
-          ? (branches.get(checkout.head.branch) as string)
+          ? (branches.get(checkout.head.branch) as Sha)
           : checkout.head.detached
 
-      const ancestors = (hash: string): Set<string> => {
-        const found = new Set<string>()
+      const ancestors = (hash: Sha): Set<Sha> => {
+        const found = new Set<Sha>()
         const stack = [hash]
         for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
           if (found.has(next)) continue
@@ -258,10 +261,10 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
         return found
       }
 
-      const isAncestor = (a: string, b: string) => ancestors(b).has(a)
+      const isAncestor = (a: Sha, b: Sha) => ancestors(b).has(a)
 
       /** The best common ancestor: one no other common ancestor descends from, the newest of those. */
-      const mergeBaseOf = (a: string, b: string): string | undefined => {
+      const mergeBaseOf = (a: Sha, b: Sha): Sha | undefined => {
         const ofB = ancestors(b)
         const common = [...ancestors(a)].filter((hash) => ofB.has(hash))
         const best = common.filter(
@@ -280,11 +283,11 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
       }
 
       /** The hash rev names: HEAD, a branch, a hash or a unique prefix of one, then ~n and ^n. */
-      const resolve = (checkout: Checkout | undefined, rev: string): string | undefined => {
+      const resolve = (checkout: Checkout | undefined, rev: string): Sha | undefined => {
         const match = /^(.*?)((?:[~^]\d*)*)$/.exec(rev)
         const name = match?.[1] ?? rev
         const suffix = match?.[2] ?? ""
-        let hash: string | undefined
+        let hash: Sha | undefined
         if (name === "HEAD" || name === "@") {
           hash = checkout === undefined ? undefined : headOf(checkout)
         } else if (branches.has(name)) {
@@ -368,8 +371,8 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
        */
       const replay = (
         checkout: Checkout,
-        rebasing: { readonly branch?: string; readonly orig: string },
-        onto: string,
+        rebasing: { readonly branch?: string; readonly orig: Sha },
+        onto: Sha,
         todo: ReadonlyArray<CommitObject>,
         force: ReadonlyArray<string> = [],
       ): Replayed => {
@@ -645,7 +648,7 @@ export const layer = (seed: Seed = {}): Layer.Layer<Git | GitWriter | Repository
               if (existing !== undefined || locate(where) !== undefined) {
                 return yield* refuse(128, `fatal: '${where}' already exists`)
               }
-              let start: string
+              let start: Sha
               if (options.base === undefined) {
                 const tip = branches.get(options.branch)
                 if (tip === undefined) {

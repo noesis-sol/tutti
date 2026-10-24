@@ -15,7 +15,7 @@ import type { FinishedTicket } from "../src/run/merge.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { resetHandBackText, resetText } from "../src/run/told.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import {
   apiErrorResult,
   apiRetry,
@@ -513,19 +513,19 @@ describe("what the worker is told", () => {
     mode,
     prompt: "",
     what: line``,
-    onto: "1111111111aaaa",
-    to: "2222222222bbbb",
+    onto: "1111111111aaaa" as Sha,
+    to: "2222222222bbbb" as Sha,
     done: Effect.succeed(false),
   })
 
   test("the hand-back over names the commit its attempt got to, which git keeps", () => {
-    expect(handBackOver(handBack("fixing"), "20m", "3333333333cccc")).toBe(
+    expect(handBackOver(handBack("fixing"), "20m", "3333333333cccc" as Sha)).toBe(
       "tutti: the 20m for this hand-back is up, so tutti has stopped you and ends it: it puts tutti/b back at 2222222222, where the check failed, and sets b aside for review. Your attempt so far is commit 3333333333, which git keeps (git show 3333333333). Don't work on it any more: no git commands in /w/b, no ticket changes. Say DONE.",
     )
   })
 
   test("a hand-back taken as it is says where, and what checks it", () => {
-    expect(handBackTaken(handBack("fixing"), "20m", "4444444444dddd", check)).toBe(
+    expect(handBackTaken(handBack("fixing"), "20m", "4444444444dddd" as Sha, check)).toBe(
       "tutti: the 20m for this hand-back is up, and your fix is committed, so tutti has stopped you and takes tutti/b as it is now, at 4444444444, to check with 'scripts/check-fast.sh' and merge. Leave /w/b as it is: no more commits, no amending, no git commands in it, no ticket changes. Say DONE.",
     )
   })

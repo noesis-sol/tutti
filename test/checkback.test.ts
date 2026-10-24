@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
-import { type CheckStop, times } from "../src/run/checkback.ts"
+import { type HandedCheck, times } from "../src/run/checkback.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
@@ -10,7 +10,7 @@ import { untilSettled } from "../src/run/settle.ts"
 import { fixPrompt } from "../src/run/told.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed, CheckTimedOut } from "../src/services/Checks.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import {
@@ -533,19 +533,19 @@ describe("a failure not handed back", () => {
 })
 
 describe("the prompt", () => {
-  const stop: CheckStop = {
+  const stop: HandedCheck = {
     ticket: { id: "a", title: "A", branch: "tutti/a", worktree: "/w/a" },
-    onto: "1111111111",
-    fork: "0000000000",
-    head: "2222222222",
-    at: "3333333333",
+    onto: "1111111111" as Sha,
+    fork: "0000000000" as Sha,
+    head: "2222222222" as Sha,
+    at: "3333333333" as Sha,
     error: failing(),
     output: "/w/a/.tutti/run/check.log",
   }
 
   test("names what failed, where its output is, what landed and what to run, as orchestra's does", () => {
     const prompt = fixPrompt(stop, "main", check, [
-      { hash: "4444444444", subject: "Land b", message: "Land b" },
+      { hash: "4444444444" as Sha, subject: "Land b", message: "Land b" },
     ])
     expect(prompt).toStartWith(
       `tutti: main moved on while you worked, and tutti/a was rebased onto it; now '${check}' fails on it. Its whole output is in /w/a/.tutti/run/check.log; these lines say what failed:\nerror: a.test.ts: expected 1\n\n`,
@@ -567,7 +567,7 @@ describe("the prompt", () => {
 
   test("lists at most 30 of what landed", () => {
     const landed = Array.from({ length: 32 }, (_, i) => ({
-      hash: `${i}`.padStart(10, "0"),
+      hash: `${i}`.padStart(10, "0") as Sha,
       subject: `Land ${i}`,
       message: `Land ${i}`,
     }))

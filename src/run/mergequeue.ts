@@ -47,14 +47,14 @@ import {
 } from "effect"
 import { Git } from "../services/Git.ts"
 import { makePasses } from "./check.ts"
-import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from "./checkback.ts"
+import { fixCheck, fixResolution, type HandedCheck, handOverFix, makeFixes } from "./checkback.ts"
 import { RunFibers } from "./fibers.ts"
 import {
   type HandBacks,
+  type HandedRebase,
   handOver,
   makeHandBacks,
   noReset,
-  type RebaseStop,
   resolve,
 } from "./handback.ts"
 import { mergedByHand as handMerged } from "./handMerged.ts"
@@ -359,7 +359,7 @@ export const make = (
     // Its conflicts handed back to its worker, Resolving; a resolution that changes nothing is
     // closed at once, protected as a merge's last step is; one whose check fails goes on to Fixing,
     // or is blocked (checkback.ts).
-    const handBack = (stop: RebaseStop) =>
+    const handBack = (stop: HandedRebase) =>
       Effect.gen(function* () {
         const handed = yield* handOver(stop, options, handBacks, memory.setUps)
         const work = Effect.gen(function* () {
@@ -386,7 +386,7 @@ export const make = (
 
     // Its failed check handed back to its worker, Fixing. The ledger refusing (PHASE_BUG) leaves it
     // as it is.
-    const fixBack = (stop: CheckStop) =>
+    const fixBack = (stop: HandedCheck) =>
       Effect.gen(function* () {
         const handed = yield* handOverFix(stop, options, fixes)
         const work = Effect.map(

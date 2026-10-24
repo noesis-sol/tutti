@@ -43,7 +43,7 @@ import {
   SubscriptionRef,
 } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
-import { Git, gitWhy, shortHash } from "../services/Git.ts"
+import { Git, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { branchOf } from "../services/Worktrees.ts"
@@ -64,7 +64,7 @@ import {
 } from "./merge.ts"
 import { type SetUps, setUp } from "./setup.ts"
 
-export { aheadKey, type RebasedAhead, rebasedAheadOf } from "./ahead.ts"
+export { aheadJson, aheadKey, type RebasedAhead, rebasedAheadOf } from "./ahead.ts"
 
 /**
  * How the check of a ticket ahead of its turn goes, for the dashboard (orchestra's
@@ -79,32 +79,36 @@ export interface CheckAhead {
 /**
  * Where a train is: rebasing its branch onto the branch ahead; not rebased, as it doesn't rebase
  * cleanly or changes nothing on top of it; rebased and being checked; passed; failed; or stopped
- * before its check ended. `head` is its branch's commit after the rebase: "" when git couldn't say,
+ * before its check ended. `head` is its branch's commit after the rebase: undefined when git couldn't say,
  * and, NotRebased, when its branch is as its worker left it (one git could not put back keeps it).
  * `setUp`: the setup may have run in its worktree, on top of the branch ahead. Only a train
  * Checking or Passed has trains behind it, on its `head`.
  */
 type Step = Data.TaggedEnum<{
   Rebasing: Record<never, never>
-  NotRebased: { readonly head: string }
-  Checking: { readonly head: string; readonly setUp: boolean }
-  Passed: { readonly head: string; readonly setUp: boolean }
+  NotRebased: { readonly head: Sha | undefined }
+  Checking: { readonly head: Sha | undefined; readonly setUp: boolean }
+  Passed: { readonly head: Sha | undefined; readonly setUp: boolean }
   /** `why`: what failed on it and how, and where the output is. */
-  Failed: { readonly head: string; readonly setUp: boolean; readonly why: Line }
-  Stopped: { readonly head: string; readonly setUp: boolean }
+  Failed: { readonly head: Sha | undefined; readonly setUp: boolean; readonly why: Line }
+  Stopped: { readonly head: Sha | undefined; readonly setUp: boolean }
 }>
 
 const Step = Data.taggedEnum<Step>()
 
-/** Its branch's commit after the rebase, "" when there is none (Step). */
-const headOf = (step: Step): string => (step._tag === "Rebasing" ? "" : step.head)
+/** Its branch's commit after the rebase, undefined when there is none (Step). */
+const headOf = (step: Step): Sha | undefined => (step._tag === "Rebasing" ? undefined : step.head)
+
+/** `, at <commit>`, where a branch is put back to, for a line; nothing when it was never read. */
+const atCommit = (orig: Sha | undefined): string =>
+  orig === undefined ? "" : `, at ${shortHash(orig)}`
 
 /** Whether the setup may have run on top of the branch ahead. */
 const setUpOf = (step: Step): boolean =>
   step._tag === "Rebasing" || step._tag === "NotRebased" ? false : step.setUp
 
 /** The commit trains behind it are rebased onto, or undefined when none starts behind it. */
-const aheadOf: (step: Step) => string | undefined = Step.$match({
+const aheadOf: (step: Step) => Sha | undefined = Step.$match({
   Rebasing: () => undefined,
   NotRebased: () => undefined,
   Checking: ({ head }) => head,
@@ -125,11 +129,11 @@ interface Run {
   /** The branch of the ticket ahead of it, which it was rebased onto. */
   readonly behind: string
   /** The commit it was rebased onto: `behind` as it is checked. */
-  readonly onto: string
-  /** Its branch's commit before the rebase, as its worker left it; "" until it is read. */
-  readonly orig: string
-  /** Where its branch left the base before the rebase, for the setup. */
-  readonly fork: string
+  readonly onto: Sha
+  /** Its branch's commit before the rebase, as its worker left it; undefined until it is read. */
+  readonly orig: Sha | undefined
+  /** Where its branch left the base before the rebase, for the setup; undefined until it is read. */
+  readonly fork: Sha | undefined
   readonly step: Step
 }
 
@@ -150,7 +154,7 @@ interface Trains {
    */
   readonly boarding: ReadonlySet<string>
   /** The branch of the ticket whose turn it is, at the commit its check runs or passed on. */
-  readonly checking: { readonly branch: string; readonly at: string } | undefined
+  readonly checking: { readonly branch: string; readonly at: Sha | undefined } | undefined
   /** Set once the trains are left: none starts again. */
   readonly stopped: boolean
 }
@@ -240,7 +244,7 @@ export const putBackLeft = (
       const branch = record.branch ?? branchOf(id)
       if (mark.setUp) yield* setUps.offBase(id, setUpOnTop(mark.behind))
       // Killed during the rebase: it is undone, the branch where its worker left it.
-      if (mark.head === "") {
+      if (mark.head === undefined) {
         yield* Effect.ignore(
           Effect.flatMap(git.rebaseInProgress(worktree), (rebasing) =>
             rebasing ? git.abortRebase(worktree) : Effect.void,
@@ -257,11 +261,11 @@ export const putBackLeft = (
         continue
       }
       const fork =
-        mark.head === "" && mark.onto !== ""
+        mark.head === undefined && mark.onto !== undefined
           ? yield* Effect.result(git.mergeBase(repo, mark.onto, at.success))
           : undefined
       const rebased =
-        mark.head !== ""
+        mark.head !== undefined
           ? at.success === mark.head
           : fork !== undefined && Result.isSuccess(fork) && fork.success === mark.onto
       if (!rebased) {
@@ -351,15 +355,18 @@ export const make = (
     const lock = yield* Semaphore.make(1)
     const set = yield* (yield* RunFibers).make<void, never>("merge train")
 
-    // The ticket's mark in state.json, as its train has it now, or at `head` once rebased.
+    // The ticket's mark in state.json, as its train has it now, or at `head` once rebased; none
+    // before its branch's commit is read, as there is nothing to put back then.
     const mark = (run: Run, head = headOf(run.step)) =>
-      markAhead(run.ticket.id, {
-        orig: run.orig,
-        onto: run.onto,
-        head,
-        behind: run.behind,
-        setUp: setUpOf(run.step),
-      })
+      run.orig === undefined
+        ? Effect.void
+        : markAhead(run.ticket.id, {
+            orig: run.orig,
+            onto: run.onto,
+            head,
+            behind: run.behind,
+            setUp: setUpOf(run.step),
+          })
 
     // The train's run, saved for the others to read as it is now.
     const save = (run: Run) =>
@@ -384,7 +391,7 @@ export const make = (
     const rebaseAhead = (run: Run): Effect.Effect<Run, never, Git | Store> =>
       Effect.gen(function* () {
         const { id, branch, worktree } = run.ticket
-        const notRebased = (from: Run, head = ""): Run => ({
+        const notRebased = (from: Run, head?: Sha): Run => ({
           ...from,
           step: Step.NotRebased({ head }),
         })
@@ -401,7 +408,7 @@ export const make = (
           ),
         )
         if (Result.isFailure(before)) return notRebased(run)
-        const read: Run = { ...run, orig: before.success.orig, fork: before.success.fork }
+        const read = { ...run, orig: before.success.orig, fork: before.success.fork }
         // Marked before git touches the branch: a run killed before it is put back leaves the mark.
         yield* mark(read)
         const rebased = yield* Effect.result(git.rebase(worktree, read.onto))
@@ -465,7 +472,7 @@ export const make = (
         const setting = yield* save({ ...rebased, step: Step.Checking({ head, setUp: true }) })
         yield* mark(setting)
         const setup = yield* setUp(setting.ticket, options, memory.setUps, {
-          fork: setting.fork === "" ? setting.onto : setting.fork,
+          fork: setting.fork ?? setting.onto,
           onto: setting.onto,
           ahead: true,
         })
@@ -524,13 +531,21 @@ export const make = (
       Effect.gen(function* () {
         const { stopped, checking } = yield* Ref.get(trains)
         if (stopped || size <= 0 || config.settings.checks.fast.command === null) return
-        if (checking === undefined || (yield* machineFull)) return
+        // Nothing is rebased onto a commit git couldn't say.
+        if (checking?.at === undefined || (yield* machineFull)) return
         let { branch: behind, at: onto } = checking
         for (const id of (yield* options.waiting).slice(0, size)) {
           const ticket = (yield* Ref.get(trains)).ahead.get(id)
           if (ticket === undefined) break
           if ((yield* runOf(id)) === undefined) {
-            const made: Run = { ticket, behind, onto, orig: "", fork: "", step: Step.Rebasing() }
+            const made: Run = {
+              ticket,
+              behind,
+              onto,
+              orig: undefined,
+              fork: undefined,
+              step: Step.Rebasing(),
+            }
             yield* update((now) => ({ ...now, runs: new Map(now.runs).set(id, made) }))
             const fiber = yield* FiberSet.run(
               set,
@@ -555,11 +570,11 @@ export const make = (
     // it hasn't moved since: what restoreBranch said, or undefined when it was not the train's to
     // put back. Dependencies set up on top of the branch ahead are set up again before its next
     // check. Its mark is cleared once its branch is back, or was not the train's to put back.
-    const putBack = (run: Run, head: string) =>
+    const putBack = (run: Run, head: Sha) =>
       Effect.gen(function* () {
         if (setUpOf(run.step)) yield* memory.setUps.offBase(run.ticket.id, setUpOnTop(run.behind))
         const restored =
-          headOf(run.step) === "" || head !== headOf(run.step)
+          run.orig === undefined || headOf(run.step) === undefined || head !== headOf(run.step)
             ? undefined
             : yield* restoreBranch(run.ticket, run.orig, 1)
         if (restored === undefined || notBack(run.ticket.worktree, restored) === undefined) {
@@ -633,7 +648,7 @@ export const make = (
             yield* log.write(
               ticketLine(
                 Tag.rebaseFailed,
-              )`${id}: ${branch} could not be put back as its worker left it, at ${shortHash(run.orig)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
+              )`${id}: ${branch} could not be put back as its worker left it${atCommit(run.orig)}, after it was rebased onto ${run.behind} to be checked ahead of its turn: ${why}; check ${worktree} before it merges`,
             )
           }
           yield* update((now) => withoutRuns(now, left))
@@ -729,7 +744,7 @@ export const make = (
             detail: "rebase failed",
             text: ticketLine(
               Tag.rebaseFailed,
-            )`${id} closed, but ${branch} could not be put back as its worker left it, at ${shortHash(ended.orig)}, after it was rebased onto ${ended.behind} to be checked ahead of its turn: ${why}; worktree ${worktree} left for review`,
+            )`${id} closed, but ${branch} could not be put back as its worker left it${atCommit(ended.orig)}, after it was rebased onto ${ended.behind} to be checked ahead of its turn: ${why}; worktree ${worktree} left for review`,
           })
           return Prepared.Over({})
         }

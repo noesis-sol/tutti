@@ -11,6 +11,7 @@ import { checkOnce } from "../src/run/check.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { makeSetUps, setUp, setUpWorktree } from "../src/run/setup.ts"
 import { CheckFailed, type CheckKind, checkLogName, setupLogName } from "../src/services/Checks.ts"
+import type { Sha } from "../src/services/Git.ts"
 import { nothingEarlier, runFolder } from "../src/services/Worktrees.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { CheckRun } from "../src/testing/Checks.ts"
@@ -80,7 +81,7 @@ for (const linked of [false, true]) {
             { id: "a", title: "a", branch: "tutti/a", worktree },
             { repo: folder("repo"), base: "main" },
             setUps,
-            { fork: "fork", onto: "onto" },
+            { fork: "fork" as Sha, onto: "onto" as Sha },
           )
         }).pipe(Effect.provide(Ledger.layer)),
       )

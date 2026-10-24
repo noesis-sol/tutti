@@ -5,7 +5,7 @@
 // branch, clean or the base not moved. And restoreBranch, which puts a ticket's branch back where it
 // was, as each of them does when its own step can't go on.
 import { Data, Duration, Effect, Result } from "effect"
-import { Git, type GitError, type StatusEntry } from "../services/Git.ts"
+import { Git, type GitError, givenHash, type Sha, type StatusEntry } from "../services/Git.ts"
 import { trackedChanges } from "../services/gitStatus.ts"
 import { type Again, retrying } from "./again.ts"
 import type { FinishedTicket, MergeTarget } from "./merge.ts"
@@ -101,21 +101,29 @@ export const gitReads = { concurrency: "unbounded" } as const
 export type Restored = Data.TaggedEnum<{
   /** At `to` already, once a rebase in progress was aborted (`aborted`), or none was. */
   AlreadyThere: { readonly aborted: boolean }
-  /** Reset to `to` from `from`, its worker's attempt. */
-  Reset: { readonly from: string }
+  /** Reset to `to` from `from`, its worker's attempt; undefined when git couldn't say where. */
+  Reset: { readonly from: Sha | undefined }
   /** Left: its worktree has uncommitted changes, or git can't say whether it has. */
-  Dirty: { readonly at: string }
+  Dirty: { readonly at: Sha | undefined }
   /** Left: its worktree has something else checked out, as `on` says (Checkout's OffBranch). */
-  OffBranch: { readonly at: string; readonly on: string }
+  OffBranch: { readonly at: Sha | undefined; readonly on: string }
   /** Left: git can't tell what its worktree has checked out. */
-  Unknown: { readonly at: string; readonly error: GitError }
+  Unknown: { readonly at: Sha | undefined; readonly error: GitError }
   /** Left mid-rebase: git could not abort the rebase in progress. */
   AbortFailed: { readonly error: GitError }
   /** Left: git reset failed. */
-  ResetFailed: { readonly at: string; readonly error: GitError }
+  ResetFailed: { readonly at: Sha | undefined; readonly error: GitError }
 }>
 
 export const Restored = Data.taggedEnum<Restored>()
+
+/** Where a branch not put back is left, for a line: `at <commit>`; where it is, git not saying. */
+export const leftAt = (at: Sha | undefined): string =>
+  at === undefined ? "where it is" : `at ${givenHash(at)}`
+
+/** Its worker's attempt a branch was reset from, for a line, when git said where it was. */
+export const attemptAt = (from: Sha | undefined): string =>
+  from === undefined ? "" : ` (its worker's attempt is ${givenHash(from)})`
 
 /**
  * Puts the ticket's branch back at `to`: a rebase in progress in its worktree aborted, then the
@@ -141,7 +149,7 @@ export const restoreBranch = (
     }
     const status = yield* Effect.result(git.status(worktree))
     const head = yield* Effect.result(git.revParse(worktree, branch))
-    const at = Result.isSuccess(head) ? head.success : ""
+    const at = Result.isSuccess(head) ? head.success : undefined
     if (at === to) return Restored.AlreadyThere({ aborted })
     if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
       return Restored.Dirty({ at })
@@ -157,15 +165,15 @@ export const restoreBranch = (
 /**
  * The commit the ticket's branch is at, git asked up to gitTries times while it fails, read before
  * its setup and check: the one a check that passes passed on, a commit made while it runs not
- * checked. "" when git can't say.
+ * checked. Undefined when git can't say.
  */
 export const branchHead = (
   ticket: FinishedTicket,
   options: MergeTarget,
-): Effect.Effect<string, never, Git> =>
+): Effect.Effect<Sha | undefined, never, Git> =>
   Effect.gen(function* () {
     const at = yield* Effect.result(steering((yield* Git).revParse(options.repo, ticket.branch)))
-    return Result.isSuccess(at) ? at.success : ""
+    return Result.isSuccess(at) ? at.success : undefined
   })
 
 /** Whether the base has moved on from a commit, or git can't tell. */
@@ -180,15 +188,11 @@ export const BaseSince = Data.taggedEnum<BaseSince>()
 /**
  * Whether the base has moved on from `onto`, the commit a branch was rebased onto or is on top of,
  * as when other tickets merged while its worker worked on a hand-back, git asked up to gitTries
- * times while it fails. Still when `onto` is "" (git couldn't say what it was): the merge reads
- * where the branch is again. A failure is Unknown, never Still.
+ * times while it fails. A failure is Unknown, never Still.
  */
-export const baseSince = (
-  options: MergeTarget,
-  onto: string,
-): Effect.Effect<BaseSince, never, Git> =>
+export const baseSince = (options: MergeTarget, onto: Sha): Effect.Effect<BaseSince, never, Git> =>
   Effect.gen(function* () {
     const now = yield* Effect.result(steering((yield* Git).revParse(options.repo, options.base)))
     if (Result.isFailure(now)) return BaseSince.Unknown({ error: now.failure })
-    return onto !== "" && now.success !== onto ? BaseSince.Moved() : BaseSince.Still()
+    return now.success !== onto ? BaseSince.Moved() : BaseSince.Still()
   })

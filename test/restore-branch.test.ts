@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { type Restored, restoreBranch } from "../src/run/branch.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { layer as memoryGit, Repository } from "../src/testing/Git.ts"
 
 const worktree = "/worktrees/a"
@@ -16,7 +16,7 @@ interface Ended {
   /** Where the branch was put back to: the ticket's commit. */
   readonly to: string
   /** The worker's commit on top of it. */
-  readonly attempt: string
+  readonly attempt: Sha
   /** Where the branch is once restoreBranch is done. */
   readonly branch: string
   readonly rebasing: boolean

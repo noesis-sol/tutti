@@ -4,14 +4,14 @@
 // .tutti/run/, tutti's own, don't count.
 import { describe, expect, test } from "bun:test"
 import { Effect, Exit } from "effect"
-import { type CheckStop, verifyFixed } from "../src/run/checkback.ts"
-import { type RebaseStop, verifyResolved } from "../src/run/handback.ts"
+import { type HandedCheck, verifyFixed } from "../src/run/checkback.ts"
+import { type HandedRebase, verifyResolved } from "../src/run/handback.ts"
 import { Ledger } from "../src/run/ledger.ts"
 import { type FinishedTicket, someFiles } from "../src/run/merge.ts"
 import { Move } from "../src/run/phase.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
 import { type Files, Repository } from "../src/testing/Git.ts"
 import { backlog, type Env, type Ran, scenario } from "./harness.ts"
@@ -39,8 +39,8 @@ const resultOf = <A>(ran: Ran<A>): A => {
 
 /** Where a's branch was before its worker's commit, and where main is. */
 interface Points {
-  readonly first: string
-  readonly main: string
+  readonly first: Sha
+  readonly main: Sha
 }
 
 /**
@@ -80,17 +80,17 @@ const leaves = <A>(
     }).pipe(Effect.provide(Ledger.layer)),
   )
 
-const checkStop = (ticket: FinishedTicket, at: string): CheckStop => ({
+const checkStop = (ticket: FinishedTicket, at: Sha): HandedCheck => ({
   ticket,
-  onto: "",
-  fork: "",
+  onto: "" as Sha,
+  fork: "" as Sha,
   head: at,
   at,
   error: failing(),
   output: "/dev/fd/9",
 })
 
-const rebaseStop = (ticket: FinishedTicket, onto: string): RebaseStop => ({
+const rebaseStop = (ticket: FinishedTicket, onto: Sha): HandedRebase => ({
   ticket,
   onto,
   fork: onto,

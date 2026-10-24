@@ -54,7 +54,14 @@ import type { AgentHost } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
 import type { CheckError, Checks } from "../services/Checks.ts"
-import { Git, type GitError, gitWhy, type StatusEntry, shortHash } from "../services/Git.ts"
+import {
+  Git,
+  type GitError,
+  gitWhy,
+  type Sha,
+  type StatusEntry,
+  shortHash,
+} from "../services/Git.ts"
 import { allChanges, checkoutChanges } from "../services/gitStatus.ts"
 import { Store } from "../services/Store.ts"
 import { type BadTicketId, cleanupWhy, Worktrees } from "../services/Worktrees.ts"
@@ -87,18 +94,20 @@ import {
   type Fixes,
   fixFailed,
   fixPassed,
+  type HandedCheck,
   refusalWhy,
   setAside,
-  whyNotFix,
+  toFix,
 } from "./checkback.ts"
 import { writtenOnly } from "./checkWrote.ts"
 import type { EventStream } from "./eventstream.ts"
 import {
   type AtReset,
   type HandBacks,
+  type HandedRebase,
   notHandedBack,
   type RebaseStop,
-  whyNotHandBack,
+  toHandBack,
 } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { type Arg, branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
@@ -190,14 +199,14 @@ export type Prepared = Data.TaggedEnum<{
   /** Set aside or blocked, or, with `stop`, stopping the merges. */
   Over: { readonly stop?: MergeStop }
   /** Its branch, checked at `at`, fast-forwarded onto the base from `onto`. */
-  Merged: { readonly onto: string; readonly at: string }
+  Merged: { readonly onto: Sha; readonly at: Sha }
   /**
    * The branch, its worktree clean, changes nothing beyond the base: `why` says which way, and
    * `own` whether it has commits of its own still, which keep git from deleting it as merged.
    */
   Unchanged: { readonly why: string; readonly own: boolean }
-  HandBack: { readonly stop: RebaseStop }
-  FixBack: { readonly stop: CheckStop }
+  HandBack: { readonly stop: HandedRebase }
+  FixBack: { readonly stop: HandedCheck }
 }>
 
 export const Prepared = Data.taggedEnum<Prepared>()
@@ -358,7 +367,7 @@ export const unchanged = (
  */
 export interface CheckWatch {
   /** Its check, the setup first if need be, starts on its branch at commit `at`. */
-  starts(ticket: FinishedTicket, at: string): Effect.Effect<void>
+  starts(ticket: FinishedTicket, at: Sha | undefined): Effect.Effect<void>
   /** Its check, or the setup before it, ended: passed or not. */
   ends(passed: boolean): Effect.Effect<void>
 }
@@ -383,8 +392,8 @@ export interface MergeMemory {
 export const notePass = (
   ticket: FinishedTicket,
   passes: Passes,
-  at: string,
-): Effect.Effect<void> => (at === "" ? Effect.void : passes.set(ticket.id, at))
+  at: Sha | undefined,
+): Effect.Effect<void> => (at === undefined ? Effect.void : passes.set(ticket.id, at))
 
 /**
  * Sets the ticket aside, DIRTY_WORKTREE, when its worktree has uncommitted changes to tracked files,
@@ -459,34 +468,34 @@ export type Step = Data.TaggedEnum<{
   Enter: Record<never, never>
   Locate: {
     readonly carried: Carried | undefined
-    readonly checked: { readonly onto: string; readonly at: string } | undefined
+    readonly checked: { readonly onto: Sha; readonly at: Sha } | undefined
     readonly afterCheck: boolean
   }
   Rebase: {
-    readonly fork: string
-    readonly onto: string
+    readonly fork: Sha
+    readonly onto: Sha
     readonly carried: Carried | undefined
     readonly status: WorktreeStatus | undefined
   }
   Check: {
     /** Where its branch left the base: `onto` when it is on top of it already. */
-    readonly fork: string
-    readonly onto: string
+    readonly fork: Sha
+    readonly onto: Sha
     /**
-     * Its commit before the rebase ("" when git couldn't say), or its own when on top of the base
-     * already.
+     * Its commit before the rebase (undefined when git couldn't say), or its own when on top of the
+     * base already.
      */
-    readonly head: string
+    readonly head: Sha | undefined
     /** On top of the base already, as its worker left it, not rebased. */
     readonly onTop: boolean
     readonly carried: Carried | undefined
     /** The commit its branch is at, as the merge read it just before; read again without it. */
-    readonly now: string | undefined
+    readonly now: Sha | undefined
     /** Its worktree's status as the merge read it just before, nothing having run in it since. */
     readonly before: ReadonlyArray<StatusEntry> | undefined
   }
-  Confirm: { readonly onto: string; readonly at: string }
-  FastForward: { readonly onto: string; readonly at: string }
+  Confirm: { readonly onto: Sha; readonly at: Sha }
+  FastForward: { readonly onto: Sha; readonly at: Sha }
 }>
 
 export const Step = Data.taggedEnum<Step>()
@@ -669,7 +678,7 @@ const locate = (turn: Turn, { carried, checked, afterCheck }: StepOf<"Locate">):
         detail`${branch} is on top of ${base}, but its check didn't finish after tutti rebased it; checking it now`,
       )
       return Step.Check({
-        fork: unchecked.fork === "" ? onto : unchecked.fork,
+        fork: unchecked.fork ?? onto,
         onto,
         head: unchecked.head,
         onTop: false,
@@ -741,7 +750,7 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
     const before = yield* Effect.result(
       Effect.all({ head: git.revParse(repo, branch), own: git.log(repo, onto, branch) }, gitReads),
     )
-    const head = Result.isSuccess(before) ? before.success.head : ""
+    const head = Result.isSuccess(before) ? before.success.head : undefined
     // Marked before git touches the branch: a quit before its check passes leaves the mark.
     yield* markUnchecked(id, { fork, head })
     // Onto the commit read as `onto`, not the base's name: one committed to the base since lands in
@@ -755,7 +764,7 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
           onto,
           fork,
           head,
-          own: Result.isSuccess(before) ? before.success.own.length : -1,
+          own: Result.isSuccess(before) ? before.success.own.length : undefined,
           files: error.files,
         }
         // A fix carried here goes unchecked: what its worker resolves is checked with it.
@@ -769,9 +778,9 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
           const tries = [...carried.tries, ...overtaken]
           if (tries.length > 0) yield* memory.fixes.carry(id, { tries })
         }
-        const not = yield* whyNotHandBack(stop, yield* memory.handBacks.count(id), turn.waived)
-        if (not === undefined) return Prepared.HandBack({ stop })
-        yield* notHandedBack(stop, options, not, memory.handBacks)
+        const handed = yield* toHandBack(stop, yield* memory.handBacks.count(id), turn.waived)
+        if (Result.isSuccess(handed)) return Prepared.HandBack({ stop: handed.success })
+        yield* notHandedBack(stop, options, handed.failure, memory.handBacks)
         return Prepared.Over({})
       }
       yield* closedBut(
@@ -800,9 +809,9 @@ const rebase = (turn: Turn, { fork, onto, carried, status }: StepOf<"Rebase">): 
   })
 
 /**
- * Sets up the ticket, its branch rebased from `fork` (its commit `head` then; "" when git couldn't
- * say) onto the base at `onto`, or `onTop` of it already (`fork` is then `onto`, and `head` the
- * branch's own commit), if need be, and checks it: Confirm, on the commit the check passed on when
+ * Sets up the ticket, its branch rebased from `fork` (its commit `head` then; undefined when git
+ * couldn't say) onto the base at `onto`, or `onTop` of it already (`fork` is then `onto`, and `head`
+ * the branch's own commit), if need be, and checks it: Confirm, on the commit the check passed on when
  * it passed, the branch's as the setup started, kept in the memory's passes too; Over when either
  * set it aside, or git couldn't say where the branch is; FixBack when its failure is to be handed
  * back to its worker. `carried`: what a hand-back left for this check, its worker's fix or
@@ -837,7 +846,7 @@ const check = (
       return Prepared.Over({})
     }
     const at = read.success
-    const handBack = (stop: CheckStop) => Prepared.FixBack({ stop })
+    const handBack = (stop: HandedCheck) => Prepared.FixBack({ stop })
     const passed = Step.Confirm({ onto, at })
     const failed = (error: CheckError, output: string) =>
       Effect.gen(function* () {
@@ -865,9 +874,9 @@ const check = (
           )
           return after._tag === "Aside" ? Prepared.Over({}) : handBack(after.stop)
         }
-        const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(id))
-        if (not === undefined) return handBack(stop)
-        const said = refusalWhy(not)
+        const fix = yield* toFix(stop, options, yield* memory.fixes.count(id))
+        if (Result.isSuccess(fix)) return handBack(fix.success)
+        const said = refusalWhy(fix.failure)
         if (tries.length > 0) {
           yield* setAside(stop, options, memory, tries, said)
           return Prepared.Over({})
@@ -1340,8 +1349,8 @@ export const Refused = Data.taggedEnum<Refused>()
  */
 export const diagnose = (
   options: MergeTarget,
-  onto: string,
-  at: string,
+  onto: Sha,
+  at: Sha,
   status: ReadonlyArray<StatusEntry>,
   error: GitError,
 ): Effect.Effect<Refused, never, Git> =>
@@ -1382,8 +1391,8 @@ export const diagnose = (
 export const fastForward = (
   ticket: FinishedTicket,
   options: MergeTarget,
-  onto: string,
-  at: string,
+  onto: Sha,
+  at: Sha,
 ): Effect.Effect<FastForward, never, MergeEnv> =>
   Effect.gen(function* () {
     const git = yield* Git

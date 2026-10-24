@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Effect, Exit, Layer, ManagedRuntime, Option } from "effect"
-import { Git, GitWriter } from "../src/services/Git.ts"
+import { Git, GitWriter, type Sha } from "../src/services/Git.ts"
 import { layer as memoryLayer, Repository } from "../src/testing/Git.ts"
 import { machineWhich } from "./env.ts"
 import { slow } from "./gates.ts"
@@ -20,14 +20,14 @@ interface Fixture {
   /** A path beside the repository for a new worktree. */
   path(name: string): string
   /** Commits the files in dir (the main checkout by default); the commit's hash. */
-  commit(message: string, files: Readonly<Record<string, string>>, dir?: string): string
+  commit(message: string, files: Readonly<Record<string, string>>, dir?: string): Sha
   /** Writes the files in dir without staging them. */
   write(files: Readonly<Record<string, string>>, dir: string): void
   /** Sets the repository's git config; the in-memory layer has none. */
   config(key: string, value: string): void
   /** Signs the commits made from here on, with an ssh key, where the machine has ssh-keygen. */
   sign(): void
-  head(rev: string): string
+  head(rev: string): Sha
   git<A, E>(use: (git: Git["Service"]) => Effect.Effect<A, E>): Promise<Exit.Exit<A, E>>
 }
 

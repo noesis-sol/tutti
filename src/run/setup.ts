@@ -42,7 +42,7 @@ import { decodeConfig, parseConfigJson } from "../project/configFile.ts"
 import { type Requirement, Settings, settingsFile } from "../project/settings.ts"
 import { Beads, beadsWhy } from "../services/Beads.ts"
 import { type CheckError, Checks, setupLogName } from "../services/Checks.ts"
-import { Git, type StatusEntry } from "../services/Git.ts"
+import { Git, type Sha, type StatusEntry } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import {
   checkRunFolder,
@@ -114,9 +114,9 @@ export interface SetUps {
    * The branch commit the dependencies in the ticket's worktree were last set up for in this run,
    * before its worker or before its check; undefined when they weren't.
    */
-  worktree(id: string): Effect.Effect<string | undefined>
+  worktree(id: string): Effect.Effect<Sha | undefined>
   /** The dependencies in the ticket's worktree are set up for its branch at `head` (its worker's). */
-  setWorktree(id: string, head: string): Effect.Effect<void>
+  setWorktree(id: string, head: Sha): Effect.Effect<void>
   /** The setup failed in the ticket's worktree before its worker could start (see FailedSetup). */
   failed(id: string, failed: FailedSetup): Effect.Effect<void>
   /** The tickets whose worktree's setup failed before their worker started, the last time it ran. */
@@ -125,15 +125,18 @@ export interface SetUps {
    * The base commit the ticket's dependencies were last set up for: `fork`, where its branch left
    * the base, the first time it is asked, until `set` says otherwise.
    */
-  from(id: string, fork: string): Effect.Effect<string>
+  from(id: string, fork: Sha): Effect.Effect<Sha>
   /**
    * The branch commit the ticket's dependencies were last set up for, as far as its worker's own
    * commits go: `at`, its branch before its worker's fix or resolution, the first time it is asked,
-   * until `set` says otherwise; "" when git couldn't say.
+   * until `set` says otherwise.
    */
-  since(id: string, at: string): Effect.Effect<string>
-  /** The ticket's dependencies are now set up for the base at `onto` and its branch at `head`. */
-  set(id: string, onto: string, head: string): Effect.Effect<void>
+  since(id: string, at: Sha): Effect.Effect<Sha>
+  /**
+   * The ticket's dependencies are now set up for the base at `onto` and its branch at `head`
+   * (undefined when git couldn't say).
+   */
+  set(id: string, onto: Sha, head: Sha | undefined): Effect.Effect<void>
   /**
    * The ticket's dependencies were set up off the base, `why` saying how: on top of the branch
    * ahead of it in the merge queue, its branch since put back (mergetrain.ts). Its next setup runs
@@ -146,8 +149,8 @@ export interface SetUps {
 
 /** What a ticket's dependencies were last set up for, of what was asked: the base's commit, its branch's. */
 interface SetUpFor {
-  readonly base?: string
-  readonly head?: string
+  readonly base?: Sha
+  readonly head?: Sha
   /** Set up off the base: how. */
   readonly off?: string
 }
@@ -169,7 +172,7 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
   const setup = yield* Ref.make<SetupConf>({ command, files })
   const requires = yield* Ref.make(settings.requires)
   const requiresDue = yield* Ref.make(false)
-  const heads = yield* Ref.make<ReadonlyMap<string, string>>(new Map())
+  const heads = yield* Ref.make<ReadonlyMap<string, Sha>>(new Map())
   const failures = yield* Ref.make<ReadonlyMap<string, FailedSetup>>(new Map())
   const left = new Map<string, SetUpFor>()
   if (Option.isSome(store)) {
@@ -182,7 +185,7 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
   // Writes to state.json, when there is a Store; one that can't be written doesn't.
   const persist = (write: (store: Store["Service"]) => Effect.Effect<void, unknown>) =>
     Option.isSome(store) ? Effect.ignore(write(store.value)) : Effect.void
-  const setWorktree = (id: string, head: string) =>
+  const setWorktree = (id: string, head: Sha) =>
     Effect.andThen(
       Ref.update(heads, (now) => new Map(now).set(id, head)),
       Ref.update(failures, (now) => {
@@ -192,8 +195,8 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
       }),
     )
   /** The ticket's `key`, `first` and kept so the first time it is asked. */
-  const get = (id: string, key: keyof SetUpFor, first: string) =>
-    Ref.modify(commits, (setUps): [string, ReadonlyMap<string, SetUpFor>] => {
+  const get = (id: string, key: "base" | "head", first: Sha) =>
+    Ref.modify(commits, (setUps): [Sha, ReadonlyMap<string, SetUpFor>] => {
       const was = setUps.get(id)
       const kept = was?.[key]
       if (kept !== undefined) return [kept, setUps]
@@ -215,10 +218,10 @@ export const makeSetUps: Effect.Effect<SetUps, never, AppConfig> = Effect.gen(fu
       Effect.gen(function* () {
         const was = yield* Ref.modify(commits, (setUps) => [
           setUps.get(id)?.off,
-          new Map(setUps).set(id, { base: onto, head }),
+          new Map(setUps).set(id, head === undefined ? { base: onto } : { base: onto, head }),
         ])
         if (was !== undefined) yield* persist((store) => store.unsetMetadata(id, offBaseKey))
-        if (head !== "") yield* setWorktree(id, head)
+        if (head !== undefined) yield* setWorktree(id, head)
       }),
     offBase: (id, why) =>
       Effect.andThen(
@@ -264,16 +267,16 @@ export const SetUp = Data.taggedEnum<SetUp>()
  */
 export interface Fix {
   readonly what: "fix" | "resolution"
-  readonly from: string
+  readonly from: Sha
 }
 
 /** Where setUp finds a ticket's branch, and what its caller knows of it (setUp says each). */
 export interface SetUpOf {
-  readonly fork: string
-  readonly onto: string
+  readonly fork: Sha
+  readonly onto: Sha
   readonly fix?: Fix | undefined
   readonly ahead?: boolean
-  readonly at?: string | undefined
+  readonly at?: Sha | undefined
   readonly before?: ReadonlyArray<StatusEntry> | undefined
 }
 
@@ -309,7 +312,7 @@ export const setUp = (
       gitReads,
     )
     const { changed } = read
-    const head = Result.isSuccess(read.head) ? read.head.success : ""
+    const head = Result.isSuccess(read.head) ? read.head.success : undefined
     const why: Array<string> = []
     const rebased = Result.isSuccess(changed) ? setupFilesIn(changed.success, files) : []
     if (Result.isFailure(changed)) why.push("git could not say what the rebase changed")
@@ -319,7 +322,7 @@ export const setUp = (
     if (fix !== undefined) {
       const since = yield* setUps.since(ticket.id, fix.from)
       const own =
-        since === "" || head === ""
+        head === undefined
           ? undefined
           : yield* Effect.result(git.filesBetween(options.repo, since, head))
       if (own === undefined || Result.isFailure(own)) {
@@ -431,7 +434,7 @@ export const setUpWorktree = (
     const git = yield* Git
     const { id, path, branch } = worktree
     const at = yield* Effect.result(git.revParse(repo, branch))
-    const now = Result.isSuccess(at) ? at.success : ""
+    const now = Result.isSuccess(at) ? at.success : undefined
     const mark = worktree.fresh ? undefined : yield* markIn(path)
     let what: string
     if (worktree.fresh) what = line`running '${command}' in its new worktree`
@@ -443,7 +446,7 @@ export const setUpWorktree = (
       const last = yield* setUps.worktree(id)
       if (last === undefined) return WorktreeSetUp.Unneeded()
       const changed =
-        now === "" ? undefined : yield* Effect.result(git.filesBetween(repo, last, now))
+        now === undefined ? undefined : yield* Effect.result(git.filesBetween(repo, last, now))
       let why: string
       if (changed === undefined || Result.isFailure(changed)) {
         why = "git could not say what changed since its dependencies were last set up"
@@ -472,7 +475,7 @@ export const setUpWorktree = (
       yield* writeMark(id, path, failedMark)
       return WorktreeSetUp.Failed({ command, error: ran.failure, output })
     }
-    if (now !== "") yield* setUps.setWorktree(id, now)
+    if (now !== undefined) yield* setUps.setWorktree(id, now)
     yield* dropMark(id, path)
     return WorktreeSetUp.Passed()
   })
@@ -604,7 +607,7 @@ export const setupWaitsPart = (waiting: ReadonlyArray<readonly [string, string]>
  * itself before it checks the resolution (setUp).
  */
 export const setupToResolve = (
-  stop: { readonly ticket: FinishedTicket; readonly fork: string; readonly onto: string },
+  stop: { readonly ticket: FinishedTicket; readonly fork: Sha; readonly onto: Sha },
   options: MergeTarget,
   setUps: SetUps,
 ): Effect.Effect<{ readonly prompt: string; readonly told: Line }, never, Git> =>
@@ -655,8 +658,8 @@ export const takeSettings = (
   id: string,
   options: MergeTarget,
   setUps: SetUps,
-  before: string,
-  merged?: string,
+  before: Sha,
+  merged?: Sha,
 ): Effect.Effect<void, never, AgentHost | Git | Log | EventStream> =>
   Effect.gen(function* () {
     const git = yield* Git
@@ -664,7 +667,7 @@ export const takeSettings = (
     const { repo, base } = options
     const at =
       merged === undefined ? yield* Effect.result(git.revParse(repo, base)) : Result.succeed(merged)
-    if (before === "" || Result.isFailure(at)) return
+    if (Result.isFailure(at)) return
     const now = at.success
     const changed = yield* Effect.result(git.filesBetween(repo, before, now))
     if (Result.isFailure(changed) || !changed.success.includes(settingsFile)) return

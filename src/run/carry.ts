@@ -43,7 +43,7 @@
 import { Clock, Effect, FileSystem, Result } from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { Beads, type BeadsError, beadsWhy, type Issue } from "../services/Beads.ts"
-import { Git, gitWhy, givenHash } from "../services/Git.ts"
+import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
 import { type PhaseName, Store, type TicketRecord } from "../services/Store.ts"
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
@@ -183,15 +183,20 @@ const savedQuestion = (record: TicketRecord): string | undefined => {
 /**
  * The commit a worker's resolution of its handed-back conflicts had got to in `worktree`, mid-rebase,
  * which git keeps once the rebase is aborted: its `HEAD`, unless that is where the branch was before
- * the rebase or on the base, the commit it was rebased onto. "" for none, or when git can't say.
+ * the rebase or on the base, the commit it was rebased onto. Undefined for none, or when git can't
+ * say.
  */
-const resolutionAt = (worktree: string, before: string, repo: string, base: string) =>
+const resolutionAt = (
+  worktree: string,
+  before: Sha | undefined,
+  at: { readonly repo: string; readonly base: string },
+) =>
   Effect.gen(function* () {
     const git = yield* Git
     const head = yield* Effect.result(git.revParse(worktree, "HEAD"))
-    if (Result.isFailure(head) || head.success === before) return ""
-    const fork = yield* Effect.result(git.mergeBase(repo, base, head.success))
-    return Result.isSuccess(fork) && fork.success !== head.success ? head.success : ""
+    if (Result.isFailure(head) || head.success === before) return undefined
+    const fork = yield* Effect.result(git.mergeBase(at.repo, at.base, head.success))
+    return Result.isSuccess(fork) && fork.success !== head.success ? head.success : undefined
   })
 
 /**
@@ -221,7 +226,7 @@ const abortLeftRebase = (
     const rebasing = yield* Effect.result(git.rebaseInProgress(worktree))
     if (Result.isFailure(rebasing) || !rebasing.success) return undefined
     const handed = handedBackOf(mark)
-    const attempt = handed ? yield* resolutionAt(worktree, unchecked.head, at.repo, at.base) : ""
+    const attempt = handed ? yield* resolutionAt(worktree, unchecked.head, at) : undefined
     const aborted = yield* Effect.result(git.abortRebase(worktree))
     if (Result.isFailure(aborted)) {
       return handed
@@ -232,7 +237,7 @@ const abortLeftRebase = (
       return line`was left mid-rebase as the last run ended: the rebase is aborted, ${branch} back as its worker left it`
     }
     const kept =
-      attempt === ""
+      attempt === undefined
         ? line``
         : line`; its resolution had got to ${givenHash(attempt)}, which git keeps`
     return line`was left mid-rebase as the last run ended, its worker resolving its conflicts: the rebase is aborted, ${branch} back as its worker left it, for its merge to hand the conflicts back afresh${kept}`

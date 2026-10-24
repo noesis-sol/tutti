@@ -42,18 +42,18 @@ import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
-import { type Commit, Git, gitWhy, givenHash, shortHash } from "../services/Git.ts"
-import { restoreBranch } from "./branch.ts"
-import { failedHow, saidOf } from "./check.ts"
+import { Git, gitWhy, givenHash, type Sha } from "../services/Git.ts"
+import { attemptAt, leftAt, restoreBranch } from "./branch.ts"
+import { failedHow } from "./check.ts"
 import {
   type Counts,
   carryIfBaseMoved,
   checkWithFix,
   failedResolved,
   give,
+  type HandedRebase,
   leftClean,
   makeCounts,
-  type RebaseStop,
   rejectResolution,
   workerAway,
 } from "./handback.ts"
@@ -82,23 +82,29 @@ import { fixPrompt } from "./told.ts"
 export interface CheckStop {
   readonly ticket: FinishedTicket
   /** The base's commit the branch was rebased onto, or is on top of. */
-  readonly onto: string
+  readonly onto: Sha
   /** Where the branch left the base before the rebase, for the setup (setup.ts); `onto` on top. */
-  readonly fork: string
-  /** The branch's commit before the rebase, its own on top; "" when git couldn't say. */
-  readonly head: string
-  /** The branch's commit the check failed on; "" when git couldn't say. */
-  readonly at: string
+  readonly fork: Sha
+  /** The branch's commit before the rebase, its own on top; undefined when git couldn't say. */
+  readonly head: Sha | undefined
+  /** The branch's commit the check failed on; undefined when git couldn't say. */
+  readonly at: Sha | undefined
   /** How the check, or the setup before it, failed. */
   readonly error: CheckError
   /** Where its whole output is. */
   readonly output: string
   /** The rebase its worker resolved, when the check failed on the resolution. */
-  readonly resolved?: RebaseStop
+  readonly resolved?: HandedRebase
   /** The branch was on top of the base already, as its worker left it, not rebased. */
   readonly onTop?: boolean
   /** What came of its earlier hand-backs in this merge, when a fix was carried to its check. */
   readonly tried?: ReadonlyArray<string>
+}
+
+/** A CheckStop git could say the commits of, as one handed back to its worker is (toFix). */
+export interface HandedCheck extends CheckStop {
+  readonly head: Sha
+  readonly at: Sha
 }
 
 /**
@@ -171,23 +177,23 @@ export const refusalWhy = (refusal: FixRefusal): string | undefined =>
   FixRefusal.$match(refusal, { Off: () => undefined, Not: ({ why }) => why })
 
 /**
- * Why `stop`'s failure can't be handed back to the ticket's worker, the `fixed`th time so far:
- * undefined when it can. While the run holds or winds down it takes on no more work, as
- * `options.noMore` says, but for a worker at the account's usage limit while that limit alone holds
- * the run: it is handed the failure once the limit lifts.
+ * `stop`, its failure to be handed back to the ticket's worker, the `fixed`th time so far; or why
+ * it can't be. While the run holds or winds down it takes on no more work, as `options.noMore`
+ * says, but for a worker at the account's usage limit while that limit alone holds the run: it is
+ * handed the failure once the limit lifts.
  */
-export const whyNotFix = (
+export const toFix = (
   stop: CheckStop,
   options: MergeOptions,
   fixed: number,
-): Effect.Effect<FixRefusal | undefined, never, MergeEnv> =>
+): Effect.Effect<Result.Result<HandedCheck, FixRefusal>, never, MergeEnv> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
     const ledger = yield* Ledger
     const { id } = stop.ticket
-    const not = (why: string) => FixRefusal.Not({ why })
+    const not = (why: string) => Result.fail(FixRefusal.Not({ why }))
     const most = config.settings.merge.check_hand_backs
-    if (most === 0) return FixRefusal.Off()
+    if (most === 0) return Result.fail(FixRefusal.Off())
     if (fixed >= most) return not(`it was handed back to its worker ${times(fixed)} already`)
     if (stop.error._tag === "CheckTimedOut") {
       return not("it did not finish, so there is no failure to show its worker")
@@ -195,7 +201,10 @@ export const whyNotFix = (
     if (stop.error._tag === "CheckNotRun") {
       return not("it could not be run, so there is no failure to show its worker")
     }
-    if (stop.at === "" || stop.head === "") return not("git could not say what the check failed on")
+    const { at, head } = stop
+    if (at === undefined || head === undefined) {
+      return not("git could not say what the check failed on")
+    }
     const noMore = yield* options.noMore
     // A worker at the usage limit takes it once the limit lifts (handback.ts's give).
     if (noMore !== undefined && !(noMore === usageHolds && (yield* atLimit(id)))) {
@@ -205,7 +214,7 @@ export const whyNotFix = (
     if (state.windDown !== null) return not("the run is winding down")
     if (state.tickets.get(id)?.steered === true) return not("you have steered its worker")
     const away = yield* workerAway(id)
-    return away === undefined ? undefined : not(away)
+    return away === undefined ? Result.succeed({ ...stop, at, head }) : not(away)
   })
 
 /**
@@ -256,7 +265,7 @@ export const Verified = Data.taggedEnum<Verified>()
  * with new commits on top, each naming the ticket, or with none (Unchanged).
  */
 export const verifyFixed = (
-  stop: CheckStop,
+  stop: HandedCheck,
   options: MergeTarget,
 ): Effect.Effect<Verified, never, Git> =>
   Effect.gen(function* () {
@@ -290,7 +299,7 @@ export const verifyFixed = (
  * progress aborted, and the branch reset when it is elsewhere and the worktree is clean and on it.
  * What it did, as words to add to why the fix was rejected: "" when the branch is there already.
  */
-export const undoFix = (stop: CheckStop): Effect.Effect<string, never, Git> =>
+export const undoFix = (stop: HandedCheck): Effect.Effect<string, never, Git> =>
   Effect.gen(function* () {
     const { branch, worktree } = stop.ticket
     const to = stop.at
@@ -303,13 +312,13 @@ export const undoFix = (stop: CheckStop): Effect.Effect<string, never, Git> =>
       case "Dirty":
         return line`; ${worktree} is left as its worker left it`
       case "OffBranch":
-        return line`; ${branch} is left at ${givenHash(restored.at)}, as ${worktree} has ${restored.on}`
+        return line`; ${branch} is left ${leftAt(restored.at)}, as ${worktree} has ${restored.on}`
       case "Unknown":
-        return line`; ${branch} is left at ${givenHash(restored.at)}, as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
+        return line`; ${branch} is left ${leftAt(restored.at)}, as git could not tell what ${worktree} has checked out: ${gitWhy(restored.error)}`
       case "ResetFailed":
-        return line`; ${branch} could not be reset to ${givenHash(to)}, where the check failed, and is left at ${givenHash(restored.at)}`
+        return line`; ${branch} could not be reset to ${givenHash(to)}, where the check failed, and is left ${leftAt(restored.at)}`
       case "Reset":
-        return line`; ${branch} was reset to ${givenHash(to)}, where the check failed (its worker's attempt is ${givenHash(restored.from)})`
+        return line`; ${branch} was reset to ${givenHash(to)}, where the check failed${attemptAt(restored.from)}`
     }
   })
 
@@ -365,7 +374,7 @@ export const setAside = (
 export type FixEnd = Data.TaggedEnum<{
   Verified: Record<never, never>
   Aside: Record<never, never>
-  Again: { readonly stop: CheckStop }
+  Again: { readonly stop: HandedCheck }
 }>
 
 export const FixEnd = Data.taggedEnum<FixEnd>()
@@ -400,7 +409,7 @@ export const fixPassed = (
  * the hand-backs before it: Aside when its worker committed nothing, or no hand-back is left, the
  * ticket set aside; else Again, the failure on the fix, to be handed back again, its `tried` saying
  * what came of each hand-back so far. `at`: the commit checked, its branch's as the setup started
- * ("" when git couldn't say), where a failure stops.
+ * (undefined when git couldn't say), where a failure stops.
  */
 export const fixFailed = (
   stop: CheckStop,
@@ -410,7 +419,7 @@ export const fixFailed = (
   tries: ReadonlyArray<string>,
   options: MergeOptions,
   memory: MergeMemory,
-  at: string,
+  at: Sha | undefined,
 ): Effect.Effect<Data.TaggedEnum.Value<FixEnd, "Aside" | "Again">, never, MergeEnv> =>
   Effect.gen(function* () {
     const { id } = stop.ticket
@@ -429,9 +438,9 @@ export const fixFailed = (
       line`its worker committed ${left.commits}, but ${how} still (output is in ${output})`,
     ]
     const next: CheckStop = { ...stop, at, error, output, tried }
-    const not = yield* whyNotFix(next, options, yield* memory.fixes.count(id))
-    if (not === undefined) return FixEnd.Again({ stop: next })
-    yield* setAside(next, options, memory, tried, refusalWhy(not))
+    const fix = yield* toFix(next, options, yield* memory.fixes.count(id))
+    if (Result.isSuccess(fix)) return FixEnd.Again({ stop: fix.success })
+    yield* setAside(next, options, memory, tried, refusalWhy(fix.failure))
     return FixEnd.Aside()
   })
 
@@ -445,7 +454,7 @@ export const fixFailed = (
  * the caller puts it back in the merge queue. Else it is set aside here, a rejected fix undone.
  */
 export const fixCheck = (
-  first: CheckStop,
+  first: HandedCheck,
   options: MergeOptions,
   memory: MergeMemory,
 ): Effect.Effect<Fixed, never, MergeEnv> =>
@@ -524,10 +533,10 @@ export const fixCheck = (
  * Blocked, the line saying why.
  */
 export const fixResolution = (
-  rebase: RebaseStop,
+  rebase: HandedRebase,
   error: CheckError,
   output: string,
-  at: string,
+  at: Sha | undefined,
   options: MergeOptions,
   memory: MergeMemory,
 ): Effect.Effect<Fixed, never, MergeEnv> =>
@@ -545,12 +554,12 @@ export const fixResolution = (
       resolved: rebase,
       ...(tries.length === 0 ? {} : { tried: tries }),
     }
-    const not = yield* whyNotFix(stop, options, yield* memory.fixes.count(rebase.ticket.id))
-    if (not === undefined && (yield* handOverFix(stop, options, memory.fixes))) {
-      return yield* fixCheck(stop, options, memory)
+    const fix = yield* toFix(stop, options, yield* memory.fixes.count(rebase.ticket.id))
+    if (Result.isSuccess(fix) && (yield* handOverFix(fix.success, options, memory.fixes))) {
+      return yield* fixCheck(fix.success, options, memory)
     }
     const why = failedResolved(rebase, error, output)
-    const said = not === undefined ? undefined : refusalWhy(not)
+    const said = Result.isSuccess(fix) ? undefined : refusalWhy(fix.failure)
     const tail = said === undefined ? "" : line`; not handed back to its worker: ${said}`
     const before = tries.length === 0 ? "" : `; before that, it was ${handedBack(tries)}`
     yield* rejectResolution(rebase, options, `${why}${tail}${before}`)

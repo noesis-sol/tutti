@@ -24,7 +24,7 @@ import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, beadsWhy, type Issue } from "../services/Beads.ts"
 import { type CheckError, type CheckPassed, Checks, setupLogName } from "../services/Checks.ts"
-import { Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
+import { Git, type GitError, gitWhy, type Sha, shortHash } from "../services/Git.ts"
 import { runFolder, Worktrees } from "../services/Worktrees.ts"
 import { escapeMarkdown, sanitizeLine } from "../ui/sanitize.ts"
 import { flakyWarnings, howFailed, outputTo, recorded, saidOf } from "./check.ts"
@@ -59,8 +59,8 @@ export type FullCheckOutcome = (typeof fullCheckOutcomes)[number]
 /** How the full check went, for the report. */
 export interface FullChecked {
   readonly outcome: FullCheckOutcome
-  /** The base's commit it ran on; "" when git couldn't say. */
-  readonly at: string
+  /** The base's commit it ran on; undefined when git couldn't say. */
+  readonly at: Sha | undefined
   /** How long it ran, in milliseconds. */
   readonly took: number
   /** The suite it failed in; absent when it didn't, or when the setup before it failed. */
@@ -267,9 +267,13 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
     const command = full.command ?? ""
 
     const head = yield* Effect.result(git.revParse(config.repo, base))
-    const at = Result.isSuccess(head) ? head.success : ""
     const made = Result.isSuccess(head)
-      ? yield* Effect.result(worktrees.addDetached(fullCheckFolderPrefix, at))
+      ? yield* Effect.result(
+          Effect.map(worktrees.addDetached(fullCheckFolderPrefix, head.success), (path) => ({
+            path,
+            at: head.success,
+          })),
+        )
       : Result.fail(head.failure)
     if (Result.isFailure(made)) {
       const error = made.failure
@@ -278,9 +282,10 @@ export const fullCheck = (options: FullCheckOptions): Effect.Effect<FullChecked,
         Tag.fullCheckNotRun,
       )`'${command}' could not run on ${base}: no worktree for it (${why})`
       yield* say({ kind: "full_check", detail: "not run", text })
+      const at = Result.isSuccess(head) ? head.success : undefined
       return { outcome: "not run", at, took: 0, end: [], text } satisfies FullChecked
     }
-    const path = made.success
+    const { path, at } = made.success
     const began = yield* Clock.currentTimeMillis
     const elapsed = Effect.map(Clock.currentTimeMillis, (now) => now - began)
 
@@ -397,7 +402,7 @@ const endLines = (end: ReadonlyArray<string>): ReadonlyArray<Line> =>
  */
 const failed = (
   options: FullCheckOptions,
-  at: string,
+  at: Sha,
   ms: number,
   error: CheckError,
   worktree: string,
@@ -482,7 +487,7 @@ const failed = (
 const file = (f: {
   readonly base: string
   readonly started: number
-  readonly at: string
+  readonly at: Sha
   readonly suite: string
   readonly how: string
   readonly output: string

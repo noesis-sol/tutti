@@ -8,8 +8,8 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Fiber, Stream } from "effect"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { gitAgainAfter, gitTries } from "../src/run/branch.ts"
-import { type CheckStop, undoFix, verifyFixed } from "../src/run/checkback.ts"
-import { type RebaseStop, undoResolution, verifyResolved } from "../src/run/handback.ts"
+import { type HandedCheck, undoFix, verifyFixed } from "../src/run/checkback.ts"
+import { type HandedRebase, undoResolution, verifyResolved } from "../src/run/handback.ts"
 import { Ledger, type State } from "../src/run/ledger.ts"
 import type { FinishedTicket } from "../src/run/merge.ts"
 import { type MergeQueue, make as makeQueue } from "../src/run/mergequeue.ts"
@@ -17,7 +17,7 @@ import { Move, type PhaseTag, type TicketPhase } from "../src/run/phase.ts"
 import { read, untilSettled } from "../src/run/settle.ts"
 import { Beads } from "../src/services/Beads.ts"
 import { CheckFailed } from "../src/services/Checks.ts"
-import { Git } from "../src/services/Git.ts"
+import { Git, type Sha } from "../src/services/Git.ts"
 import { Store } from "../src/services/Store.ts"
 import { type TicketWorktree, Worktrees } from "../src/services/Worktrees.ts"
 import {
@@ -271,7 +271,7 @@ const joinMovingClock = <A, E>(fiber: Fiber.Fiber<A, E>) =>
  * with every symbolic-ref in its worktree failing: `first`, the commit before the second.
  */
 const headUnreadable = <A>(
-  body: (a: FinishedTicket, first: string) => Effect.Effect<A, unknown, Env | Ledger>,
+  body: (a: FinishedTicket, first: Sha) => Effect.Effect<A, unknown, Env | Ledger>,
 ) =>
   scenario(
     { backlog: backlog().ticket("a").seeds, ...withCheck },
@@ -291,20 +291,20 @@ const headUnreadable = <A>(
     }).pipe(Effect.provide(Ledger.layer)),
   )
 
-const checkStop = (ticket: FinishedTicket, at: string): CheckStop => ({
+const checkStop = (ticket: FinishedTicket, at: Sha): HandedCheck => ({
   ticket,
-  onto: "",
-  fork: "",
+  onto: "" as Sha,
+  fork: "" as Sha,
   head: at,
   at,
   error: failing(),
   output: "/dev/fd/9",
 })
 
-const rebaseStop = (ticket: FinishedTicket, head: string): RebaseStop => ({
+const rebaseStop = (ticket: FinishedTicket, head: Sha): HandedRebase => ({
   ticket,
-  onto: "",
-  fork: "",
+  onto: "" as Sha,
+  fork: "" as Sha,
   head,
   own: 1,
   files: ["a.txt"],
