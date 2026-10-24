@@ -10,9 +10,11 @@
 //   structured_output comes back as the text part generateObject decodes. Retries exhausted, and a
 //   success without structured_output (a model can decline the StructuredOutput tool), fail with
 //   StructuredOutputError; organs see OrganFailed{subtype}.
-// - A refusal, from the SDK's model_refusal_fallback or model_refusal_no_fallback message or the
-//   result's stop_reason, fails with ContentPolicyError (organs see OrganRefused), even when the
-//   result says success.
+// - A refusal, from the SDK's model_refusal_no_fallback message or the result's stop_reason, fails
+//   with ContentPolicyError (organs see OrganRefused), even when the result says success. A
+//   model_refusal_fallback is not one: the turn was retried on the fallback model, and the result
+//   is its answer. streamText fails such a turn whose refused attempt had streamed text, as that
+//   text can't be taken back.
 // - The session is isolated: no tools, no MCP servers, no settings, no prompts, no transcript, a
 //   fresh private temp folder removed afterwards, and a worker's environment (§ 4.13). An organ
 //   that reads the repository (the scout, § 6.3) names its read-only tools, the folder it reads,
@@ -257,14 +259,24 @@ const usage = (result: SDKResultMessage): typeof Response.Usage.Encoded => {
   }
 }
 
-/** The refusal among the turn's messages, as a phrase, if any. */
+/**
+ * The refusal among the turn's messages, as a phrase, if any. A model_refusal_fallback isn't one:
+ * the turn was retried on the fallback model, whose answer the result carries.
+ */
 const refusalOf = (messages: ReadonlyArray<SDKMessage>): string | undefined => {
   for (const m of messages) {
-    if (
-      m.type === "system" &&
-      (m.subtype === "model_refusal_no_fallback" || m.subtype === "model_refusal_fallback")
-    ) {
+    if (m.type === "system" && m.subtype === "model_refusal_no_fallback") {
       return `${m.subtype}: ${m.api_refusal_category ?? "no category"}: ${m.content}`
+    }
+  }
+  return undefined
+}
+
+/** The turn's retry on the fallback model after a refusal, as a phrase, if it had one. */
+const fallbackOf = (messages: ReadonlyArray<SDKMessage>): string | undefined => {
+  for (const m of messages) {
+    if (m.type === "system" && m.subtype === "model_refusal_fallback") {
+      return `${m.subtype}: ${m.original_model} refused (${m.api_refusal_category ?? "no category"}), retried on ${m.fallback_model}`
     }
   }
   return undefined
@@ -585,7 +597,9 @@ export const layer = (
           }),
 
         // With partial messages, the turn's text_delta events become text-delta parts, and the
-        // result becomes the finish part, or the error. A JSON answer comes as one text part.
+        // result becomes the finish part, or the error. A JSON answer comes as one text part. An
+        // attempt that streamed text and then ended on a refusal, retried on the fallback model,
+        // left text in the stream the answer doesn't have: the turn fails rather than answer both.
         streamText: (provider) =>
           Stream.unwrap(
             Effect.map(prepare("streamText", provider), ({ turn, jsonSchema }) => {
@@ -593,6 +607,7 @@ export const layer = (
               const json = jsonSchema !== undefined
               const id = "text-0"
               let open = false
+              let refusedAfterText = false
               return messages("streamText", turn, jsonSchema, !json).pipe(
                 Stream.mapEffect((m) => {
                   seen.push(m)
@@ -604,11 +619,24 @@ export const layer = (
                       open = true
                       out.push({ type: "text-delta", id, delta: event.delta.text })
                     }
+                    if (event.type === "message_delta" && event.delta.stop_reason === "refusal") {
+                      refusedAfterText ||= open
+                    }
                     return Effect.succeed(out)
                   }
                   if (m.type !== "result") return Effect.succeed(out)
                   return Effect.gen(function* () {
                     const result = yield* outcome("streamText", seen)
+                    const fallback = fallbackOf(seen)
+                    if (refusedAfterText && fallback !== undefined) {
+                      return yield* fail(
+                        "streamText",
+                        new AiError.UnknownError({
+                          description: `${fallback}, after the refused attempt's text was streamed`,
+                          metadata: resultMetadata(result),
+                        }),
+                      )
+                    }
                     if (json) {
                       const text = yield* answerText("streamText", result, json)
                       out.push(

@@ -249,15 +249,16 @@ describe("AgentSdkLanguageModel", () => {
     expect(value(exit).text).toBe("Plain words.")
   })
 
+  const delta = (text: string) => ({
+    message: {
+      type: "stream_event",
+      event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+      parent_tool_use_id: null,
+      uuid: crypto.randomUUID(),
+    },
+  })
+
   test("streamText gives the text deltas, then the finish", async () => {
-    const delta = (text: string) => ({
-      message: {
-        type: "stream_event",
-        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
-        parent_tool_use_id: null,
-        uuid: crypto.randomUUID(),
-      },
-    })
     const { exit } = await run(
       [delta("Hel"), delta("lo"), { text: "Hello" }],
       LanguageModel.streamText({ prompt: "Say hello." }).pipe(Stream.runCollect),
@@ -293,25 +294,6 @@ describe("AgentSdkLanguageModel", () => {
           ...answered,
         ],
       ],
-      [
-        "model_refusal_fallback",
-        [
-          {
-            message: {
-              type: "system",
-              subtype: "model_refusal_fallback",
-              trigger: "refusal",
-              direction: "retry",
-              original_model: "claude-fake",
-              fallback_model: "claude-other",
-              request_id: null,
-              content: "Retried on another model.",
-              uuid: crypto.randomUUID(),
-            },
-          },
-          ...answered,
-        ],
-      ],
       ["stop_reason refusal", [{ result: { stop_reason: "refusal", total_cost_usd: 0.001 } }]],
     ]
     for (const [name, steps] of refusals) {
@@ -322,6 +304,59 @@ describe("AgentSdkLanguageModel", () => {
         expect(subtypeOf(error)).toBe("success")
       })
     }
+
+    const fallback = {
+      message: {
+        type: "system",
+        subtype: "model_refusal_fallback",
+        trigger: "refusal",
+        direction: "retry",
+        original_model: "claude-fake",
+        fallback_model: "claude-other",
+        request_id: null,
+        api_refusal_category: "cyber",
+        content: "Retried on another model.",
+        uuid: crypto.randomUUID(),
+      },
+    }
+    /** The refused attempt's end, as its stream says it. */
+    const refused = {
+      message: {
+        type: "stream_event",
+        event: { type: "message_delta", delta: { stop_reason: "refusal", stop_sequence: null } },
+        parent_tool_use_id: null,
+        uuid: crypto.randomUUID(),
+      },
+    }
+
+    test("model_refusal_fallback isn't one: the fallback model's answer is the answer", async () => {
+      const { exit } = await run([fallback, ...answered], verdict)
+      expect(value(exit).value).toMatchObject({ verdict: "hand-back" })
+    })
+
+    test("streamText answers with the fallback's text when the refusal streamed none", async () => {
+      const { exit } = await run(
+        [refused, delta("Hel"), delta("lo"), { text: "Hello" }, fallback],
+        LanguageModel.streamText({ prompt: "Say hello." }).pipe(Stream.runCollect),
+      )
+      const parts = value(exit)
+      expect(parts.flatMap((p) => (p.type === "text-delta" ? [p.delta] : []))).toEqual([
+        "Hel",
+        "lo",
+      ])
+      expect(parts.at(-1)?.type).toBe("finish")
+    })
+
+    test("streamText fails a fallback after the refused attempt's text streamed", async () => {
+      const { exit } = await run(
+        [delta("I can"), refused, delta("Hello"), { text: "Hello" }, fallback],
+        LanguageModel.streamText({ prompt: "Say hello." }).pipe(Stream.runCollect),
+      )
+      const error = aiError(exit)
+      expect(error.reason._tag).toBe("UnknownError")
+      expect(error.message).toContain("model_refusal_fallback")
+      expect(error.message).toContain("retried on claude-other")
+    })
   })
 
   test("structured-output retries exhausted is a StructuredOutputError with its subtype", async () => {
