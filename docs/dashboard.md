@@ -52,9 +52,10 @@ no such command, or it isn't on the PATH, the START block warns instead, and the
 On the right, the banners:
 
 - **The account's windows**, faint, all the time on a subscription login, once a worker's session
-  has reported them: `5h ▰▰▱▱▱▱▱▱▱▱  17% · week 41%`, how much of the five-hour and the weekly
-  limits the account has used, whoever used it. A window whose reset has passed is left out until
-  the next report.
+  has reported them: `Current usage ▰▰▱▱▱▱▱▱▱▱  17% · This week 41%`, how much of the five-hour
+  and the weekly limits the account has used, whoever used it, in Claude Desktop's words. A model's
+  own weekly limit names the model, `This week (Opus)`. A window whose reset has passed is left
+  out until the next report.
 - **Usage**, in the windows' place once the account's usage passes its warning level:
   `usage 85% of the five-hour limit · resets 14:05`, with `· overage` while overage is in use. It
   turns bold at 100%.
@@ -64,9 +65,9 @@ On the right, the banners:
 
 In a narrow pane the line gives up the least needed first: the keep-awake badge, then the branch and
 the time, then the usage banner's detail (`usage 85% · resets 14:05`, then `usage 85%`, then
-nothing), or the windows' (the
-tighter first without the gauge, `week 41% · 5h 17%`, then `week 41%`, then nothing), then the states, cut
-from their end, then what the holds say beyond their words. A hold's word, such as `BLOCKED`, stays
+nothing), or the windows' (the tighter first without the gauge, `This week 41% · Current usage 17%`,
+then `This week 41%`, then nothing), then the states, cut from their end, then what the holds say
+beyond their words. A hold's word, such as `BLOCKED`, stays
 whole.
 
 ### The load line

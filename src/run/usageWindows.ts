@@ -1,7 +1,8 @@
 // The account's usage windows (§ 4.12, § 7.2), the run's own (run.ts makes it). Every worker's
 // rate_limit_event carries the account's windows in `unifiedWindows` (UsageLimits keeps each at its
 // latest figure), `allowed` events too, so the title line shows them all the time,
-// `5h ▰▰▱▱▱▱▱▱▱▱  17% · week 41%`, where the usage banner (usageLimit.ts) shows only near a limit.
+// `Current usage ▰▰▱▱▱▱▱▱▱▱  17% · This week 41%`, where the usage banner (usageLimit.ts) shows
+// only near a limit.
 //
 // Each window's figure is recorded as a `usage_window` event: the first the run hears, its figure
 // at the run's start, then each that differs, so that a ticket's share of a window can be told from

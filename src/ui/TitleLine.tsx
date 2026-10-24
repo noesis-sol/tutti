@@ -51,12 +51,20 @@ const bannerText = (
 /** How many cells a window's gauge has. */
 const gaugeCells = 10
 
-/** A window's name as the title line says it: `5h` for `five_hour`, `week` for `seven_day`. */
-export const windowLabel = (name: string): string =>
-  name
-    .replace(/^five_hour/, "5h")
-    .replace(/^seven_day/, "week")
-    .replaceAll("_", " ")
+/**
+ * A window's name as the title line says it, in Claude Desktop's words: `Current usage` for
+ * `five_hour`, `This week` for `seven_day`, and a model's weekly window with the model's name,
+ * `This week (Opus)` for `seven_day_opus`. Any other name is the SDK's, its underscores spaces.
+ */
+export const windowLabel = (name: string): string => {
+  if (name === "five_hour") return "Current usage"
+  if (name === "seven_day") return "This week"
+  const model = /^seven_day_(.+)$/.exec(name)?.[1]
+  if (model !== undefined) {
+    return `This week (${model.charAt(0).toUpperCase()}${model.slice(1).replaceAll("_", " ")})`
+  }
+  return name.replaceAll("_", " ")
+}
 
 /** `▰▰▱▱▱▱▱▱▱▱` for 17%: a cell for each tenth, to the nearest. */
 export const gauge = (utilization: number): string => {
@@ -65,10 +73,10 @@ export const gauge = (utilization: number): string => {
 }
 
 /**
- * The account's windows at `now`, faint: `5h ▰▰▱▱▱▱▱▱▱▱  17% · week 41%` in full, the first with
- * its gauge, two spaces before its figure; in a narrow pane the tighter window first and no gauge,
- * `week 41% · 5h 17%`, then the tighter alone. A window whose reset has passed is left out: its
- * figure is gone with it, until an event gives the next.
+ * The account's windows at `now`, faint: `Current usage ▰▰▱▱▱▱▱▱▱▱  17% · This week 41%` in full,
+ * the first with its gauge, two spaces before its figure; in a narrow pane the tighter window first
+ * and no gauge, `This week 41% · Current usage 17%`, then the tighter alone. A window whose reset
+ * has passed is left out: its figure is gone with it, until an event gives the next.
  */
 const windowSegments = (
   all: ReadonlyArray<UsageWindow>,

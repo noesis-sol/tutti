@@ -173,7 +173,7 @@ const text = (banners: ReadonlyArray<Banner>, width: number, now = 0) => {
 
 describe("the account's windows on the title line", () => {
   test("show in full, the first with its gauge and two spaces before its figure", () => {
-    expect(text([windows], 120)).toEndWith("   5h ▰▰▱▱▱▱▱▱▱▱  17% · week 41%")
+    expect(text([windows], 120)).toEndWith("   Current usage ▰▰▱▱▱▱▱▱▱▱  17% · This week 41%")
     const segments = titleSegments(title, [windows], 0, theme, 120).map((s) => s.text)
     // The gauge, the gap and the figure are segments of their own, so a cut never joins them.
     expect(segments).toContain("▰▰▱▱▱▱▱▱▱▱")
@@ -181,27 +181,40 @@ describe("the account's windows on the title line", () => {
   })
 
   test("a narrow pane puts the tighter window first, then shows it alone", () => {
-    expect(text([windows], 40)).toEndWith("  week 41% · 5h 17%")
-    expect(text([windows], 26)).toEndWith("  week 41%")
+    expect(text([windows], 50)).toEndWith("  This week 41% · Current usage 17%")
+    expect(text([windows], 30)).toEndWith("  This week 41%")
     expect(text([windows], 18)).toBe(" tutti  0.1.0")
   })
 
   test("beside a hold, before which it is dropped", () => {
     const blocked: Banner = { _tag: "Hold", word: "BLOCKED", resetsAt: null }
-    expect(text([windows, blocked], 120)).toEndWith("5h ▰▰▱▱▱▱▱▱▱▱  17% · week 41%  BLOCKED")
+    expect(text([windows, blocked], 120)).toEndWith(
+      "Current usage ▰▰▱▱▱▱▱▱▱▱  17% · This week 41%  BLOCKED",
+    )
     expect(text([windows, blocked], 24)).toEndWith("  BLOCKED")
   })
 
   test("a window whose reset has passed is left out", () => {
-    expect(text([windows], 120, 3_600_000)).toEndWith("   week ▰▰▰▰▱▱▱▱▱▱  41%")
+    expect(text([windows], 120, 3_600_000)).toEndWith("   This week ▰▰▰▰▱▱▱▱▱▱  41%")
     expect(text([windows], 120, 8 * 86_400_000)).toBe(" tutti  0.1.0   main · 192h")
   })
 
   test("names and gauges", () => {
-    expect(["five_hour", "seven_day", "seven_day_opus", "monthly"].map(windowLabel)).toEqual([
-      "5h",
-      "week",
-      "week opus",
+    expect(
+      [
+        "five_hour",
+        "seven_day",
+        "seven_day_opus",
+        "seven_day_sonnet",
+        "seven_day_oauth_apps",
+        "monthly",
+      ].map(windowLabel),
+    ).toEqual([
+      "Current usage",
+      "This week",
+      "This week (Opus)",
+      "This week (Sonnet)",
+      "This week (Oauth apps)",
       "monthly",
     ])
     expect([0, 0.04, 0.17, 0.5, 1, 1.3].map(gauge)).toEqual([
