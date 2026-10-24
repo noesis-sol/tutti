@@ -174,6 +174,11 @@ export interface RunOptions {
   readonly version: string
   /** Where finished tickets land: the branch the main checkout is on. */
   readonly base: string
+  /**
+   * Whether its workers bill a subscription login: the summary's dollars are then the API-price
+   * estimate, and it gives the account's usage windows. Not, by default.
+   */
+  readonly subscription?: boolean
   /** What the run says first: the START block, and why the output is plain if it is. */
   readonly start?: ReadonlyArray<Line>
   /** Requests to wind down or to take tickets again, such as SIGUSR1's. */
@@ -923,6 +928,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       version: options.version,
       base,
       begun,
+      subscription: options.subscription ?? false,
       usage,
       setUps,
       scheduler,
@@ -999,7 +1005,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       exitCode,
       phases,
       ending: said,
-      summary: summarised,
+      // The styled summary, printed after the full check, counts it in its figures.
+      summary: { ...summarised, figures: yield* end.figures },
       closing: closed,
       after: said.slice(summary.length + 1),
       report,

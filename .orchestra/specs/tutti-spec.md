@@ -800,7 +800,7 @@ The loop's behaviour is orchestra's, described in `docs/running.md`, `docs/worke
       - `q` ends the run, suspending them (§4.8).
       - The workers that stopped the run (`PAUSED`, `TICKET_LIMIT`) don't keep it open; they are suspended.
     - **In plain mode**, the run ends as usual and suspends them. `tutti answer` works for as long as the run goes.
-    - **Then**: the summary, the closing line (a run that ended by itself adds `SETUP_WAITS: …` for the tickets still `Waiting{setup}`, each with where its setup's output is, leaving out one bd failed to reopen), the scope line (`SCOPE_DONE`, `SCOPE_OPEN`, which says `its setup failed` for such a ticket), the report, notifications, the event stream's `end`.
+    - **Then**: the summary (the run's figures under its totals, §7.1), the closing line (a run that ended by itself adds `SETUP_WAITS: …` for the tickets still `Waiting{setup}`, each with where its setup's output is, leaving out one bd failed to reopen), the scope line (`SCOPE_DONE`, `SCOPE_OPEN`, which says `its setup failed` for such a ticket), the report, notifications, the event stream's `end`.
 
 Removed: everything about tabs, panes, workspaces, terminals, screens, other agent kinds, prompt pasting, and hook record files (§4.3).
 
@@ -1039,7 +1039,7 @@ As orchestra: every section of evidence goes between `<evidence id="<random>">` 
 | Plan confirmation | `--feature`, or the end of an interview | the epic and its tickets (type, priority, files, `after:`), then `[y/N]` |
 | Init form | `tutti init` on a TTY | two steps, **Workers** and **Checks**, under a stepper; the scout with a spinner, `Esc` skips it (§8.3) |
 | Nothing to run | no dashboard | a box printed on the main screen |
-| Summary | after the dashboard closes | printed on the main screen: title, totals, every ticket, the closing line, the scope line, organ lines with spinners, the report |
+| Summary | after the dashboard closes | printed on the main screen: title, totals, the run's figures, every ticket, the closing line, the scope line, organ lines with spinners, the report |
 
 **One renderer per command.** `tutti` creates one OpenTUI renderer, in `alternate-screen` mode. It runs from the start question through the interview and the dashboard, and is destroyed once. A second renderer after `destroy()` is unproven (#1533). Everything after it goes to the main screen as plain ANSI:
 
@@ -1048,6 +1048,22 @@ As orchestra: every section of evidence goes between `<evidence id="<random>">` 
 - the report, rendered by a terminal Markdown renderer (headings, lists, emphasis, code, links), chosen in M3
 
 `tutti init` has its own single renderer for its form.
+
+**The run's figures.** Under the summary's totals, a short block says where the time and the tokens went and how the checks did, without opening DuckDB:
+
+```
+  Time    63% queued · 19% held back (overlap 15%) · 14% working · 2% merging
+  Checks  merge 31 of 32 passed, 1 timed out (mnemos-gts.16, 34m32s) · setup 32 of 32 · full passed
+  Spent   53M tokens (94% from the cache) · $44.75 (estimate) · $1.24 a ticket (median)
+  Usage   Current usage 11% → 17% · This week 40% → 41%
+```
+
+- tutti adds them up from the run's own records as it writes them (`src/run/figures.ts`), not with DuckDB, which it doesn't depend on: they are what `docs/analytics.md`'s queries give over the same run's records (`test/run-figures.test.ts` checks so for the analytics fixture).
+- **Time**: each phase's share of the tickets' time in the run, from the `phase` records, as "Time per phase" counts it (a ticket's last phase counts no time); largest first, the phases under 1% left out; held back with its largest hold's share.
+- **Checks**: per suite (`merge`, `recheck`, `fix`, `setup`, `full`), passed of run (`setup 32 of 32`), then those failed, timed out or not run, with their tickets (up to three, then `+N more`) and the longest one's time. The full check's one run is `full passed` or `full failed (12m3s)`. The styled summary, printed after the full check, counts it; a plain run's log writes its summary before the full check, whose own line follows the closing line.
+- **Spent**: the workers' turns' tokens, the cache's share of their input (`cache_read` of `input`, `cache_write` and `cache_read`), their dollars, and the median of a ticket's dollars where two tickets or more had turns. The organs' calls are left out, as the `end` record's `cost_usd` leaves them. On a subscription login the dollars are the API-price estimate: `(estimate)`, in `estimate` italics (§7.11); on an API key, plain.
+- **Usage**: each of the account's windows at the run's start (the first `usage_window` the run recorded) and at its end, named as the title line names them (§7.2), one figure where it didn't move; left out on an API key, or when no window was reported.
+- A line with nothing to say is left out, and a run that took no ticket prints no block. The labels are faint, ` · ` faint. Each line is cut to the terminal's width, the first part that doesn't fit ending in `…`; `--plain` writes the same lines without styles in the log's summary. All text is sanitised (§7.10).
 
 **`TERM=dumb`** (and no TTY) uses line-based versions of the start question, the init form and the plan confirmation, asking one question per line as orchestra's accessible mode does. Ctrl+D (end of input) cancels as Esc does. These are written without OpenTUI.
 
@@ -1272,6 +1288,7 @@ As orchestra does, the `orchestra` scheme uses exact colours rather than the 16 
 | `toMerge` | blue | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | pink | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`, bold) |
 | `emphasis` | chalk | `#374151` | `#E5E7EB` | emphasis near the text's own colour: keys to press, the `Tickets` label, tool names, `steered` |
+| `estimate` | sand | `#8A6D3B` | `#D4B483` | an estimate, in italics beside its word `(estimate)`: dollars at API prices on a subscription login. tutti's own, apart from the status colours (worker-view design, tutti-cxgo D2) |
 | `pill` | Charm purple | `#7D56F4` | `#7D56F4` | the title pill's background and init's **Next** frame: the Charm purple of the Bubble Tea and Lip Gloss examples |
 | `pillText` | | `#FAFAFA` | `#FAFAFA` | text on the pill |
 | `keepAwake` | | `#B45309` | `#F59E0B` | the keep-awake badge's background (§7.2): tutti's own, a warm amber, set apart from `notice`'s yellow and `windingDown`'s orange text by being a fill |
@@ -1363,6 +1380,7 @@ As orchestra draws it:
   - The closing line (`♪ Completed the Run` and the other ends) is `done` bold, its facts faint. A stop's line is `needsYou` bold (`■ PAUSED: …`).
   - `SCOPE_DONE` `done`, `SCOPE_OPEN` `notice`.
   - Organ lines: `◆ ` `organ` bold, text `organText`, durations faint. While one runs, the spinner is `live` bold, its text `organText` and its clock faint.
+  - The run's figures (§7.1): the labels and ` · ` faint, the figures in the text's own colour, an estimate `estimate` italic.
 - **Markdown** (the report, and assistant text in the worker view):
   - H1 `heading1` bold, H2 `heading2` bold, H3 and below `heading3` bold
   - inline code and code blocks `code`
@@ -1472,14 +1490,14 @@ A role's light or dark variant is picked from the terminal's background, as Lip 
 
 #### Colour depth and `NO_COLOR`
 
-On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI uses the nearest, as Lip Gloss degrades (§7.7). With `NO_COLOR` set, every role becomes the terminal's default colour, whatever the scheme; bold, faint, glyphs and words remain. Selected text is the one exception: under `NO_COLOR`, and for a scheme that leaves `selection` or `selectionText` to `default`, it takes `orchestra`'s `selection` and `selectionText` colours (`#FAFAFA` on `#7D56F4`), so that a selection stays visible. A focused button, which colour alone marks otherwise (`formAccentText` on `formAccent`), is drawn bold and reversed where its background is the terminal's default, under `NO_COLOR` or a scheme that leaves `formAccent` to `default`, so that you can see which button Enter presses. Colour is never the only signal: every state also has its glyph and its word, as in orchestra (`■ blocked`, `◼ to merge`).
+On a truecolor terminal the exact colours are drawn. With 256 colours, OpenTUI uses the nearest, as Lip Gloss degrades (§7.7). With `NO_COLOR` set, every role becomes the terminal's default colour, whatever the scheme; bold, faint, italics, glyphs and words remain. Selected text is the one exception: under `NO_COLOR`, and for a scheme that leaves `selection` or `selectionText` to `default`, it takes `orchestra`'s `selection` and `selectionText` colours (`#FAFAFA` on `#7D56F4`), so that a selection stays visible. A focused button, which colour alone marks otherwise (`formAccentText` on `formAccent`), is drawn bold and reversed where its background is the terminal's default, under `NO_COLOR` or a scheme that leaves `formAccent` to `default`, so that you can see which button Enter presses. Colour is never the only signal: every state also has its glyph and its word, as in orchestra (`■ blocked`, `◼ to merge`).
 
 #### One module
 
 - **The roles and the loader.** `src/ui/theme.ts` holds:
   - the roles, as a `Schema.Literal` union, so a role that is misspelt in the code doesn't compile
   - the scheme format and its loader: lookup, `extends`, validation, the fallback to `orchestra`
-  - the styles built from the active scheme, named as orchestra names its styles: `picked`, `closed`, `deferred`, `stop`, `windDown`, `heldBack`, `done`, `organ`, `say`, `testing`, `toMerge`, `merging`, `key`, `tickets`, `dim`, `title`
+  - the styles built from the active scheme, named as orchestra names its styles: `picked`, `closed`, `deferred`, `stop`, `windDown`, `heldBack`, `done`, `organ`, `say`, `testing`, `toMerge`, `merging`, `key`, `tickets`, `dim`, `title`, and tutti's own `estimate`
 
   The `orchestra` scheme is `src/ui/schemes/orchestra.json`, embedded in the binary.
 - **Who resolves the scheme.** `AppConfig` resolves the scheme once at startup, with the rest of the settings.

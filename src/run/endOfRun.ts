@@ -1,7 +1,8 @@
 // The run's end (§ 5 item 14), once nothing is left to start or merge, or the run quit: the tickets
 // still in a phase a run can't end in are Stopped and their sessions suspended (§ 4.8), as are the
 // sessions of those that stopped the run, a worker still waiting on you suspended so (`waiting on
-// you`); each ticket closed and not merged is labelled `unmerged`; then the summary lines, the
+// you`); each ticket closed and not merged is labelled `unmerged`; then the summary lines (the run's
+// figures among them, figures.ts), the
 // closing line (the stops', or READY_EMPTY, LIMIT_REACHED or DRAINED, with a scoped run's SCOPE_
 // part), and the full check when the run ended by itself having merged a ticket (fullcheck.ts).
 import { Clock, Deferred, Duration, Effect, Result } from "effect"
@@ -14,9 +15,11 @@ import { Beads } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
+import { windowLabel } from "../ui/TitleLine.tsx"
 import { saveAsked, saveLeft } from "./carry.ts"
 import { drainedLine } from "./drain.ts"
 import { EventStream } from "./eventstream.ts"
+import { type FiguresLine, figuresLines, figuresText } from "./figures.ts"
 import { fullCheck, fullCheckDue, fullCheckEvidence, fullCheckReport } from "./fullcheck.ts"
 import { type StopReason, type Stops, stopFor, stopsLine } from "./holds.ts"
 import { Ledger, type State } from "./ledger.ts"
@@ -39,13 +42,17 @@ export const runTime = (millis: number): string => {
   return seconds === 0 ? "0s" : formatDuration(Duration.seconds(seconds))
 }
 
-/** The run's summary as plain lines (§ 7.1): its title, its totals and every ticket's row. */
+/**
+ * The run's summary as plain lines (§ 7.1): its title, its totals, its figures when it took any
+ * ticket up, and every ticket's row.
+ */
 export const summaryLines = (s: {
   readonly version: string
   readonly base: string
   readonly scope: string | null
   readonly took: number
   readonly totals: Totals
+  readonly figures: ReadonlyArray<FiguresLine>
   readonly rows: ReadonlyArray<Row>
 }): ReadonlyArray<Line> => {
   const scoped = s.scope === null ? "" : line` · ticket ${s.scope}`
@@ -53,6 +60,7 @@ export const summaryLines = (s: {
   return [
     line`tutti ${s.version} on ${s.base}${scoped} · ${runTime(s.took)}`,
     detail`Completed ${totals.completed} · Set aside ${totals.deferred + totals.review} · Needs you ${totals.needsYou}`,
+    ...(s.rows.length === 0 ? [] : s.figures.map((each) => detail`${figuresText(each)}`)),
     ...s.rows.map((row) => detail`${row.mark} ${row.ticket} ${row.word}: ${row.note}`),
   ]
 }
@@ -124,6 +132,11 @@ export interface EndOfRun {
     readonly stops: Stops
     readonly open: Effect.Effect<ReadonlyArray<string>>
   }): Effect.Effect<Suspended>
+  /**
+   * The run's figures as its records have them so far: the summary's, and the styled summary's
+   * again after the full check, which they then count.
+   */
+  readonly figures: Effect.Effect<ReadonlyArray<FiguresLine>>
   /** Writes the summary of the run as `state` has it: its lines, and the styled summary's makings. */
   summary(
     state: State,
@@ -153,12 +166,13 @@ export interface EndOfRun {
 
 /**
  * The end of the run `version` onto `base`, begun at `begun`, its quitting done by `quitting`: what
- * `usage`, `setUps` and `scheduler` leave of it.
+ * `usage`, `setUps` and `scheduler` leave of it. Its workers bill a `subscription` login, or not.
  */
 export const make = (options: {
   readonly version: string
   readonly base: string
   readonly begun: number
+  readonly subscription: boolean
   readonly usage: Pick<UsageLimitHold, "unsent">
   readonly setUps: SetUps
   readonly scheduler: Pick<Scheduler, "started" | "limitReached">
@@ -245,6 +259,10 @@ export const make = (options: {
         return { saved, handedBack, neverSent }
       }).pipe(Effect.provideContext(context))
 
+    const figures: EndOfRun["figures"] = Effect.map(events.figures, (sum) =>
+      figuresLines(sum, { subscription: options.subscription, label: windowLabel }),
+    )
+
     const summary: EndOfRun["summary"] = (state) =>
       Effect.gen(function* () {
         const view = project({
@@ -259,6 +277,7 @@ export const make = (options: {
           scope: config.ticket,
           took: (yield* Clock.currentTimeMillis) - begun,
           totals: view.totals,
+          figures: yield* figures,
           rows: view.rows,
         }
         const lines = summaryLines({ ...summarised, base })
@@ -348,5 +367,5 @@ export const make = (options: {
         return { said: [], sections: [], after: "" } satisfies Checked
       }).pipe(Effect.provideContext(context))
 
-    return { suspend, summary, closing, fullCheck: checkFull } satisfies EndOfRun
+    return { suspend, figures, summary, closing, fullCheck: checkFull } satisfies EndOfRun
   })

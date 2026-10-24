@@ -33,6 +33,7 @@ Each role has a variant for light backgrounds and one for dark ones. In the `orc
 | `toMerge` | `#1D4ED8` | `#60A5FA` | waiting for its turn to merge (`◼ to merge`, `to merge (2nd)`) |
 | `merging` | `#BE185D` | `#F472B6` | a merge under way (`◆ merging`) |
 | `emphasis` | `#374151` | `#E5E7EB` | keys to press, the `Tickets` label, tool names, `steered` |
+| `estimate` | `#8A6D3B` | `#D4B483` | estimates, in italics beside `(estimate)`: the summary's dollars at API prices on a subscription login |
 | `pill` | `#7D56F4` | `#7D56F4` | the title pill's background, and the frame of `tutti init`'s **Next** box |
 | `pillText` | `#FAFAFA` | `#FAFAFA` | text on the pill |
 | `keepAwake` | `#B45309` | `#F59E0B` | the background of the title line's ` keep awake ` badge |

@@ -55,6 +55,9 @@
         "emphasis": {
           "$ref": "#/$defs/RoleColour"
         },
+        "estimate": {
+          "$ref": "#/$defs/RoleColour"
+        },
         "pill": {
           "$ref": "#/$defs/RoleColour"
         },

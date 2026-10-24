@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { dropNothingDone } from "../src/run/aside.ts"
 import { EventStream } from "../src/run/eventstream.ts"
+import { noFigures } from "../src/run/figures.ts"
 import { Log } from "../src/run/log.ts"
 import { GitFailed } from "../src/services/Git.ts"
 import { Worktrees } from "../src/services/Worktrees.ts"
@@ -38,6 +39,7 @@ describe("dropNothingDone's CLEANUP_FAILED", () => {
                 seen.push(now)
               }),
             ),
+          figures: Effect.succeed(noFigures),
         })
       }),
     )

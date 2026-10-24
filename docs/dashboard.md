@@ -235,7 +235,8 @@ hint; the keys still work.
 
 When the run ends, the dashboard closes and the main screen gets:
 
-- the summary: the title, the totals and every ticket of the run;
+- the summary: the title, the totals, the run's figures (see
+  [Running](running.md#the-runs-figures)) and every ticket of the run;
 - the closing line, `♪ Completed the Run  12 tickets · 1h12m` for a run that ended by itself, or a
   red line saying what stopped it (`■ PAUSED: …`);
 - a run scoped with `--ticket` adds `SCOPE_DONE: …` or `SCOPE_OPEN: …`;

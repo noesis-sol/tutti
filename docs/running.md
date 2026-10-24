@@ -628,6 +628,39 @@ or was set aside) is labelled `unmerged`: the tickets it blocks wait, in later r
 branch `tutti/<id>` is on the base. The run that merges it removes the label, as does any run that
 finds its work merged by hand, as it starts or as the base moves on.
 
+## The run's figures
+
+Under the summary's totals, a run that took tickets up says where their time and the tokens went and
+how the checks did, without opening [DuckDB](analytics.md):
+
+```
+  Time    63% queued · 19% held back (overlap 15%) · 14% working · 2% merging
+  Checks  merge 31 of 32 passed, 1 timed out (mnemos-gts.16, 34m32s) · setup 32 of 32 · full passed
+  Spent   53M tokens (94% from the cache) · $44.75 (estimate) · $1.24 a ticket (median)
+  Usage   5h 11% → 17% · week 40% → 41%
+```
+
+tutti adds them up from the run's own [event records](events.md) as it writes them, so they are what
+the [analytics queries](analytics.md) give over the same run:
+
+- **Time**: each phase's share of the tickets' time, largest first, those under 1% left out; held
+  back with its largest reason (`overlap`, `parent`, `merge`, `solo`). A ticket's last phase counts
+  no time, as in "Time per phase".
+- **Checks**: each suite's checks passed of those run, then those that failed, timed out or couldn't
+  run, with their tickets (up to three, then `+N more`) and the longest one's time. The full check is
+  counted on the summary the dashboard leaves; a plain run's summary comes before it, and its
+  `FULL_CHECK` line after the closing line.
+- **Spent**: the workers' tokens, the share read from the prompt cache, the dollars, and the median
+  of a ticket's dollars. The organs' calls aren't counted here. On a subscription login the dollars
+  are what the turns would cost at API prices, an estimate, so they say `(estimate)` and are drawn in
+  the `estimate` colour, sand, in italics ([Colour schemes](colour-schemes.md)); on an API key,
+  plain.
+- **Usage**: the account's usage windows as the run started and as it ended, named as on the
+  dashboard's title line; none on an API key.
+
+A line with nothing to say is left out. Each is cut to the terminal's width; `--plain` writes the
+same lines, without colour, in the summary at the end of its log.
+
 ## Exit codes
 
 | Code | Meaning |

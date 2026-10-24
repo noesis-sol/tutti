@@ -26,6 +26,7 @@ export const roles = [
   "toMerge",
   "merging",
   "emphasis",
+  "estimate",
   "pill",
   "pillText",
   "keepAwake",
@@ -521,6 +522,7 @@ export const styleNames = [
   "dim",
   "title",
   "keepAwake",
+  "estimate",
 ] as const
 
 export type StyleName = (typeof styleNames)[number]
@@ -531,6 +533,8 @@ export interface StyleSpec {
   readonly bg: Role | null
   readonly bold: boolean
   readonly faint: boolean
+  /** Italic, as the estimates are; left out when not. */
+  readonly italic?: true
   /**
    * A focus: where its background is the terminal's default (under NO_COLOR), it is drawn bold
    * and reversed, so that it shows without colour (§ 7.11).
@@ -540,12 +544,13 @@ export interface StyleSpec {
 
 const spec = (
   fg: Role | null,
-  attributes: { bold?: true; faint?: true; bg?: Role; focus?: true } = {},
+  attributes: { bold?: true; faint?: true; italic?: true; bg?: Role; focus?: true } = {},
 ) => ({
   fg,
   bg: attributes.bg ?? null,
   bold: attributes.bold === true,
   faint: attributes.faint === true,
+  ...(attributes.italic === true ? { italic: true as const } : {}),
   focus: attributes.focus === true,
 })
 
@@ -568,6 +573,7 @@ export const styleSpecs: { readonly [S in StyleName]: StyleSpec } = {
   dim: spec(null, { faint: true }),
   title: spec("pillText", { bg: "pill", bold: true }),
   keepAwake: spec("keepAwakeText", { bg: "keepAwake" }),
+  estimate: spec("estimate", { italic: true }),
 }
 
 /** The form styles' names, as `huh`'s Charm theme draws its fields (§ 7.11's form roles). */
@@ -701,12 +707,14 @@ export const makeTheme = (
     const attributes =
       (bold ? TextAttributes.BOLD : 0) |
       (faint ? TextAttributes.DIM : 0) |
+      (spec.italic === true ? TextAttributes.ITALIC : 0) |
       (reverse ? TextAttributes.INVERSE : 0)
     const open = !styled
       ? ""
       : [
           bold ? "\x1b[1m" : "",
           faint ? "\x1b[2m" : "",
+          spec.italic === true ? "\x1b[3m" : "",
           reverse ? "\x1b[7m" : "",
           fg === null ? "" : ansi(fg, "fg"),
           spec.bg === null ? "" : ansi(spec.bg, "bg"),

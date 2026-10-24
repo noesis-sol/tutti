@@ -47,6 +47,7 @@ const ended = (rows: ReadonlyArray<Row>, totals: Partial<Summary["totals"]> = {}
   scope: null,
   took: 125_000,
   totals: { ...emptyView.totals, slots: 4, ...totals },
+  figures: [],
   rows,
 })
 

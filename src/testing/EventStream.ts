@@ -4,6 +4,7 @@
 import { Clock, Context, Effect, Layer, Ref, Result } from "effect"
 import { decodeLine, type EventRecord, encodeLine } from "../run/events.ts"
 import { EventStream, stamp } from "../run/eventstream.ts"
+import { addRecord, type Figures, noFigures } from "../run/figures.ts"
 
 /** The records the test layer captured, for a test to look at. */
 export class Captured extends Context.Service<
@@ -22,15 +23,20 @@ export const layer = (run: string = testRun): Layer.Layer<EventStream | Captured
   Layer.effectContext(
     Effect.gen(function* () {
       const records = yield* Ref.make<ReadonlyArray<EventRecord>>([])
+      const figures = yield* Ref.make<Figures>(noFigures)
       const stream = EventStream.of({
         emit: (event) =>
           Effect.flatMap(Clock.currentTimeMillis, (now) => {
             const line = encodeLine(stamp(event, run, now))
             const record = Result.flatMap(line, (text) => decodeLine(text))
             return Result.isSuccess(record)
-              ? Ref.update(records, (all) => [...all, record.success])
+              ? Effect.andThen(
+                  Ref.update(records, (all) => [...all, record.success]),
+                  Ref.update(figures, (sum) => addRecord(sum, event, now)),
+                )
               : Effect.die(record.failure)
           }),
+        figures: Ref.get(figures),
       })
       return Context.make(EventStream, stream).pipe(
         Context.add(Captured, Captured.of({ records: Ref.get(records) })),

@@ -120,6 +120,9 @@ export const notifying: Layer.Layer<EventStream, never, EventStream | Notifier> 
         }
         yield* notifier.notify(text)
       })
-    return EventStream.of({ emit: (event) => Effect.andThen(stream.emit(event), send(event)) })
+    return EventStream.of({
+      emit: (event) => Effect.andThen(stream.emit(event), send(event)),
+      figures: stream.figures,
+    })
   }),
 )

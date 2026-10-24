@@ -13,6 +13,7 @@ import { Clock, Context, Effect, Layer, Result } from "effect"
 import { close, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { runFolder } from "../services/Worktrees.ts"
 import { type Event, type EventRecord, encodeLine, version } from "./events.ts"
+import { addRecord, type Figures, noFigures } from "./figures.ts"
 import { timestamp } from "./localTime.ts"
 
 /** The event stream's file, relative to the main checkout's top level (§ 9.1). */
@@ -49,6 +50,8 @@ export class EventStream extends Context.Service<
   {
     /** Appends a record of `event`, with the version, the time and the run. It never fails. */
     emit(event: Event): Effect.Effect<void>
+    /** What the run's records add up to so far (figures.ts), those not written included. */
+    readonly figures: Effect.Effect<Figures>
   }
 >()("tutti/run/EventStream") {
   /**
@@ -122,14 +125,20 @@ export class EventStream extends Context.Service<
             return failed(`wrote ${written} of a record's ${bytes.length} bytes`)
           })
 
+        let figures = noFigures
         return EventStream.of({
           emit: (event) =>
             Effect.flatMap(Clock.currentTimeMillis, (now) => {
               const line = encodeLine(stamp(event, options.run, now))
-              return Result.isSuccess(line)
-                ? write(`${line.success}\n`)
-                : failed(`a ${event.kind} record doesn't fit its schema: ${line.failure.message}`)
+              if (Result.isFailure(line)) {
+                return failed(
+                  `a ${event.kind} record doesn't fit its schema: ${line.failure.message}`,
+                )
+              }
+              figures = addRecord(figures, event, now)
+              return write(`${line.success}\n`)
             }),
+          figures: Effect.sync(() => figures),
         })
       }),
     )

@@ -263,6 +263,8 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         ? { ...checked.success, warnings: [...checked.success.warnings, awake.warning] }
         : checked.success
     const { config, base } = started
+    // Whether workers bill the subscription login: the summary's dollars are estimates then.
+    const subscription = started.account.billing._tag === "Subscription"
     const at = runStarted(yield* Clock.currentTimeMillis)
 
     // The run lock, held until the runtime below has been disposed of.
@@ -499,6 +501,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             run({
               version,
               base,
+              subscription,
               start: start(),
               drains,
               quits,
@@ -577,6 +580,7 @@ const runFrom = (cwd: string, flags: RunFlags) =>
               run({
                 version,
                 base,
+                subscription,
                 start: start(),
                 drains,
                 quits,

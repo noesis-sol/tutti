@@ -1,13 +1,14 @@
 // The run's summary (§ 7.1, § 5 item 14 "Then"), printed on the main screen as plain ANSI once the
-// dashboard has closed, whose alternate screen took the dashboard with it: the title, the totals
-// and every ticket of the run, as wide as the terminal and as long as they are, then the closing
-// line and a scoped run's scope line. Its styles are § 7.11's ("The summary", and the title line,
+// dashboard has closed, whose alternate screen took the dashboard with it: the title, the totals,
+// the run's figures (figures.ts) and every ticket of the run, as wide as the terminal and as long
+// as they are, then the closing line and a scoped run's scope line. Its styles are § 7.11's ("The summary", and the title line,
 // totals strip and ticket rows as the dashboard draws them), from the theme's styles only.
 //
 // Ticket IDs, titles and the words of a stop can quote a worker's or a ticket author's text, so
 // all of it is sanitised to one line here (§ 7.10).
 import { Data, Duration, type Effect } from "effect"
 import { formatDuration } from "../project/configFile.ts"
+import { type FiguresLine, labelWidth } from "../run/figures.ts"
 import type { Row, Totals } from "../run/runView.ts"
 import { oneLine } from "../ui/oneLine.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
@@ -24,6 +25,8 @@ export interface Summary {
   /** How long the run took, in milliseconds. */
   readonly took: number
   readonly totals: Totals
+  /** The run's figures, each line with something to say (figures.ts); none shown without rows. */
+  readonly figures: ReadonlyArray<FiguresLine>
   /** Every ticket the run took up, in the order it took them up. */
   readonly rows: ReadonlyArray<Row>
 }
@@ -194,6 +197,27 @@ const parts = (theme: Theme, width: number) => {
     )
   }
 
+  /**
+   * The run's figures under the totals, a line each: its label faint, then its parts ` · ` apart,
+   * an estimate in its colour; the parts that don't fit cut, the first of them with `…`.
+   */
+  const figures = (lines: ReadonlyArray<FiguresLine>): ReadonlyArray<string> =>
+    lines.map((each) => {
+      let room = w - 2 - (labelWidth + 2)
+      let drawn = ""
+      for (const [i, part] of each.parts.entries()) {
+        const gap = i === 0 ? 0 : 3
+        if (room <= gap) break
+        const text = sanitizeLine(part.text)
+        const shown = Bun.stringWidth(text) <= room - gap ? text : fit(text, room - gap)
+        const painted = part.estimate === true ? styles.estimate.paint(shown) : shown
+        drawn += (gap === 0 ? "" : styles.dim.paint(" · ")) + painted
+        room -= gap + Bun.stringWidth(shown)
+        if (shown !== text) break
+      }
+      return `  ${styles.dim.paint(each.label.padEnd(labelWidth + 2))}${drawn}`
+    })
+
   /** The Tickets label and its table: every row, its glyph, word and ID in its state's style. */
   const tickets = (rows: ReadonlyArray<Row>): ReadonlyArray<string> => {
     const stateWidth = 11
@@ -220,12 +244,12 @@ const parts = (theme: Theme, width: number) => {
     ]
   }
 
-  return { title, totals, tickets }
+  return { title, totals, figures, tickets }
 }
 
 /**
  * The summary `width` columns wide (`minWidth` at the least), in `theme`'s styles: a blank line,
- * the title, the totals and, when the run took any up, every ticket.
+ * the title, the totals and, when the run took any up, its figures and every ticket.
  */
 export const summary = (s: Summary, theme: Theme, width: number): string => {
   const p = parts(theme, width)
@@ -233,7 +257,7 @@ export const summary = (s: Summary, theme: Theme, width: number): string => {
     "",
     p.title(s),
     ...p.totals(s.totals),
-    ...(s.rows.length === 0 ? [] : p.tickets(s.rows)),
+    ...(s.rows.length === 0 ? [] : [...p.figures(s.figures), ...p.tickets(s.rows)]),
   ].join("\n")
 }
 

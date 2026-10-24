@@ -54,6 +54,7 @@ const orchestraColours: { readonly [R in Role]: readonly [light: string, dark: s
   toMerge: ["#1D4ED8", "#60A5FA"],
   merging: ["#BE185D", "#F472B6"],
   emphasis: ["#374151", "#E5E7EB"],
+  estimate: ["#8A6D3B", "#D4B483"],
   pill: ["#7D56F4", "#7D56F4"],
   pillText: ["#FAFAFA", "#FAFAFA"],
   keepAwake: ["#B45309", "#F59E0B"],
