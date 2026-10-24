@@ -541,7 +541,10 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
         ),
       view: (id) =>
         Effect.gen(function* () {
+          // A worker let go of is read back for the view, and let go of again as it closes.
+          const back = letGoOf.has(id)
           const worker = workerOf(id)
+          if (back) worker.released = true
           const subscription = yield* PubSub.subscribe(worker.updates)
           yield* Effect.acquireRelease(
             Effect.sync(() => {

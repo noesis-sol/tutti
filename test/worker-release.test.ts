@@ -140,6 +140,26 @@ describe("Transcripts' release", () => {
     expect(counts.readBack).toBe(1)
   })
 
+  test("a view opened on a worker let go of reads it back, and lets go of it again as it closes", async () => {
+    const { storage, counts } = counting()
+    const seen = await Effect.runPromise(
+      Effect.gen(function* () {
+        const transcripts = yield* makeTranscripts(storage)
+        yield* transcripts.record(worker, "s-1", text("one"))
+        yield* transcripts.release(worker)
+        const view = yield* Effect.scoped(
+          Effect.map(transcripts.view(worker), (opened) => opened.items.length),
+        )
+        return {
+          view,
+          released: counts.released,
+          action: yield* transcripts.latestAction(worker),
+        }
+      }),
+    )
+    expect(seen).toEqual({ view: 1, released: 2, action: undefined })
+  })
+
   test("a view opened and closed with no release asked lets go of nothing", async () => {
     const { storage, counts } = counting()
     await Effect.runPromise(
