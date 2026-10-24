@@ -23,7 +23,7 @@ import {
   type TimerHandle,
 } from "@opentui/core"
 import type { Keymap, ReactiveMatcher } from "@opentui/keymap"
-import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { useBindings } from "@opentui/keymap/react"
 import { useRenderer } from "@opentui/react"
 import { Data } from "effect"
@@ -427,25 +427,30 @@ export const guardInput = (
   }
 }
 
-// The keymap InputGuards puts the guards up on, one a renderer: a keymap listens on its renderer
-// until the renderer is destroyed.
-const guardKeymaps = new WeakMap<CliRenderer, Keymap<Renderable, KeyEvent>>()
+// The forms' keymaps, one a renderer: a keymap listens on its renderer until the renderer is
+// destroyed.
+const formKeymaps = new WeakMap<CliRenderer, Keymap<Renderable, KeyEvent>>()
 
-const guardKeymap = (renderer: CliRenderer): Keymap<Renderable, KeyEvent> => {
-  const made = guardKeymaps.get(renderer)
+/**
+ * The keymap of the screens without the run's input layers, init's form and the forms ask() shows,
+ * on `renderer`: they bind their keys on it (keyCommands.ts useFormCommands), and InputGuards puts
+ * the guards up on it.
+ */
+export const formKeymap = (renderer: CliRenderer): Keymap<Renderable, KeyEvent> => {
+  const made = formKeymaps.get(renderer)
   if (made !== undefined) return made
-  const keymap = createOpenTuiKeymap(renderer)
-  guardKeymaps.set(renderer, keymap)
+  const keymap = createDefaultOpenTuiKeymap(renderer)
+  formKeymaps.set(renderer, keymap)
   return keymap
 }
 
 /**
  * guardInput over the renderer for a screen without the run's input layers, as init's form and
- * the forms ask() shows: on a keymap of their own. Mounted beside the run's input layers, it shares
- * their guards.
+ * the forms ask() shows: on their keymap (formKeymap). Mounted beside the run's input layers, it
+ * shares their guards.
  */
 export const InputGuards = () => {
   const renderer = useRenderer()
-  useEffect(() => guardInput(guardKeymap(renderer), renderer), [renderer])
+  useEffect(() => guardInput(formKeymap(renderer), renderer), [renderer])
   return null
 }

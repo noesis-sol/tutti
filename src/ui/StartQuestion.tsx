@@ -7,10 +7,10 @@
 // started yet. A click on an option chooses it, as Enter on it does (D9, § 7.3); one on the
 // description focuses it, as the renderer focuses what is clicked.
 import type { KeyBinding, TextareaRenderable } from "@opentui/core"
-import { useKeyboard } from "@opentui/react"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
 import { type Answers, ask, clickable, Field, Hint } from "./Form.tsx"
+import { type Command, useFormCommands } from "./keyCommands.ts"
 import { plainFg, styled } from "./line.tsx"
 import {
   describeDescription,
@@ -38,6 +38,57 @@ export const descriptionKeys: KeyBinding[] = [
   { name: "j", ctrl: true, action: "newline" },
 ]
 
+/** What the start question's keys do, in its step `step` now. */
+export interface StartActions {
+  readonly step: () => "choose" | "describe"
+  /** Moves the selector by one. */
+  readonly move: (by: number) => void
+  /** Chooses the option the selector is on. */
+  readonly choose: () => void
+  /** Goes back from the description to the select, keeping what was typed. */
+  readonly back: () => void
+  readonly cancel: () => void
+}
+
+/**
+ * The start question's keys: the select's while it chooses, the description's while it is typed
+ * in, whose Enter, Alt+Enter and Ctrl+J are the textarea's own (descriptionKeys).
+ */
+export const startCommands = (act: StartActions): ReadonlyArray<Command> => {
+  const choosing = () => act.step() === "choose"
+  const describing = () => act.step() === "describe"
+  return [
+    {
+      keys: ["up", "k"],
+      run: () => act.move(-1),
+      when: choosing,
+      hint: { keys: "↑↓", does: "choose" },
+    },
+    { keys: ["down", "j"], run: () => act.move(1), when: choosing },
+    // The Enter that chooses isn't the description's: it would submit it empty.
+    {
+      keys: ["return", "kpenter"],
+      run: act.choose,
+      when: choosing,
+      hint: { keys: "Enter", does: "confirm" },
+    },
+    { keys: [], run: () => {}, when: describing, hint: { keys: "Enter", does: "submit" } },
+    {
+      keys: [],
+      run: () => {},
+      when: describing,
+      hint: { keys: "Alt+Enter or Ctrl+J", does: "new line" },
+    },
+    {
+      keys: ["shift+tab"],
+      run: act.back,
+      when: describing,
+      hint: { keys: "Shift+Tab", does: "back" },
+    },
+    { keys: ["escape", "ctrl+c"], run: act.cancel, hint: { keys: "Esc", does: "cancel" } },
+  ]
+}
+
 /** How many lines the description's textarea shows, as orchestra's. */
 const descriptionLines = 6
 
@@ -55,28 +106,19 @@ export const StartQuestion = ({
   const options = startOptions(count)
   const { form } = theme
 
-  useKeyboard((key) => {
-    if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-      cancel()
-      return
-    }
-    if (stepNow() === "describe") {
-      if (key.name === "tab" && key.shift) {
+  const hint = useFormCommands(
+    startCommands({
+      step: stepNow,
+      move: (by) => setHighlighted((at) => Math.min(options.length - 1, Math.max(0, at + by))),
+      choose: () => choose(highlightedNow()),
+      back: () => {
         setStep(() => "choose")
         // The read's keys after Shift+Tab are the select's, not the description's.
         description.current?.blur()
-      }
-      return
-    }
-    if (key.name === "up" || key.name === "k") setHighlighted((at) => Math.max(0, at - 1))
-    else if (key.name === "down" || key.name === "j") {
-      setHighlighted((at) => Math.min(options.length - 1, at + 1))
-    } else if (key.name === "return" || key.name === "kpenter") {
-      // The Enter that chooses isn't the description's: it would submit it empty.
-      key.preventDefault()
-      choose(highlightedNow())
-    }
-  })
+      },
+      cancel,
+    }),
+  )
 
   // Option `at` chosen: the current tickets answer; a new feature asks for its description.
   const choose = (at: number) => {
@@ -144,23 +186,7 @@ export const StartQuestion = ({
         </Field>
       </box>
       <box paddingTop={1}>
-        <Hint
-          theme={theme}
-          keys={
-            step === "choose"
-              ? [
-                  { keys: "↑↓", does: "choose" },
-                  { keys: "Enter", does: "confirm" },
-                  { keys: "Esc", does: "cancel" },
-                ]
-              : [
-                  { keys: "Enter", does: "submit" },
-                  { keys: "Alt+Enter or Ctrl+J", does: "new line" },
-                  { keys: "Shift+Tab", does: "back" },
-                  { keys: "Esc", does: "cancel" },
-                ]
-          }
-        />
+        <Hint theme={theme} keys={hint} />
       </box>
     </box>
   )

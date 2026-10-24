@@ -4,7 +4,8 @@
 import { describe, expect, test } from "bun:test"
 import type { RGBA } from "@opentui/core"
 import { formHintSegments } from "../src/ui/Form.tsx"
-import { hintOf } from "../src/ui/InitForm.tsx"
+import { scoutCommands } from "../src/ui/InitForm.tsx"
+import { hintOf } from "../src/ui/keyCommands.ts"
 import { PlanConfirmation } from "../src/ui/PlanConfirmation.tsx"
 import { startOnQuestion } from "../src/ui/questions.ts"
 import { type Appearance, makeTheme, orchestra, type Role } from "../src/ui/theme.ts"
@@ -61,12 +62,11 @@ describe("a form's hint", () => {
   )
 
   test("of the init form's scout names its keys and their words apart", () => {
-    const hint = hintOf({ _tag: "Scout", id: 1, since: 0, skip: () => {}, cancel: () => {} })
-    expect(hint).toEqual([
+    const scout = { _tag: "Scout", id: 1, since: 0, skip: () => {}, cancel: () => {} } as const
+    expect(hintOf(scoutCommands(scout))).toEqual([
       { keys: "Esc", does: "skip" },
       { keys: "Ctrl+C", does: "cancel" },
     ])
-    expect(hintOf(null)).toBeNull()
   })
 
   test.each(variants)("under the plan confirmation, %s", async (appearance) => {

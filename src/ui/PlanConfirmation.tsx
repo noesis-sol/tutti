@@ -3,9 +3,9 @@
 // of an interview. The plan scrolls (↑, ↓, PgUp, PgDn) when it is taller than the screen; the
 // question stays under it. y says yes; n or Enter no; Esc or Ctrl+C cancels. A click on `y` in
 // `[y/N]` says yes, one on `N` no (D9, § 7.3).
-import { useKeyboard } from "@opentui/react"
 import type { Effect } from "effect"
 import { type Answers, ask, clickable, Field, Hint } from "./Form.tsx"
+import { type Command, useFormCommands } from "./keyCommands.ts"
 import { plainFg, styled } from "./line.tsx"
 import { type FormCancelled, type Plan, planLines } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
@@ -22,6 +22,18 @@ const confirmParts = (
   { text: "]" },
 ]
 
+/** The plan confirmation's keys: ↑ and ↓ are the plan's scrollbox's own. */
+export const planCommands = ({ answer, cancel }: Answers<boolean>): ReadonlyArray<Command> => [
+  { keys: ["y"], run: () => answer(true), hint: { keys: "y", does: "yes" } },
+  {
+    keys: ["n", "return", "kpenter"],
+    run: () => answer(false),
+    hint: { keys: "n or Enter", does: "no" },
+  },
+  { keys: [], run: () => {}, hint: { keys: "↑↓", does: "scroll" } },
+  { keys: ["escape", "ctrl+c"], run: cancel, hint: { keys: "Esc", does: "cancel" } },
+]
+
 export const PlanConfirmation = ({
   theme,
   plan,
@@ -35,12 +47,7 @@ export const PlanConfirmation = ({
 } & Answers<boolean>) => {
   const { form } = theme
 
-  useKeyboard((key) => {
-    if (key.name === "escape" || (key.ctrl && key.name === "c")) cancel()
-    else if (key.ctrl || key.meta) return
-    else if (key.name === "y") answer(true)
-    else if (key.name === "n" || key.name === "return" || key.name === "kpenter") answer(false)
-  })
+  const hint = useFormCommands(planCommands({ answer, cancel }))
 
   return (
     <box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
@@ -79,15 +86,7 @@ export const PlanConfirmation = ({
             ))}
           </box>
         </Field>
-        <Hint
-          theme={theme}
-          keys={[
-            { keys: "y", does: "yes" },
-            { keys: "n or Enter", does: "no" },
-            { keys: "↑↓", does: "scroll" },
-            { keys: "Esc", does: "cancel" },
-          ]}
-        />
+        <Hint theme={theme} keys={hint} />
       </box>
     </box>
   )

@@ -22,7 +22,7 @@
 // unmounted when the scope it was opened in closes; the summary is printed once the renderer is
 // gone (src/print/initSummary.ts). Its faint text is `formFaint`'s, as the summary's.
 import type { InputRenderable } from "@opentui/core"
-import { createRoot, useKeyboard, useTerminalDimensions } from "@opentui/react"
+import { createRoot, useTerminalDimensions } from "@opentui/react"
 import { Deferred, Effect, type Scope } from "effect"
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { type ScoutResult, scoutSkipped } from "../init/checks.ts"
@@ -42,6 +42,7 @@ import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
 import { clickable, Field, Hint, Themed } from "./Form.tsx"
 import { initAbout, initTitle, scoutClock } from "./initTitle.ts"
+import { type Command, useFormCommands } from "./keyCommands.ts"
 import { InputGuards } from "./keys.ts"
 import { type Segments, seg, styled, wrap } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
@@ -124,10 +125,85 @@ export interface InitScreen {
 
 export const emptyScreen: InitScreen = { steps: [], at: null, done: [], asking: null }
 
-const cancelKeys = (key: { readonly name: string; readonly ctrl: boolean }) =>
-  key.name === "escape" || (key.ctrl && key.name === "c")
+/** Esc or Ctrl+C: cancels the form. */
+const cancelCommand = (cancel: () => void): Command => ({
+  keys: ["escape", "ctrl+c"],
+  run: cancel,
+  hint: { keys: "Esc", does: "cancel" },
+})
 
-const isEnter = (name: string) => name === "return" || name === "kpenter"
+const enterKeys = ["return", "kpenter"]
+
+/** The keys of a confirm: `toggle` moves between Yes and No, `confirm` answers the one focused. */
+export const confirmCommands = (
+  asking: Extract<Asking, { _tag: "Confirm" }>,
+  act: { readonly toggle: () => void; readonly confirm: () => void },
+): ReadonlyArray<Command> => [
+  {
+    keys: ["left", "right", "h", "l", "tab"],
+    run: act.toggle,
+    hint: { keys: "←→", does: "choose" },
+  },
+  { keys: ["y"], run: () => asking.answer(true), hint: { keys: "y", does: "yes" } },
+  { keys: ["n"], run: () => asking.answer(false), hint: { keys: "n", does: "no" } },
+  { keys: enterKeys, run: act.confirm, hint: { keys: "Enter", does: "confirm" } },
+  cancelCommand(asking.cancel),
+]
+
+/** The keys of a select: `move` moves the selector by one, `confirm` chooses the one it is on. */
+export const selectCommands = (
+  asking: Extract<Asking, { _tag: "Select" }>,
+  act: { readonly move: (by: number) => void; readonly confirm: () => void },
+): ReadonlyArray<Command> => [
+  { keys: ["up", "k"], run: () => act.move(-1), hint: { keys: "↑↓", does: "choose" } },
+  { keys: ["down", "j"], run: () => act.move(1) },
+  { keys: enterKeys, run: act.confirm, hint: { keys: "Enter", does: "confirm" } },
+  cancelCommand(asking.cancel),
+]
+
+/** The keys of a line to type in: Enter is the line's own, which submits it. */
+export const textCommands = (asking: Extract<Asking, { _tag: "Text" }>): ReadonlyArray<Command> => [
+  { keys: [], run: () => {}, hint: { keys: "Enter", does: "confirm" } },
+  cancelCommand(asking.cancel),
+]
+
+/** The keys of a checklist: `move` moves the selector, `tick` ticks its option, `confirm` answers. */
+export const checklistCommands = (
+  asking: Extract<Asking, { _tag: "Checklist" }>,
+  act: {
+    readonly move: (by: number) => void
+    readonly tick: () => void
+    readonly confirm: () => void
+  },
+): ReadonlyArray<Command> => [
+  { keys: ["up", "k"], run: () => act.move(-1), hint: { keys: "↑↓", does: "move" } },
+  { keys: ["down", "j"], run: () => act.move(1) },
+  { keys: ["space", "x"], run: act.tick, hint: { keys: "Space", does: "tick" } },
+  { keys: enterKeys, run: act.confirm, hint: { keys: "Enter", does: "confirm" } },
+  cancelCommand(asking.cancel),
+]
+
+/** The keys while the scout looks: Esc skips it, Ctrl+C cancels the form. */
+export const scoutCommands = (
+  asking: Extract<Asking, { _tag: "Scout" }>,
+): ReadonlyArray<Command> => [
+  { keys: ["escape"], run: asking.skip, hint: { keys: "Esc", does: "skip" } },
+  { keys: ["ctrl+c"], run: asking.cancel, hint: { keys: "Ctrl+C", does: "cancel" } },
+]
+
+/** The keys under a field: those its commands there now name, as a form draws them. */
+const FieldHint = ({
+  theme,
+  keys,
+}: {
+  readonly theme: Theme
+  readonly keys: ReadonlyArray<Key>
+}) =>
+  keys.length === 0 ? null : (
+    <box paddingTop={1}>
+      <Hint theme={theme} keys={keys} />
+    </box>
+  )
 
 /** The columns a field's text is in from the screen's edges: the form's padding, and the bar's. */
 const fieldInset = 4
@@ -181,36 +257,41 @@ const ConfirmView = ({
   readonly asking: Extract<Asking, { _tag: "Confirm" }>
 }) => {
   const [yes, setYes, yesNow] = useKeyState(() => asking.field.initial ?? false)
-  useKeyboard((key) => {
-    if (cancelKeys(key)) asking.cancel()
-    else if (key.ctrl || key.meta) return
-    else if (["left", "right", "h", "l", "tab"].includes(key.name)) setYes((now) => !now)
-    else if (key.name === "y") asking.answer(true)
-    else if (key.name === "n") asking.answer(false)
-    else if (isEnter(key.name)) asking.answer(yesNow())
-  })
+  const hint = useFormCommands(
+    confirmCommands(asking, {
+      toggle: () => setYes((now) => !now),
+      confirm: () => asking.answer(yesNow()),
+    }),
+  )
   const { form } = theme
   return (
-    <Field theme={theme} focused>
-      <Heading theme={theme} title={asking.field.question} description={asking.field.description} />
-      <box flexDirection="row" height={1}>
-        <text
-          wrapMode="none"
-          {...clickable(() => asking.answer(true))}
-          {...styled(yes ? form.focusedButton : form.button)}
-        >
-          {"  Yes  "}
-        </text>
-        <text wrapMode="none"> </text>
-        <text
-          wrapMode="none"
-          {...clickable(() => asking.answer(false))}
-          {...styled(yes ? form.button : form.focusedButton)}
-        >
-          {"  No  "}
-        </text>
-      </box>
-    </Field>
+    <>
+      <Field theme={theme} focused>
+        <Heading
+          theme={theme}
+          title={asking.field.question}
+          description={asking.field.description}
+        />
+        <box flexDirection="row" height={1}>
+          <text
+            wrapMode="none"
+            {...clickable(() => asking.answer(true))}
+            {...styled(yes ? form.focusedButton : form.button)}
+          >
+            {"  Yes  "}
+          </text>
+          <text wrapMode="none"> </text>
+          <text
+            wrapMode="none"
+            {...clickable(() => asking.answer(false))}
+            {...styled(yes ? form.button : form.focusedButton)}
+          >
+            {"  No  "}
+          </text>
+        </box>
+      </Field>
+      <FieldHint theme={theme} keys={hint} />
+    </>
   )
 }
 
@@ -223,37 +304,39 @@ const SelectView = ({
 }) => {
   const { options } = asking.field
   const [at, setAt, atNow] = useKeyState(() => asking.field.initial ?? 0)
-  useKeyboard((key) => {
-    if (cancelKeys(key)) asking.cancel()
-    else if (key.name === "up" || key.name === "k") setAt((now) => Math.max(0, now - 1))
-    else if (key.name === "down" || key.name === "j") {
-      setAt((now) => Math.min(options.length - 1, now + 1))
-    } else if (isEnter(key.name)) asking.answer(atNow())
-  })
+  const hint = useFormCommands(
+    selectCommands(asking, {
+      move: (by) => setAt((now) => Math.min(options.length - 1, Math.max(0, now + by))),
+      confirm: () => asking.answer(atNow()),
+    }),
+  )
   const { form } = theme
   return (
-    <Field theme={theme} focused>
-      <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-      {options.map((option, index) => (
-        <text
-          // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
-          key={index}
-          {...clickable(() => {
-            setAt(() => index)
-            asking.answer(index)
-          })}
-        >
-          {index === at ? (
-            <>
-              <span {...styled(form.selector)}>{"> "}</span>
-              <span {...styled(form.selected)}>{option}</span>
-            </>
-          ) : (
-            <span {...styled(form.option)}>{`  ${option}`}</span>
-          )}
-        </text>
-      ))}
-    </Field>
+    <>
+      <Field theme={theme} focused>
+        <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
+        {options.map((option, index) => (
+          <text
+            // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
+            key={index}
+            {...clickable(() => {
+              setAt(() => index)
+              asking.answer(index)
+            })}
+          >
+            {index === at ? (
+              <>
+                <span {...styled(form.selector)}>{"> "}</span>
+                <span {...styled(form.selected)}>{option}</span>
+              </>
+            ) : (
+              <span {...styled(form.option)}>{`  ${option}`}</span>
+            )}
+          </text>
+        ))}
+      </Field>
+      <FieldHint theme={theme} keys={hint} />
+    </>
   )
 }
 
@@ -266,9 +349,7 @@ const TextView = ({
 }) => {
   const [error, setError] = useState<string | null>(null)
   const input = useRef<InputRenderable>(null)
-  useKeyboard((key) => {
-    if (cancelKeys(key)) asking.cancel()
-  })
+  const hint = useFormCommands(textCommands(asking))
   const submit = () => {
     const typed = input.current?.value ?? ""
     const problem = asking.field.validate?.(typed) ?? null
@@ -277,25 +358,30 @@ const TextView = ({
   }
   const { form } = theme
   return (
-    <Field theme={theme} focused>
-      <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-      <box flexDirection="row" {...clickable(() => input.current?.focus())}>
-        <text {...styled(form.selector)}>{"> "}</text>
-        <input
-          ref={input}
-          focused
-          flexGrow={1}
-          onSubmit={submit}
-          onInput={() => setError(null)}
-          {...(asking.field.initial === undefined ? {} : { value: asking.field.initial })}
-          {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
-          {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
-          {...(form.placeholder.fg === undefined ? {} : { placeholderColor: form.placeholder.fg })}
-          {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
-        />
-      </box>
-      {error === null ? null : <text {...styled(form.error)}>{error}</text>}
-    </Field>
+    <>
+      <Field theme={theme} focused>
+        <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
+        <box flexDirection="row" {...clickable(() => input.current?.focus())}>
+          <text {...styled(form.selector)}>{"> "}</text>
+          <input
+            ref={input}
+            focused
+            flexGrow={1}
+            onSubmit={submit}
+            onInput={() => setError(null)}
+            {...(asking.field.initial === undefined ? {} : { value: asking.field.initial })}
+            {...(form.option.fg === undefined ? {} : { textColor: form.option.fg })}
+            {...(form.option.fg === undefined ? {} : { focusedTextColor: form.option.fg })}
+            {...(form.placeholder.fg === undefined
+              ? {}
+              : { placeholderColor: form.placeholder.fg })}
+            {...(form.selected.fg === undefined ? {} : { cursorColor: form.selected.fg })}
+          />
+        </box>
+        {error === null ? null : <text {...styled(form.error)}>{error}</text>}
+      </Field>
+      <FieldHint theme={theme} keys={hint} />
+    </>
   )
 }
 
@@ -320,40 +406,42 @@ const ChecklistView = ({
       else next.add(index)
       return { at: index, ticked: next }
     })
-  useKeyboard((key) => {
-    if (cancelKeys(key)) asking.cancel()
-    else if (key.name === "up" || key.name === "k") {
-      setState((now) => ({ ...now, at: Math.max(0, now.at - 1) }))
-    } else if (key.name === "down" || key.name === "j") {
-      setState((now) => ({ ...now, at: Math.min(options.length - 1, now.at + 1) }))
-    } else if (key.name === "space" || key.name === "x") toggle(stateNow().at)
-    else if (isEnter(key.name)) asking.answer([...stateNow().ticked].sort((a, b) => a - b))
-  })
+  const hint = useFormCommands(
+    checklistCommands(asking, {
+      move: (by) =>
+        setState((now) => ({ ...now, at: Math.min(options.length - 1, Math.max(0, now.at + by)) })),
+      tick: () => toggle(stateNow().at),
+      confirm: () => asking.answer([...stateNow().ticked].sort((a, b) => a - b)),
+    }),
+  )
   const { form } = theme
   return (
-    <Field theme={theme} focused>
-      <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-      {options.map((option, index) => (
-        <text
-          // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
-          key={index}
-          {...clickable(() => toggle(index))}
-        >
-          <span {...styled(form.selector)}>{index === at ? "> " : "  "}</span>
-          {ticked.has(index) ? (
-            <>
-              <span {...styled(form.selectedMark)}>{"✓ "}</span>
-              <span {...styled(form.selected)}>{option}</span>
-            </>
-          ) : (
-            <>
-              <span {...styled(form.description)}>{"• "}</span>
-              <span {...styled(form.option)}>{option}</span>
-            </>
-          )}
-        </text>
-      ))}
-    </Field>
+    <>
+      <Field theme={theme} focused>
+        <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
+        {options.map((option, index) => (
+          <text
+            // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
+            key={index}
+            {...clickable(() => toggle(index))}
+          >
+            <span {...styled(form.selector)}>{index === at ? "> " : "  "}</span>
+            {ticked.has(index) ? (
+              <>
+                <span {...styled(form.selectedMark)}>{"✓ "}</span>
+                <span {...styled(form.selected)}>{option}</span>
+              </>
+            ) : (
+              <>
+                <span {...styled(form.description)}>{"• "}</span>
+                <span {...styled(form.option)}>{option}</span>
+              </>
+            )}
+          </text>
+        ))}
+      </Field>
+      <FieldHint theme={theme} keys={hint} />
+    </>
   )
 }
 
@@ -366,66 +454,28 @@ const ScoutView = ({
   readonly asking: Extract<Asking, { _tag: "Scout" }>
   readonly now: number
 }) => {
-  useKeyboard((key) => {
-    if (key.ctrl && key.name === "c") asking.cancel()
-    else if (key.name === "escape") asking.skip()
-  })
+  const hint = useFormCommands(scoutCommands(asking))
   const { form, styles } = theme
   return (
-    <Field theme={theme} focused>
-      <text>
-        <span {...styled(styles.picked)}>{spinnerAt(now)}</span>
-        <span> </span>
-        <span {...styled(form.fieldTitle)}>Looking for the project's suites</span>
-        <span
-          {...styled(form.faint)}
-        >{` ${scoutClock(now - asking.since)} (up to 5 minutes)`}</span>
-      </text>
-      <text {...styled(form.description)}>Its tests, lints, type checks and builds.</text>
-      <text {...clickable(asking.skip)}>
-        <span {...styled(styles.key)}>Esc</span>
-        <span {...styled(form.description)}>: skip and type a check yourself</span>
-      </text>
-    </Field>
+    <>
+      <Field theme={theme} focused>
+        <text>
+          <span {...styled(styles.picked)}>{spinnerAt(now)}</span>
+          <span> </span>
+          <span {...styled(form.fieldTitle)}>Looking for the project's suites</span>
+          <span
+            {...styled(form.faint)}
+          >{` ${scoutClock(now - asking.since)} (up to 5 minutes)`}</span>
+        </text>
+        <text {...styled(form.description)}>Its tests, lints, type checks and builds.</text>
+        <text {...clickable(asking.skip)}>
+          <span {...styled(styles.key)}>Esc</span>
+          <span {...styled(form.description)}>: skip and type a check yourself</span>
+        </text>
+      </Field>
+      <FieldHint theme={theme} keys={hint} />
+    </>
   )
-}
-
-/** The keys there are under each field. */
-export const hintOf = (asking: Asking | null): ReadonlyArray<Key> | null => {
-  if (asking === null) return null
-  switch (asking._tag) {
-    case "Confirm":
-      return [
-        { keys: "←→", does: "choose" },
-        { keys: "y", does: "yes" },
-        { keys: "n", does: "no" },
-        { keys: "Enter", does: "confirm" },
-        { keys: "Esc", does: "cancel" },
-      ]
-    case "Select":
-      return [
-        { keys: "↑↓", does: "choose" },
-        { keys: "Enter", does: "confirm" },
-        { keys: "Esc", does: "cancel" },
-      ]
-    case "Text":
-      return [
-        { keys: "Enter", does: "confirm" },
-        { keys: "Esc", does: "cancel" },
-      ]
-    case "Checklist":
-      return [
-        { keys: "↑↓", does: "move" },
-        { keys: "Space", does: "tick" },
-        { keys: "Enter", does: "confirm" },
-        { keys: "Esc", does: "cancel" },
-      ]
-    case "Scout":
-      return [
-        { keys: "Esc", does: "skip" },
-        { keys: "Ctrl+C", does: "cancel" },
-      ]
-  }
 }
 
 /** init's title: the pill, `init` and the repository. */
@@ -486,15 +536,19 @@ const WorkingView = ({
   readonly cancel: (() => void) | undefined
 }) => {
   const [stopping, setStopping] = useState(false)
-  useKeyboard((key) => {
-    if (!key.ctrl || key.name !== "c") return
-    if (stop === undefined) {
-      cancel?.()
-      return
-    }
-    stop()
-    setStopping(true)
-  })
+  useFormCommands([
+    {
+      keys: ["ctrl+c"],
+      run: () => {
+        if (stop === undefined) {
+          cancel?.()
+          return
+        }
+        stop()
+        setStopping(true)
+      },
+    },
+  ])
   return (
     <box paddingLeft={2}>
       <text>
@@ -520,7 +574,6 @@ export const InitView = ({
   readonly now: number
 }) => {
   const { asking } = screen
-  const hint = hintOf(asking)
   let field: ReactNode
   if (asking === null) {
     field = <WorkingView theme={theme} now={now} stop={screen.stop} cancel={screen.cancel} />
@@ -575,11 +628,6 @@ export const InitView = ({
       </box>
       <box flexDirection="column" paddingTop={screen.done.length === 0 ? 0 : 1} flexShrink={0}>
         {field}
-        {hint === null ? null : (
-          <box paddingTop={1}>
-            <Hint theme={theme} keys={hint} />
-          </box>
-        )}
       </box>
     </box>
   )

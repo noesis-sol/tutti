@@ -2,8 +2,11 @@
 // help and its bindings are all drawn from that list, so that none of them names a key the others
 // don't have. A command is its keys, what pressing one does, whether it is there now, and how the
 // hint and the key help name it.
+import { useRenderer } from "@opentui/react"
+import { useEffect } from "react"
 import type { Key } from "../run/runView.ts"
-import { type Box, type LayerName, useLayer } from "./keys.ts"
+import { type Box, formKeymap, type LayerName, priorities, useLayer } from "./keys.ts"
+import { useEvent } from "./useRunView.ts"
 
 /** A row of the key help: the keys as it names them, and what they do. */
 export type HelpRow = readonly [string, string]
@@ -69,6 +72,36 @@ export const useCommands = (
     which,
   )
   return { hint: hintOf(commands), help: helpOf(commands) }
+}
+
+/**
+ * Binds `commands` for a form shown without the run's input layers, init's form or one ask()
+ * shows, on its renderer's form keymap (keys.ts formKeymap): each key runs the command the latest
+ * render's list gives it (commandFor), and goes on to the focused field, as if unbound, where none
+ * is there now. The bindings are registered again only when the keys change. Gives the hint's keys.
+ */
+export const useFormCommands = (commands: ReadonlyArray<Command>): ReadonlyArray<Key> => {
+  const renderer = useRenderer()
+  // A command handler's false lets the key go on past the keymap.
+  const runKey = useEvent((key: string) => {
+    const command = commandFor(commands, key)
+    if (command === undefined) return false
+    command.run()
+    return true
+  })
+  const shape = keysOf(commands).join("\n")
+  useEffect(
+    () =>
+      formKeymap(renderer).registerLayer({
+        priority: priorities.view,
+        bindings: (shape === "" ? [] : shape.split("\n")).map((key) => ({
+          key,
+          cmd: () => runKey(key),
+        })),
+      }),
+    [renderer, shape, runKey],
+  )
+  return hintOf(commands)
 }
 
 /** What the global keys do. */
