@@ -273,6 +273,11 @@ export interface TicketText {
   readonly notes: string
   readonly labels: ReadonlyArray<string>
   readonly links: ReadonlyArray<TicketLink>
+  /**
+   * How many tickets depend on this one: those in `links` once bd show has listed them, else as bd
+   * ready counted them, which lists none.
+   */
+  readonly dependents: number
 }
 
 /** Each issue read, sanitised once: an entry keeps its issue until the run reads it again. */
@@ -294,6 +299,7 @@ export const ticketText = (issue: Issue): TicketText => {
     acceptance: sanitize(issue.acceptance),
     notes: sanitize(issue.notes),
     labels: issue.labels.map(sanitizeLine),
+    dependents: issue.dependents?.length ?? issue.dependentCount ?? 0,
     links: [
       ...[...parent, ...others].map((link) => ({
         type: sanitizeLine(link.type),

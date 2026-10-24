@@ -121,5 +121,6 @@ test("the card has the issue from the start, and ReadTicket brings the notes add
   expect(again.description).toBe("Read the second file too.")
   // Read again, with what it blocks, which bd ready didn't give.
   expect(first.links).toEqual([])
+  expect(first.dependents).toBe(1)
   expect(again.links).toEqual([{ type: "blocks", id: "b", dependent: true }])
 }, 30_000)

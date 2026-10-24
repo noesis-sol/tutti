@@ -73,6 +73,8 @@ export interface Issue {
    * bd show gives them asked for its dependents; absent from every other read.
    */
   readonly dependents?: ReadonlyArray<Dependency>
+  /** How many issues depend on this one, as bd ready, list and show count them; absent if bd doesn't. */
+  readonly dependentCount?: number
   /** The custom metadata, an object; bd gives it as one or as one encoded in a string. */
   readonly metadata: Readonly<Record<string, unknown>>
   /** The files the metadata lists under `files`, in any of the forms `metadataList` reads. */
@@ -153,6 +155,7 @@ const issueFields = {
   priority: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   labels: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
   metadata: Schema.optionalKey(Schema.Unknown),
+  dependent_count: Schema.optionalKey(Schema.NullOr(Schema.Number)),
 }
 
 /** A dependency as bd ready and bd list give it: a link. */
@@ -237,6 +240,7 @@ const toIssue = (bd: BdFields, dependencies: ReadonlyArray<Dependency>): Issue =
     labels: bd.labels ?? [],
     ...(parent ? { parent } : {}),
     dependencies,
+    ...(typeof bd.dependent_count === "number" ? { dependentCount: bd.dependent_count } : {}),
     metadata,
     files: metadataList(metadata, MetadataKey.files),
     predictedFiles: metadataList(metadata, MetadataKey.predictedFiles),

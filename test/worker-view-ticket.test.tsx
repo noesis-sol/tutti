@@ -274,11 +274,20 @@ describe("the ticket's description in the head", () => {
 
   test("the control when the ticket's one more thing is a ticket it blocks", async () => {
     await scene(
-      issueOf({ description: "Read it.", dependents: [{ id: "t-5", type: "blocks" }] }),
+      // As bd ready gives it: counted, not listed.
+      issueOf({ description: "Read it.", dependentCount: 1 }),
       { width: 80, height: 24 },
       async ({ rendered }) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        expect(linesOf(frame)[1]?.endsWith("▾ whole ticket  t")).toBe(true)
+        expect(linesOf(frame)[2]?.endsWith("▾ whole ticket  t")).toBe(true)
+      },
+    )
+    await scene(
+      issueOf({ description: "Read it.", dependentCount: 0 }),
+      { width: 80, height: 24 },
+      async ({ rendered }) => {
+        const frame = await until(rendered, has("Reading the scripts."))
+        expect(frame.chars).not.toContain("whole ticket")
       },
     )
   })

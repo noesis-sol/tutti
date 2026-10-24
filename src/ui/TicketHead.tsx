@@ -101,12 +101,16 @@ export const inlineSegments = (prose: string, theme: Theme): Segments => {
   return out
 }
 
-/** Whether the ticket has more than its description: design, acceptance criteria, notes, links. */
+/**
+ * Whether the ticket has more than its description: design, acceptance criteria, notes, links (a
+ * ticket depending on it among them, counted before bd show has listed it).
+ */
 export const hasMore = (issue: TicketText): boolean =>
   issue.design.trim() !== "" ||
   issue.acceptance.trim() !== "" ||
   issue.notes.trim() !== "" ||
-  issue.links.length > 0
+  issue.links.length > 0 ||
+  issue.dependents > 0
 
 /** `▾ whole ticket  t`, in the link colour and its key's. */
 export const moreControl = (theme: Theme): Segments => [

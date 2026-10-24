@@ -365,7 +365,13 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
                   !options.excludeTypes?.includes(issue.type),
               )
               .sort(byPriorityThen(false))
-              .map(brief),
+              .map((issue) => ({
+                ...brief(issue),
+                // bd ready counts the issues linked to each, without listing them.
+                dependent_count: [...issues.values()].filter((other) =>
+                  other.links.some((link) => link.id === issue.id),
+                ).length,
+              })),
           )
         })
 

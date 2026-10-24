@@ -83,4 +83,23 @@ describe("bd show's dependents", () => {
     )
     expect(plain.dependents).toBeUndefined()
   })
+
+  test("bd ready counts them, without listing them", () => {
+    const ready = Effect.runSync(
+      Effect.flatMap(Beads, (beads) => beads.ready()).pipe(
+        Effect.provide(backlogLayer([{ id: "a" }, { id: "b", blockedBy: ["a"] }])),
+      ),
+    )
+    expect(
+      ready.map(({ id, dependentCount, dependents }) => ({ id, dependentCount, dependents })),
+    ).toEqual([{ id: "a", dependentCount: 1, dependents: undefined }])
+    const decoded = Effect.runSync(
+      issueFor(
+        "t-1",
+        "bd show t-1",
+        JSON.stringify([{ id: "t-1", title: "One", status: "open", dependent_count: 2 }]),
+      ),
+    )
+    expect(decoded.dependentCount).toBe(2)
+  })
 })
