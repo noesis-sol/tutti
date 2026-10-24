@@ -23,10 +23,9 @@ import { resetLabel } from "../run/localTime.ts"
 import { allTokens, type Resources } from "../run/resources.ts"
 import type { Usage } from "../run/runView.ts"
 import { elapsed } from "./Card.tsx"
-import { clickable } from "./click.ts"
 import { type FitPart, fitParts } from "./fit.ts"
 import { workerMemory } from "./LoadLine.tsx"
-import { Line, type Look, type Segments, seg, wrap } from "./line.tsx"
+import { Line, type Look, padded, type Segments, seg, targeting, wrap } from "./line.tsx"
 import { sanitizeLine } from "./sanitize.ts"
 import { gauge } from "./TitleLine.tsx"
 import type { Theme } from "./theme.ts"
@@ -320,9 +319,6 @@ export const ResourceLine = ({
     theme,
     Math.max(width - indent.length, 1),
   )
-  return (
-    <box height={1} flexShrink={0} {...clickable(open)}>
-      <Line segments={[seg(indent), ...segments]} />
-    </box>
-  )
+  // The whole line, to the pane's edge, is the breakdown's click target.
+  return <Line segments={targeting(padded([seg(indent), ...segments], width), 0)} press={open} />
 }

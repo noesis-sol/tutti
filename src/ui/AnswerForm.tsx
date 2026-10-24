@@ -36,7 +36,18 @@ import { clickable } from "./click.ts"
 import { hintSegments } from "./Hint.tsx"
 import { useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
-import { cut, Line, plainFg, type Segments, seg, styled } from "./line.tsx"
+import {
+  boxSides,
+  cut,
+  FrameRow,
+  frameEdge,
+  Line,
+  Lines,
+  padded,
+  type Segments,
+  seg,
+  targeting,
+} from "./line.tsx"
 import { Backdrop } from "./Modal.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
@@ -217,19 +228,35 @@ const FormBody = ({
   const bodyHeight = Math.min(Math.max(tall, 1), room)
   const boxHeight = bodyHeight + 6
   const [sendLabel, refuseLabel] = buttonLabels(form)
-  const button = (label: string, index: number) => (
-    <text
-      wrapMode="none"
-      height={1}
-      {...clickable(() => {
-        setFocus(index)
-        press(index)
-      })}
-      {...styled(focus === index ? looks.focusedButton : looks.button)}
-    >
-      {`[ ${label} ]`}
-    </text>
-  )
+  const button = (label: string, index: number) =>
+    seg(`[ ${label} ]`, focus === index ? looks.focusedButton : looks.button, index)
+  const pressButton = (index: number) => {
+    setFocus(index)
+    press(index)
+  }
+  // The frame's rows above and below the body, which a FrameRow draws around its scrollbox.
+  const above = [
+    frameEdge("top", outer, frame),
+    ...boxSides(
+      [[seg(request.label, theme.styles.key), seg(" asks", theme.styles.dim)]],
+      outer,
+      frame,
+    ),
+  ]
+  const below = [
+    ...boxSides(
+      [
+        [],
+        [button(sendLabel, rows.length), seg("  "), button(refuseLabel, rows.length + 1)],
+        missing === null
+          ? hintSegments(hint, theme, inner + 2).slice(1)
+          : [seg(missing, looks.error)],
+      ],
+      outer,
+      frame,
+    ),
+    frameEdge("bottom", outer, frame),
+  ]
   let index = 0
   return (
     <>
@@ -244,113 +271,101 @@ const FormBody = ({
         // Opaque, in the terminal's own background: the view's text doesn't show through its spaces.
         backgroundColor={RGBA.defaultBackground()}
         flexDirection="column"
-        border
-        borderStyle="rounded"
-        {...(frame.fg === undefined ? {} : { borderColor: frame.fg })}
-        paddingX={1}
       >
-        <Line
-          segments={cut(
-            [seg(request.label, theme.styles.key), seg(" asks", theme.styles.dim)],
-            inner,
-          )}
-        />
-        <scrollbox
-          ref={scroll}
-          height={bodyHeight}
-          flexShrink={0}
-          focusable={false}
-          scrollbarOptions={{ visible: false }}
-        >
-          {form.fields.map((field, f) => {
-            const value = values[f] ?? { picked: [], text: "", on: false }
-            const first = index
-            index += rows.filter((row) => row.field === f).length
-            return (
-              <box
-                key={field.key}
-                flexDirection="column"
-                flexShrink={0}
-                paddingTop={f === 0 ? 0 : 1}
-              >
-                {titleLines(field, theme).map((segments, i) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
-                  <Line key={i} segments={cut(segments, inner)} />
-                ))}
-                {rows
-                  .filter((row) => row.field === f)
-                  .map((row, i) => {
-                    const n = first + i
-                    const focused = n === focus
-                    const typing = typesAt(form, row)
-                    const before: Segments = [
-                      seg(focused ? "> " : "  ", looks.selector),
-                      ...rowText(field, value, row.option, theme),
-                    ]
-                    return (
-                      <box
-                        key={row.option}
-                        id={rowId(n)}
-                        flexDirection="row"
-                        height={1}
-                        flexShrink={0}
-                        {...clickable(() => {
-                          setFocus(n)
-                          if (!typing) pickRow(row)
-                        })}
-                      >
-                        <Line segments={cut(before, inner)} />
-                        {typing ? (
-                          <input
-                            ref={(input: InputRenderable | null) => {
-                              if (input === null) inputs.current.delete(n)
-                              else inputs.current.set(n, input)
-                            }}
-                            focused={focused}
-                            flexGrow={1}
-                            value={value.text}
-                            onInput={(typed: string) =>
-                              update(f, (now) => typeIn(field, now, typed))
-                            }
-                            placeholder={
-                              field._tag === "Text" && field.number !== null ? "a number" : ""
-                            }
-                            {...(looks.option.fg === undefined
-                              ? {}
-                              : { textColor: looks.option.fg })}
-                            {...(looks.option.fg === undefined
-                              ? {}
-                              : { focusedTextColor: looks.option.fg })}
-                            {...(looks.placeholder.fg === undefined
-                              ? {}
-                              : { placeholderColor: looks.placeholder.fg })}
-                            {...(looks.selected.fg === undefined
-                              ? {}
-                              : { cursorColor: looks.selected.fg })}
+        <Lines lines={above} />
+        <FrameRow width={outer} frame={frame} lines={bodyHeight}>
+          <scrollbox
+            ref={scroll}
+            height={bodyHeight}
+            flexShrink={0}
+            focusable={false}
+            scrollbarOptions={{ visible: false }}
+          >
+            {form.fields.map((field, f) => {
+              const value = values[f] ?? { picked: [], text: "", on: false }
+              const first = index
+              index += rows.filter((row) => row.field === f).length
+              return (
+                <box
+                  key={field.key}
+                  flexDirection="column"
+                  flexShrink={0}
+                  paddingTop={f === 0 ? 0 : 1}
+                >
+                  {titleLines(field, theme).map((segments, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: the lines are drawn anew in order
+                    <Line key={i} segments={cut(segments, inner)} />
+                  ))}
+                  {rows
+                    .filter((row) => row.field === f)
+                    .map((row, i) => {
+                      const n = first + i
+                      const focused = n === focus
+                      const typing = typesAt(form, row)
+                      const before = cut(
+                        [
+                          seg(focused ? "> " : "  ", looks.selector),
+                          ...rowText(field, value, row.option, theme),
+                        ],
+                        inner,
+                      )
+                      // The row's click target is the whole row: its text, to the frame where
+                      // nothing is typed in it, and the line to type in.
+                      const pressRow = () => {
+                        setFocus(n)
+                        if (!typing) pickRow(row)
+                      }
+                      return (
+                        <box
+                          key={row.option}
+                          id={rowId(n)}
+                          flexDirection="row"
+                          height={1}
+                          flexShrink={0}
+                        >
+                          <Line
+                            segments={targeting(typing ? before : padded(before, inner), n)}
+                            press={pressRow}
                           />
-                        ) : null}
-                      </box>
-                    )
-                  })}
-              </box>
-            )
-          })}
-        </scrollbox>
-        <Line segments={[]} />
-        <box flexDirection="row" height={1} flexShrink={0}>
-          {button(sendLabel, rows.length)}
-          <text wrapMode="none" height={1} fg={plainFg}>
-            {"  "}
-          </text>
-          {button(refuseLabel, rows.length + 1)}
-        </box>
-        <Line
-          segments={
-            missing === null
-              ? cut(hintSegments(hint, theme, inner + 2).slice(1), inner)
-              : cut([seg(missing, looks.error)], inner)
-          }
-        />
+                          {typing ? (
+                            <input
+                              {...clickable(pressRow)}
+                              ref={(input: InputRenderable | null) => {
+                                if (input === null) inputs.current.delete(n)
+                                else inputs.current.set(n, input)
+                              }}
+                              focused={focused}
+                              flexGrow={1}
+                              value={value.text}
+                              onInput={(typed: string) =>
+                                update(f, (now) => typeIn(field, now, typed))
+                              }
+                              placeholder={
+                                field._tag === "Text" && field.number !== null ? "a number" : ""
+                              }
+                              {...(looks.option.fg === undefined
+                                ? {}
+                                : { textColor: looks.option.fg })}
+                              {...(looks.option.fg === undefined
+                                ? {}
+                                : { focusedTextColor: looks.option.fg })}
+                              {...(looks.placeholder.fg === undefined
+                                ? {}
+                                : { placeholderColor: looks.placeholder.fg })}
+                              {...(looks.selected.fg === undefined
+                                ? {}
+                                : { cursorColor: looks.selected.fg })}
+                            />
+                          ) : null}
+                        </box>
+                      )
+                    })}
+                </box>
+              )
+            })}
+          </scrollbox>
+        </FrameRow>
+        <Lines lines={below} press={pressButton} />
       </box>
     </>
   )

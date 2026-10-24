@@ -23,6 +23,10 @@ export type Segments = ReadonlyArray<Segment>
 export const seg = (text: string, look: Look | null = null, target?: number): Segment =>
   target === undefined ? { text, look } : { text, look, target }
 
+/** `segments`, each part of the click target `target`: a click anywhere on them presses it. */
+export const targeting = (segments: Segments, target: number): Segments =>
+  segments.map((each) => ({ ...each, target }))
+
 /**
  * The terminal's own text colour, for text no role colours (§ 7.11's "default text colour"). Left
  * to itself, OpenTUI draws such text exact white, which a light terminal can't show.

@@ -44,7 +44,7 @@ import { clickable, Field, Hint, Themed } from "./Form.tsx"
 import { initAbout, initTitle, scoutClock } from "./initTitle.ts"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { InputGuards } from "./keys.ts"
-import { type Segments, seg, styled, wrap } from "./line.tsx"
+import { Line, Lines, type Press, type Segments, seg, styled, targeting, wrap } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Style, Theme } from "./theme.ts"
@@ -231,6 +231,24 @@ const Paragraph = ({
   )
 }
 
+/**
+ * Click targets one under the other, each `each`'s segments wrapped as Paragraph wraps its text:
+ * a click on target `index`'s lines presses `index`.
+ */
+const Targets = ({
+  each,
+  press,
+}: {
+  readonly each: ReadonlyArray<Segments>
+  readonly press: Press
+}) => {
+  const { width } = useTerminalDimensions()
+  const lines = each.flatMap((segments, index) =>
+    wrap(targeting(segments, index), Math.max(width - fieldInset, 1)),
+  )
+  return <Lines lines={lines} press={press} />
+}
+
 /** The text of a field's title and description, as huh draws them. */
 const Heading = ({
   theme,
@@ -272,23 +290,14 @@ const ConfirmView = ({
           title={asking.field.question}
           description={asking.field.description}
         />
-        <box flexDirection="row" height={1}>
-          <text
-            wrapMode="none"
-            {...clickable(() => asking.answer(true))}
-            {...styled(yes ? form.focusedButton : form.button)}
-          >
-            {"  Yes  "}
-          </text>
-          <text wrapMode="none"> </text>
-          <text
-            wrapMode="none"
-            {...clickable(() => asking.answer(false))}
-            {...styled(yes ? form.button : form.focusedButton)}
-          >
-            {"  No  "}
-          </text>
-        </box>
+        <Line
+          segments={[
+            seg("  Yes  ", yes ? form.focusedButton : form.button, 0),
+            seg(" "),
+            seg("  No  ", yes ? form.button : form.focusedButton, 1),
+          ]}
+          press={(target) => asking.answer(target === 0)}
+        />
       </Field>
       <FieldHint theme={theme} keys={hint} />
     </>
@@ -315,25 +324,17 @@ const SelectView = ({
     <>
       <Field theme={theme} focused>
         <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-        {options.map((option, index) => (
-          <text
-            // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
-            key={index}
-            {...clickable(() => {
-              setAt(() => index)
-              asking.answer(index)
-            })}
-          >
-            {index === at ? (
-              <>
-                <span {...styled(form.selector)}>{"> "}</span>
-                <span {...styled(form.selected)}>{option}</span>
-              </>
-            ) : (
-              <span {...styled(form.option)}>{`  ${option}`}</span>
-            )}
-          </text>
-        ))}
+        <Targets
+          each={options.map((option, index) =>
+            index === at
+              ? [seg("> ", form.selector), seg(option, form.selected)]
+              : [seg(`  ${option}`, form.option)],
+          )}
+          press={(index) => {
+            setAt(() => index)
+            asking.answer(index)
+          }}
+        />
       </Field>
       <FieldHint theme={theme} keys={hint} />
     </>
@@ -419,26 +420,15 @@ const ChecklistView = ({
     <>
       <Field theme={theme} focused>
         <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
-        {options.map((option, index) => (
-          <text
-            // biome-ignore lint/suspicious/noArrayIndexKey: the options are fixed for the field's life
-            key={index}
-            {...clickable(() => toggle(index))}
-          >
-            <span {...styled(form.selector)}>{index === at ? "> " : "  "}</span>
-            {ticked.has(index) ? (
-              <>
-                <span {...styled(form.selectedMark)}>{"✓ "}</span>
-                <span {...styled(form.selected)}>{option}</span>
-              </>
-            ) : (
-              <>
-                <span {...styled(form.description)}>{"• "}</span>
-                <span {...styled(form.option)}>{option}</span>
-              </>
-            )}
-          </text>
-        ))}
+        <Targets
+          each={options.map((option, index) => [
+            seg(index === at ? "> " : "  ", form.selector),
+            ...(ticked.has(index)
+              ? [seg("✓ ", form.selectedMark), seg(option, form.selected)]
+              : [seg("• ", form.description), seg(option, form.option)]),
+          ])}
+          press={toggle}
+        />
       </Field>
       <FieldHint theme={theme} keys={hint} />
     </>
@@ -468,10 +458,12 @@ const ScoutView = ({
           >{` ${scoutClock(now - asking.since)} (up to 5 minutes)`}</span>
         </text>
         <text {...styled(form.description)}>Its tests, lints, type checks and builds.</text>
-        <text {...clickable(asking.skip)}>
-          <span {...styled(styles.key)}>Esc</span>
-          <span {...styled(form.description)}>: skip and type a check yourself</span>
-        </text>
+        <Targets
+          each={[
+            [seg("Esc", styles.key), seg(": skip and type a check yourself", form.description)],
+          ]}
+          press={asking.skip}
+        />
       </Field>
       <FieldHint theme={theme} keys={hint} />
     </>

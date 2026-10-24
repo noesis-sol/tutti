@@ -9,9 +9,9 @@
 import type { KeyBinding, TextareaRenderable } from "@opentui/core"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
-import { type Answers, ask, clickable, Field, Hint } from "./Form.tsx"
+import { type Answers, ask, Field, Hint } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
-import { plainFg, styled } from "./line.tsx"
+import { Lines, seg, styled, targeting } from "./line.tsx"
 import {
   describeDescription,
   describeTitle,
@@ -142,25 +142,20 @@ export const StartQuestion = ({
       <Field theme={theme} focused={step === "choose"}>
         <text {...styled(form.fieldTitle)}>{startTitle}</text>
         <text {...styled(form.description)}>{startDescription}</text>
-        {options.map((option, at) => (
-          <text
-            key={option}
-            fg={plainFg}
-            {...clickable(() => {
-              setHighlighted(() => at)
-              choose(at)
-            })}
-          >
-            {at === highlighted ? (
-              <>
-                <span {...styled(form.selector)}>{"> "}</span>
-                <span {...styled(form.selected)}>{option}</span>
-              </>
-            ) : (
-              <span {...styled(form.option)}>{`  ${option}`}</span>
-            )}
-          </text>
-        ))}
+        <Lines
+          lines={options.map((option, at) =>
+            targeting(
+              at === highlighted
+                ? [seg("> ", form.selector), seg(option, form.selected)]
+                : [seg(`  ${option}`, form.option)],
+              at,
+            ),
+          )}
+          press={(at) => {
+            setHighlighted(() => at)
+            choose(at)
+          }}
+        />
       </Field>
       {/* Mounted while hidden, so that the keys of the read that chose New feature reach it. */}
       <box flexDirection="column" paddingTop={1} visible={step === "describe"}>
