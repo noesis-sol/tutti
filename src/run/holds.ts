@@ -451,7 +451,9 @@ export const liftStops = (stops: Stops, lifted: (stop: StopReason) => boolean): 
  * stay, as the environment probe's pass or failure keeps the stops raised while it waited.
  */
 export const swapStop = (stops: Stops, stop: StopReason, by: StopReason | null): Stops =>
-  stops.flatMap((each) => (each !== stop ? [each] : by === null ? [] : [by]))
+  stops.includes(stop)
+    ? stops.flatMap((each) => (each !== stop ? [each] : by === null ? [] : [by]))
+    : stops
 
 /** The line the run ends with: the first stop's, then `; also` and each of the others. */
 export const stopsLine = (stops: Stops): Line =>
