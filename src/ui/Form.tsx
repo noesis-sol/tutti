@@ -11,7 +11,17 @@ import { Effect } from "effect"
 import { type ReactNode, useMemo, useSyncExternalStore } from "react"
 import type { Key } from "../run/runView.ts"
 import { InputGuards } from "./keys.ts"
-import { Lines, type Press, plainFg, type Segments, seg, styled, targeting, wrap } from "./line.tsx"
+import {
+  Lines,
+  type Press,
+  padded,
+  plainFg,
+  type Segments,
+  seg,
+  styled,
+  targeting,
+  wrap,
+} from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -47,8 +57,8 @@ export const Field = ({
 
 /**
  * Click targets one under the other, each `each`'s segments wrapped by tutti's wrap to the screen's
- * width less `inset` columns, as a field's text is: a click on target `index`'s lines presses
- * `index`.
+ * width less `inset` columns, as a field's text is: a click on target `index`'s lines, to the
+ * field's edge, presses `index`.
  */
 export const Targets = ({
   each,
@@ -60,8 +70,10 @@ export const Targets = ({
   readonly press: Press
 }) => {
   const { width } = useTerminalDimensions()
+  const room = Math.max(width - inset, 1)
+  // Each line to the field's edge, so that a click past its text lands on it, as on a row.
   const lines = each.flatMap((segments, index) =>
-    wrap(targeting(segments, index), Math.max(width - inset, 1)),
+    wrap(segments, room).map((line) => targeting(padded(line, room), index)),
   )
   return <Lines lines={lines} press={press} />
 }

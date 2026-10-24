@@ -13,7 +13,7 @@ import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { type Asking, emptyScreen, InitView } from "../src/ui/InitForm.tsx"
-import { TicketCount } from "../src/ui/questions.ts"
+import { TicketCount, Work } from "../src/ui/questions.ts"
 import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptState } from "../src/ui/transcriptItems.ts"
@@ -54,7 +54,8 @@ describe("init's checklist", () => {
       expect((await rendered.capture()).chars).toContain("> ✓ bun test")
       await rendered.input((setup) => setup.mockMouse.click(8, y))
       expect((await rendered.capture()).chars).toContain("> • bun test")
-      await rendered.input((setup) => setup.mockMouse.click(8, y - 1))
+      // tsc, clicked past its text.
+      await rendered.input((setup) => setup.mockMouse.click(40, y - 1))
       await rendered.input((setup) => setup.mockInput.pressEnter())
     })
     expect(said).toEqual([[0]])
@@ -62,7 +63,7 @@ describe("init's checklist", () => {
 })
 
 describe("the start question on a narrow screen", () => {
-  test("New feature wraps onto a second line, a click there choosing it", async () => {
+  test("New feature wraps, a click on its second line choosing it; one past an option answers", async () => {
     const said: Array<unknown> = []
     const node = (
       <StartQuestion
@@ -80,8 +81,13 @@ describe("the start question on a narrow screen", () => {
       const x = (lines[y + 1] ?? "").indexOf("through")
       await rendered.input((setup) => setup.mockMouse.click(x + 2, y + 1))
       expect((await rendered.capture()).chars).toContain("> New feature")
+      // A click past an option's text, to the field's edge, lands on it.
+      const at = linesOf(await rendered.capture()).findIndex((line) =>
+        line.includes("Current tickets"),
+      )
+      await rendered.input((setup) => setup.mockMouse.click(34, at))
     })
-    expect(said).toEqual([])
+    expect(said).toEqual([Work.Tickets()])
   })
 })
 
