@@ -202,7 +202,8 @@ export const urlToOpen = (request: AttentionRequest, answer: Answer): string | u
  * Sends `answer` to the request `request` names, if it is still open in the RunView as it is now;
  * else drops it with a toast. Accepting a URL elicitation opens its URL first, with the shell's
  * UrlOpener, and toasts how: the Accept is sent once it is opened or copied, if the request is
- * still open then, and not when it was neither.
+ * still open then, and not when it was neither. Another Accept of a request whose URL is still
+ * opening is ignored, so a second press opens no second tab and sends no second Accept.
  */
 export const useSendAnswer = (): ((
   request: { readonly id: string; readonly ticket: string },
@@ -212,6 +213,8 @@ export const useSendAnswer = (): ((
   const latest = useLatestRunView()
   const { toasts } = useInput()
   const opener = useContext(ShellContext)?.urlOpener
+  // The requests whose URL is opening, until the opener resolves.
+  const opening = useRef(new Set<string>())
   const openOf = (id: string) => latest().requests.find((open) => open.id === id)
   const send = (request: { readonly id: string; readonly ticket: string }, answer: Answer) => {
     if (openOf(request.id) !== undefined) {
@@ -222,7 +225,10 @@ export const useSendAnswer = (): ((
     const open = openOf(request.id)
     const url = open === undefined ? undefined : urlToOpen(open, answer)
     if (opener === undefined || url === undefined) return send(request, answer)
+    if (opening.current.has(request.id)) return
+    opening.current.add(request.id)
     const opened = (how: Opened) => {
+      opening.current.delete(request.id)
       if (how === "failed") return toasts.show(urlFailedToast, { failure: true })
       toasts.show(how === "opened" ? openedToast : urlCopiedToast)
       send(request, answer)
