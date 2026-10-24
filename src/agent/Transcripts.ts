@@ -14,17 +14,7 @@
 // the worker's transcript goes on in memory.
 import { fstatSync, readSync, writeSync } from "node:fs"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import {
-  Clock,
-  Context,
-  Effect,
-  Layer,
-  PubSub,
-  Result,
-  Schema,
-  type Scope,
-  Stream,
-} from "effect"
+import { Clock, Context, Effect, Layer, PubSub, Result, Schema, type Scope, Stream } from "effect"
 import { close, LibcError, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { terminalSafe } from "../run/events.ts"
 import { timestamp } from "../run/localTime.ts"
