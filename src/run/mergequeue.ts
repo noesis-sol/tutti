@@ -58,9 +58,11 @@ import {
   closeUnchanged,
   type FinishedTicket,
   fastForward,
+  keptChanging,
   type MergeEnv,
   type MergeOptions,
   type MergeStop,
+  maxPasses,
   prepare,
 } from "./merge.ts"
 import { type CheckAhead, make as makeTrain } from "./mergetrain.ts"
@@ -386,6 +388,9 @@ export const make = (
           )
           let prepared = boarded ?? (yield* prepareIt)
           let stop: MergeStop | undefined
+          // How many times it was prepared again, its branch or the base having moved on before
+          // its fast-forward: each prepare counts its own passes from nothing.
+          let again = 0
           for (;;) {
             const handingBack = prepared._tag === "HandBack" || prepared._tag === "FixBack"
             if (handingBack && (yield* Ref.get(held))) return yield* backInLine(ticket)
@@ -404,9 +409,16 @@ export const make = (
                 stop = ended.stop
                 break
               // Its branch moved on after its check passed, or the base before it merged: the
-              // commit it is at now is checked first, on the base as it is now.
+              // commit it is at now is checked first, on the base as it is now, up to maxPasses
+              // times; then it is blocked, over with no stop.
               case "Moved":
               case "BaseMoved":
+                if (again === maxPasses) {
+                  const what = ended._tag === "Moved" ? ticket.branch : options.base
+                  prepared = yield* keptChanging(ticket, `${what} kept changing`)
+                  continue
+                }
+                again++
                 prepared = yield* prepareIt
                 continue
               default:

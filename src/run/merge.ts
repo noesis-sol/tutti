@@ -19,7 +19,8 @@
 // - fastForward, the step from the fast-forward to the end of its notes, which the merge queue runs
 //   protected from interruption (§ 3.4): the main checkout ready (DIRTY_TREE, GIT_FAILED), the base
 //   fast-forwarded to the commit checked, the branch still at it (MERGE_FAILED; Moved, prepared
-//   and checked again, when it is not; BaseMoved, the same, when the base moved on before it; a
+//   and checked again, when it is not; BaseMoved, the same, when the base moved on before it: the
+//   merge queue prepares it again up to maxPasses times, then blocks it, keptChanging; a
 //   fast-forward git was kept from tried again, then GIT_FAILED), the worktree and branch removed, the epics the ticket was the last
 //   to merge under closed, up the tree. exec's time limits kill a command themselves, without
 //   interrupting its fiber, so each git command's limit holds in there too.
@@ -842,7 +843,7 @@ export const checksFailed = (
  * Blocks the ticket, MERGE_CONFLICT, as `what` (its base, or its branch) kept changing while its
  * checks ran, each check overtaken by a commit.
  */
-const keptChanging = (ticket: FinishedTicket, what: string) =>
+export const keptChanging = (ticket: FinishedTicket, what: string) =>
   Effect.gen(function* () {
     const text = ticketLine(
       Tag.mergeConflict,
