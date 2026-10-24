@@ -348,7 +348,8 @@ interface SettingsChanges {
 
 /**
  * Writes .tutti/settings.json: the one there, or the template, with `changes` and the defaults it
- * lacks (the runners as the checks, their time limits): the settings it holds now, and the step.
+ * lacks (the runners as the checks where their keys are absent, their time limits): the settings it
+ * holds now, and the step.
  */
 const writeSettings = (
   repo: string,
@@ -375,7 +376,8 @@ const writeSettings = (
     ] as const
     for (const [name, runner, given, timeout, fallback] of checkDefaults) {
       const check = section(checks, name)
-      if (given || check.command === undefined || check.command === null) {
+      // A command set to null is the project's choice to merge without that check: kept.
+      if (given || check.command === undefined) {
         set(check, "command", runner, `checks.${name}.command`)
       }
       if (timeout !== undefined) {
