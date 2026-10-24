@@ -33,7 +33,8 @@ const pushed = (ended: boolean, uuid: string) =>
         for (const event of settled) yield* workers.fold(entry, event)
         const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
         if (ended) yield* Queue.end(inbox)
-        const session = { ticket: "t-1", sessionId: "s-1", entry, inbox }
+        const claude = { send: (message: SDKUserMessage) => Queue.offer(inbox, message) }
+        const session = { ticket: "t-1", sessionId: "s-1", entry, claude }
         const exit = yield* Effect.exit(
           push(workers, session, { text: "hello", from: "clientComposed", uuid }),
         )

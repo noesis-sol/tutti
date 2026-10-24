@@ -19,6 +19,7 @@ import {
   run as runs,
   type SessionScript,
   turn,
+  withoutNotes,
 } from "../src/testing/AgentHost.ts"
 import type { Seed } from "../src/testing/Beads.ts"
 import { Repository } from "../src/testing/Git.ts"
@@ -140,7 +141,9 @@ const sessionsOf = (ran: Ran<unknown>, id: string) =>
 /** The messages the ticket's worker was sent, as text. */
 const textsOf = (ran: Ran<unknown>, id: string) =>
   ran.sent.flatMap((sent) =>
-    sent._tag === "Message" && sent.ticket === id ? [String(sent.message.message.content)] : [],
+    sent._tag === "Message" && sent.ticket === id
+      ? [withoutNotes(String(sent.message.message.content))]
+      : [],
   )
 
 const carriedOver = (ran: Ran<unknown>) => ran.log.some((each) => each.includes("carried over"))

@@ -656,7 +656,9 @@ describe("startInterview, with the scripted host", () => {
           return yield* interview.ended
         }),
     )
-    expect(value).toEqual(InterviewEnd.Ended({ why: "Claude Code exited", filing: Filing.None() }))
+    expect(value).toEqual(
+      InterviewEnd.Ended({ why: "its session ended: Claude Code exited", filing: Filing.None() }),
+    )
   })
 
   test("filedPlan offers the filed tickets by their IDs", () => {

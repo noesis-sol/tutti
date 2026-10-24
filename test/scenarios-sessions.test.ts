@@ -624,8 +624,8 @@ describe("a worker gone", () => {
     expect(suspendedOf(first)).toEqual(["t PAUSED"])
     expect(first.state.tickets.t).toMatchObject({ suspended: "PAUSED", phase: "Stopped" })
     expectLines(first, [
-      /^ {2}RESUMED: t's worker is gone \(the process exited\) with the ticket in progress; resuming its session /,
-      /^PAUSED: t still in_progress, its worker is gone \(the process exited\); its session was resumed once in this run already, and the next run resumes it again /,
+      /^ {2}RESUMED: t's worker is gone \(its session ended: the process exited\) with the ticket in progress; resuming its session /,
+      /^PAUSED: t still in_progress, its worker is gone \(its session ended: the process exited\); its session was resumed once in this run already, and the next run resumes it again /,
     ])
     expectKinds(first, ["dispatch", "resumed", "stop", "suspended", "end"])
 
@@ -760,7 +760,7 @@ describe("a steered worker", () => {
     expectLines(first, [
       "  STEERED: a",
       `  MESSAGE: you → a (${mine.length} characters)`,
-      /^PAUSED: a still in_progress, its worker is gone \(the process exited\); you have steered it, so tutti did not resume it to carry on, and the next run resumes it /,
+      /^PAUSED: a still in_progress, its worker is gone \(its session ended: the process exited\); you have steered it, so tutti did not resume it to carry on, and the next run resumes it /,
     ])
     expectKinds(first, ["dispatch", "steered", "message", "stop", "suspended", "end"])
 

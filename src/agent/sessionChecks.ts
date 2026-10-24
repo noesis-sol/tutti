@@ -1,5 +1,5 @@
-// What both AgentHost layers, the live one and the scripted one, read of a starting session and of
-// the messages it sends (§ 4.1, § 4.6, § 4.13), so that a scenario plays out as a run does.
+// What the live AgentHost reads of a starting session and of the messages it sends (§ 4.1, § 4.6,
+// § 4.13); the scripted host is the live one over scripted sessions, so scenarios read them so.
 //
 // A session is checked before it is sent anything (before), from its initialize answer and its
 // mcpServerStatus(): the API key source of its account, and the MCP servers the status lists

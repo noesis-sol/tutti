@@ -18,7 +18,7 @@ import {
   stateText,
   type TicketRecord,
 } from "../src/services/Store.ts"
-import { claimsAndCloses } from "../src/testing/AgentHost.ts"
+import { claimsAndCloses, withoutNotes } from "../src/testing/AgentHost.ts"
 import { backlog, expectPhases, scenario } from "./harness.ts"
 
 /** A new folder, its real path. */
@@ -139,7 +139,7 @@ describe("a crashed run's records after the next run's first write", () => {
     expect(resumed).toEqual(["session-t-1"])
     const texts = ran.sent.flatMap((sent) =>
       sent._tag === "Message" && sent.ticket === "t-1"
-        ? [String(sent.message.message.content)]
+        ? [withoutNotes(String(sent.message.message.content))]
         : [],
     )
     expect(texts).toEqual([carryOnText("t-1", crashedWhy)])

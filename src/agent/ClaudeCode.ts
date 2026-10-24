@@ -27,7 +27,18 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Context, Data, type Duration, Effect, Layer, Schema, type Scope, Stream } from "effect"
+import {
+  type Cause,
+  Context,
+  Data,
+  type Duration,
+  Effect,
+  Layer,
+  Queue,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { probeEnv, workerEnv } from "./env.ts"
@@ -66,8 +77,11 @@ export interface WorkerShare {
 /** What a session is opened with. */
 export interface Launch {
   readonly options: SessionSpec
-  /** What it is sent: one text, or a stream of messages that ends when the session's input does. */
-  readonly prompt: string | AsyncIterable<SDKUserMessage>
+  /**
+   * What it is sent: one text, or a stream of messages that ends when the session's input does;
+   * left out, its inbox, the messages `send` pushes, which ends as the session closes.
+   */
+  readonly prompt?: string | AsyncIterable<SDKUserMessage>
   readonly billedAs: BilledAs
   /** tutti's environment, the session's is made from; process.env when left out. */
   readonly env?: Readonly<Record<string, string | undefined>>
@@ -111,6 +125,12 @@ export class SessionFailed extends Schema.TaggedError<SessionFailed>()("SessionF
 export interface ClaudeSession {
   /** What the session sends, read once; a failure carries the end of its stderr. */
   readonly messages: Stream.Stream<SDKMessage, SessionFailed>
+  /**
+   * Pushes `message` into its inbox, for the CLI to fold into the running turn or queue (§ 4.1):
+   * whether it went, false once the inbox has ended, the session closing, or for a session opened
+   * with a prompt of its own.
+   */
+  readonly send: (message: SDKUserMessage) => Effect.Effect<boolean>
   /** Its initialize's answer. */
   readonly initialization: Effect.Effect<SDKControlInitializeResponse, SessionFailed>
   /** Its MCP servers and their status, as mcpServerStatus() lists them. */
@@ -204,6 +224,8 @@ const opener =
   (launch: Launch): Effect.Effect<ClaudeSession, LaunchFailed, Scope.Scope> =>
     Effect.gen(function* () {
       const abort = new AbortController()
+      const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
+      if (launch.prompt !== undefined) yield* Queue.end(inbox)
       const { options, process } = withSessionProcess({
         ...launch.options,
         env: launchEnv(launch, config.billing),
@@ -214,11 +236,19 @@ const opener =
       // Claude Code, spawned, is closed with the scope, though what opened it is interrupted.
       const handle: Query = yield* Effect.acquireRelease(
         Effect.try({
-          try: () => open({ prompt: launch.prompt, options }),
+          try: () =>
+            open({
+              prompt:
+                launch.prompt ??
+                Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
+              options,
+            }),
           catch: (cause) => new LaunchFailed({ reason: queryThrew(cause) }),
         }),
         (handle) => process.closeAndWait(() => handle.close(), launch.closeLimit),
       )
+      // Closing the session ends its inbox first, and then closes it.
+      yield* Effect.addFinalizer(() => Queue.end(inbox))
       const controls = queuedControls(handle)
       const failed = (cause: unknown) =>
         new SessionFailed({ reason: messageOf(cause), stderr: process.stderrTail() })
@@ -227,6 +257,7 @@ const opener =
       const abortNow = Effect.sync(() => abort.abort())
       return {
         messages: Stream.fromAsyncIterable(handle, failed),
+        send: (message) => Queue.offer(inbox, message),
         initialization: ask(() => handle.initializationResult()),
         mcpStatus: ask(() => handle.mcpServerStatus()),
         settings: ask(async () => {

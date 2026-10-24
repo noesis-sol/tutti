@@ -1032,7 +1032,7 @@ describe("stopping drains", () => {
     expectPhases(ran, { a: "Stopped", b: "Done", c: "Queued" })
     expect(pathOf(ran, "a")).toEqual(["Queued", "Working", "Stopped"])
     const paused = literally(
-      "PAUSED: a still in_progress, its worker is gone (exit 1); its session was resumed once in this run already, and the next run resumes it again",
+      "PAUSED: a still in_progress, its worker is gone (its session ended: exit 1); its session was resumed once in this run already, and the next run resumes it again",
     )
     expectLog(ran, [
       "[1] a dispatching: a",

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost, userMessage } from "../src/agent/AgentHost.ts"
+import { endedWhy } from "../src/agent/AgentHostLive.ts"
 import { Attention, type Policy } from "../src/agent/Attention.ts"
 import { cancelQueuedCapability } from "../src/agent/sessionChecks.ts"
 import type { Transcripts } from "../src/agent/Transcripts.ts"
@@ -267,14 +268,14 @@ describe("scripted cases", () => {
     expect(done.states).toEqual([
       WorkerState.Starting(),
       working,
-      WorkerState.Gone({ why: "the subprocess exited" }),
+      WorkerState.Gone({ why: `${endedWhy}: the subprocess exited` }),
     ])
     expect(Exit.isFailure(done.send) && JSON.stringify(done.send.cause)).toContain("AgentGone")
     expect(Exit.isFailure(done.interrupt) && JSON.stringify(done.interrupt.cause)).toContain(
       "AgentGone",
     )
     expect(done.resumed).toEqual([
-      WorkerState.Gone({ why: "the subprocess exited" }),
+      WorkerState.Gone({ why: `${endedWhy}: the subprocess exited` }),
       WorkerState.Starting(),
       working,
       WorkerState.Idle({ at: 0 }),
@@ -315,8 +316,9 @@ describe("scripted cases", () => {
       Effect.gen(function* () {
         const host = yield* AgentHost
         const started = yield* Effect.flip(host.start("t-1", session()))
+        const now = yield* host.current("t-1")
         const again = yield* Effect.flip(host.start("t-1", session("s-2")))
-        return { started, again, now: yield* host.current("t-1") }
+        return { started, again, now }
       }),
     )
     expect(done.started._tag).toBe("AgentStartFailed")
@@ -326,7 +328,8 @@ describe("scripted cases", () => {
       startupFailureReason: "cwd_unavailable",
     })
     expect(done.again.reason).toBe("the script has no more sessions")
-    expect(done.now).toEqual(WorkerState.Gone({ why: refused }))
+    // Gone as its startup failure's result says.
+    expect(done.now).toEqual(WorkerState.Gone({ why: "cwd_unavailable" }))
   })
 
   test("a second start while a session is open fails", async () => {

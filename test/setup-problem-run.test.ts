@@ -12,7 +12,7 @@ import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
-import { init, type SessionScript, setupProblem, wait } from "../src/testing/AgentHost.ts"
+import { init, type SessionScript, wait } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import {
   backlog,
@@ -29,8 +29,14 @@ const folder = (name: string) =>
 
 const problem = notGivenProblem(["claude.ai Gmail"])
 
-/** A session whose first system/init shows the setup problem: the host ends it before it does anything. */
-const meetsProblem: SessionScript = [wait, init(), setupProblem(problem)]
+/**
+ * A session whose first system/init shows the setup problem, a server the worker wasn't given: the
+ * host ends it before it does anything.
+ */
+const meetsProblem: SessionScript = [
+  wait,
+  init({ mcp_servers: [{ name: "claude.ai Gmail", status: "connected", source: "claudeai" }] }),
+]
 
 interface Plan {
   readonly tickets: ReadonlyArray<readonly [string, "open" | "in_progress"]>

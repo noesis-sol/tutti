@@ -1,181 +1,45 @@
-// AgentHost's test layer (§ 3.3, § 13): scripted sessions. Each ticket has a script, one list of
-// steps per session: each start or resume plays the next. A step emits an SDK message, calls a
-// hook, asks through Attention as canUseTool or onElicitation does, waits for a message sent to the
-// session or for an interrupt, sleeps on the Clock (so TestClock moves it), runs an Effect (to
-// change an in-memory Beads or Git as the worker would), or ends the session as gone. A session whose
-// steps run out stays open, idle, until it is closed. Run under TestClock, a script plays the same
-// way every time. Sends are taken as the CLI takes them (§ 4.1): one to a turn (Wait), folded into
-// the running turn (Fold), several of one kind sharing a turn (Coalesce), or none, for a turn the
-// CLI starts by itself.
+// AgentHost's test layer (§ 3.3, § 13): the live AgentHost (src/agent/AgentHostLive.ts) over
+// scripted sessions (src/testing/ClaudeCode.ts). Each ticket has a script, one list of steps per
+// session: each start or resume plays the next, and one with none left fails AgentStartFailed. So a
+// scenario's sessions are started, read, checked, interrupted and closed by the code a run's are:
+// their messages recorded in Transcripts and folded into the workers' state, their first
+// system/init and initialize answers checked (a setup problem ending the worker Gone with `setup`),
+// their hooks, canUseTool and onElicitation the live host's. Its environment is a test one: a
+// FileSystem where every folder is there and the project has no skills, the run's AppConfig where
+// the scenario gives one (`options` laid over it), and a worker prompt of a line.
 //
-// Every message is recorded in Transcripts and folded into the worker's state as the live layer
-// does it (makeWorkers), and each send is recorded there as it is pushed. What the live layer reads
-// of a session beside that, it reads here with the same code (sessionChecks.ts): a scripted
-// initialize answer and the first system/init are checked as a run checks them, a setup problem
-// ending the worker Gone with `setup` and logged; the capabilities they list are the CLI's; a
-// result with a startup_failure_reason ends the worker; and a message tutti dies taking in is
-// logged and skipped. Hooks are called through the callbacks a worker gets (activityHooks). The layer speaks for the
-// CLI where a script can't know the uuids: each send gets its command_lifecycle (`queued` when
-// pushed, `started` when a Wait takes it, `completed` after the result of the turn that took it), a
-// result lists in `user_message_uuids` the sends taken since the last result unless the script
-// lists them itself, and an `idle` is held back while a send waits untaken, as the CLI sends `idle`
-// only after the last queued turn. An interrupt cancels the sends still queued (§ 4.8): in its
-// receipt, as `interrupt({ cancelQueued: true })` does where the session's initialize answer or a
-// system/init lists `interrupt_cancel_queued_v1`, else one by one with `cancel_async_message`. Everything the layer is sent is recorded, in
-// order: starts, resumes, messages as the SDK would get them (client_composed or origin human),
+// Everything the host is sent is recorded, in order: starts, resumes, messages as the SDK gets them
+// (client_composed or origin human, a resume's with the notes the live host puts before it),
 // interrupts and their receipts, cancel_async_message requests and their answers, the answers to
-// permission requests and elicitations, closes and ends. Recording reads them back.
+// permission requests and elicitations, closes of open sessions and ends. Recording reads them
+// back. The uuids of the messages a caller didn't draw are drawn here, in order:
+// 00000000-0000-4000-8000-000000000001, then ...-000000000002, and so on.
 import type {
   CanUseTool,
   ElicitationRequest,
-  ElicitationResult,
   HookInput,
-  PermissionResult,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import {
-  Context,
-  Data,
-  type Duration,
-  Effect,
-  Fiber,
-  Layer,
-  Option,
-  Queue,
-  Ref,
-  Semaphore,
-} from "effect"
+import { Context, type Duration, Effect, FileSystem, Layer, Option, Ref } from "effect"
 import type { Billing, PermissionModeInEffect } from "../agent/Account.ts"
-import {
-  AgentGone,
-  AgentHost,
-  AgentStartFailed,
-  type Message,
-  makeWorkers,
-  type Receipt,
-  type Session,
-  userMessage,
-  type WorkerEntry,
-} from "../agent/AgentHost.ts"
-import { Attention } from "../agent/Attention.ts"
-import { readContextUsage } from "../agent/contextUsage.ts"
-import { activityHooks, type Hooks } from "../agent/hooks.ts"
+import { AgentHost } from "../agent/AgentHost.ts"
+import { layer as liveLayer, resumedNotes } from "../agent/AgentHostLive.ts"
+import type { Attention } from "../agent/Attention.ts"
+import { LaunchFailed } from "../agent/ClaudeCode.ts"
 import { type ChosenServers, noServers } from "../agent/mcp.ts"
-import { capabilitiesOf, type Reading } from "../agent/reading.ts"
-import {
-  cancelQueuedCapability,
-  makeChecks,
-  setupLine,
-  skippedLine,
-  startFailure,
-} from "../agent/sessionChecks.ts"
-import { kindOf, serversOf } from "../agent/sessionKind.ts"
 import type { Transcripts } from "../agent/Transcripts.ts"
-import { WorkerEvent } from "../agent/WorkerState.ts"
-import { Log } from "../run/log.ts"
+import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
+import { coresNote } from "../project/prompt.ts"
+import type { Settings } from "../project/settings.ts"
+import type { Log } from "../run/log.ts"
+import { appConfig } from "./AppConfig.ts"
+import { layer as claudeCodeLayer, Sent, type SessionScript, Step } from "./ClaudeCode.ts"
 
-/** A step of a scripted session. */
-export type Step = Data.TaggedEnum<{
-  /** The session sends `message`; its `session_id` is the session's. */
-  Emit: { readonly message: SDKMessage }
-  /** The worker's in-process hook callbacks for `input`'s event, and its tool's, are called with it. */
-  Hook: { readonly input: HookInput }
-  /** The session's canUseTool is called, through Attention; the step waits for the answer. */
-  CanUseTool: {
-    readonly toolName: string
-    readonly input: Record<string, unknown>
-    /** The SDK's options beside the signal: suggestions, defaultToNo, decisionReason, … */
-    readonly options: Partial<Omit<Parameters<CanUseTool>[2], "signal">>
-  }
-  /** The session's onElicitation is called, through Attention; the step waits for the answer. */
-  Elicit: { readonly request: ElicitationRequest }
-  /** Waits for a message sent to the session (by start's caller, resume or send) and takes it. */
-  Wait: Record<never, never>
-  /**
-   * Folds the messages waiting into the running turn, as the CLI does between tool rounds: waits
-   * for one, then takes every other one waiting, of either kind.
-   */
-  Fold: Record<never, never>
-  /**
-   * Takes queued messages of one kind for a turn to share, as the CLI coalesces them: waits for
-   * one, then takes those waiting behind it up to the first of the other kind (client_composed or
-   * typed by you), which waits for a later turn.
-   */
-  Coalesce: Record<never, never>
-  /** Waits for an interrupt not yet waited for. */
-  AwaitInterrupt: Record<never, never>
-  Sleep: { readonly duration: Duration.Input }
-  /**
-   * The session answers getContextUsage() with `answer`, as the live layer asks it after each
-   * finished turn: read as the live layer reads it, and kept as the worker's context (§ 7.5).
-   */
-  Context: { readonly answer: unknown }
-  /** Runs `effect`: what the worker does outside the session, to an in-memory Beads or Git. */
-  Do: { readonly effect: Effect.Effect<void> }
-  /**
-   * The session's stream ends without tutti closing it; `setup` when tutti ended it over a setup
-   * problem its first system/init showed, as the live layer's check does (§ 4.1).
-   */
-  Gone: { readonly why: string; readonly setup?: true }
-  /**
-   * As the first step: the session doesn't start, and start or resume fails, `reason` what failed
-   * its initialize; worded as the live layer words it (startFailure), as Claude Code refusing to
-   * start when it sent a `startupFailureReason`.
-   */
-  FailStart: { readonly reason: string; readonly startupFailureReason?: string }
-  /**
-   * As the first step: the session's initialize answer, `answer`, and its mcpServerStatus()
-   * answer, `status`, when it gave one, checked before it is sent anything as the live layer
-   * checks them (§ 4.1). The capabilities `answer` lists are the CLI's; a setup problem they show
-   * stops the session as StopAtStart does.
-   */
-  Initialize: { readonly answer: unknown; readonly status?: unknown }
-  /**
-   * As the first step: a setup problem the live layer finds as the session starts, before its first
-   * turn (§ 4.1): start or resume succeeds, sends nothing, and the worker is Gone with `setup`.
-   */
-  StopAtStart: { readonly why: string }
-}>
-
-export const Step = Data.taggedEnum<Step>()
-
-/** A session's steps. */
-export type SessionScript = ReadonlyArray<Step>
+export { Sent, type SessionScript, Step } from "./ClaudeCode.ts"
 
 /** A ticket's sessions, in the order they are started or resumed. */
 export type Script = ReadonlyArray<SessionScript>
-
-/** What the layer was sent, in order. */
-export type Sent = Data.TaggedEnum<{
-  Started: { readonly ticket: string; readonly session: Session }
-  Resumed: { readonly ticket: string; readonly session: Session }
-  /** A message, as the SDK would get it: `client_composed`, or `origin: { kind: "human" }`. */
-  Message: { readonly ticket: string; readonly message: SDKUserMessage }
-  /**
-   * A `cancel_async_message` request, sent after an interrupt for a message still queued, and its
-   * answer: whether the message was dropped, or null when the CLI refused the request.
-   */
-  CancelAsync: {
-    readonly ticket: string
-    readonly uuid: string
-    readonly cancelled: boolean | null
-  }
-  /** The interrupt's receipt, with the messages cancel_async_message cancelled under `cancelled`. */
-  Interrupted: { readonly ticket: string; readonly receipt: Receipt }
-  /** A canUseTool call's answer. */
-  Answered: {
-    readonly ticket: string
-    readonly toolName: string
-    readonly result: PermissionResult | null
-  }
-  /** An elicitation's answer. */
-  Elicited: { readonly ticket: string; readonly result: ElicitationResult | null }
-  Closed: { readonly ticket: string }
-  Ended: { readonly ticket: string }
-}>
-
-export const Sent = Data.taggedEnum<Sent>()
 
 /** What the layer was sent, for a test to look at. */
 export class Recording extends Context.Service<
@@ -192,43 +56,24 @@ export class Recording extends Context.Service<
   }
 >()("tutti/testing/AgentHost/Recording") {}
 
-// A session being played.
-interface Running {
-  readonly sessionId: string
-  readonly entry: WorkerEntry
-  /** The MCP servers it was given, which its first system/init is checked against. */
-  readonly servers: ChosenServers
-  /** Its worker's hook callbacks, made as the live layer makes them (activityHooks). */
-  readonly hooks: Hooks
-  /** The CLI's capabilities, from its initialize answer and each system/init. */
-  readonly capabilities: Set<string>
-  /** Whether its first system/init has come, and been checked. */
-  initialized: boolean
-  readonly inbox: Queue.Queue<SDKUserMessage>
-  /** A message taken from the inbox and left for a later turn: the next to be taken. */
-  readonly putBack: Array<SDKUserMessage>
-  /** The uuids of the messages sent and not yet taken by a Wait: an interrupt's still_queued. */
-  readonly queued: Ref.Ref<ReadonlyArray<string>>
-  /** The uuids of the messages taken by a Wait since the last result: the next one's sends. */
-  readonly taken: Ref.Ref<ReadonlyArray<string>>
-  /** The uuids of the messages an interrupt cancelled: a Wait passes over them. */
-  readonly cancelled: Set<string>
-  readonly interrupts: Queue.Queue<void>
-  /** The signal open requests are withdrawn by; an interrupt aborts it and draws another. */
-  readonly controller: Ref.Ref<AbortController>
-  fiber?: Fiber.Fiber<void>
+/**
+ * A resumed worker's message without the notes the live host puts before it where its session
+ * began in an earlier run, or with other notes (resumedNotes): the text its caller sent.
+ */
+export const withoutNotes = (text: string): string => {
+  const end = `${coresNote}\n\n`
+  const at = text.indexOf(end)
+  return text.startsWith(resumedNotes("").trimEnd()) && at !== -1
+    ? text.slice(at + end.length)
+    : text
 }
 
-// Whether a message is client_composed, or typed by you: queued messages coalesce by kind.
-const composed = (message: SDKUserMessage) => message.client_composed === true
-
 // A message's uuid, as the SDK's UUID type has them: the nth is ...-000000000001 and so on.
-const uuidOf = (n: number): SDKUserMessage["uuid"] & string =>
-  `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`
+const uuidOf = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`
 
 /** What `layer` takes beside the scripts. */
 export interface Options {
-  /** The project's check commands: tool calls running them are `testing`. */
+  /** The project's check commands, at most three: tool calls running them are `testing`. */
   readonly checks?: ReadonlyArray<string>
   /** The MCP servers workers get, which their first system/init is checked against: none. */
   readonly servers?: ChosenServers
@@ -238,19 +83,61 @@ export interface Options {
   readonly billing?: Billing
   /**
    * How the CLI answers `cancel_async_message`, which an interrupt sends for each message still
-   * queued where the session's CLI doesn't list `interrupt_cancel_queued_v1` (§ 4.8): by default it drops the message (`cancelled:
-   * true`), which never runs; "refuse" fails the request, and "notQueued" answers `cancelled:
-   * false`, as for a message its turn has already taken. A message not dropped stays queued and runs.
+   * queued where the session's CLI doesn't list `interrupt_cancel_queued_v1` (§ 4.8): by default it
+   * drops the message (`cancelled: true`), which never runs; "refuse" fails the request, and
+   * "notQueued" answers `cancelled: false`, as for a message its turn has already taken. A message
+   * not dropped stays queued and runs.
    */
   readonly cancelAsync?: "refuse" | "notQueued"
-  /** The process each ticket's Claude Code would have while its session is open: none by default. */
+  /** The process each ticket's Claude Code would have while its session runs: none by default. */
   readonly processes?: ReadonlyMap<string, number>
   /**
-   * How long a closed session's Claude Code takes to exit, on the Clock, which `close` waits for:
-   * none by default. The wait holds no other start, resume or close, as the live layer's doesn't.
+   * How long a closed session's Claude Code takes to exit, on the Clock, which `close` and `end`
+   * wait for: none by default. The wait holds no other ticket's start, resume or close, as the live
+   * layer's doesn't.
    */
   readonly closeTakes?: Duration.Input
 }
+
+/**
+ * The settings `base` with the check commands `commands` (checkCommands' order: the merge check's,
+ * the full check's, the worker's own), the others none.
+ */
+const withChecks = (base: Settings, commands: ReadonlyArray<string>): Settings => {
+  if (commands.length > 3) throw new Error(`at most three check commands: ${commands.join(", ")}`)
+  const [fast = null, full = null, own = null] = commands
+  return {
+    ...base,
+    checks: {
+      ...base.checks,
+      fast: { ...base.checks.fast, command: fast },
+      full: { ...base.checks.full, command: full },
+      own: { ...base.checks.own, command: own },
+    },
+  }
+}
+
+/** The run's configuration, as the scripted host's live host reads it: `options` over `base`. */
+const configOf = (base: AppConfigValue, options: Options): AppConfigValue => {
+  const settings = withChecks(base.settings, options.checks ?? [])
+  return {
+    ...base,
+    settings: {
+      ...settings,
+      workers: { ...settings.workers, permission_mode: options.permissionMode ?? "auto" },
+    },
+  }
+}
+
+/** A folder is always there; nothing else is: no skills, no settings files. */
+const fileSystem = FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
+
+/** Whether the ticket's worker has a session open: one that hasn't been closed or gone. */
+const isOpen = (host: AgentHost["Service"], ticket: string) =>
+  Effect.map(
+    Effect.option(host.current(ticket)),
+    (state) => Option.isSome(state) && state.value._tag !== "Closed" && state.value._tag !== "Gone",
+  )
 
 /**
  * The scripted AgentHost, playing `scripts`' sessions for each ticket, and Recording. A start or
@@ -262,391 +149,113 @@ export const layer = (
 ): Layer.Layer<AgentHost | Recording, never, Attention | Transcripts | Log> =>
   Layer.effectContext(
     Effect.gen(function* () {
-      const attention = yield* Attention
-      const log = yield* Log
-      const workers = yield* makeWorkers(options.checks)
-      const checks = yield* makeChecks({
-        log,
-        permissionMode: options.permissionMode ?? "auto",
-        billing: options.billing ?? { _tag: "Subscription", keyUnused: false },
-      })
-      const servers = options.servers ?? noServers
-      const scope = yield* Effect.scope
+      const base = Option.getOrElse(yield* Effect.serviceOption(AppConfig), () => appConfig())
       const left = new Map(Object.entries(scripts).map(([ticket, script]) => [ticket, [...script]]))
-      const running = new Map<string, Running>()
       const sent: Array<Sent> = []
       const requires: Array<ReadonlyArray<string>> = []
       const drawn = yield* Ref.make(0)
-      // Starts, resumes, closes, ends and a session going are one at a time.
-      const one = yield* Semaphore.make(1)
+      const draw = Ref.updateAndGet(drawn, (k) => k + 1)
+      // The tickets whose starts and resumes are under way, by the session ID each opens, in order.
+      const opening = new Map<string, Array<{ readonly ticket: string }>>()
 
       const record = (item: Sent) => Effect.sync(() => void sent.push(item))
 
-      // The session's end, without tutti: its requests are withdrawn and its state is Gone.
-      const gone = (ticket: string, session: Running, why: string, setup?: true) =>
-        Effect.gen(function* () {
-          if (running.get(ticket) !== session) return
-          running.delete(ticket)
-          ;(yield* Ref.get(session.controller)).abort()
-          yield* workers.fold(
-            session.entry,
-            WorkerEvent.Ended({
-              session: session.sessionId,
-              why,
-              ...(setup === undefined ? {} : { setup }),
+      const claudeCode = claudeCodeLayer({
+        next: (launch) =>
+          Effect.suspend(() => {
+            const sessionId = launch.options.sessionId ?? launch.options.resume ?? ""
+            const ticket = opening.get(sessionId)?.shift()?.ticket
+            const steps = ticket === undefined ? undefined : left.get(ticket)?.shift()
+            return ticket === undefined || steps === undefined
+              ? Effect.fail(new LaunchFailed({ reason: "the script has no more sessions" }))
+              : Effect.succeed({ ticket, steps })
+          }),
+        record,
+        draw,
+        ...(options.cancelAsync === undefined ? {} : { cancelAsync: options.cancelAsync }),
+        ...(options.processes === undefined ? {} : { processes: options.processes }),
+        ...(options.closeTakes === undefined ? {} : { closeTakes: options.closeTakes }),
+      })
+      const built = yield* Layer.build(
+        liveLayer({
+          prompt: { text: "Work on TICKET_ID.", file: null },
+          servers: options.servers ?? noServers,
+          account: {
+            billing: options.billing ?? { _tag: "Subscription", keyUnused: false },
+            subscription: true,
+          },
+        }).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              claudeCode,
+              Layer.succeed(AppConfig, configOf(base, options)),
+              fileSystem,
+            ),
+          ),
+        ),
+      )
+      const live = Context.get(built, AgentHost)
+
+      // Runs `start`, a start or resume of the ticket's session `sessionId`, its session opened
+      // playing the ticket's next script.
+      const opened = <A, E>(ticket: string, sessionId: string, start: Effect.Effect<A, E>) =>
+        Effect.suspend(() => {
+          const entry = { ticket }
+          const each = opening.get(sessionId) ?? []
+          opening.set(sessionId, [...each, entry])
+          return Effect.ensuring(
+            start,
+            Effect.sync(() => {
+              const now = opening.get(sessionId)?.filter((other) => other !== entry) ?? []
+              if (now.length === 0) opening.delete(sessionId)
+              else opening.set(sessionId, now)
             }),
           )
-        }).pipe(one.withPermit)
-
-      // The worker ends over a setup problem, logged as the live layer logs it.
-      const setupProblem = (ticket: string, session: Running, problem: string) =>
-        Effect.andThen(log.write(setupLine(ticket, problem)), gone(ticket, session, problem, true))
-
-      const emitIn = (session: Running, message: object) =>
-        workers.emit(session.entry, session.sessionId, {
-          ...message,
-          session_id: session.sessionId,
-        } as SDKMessage)
-
-      const lifecycle = (session: Running, uuid: string, state: string) =>
-        emitIn(session, { type: "command_lifecycle", command_uuid: uuid, state })
-
-      // A scripted message, with what the CLI would add to it (see the header): what the host read
-      // of it, undefined when it was held back.
-      const emitScripted = (session: Running, message: SDKMessage) =>
-        Effect.gen(function* () {
-          if (message.type === "result") {
-            const taken = yield* Ref.getAndSet(session.taken, [])
-            const listed = message.user_message_uuids ?? taken
-            const reading = yield* emitIn(session, { ...message, user_message_uuids: listed })
-            for (const uuid of listed) yield* lifecycle(session, uuid, "completed")
-            return reading
-          }
-          const held =
-            message.type === "system" &&
-            message.subtype === "session_state_changed" &&
-            message.state === "idle" &&
-            (yield* Ref.get(session.queued)).length > 0
-          return held ? undefined : yield* emitIn(session, message)
         })
 
-      // A scripted message, sent and read as the live layer reads it (see the header).
-      const onMessage = (ticket: string, session: Running, message: SDKMessage) =>
-        Effect.gen(function* () {
-          const reading: Reading | undefined = yield* emitScripted(session, message)
-          if (reading?._tag === "Init") {
-            for (const capability of reading.capabilities) session.capabilities.add(capability)
-            if (session.initialized) return
-            session.initialized = true
-            const problem = yield* checks.first(message, session.servers)
-            if (problem !== undefined) yield* setupProblem(ticket, session, problem)
-            return
-          }
-          if (reading?._tag === "Result" && reading.startupFailure !== null) {
-            yield* gone(ticket, session, reading.startupFailure)
-          }
-        }).pipe(Effect.catchDefect((defect) => log.write(skippedLine(ticket, defect))))
-
-      // Calls the worker's hook callbacks for `input`: its event's, all of them or its tool's.
-      const callHooks = (session: Running, input: HookInput) =>
-        Effect.gen(function* () {
-          const { signal } = yield* Ref.get(session.controller)
-          const toolName = "tool_name" in input ? input.tool_name : undefined
-          const toolUseId = "tool_use_id" in input ? input.tool_use_id : undefined
-          for (const matcher of session.hooks[input.hook_event_name] ?? []) {
-            if (matcher.matcher !== undefined && matcher.matcher !== toolName) continue
-            for (const callback of matcher.hooks) {
-              yield* Effect.promise(() => callback(input, toolUseId, { signal }))
-            }
-          }
-        })
-
-      // The next message not cancelled, waiting for one.
-      const next = (session: Running): Effect.Effect<SDKUserMessage> =>
-        Effect.flatMap(
-          Effect.suspend(() => {
-            const back = session.putBack.shift()
-            return back === undefined ? Queue.take(session.inbox) : Effect.succeed(back)
-          }),
-          (message) =>
-            session.cancelled.has(message.uuid ?? "") ? next(session) : Effect.succeed(message),
-        )
-
-      // The next message not cancelled, if one is waiting.
-      const waiting = (session: Running): Effect.Effect<SDKUserMessage | undefined> =>
-        Effect.flatMap(
-          Effect.suspend(() => {
-            const back = session.putBack.shift()
-            return back === undefined
-              ? Effect.map(Queue.poll(session.inbox), Option.getOrUndefined)
-              : Effect.succeed(back)
-          }),
-          (message) =>
-            message !== undefined && session.cancelled.has(message.uuid ?? "")
-              ? waiting(session)
-              : Effect.succeed(message),
-        )
-
-      // The turn takes the message: it is no longer queued, and the next result lists it.
-      const take = (session: Running, message: SDKUserMessage) =>
-        Effect.gen(function* () {
-          const uuid = message.uuid ?? ""
-          yield* Ref.update(session.queued, (uuids) => uuids.filter((u) => u !== uuid))
-          yield* Ref.update(session.taken, (uuids) => [...uuids, uuid])
-          yield* lifecycle(session, uuid, "started")
-        })
-
-      const play = (ticket: string, session: Running, step: Step): Effect.Effect<void> =>
-        Step.$match(step, {
-          Emit: ({ message }) => onMessage(ticket, session, message),
-          Hook: ({ input }) => callHooks(session, input),
-          CanUseTool: ({ toolName, input, options }) =>
-            Effect.gen(function* () {
-              const callback = yield* attention.request(ticket)
-              const { signal } = yield* Ref.get(session.controller)
-              const n = yield* Ref.updateAndGet(drawn, (k) => k + 1)
-              const result = yield* Effect.promise(() =>
-                callback(toolName, input, {
-                  toolUseID: `toolu_${n}`,
-                  requestId: `req_${n}`,
-                  ...options,
-                  signal,
-                }),
-              )
-              yield* record(Sent.Answered({ ticket, toolName, result }))
-              yield* workers.counted(session.entry)
-            }),
-          Elicit: ({ request }) =>
-            Effect.gen(function* () {
-              const callback = yield* attention.elicitation(ticket)
-              const { signal } = yield* Ref.get(session.controller)
-              const n = yield* Ref.updateAndGet(drawn, (k) => k + 1)
-              const result = yield* Effect.promise(() =>
-                callback(request, { signal, requestId: `req_${n}` }),
-              )
-              yield* record(Sent.Elicited({ ticket, result }))
-              yield* workers.counted(session.entry)
-            }),
-          Wait: () => Effect.flatMap(next(session), (message) => take(session, message)),
-          Fold: () =>
-            Effect.gen(function* () {
-              yield* take(session, yield* next(session))
-              let message = yield* waiting(session)
-              while (message !== undefined) {
-                yield* take(session, message)
-                message = yield* waiting(session)
-              }
-            }),
-          Coalesce: () =>
-            Effect.gen(function* () {
-              const first = yield* next(session)
-              yield* take(session, first)
-              let message = yield* waiting(session)
-              while (message !== undefined && composed(message) === composed(first)) {
-                yield* take(session, message)
-                message = yield* waiting(session)
-              }
-              if (message !== undefined) session.putBack.unshift(message)
-            }),
-          AwaitInterrupt: () => Queue.take(session.interrupts),
-          Sleep: ({ duration }) => Effect.sleep(duration),
-          Context: ({ answer }) => {
-            const usage = readContextUsage(answer)
-            return usage === undefined ? Effect.void : workers.measured(session.entry, usage)
-          },
-          Do: ({ effect }) => effect,
-          Gone: ({ why, setup }) =>
-            setup === true ? setupProblem(ticket, session, why) : gone(ticket, session, why),
-          // Only a session's first step can fail its start; later, it does nothing.
-          FailStart: () => Effect.void,
-          StopAtStart: () => Effect.void,
-          Initialize: () => Effect.void,
-        })
-
-      // Pushes a message into the session's inbox; its uuid.
-      const push = (ticket: string, session: Running, message: Message) =>
-        Effect.gen(function* () {
-          const uuid = message.uuid ?? uuidOf(yield* Ref.updateAndGet(drawn, (k) => k + 1))
-          const sdk = userMessage(message, uuid, session.sessionId)
-          yield* record(Sent.Message({ ticket, message: sdk }))
-          yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
-          yield* workers.sent(session.entry, session.sessionId, sdk)
-          yield* lifecycle(session, uuid, "queued")
-          yield* Ref.update(session.queued, (uuids) => [...uuids, uuid])
-          yield* Queue.offer(session.inbox, sdk)
-          return uuid as string
-        })
-
-      // Starts (or resumes) a session playing the ticket's next script.
-      const begin = (ticket: string, session: Session, sentAs: Sent) =>
-        Effect.gen(function* () {
-          yield* record(sentAs)
-          if (running.has(ticket)) {
-            return yield* new AgentStartFailed({ ticket, reason: "a session is already open" })
-          }
-          const steps = left.get(ticket)?.shift()
-          if (steps === undefined) {
-            return yield* new AgentStartFailed({
-              ticket,
-              reason: "the script has no more sessions",
-            })
-          }
-          const entry = yield* workers.open(ticket, session.sessionId, sentAs._tag === "Resumed")
-          const first = steps[0]
-          if (first?._tag === "FailStart") {
-            const refused = first.startupFailureReason
-            const reason = startFailure(refused, first.reason, "")
-            yield* workers.fold(
-              entry,
-              WorkerEvent.Ended({ session: session.sessionId, why: reason }),
-            )
-            return yield* new AgentStartFailed({
-              ticket,
-              reason,
-              ...(refused === undefined ? {} : { startupFailureReason: refused }),
-            })
-          }
-          const given = serversOf(kindOf(session), servers)
-          const problem =
-            first?._tag === "StopAtStart"
-              ? first.why
-              : first?._tag === "Initialize"
-                ? yield* checks.before(first.answer, Option.fromUndefinedOr(first.status), given)
-                : undefined
-          if (problem !== undefined) {
-            yield* log.write(setupLine(ticket, problem))
-            yield* workers.fold(
-              entry,
-              WorkerEvent.Ended({ session: session.sessionId, why: problem, setup: true }),
-            )
-            return undefined
-          }
-          const hooks = yield* activityHooks(ticket, {
-            activity: (input) =>
-              workers.fold(entry, WorkerEvent.Hook({ session: session.sessionId, input })),
-            compaction: (input) => workers.compacted(entry, input.trigger),
-          })
-          const playing: Running = {
-            sessionId: session.sessionId,
-            entry,
-            servers: given,
-            hooks,
-            capabilities: new Set(first?._tag === "Initialize" ? capabilitiesOf(first.answer) : []),
-            initialized: false,
-            inbox: yield* Queue.unbounded<SDKUserMessage>(),
-            putBack: [],
-            queued: yield* Ref.make<ReadonlyArray<string>>([]),
-            taken: yield* Ref.make<ReadonlyArray<string>>([]),
-            cancelled: new Set(),
-            interrupts: yield* Queue.unbounded<void>(),
-            controller: yield* Ref.make(new AbortController()),
-          }
-          running.set(ticket, playing)
-          // A session that has gone plays no more of its steps.
-          playing.fiber = yield* Effect.gen(function* () {
-            for (const step of steps) {
-              if (running.get(ticket) !== playing) return
-              yield* play(ticket, playing, step)
-            }
-          }).pipe(Effect.forkIn(scope))
-          return playing
-        }).pipe(one.withPermit)
-
-      const session = (ticket: string) =>
-        Effect.suspend(() => {
-          const found = running.get(ticket)
-          return found === undefined
-            ? Effect.fail(new AgentGone({ ticket, why: "it has no open session" }))
-            : Effect.succeed(found)
-        })
-
-      const close = (ticket: string) =>
-        Effect.gen(function* () {
-          const open = running.get(ticket)
-          if (open === undefined) return false
-          running.delete(ticket)
-          ;(yield* Ref.get(open.controller)).abort()
-          if (open.fiber !== undefined) yield* Fiber.interrupt(open.fiber)
-          yield* record(Sent.Closed({ ticket }))
-          yield* workers.fold(open.entry, WorkerEvent.Closed({ session: open.sessionId }))
-          return true
-        })
-      const exiting = (closed: boolean) =>
-        closed && options.closeTakes !== undefined ? Effect.sleep(options.closeTakes) : Effect.void
+      const uuid = (given: string | undefined) =>
+        given === undefined ? Effect.map(draw, uuidOf) : Effect.succeed(given)
 
       const host = AgentHost.of({
-        start: (ticket, s) => Effect.asVoid(begin(ticket, s, Sent.Started({ ticket, session: s }))),
+        ...live,
+        start: (ticket, s) =>
+          Effect.andThen(
+            record(Sent.Started({ ticket, session: s })),
+            opened(ticket, s.sessionId, live.start(ticket, s)),
+          ),
         resume: (ticket, s, message) =>
-          Effect.flatMap(begin(ticket, s, Sent.Resumed({ ticket, session: s })), (playing) =>
-            playing !== undefined
-              ? push(ticket, playing, message)
-              : message.uuid !== undefined
-                ? Effect.succeed(message.uuid)
-                : Effect.map(
-                    Ref.updateAndGet(drawn, (k) => k + 1),
-                    uuidOf,
-                  ),
-          ),
-        send: (ticket, text, from, uuid) =>
-          Effect.flatMap(session(ticket), (playing) =>
-            push(ticket, playing, { text, from, ...(uuid === undefined ? {} : { uuid }) }),
-          ),
-        interrupt: (ticket) =>
           Effect.gen(function* () {
-            const playing = yield* session(ticket)
-            const queued = yield* Ref.get(playing.queued)
-            const withdrawn: Array<string> = []
-            if (playing.capabilities.has(cancelQueuedCapability)) withdrawn.push(...queued)
-            else {
-              for (const uuid of queued) {
-                const cancelled =
-                  options.cancelAsync === "refuse" ? null : options.cancelAsync !== "notQueued"
-                yield* record(Sent.CancelAsync({ ticket, uuid, cancelled }))
-                if (cancelled === true) withdrawn.push(uuid)
-              }
-            }
-            yield* Ref.update(playing.queued, (uuids) =>
-              uuids.filter((u) => !withdrawn.includes(u)),
+            yield* record(Sent.Resumed({ ticket, session: s }))
+            const drawn = yield* uuid(message.uuid)
+            return yield* opened(
+              ticket,
+              s.sessionId,
+              live.resume(ticket, s, { ...message, uuid: drawn }),
             )
-            const receipt: Receipt = {
-              stillQueued: queued.filter((uuid) => !withdrawn.includes(uuid)),
-              cancelled: withdrawn,
-            }
-            for (const uuid of receipt.cancelled) {
-              playing.cancelled.add(uuid)
-              yield* lifecycle(playing, uuid, "cancelled")
-            }
-            yield* workers.fold(
-              playing.entry,
-              WorkerEvent.Cancelled({ session: playing.sessionId, uuids: receipt.cancelled }),
-            )
-            const controller = yield* Ref.getAndSet(playing.controller, new AbortController())
-            controller.abort()
-            yield* record(Sent.Interrupted({ ticket, receipt }))
-            yield* Queue.offer(playing.interrupts, undefined)
-            return receipt
           }),
-        close: (ticket) => Effect.flatMap(close(ticket).pipe(one.withPermit), exiting),
+        send: (ticket, text, from, given) =>
+          Effect.flatMap(uuid(given), (drawn) => live.send(ticket, text, from, drawn)),
+        interrupt: (ticket) =>
+          Effect.tap(live.interrupt(ticket), (receipt) =>
+            record(Sent.Interrupted({ ticket, receipt })),
+          ),
+        close: (ticket) =>
+          Effect.gen(function* () {
+            if (yield* isOpen(live, ticket)) yield* record(Sent.Closed({ ticket }))
+            yield* live.close(ticket)
+          }),
         end: (ticket) =>
           Effect.gen(function* () {
-            yield* close(ticket)
+            if (yield* isOpen(live, ticket)) yield* record(Sent.Closed({ ticket }))
+            yield* live.close(ticket)
             yield* record(Sent.Ended({ ticket }))
-            yield* workers.forget(ticket)
-          }).pipe(one.withPermit),
-        takeRequires: (names) => Effect.sync(() => void requires.push(names)),
-        current: workers.current,
-        begun: workers.begun,
-        state: workers.state,
-        answered: workers.answered,
-        workers: workers.workers,
-        compactions: workers.compactions,
-        contexts: workers.contexts,
-        processes: Effect.sync(
-          () =>
-            new Map(
-              [...(options.processes ?? [])].filter(([ticket]) => running.has(ticket)),
-            ) as ReadonlyMap<string, number>,
-        ),
+            yield* live.end(ticket)
+          }),
+        takeRequires: (names) =>
+          Effect.andThen(
+            Effect.sync(() => void requires.push(names)),
+            live.takeRequires(names),
+          ),
       })
 
       const recording = Recording.of({
@@ -681,11 +290,8 @@ export const awaitInterrupt: Step = Step.AwaitInterrupt()
 export const sleep = (duration: Duration.Input): Step => Step.Sleep({ duration })
 export const context = (answer: object): Step => Step.Context({ answer })
 export const run = (effect: Effect.Effect<void>): Step => Step.Do({ effect })
+/** The session's stream ends without tutti closing it, Claude Code having written `why`. */
 export const gone = (why: string): Step => Step.Gone({ why })
-/** The session ends over a setup problem its first system/init showed, as the live layer ends it. */
-export const setupProblem = (why: string): Step => Step.Gone({ why, setup: true })
-/** The session is stopped over a setup problem as it starts, as the live layer's checkBefore does. */
-export const stopAtStart = (why: string): Step => Step.StopAtStart({ why })
 /**
  * The session's initialize answer, as the live layer reads it (`account`, `capabilities`), and its
  * mcpServerStatus() answer, `status`, when it gave one.

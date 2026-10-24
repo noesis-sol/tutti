@@ -380,10 +380,12 @@ describe("a session that ended unexpectedly (Gone)", () => {
       expect.objectContaining({ ticket: id, why: "gone", session: expect.any(String) }),
     ])
     expectLog(ran, [
-      /^ {2}RESUMED: t-1's worker is gone \(exit 1\) with the ticket in progress; resuming its session \S+ \(worktree .*t-1\)$/,
+      /^ {2}RESUMED: t-1's worker is gone \(its session ended: exit 1\) with the ticket in progress; resuming its session \S+ \(worktree .*t-1\)$/,
     ])
     const issue = ran.issues.find((each) => each.id === id)
-    expect(issue?.notes).toContain("its worker's session ended unexpectedly (exit 1)")
+    expect(issue?.notes).toContain(
+      "its worker's session ended unexpectedly (its session ended: exit 1)",
+    )
   })
 
   test("whose resume fails, the transcript gone: WORKER_GONE, noted and dropped", async () => {

@@ -1,7 +1,7 @@
 // AgentHost's live layer (§ 4.1, § 4.2, § 4.4, § 3.2): one Agent SDK query() per open worker
-// session, in streaming input mode. A session's inbox is an Effect Queue the SDK reads as its
-// prompt, an AsyncIterable<SDKUserMessage>; a message pushed while a turn is under way joins that
-// turn or waits in the CLI's own queue (§ 4.1). Every message the session sends is recorded in
+// session, in streaming input mode. A session's inbox is its ClaudeSession's (`send`), which the SDK
+// reads as its prompt; a message pushed while a turn is under way joins that turn or waits in the
+// CLI's own queue (§ 4.1). Every message the session sends is recorded in
 // Transcripts and folded into the worker's state (makeWorkers), and every message pushed into its
 // inbox is recorded there as it is pushed; its hook callbacks are folded in too, and its stderr
 // goes to the transcript's stderr.log (workerOptions).
@@ -27,7 +27,9 @@
 // lifecycle.md § 2) and waits for the subprocess to exit, killing its process group, and its
 // descendants' (killTree), if it hasn't within closeLimit (ClaudeCode's adapter does this). A
 // stream that ends or fails without tutti closing it, or a result with a startup_failure_reason,
-// makes the worker Gone, its reason ending with what Claude Code last wrote to stderr.
+// makes the worker Gone, its reason ending with what Claude Code last wrote to stderr; before the
+// session's initialize is answered, the start does that as it fails, rather than the reader, whose
+// close would cancel the start before it could say why.
 //
 // An interrupt's control requests, the interrupt and the cancel_async_message requests after it,
 // have interruptLimit to be answered together; past it the query is aborted and the session closed,
@@ -50,14 +52,9 @@
 import { randomUUID } from "node:crypto"
 import { availableParallelism } from "node:os"
 import { join } from "node:path"
-import type {
-  McpSdkServerConfigWithInstance,
-  SDKMessage,
-  SDKUserMessage,
-} from "@anthropic-ai/claude-agent-sdk"
+import type { McpSdkServerConfigWithInstance, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import {
   Cause,
-  Context,
   Data,
   Deferred,
   Duration,
@@ -67,7 +64,6 @@ import {
   FileSystem,
   Layer,
   Option,
-  Queue,
   Ref,
   Scope,
   Stream,
@@ -199,8 +195,7 @@ interface Live {
   /** The MCP servers it was given: the workers', none for the probe, tutti's for the interview. */
   readonly servers: ChosenServers
   readonly entry: WorkerEntry
-  readonly inbox: Queue.Queue<SDKUserMessage, Cause.Done>
-  /** The session, opened through ClaudeCode in its lifecycle's scope. */
+  /** The session, opened through ClaudeCode in its lifecycle's scope; its inbox is `send`'s. */
   readonly claude: ClaudeSession
   /** Its lifecycle's scope: closing it closes the session. */
   readonly scope: Scope.Closeable
@@ -208,6 +203,11 @@ interface Live {
   readonly capabilities: Set<string>
   /** The startup_failure_reason of a result it sent. */
   readonly startupFailure: Deferred.Deferred<string>
+  /**
+   * Done once the start has its initialize's answer, true, or has failed for want of one, false:
+   * till then the stream's end, or a startup failure's result, is the start's to settle (make).
+   */
+  readonly initialized: Deferred.Deferred<boolean>
 }
 
 /**
@@ -260,7 +260,9 @@ export const closingWhy = "its session was closing, so the message never went"
  */
 export const push = (
   workers: Workers,
-  session: Pick<Live, "ticket" | "sessionId" | "entry" | "inbox">,
+  session: Pick<Live, "ticket" | "sessionId" | "entry"> & {
+    readonly claude: Pick<ClaudeSession, "send">
+  },
   message: Message,
 ): Effect.Effect<string, AgentGone> =>
   Effect.gen(function* () {
@@ -268,7 +270,7 @@ export const push = (
     // Outstanding before the CLI can see it, so its turn's result can't come first.
     yield* workers.fold(session.entry, WorkerEvent.Sent({ session: session.sessionId, uuid }))
     const sdk = userMessage(message, uuid, session.sessionId)
-    if (!(yield* Queue.offer(session.inbox, sdk))) {
+    if (!(yield* session.claude.send(sdk))) {
       yield* workers.fold(
         session.entry,
         WorkerEvent.Cancelled({ session: session.sessionId, uuids: [uuid] }),
@@ -454,7 +456,7 @@ export const layer = (
           } else if (reading._tag === "Result" && reading.startupFailure !== null) {
             const refused = reading.startupFailure
             yield* Deferred.succeed(session.startupFailure, refused)
-            yield* gone(session, refused)
+            if (yield* Deferred.await(session.initialized)) yield* gone(session, refused)
           } else if (reading._tag === "Result") {
             yield* Effect.forkIn(measure(session), session.scope)
           }
@@ -476,7 +478,8 @@ export const layer = (
 
       /**
        * Reads the session's stream to its end, a message that dies skipped; an end tutti didn't ask
-       * for makes the worker Gone.
+       * for makes the worker Gone. One before its initialize was answered is left to the start, which
+       * fails saying why: the close a Gone here forks would cancel the start first.
        */
       const read = (session: Live) =>
         session.claude.messages.pipe(
@@ -487,11 +490,18 @@ export const layer = (
           ),
           Effect.exit,
           Effect.flatMap((exit) =>
-            gone(
-              session,
-              Exit.isSuccess(exit)
-                ? withStderr(endedWhy, session.claude.stderrTail(stderrQuoted))
-                : failedWhy(causeMessage(exit.cause), session.claude.stderrTail(stderrQuoted)),
+            Effect.flatMap(Deferred.await(session.initialized), (initialized) =>
+              initialized
+                ? gone(
+                    session,
+                    Exit.isSuccess(exit)
+                      ? withStderr(endedWhy, session.claude.stderrTail(stderrQuoted))
+                      : failedWhy(
+                          causeMessage(exit.cause),
+                          session.claude.stderrTail(stderrQuoted),
+                        ),
+                  )
+                : Effect.void,
             ),
           ),
         )
@@ -654,10 +664,10 @@ export const layer = (
             }),
             services,
           )
-          const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
           const share = yield* shareNow
           const { servers, options: spec, notes } = yield* planOf(ticket, session, how, callbacks)
           const startupFailure = yield* Deferred.make<string>()
+          const initialized = yield* Deferred.make<boolean>()
           // Claude Code, spawned, is closed with the session's scope, though the start is cancelled.
           const opened = yield* Effect.uninterruptible(
             Effect.gen(function* () {
@@ -665,7 +675,6 @@ export const layer = (
               const claude = yield* claudeCode
                 .open({
                   options: spec,
-                  prompt: Stream.toAsyncIterableWith(Stream.fromQueue(inbox), Context.empty()),
                   billedAs: BilledAs.Workers({ subscription: options.account.subscription }),
                   ...(options.env === undefined ? {} : { env: options.env }),
                   share,
@@ -678,18 +687,16 @@ export const layer = (
                     (error) => new AgentStartFailed({ ticket, reason: error.reason }),
                   ),
                 )
-              // Closing the session ends its prompt first, and then closes it.
-              yield* Scope.addFinalizer(of, Queue.end(inbox))
               const opened: Live = {
                 ticket,
                 sessionId,
                 servers,
                 entry,
-                inbox,
                 claude,
                 scope: of,
                 capabilities: new Set(),
                 startupFailure,
+                initialized,
               }
               yield* Effect.sync(() => {
                 const current = sessions.get(ticket)
@@ -705,22 +712,23 @@ export const layer = (
           )
           const reader = yield* read(opened).pipe(Effect.forkIn(of))
 
-          const initialized = yield* opened.claude.initialization.pipe(
+          const answer = yield* opened.claude.initialization.pipe(
             timeoutAwake({
               duration: startLimit,
               orElse: () => Effect.fail(`no answer within ${Duration.format(startLimit)}`),
             }),
             Effect.exit,
           )
-          if (Exit.isSuccess(initialized)) {
-            for (const capability of capabilitiesOf(initialized.value)) {
+          yield* Deferred.succeed(initialized, Exit.isSuccess(answer))
+          if (Exit.isSuccess(answer)) {
+            for (const capability of capabilitiesOf(answer.value)) {
               opened.capabilities.add(capability)
             }
             const status = yield* opened.claude.mcpStatus.pipe(
               Effect.timeout(statusLimit),
               Effect.option,
             )
-            const problem = yield* checks.before(initialized.value, status, servers)
+            const problem = yield* checks.before(answer.value, status, servers)
             return { opened, problem, notes }
           }
           // A startup failure's result comes just before the stream ends: the reader sees it.
@@ -735,7 +743,7 @@ export const layer = (
             : undefined
           const reason = startFailure(
             refused,
-            causeMessage(initialized.cause),
+            causeMessage(answer.cause),
             opened.claude.stderrTail(stderrQuoted),
           )
           yield* gone(opened, reason)

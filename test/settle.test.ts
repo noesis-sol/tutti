@@ -547,7 +547,7 @@ describe("the continue nudge and PAUSED", () => {
     // The first message, then the carry-on message of its one resume.
     expect(sentTexts(ran)).toHaveLength(2)
     expect(resultOf(ran).worked.stop?.line).toMatch(
-      /^PAUSED: t-1 still in_progress, its worker is gone \(exit 1\); its session was resumed once in this run already/,
+      /^PAUSED: t-1 still in_progress, its worker is gone \(its session ended: exit 1\); its session was resumed once in this run already/,
     )
   })
 

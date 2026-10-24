@@ -130,7 +130,7 @@ describe("the probe's session ending without running its command", () => {
     ])
     expectProbeFailed(
       ran,
-      "it went away without running its command: Claude Code exited with code 1",
+      "it went away without running its command: its session ended: Claude Code exited with code 1",
     )
   })
 })

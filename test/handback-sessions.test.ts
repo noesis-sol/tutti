@@ -311,7 +311,9 @@ describe("a hand-back to a worker that is gone (Gone)", () => {
       expect.objectContaining({ ticket: "a", session: "session-a", why: "gone" }),
     ])
     expectLog(ran, [
-      resumedLine("a's conflicts with main are handed back to its worker, which is gone (exit 1)"),
+      resumedLine(
+        "a's conflicts with main are handed back to its worker, which is gone (its session ended: exit 1)",
+      ),
     ])
   })
 
@@ -339,7 +341,7 @@ describe("a hand-back to a worker that is gone (Gone)", () => {
     )
     expect(sentTags(ran)).toEqual(["Started"])
     expectLog(ran, [
-      /^ {2}MERGE_CONFLICT: .*\(not handed back to its worker: its worker is gone \(exit 1\) and its session was resumed once in this run already\); /,
+      /^ {2}MERGE_CONFLICT: .*\(not handed back to its worker: its worker is gone \(its session ended: exit 1\) and its session was resumed once in this run already\); /,
     ])
   })
 
@@ -358,11 +360,11 @@ describe("a hand-back to a worker that is gone (Gone)", () => {
       expect.objectContaining({ ticket: "a", detail: "its worker gone" }),
     )
     expectLog(ran, [
-      `  WORKER_GONE: a's worker is gone (exit 1), and its session could not be resumed for its hand-back (${reason})`,
-      /^ {2}MERGE_CONFLICT: .*\(handed back to its worker, but its worker is gone \(exit 1\) and its session could not be resumed: No conversation found with session ID; the rebase was aborted\); /,
+      `  WORKER_GONE: a's worker is gone (its session ended: exit 1), and its session could not be resumed for its hand-back (${reason})`,
+      /^ {2}MERGE_CONFLICT: .*\(handed back to its worker, but its worker is gone \(its session ended: exit 1\) and its session could not be resumed: No conversation found with session ID; the rebase was aborted\); /,
     ])
     expect(notesOf(ran)).toContain(
-      `its worker is gone (exit 1) and its session could not be resumed: ${reason}`,
+      `its worker is gone (its session ended: exit 1) and its session could not be resumed: ${reason}`,
     )
   })
 })

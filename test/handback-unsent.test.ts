@@ -503,7 +503,7 @@ describe("a hand-back kept for the reset", () => {
     expectPhases(ran, { a: "Done", b: "Done" })
     expectLog(ran, [
       "  b's worker is at the usage limit: it is handed its failed check to fix once the limit lifts, the wait not counting toward the 20m",
-      /^ {2}RESUMED: b's failed check is handed back to its worker, which is gone \(its process exited\)/,
+      /^ {2}RESUMED: b's failed check is handed back to its worker, which is gone \(its session ended: its process exited\)/,
       `  '${check}' passes on tutti/b as its worker fixed it`,
       closedLine("b"),
       "USAGE_LIMIT lifted",

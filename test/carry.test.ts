@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Duration, Effect, Fiber } from "effect"
+import { resumedNotes } from "../src/agent/AgentHostLive.ts"
 import { answeredText } from "../src/run/asked.ts"
 import { askedWhy, carryOnText, questionKey } from "../src/run/carry.ts"
 import type { EventRecord } from "../src/run/events.ts"
@@ -19,6 +20,7 @@ import {
   result,
   sleep,
   turn,
+  withoutNotes,
 } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import type { Seed } from "../src/testing/Beads.ts"
@@ -136,7 +138,9 @@ const sessionsOf = (ran: Ran<unknown>, id: string) =>
 /** The messages the ticket's worker was sent, as text. */
 const textsOf = (ran: Ran<unknown>, id: string) =>
   ran.sent.flatMap((sent) =>
-    sent._tag === "Message" && sent.ticket === id ? [String(sent.message.message.content)] : [],
+    sent._tag === "Message" && sent.ticket === id
+      ? [withoutNotes(String(sent.message.message.content))]
+      : [],
   )
 
 const records = <K extends EventRecord["kind"]>(ran: Ran<unknown>, kind: K) =>
@@ -167,6 +171,9 @@ describe("carry-over: a suspended worker", () => {
     // The saved session, resumed: no new one is drawn.
     expect(sessionsOf(ran, "t-1")).toEqual(["Resumed session-t-1"])
     expect(textsOf(ran, "t-1")).toEqual([carryOnText("t-1", "quit")])
+    // Its session began in the last run: it is told its standing rules' notes as they are now first.
+    const [sent] = ran.sent.flatMap((each) => (each._tag === "Message" ? [each.message] : []))
+    expect(String(sent?.message.content)).toStartWith(resumedNotes("").trimEnd())
     expect(entries(ran, "t-1")).toEqual(["Resumed Working"])
     expect(records(ran, "resumed")).toEqual([
       expect.objectContaining({ ticket: "t-1", session: "session-t-1", why: "suspended" }),

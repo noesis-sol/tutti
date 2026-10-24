@@ -161,7 +161,7 @@ describe("a failed check while the run holds", () => {
     expect(handBacks(ran, "b")).toEqual([])
     expect(ran.log.some((text) => text.includes("FIXING"))).toBe(false)
     const paused = literally(
-      "PAUSED: a still in_progress, its worker is gone (exit 1); its session was resumed once in this run already, and the next run resumes it again",
+      "PAUSED: a still in_progress, its worker is gone (its session ended: exit 1); its session was resumed once in this run already, and the next run resumes it again",
     )
     expectLog(ran, [
       new RegExp(`^HOLD: ${paused} `),

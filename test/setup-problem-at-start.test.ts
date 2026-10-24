@@ -12,7 +12,7 @@ import { line } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
 import { Git } from "../src/services/Git.ts"
 import { type State, Store } from "../src/services/Store.ts"
-import { stopAtStart } from "../src/testing/AgentHost.ts"
+import { initialize } from "../src/testing/AgentHost.ts"
 import { appConfig } from "../src/testing/AppConfig.ts"
 import { backlog, expectExitCode, expectPhases, type Ran, scenario } from "./harness.ts"
 
@@ -34,7 +34,8 @@ const runs = async (): Promise<
       backlog: backlog().ticket("t-1").ticket("t-2").seeds,
       git: { dir: repo },
       worktrees: { root },
-      scripts: { "t-1": [[stopAtStart(problem)]] },
+      // Its initialize's account bills an API key.
+      scripts: { "t-1": [[initialize({ account: { apiKeySource: "ANTHROPIC_API_KEY" } })]] },
     },
     Effect.gen(function* () {
       const git = yield* Git

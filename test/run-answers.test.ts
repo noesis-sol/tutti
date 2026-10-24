@@ -161,9 +161,9 @@ describe("the run takes the answers", () => {
       /^ {2}t-2 settled/,
       /^ {2}ANSWERED: \S+ \(Which way\?\) is answered, so t-1 comes back$/,
       /^ {2}RESUMED: t-1's question \S+ is answered; resuming its session/,
-      /^ {2}t-2 closed \(.*\); merged into main/,
       /^ {2}t-1 closed \(.*\); merged into main/,
     ])
+    expect(ran.log.some((text) => /^ {2}t-2 closed \(.*\); merged into main/.test(text))).toBe(true)
   })
 
   test("a resumed worker that stops the run holds it: PAUSED, exit 3", async () => {

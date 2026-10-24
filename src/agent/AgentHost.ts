@@ -19,8 +19,9 @@
 // resumed session emits nothing until it is sent something (docs/spikes/02-sdk-lifecycle.md), so
 // resume takes the message that carries it on.
 //
-// The live layer is src/agent/AgentHostLive.ts (over ClaudeCode, the Agent SDK's port); the test layer is
-// src/testing/AgentHost.ts, which replays scripted sessions and records what it was sent.
+// The live layer is src/agent/AgentHostLive.ts (over ClaudeCode, the Agent SDK's port); the test
+// layer is src/testing/AgentHost.ts, the live layer over ClaudeCode's scripted sessions
+// (src/testing/ClaudeCode.ts), which records what it was sent.
 import type {
   McpSdkServerConfigWithInstance,
   SDKMessage,
@@ -262,7 +263,7 @@ const keepCalls = (calls: WorkerEntry["calls"], made: ReadonlyArray<Call>): void
   }
 }
 
-/** The workers a host knows, and how their state moves: what the live and test layers share. */
+/** The workers a host knows, and how their state moves; its test layer runs the live host too. */
 export interface Workers {
   /**
    * The ticket's worker, made if the host doesn't know it, its state back at Starting for its new
@@ -308,8 +309,6 @@ export interface Workers {
   readonly measured: (entry: WorkerEntry, usage: ContextUsage) => Effect.Effect<void>
   /** How full each worker's context window is, by ticket: now, then on each change. */
   readonly contexts: Stream.Stream<ReadonlyMap<string, ContextUsage>>
-  /** Waits until the worker's state counts every one of its open attention requests. */
-  readonly counted: (entry: WorkerEntry) => Effect.Effect<void>
   /** Forgets the worker: its streams end, and its transcript's memory and files are let go of. */
   readonly forget: (ticket: string) => Effect.Effect<void>
   readonly current: (ticket: string) => Effect.Effect<WorkerState, AgentGone>
@@ -550,14 +549,6 @@ export const makeWorkers = (
             : Effect.void,
         ),
       contexts: SubscriptionRef.changes(contexts),
-      counted: (entry) =>
-        Effect.gen(function* () {
-          const open = yield* openCount(entry.ticket)
-          yield* SubscriptionRef.changes(entry.worker).pipe(
-            Stream.takeUntil((w) => w.pending === open || w.end !== null),
-            Stream.runDrain,
-          )
-        }),
       forget: (ticket) =>
         Effect.gen(function* () {
           yield* transcripts.release(ticket)
