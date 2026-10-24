@@ -21,7 +21,13 @@ describe("SIGTSTP", () => {
             // (docs/spikes/06-bun-ffi.md, § 3): the signal is handed to tutti's handler instead.
             process.emit("SIGTSTP", "SIGTSTP")
             process.emit("SIGTSTP", "SIGTSTP")
-            yield* Effect.promise(() => Bun.sleep(20))
+            // The lines are written by logSuspends' fiber: wait for both, as a fixed sleep runs out
+            // on a loaded machine before that fiber has had its turn.
+            for (let i = 0; i < 5000 && (yield* texts).length < 2; i++) {
+              yield* Effect.promise(() => Bun.sleep(1))
+            }
+            // One listener: each SIGTSTP is handled, and so logged, once.
+            expect(process.listenerCount("SIGTSTP")).toBe(1)
             return yield* texts
           }),
         )
