@@ -27,8 +27,11 @@ export type UserConfig = typeof UserConfig.Type
  * folder of the user's account entry, so that an empty HOME (some cron and service environments)
  * or a relative one doesn't put tutti's files under the current folder.
  */
-export const homeFolder = (home: string | undefined): string => {
-  if (home !== undefined && isAbsolute(home)) return home
+export const homeFolder = (home: string | undefined): string =>
+  home !== undefined && isAbsolute(home) ? home : accountHome()
+
+/** The home folder of the user's account entry, whatever HOME says. */
+export const accountHome = (): string => {
   try {
     return userInfo().homedir
   } catch {

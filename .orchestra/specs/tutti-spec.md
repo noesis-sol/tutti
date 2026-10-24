@@ -551,7 +551,7 @@ tutti keeps those rules (tool name and rule content) for the run. A later reques
 
 ### 4.6 MCP servers
 
-As orchestra: `settings.json` keeps names, and each name is resolved on this machine in Claude Code's order (local in `~/.claude.json` under the repository, project `.mcp.json`, user `~/.claude.json`, with `CLAUDE_CONFIG_DIR` respected). The definitions are passed in memory as `mcpServers`, never written to disk. A name that isn't defined here, or names a claude.ai connector, is a setup problem.
+As orchestra: `settings.json` keeps names, and each name is resolved on this machine in Claude Code's order (local in `~/.claude.json` under the repository, project `.mcp.json`, user `~/.claude.json`, with `CLAUDE_CONFIG_DIR` respected; `~` is HOME, or the account's home folder when HOME is empty, as Claude Code, a Bun binary, takes it). The definitions are passed in memory as `mcpServers`, never written to disk. A name that isn't defined here, or names a claude.ai connector, is a setup problem.
 
 `strictMcpConfig: true` keeps everything else out. It is the SDK's `--strict-mcp-config`: "Only use MCP servers passed via the `mcpServers` option … ignoring all other MCP configurations: project `.mcp.json`, user settings, plugins, and on-disk agent frontmatter".
 

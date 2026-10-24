@@ -19,11 +19,11 @@
 // orchestra does. Claude Code turns Chrome on by itself, past strict MCP config, once it is set up
 // on the machine. With --chrome, system/init lists it with source dynamic. tutti init offers it, as
 // orchestra does, once the user's .claude.json records it set up (chromeSetUp).
-import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
 import { Config, Effect, FileSystem, Option, Predicate, Result, Schema } from "effect"
 import { SetupProblem } from "../cli/AppConfig.ts"
+import { accountHome } from "../project/userConfig.ts"
 
 /** The config scopes a name is resolved from, in Claude Code's order. */
 export type Scope = "local" | "project" | "user"
@@ -109,15 +109,18 @@ const transports: ReadonlyArray<string> = ["stdio", "sse", "http"]
 
 /**
  * Where Claude Code keeps its user config: `.claude.json` in CLAUDE_CONFIG_DIR, or in the home
- * directory when that is unset or empty.
+ * directory when that is unset or empty. The home directory is Bun's homedir(), as Claude Code, a
+ * Bun binary, reads it: HOME, or the account's home folder when HOME is unset or empty; a relative
+ * HOME is kept, as Claude Code keeps it.
  */
 export const claudeConfigFile = Effect.gen(function* () {
   const dir = yield* Config.option(Config.String("CLAUDE_CONFIG_DIR"))
-  const home = yield* Config.String("HOME").pipe(Config.withDefault(homedir()))
+  const home = yield* Config.option(Config.String("HOME"))
+  const nonEmpty = (value: string) => value !== ""
   return join(
-    Option.getOrElse(
-      Option.filter(dir, (d) => d !== ""),
-      () => home,
+    Option.filter(dir, nonEmpty).pipe(
+      Option.orElse(() => Option.filter(home, nonEmpty)),
+      Option.getOrElse(accountHome),
     ),
     ".claude.json",
   )
