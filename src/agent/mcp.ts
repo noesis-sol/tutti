@@ -321,6 +321,13 @@ export const missingProblem = (names: ReadonlyArray<string>): string =>
 export const unlistedProblem =
   "Claude Code's system/init doesn't list workers' MCP servers in a shape tutti reads (mcp_servers), so it can't check they got only the ones they were given"
 
+/**
+ * The problem when a session's system/init lists servers tutti gave it without their source, as a
+ * Claude Code that predates the field does: tutti can't tell they are the ones it gave.
+ */
+export const sourcelessProblem = (names: ReadonlyArray<string>): string =>
+  `workers' MCP servers are listed without their source in Claude Code's system/init, as a Claude Code that predates the field lists them (an older --claude), so tutti can't check they are the ones it gave: ${names.map((name) => JSON.stringify(name)).join(", ")}`
+
 // The fields checkInit reads of system/init: each server's name, and its source where it has one.
 const InitServers = Schema.Struct({
   mcp_servers: Schema.Array(
@@ -330,9 +337,21 @@ const InitServers = Schema.Struct({
 
 const decodeInitServers = Schema.decodeUnknownResult(InitServers)
 
-/** The names of `servers`, as a session lists them, that workers weren't given: not `chosen`. */
+// A server as a session lists it: its name, and its source where it has one.
+type ListedServer = { readonly name: string; readonly source?: string | undefined }
+
+/** Whether `name` is one of `chosen`, Claude in Chrome included when it is chosen. */
+const isChosen = (name: string, chosen: ChosenServers): boolean =>
+  (chosen.chrome === true && name === chromeServer) ||
+  chosen.servers.some((server) => server.name === name)
+
+/**
+ * The names of `servers`, as a session lists them, that workers weren't given: not `chosen`, or
+ * chosen but listed with another source. A chosen one listed without a source isn't among them
+ * (sourcelessIn).
+ */
 const notGivenIn = (
-  servers: ReadonlyArray<{ readonly name: string; readonly source?: string | undefined }>,
+  servers: ReadonlyArray<ListedServer>,
   chosen: ChosenServers,
 ): ReadonlyArray<string> => {
   const scopes = new Map(chosen.servers.map((server) => [server.name, server.scope]))
@@ -340,22 +359,30 @@ const notGivenIn = (
     .filter((server) => {
       const scope = scopes.get(server.name)
       const source = server.source
+      if (source === undefined) return !isChosen(server.name, chosen)
       if (chosen.chrome === true && server.name === chromeServer && source === "dynamic")
         return false
-      return (
-        scope === undefined ||
-        source === undefined ||
-        !(passedSources.includes(source) || source === scope)
-      )
+      return scope === undefined || !(passedSources.includes(source) || source === scope)
     })
     .map((server) => server.name)
 }
+
+/** The names of `servers`, as a session lists them, that are `chosen` but have no source. */
+const sourcelessIn = (
+  servers: ReadonlyArray<ListedServer>,
+  chosen: ChosenServers,
+): ReadonlyArray<string> =>
+  servers
+    .filter((server) => server.source === undefined && isChosen(server.name, chosen))
+    .map((server) => server.name)
 
 /**
  * Checks a session's first system/init: its mcp_servers must be exactly the chosen servers, each
  * with source sdk, dynamic or the scope it was resolved from. Statuses aren't compared: a server
  * can still be pending. A server listed but not chosen, or chosen but listed with another source,
  * is one workers weren't given; a chosen server not listed is missing. Either is a setup problem.
+ * So is a chosen server listed without a source, as a Claude Code that predates the field lists
+ * them, with a problem of its own (sourcelessProblem): tutti can't tell it is the one it gave.
  * Chrome, when chosen, may be listed with source dynamic, and needn't be: --chrome on a machine
  * where it isn't set up gives none. A system/init without mcp_servers, or with a server without a
  * name, is a setup problem too: tutti can't tell what workers got.
@@ -369,9 +396,11 @@ export const checkInit = (
   const servers = read.success.mcp_servers
   const listed = new Set(servers.map((server) => server.name))
   const notGiven = notGivenIn(servers, chosen)
+  const sourceless = sourcelessIn(servers, chosen)
   const missing = chosen.servers.map((server) => server.name).filter((name) => !listed.has(name))
   const problems = [
     ...(notGiven.length > 0 ? [notGivenProblem([...new Set(notGiven)])] : []),
+    ...(sourceless.length > 0 ? [sourcelessProblem([...new Set(sourceless)])] : []),
     ...(missing.length > 0 ? [missingProblem(missing)] : []),
   ]
   return problems.length > 0 ? Effect.fail(new SetupProblem({ problems })) : Effect.void

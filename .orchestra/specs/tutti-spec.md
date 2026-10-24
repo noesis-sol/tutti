@@ -559,7 +559,7 @@ tutti also checks each session's first `system/init`. Its `mcp_servers` must lis
 What the check accepts, from that spike:
 
 - **tutti's own.** A worker's session also gets tutti's own in-process server, `tutti`, with its requires tools (§4.11), and the check expects it with source `sdk`, as the interview's (§4.10).
-- **Sources.** A definition passed in `mcpServers` shows source `dynamic` (and `mcpServerStatus()` scope `dynamic`), whatever scope tutti resolved it from: tutti can't pass a scope. An in-process server from `createSdkMcpServer` shows `sdk`. A chosen name is accepted with source `dynamic` or `sdk`; the scope tutti resolved it from is accepted too, should a later SDK report it.
+- **Sources.** A definition passed in `mcpServers` shows source `dynamic` (and `mcpServerStatus()` scope `dynamic`), whatever scope tutti resolved it from: tutti can't pass a scope. An in-process server from `createSdkMcpServer` shows `sdk`. A chosen name is accepted with source `dynamic` or `sdk`; the scope tutti resolved it from is accepted too, should a later SDK report it. A Claude Code that predates the field (an older `--claude`) lists servers without a source: a chosen name listed so is a setup problem of its own, `workers' MCP servers are listed without their source in Claude Code's system/init, … so tutti can't check they are the ones it gave: <names>`, not one workers weren't given; a name not chosen is still one they weren't given.
 - **Connectors.** A claude.ai connector shows source `claudeai` and is named `claude.ai <Name>` (`claude.ai Gmail`). That is how the setup check tells that a name refers to a connector.
 - **Statuses.** A server can still be `pending` in the first `system/init`. The check compares names and sources, never statuses.
 

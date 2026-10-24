@@ -271,11 +271,11 @@ describe("checkInit", () => {
     ).toEqual([notGivenProblem(["browserbase"])])
   })
 
-  test("rejects a chosen name with another source, or none", async () => {
+  test("rejects a chosen name with another source", async () => {
     expect(
       await check([
         { name: "postgres", status: "connected", source: "user" },
-        { name: "exa", status: "connected" },
+        { name: "exa", status: "connected", source: "claudeai" },
       ]),
     ).toEqual([notGivenProblem(["postgres", "exa"])])
   })
