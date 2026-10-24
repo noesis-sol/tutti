@@ -1593,7 +1593,7 @@ The JSON Schema is generated from the Effect Schema (`JsonSchema`) and published
 
 ### 8.5 The user config
 
-`$XDG_CONFIG_HOME/tutti/config.json` (`~/.config/tutti/config.json` by default) holds per-person preferences: `mouse`, `notify`, `billing`, `appearance` (`auto`, `light` or `dark`) and `colour_scheme` (§7.11). It is plain JSON, defined with Effect Schema like the settings. The project's settings hold none of these but the colour scheme, and for that the user config's choice wins. Flags override both. Your own colour schemes go in `colour-schemes/` beside it.
+`$XDG_CONFIG_HOME/tutti/config.json` (`~/.config/tutti/config.json` by default; `~` is HOME when it is an absolute path, else the account's home folder, so that an empty HOME doesn't put it under the current folder; the update check's cache, `~/.cache/tutti`, likewise) holds per-person preferences: `mouse`, `notify`, `billing`, `appearance` (`auto`, `light` or `dark`) and `colour_scheme` (§7.11). It is plain JSON, defined with Effect Schema like the settings. The project's settings hold none of these but the colour scheme, and for that the user config's choice wins. Flags override both. Your own colour schemes go in `colour-schemes/` beside it.
 
 ---
 

@@ -33,10 +33,10 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs"
-import { homedir } from "node:os"
 import { dirname, isAbsolute, join } from "node:path"
 import { Duration, Effect, Option, Result, Schema, type Scope } from "effect"
 import { onOff } from "../cli/flags.ts"
+import { homeFolder } from "../project/userConfig.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { parsePublicKey, type ReleaseKey } from "./keys.ts"
@@ -664,11 +664,11 @@ export const checksForUpdates = (
 
 /**
  * The daily check's folder in the user's cache folder: `$XDG_CACHE_HOME/tutti`, or
- * `~/.cache/tutti` when XDG_CACHE_HOME is unset, empty or relative.
+ * `~/.cache/tutti` when XDG_CACHE_HOME is unset, empty or relative; `~` is homeFolder's.
  */
 export const cacheDir = (env: (name: string) => string | undefined): string => {
   const xdg = env("XDG_CACHE_HOME")
-  const base = xdg !== undefined && isAbsolute(xdg) ? xdg : join(env("HOME") ?? homedir(), ".cache")
+  const base = xdg !== undefined && isAbsolute(xdg) ? xdg : join(homeFolder(env("HOME")), ".cache")
   return join(base, "tutti")
 }
 

@@ -1,7 +1,7 @@
 // The user config, `$XDG_CONFIG_HOME/tutti/config.json` (§ 8.5): one person's preferences, for
 // every project. The project's settings hold none of these but the colour scheme, and for that the
 // user config's choice wins; flags override both. A missing file gives the defaults.
-import { homedir } from "node:os"
+import { homedir, userInfo } from "node:os"
 import { isAbsolute, join } from "node:path"
 import { Config, Effect, Option, Schema } from "effect"
 import { choice, readConfigFile, withDefault } from "./configFile.ts"
@@ -23,14 +23,30 @@ export const UserConfig = Schema.Struct({
 export type UserConfig = typeof UserConfig.Type
 
 /**
+ * The user's home folder: HOME when it is an absolute path; else, as for HOME unset, the home
+ * folder of the user's account entry, so that an empty HOME (some cron and service environments)
+ * or a relative one doesn't put tutti's files under the current folder.
+ */
+export const homeFolder = (home: string | undefined): string => {
+  if (home !== undefined && isAbsolute(home)) return home
+  try {
+    return userInfo().homedir
+  } catch {
+    return homedir()
+  }
+}
+
+/**
  * tutti's directory in the user's config directory: `$XDG_CONFIG_HOME/tutti`, or
- * `~/.config/tutti` when XDG_CONFIG_HOME is unset, empty or relative, as the XDG spec says. Both
- * variables are optional strings, which the environment can't fail to give.
+ * `~/.config/tutti` when XDG_CONFIG_HOME is unset, empty or relative, as the XDG spec says; `~` is
+ * homeFolder's. Both variables are optional strings, which the environment can't fail to give.
  */
 export const userConfigDir = Effect.gen(function* () {
   const xdg = yield* Config.option(Config.String("XDG_CONFIG_HOME"))
-  const home = yield* Config.String("HOME").pipe(Config.withDefault(homedir()))
-  const base = Option.filter(xdg, isAbsolute).pipe(Option.getOrElse(() => join(home, ".config")))
+  const home = yield* Config.option(Config.String("HOME"))
+  const base = Option.filter(xdg, isAbsolute).pipe(
+    Option.getOrElse(() => join(homeFolder(Option.getOrUndefined(home)), ".config")),
+  )
   return join(base, "tutti")
 }).pipe(Effect.orDie)
 
