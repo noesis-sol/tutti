@@ -14,7 +14,18 @@
 // the worker's transcript goes on in memory.
 import { fstatSync, readSync, writeSync } from "node:fs"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Clock, Context, Effect, Layer, PubSub, Result, Schema, type Scope, Stream } from "effect"
+import {
+  Clock,
+  Context,
+  Effect,
+  FiberSet,
+  Layer,
+  PubSub,
+  Result,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect"
 import { close, LibcError, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { terminalSafe } from "../run/events.ts"
 import { timestamp } from "../run/localTime.ts"
@@ -410,11 +421,12 @@ export class Transcripts extends Context.Service<
       Transcripts,
       Effect.gen(function* () {
         const warn = options.warn ?? ((message: string) => Effect.logWarning(message))
-        const context = yield* Effect.context<never>()
+        // The warnings are fibers of the layer's scope, which ends any still under way.
+        const warning = yield* FiberSet.runtime(yield* FiberSet.make())()
         const storage = yield* Effect.acquireRelease(
           Effect.sync(() =>
             fileStorage(options.repo, (message) => {
-              Effect.runForkWith(context)(warn(message))
+              warning(warn(message))
             }),
           ),
           (storage) => Effect.sync(() => storage.closeAll()),
