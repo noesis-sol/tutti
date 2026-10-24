@@ -7,7 +7,7 @@
 // of each file it rewrote and leaves the commit to you. It holds the run lock, as init does, so
 // that no run starts in a tree it writes into.
 import { join } from "node:path"
-import { Clock, Effect, FileSystem } from "effect"
+import { Clock, Effect, FileSystem, Option } from "effect"
 import { setIn } from "../project/jsonText.ts"
 import { settingsFile } from "../project/settings.ts"
 import { AtomicWriter, writeFileAtomic } from "../services/atomicFile.ts"
@@ -21,6 +21,7 @@ import {
   currentTemplates,
   type OutdatedTemplate,
   outdatedTemplates,
+  ownVerifier,
   sectionNames,
   type Templates,
   unifiedDiff,
@@ -49,6 +50,10 @@ const currentText = (repo: string, outdated: OutdatedTemplate) => {
   return Effect.succeed(currentPrompt(outdated.text))
 }
 
+/** What `tutti init --update` says of the project's verifier at `path` where it is its own. */
+const ownVerifierDetail = (path: string) =>
+  `${path} is the project's own subagent, not a copy of tutti's verifier template: kept as it is`
+
 /** `updateTemplates`'s writes, made through the FileSystem and AtomicWriter it is given. */
 const planUpdate = (repo: string) =>
   Effect.gen(function* () {
@@ -62,6 +67,13 @@ const planUpdate = (repo: string) =>
     const steps: Array<Step> = []
     const updates: Array<TemplateUpdate> = []
     const verifierThere = yield* fs.exists(join(repo, verifierPath))
+    // A verifier of the project's own takes none of the template's changes: no version is its.
+    const verifierOwn =
+      verifierThere &&
+      Option.exists(
+        yield* fs.readFileString(join(repo, verifierPath)).pipe(Effect.option),
+        ownVerifier,
+      )
     const skillThere = yield* fs.exists(join(repo, skillPath))
     const files = [
       { path: workerPromptPath, label: "worker prompt", there: true },
@@ -72,6 +84,10 @@ const planUpdate = (repo: string) =>
       const found = outdated.find((each) => each.path === file.path)
       if (found === undefined) {
         if (!file.there) continue
+        if (file.path === verifierPath && verifierOwn) {
+          steps.push(step("kept", file.label, ownVerifierDetail(file.path)))
+          continue
+        }
         steps.push(step("kept", file.label, `${file.path} has every change to its template`))
         continue
       }
@@ -89,7 +105,7 @@ const planUpdate = (repo: string) =>
     }
     const now: Templates = {
       worker_prompt: currentTemplates.worker_prompt,
-      verifier: verifierThere ? currentTemplates.verifier : 0,
+      verifier: verifierThere && !verifierOwn ? currentTemplates.verifier : 0,
       check_suite_skill: skillThere ? currentTemplates.check_suite_skill : 0,
     }
     if (
@@ -153,6 +169,18 @@ export const updateTemplates = (repo: string) =>
 /** What is left after `updated`: to read the diff, where it rewrote a file, and to commit. */
 export const updateNext = (updated: TemplatesUpdated): ReadonlyArray<string> => {
   const commit = [...new Set(updated.steps.flatMap((each) => each.commit ?? []))]
+  // A verifier of the project's own has no template's changes to have.
+  const current = [
+    "the worker prompt",
+    ...(updated.steps.some(
+      (each) => each.label === "verifier" && each.detail === ownVerifierDetail(verifierPath),
+    )
+      ? []
+      : ["the verifier"]),
+    ...(updated.steps.some((each) => each.label === "skill")
+      ? ["the create-check-suite skill"]
+      : []),
+  ]
   return [
     ...(updated.updates.length === 0
       ? []
@@ -160,7 +188,7 @@ export const updateNext = (updated: TemplatesUpdated): ReadonlyArray<string> => 
           "Read the diff above: a section rewritten from the template loses the project's own edits in it, which you may want to carry over.",
         ]),
     commit.length === 0
-      ? `Nothing to commit: the worker prompt${updated.steps.some((each) => each.label === "skill") ? ", the verifier and the create-check-suite skill" : " and the verifier"} have every change to their templates.`
+      ? `Nothing to commit: ${joinAnd(current)} ${current.length === 1 ? "has every change to its template" : "have every change to their templates"}.`
       : `Commit ${joinAnd(commit)}.`,
   ]
 }

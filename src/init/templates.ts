@@ -246,6 +246,9 @@ const verifierFile: TemplateFile = {
     !sections(text).some((each) => verifierHeadings.includes(each.title)),
 }
 
+/** Whether `text`, the project's .claude/agents/verifier.md, is its own subagent, not tutti's. */
+export const ownVerifier = (text: string): boolean => verifierFile.own(text)
+
 const skillFile: TemplateFile = {
   path: skillPath,
   template: "create-check-suite skill",
