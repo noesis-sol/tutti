@@ -129,6 +129,11 @@ const rawRanges: ReadonlyArray<readonly [number, number]> = [
   [0x2066, 0x2069],
 ]
 
+// One of them, to pass over the files that hold none.
+const anyRaw = new RegExp(
+  `[${rawRanges.map(([low, high]) => `${raw(low)}-${raw(high)}`).join("")}]`,
+)
+
 /** Each raw control in the text, as `line:column U+code`. */
 const rawControls = (text: string): ReadonlyArray<string> =>
   text.split("\n").flatMap((line, index) =>
@@ -147,11 +152,13 @@ describe("the source", () => {
       readdirSync(join(root, top), { recursive: true, encoding: "utf8" }).flatMap((file) => {
         const path = join(root, top, file)
         if (!statSync(path).isFile()) return []
-        return rawControls(readFileSync(path, "utf8")).map((at) => `${top}/${file}:${at}`)
+        const text = readFileSync(path, "utf8")
+        if (!anyRaw.test(text)) return []
+        return rawControls(text).map((at) => `${top}/${file}:${at}`)
       }),
     )
     expect(found).toEqual([])
-  })
+  }, 30_000)
 
   test("the scan finds a raw control in a comment", () => {
     expect(rawControls(`// a\n// b${raw(0x202e)}c${raw(0x9b)}`)).toEqual([
@@ -159,6 +166,8 @@ describe("the source", () => {
       "2:7 U+009B",
     ])
     expect(rawControls(`"${escaped(0x202e)}" ${allowed.map(raw).join("")}`)).toEqual([])
+    expect(flagged.every((code) => anyRaw.test(`a${raw(code)}b`))).toBe(true)
+    expect(anyRaw.test(`${escaped(0x202e)} ${allowed.map(raw).join("")}`)).toBe(false)
   })
 })
 
