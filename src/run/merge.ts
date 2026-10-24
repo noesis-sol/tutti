@@ -66,7 +66,6 @@ import {
   saidOf,
   uncheckedMark,
 } from "./check.ts"
-import { writtenOnly } from "./checkWrote.ts"
 import {
   type Carried,
   type CheckStop,
@@ -77,6 +76,7 @@ import {
   setAside,
   whyNotFix,
 } from "./checkback.ts"
+import { writtenOnly } from "./checkWrote.ts"
 import type { Event } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
 import {
@@ -1105,7 +1105,7 @@ export const closeUnchanged = (
   unchanged: Unchanged,
 ): Effect.Effect<void, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { worktrees, beads, ledger } = yield* services
+    const { beads, ledger } = yield* services
     const { id, title, branch, worktree } = ticket
     if (unchanged.own) yield* restoreBranch(ticket, options.base, 1)
     const cleanup = yield* removeMerged(ticket)
@@ -1191,7 +1191,7 @@ export const fastForward = (
   at: string,
 ): Effect.Effect<FastForward, never, MergeEnv> =>
   Effect.gen(function* () {
-    const { git, worktrees, beads, ledger, log } = yield* services
+    const { git, beads, ledger, log } = yield* services
     const { id, title, branch, worktree } = ticket
     const { repo, base } = options
     yield* ledger.refine(id, Detail.Step({ step: "fast-forward" }))
