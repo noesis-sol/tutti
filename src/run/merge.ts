@@ -168,22 +168,20 @@ export interface Unchanged {
 }
 
 /**
- * What the fast-forward found instead of merging: the branch moved on to `to` from the commit its
- * check passed on, as when its worker committed while it ran, so it is checked again first.
+ * What the fast-forward did: merged the branch; stopped the merges (`stop`), as the main checkout
+ * or git kept it from merging; or, instead of merging, found the branch moved on to `to` from the
+ * commit its check passed on, as when its worker committed while it ran, so it is checked again
+ * first (Moved); or found the base moved on to `to` from `onto`, the commit the branch was rebased
+ * onto or is on top of, so it is rebased and checked again first (BaseMoved).
  */
-export interface Moved {
-  readonly _tag: "Moved"
-  readonly to: string
-}
+export type FastForward = Data.TaggedEnum<{
+  Merged: Record<never, never>
+  Stopped: { readonly stop: MergeStop }
+  Moved: { readonly to: string }
+  BaseMoved: { readonly to: string }
+}>
 
-/**
- * What the fast-forward found instead of merging: the base moved on to `to` from `onto`, the commit
- * the branch was rebased onto or is on top of, so it is rebased and checked again first.
- */
-export interface BaseMoved {
-  readonly _tag: "BaseMoved"
-  readonly to: string
-}
+export const FastForward = Data.taggedEnum<FastForward>()
 
 /**
  * How many passes may find the base moved and rebase onto it. Only merges move it during a run,
@@ -267,6 +265,10 @@ export const stopOver = (ticket: FinishedTicket, why: StopWhy, blocked: string, 
     yield* block(ticket, why, record, text)
     return { why, code: stopCodes[why], ticket: ticket.id, line: text } satisfies MergeStop
   })
+
+/** A stop of the merges, as fastForward's result. */
+const stopped = (...stop: Parameters<typeof stopOver>) =>
+  Effect.map(stopOver(...stop), (made) => FastForward.Stopped({ stop: made }))
 
 /** How many times a git read that steers a merge is made while it fails, as orchestra asks git. */
 export const gitTries = 3
@@ -1139,20 +1141,20 @@ export const closeEpics = (id: string) =>
  * The protected step: the base fast-forwarded to `at`, the commit the ticket's merge check passed
  * on, its branch on top of the base at `onto`, in the main checkout, then the worktree and branch
  * removed, the ticket Done and forgotten in state.json, the `unmerged` label an earlier run gave it
- * removed, and the epics above it closed. Undefined when it merged; the stop when the main checkout
- * or git kept it from merging; Moved, nothing merged, when its branch is no longer at `at`, as
- * when its worker committed after its check passed: the merge checks it again. A fast-forward git
- * refuses is BaseMoved when the base is no longer at `onto` (a commit made on it by hand), for the
- * merge to rebase and check the branch again; tried again, up to gitTries in all, while the branch
- * still fast-forwards onto it (as with another's .git/index.lock), then GIT_FAILED; MERGE_FAILED
- * only when it doesn't.
+ * removed, and the epics above it closed. Merged when it merged; Stopped, with the stop, when the
+ * main checkout or git kept it from merging; Moved, nothing merged, when its branch is no longer at
+ * `at`, as when its worker committed after its check passed: the merge checks it again. A
+ * fast-forward git refuses is BaseMoved when the base is no longer at `onto` (a commit made on it
+ * by hand), for the merge to rebase and check the branch again; tried again, up to gitTries in
+ * all, while the branch still fast-forwards onto it (as with another's .git/index.lock), then
+ * GIT_FAILED; MERGE_FAILED only when it doesn't.
  */
 export const fastForward = (
   ticket: FinishedTicket,
   options: MergeOptions,
   onto: string,
   at: string,
-): Effect.Effect<MergeStop | Moved | BaseMoved | undefined, never, MergeEnv> =>
+): Effect.Effect<FastForward, never, MergeEnv> =>
   Effect.gen(function* () {
     const { git, worktrees, beads, ledger, log } = yield* services
     const { id, title, branch, worktree } = ticket
@@ -1166,7 +1168,7 @@ export const fastForward = (
       }),
     )
     if (Result.isFailure(checkout)) {
-      return yield* stopOver(
+      return yield* stopped(
         ticket,
         "GIT_FAILED",
         "git failed",
@@ -1174,7 +1176,7 @@ export const fastForward = (
       )
     }
     if (checkoutChanges(checkout.success.status).length > 0) {
-      return yield* stopOver(
+      return yield* stopped(
         ticket,
         "DIRTY_TREE",
         "main checkout has uncommitted changes",
@@ -1183,7 +1185,7 @@ export const fastForward = (
     }
     const on = checkout.success.on
     if (on._tag === "None" || on.value !== base) {
-      return yield* stopOver(
+      return yield* stopped(
         ticket,
         "DIRTY_TREE",
         `main checkout is not on ${base}`,
@@ -1193,7 +1195,7 @@ export const fastForward = (
     // Read last, just before the merge: only the commit checked merges.
     const head = yield* Effect.result(steering(git.revParse(repo, branch)))
     if (Result.isFailure(head)) {
-      return yield* stopOver(
+      return yield* stopped(
         ticket,
         "GIT_FAILED",
         "git failed",
@@ -1204,7 +1206,7 @@ export const fastForward = (
       yield* log.write(
         detail`${branch} moved on to ${head.success.slice(0, 7)} after its check passed on ${at.slice(0, 7)}: checking it again before it merges`,
       )
-      return { _tag: "Moved", to: head.success } satisfies Moved
+      return FastForward.Moved({ to: head.success })
     }
     let merged = yield* Effect.result(git.fastForward(repo, at))
     for (let tries = 1; Result.isFailure(merged); tries++) {
@@ -1215,7 +1217,7 @@ export const fastForward = (
         ? changed.success.filter((path) => local.has(path)).sort()
         : []
       if (inTheWay.length > 0) {
-        return yield* stopOver(
+        return yield* stopped(
           ticket,
           "DIRTY_TREE",
           "main checkout has uncommitted changes",
@@ -1231,7 +1233,7 @@ export const fastForward = (
         }),
       )
       if (Result.isFailure(now)) {
-        return yield* stopOver(
+        return yield* stopped(
           ticket,
           "GIT_FAILED",
           "git failed",
@@ -1242,10 +1244,10 @@ export const fastForward = (
         yield* log.write(
           detail`${base} moved on to ${now.success.base.slice(0, 7)} before ${branch} fast-forwarded onto ${onto.slice(0, 7)}: rebasing and checking it again before it merges`,
         )
-        return { _tag: "BaseMoved", to: now.success.base } satisfies BaseMoved
+        return FastForward.BaseMoved({ to: now.success.base })
       }
       if (now.success.fork !== now.success.base) {
-        return yield* stopOver(
+        return yield* stopped(
           ticket,
           "MERGE_FAILED",
           `does not fast-forward onto ${base}`,
@@ -1254,7 +1256,7 @@ export const fastForward = (
       }
       // It still fast-forwards: git was kept from merging it, which a few seconds may clear.
       if (tries >= gitTries) {
-        return yield* stopOver(
+        return yield* stopped(
           ticket,
           "GIT_FAILED",
           "git failed",
@@ -1301,5 +1303,5 @@ export const fastForward = (
     const shown = yield* Effect.result(beads.show(id))
     if (Result.isSuccess(shown) && shown.success.labels.includes(unmergedLabel)) yield* unlabel(id)
     yield* closeEpics(id)
-    return undefined
+    return FastForward.Merged()
   })

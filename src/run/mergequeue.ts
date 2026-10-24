@@ -45,6 +45,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect"
+import { absurd } from "effect/Function"
 import { makePasses } from "./check.ts"
 import { type CheckStop, fixCheck, fixResolution, handOverFix, makeFixes } from "./checkback.ts"
 import { RunFibers } from "./fibers.ts"
@@ -391,19 +392,26 @@ export const make = (
             if (prepared._tag === "HandBack") return yield* handBack(prepared.stop)
             if (prepared._tag === "FixBack") return yield* fixBack(prepared.stop)
             if (prepared._tag === "Unchanged") yield* closeUnchanged(ticket, options, prepared)
-            const ended =
-              prepared._tag === "Over"
-                ? prepared.stop
-                : prepared._tag === "Ready"
-                  ? yield* fastForward(ticket, options, prepared.onto, prepared.at)
-                  : undefined
-            // Its branch moved on after its check passed, or the base before it merged: the commit
-            // it is at now is checked first, on the base as it is now.
-            if (ended !== undefined && "_tag" in ended) {
-              prepared = yield* prepareIt
-              continue
+            if (prepared._tag !== "Ready") {
+              stop = prepared._tag === "Over" ? prepared.stop : undefined
+              break
             }
-            stop = ended
+            const ended = yield* fastForward(ticket, options, prepared.onto, prepared.at)
+            switch (ended._tag) {
+              case "Merged":
+                break
+              case "Stopped":
+                stop = ended.stop
+                break
+              // Its branch moved on after its check passed, or the base before it merged: the
+              // commit it is at now is checked first, on the base as it is now.
+              case "Moved":
+              case "BaseMoved":
+                prepared = yield* prepareIt
+                continue
+              default:
+                return absurd(ended)
+            }
             break
           }
           // A merge that changed .tutti/settings.json may set the setup the run uses from now on.
