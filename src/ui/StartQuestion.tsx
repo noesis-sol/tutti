@@ -9,9 +9,9 @@
 import type { KeyBinding, TextareaRenderable } from "@opentui/core"
 import type { Effect } from "effect"
 import { useRef, useState } from "react"
-import { type Answers, ask, Field, Hint } from "./Form.tsx"
+import { type Answers, ask, Field, Hint, Targets } from "./Form.tsx"
 import { type Command, useFormCommands } from "./keyCommands.ts"
-import { Lines, seg, styled, targeting } from "./line.tsx"
+import { seg, styled } from "./line.tsx"
 import {
   describeDescription,
   describeTitle,
@@ -142,14 +142,13 @@ export const StartQuestion = ({
       <Field theme={theme} focused={step === "choose"}>
         <text {...styled(form.fieldTitle)}>{startTitle}</text>
         <text {...styled(form.description)}>{startDescription}</text>
-        <Lines
-          lines={options.map((option, at) =>
-            targeting(
-              at === highlighted
-                ? [seg("> ", form.selector), seg(option, form.selected)]
-                : [seg(`  ${option}`, form.option)],
-              at,
-            ),
+        <Targets
+          // The form's padding and the field's bar.
+          inset={4}
+          each={options.map((option, at) =>
+            at === highlighted
+              ? [seg("> ", form.selector), seg(option, form.selected)]
+              : [seg(`  ${option}`, form.option)],
           )}
           press={(at) => {
             setHighlighted(() => at)

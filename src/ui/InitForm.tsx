@@ -40,11 +40,11 @@ import type { InitForm } from "../init/init.ts"
 import { serverLabel } from "../init/workers.ts"
 import type { Key } from "../run/runView.ts"
 import { outputMode, type TtyValue } from "../services/Tty.ts"
-import { clickable, Field, Hint, Themed } from "./Form.tsx"
+import { clickable, Field, Hint, Targets, Themed } from "./Form.tsx"
 import { initAbout, initTitle, scoutClock } from "./initTitle.ts"
 import { type Command, useFormCommands } from "./keyCommands.ts"
 import { InputGuards } from "./keys.ts"
-import { Line, Lines, type Press, type Segments, seg, styled, targeting, wrap } from "./line.tsx"
+import { Line, type Segments, seg, styled, wrap } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Style, Theme } from "./theme.ts"
@@ -231,24 +231,6 @@ const Paragraph = ({
   )
 }
 
-/**
- * Click targets one under the other, each `each`'s segments wrapped as Paragraph wraps its text:
- * a click on target `index`'s lines presses `index`.
- */
-const Targets = ({
-  each,
-  press,
-}: {
-  readonly each: ReadonlyArray<Segments>
-  readonly press: Press
-}) => {
-  const { width } = useTerminalDimensions()
-  const lines = each.flatMap((segments, index) =>
-    wrap(targeting(segments, index), Math.max(width - fieldInset, 1)),
-  )
-  return <Lines lines={lines} press={press} />
-}
-
 /** The text of a field's title and description, as huh draws them. */
 const Heading = ({
   theme,
@@ -325,6 +307,7 @@ const SelectView = ({
       <Field theme={theme} focused>
         <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
         <Targets
+          inset={fieldInset}
           each={options.map((option, index) =>
             index === at
               ? [seg("> ", form.selector), seg(option, form.selected)]
@@ -421,6 +404,7 @@ const ChecklistView = ({
       <Field theme={theme} focused>
         <Heading theme={theme} title={asking.field.title} description={asking.field.description} />
         <Targets
+          inset={fieldInset}
           each={options.map((option, index) => [
             seg(index === at ? "> " : "  ", form.selector),
             ...(ticked.has(index)
@@ -459,6 +443,7 @@ const ScoutView = ({
         </text>
         <text {...styled(form.description)}>Its tests, lints, type checks and builds.</text>
         <Targets
+          inset={fieldInset}
           each={[
             [seg("Esc", styles.key), seg(": skip and type a check yourself", form.description)],
           ]}

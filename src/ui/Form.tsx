@@ -6,12 +6,12 @@
 // the renderer to the screen after it: the dashboard, or the interview. Taking the mouse, the form
 // has the run's guards in front of its keys (InputGuards): a mouse report split between two reads
 // neither cancels it as a lone Esc nor types its rest into a field.
-import { createRoot } from "@opentui/react"
+import { createRoot, useTerminalDimensions } from "@opentui/react"
 import { Effect } from "effect"
 import { type ReactNode, useMemo, useSyncExternalStore } from "react"
 import type { Key } from "../run/runView.ts"
 import { InputGuards } from "./keys.ts"
-import { plainFg, type Segments, seg, styled } from "./line.tsx"
+import { Lines, type Press, plainFg, type Segments, seg, styled, targeting, wrap } from "./line.tsx"
 import { FormCancelled } from "./questions.ts"
 import type { Shell } from "./renderer.ts"
 import type { Appearance, Theme } from "./theme.ts"
@@ -44,6 +44,27 @@ export const Field = ({
       {children}
     </box>
   )
+
+/**
+ * Click targets one under the other, each `each`'s segments wrapped by tutti's wrap to the screen's
+ * width less `inset` columns, as a field's text is: a click on target `index`'s lines presses
+ * `index`.
+ */
+export const Targets = ({
+  each,
+  inset,
+  press,
+}: {
+  readonly each: ReadonlyArray<Segments>
+  readonly inset: number
+  readonly press: Press
+}) => {
+  const { width } = useTerminalDimensions()
+  const lines = each.flatMap((segments, index) =>
+    wrap(targeting(segments, index), Math.max(width - inset, 1)),
+  )
+  return <Lines lines={lines} press={press} />
+}
 
 /**
  * The keys there are, under a form, as bubbles' help draws them for huh: each key in helpKey, its

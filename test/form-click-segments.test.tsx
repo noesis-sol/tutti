@@ -1,5 +1,5 @@
-// The forms' click targets as segments (D9, § 7.3): an init option wrapped onto two lines is one
-// target on both; the answer form's frame is boxed's, drawn as text, and an option's row is its
+// The forms' click targets as segments (D9, § 7.3): an init option or the start question's wrapped
+// onto two lines is one target on both; the answer form's frame is boxed's, drawn as text, and an option's row is its
 // target to the frame, past its text.
 import { describe, expect, test } from "bun:test"
 import { Effect, Queue } from "effect"
@@ -13,6 +13,8 @@ import { Screen } from "../src/run/screen.ts"
 import { Root } from "../src/ui/App.tsx"
 import { settle } from "../src/ui/attentionKeys.ts"
 import { type Asking, emptyScreen, InitView } from "../src/ui/InitForm.tsx"
+import { TicketCount } from "../src/ui/questions.ts"
+import { StartQuestion } from "../src/ui/StartQuestion.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { emptyTranscript, type TranscriptState } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
@@ -56,6 +58,30 @@ describe("init's checklist", () => {
       await rendered.input((setup) => setup.mockInput.pressEnter())
     })
     expect(said).toEqual([[0]])
+  })
+})
+
+describe("the start question on a narrow screen", () => {
+  test("New feature wraps onto a second line, a click there choosing it", async () => {
+    const said: Array<unknown> = []
+    const node = (
+      <StartQuestion
+        theme={themeOf("dark")}
+        count={TicketCount.Ready({ n: 3 })}
+        answer={(work) => said.push(work)}
+        cancel={() => {}}
+      />
+    )
+    await withRender(node, { width: 40, height: 16 }, async (rendered) => {
+      const lines = linesOf(await rendered.capture())
+      const y = lines.findIndex((line) => line.includes("New feature"))
+      expect(y).toBeGreaterThan(0)
+      expect(lines[y + 1]).toContain("through, run its tickets")
+      const x = (lines[y + 1] ?? "").indexOf("through")
+      await rendered.input((setup) => setup.mockMouse.click(x + 2, y + 1))
+      expect((await rendered.capture()).chars).toContain("> New feature")
+    })
+    expect(said).toEqual([])
   })
 })
 
