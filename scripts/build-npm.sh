@@ -43,6 +43,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# The TUTTI_BUILD_COMMIT define: "" for a release, else the commit, or none outside a git checkout,
+# where the bundle defines none and shows the bare version, as scripts/build.sh's builds do.
 if [ "$release" = true ]; then
   if [ -n "$(git status --porcelain)" ]; then
     echo "scripts/build-npm.sh: --release needs a clean tree; git status lists changes:" >&2
@@ -58,6 +60,7 @@ else
 fi
 
 rm -rf -- "$out"
-bun build --target=bun src/npm.ts --outdir "$out" --entry-naming tutti.js \
-  --define 'process.env.NODE_ENV:"production"' --define "TUTTI_BUILD_COMMIT:\"$commit\"" \
+set -- --define 'process.env.NODE_ENV:"production"'
+if [ "$commit" != none ]; then set -- "$@" --define "TUTTI_BUILD_COMMIT:\"$commit\""; fi
+bun build --target=bun src/npm.ts --outdir "$out" --entry-naming tutti.js "$@" \
   --external '@opentui/core-*' --external '@anthropic-ai/claude-agent-sdk-*'
