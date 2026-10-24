@@ -18,7 +18,7 @@
 import { posix } from "node:path"
 import { Deferred, Effect, Ref, Result, Stream } from "effect"
 import type { AgentHost } from "../agent/AgentHost.ts"
-import { Beads } from "../services/Beads.ts"
+import { Beads, type Issue } from "../services/Beads.ts"
 import type { CheckError } from "../services/Checks.ts"
 import { Git } from "../services/Git.ts"
 import { trackedChanges, untrackedFiles } from "../services/gitStatus.ts"
@@ -203,18 +203,16 @@ const movedOn = (options: MergeOptions, onto: string) =>
     return base !== onto && (yield* git.mergeBase(options.repo, onto, base)) === onto
   }).pipe(Effect.orElseSucceed(() => false))
 
-/** Why the ticket is left as it is rather than checked once more, or undefined. */
-const whyNot = (recheck: Recheck, options: MergeOptions) =>
+/**
+ * Why the ticket, `issue` as bd has it now, is left as it is rather than checked once more, or
+ * undefined.
+ */
+const whyNot = (recheck: Recheck, issue: Issue, options: MergeOptions) =>
   Effect.gen(function* () {
-    const beads = yield* Beads
     const git = yield* Git
     const ledger = yield* Ledger
     const { id, branch, worktree } = recheck.ticket
-    const issue = yield* Effect.result(beads.show(id))
-    if (Result.isFailure(issue)) {
-      return line`bd could not say whether it is still closed: ${beadsWhy(issue.failure)}`
-    }
-    if (issue.success.status !== "closed") return line`it is ${issue.success.status} now`
+    if (issue.status !== "closed") return line`it is ${issue.status} now`
     const status = yield* Effect.result(git.status(worktree))
     if (Result.isFailure(status) || trackedChanges(status.success).length > 0) {
       return line`${worktree} has uncommitted changes`
@@ -280,8 +278,15 @@ export const recheckDue = (
         if (!(yield* options.recheckSlot(id, work))) break
       }
       const put = Effect.gen(function* () {
+        // bd failing doesn't use up its recheck: it stays waiting, asked again at the next look.
+        const issue = yield* Effect.result((yield* Beads).show(id))
+        if (Result.isFailure(issue)) {
+          const text = detail`${id} is not checked again yet: bd could not say whether it is still closed: ${beadsWhy(issue.failure)}; it is asked again at the next look`
+          yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))
+          return
+        }
         if (!(yield* rechecks.take(id))) return
-        const why = yield* whyNot(recheck, options)
+        const why = yield* whyNot(recheck, issue.success, options)
         if (why !== undefined) {
           const text = detail`${id} is not checked again: ${why}; it stays set aside`
           yield* logs.writeWith([text], events.emit({ kind: "info", ticket: id, text }))

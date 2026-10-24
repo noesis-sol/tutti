@@ -146,9 +146,9 @@ const takeAsMerged = (
   })
 
 /**
- * Asks git, once the base has moved on since `seen` (the base as it last asked), of each ticket
- * closed but not merged whether it was merged by hand since, and takes those that were as merged
- * (see above). The tickets it found merged.
+ * Asks git, once the base has moved on since `seen` (the base as it last asked, bd answering for
+ * every ticket), of each ticket closed but not merged whether it was merged by hand since, and
+ * takes those that were as merged (see above). The tickets it found merged.
  */
 export const mergedByHand = (
   seen: Ref.Ref<string | undefined>,
@@ -165,10 +165,12 @@ export const mergedByHand = (
     // git failing, it is asked again as the run next looks.
     const head = yield* Effect.result(git.revParse(options.repo, base))
     if (Result.isFailure(head)) return []
-    const moved = yield* Ref.modify(seen, (was) => [was !== head.success, head.success] as const)
-    if (!moved) return []
+    if ((yield* Ref.get(seen)) === head.success) return []
 
     const found: Array<string> = []
+    // bd failing for a ticket, the base isn't taken as seen: the next look asks again, though it
+    // hasn't moved, and so does the run's last.
+    let failed = false
     const waiting = new Set((yield* memory.handBacks.waiting).map((each) => each.ticket.id))
     const state = yield* ledger.current
     for (const entry of state.tickets.values()) {
@@ -176,7 +178,11 @@ export const mergedByHand = (
       if (phase !== "Review" && phase !== "Blocked") continue
       if (handBackWaits(entry) || waiting.has(entry.ticket)) continue
       const shown = yield* Effect.result(beads.show(entry.ticket))
-      if (Result.isFailure(shown) || shown.success.status !== "closed") continue
+      if (Result.isFailure(shown)) {
+        failed = true
+        continue
+      }
+      if (shown.success.status !== "closed") continue
       const merged = (yield* mergedSince(shown.success, options)).merged
       if (merged === undefined) continue
       // Still as it was: a recheck may have taken it up meanwhile.
@@ -188,6 +194,7 @@ export const mergedByHand = (
     // Those an earlier run left `unmerged` that this run hasn't taken up.
     const labelled = yield* Effect.result(beads.list({ status: "closed", labels: [unmergedLabel] }))
     if (Result.isFailure(labelled)) return found
+    if (!failed) yield* Ref.set(seen, head.success)
     for (const issue of labelled.success) {
       if (state.tickets.has(issue.id) || found.includes(issue.id)) continue
       const merged = (yield* mergedSince(issue, options)).merged
