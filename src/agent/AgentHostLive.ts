@@ -80,6 +80,7 @@ import { readmeName } from "../project/requires.ts"
 import { checkCommands } from "../project/settings.ts"
 import { detail, Log } from "../run/log.ts"
 import { OtherWorkers } from "../run/machine.ts"
+import { timeoutAwake } from "../services/Wake.ts"
 import type { AccountProbe } from "./Account.ts"
 import {
   AgentGone,
@@ -137,7 +138,10 @@ export const resumedNotes = (notes: string): string =>
   `now of the project's requires list and its check, which may have changed since:\n\n` +
   `${notes.trim().replace(/\n{3,}/g, "\n\n")}\n\n`
 
-/** How long a session has to start: Claude Code spawned and its initialize answered. */
+/**
+ * How long a session has to start: Claude Code spawned and its initialize answered, counted awake
+ * (src/services/Wake.ts).
+ */
 export const startLimit: Duration.Duration = Duration.minutes(1)
 
 /**
@@ -149,7 +153,8 @@ export const closeLimit: Duration.Duration = Duration.seconds(10)
 /**
  * How long an interrupt's control requests, the interrupt and each `cancel_async_message`, have to
  * be answered together: the SDK gives them no timer, so a Claude Code alive but not answering would
- * hold the caller forever. Past it the session is aborted and its worker gone.
+ * hold the caller forever. Past it, counted awake (src/services/Wake.ts), the session is aborted
+ * and its worker gone.
  */
 export const interruptLimit: Duration.Duration = Duration.seconds(10)
 
@@ -689,7 +694,7 @@ export const layer = (
             try: () => opened.query.initializationResult(),
             catch: (cause): unknown => cause,
           }).pipe(
-            Effect.timeoutOrElse({
+            timeoutAwake({
               duration: startLimit,
               orElse: () => Effect.fail(`no answer within ${Duration.format(startLimit)}`),
             }),
@@ -848,7 +853,7 @@ export const layer = (
         interrupt: (ticket) =>
           Effect.flatMap(sessionOf(ticket), (session) =>
             interruptIn(session).pipe(
-              Effect.timeoutOrElse({
+              timeoutAwake({
                 duration: interruptWithin,
                 orElse: () => unanswered(session),
               }),

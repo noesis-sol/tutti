@@ -4,11 +4,14 @@
 import { describe, expect, test } from "bun:test"
 import { chmodSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Clock, Duration, Effect, Exit, Fiber, Layer, Ref, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
+import { AgentHost } from "../src/agent/AgentHost.ts"
+import { layer as hostLayer } from "../src/agent/AgentHostLive.ts"
+import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
 import { addRecord, figuresLines, noFigures } from "../src/run/figures.ts"
 import { clock } from "../src/run/localTime.ts"
@@ -28,10 +31,13 @@ import {
 } from "../src/services/Wake.ts"
 import { bash, result, type SessionScript, sleep, turn } from "../src/testing/AgentHost.ts"
 import * as TestAppConfig from "../src/testing/AppConfig.ts"
-import { waitForTest } from "../src/testing/Attention.ts"
+import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import * as TestEvents from "../src/testing/EventStream.ts"
+import { layer as ledgerLayer } from "../src/testing/Ledger.ts"
 import * as TestLog from "../src/testing/Log.ts"
+import { layer as transcriptsLayer } from "../src/testing/Transcripts.ts"
 import { Asleep, layer as asleepLayer } from "../src/testing/Wake.ts"
+import { testEnv } from "./env.ts"
 import { backlog, expectExitCode, expectPhases, scenario, type World } from "./harness.ts"
 
 const minutes = (n: number) => n * 60_000
@@ -205,7 +211,7 @@ describe("a limit counted awake", () => {
 
 const folder = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `tutti-sleep-${name}-`)))
 
-describe("commands across a sleep", () => {
+describe("commands and sessions across a sleep", () => {
   // The live clock: a sleep noted from now for 10 s, which the command's second falls in.
   const asleepFromNow = Effect.flatMap(Asleep, ({ noted }) => {
     const now = Date.now()
@@ -259,6 +265,58 @@ describe("commands across a sleep", () => {
     )
     expect(Exit.isSuccess(exit)).toBe(true)
   }, 15_000)
+
+  test("an interrupt Claude Code doesn't answer is given its limit awake", async () => {
+    // The fake Claude Code leaves the interrupt unanswered: 500 ms awake, after the 10 s asleep.
+    const dir = folder("interrupt")
+    const host = hostLayer({
+      prompt: { text: "Work on TICKET_ID.", file: null },
+      servers: { servers: [], note: noServersNote },
+      account: { billing: { _tag: "Subscription", keyUnused: false }, subscription: true },
+      env: {
+        ...testEnv,
+        FAKE_CLAUDE_SCENARIO: JSON.stringify({
+          turns: [[{ hang: true }]],
+          interrupt: "unanswered",
+          log: join(dir, "fake.jsonl"),
+        }),
+      },
+      interruptLimit: Duration.millis(500),
+    })
+    const fake = resolve(import.meta.dir, "fixtures/fake-claude/claude.ts")
+    const layer = host.pipe(
+      Layer.provideMerge(Layer.mergeAll(attentionLayer(waitForTest), transcriptsLayer())),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          ledgerLayer(),
+          TestAppConfig.layer(
+            TestAppConfig.appConfig({ claude: fake, settings: defaultSettings }, dir),
+          ),
+          asleepLayer,
+          BunServices.layer,
+        ),
+      ),
+    )
+    const took = await Effect.runPromise(
+      Effect.gen(function* () {
+        const agents = yield* AgentHost
+        yield* agents.start("t-1", { sessionId: "11111111-1111-4111-8111-111111111111", cwd: dir })
+        yield* agents.send("t-1", "Go.", "clientComposed")
+        yield* agents.state("t-1").pipe(
+          Stream.takeUntil((state) => state._tag === "Working"),
+          Stream.runDrain,
+        )
+        const { noted } = yield* Asleep
+        const started = Date.now()
+        yield* noted({ from: started, to: started + 1500 })
+        yield* Effect.ignore(agents.interrupt("t-1"))
+        const took = Date.now() - started
+        yield* Effect.ignore(agents.close("t-1"))
+        return took
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(took).toBeGreaterThanOrEqual(1900)
+  }, 20_000)
 })
 
 describe("what the run says of a sleep", () => {
