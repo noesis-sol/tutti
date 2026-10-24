@@ -13,7 +13,6 @@ import { AgentHost } from "../src/agent/AgentHost.ts"
 import { layer as liveLayer } from "../src/agent/AgentHostLive.ts"
 import { noServersNote } from "../src/agent/mcp.ts"
 import { defaultSettings } from "../src/cli/AppConfig.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
 import { noteCompaction, noteCompactions } from "../src/run/compactions.ts"
@@ -181,8 +180,8 @@ describe("a whole run", () => {
     const repo = folder("repo")
     const root = folder("worktrees")
     const calls: Array<OrganCallRecord> = []
-    const organs = Layer.mergeAll(Organs.layer, OrganCost.layer).pipe(
-      Layer.provide(cannedLayer({ reviewer: { report: "The run merged t-1.\n" } }, calls)),
+    const organs = Organs.layer.pipe(
+      Layer.provideMerge(cannedLayer({ reviewer: { report: "The run merged t-1.\n" } }, calls)),
     )
     const theme = makeTheme(orchestra, { appearance: "dark", depth: "truecolor", noColor: true })
     // Claims its ticket, is compacted, commits and closes it.

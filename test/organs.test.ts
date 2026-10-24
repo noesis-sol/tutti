@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { Duration, Effect, Fiber, Layer, Schema } from "effect"
-import { AiError } from "effect/ai"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
-import { metadataKey } from "../src/organs/AgentSdkLanguageModel.ts"
 import {
   escapeEvidence,
   evidenceRule,
@@ -28,7 +26,13 @@ import {
 import type { Log } from "../src/run/log.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
-import { type Answers, layer as cannedLayer, type OrganCallRecord } from "../src/testing/Organs.ts"
+import {
+  type Answers,
+  layer as cannedLayer,
+  messages,
+  type OrganCallRecord,
+  result,
+} from "../src/testing/Organs.ts"
 
 const Verdict = Schema.Struct({
   cause: Schema.Literals(["environment", "instructions", "problem"]),
@@ -52,9 +56,8 @@ const run = async <A, E>(setup: Setup, effect: Effect.Effect<A, E, Organs | Log>
   const deps = Layer.mergeAll(
     cannedLayer(setup.answers ?? { triage: answer }, calls),
     configLayer(appConfig(setup.config ?? {})),
-    logLayer(),
     Layer.succeed(OrganHold, { held: Effect.succeed(setup.held ?? false) }),
-  )
+  ).pipe(Layer.provideMerge(logLayer()))
   const [exit, log] = await Effect.runPromise(
     Effect.gen(function* () {
       const exit = yield* Effect.exit(effect)
@@ -244,30 +247,14 @@ describe("Organs", () => {
   })
 
   test("a refusal is OrganRefused", async () => {
-    const refused = Effect.fail(
-      AiError.make({
-        module: "test",
-        method: "generateText",
-        reason: new AiError.ContentPolicyError({ description: "model_refusal_no_fallback" }),
-      }),
-    )
+    const refused = messages(result({ stop_reason: "refusal" }))
     const { exit } = await run({ answers: { triage: refused } }, ask(organ()))
     expect(failure(exit)).toMatchObject({ _tag: "OrganRefused", organ: "triage" })
   })
 
   test("retries exhausted is OrganFailed with the result's subtype", async () => {
     const subtype = "error_max_structured_output_retries"
-    const failed = Effect.fail(
-      AiError.make({
-        module: "test",
-        method: "generateText",
-        reason: new AiError.StructuredOutputError({
-          description: subtype,
-          responseText: "",
-          metadata: { [metadataKey]: { subtype } },
-        }),
-      }),
-    )
+    const failed = messages(result({ subtype, is_error: true, errors: ["no valid output"] }))
     const { exit } = await run({ answers: { triage: failed } }, ask(organ()))
     expect(failure(exit)).toMatchObject({ _tag: "OrganFailed", organ: "triage", subtype })
   })
@@ -292,7 +279,9 @@ describe("Organs", () => {
         Effect.provide(
           Organs.layer.pipe(
             Layer.provide(
-              Layer.mergeAll(cannedLayer({ triage: answer }, calls), configLayer(), logLayer()),
+              Layer.mergeAll(cannedLayer({ triage: answer }, calls), configLayer()).pipe(
+                Layer.provideMerge(logLayer()),
+              ),
             ),
           ),
         ),

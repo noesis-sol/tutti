@@ -72,10 +72,8 @@ const runInit = async (
 ): Promise<InitSummary> => {
   const organs = Organs.layer.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(
-        cannedLayer({}, []),
-        TestAppConfig.layer(TestAppConfig.appConfig({})),
-        logLayer(),
+      Layer.mergeAll(cannedLayer({}, []), TestAppConfig.layer(TestAppConfig.appConfig({}))).pipe(
+        Layer.provideMerge(logLayer()),
       ),
     ),
   )

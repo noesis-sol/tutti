@@ -316,7 +316,9 @@ const runScout = async (answers: Answers) => {
       Effect.provide(
         Organs.layer.pipe(
           Layer.provideMerge(
-            Layer.mergeAll(cannedLayer(answers, calls), configLayer(appConfig({})), logLayer()),
+            Layer.mergeAll(cannedLayer(answers, calls), configLayer(appConfig({}))).pipe(
+              Layer.provideMerge(logLayer()),
+            ),
           ),
         ),
       ),

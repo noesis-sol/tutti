@@ -185,8 +185,7 @@ const runInit = async (project: Project) => {
       Layer.mergeAll(
         cannedLayer({ scout: { suites: [], stack: [], note: "" } }, []),
         TestAppConfig.layer(TestAppConfig.appConfig({})),
-        logLayer(),
-      ),
+      ).pipe(Layer.provideMerge(logLayer())),
     ),
   )
   return Effect.runPromise(

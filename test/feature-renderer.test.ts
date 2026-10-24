@@ -135,11 +135,10 @@ const feature = async (options: Parameters<typeof talk>[0] = {}) => {
       Layer.mergeAll(
         cannedLayer({ screen: { verdict: "ok", reason: "" }, plan: onePlan }, []),
         configLayer(appConfig({ repo })),
-        logLayer(),
         beadsLayer([]),
         memoryGit({ dir: repo, files: repoFiles }),
         BunServices.layer,
-      ),
+      ).pipe(Layer.provideMerge(logLayer())),
     ),
   )
   const ran = await Effect.runPromise(

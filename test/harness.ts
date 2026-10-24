@@ -20,6 +20,7 @@ import type { Transcripts } from "../src/agent/Transcripts.ts"
 import type { UsageLimits } from "../src/agent/UsageLimits.ts"
 import type { UsageProbe } from "../src/agent/UsageProbe.ts"
 import type { AppConfig, AppConfigValue } from "../src/cli/AppConfig.ts"
+import type { OrganCost } from "../src/organs/OrganCost.ts"
 import type { EventRecord } from "../src/run/events.ts"
 import type { EventStream } from "../src/run/eventstream.ts"
 import { layer as fibersLayer, type Left, RunFibers } from "../src/run/fibers.ts"
@@ -97,6 +98,7 @@ export type Env =
   | Reported
   | UsageProbe
   | Probed
+  | OrganCost
   | Spending
   | RunFibers
   | TestClock.TestClock

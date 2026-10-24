@@ -15,7 +15,6 @@ import { Duration, Effect, Fiber, Layer } from "effect"
 import fc from "fast-check"
 import { lexer, type Tokens } from "marked"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
 import {
@@ -87,8 +86,8 @@ const reviewed = async (checks: ChecksScript, setup = false): Promise<Ran<Review
   const repo = folder("repo")
   const root = folder("worktrees")
   const calls: Array<OrganCallRecord> = []
-  const organs = Layer.mergeAll(Organs.layer, OrganCost.layer).pipe(
-    Layer.provide(cannedLayer({ reviewer: { report: reviewerText } }, calls)),
+  const organs = Organs.layer.pipe(
+    Layer.provideMerge(cannedLayer({ reviewer: { report: reviewerText } }, calls)),
   )
   return scenario(
     {

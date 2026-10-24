@@ -209,8 +209,7 @@ const runInit = async (
           calls,
         ),
         TestAppConfig.layer(TestAppConfig.appConfig({})),
-        logLayer(),
-      ),
+      ).pipe(Layer.provideMerge(logLayer())),
     ),
   )
   const result = await Effect.runPromise(

@@ -17,7 +17,17 @@
 // Each try spends a model request, about a hundredth of a cent on haiku: its cost goes to OrganCost
 // as an organ call's, `ORGAN usage-probe: $0.0001 in 1 turn, 1.4s`.
 import { query, type SDKMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Clock, Context, Data, Duration, Effect, FileSystem, Layer, Stream } from "effect"
+import {
+  Clock,
+  Context,
+  Data,
+  Duration,
+  Effect,
+  FileSystem,
+  Layer,
+  type Scope,
+  Stream,
+} from "effect"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { costOf, organOptions } from "../organs/AgentSdkLanguageModel.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
@@ -105,7 +115,6 @@ export class UsageProbe extends Context.Service<
       UsageProbe,
       Effect.gen(function* () {
         const config = yield* AppConfig
-        const costs = yield* OrganCost
         const fs = yield* FileSystem.FileSystem
         const env = workerEnv({
           subscription: options.account.subscription,
@@ -113,18 +122,9 @@ export class UsageProbe extends Context.Service<
           ...(options.env === undefined ? {} : { env: options.env }),
         })
 
-        const session = (limit: string | null) =>
+        /** One Claude Code session of the probe's turn, in a fresh temp folder. */
+        const session: ProbeSession = ({ limit, answered }) =>
           Effect.gen(function* () {
-            const startedAt = yield* Clock.currentTimeMillis
-            let result: SDKResultMessage | undefined
-            // Its cost is recorded last, after the session is closed and its folder removed.
-            yield* Effect.addFinalizer(() =>
-              Effect.gen(function* () {
-                if (result !== undefined) return yield* costs.record(costOf(probeOrgan, result))
-                const endedAt = yield* Clock.currentTimeMillis
-                yield* costs.recordUnknown({ organ: probeOrgan, durationMs: endedAt - startedAt })
-              }),
-            )
             const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "tutti-usage-probe-" })
             const abortController = new AbortController()
             const { options: sdkOptions, process } = withSessionProcess({
@@ -160,7 +160,7 @@ export class UsageProbe extends Context.Service<
               // SDK's grace. Either way the probe ends once its process has exited.
               (q) =>
                 Effect.gen(function* () {
-                  if (result === undefined) {
+                  if (!answered()) {
                     yield* process.kill
                     abortController.abort()
                   }
@@ -169,38 +169,85 @@ export class UsageProbe extends Context.Service<
             )
             const failed = (cause: unknown) =>
               withStderr(messageOf(cause), process.stderrTail(stderrLimit))
-            const all = yield* Stream.runCollect(
-              Stream.fromAsyncIterable(q, failed).pipe(
-                Stream.takeUntil((m) => m.type === "result"),
-                Stream.tap((m) =>
-                  Effect.sync(() => {
-                    if (m.type === "result") result = m
-                  }),
-                ),
-              ),
-            )
-            return answerOf(all)
+            return Stream.fromAsyncIterable(q, failed)
           })
 
-        const probe = (limit: string | null): Effect.Effect<ProbeAnswer> =>
-          Effect.scoped(session(limit)).pipe(
-            Effect.catch((cause) =>
-              Effect.succeed(ProbeAnswer.Unanswered({ reason: messageOf(cause) })),
-            ),
-            Effect.timeoutOrElse({
-              duration: probeTimeout,
-              orElse: () =>
-                Effect.succeed(
-                  ProbeAnswer.Unanswered({
-                    reason: `no answer within ${Duration.format(probeTimeout)}`,
-                  }),
-                ),
-            }),
-          )
-        return UsageProbe.of({ probe })
+        return yield* probeWith(session)
       }),
     )
 
   /** The live layer, over the Agent SDK. */
   static readonly layer = (options: LiveOptions) => UsageProbe.layerWith(query, options)
 }
+
+/** The probe a session is asked to play. */
+export interface ProbeTurn {
+  /** The held limit the probe asks about; null when the hold names none. */
+  readonly limit: string | null
+  /** Whether the turn's result has come: a session closed before it is a turn not over. */
+  readonly answered: () => boolean
+}
+
+/**
+ * A probe's session, the part of a probe that reaches the outside world: the SDK messages of its
+ * one turn, its resources released as the Scope closes. Whatever it fails with is the reason the
+ * probe is Unanswered. The live one runs Claude Code through query(); the test layer
+ * (src/testing/UsageProbe.ts) plays scripted messages.
+ */
+export type ProbeSession = (
+  turn: ProbeTurn,
+) => Effect.Effect<Stream.Stream<SDKMessage, unknown>, unknown, Scope.Scope>
+
+/**
+ * UsageProbe over `session`, its costs recorded in OrganCost: everything a probe does but run its
+ * session.
+ */
+export const probeWith = (
+  session: ProbeSession,
+): Effect.Effect<UsageProbe["Service"], never, OrganCost> =>
+  Effect.gen(function* () {
+    const costs = yield* OrganCost
+
+    const played = (limit: string | null) =>
+      Effect.gen(function* () {
+        const startedAt = yield* Clock.currentTimeMillis
+        let result: SDKResultMessage | undefined
+        // Its cost is recorded last, after the session is closed and its folder removed.
+        yield* Effect.addFinalizer(() =>
+          Effect.gen(function* () {
+            if (result !== undefined) return yield* costs.record(costOf(probeOrgan, result))
+            const endedAt = yield* Clock.currentTimeMillis
+            yield* costs.recordUnknown({ organ: probeOrgan, durationMs: endedAt - startedAt })
+          }),
+        )
+        const messages = yield* session({ limit, answered: () => result !== undefined })
+        const all = yield* Stream.runCollect(
+          messages.pipe(
+            Stream.takeUntil((m) => m.type === "result"),
+            Stream.tap((m) =>
+              Effect.sync(() => {
+                if (m.type === "result") result = m
+              }),
+            ),
+          ),
+        )
+        return answerOf(all)
+      })
+
+    const probe = (limit: string | null): Effect.Effect<ProbeAnswer> =>
+      Effect.scoped(played(limit)).pipe(
+        Effect.catch((cause) =>
+          Effect.succeed(ProbeAnswer.Unanswered({ reason: messageOf(cause) })),
+        ),
+        Effect.timeoutOrElse({
+          duration: probeTimeout,
+          orElse: () =>
+            Effect.succeed(
+              ProbeAnswer.Unanswered({
+                reason: `no answer within ${Duration.format(probeTimeout)}`,
+              }),
+            ),
+        }),
+      )
+    return UsageProbe.of({ probe })
+  })

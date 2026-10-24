@@ -6,7 +6,6 @@ import { Duration, Effect, Fiber, Layer } from "effect"
 import { TestClock } from "effect/testing"
 import fc from "fast-check"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter } from "../src/print/organLine.ts"
 import { type Entry, emptyTallies } from "../src/run/ledger.ts"
@@ -258,8 +257,8 @@ const reviewed = async (plan: Plan): Promise<Ran<string>> => {
   const repo = folder("repo")
   const root = folder("worktrees")
   const calls: Array<OrganCallRecord> = []
-  const organs = Layer.mergeAll(Organs.layer, OrganCost.layer).pipe(
-    Layer.provide(
+  const organs = Organs.layer.pipe(
+    Layer.provideMerge(
       cannedLayer(
         {
           reviewer: { report },

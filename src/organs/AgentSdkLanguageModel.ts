@@ -28,6 +28,9 @@
 //   time limit interrupts it, or its session fails first) goes to OrganCost as it ends, as a call
 //   of unknown cost with the time it ran.
 //
+// All of it but the session itself is `make`, over a Session: the live layer's runs Claude Code,
+// the test layer's (src/testing/Organs.ts) plays canned SDK messages.
+//
 // Which organ is calling, and its model and effort, the organ framework says with OrganCall.
 import {
   type EffortLevel,
@@ -37,7 +40,7 @@ import {
   type SDKResultMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Clock, Context, DateTime, Effect, FileSystem, Layer, Stream } from "effect"
+import { Clock, Context, DateTime, Effect, FileSystem, Layer, type Scope, Stream } from "effect"
 import {
   AiError,
   AnthropicStructuredOutput,
@@ -427,6 +430,194 @@ const finishPart = (result: SDKResultMessage, json: boolean): Response.FinishPar
 // ---------------------------------------------------------------------------------------------
 // The provider
 
+/** The turn a call's session plays, and for whom. */
+export interface SessionTurn {
+  readonly method: string
+  readonly turn: Turn
+  /** The JSON Schema of a JSON response; undefined for text. */
+  readonly jsonSchema: Record<string, unknown> | undefined
+  readonly call: OrganCallConfig
+  /** Partial messages, for streamText. */
+  readonly partial: boolean
+  /** Whether the turn's result has come: a session closed before it is a turn not over. */
+  readonly ended: () => boolean
+}
+
+/**
+ * A call's session, the part of a call that reaches the outside world: the SDK's messages of one
+ * turn, its resources released as the Scope closes. The live one runs Claude Code through query();
+ * the test layer (src/testing/Organs.ts) plays canned messages.
+ */
+export type Session = (
+  turn: SessionTurn,
+) => Effect.Effect<Stream.Stream<SDKMessage, AiError.AiError>, AiError.AiError, Scope.Scope>
+
+/**
+ * The LanguageModel over `session`, its costs recorded in OrganCost: everything a call does but
+ * run its session.
+ */
+export const make = (
+  session: Session,
+): Effect.Effect<LanguageModel.LanguageModel, never, OrganCost> =>
+  Effect.gen(function* () {
+    const costs = yield* OrganCost
+
+    /** The turn's JSON Schema, for a JSON response, from the same transformer the codec uses. */
+    const prepare = (method: string, provider: LanguageModel.ProviderOptions) =>
+      Effect.gen(function* () {
+        const turn = toTurn(provider.prompt)
+        if (typeof turn === "string") {
+          return yield* fail(
+            method,
+            new AiError.InvalidUserInputError({
+              description: `The prompt doesn't fit one SDK turn: ${turn}`,
+            }),
+          )
+        }
+        if (provider.tools.length > 0) {
+          return yield* fail(
+            method,
+            new AiError.InvalidUserInputError({ description: "Organs run with no tools" }),
+          )
+        }
+        if (provider.responseFormat.type === "text") return { turn, jsonSchema: undefined }
+        const schema = provider.responseFormat.schema
+        const converted = yield* Effect.try({
+          try: () => AnthropicStructuredOutput.toCodecAnthropic(schema as never),
+          catch: (error) =>
+            fail(method, new AiError.UnsupportedSchemaError({ description: messageOf(error) })),
+        })
+        return { turn, jsonSchema: converted.jsonSchema as Record<string, unknown> }
+      })
+
+    /**
+     * The session's messages up to its result, its cost recorded as the result arrives. The
+     * stream's end, or its interruption, ends the session; with no result, it records a call of
+     * unknown cost.
+     */
+    const messages = (
+      method: string,
+      turn: Turn,
+      jsonSchema: Record<string, unknown> | undefined,
+      partial: boolean,
+    ): Stream.Stream<SDKMessage, AiError.AiError> =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const call = yield* OrganCall
+          // The call's time runs from before its setup, and is recorded last, after the session
+          // has ended: an interruption during the setup records it too.
+          const startedAt = yield* Clock.currentTimeMillis
+          let ended = false
+          yield* Effect.addFinalizer(() =>
+            Effect.gen(function* () {
+              if (ended) return
+              const endedAt = yield* Clock.currentTimeMillis
+              yield* costs.recordUnknown({
+                organ: call.organ,
+                ...(call.ticket === undefined ? {} : { ticket: call.ticket }),
+                durationMs: endedAt - startedAt,
+              })
+            }),
+          )
+          const played = yield* session({
+            method,
+            turn,
+            jsonSchema,
+            call,
+            partial,
+            ended: () => ended,
+          })
+          return played.pipe(
+            Stream.takeUntil((m) => m.type === "result"),
+            Stream.tap((m) => {
+              if (m.type !== "result") return Effect.void
+              ended = true
+              return costs.record(costOf(call.organ, m, call.ticket))
+            }),
+          )
+        }),
+      )
+
+    return yield* LanguageModel.make({
+      codecTransformer: AnthropicStructuredOutput.toCodecAnthropic,
+
+      generateText: (provider) =>
+        Effect.gen(function* () {
+          const { turn, jsonSchema } = yield* prepare("generateText", provider)
+          const all = yield* Stream.runCollect(messages("generateText", turn, jsonSchema, false))
+          const result = yield* outcome("generateText", all)
+          const json = jsonSchema !== undefined
+          const text = yield* answerText("generateText", result, json)
+          const parts: Array<Response.PartEncoded> = [
+            metadataPart(all, result),
+            { type: "text", text },
+            finishPart(result, json),
+          ]
+          return parts
+        }),
+
+      // With partial messages, the turn's text_delta events become text-delta parts, and the
+      // result becomes the finish part, or the error. A JSON answer comes as one text part. An
+      // attempt that streamed text and then ended on a refusal, retried on the fallback model,
+      // left text in the stream the answer doesn't have: the turn fails rather than answer both.
+      streamText: (provider) =>
+        Stream.unwrap(
+          Effect.map(prepare("streamText", provider), ({ turn, jsonSchema }) => {
+            const seen: Array<SDKMessage> = []
+            const json = jsonSchema !== undefined
+            const id = "text-0"
+            let open = false
+            let refusedAfterText = false
+            return messages("streamText", turn, jsonSchema, !json).pipe(
+              Stream.mapEffect((m) => {
+                seen.push(m)
+                const out: Array<Response.StreamPartEncoded> = []
+                if (m.type === "stream_event" && m.parent_tool_use_id === null) {
+                  const event = m.event
+                  if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+                    if (!open) out.push({ type: "text-start", id })
+                    open = true
+                    out.push({ type: "text-delta", id, delta: event.delta.text })
+                  }
+                  if (event.type === "message_delta" && event.delta.stop_reason === "refusal") {
+                    refusedAfterText ||= open
+                  }
+                  return Effect.succeed(out)
+                }
+                if (m.type !== "result") return Effect.succeed(out)
+                return Effect.gen(function* () {
+                  const result = yield* outcome("streamText", seen)
+                  const fallback = fallbackOf(seen)
+                  if (refusedAfterText && fallback !== undefined) {
+                    return yield* fail(
+                      "streamText",
+                      new AiError.UnknownError({
+                        description: `${fallback}, after the refused attempt's text was streamed`,
+                        metadata: resultMetadata(result),
+                      }),
+                    )
+                  }
+                  if (json) {
+                    const text = yield* answerText("streamText", result, json)
+                    out.push(
+                      { type: "text-start", id },
+                      { type: "text-delta", id, delta: text },
+                      { type: "text-end", id },
+                    )
+                  } else if (open) {
+                    out.push({ type: "text-end", id })
+                  }
+                  out.push(metadataPart(seen, result), finishPart(result, json))
+                  return out
+                })
+              }),
+              Stream.flatMap((parts) => Stream.fromIterable(parts)),
+            )
+          }),
+        ),
+    })
+  })
+
 /** What the live layer takes beside its services. */
 export interface LiveOptions {
   /** What the account probe found: whether there's a subscription login (§ 4.13). */
@@ -448,7 +639,6 @@ export const layer = (
     LanguageModel.LanguageModel,
     Effect.gen(function* () {
       const config = yield* AppConfig
-      const costs = yield* OrganCost
       const fs = yield* FileSystem.FileSystem
       const openQuery = options.query ?? query
       const env = workerEnv({
@@ -457,204 +647,68 @@ export const layer = (
         ...(options.env === undefined ? {} : { env: options.env }),
       })
 
-      /** The turn's JSON Schema, for a JSON response, from the same transformer the codec uses. */
-      const prepare = (method: string, provider: LanguageModel.ProviderOptions) =>
+      /**
+       * One Claude Code session of the turn, in a fresh private temp folder, or the one the organ
+       * reads. Its end aborts the session if the turn isn't over, and removes its folder.
+       */
+      const session: Session = ({ method, turn, jsonSchema, call, partial, ended }) =>
         Effect.gen(function* () {
-          const turn = toTurn(provider.prompt)
-          if (typeof turn === "string") {
-            return yield* fail(
+          const cwd =
+            call.reads?.cwd ??
+            (yield* fs
+              .makeTempDirectoryScoped({ prefix: "tutti-organ-" })
+              .pipe(
+                Effect.mapError((error) =>
+                  fail(method, new AiError.UnknownError({ description: messageOf(error) })),
+                ),
+              ))
+          const abortController = new AbortController()
+          const { options, process } = withSessionProcess(
+            organOptions({
+              turn,
+              jsonSchema,
+              call,
+              cwd,
+              env,
+              claude: config.claude,
+              abortController,
+              partial,
+              stderr: () => {},
+            }),
+          )
+          // query() throws as it is called when there is no Claude Code for the platform.
+          const q = yield* Effect.try({
+            try: () =>
+              openQuery({
+                prompt: (async function* () {
+                  yield userMessage(turn.userText)
+                })(),
+                options,
+              }),
+            catch: (cause) =>
+              fail(method, new AiError.UnknownError({ description: queryThrew(cause) })),
+          })
+          // A turn not over is unwanted: its Claude Code is killed at once, not given the SDK's
+          // grace. Either way the call ends once its process has exited, before its folder goes.
+          yield* Effect.addFinalizer(() =>
+            Effect.gen(function* () {
+              if (!ended()) {
+                yield* process.kill
+                abortController.abort()
+              }
+              yield* process.closeAndWait(() => q.close(), organCloseLimit)
+            }),
+          )
+          const failed = (error: unknown) =>
+            fail(
               method,
-              new AiError.InvalidUserInputError({
-                description: `The prompt doesn't fit one SDK turn: ${turn}`,
+              new AiError.UnknownError({
+                description: withStderr(messageOf(error), process.stderrTail(stderrLimit)),
               }),
             )
-          }
-          if (provider.tools.length > 0) {
-            return yield* fail(
-              method,
-              new AiError.InvalidUserInputError({ description: "Organs run with no tools" }),
-            )
-          }
-          if (provider.responseFormat.type === "text") return { turn, jsonSchema: undefined }
-          const schema = provider.responseFormat.schema
-          const converted = yield* Effect.try({
-            try: () => AnthropicStructuredOutput.toCodecAnthropic(schema as never),
-            catch: (error) =>
-              fail(method, new AiError.UnsupportedSchemaError({ description: messageOf(error) })),
-          })
-          return { turn, jsonSchema: converted.jsonSchema as Record<string, unknown> }
+          return Stream.fromAsyncIterable(q, failed)
         })
 
-      /**
-       * The session's messages up to its result, its cost recorded as the result arrives. The
-       * stream's end, or its interruption, aborts the session if it hasn't ended, and removes its
-       * folder; with no result, it records a call of unknown cost.
-       */
-      const messages = (
-        method: string,
-        turn: Turn,
-        jsonSchema: Record<string, unknown> | undefined,
-        partial: boolean,
-      ): Stream.Stream<SDKMessage, AiError.AiError> =>
-        Stream.unwrap(
-          Effect.gen(function* () {
-            const call = yield* OrganCall
-            // The call's time runs from before its setup, and is recorded last, after the session
-            // is aborted and its folder removed: an interruption during the setup records it too.
-            const startedAt = yield* Clock.currentTimeMillis
-            let ended = false
-            yield* Effect.addFinalizer(() =>
-              Effect.gen(function* () {
-                if (ended) return
-                const endedAt = yield* Clock.currentTimeMillis
-                yield* costs.recordUnknown({
-                  organ: call.organ,
-                  ...(call.ticket === undefined ? {} : { ticket: call.ticket }),
-                  durationMs: endedAt - startedAt,
-                })
-              }),
-            )
-            const cwd =
-              call.reads?.cwd ??
-              (yield* fs
-                .makeTempDirectoryScoped({ prefix: "tutti-organ-" })
-                .pipe(
-                  Effect.mapError((error) =>
-                    fail(method, new AiError.UnknownError({ description: messageOf(error) })),
-                  ),
-                ))
-            const abortController = new AbortController()
-            const { options, process } = withSessionProcess(
-              organOptions({
-                turn,
-                jsonSchema,
-                call,
-                cwd,
-                env,
-                claude: config.claude,
-                abortController,
-                partial,
-                stderr: () => {},
-              }),
-            )
-            // query() throws as it is called when there is no Claude Code for the platform.
-            const q = yield* Effect.try({
-              try: () =>
-                openQuery({
-                  prompt: (async function* () {
-                    yield userMessage(turn.userText)
-                  })(),
-                  options,
-                }),
-              catch: (cause) =>
-                fail(method, new AiError.UnknownError({ description: queryThrew(cause) })),
-            })
-            // A turn not over is unwanted: its Claude Code is killed at once, not given the SDK's
-            // grace. Either way the call ends once its process has exited, before its folder goes.
-            yield* Effect.addFinalizer(() =>
-              Effect.gen(function* () {
-                if (!ended) {
-                  yield* process.kill
-                  abortController.abort()
-                }
-                yield* process.closeAndWait(() => q.close(), organCloseLimit)
-              }),
-            )
-            const failed = (error: unknown) =>
-              fail(
-                method,
-                new AiError.UnknownError({
-                  description: withStderr(messageOf(error), process.stderrTail(stderrLimit)),
-                }),
-              )
-            return Stream.fromAsyncIterable(q, failed).pipe(
-              Stream.takeUntil((m) => m.type === "result"),
-              Stream.tap((m) => {
-                if (m.type !== "result") return Effect.void
-                ended = true
-                return costs.record(costOf(call.organ, m, call.ticket))
-              }),
-            )
-          }),
-        )
-
-      return yield* LanguageModel.make({
-        codecTransformer: AnthropicStructuredOutput.toCodecAnthropic,
-
-        generateText: (provider) =>
-          Effect.gen(function* () {
-            const { turn, jsonSchema } = yield* prepare("generateText", provider)
-            const all = yield* Stream.runCollect(messages("generateText", turn, jsonSchema, false))
-            const result = yield* outcome("generateText", all)
-            const json = jsonSchema !== undefined
-            const text = yield* answerText("generateText", result, json)
-            const parts: Array<Response.PartEncoded> = [
-              metadataPart(all, result),
-              { type: "text", text },
-              finishPart(result, json),
-            ]
-            return parts
-          }),
-
-        // With partial messages, the turn's text_delta events become text-delta parts, and the
-        // result becomes the finish part, or the error. A JSON answer comes as one text part. An
-        // attempt that streamed text and then ended on a refusal, retried on the fallback model,
-        // left text in the stream the answer doesn't have: the turn fails rather than answer both.
-        streamText: (provider) =>
-          Stream.unwrap(
-            Effect.map(prepare("streamText", provider), ({ turn, jsonSchema }) => {
-              const seen: Array<SDKMessage> = []
-              const json = jsonSchema !== undefined
-              const id = "text-0"
-              let open = false
-              let refusedAfterText = false
-              return messages("streamText", turn, jsonSchema, !json).pipe(
-                Stream.mapEffect((m) => {
-                  seen.push(m)
-                  const out: Array<Response.StreamPartEncoded> = []
-                  if (m.type === "stream_event" && m.parent_tool_use_id === null) {
-                    const event = m.event
-                    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-                      if (!open) out.push({ type: "text-start", id })
-                      open = true
-                      out.push({ type: "text-delta", id, delta: event.delta.text })
-                    }
-                    if (event.type === "message_delta" && event.delta.stop_reason === "refusal") {
-                      refusedAfterText ||= open
-                    }
-                    return Effect.succeed(out)
-                  }
-                  if (m.type !== "result") return Effect.succeed(out)
-                  return Effect.gen(function* () {
-                    const result = yield* outcome("streamText", seen)
-                    const fallback = fallbackOf(seen)
-                    if (refusedAfterText && fallback !== undefined) {
-                      return yield* fail(
-                        "streamText",
-                        new AiError.UnknownError({
-                          description: `${fallback}, after the refused attempt's text was streamed`,
-                          metadata: resultMetadata(result),
-                        }),
-                      )
-                    }
-                    if (json) {
-                      const text = yield* answerText("streamText", result, json)
-                      out.push(
-                        { type: "text-start", id },
-                        { type: "text-delta", id, delta: text },
-                        { type: "text-end", id },
-                      )
-                    } else if (open) {
-                      out.push({ type: "text-end", id })
-                    }
-                    out.push(metadataPart(seen, result), finishPart(result, json))
-                    return out
-                  })
-                }),
-                Stream.flatMap((parts) => Stream.fromIterable(parts)),
-              )
-            }),
-          ),
-      })
+      return yield* make(session)
     }),
   )

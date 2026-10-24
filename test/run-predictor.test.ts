@@ -3,7 +3,6 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Fiber, Layer } from "effect"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { Log } from "../src/run/log.ts"
 import { type Outcome, run } from "../src/run/run.ts"
@@ -96,8 +95,8 @@ const runs = (plan: {
   const settings = appConfig().settings
   const logged: Logged = { texts: Effect.succeed([]) }
   const calls: Array<OrganCallRecord> = []
-  const organs = Layer.mergeAll(Organs.layer, OrganCost.layer).pipe(
-    Layer.provide(cannedLayer({ predictor: { files: plan.files } }, calls)),
+  const organs = Organs.layer.pipe(
+    Layer.provideMerge(cannedLayer({ predictor: { files: plan.files } }, calls)),
   )
   return scenario(
     {

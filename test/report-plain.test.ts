@@ -112,7 +112,10 @@ describe("a plain run's report says each outcome once, in the log's line", () =>
   test("REVIEW_FAILED is said once", async () => {
     const printed = await plainEnd({ answers: { reviewer: { report: "  \n" } } })
     expect(times(printed, "REVIEW_FAILED")).toBe(1)
-    expect(printed).toStartWith("REVIEW_FAILED: the reviewer wrote an empty report")
+    // The reviewer's call's cost line comes first, as the run's log has it.
+    expect(printed).toStartWith(
+      "ORGAN reviewer: $0.0000 in 1 turn, 0.0s\nREVIEW_FAILED: the reviewer wrote an empty report",
+    )
     expect(printed).not.toContain("◆")
   })
 

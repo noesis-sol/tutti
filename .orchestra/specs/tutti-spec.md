@@ -195,9 +195,9 @@ Each service has a live layer and a test layer. Names are illustrative. Errors a
 | `Account` | The login probe: account, billing, effective permission mode, settings errors (§4.13) | `NotLoggedIn`, `SettingsUnreadable` | A literal account |
 | `Attention` | Open permission requests and questions, their answers (from the screen or `tutti answer`), run-scoped allow rules, time limits (§4.5) | none | The same, plus a policy that answers automatically |
 | `UsageLimits` | Rate-limit events, the usage-limit hold, waking workers at reset (§4.12) | none | Scripted events |
-| `UsageProbe` | Asks the account, with one tiny model turn, whether the held usage limit still refuses, before the hold lifts on the clock (§4.12) | none (an `Unanswered` answer) | Scripted answers |
+| `UsageProbe` | Asks the account, with one tiny model turn, whether the held usage limit still refuses, before the hold lifts on the clock (§4.12) | none (an `Unanswered` answer) | The live probe (`probeWith`), its session playing scripted answers as SDK messages |
 | `Transcripts` | tutti's own log of each worker's SDK messages, and reading it back (§4.4) | none | In-memory |
-| `Organs` | Triage, predictor, reviewer, screen, plan, scout, written against `LanguageModel` (§6) | `OrganFailed{subtype}`, `OrganRefused`, `OrganTimedOut` | A `LanguageModel` layer with canned answers |
+| `Organs` | Triage, predictor, reviewer, screen, plan, scout, written against `LanguageModel` (§6) | `OrganFailed{subtype}`, `OrganRefused`, `OrganTimedOut` | The live `LanguageModel` (`make`), its session playing canned answers as SDK messages, with the `OrganCost` its calls go to |
 | `Checks` | Runs `setup`, `check_fast` and `check_full` within their time limits; keeps the whole output, the lines that say what failed, `FLAKY:` lines and `SUITE:` names | `CheckFailed`, `CheckTimedOut` | Scripted results |
 | `RunLock` | `flock` on `<git-common-dir>/tutti.lock` and on `orchestra.lock` (§9.2) | `AlreadyRunning{holder}` | In-memory |
 | `Store` | `.tutti/run/state.json` (carry-over) and per-ticket metadata. Writes are serialised through one fiber and atomic (temporary file, then rename) | `StoreUnreadable` | In-memory |

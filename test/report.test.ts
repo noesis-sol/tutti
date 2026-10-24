@@ -265,10 +265,11 @@ describe("the report", () => {
     expect(written).toStartWith("# tutti run · ")
     expect(written.split("\n")[0]).toEndWith(" · main")
     expect(written).toContain("## Finished\n- t-1: the parser, abc123")
-    expect(written.trimEnd()).toEndWith("Organs: $0.0300 in 2 organ calls, 3 turns in all.")
+    // The reviewer's own call is counted: the total is taken once it has answered.
+    expect(written.trimEnd()).toEndWith("Organs: $0.0300 in 3 organ calls, 4 turns in all.")
     expect(printed).toContain("Run report written")
     expect(printed).toContain("t-1: the parser, abc123")
-    expect(printed).toContain("Organs: $0.0300 in 2 organ calls, 3 turns in all.")
+    expect(printed).toContain("Organs: $0.0300 in 3 organ calls, 4 turns in all.")
     expect(printed).toContain(`Report saved to ${reportsDir}/${reportName(0)}`)
     expect(lines).toContain(`REPORT: written to ${reportsDir}/${reportName(0)}`)
   })

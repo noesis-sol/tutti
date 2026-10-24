@@ -5,7 +5,6 @@ import { join } from "node:path"
 import { Effect, Fiber, Layer, Queue } from "effect"
 import { TestClock } from "effect/testing"
 import type { AppConfigValue } from "../src/cli/AppConfig.ts"
-import { OrganCost } from "../src/organs/OrganCost.ts"
 import { Organs } from "../src/organs/Organs.ts"
 import { makePrinter, type Out } from "../src/print/organLine.ts"
 import type { EventRecord } from "../src/run/events.ts"
@@ -108,13 +107,7 @@ const finishes = (plan: Plan): Promise<Ran<Finished>> => {
     },
     plan.organs === undefined
       ? ran
-      : ran.pipe(
-          Effect.provide(
-            Layer.mergeAll(Organs.layer, OrganCost.layer).pipe(
-              Layer.provide(cannedLayer(plan.organs)),
-            ),
-          ),
-        ),
+      : ran.pipe(Effect.provide(Organs.layer.pipe(Layer.provideMerge(cannedLayer(plan.organs))))),
   )
 }
 

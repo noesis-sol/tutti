@@ -324,8 +324,7 @@ describe("init", () => {
         Layer.mergeAll(
           cannedLayer({ scout: { ...tutti } }, []),
           TestAppConfig.layer(TestAppConfig.appConfig({})),
-          logLayer(),
-        ),
+        ).pipe(Layer.provideMerge(logLayer())),
       ),
     )
     return Effect.runPromise(

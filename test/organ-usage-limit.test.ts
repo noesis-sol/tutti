@@ -6,9 +6,9 @@ import { mkdtempSync, realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { BunServices } from "@effect/platform-bun"
-import { DateTime, type Duration, Effect, Exit, Fiber, Layer, Schema } from "effect"
+import { type Duration, Effect, Exit, Fiber, Layer, Schema } from "effect"
 import { AiError, LanguageModel, type Prompt } from "effect/ai"
-import { layer, limitOf, metadataKey, OrganCall } from "../src/organs/AgentSdkLanguageModel.ts"
+import { layer, limitOf, OrganCall } from "../src/organs/AgentSdkLanguageModel.ts"
 import { make, OrganFailed, Organs, refusalOf } from "../src/organs/Organs.ts"
 import { resetLabel } from "../src/run/localTime.ts"
 import { line } from "../src/run/log.ts"
@@ -19,7 +19,7 @@ import { claimsAndCloses, type SessionScript, sleep } from "../src/testing/Agent
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
 import { layer as logLayer, texts } from "../src/testing/Log.ts"
 import { layer as costLayer } from "../src/testing/OrganCost.ts"
-import { layer as cannedLayer } from "../src/testing/Organs.ts"
+import { type Canned, layer as cannedLayer, limited } from "../src/testing/Organs.ts"
 import { Reported, layer as usageLayer } from "../src/testing/UsageLimits.ts"
 import { testEnv } from "./env.ts"
 import {
@@ -49,17 +49,6 @@ const triage = make("triage", { prompt: "You are the triage organ.\n", answer: V
 const asksTriage = Effect.gen(function* () {
   return yield* (yield* Organs).ask(triage, [])
 })
-
-/** The QuotaExhaustedError a call refused for the five-hour limit, resetting at `at` (s), is. */
-const refused = (at: number) =>
-  AiError.make({
-    module: "test",
-    method: "generateText",
-    reason: new AiError.QuotaExhaustedError({
-      resetAt: DateTime.makeUnsafe(at * 1000),
-      metadata: { [metadataKey]: { rate_limit_type: "five_hour" } },
-    }),
-  })
 
 describe("AgentSdkLanguageModel on the usage limit", () => {
   const prompt: Prompt.RawInput = [
@@ -129,7 +118,7 @@ describe("AgentSdkLanguageModel on the usage limit", () => {
 
 describe("Organs on the usage limit", () => {
   /** Asks triage, its answer `canned`, with OrganHold over UsageLimits; what UsageLimits heard. */
-  const asks = (canned: Effect.Effect<Record<string, unknown>, AiError.AiError>) =>
+  const asks = (canned: Canned) =>
     Effect.runPromise(
       Effect.gen(function* () {
         const exit = yield* Effect.exit(asksTriage)
@@ -138,7 +127,9 @@ describe("Organs on the usage limit", () => {
         Effect.provide(
           Organs.layer.pipe(
             Layer.provideMerge(
-              Layer.mergeAll(cannedLayer({ triage: canned }), configLayer(appConfig()), logLayer()),
+              Layer.mergeAll(cannedLayer({ triage: canned }), configLayer(appConfig())).pipe(
+                Layer.provideMerge(logLayer()),
+              ),
             ),
             Layer.provideMerge(organHold),
             Layer.provideMerge(usageLayer),
@@ -148,7 +139,7 @@ describe("Organs on the usage limit", () => {
     )
 
   test("a call refused for the limit fails, reported as a rejection with its reset", async () => {
-    const { exit, events } = await asks(Effect.fail(refused(hour)))
+    const { exit, events } = await asks(limited("five_hour", hour))
     expect(Exit.isFailure(exit) && exit.cause.reasons[0]?._tag === "Fail").toBe(true)
     if (Exit.isFailure(exit) && exit.cause.reasons[0]?._tag === "Fail") {
       expect(exit.cause.reasons[0].error).toBeInstanceOf(OrganFailed)
@@ -196,7 +187,7 @@ describe("the usage-limit hold from an organ", () => {
     const organ = asksTriage.pipe(
       Effect.provide(
         Organs.layer.pipe(
-          Layer.provideMerge(cannedLayer({ triage: Effect.fail(refused(2 * hour)) })),
+          Layer.provideMerge(cannedLayer({ triage: limited("five_hour", 2 * hour) })),
           Layer.provideMerge(organHold),
         ),
       ),
