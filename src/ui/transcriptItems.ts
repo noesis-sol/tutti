@@ -13,7 +13,7 @@
 // `mountLimit` are let go. Back at the bottom, the window is the latest items again.
 //
 // Every text here is a model's or a tool's, so it is sanitised as it comes in (§ 7.10).
-import { Effect, Fiber, type Scope, Stream } from "effect"
+import { Effect, Fiber, Predicate, type Scope, Stream } from "effect"
 import {
   type Item,
   type Live,
@@ -67,9 +67,7 @@ export type ToolEntry = Extract<Entry, { readonly _tag: "Tool" }>
 
 // A value of an SDK message whose shape this tutti may not know, read without trusting it.
 const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
+  Predicate.isObject(value) ? value : undefined
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined

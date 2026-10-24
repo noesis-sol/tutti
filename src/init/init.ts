@@ -32,6 +32,7 @@ import {
   FileSystem,
   Layer,
   Option,
+  Predicate,
   Schema,
   type Scope,
 } from "effect"
@@ -244,13 +245,10 @@ export const gitignorePath = join(".tutti", ".gitignore")
 
 type Json = Record<string, unknown>
 
-const isObject = (value: unknown): value is Json =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
 /** The object at `key` in `json`, made there when it isn't one. */
 const section = (json: Json, key: string): Json => {
   const value = json[key]
-  if (isObject(value)) return value
+  if (Predicate.isObject(value)) return value
   const made: Json = {}
   json[key] = made
   return made
@@ -308,7 +306,8 @@ const laidOver = (base: Json, over: Json): Json => {
   const json: Json = structuredClone(base)
   for (const [key, value] of Object.entries(over)) {
     const under = json[key]
-    json[key] = isObject(value) && isObject(under) ? laidOver(under, value) : value
+    json[key] =
+      Predicate.isObject(value) && Predicate.isObject(under) ? laidOver(under, value) : value
   }
   return json
 }

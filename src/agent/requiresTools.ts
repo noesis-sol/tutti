@@ -24,7 +24,7 @@ import {
   type SdkMcpToolDefinition,
   tool,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Effect, type FileSystem } from "effect"
+import { Cause, Effect, type FileSystem, Predicate } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { z } from "zod"
 import {
@@ -73,10 +73,7 @@ const refusal = (text: string): Answer => ({ content: [{ type: "text", text }], 
 
 /** The abort signal an MCP call's `extra` carries, if it carries one. */
 const signalOf = (extra: unknown): AbortSignal | undefined => {
-  const signal =
-    typeof extra === "object" && extra !== null
-      ? (extra as { readonly signal?: unknown }).signal
-      : undefined
+  const signal = Predicate.hasProperty(extra, "signal") ? extra.signal : undefined
   return signal instanceof AbortSignal ? signal : undefined
 }
 

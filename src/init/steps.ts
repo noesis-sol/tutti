@@ -3,7 +3,7 @@
 // through effect/process (src/services/exec.ts); tests script one. Once its questions are answered,
 // init takes its steps in turn through runSteps, which checks for a stop after each.
 import { statSync } from "node:fs"
-import { Deferred, Duration, Effect, type FileSystem, Schema } from "effect"
+import { Deferred, Duration, Effect, type FileSystem, Predicate, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { exec, showCommand } from "../services/exec.ts"
 import { whichOnPath } from "../services/onPath.ts"
@@ -92,7 +92,7 @@ export class InitFailed extends Schema.TaggedError<InitFailed>()("InitFailed", {
 const reasonOf = (error: unknown): string =>
   typeof error === "string"
     ? error
-    : typeof error === "object" && error !== null && "message" in error
+    : Predicate.hasProperty(error, "message")
       ? String(error.message)
       : String(error)
 

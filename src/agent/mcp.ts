@@ -22,7 +22,7 @@
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
-import { Config, Effect, FileSystem, Option, Result, Schema } from "effect"
+import { Config, Effect, FileSystem, Option, Predicate, Result, Schema } from "effect"
 import { SetupProblem } from "../cli/AppConfig.ts"
 
 /** The config scopes a name is resolved from, in Claude Code's order. */
@@ -129,16 +129,13 @@ export const mcpServers = (chosen: ChosenServers): Record<string, McpServerConfi
 
 type Json = Record<string, unknown>
 
-const isObject = (value: unknown): value is Json =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
 /** A config file's parsed JSON; a missing file is null. */
 const readJson = (fs: FileSystem.FileSystem, file: string, problems: Array<string>) =>
   fs.readFileString(file).pipe(
     Effect.map((text): Json | null => {
       try {
         const json: unknown = JSON.parse(text)
-        if (isObject(json)) return json
+        if (Predicate.isObject(json)) return json
         problems.push(`MCP config isn't a JSON object: ${file}.`)
       } catch (error) {
         problems.push(
@@ -159,7 +156,7 @@ const readJson = (fs: FileSystem.FileSystem, file: string, problems: Array<strin
 const serversIn = (holder: Json | null, file: string, where: string, problems: Array<string>) => {
   const servers = holder?.mcpServers
   if (servers === undefined) return {}
-  if (isObject(servers)) return servers
+  if (Predicate.isObject(servers)) return servers
   problems.push(`MCP config has a ${where} that isn't an object: ${file}.`)
   return {}
 }
@@ -207,9 +204,9 @@ export const resolveServers = (repo: string, names: ReadonlyArray<string>) =>
 
     let localServers: Json = {}
     const projects = user?.projects
-    if (isObject(projects)) {
+    if (Predicate.isObject(projects)) {
       const entry = yield* projectEntry(fs, projects, repo)
-      if (Option.isSome(entry) && isObject(entry.value)) {
+      if (Option.isSome(entry) && Predicate.isObject(entry.value)) {
         localServers = serversIn(entry.value, userFile, `projects["${repo}"].mcpServers`, problems)
       }
     }
@@ -243,12 +240,16 @@ export const resolveServers = (repo: string, names: ReadonlyArray<string>) =>
       const [scope, defined] = found
       const definition = defined[name]
       const file = scope === "project" ? projectFile : userFile
-      const type = isObject(definition) ? (definition.type ?? "stdio") : undefined
+      const type = Predicate.isObject(definition) ? (definition.type ?? "stdio") : undefined
       if (type === "claudeai-proxy") {
         problems.push(
           `MCP server ${shown} in workers.mcp_servers is a claude.ai connector, which workers can't be given.`,
         )
-      } else if (!isObject(definition) || typeof type !== "string" || !transports.includes(type)) {
+      } else if (
+        !Predicate.isObject(definition) ||
+        typeof type !== "string" ||
+        !transports.includes(type)
+      ) {
         problems.push(
           `MCP server ${shown} in ${file} (${scope} scope) isn't a definition workers can be given: it needs a type of ${transports.join(", ")}, or none.`,
         )
@@ -292,13 +293,13 @@ export const definedServers = (repo: string) =>
     const user = yield* readJson(fs, userFile, ignored)
     const project = yield* readJson(fs, join(repo, ".mcp.json"), ignored)
     const projects = user?.projects
-    const entry = isObject(projects)
+    const entry = Predicate.isObject(projects)
       ? yield* projectEntry(fs, projects, repo)
       : Option.none<unknown>()
-    const local = Option.isSome(entry) && isObject(entry.value) ? entry.value : null
+    const local = Option.isSome(entry) && Predicate.isObject(entry.value) ? entry.value : null
     const names = [local, project, user].flatMap((holder) =>
       Object.entries(serversIn(holder, "", "", ignored)).flatMap(([name, definition]) => {
-        const type = isObject(definition) ? (definition.type ?? "stdio") : undefined
+        const type = Predicate.isObject(definition) ? (definition.type ?? "stdio") : undefined
         return name.startsWith(connectorPrefix) ||
           typeof type !== "string" ||
           !transports.includes(type)

@@ -11,7 +11,7 @@
 // types: a CLI of another version may send a message without one, and such a message is no change
 // (unreadable says why, for the host to log).
 import type { HookInput, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Data, type Duration, Result, Schema } from "effect"
+import { Data, type Duration, Predicate, Result, Schema } from "effect"
 import {
   endedOnLimit,
   noTurnLimit,
@@ -118,9 +118,7 @@ const reading = new Set(["Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch"])
 
 /** Bash's command in a tool call's input, or "" when it has none. */
 const commandOf = (input: unknown): string => {
-  if (typeof input !== "object" || input === null || !("command" in input)) {
-    return ""
-  }
+  if (!Predicate.hasProperty(input, "command")) return ""
   return typeof input.command === "string" ? input.command : ""
 }
 

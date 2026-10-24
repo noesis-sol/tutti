@@ -18,7 +18,7 @@ import type {
   HookJSONOutput,
   PreCompactHookInput,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Effect } from "effect"
+import { Cause, Effect, Predicate } from "effect"
 
 /** The hook events a worker's activity comes from. */
 export const activityEvents = [
@@ -42,12 +42,11 @@ export const foregroundVerifier = (input: HookInput): HookJSONOutput => {
   try {
     if (input.hook_event_name !== "PreToolUse") return {}
     const toolInput = input.tool_input
-    if (typeof toolInput !== "object" || toolInput === null || Array.isArray(toolInput)) return {}
-    if ((toolInput as { subagent_type?: unknown }).subagent_type !== verifierAgent) return {}
+    if (!Predicate.isObject(toolInput) || toolInput.subagent_type !== verifierAgent) return {}
     return {
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
-        updatedInput: { ...(toolInput as Record<string, unknown>), run_in_background: false },
+        updatedInput: { ...toolInput, run_in_background: false },
       },
     }
   } catch {

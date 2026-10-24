@@ -33,6 +33,7 @@ import {
   Effect,
   Equal,
   Option,
+  Predicate,
   PubSub,
   Ref,
   Schema,
@@ -274,11 +275,8 @@ const toolUses = (
   if (!Array.isArray(content)) return []
   return content.flatMap((block: unknown) => {
     const b = block as { readonly type?: unknown; readonly id?: unknown; readonly input?: unknown }
-    return b.type === "tool_use" &&
-      typeof b.id === "string" &&
-      typeof b.input === "object" &&
-      b.input !== null
-      ? [[b.id, b.input as Readonly<Record<string, unknown>>] as const]
+    return b.type === "tool_use" && typeof b.id === "string" && Predicate.isObject(b.input)
+      ? [[b.id, b.input] as const]
       : []
   })
 }

@@ -17,7 +17,7 @@ import {
   type SdkMcpToolDefinition,
   tool,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Data, Effect, Result, SubscriptionRef } from "effect"
+import { Data, Effect, Predicate, Result, SubscriptionRef } from "effect"
 import { z } from "zod"
 import {
   type FeaturePlan,
@@ -158,10 +158,7 @@ export const planOf = (input: {
   readonly epic?: unknown
   readonly tickets?: unknown
 }): Record<string, unknown> => {
-  const epic =
-    typeof input.epic === "object" && input.epic !== null
-      ? (input.epic as Record<string, unknown>)
-      : {}
+  const epic = Predicate.isObject(input.epic) ? input.epic : {}
   return {
     epic_title: epic.title,
     epic_description: epic.description,

@@ -10,6 +10,7 @@
 // or becomes the target the keys answer, so a key meant for the request before can't answer the
 // next. Allow is never focused first: a permission opens on Deny, and one with `defaultToNo` has
 // no one-key allow.
+import { Predicate } from "effect"
 import { useContext, useRef } from "react"
 import { type Answer, type AttentionRequest, allowsForRun } from "../agent/Attention.ts"
 import { UiCommand } from "../run/commands.ts"
@@ -54,7 +55,7 @@ export const optionKeys = 4
 /** Whether an elicitation's form asks for any field. */
 const hasFields = (schema: Readonly<Record<string, unknown>> | undefined): boolean => {
   const properties = schema?.properties
-  return typeof properties === "object" && properties !== null && Object.keys(properties).length > 0
+  return Predicate.isObject(properties) && Object.keys(properties).length > 0
 }
 
 /** The question a card can answer with its options: the only one, not multiple choice. */

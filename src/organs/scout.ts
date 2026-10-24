@@ -18,7 +18,7 @@ import { realpathSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, isAbsolute, join, resolve, sep } from "node:path"
 import type { HookCallback, HookInput, HookJSONOutput } from "@anthropic-ai/claude-agent-sdk"
-import { Effect, Schema } from "effect"
+import { Effect, Predicate, Schema } from "effect"
 import type { OrganReads } from "./AgentSdkLanguageModel.ts"
 import { type Organ, type OrganError, OrganFailed, Organs, organDefaults } from "./Organs.ts"
 import prompt from "./prompts/scout.md" with { type: "text" }
@@ -234,12 +234,9 @@ export const outside = (
   tool: string,
   input: unknown,
 ): string | undefined => {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    return `${tool}'s input can't be read`
-  }
-  const args = input as Record<string, unknown>
+  if (!Predicate.isObject(input)) return `${tool}'s input can't be read`
   const pathOf = (key: string, required: boolean): string | undefined | null => {
-    const value = args[key]
+    const value = input[key]
     if (value === undefined && !required) return undefined
     return typeof value === "string" ? value : null
   }

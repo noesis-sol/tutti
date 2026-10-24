@@ -15,6 +15,7 @@ import {
   Context,
   Effect,
   Layer,
+  Predicate,
   PubSub,
   Ref,
   Result,
@@ -141,9 +142,6 @@ export interface WindowFigure {
 const figure = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
 /**
  * The account's windows a `rate_limit_info` carries in `unifiedWindows`, by name (`five_hour`,
  * `seven_day`, …), in the event's order. Claude Code 2.1.301 sends them on every event, `allowed`
@@ -153,9 +151,9 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
  */
 export const windowsOf = (info: unknown): ReadonlyMap<string, WindowFigure> => {
   const all = new Map<string, WindowFigure>()
-  if (!isRecord(info) || !isRecord(info.unifiedWindows)) return all
+  if (!Predicate.isObject(info) || !Predicate.isObject(info.unifiedWindows)) return all
   for (const [name, window] of Object.entries(info.unifiedWindows)) {
-    if (name === "" || !isRecord(window)) continue
+    if (name === "" || !Predicate.isObject(window)) continue
     const utilization = figure(window.utilization)
     const resetsAt = figure(window.resetsAt)
     if (utilization === undefined && resetsAt === undefined) continue

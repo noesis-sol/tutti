@@ -34,7 +34,7 @@ import {
   writeSync,
 } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
-import { Duration, Effect, Option, Result, Schema, type Scope } from "effect"
+import { Duration, Effect, Option, Predicate, Result, Schema, type Scope } from "effect"
 import { onOff } from "../cli/flags.ts"
 import { homeFolder } from "../project/userConfig.ts"
 import { exec, TimeLimit } from "../services/exec.ts"
@@ -240,7 +240,7 @@ const get = (
         let message = ""
         try {
           const parsed: unknown = JSON.parse(new TextDecoder().decode(body))
-          if (typeof parsed === "object" && parsed !== null && "message" in parsed) {
+          if (Predicate.hasProperty(parsed, "message")) {
             message = typeof parsed.message === "string" ? `: ${parsed.message}` : ""
           }
         } catch {}
@@ -404,9 +404,7 @@ const tuttiIn = (archive: Uint8Array, name: string) =>
 
 // A folder tutti update may not write in: one it lacks the permission for, or a read-only one.
 const cannotWrite = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  "code" in error &&
+  Predicate.hasProperty(error, "code") &&
   (error.code === "EACCES" || error.code === "EPERM" || error.code === "EROFS")
 
 /** Writes `bytes` to the new file `path`, and syncs it to disk. */

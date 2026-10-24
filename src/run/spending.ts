@@ -11,7 +11,7 @@
 // gives, is a turn that spent nothing and leaves the session's totals as they were. num_turns,
 // duration_ms and duration_api_ms are the turn's own.
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Context, Effect, Layer, Option, Ref } from "effect"
+import { Context, Effect, Layer, Option, Predicate, Ref } from "effect"
 import { noCost, OrganCost } from "../organs/OrganCost.ts"
 import type { Event, Tokens, TokensByModel } from "./events.ts"
 import { EventStream } from "./eventstream.ts"
@@ -69,10 +69,10 @@ const totalsOf = (r: ResultFields): Totals => ({
 
 /** A result's modelUsage as tokens by model; what isn't a count is 0. */
 export const tokensOf = (modelUsage: unknown): TokensByModel => {
-  if (typeof modelUsage !== "object" || modelUsage === null) return {}
+  if (!Predicate.isObject(modelUsage)) return {}
   const tokens: Record<string, Tokens> = {}
   for (const [model, usage] of Object.entries(modelUsage)) {
-    const u = (typeof usage === "object" && usage !== null ? usage : {}) as UsageFields
+    const u: UsageFields = Predicate.isObject(usage) ? usage : {}
     tokens[model] = {
       input: whole(u.inputTokens),
       output: whole(u.outputTokens),

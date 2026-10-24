@@ -8,6 +8,7 @@
 // A requestedSchema comes from an MCP server and is read as untrusted: whatever isn't a property
 // the form knows is a text field, and every title, description and label is sanitised to be shown.
 // The values sent back are the schema's own, as it gave them.
+import { Predicate } from "effect"
 import type { Answer, AttentionRequest } from "../agent/Attention.ts"
 import { sanitizeLine } from "./sanitize.ts"
 
@@ -73,9 +74,7 @@ export interface Row {
 }
 
 const record = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
-    : undefined
+  Predicate.isObject(value) ? value : undefined
 
 const text = (value: unknown): string | undefined =>
   typeof value === "string" && sanitizeLine(value).trim() !== ""

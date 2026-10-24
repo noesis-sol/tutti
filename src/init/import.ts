@@ -7,7 +7,7 @@
 // the time and --ticket lines, and the rules tutti words differently. Nothing here writes, so
 // .orchestra/ is left as it is.
 import { join } from "node:path"
-import { Effect, Exit, FileSystem, Option } from "effect"
+import { Effect, Exit, FileSystem, Option, Predicate } from "effect"
 import { decodeConfig } from "../project/configFile.ts"
 import { ticketIdPlaceholder } from "../project/prompt.ts"
 import { permissionModes, Settings, settingsFile } from "../project/settings.ts"
@@ -24,9 +24,6 @@ export const orchestraSettingsFile = join(orchestraDir, "settings.json")
 export const orchestraPromptFile = join(orchestraDir, "worker-prompt.md")
 
 type Json = Record<string, unknown>
-
-const isObject = (value: unknown): value is Json =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
 
 /** An orchestra setting imported: its key, and the tutti key it went to. */
 export interface Imported {
@@ -70,7 +67,7 @@ const setPath = (json: Json, path: ReadonlyArray<string>, value: unknown) => {
   let holder = json
   for (const key of path.slice(0, -1)) {
     const next = holder[key]
-    if (isObject(next)) holder = next
+    if (Predicate.isObject(next)) holder = next
     else {
       const made: Json = {}
       holder[key] = made
@@ -174,7 +171,7 @@ const problemWith = (fragment: Json): string | null => {
  * whose value tutti's settings take, and every other key named with why it isn't imported.
  */
 export const importSettings = (orchestra: unknown): SettingsImport => {
-  if (!isObject(orchestra)) {
+  if (!Predicate.isObject(orchestra)) {
     return {
       json: {},
       imported: [],
@@ -220,7 +217,7 @@ export const importSettings = (orchestra: unknown): SettingsImport => {
     }
     if (key === "environment_hold") {
       if (value === null) continue
-      if (!isObject(value)) {
+      if (!Predicate.isObject(value)) {
         leftOut.push({ key: shown(key, value), why: "isn't an object" })
         continue
       }

@@ -15,7 +15,7 @@
 // probe reads both. Only its stderr says the main checkout isn't trusted, so the probe reads every
 // line of it until the session's process has exited.
 import { query } from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Context, Duration, Effect, Layer, Schema } from "effect"
+import { Cause, Context, Duration, Effect, Layer, Predicate, Schema } from "effect"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
 import type { permissionModes } from "../project/settings.ts"
@@ -119,8 +119,7 @@ export interface Initialization {
   readonly untrustedFiles: ReadonlyArray<string | null>
 }
 
-const record = (value: unknown): Record<string, unknown> =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
+const record = (value: unknown): Record<string, unknown> => (Predicate.isObject(value) ? value : {})
 
 const text = (value: unknown): string | null =>
   typeof value === "string" && value !== "" ? value : null

@@ -14,7 +14,18 @@
 // the worker's transcript goes on in memory.
 import { fstatSync, readSync, writeSync } from "node:fs"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Clock, Context, Effect, Layer, PubSub, Result, Schema, type Scope, Stream } from "effect"
+import {
+  Clock,
+  Context,
+  Effect,
+  Layer,
+  Predicate,
+  PubSub,
+  Result,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect"
 import { close, LibcError, makeFoldersUnder, O, openUnder } from "../native/libc.ts"
 import { terminalSafe } from "../run/events.ts"
 import { timestamp } from "../run/localTime.ts"
@@ -135,9 +146,7 @@ export interface Storage {
 
 // asRecord reads a value of an SDK message whose shape this tutti may not know, without trusting it.
 const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
+  Predicate.isObject(value) ? value : undefined
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined

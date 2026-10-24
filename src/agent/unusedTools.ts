@@ -9,7 +9,7 @@
 // Skill goes too, and the listing of the user's skills with it, unless the project has skills of
 // its own or enables plugins (projectHasSkills): a worker reaches those only through Skill.
 import { join } from "node:path"
-import { Effect, FileSystem } from "effect"
+import { Effect, FileSystem, Predicate } from "effect"
 
 /** The tools workers never call, denied to every worker's session. */
 export const unusedTools: ReadonlyArray<string> = [
@@ -69,9 +69,9 @@ export const enablesPlugins = (settings: string): boolean => {
   } catch {
     return false
   }
-  if (typeof json !== "object" || json === null || Array.isArray(json)) return false
-  const plugins: unknown = (json as { enabledPlugins?: unknown }).enabledPlugins
-  if (typeof plugins !== "object" || plugins === null || Array.isArray(plugins)) return false
+  if (!Predicate.isObject(json)) return false
+  const plugins = json.enabledPlugins
+  if (!Predicate.isObject(plugins)) return false
   return Object.values(plugins).some((value) => value !== false)
 }
 

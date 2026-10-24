@@ -14,7 +14,7 @@
 // epic's ID. A step that fails stops it, with what was filed before it, so that what to remove, or
 // how to carry on, can be said (filingFailedLines).
 import { posix } from "node:path"
-import { Effect, Result, Schema } from "effect"
+import { Effect, Predicate, Result, Schema } from "effect"
 import { soloLabel } from "../run/holds.ts"
 import { Beads, type BeadsError, beadsWhy, MetadataKey } from "../services/Beads.ts"
 
@@ -61,9 +61,6 @@ export const needsAnswers = (plan: FeaturePlan): boolean => plan.tickets.length 
 // Checking
 
 type Fields = Readonly<Record<string, unknown>>
-
-const isFields = (value: unknown): value is Fields =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
 
 /** The value of `key`, its own, or undefined. */
 const field = (fields: Fields, key: string): unknown =>
@@ -222,7 +219,7 @@ export const validatePlan = (
   input: unknown,
   tracked: ReadonlyArray<string>,
 ): Result.Result<FeaturePlan, ReadonlyArray<string>> => {
-  if (!isFields(input)) return Result.fail([`the plan is ${shown(input)}, not an object`])
+  if (!Predicate.isObject(input)) return Result.fail([`the plan is ${shown(input)}, not an object`])
   const reasons: Array<string> = []
   const questions = textsOf(input, "questions", "the plan", reasons)
   const rawTickets = field(input, "tickets")
@@ -252,7 +249,7 @@ export const validatePlan = (
   > = []
   const blockedBy: Array<ReadonlyArray<string>> = []
   listed.forEach((raw, i) => {
-    if (!isFields(raw)) {
+    if (!Predicate.isObject(raw)) {
       reasons.push(`ticket ${i + 1} of the plan is ${shown(raw)}, not an object`)
       return
     }

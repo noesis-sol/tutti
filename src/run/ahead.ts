@@ -1,7 +1,7 @@
 // The mark a merge train leaves on a ticket whose branch it rebased onto the branch ahead
 // (mergetrain.ts), in state.json: while it is there, the branch may have the commits of the branch
 // ahead, so its merge (merge.ts's prepare) sets aside one not put back as its worker left it.
-import { Effect, type Schema } from "effect"
+import { Effect, Predicate, type Schema } from "effect"
 import { Store } from "../services/Store.ts"
 
 /** The Store metadata key marking a ticket's branch as rebased by its train onto the branch ahead. */
@@ -26,10 +26,8 @@ export interface RebasedAhead {
  * branch back to. state.json is anyone's to edit, so only a commit hash is taken for a commit.
  */
 export const rebasedAheadOf = (value: Schema.Json | undefined): RebasedAhead | undefined => {
-  if (value === undefined || value === null || typeof value !== "object" || Array.isArray(value)) {
-    return undefined
-  }
-  const fields = value as Readonly<Record<string, Schema.Json>>
+  if (!Predicate.isObject(value)) return undefined
+  const fields: Readonly<Record<string, unknown>> = value
   const field = (key: string) => (Object.hasOwn(fields, key) ? fields[key] : undefined)
   const hash = (key: string) => {
     const it = field(key)

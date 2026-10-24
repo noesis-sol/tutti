@@ -13,6 +13,7 @@ import {
   Duration,
   Effect,
   type Stream as EffectStream,
+  Predicate,
   Queue,
   type Scope,
   Stream,
@@ -722,7 +723,7 @@ export const loadView = (reading: Reading): LoadView => {
 /** Whether `a` and `b` are the same data: equal primitives, or arrays and objects of such. */
 export const same = (a: unknown, b: unknown): boolean => {
   if (Object.is(a, b)) return true
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false
+  if (!Predicate.isObjectOrArray(a) || !Predicate.isObjectOrArray(b)) return false
   if (Array.isArray(a) !== Array.isArray(b)) return false
   const keysA = Object.keys(a)
   const keysB = Object.keys(b)

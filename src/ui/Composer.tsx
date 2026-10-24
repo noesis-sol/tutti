@@ -19,6 +19,7 @@
 // The prompt (`>`) is drawn `formAccent`, the cursor `formSelected`, the placeholder
 // `formPlaceholder`, the text `formText`.
 import { type BoxRenderable, TextAttributes, type TextareaRenderable } from "@opentui/core"
+import { Predicate } from "effect"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { Item } from "../agent/Transcripts.ts"
 import { AttentionLines, type ButtonSegment } from "./AttentionCard.tsx"
@@ -118,9 +119,7 @@ export interface Send {
 
 // A value of an SDK message whose shape this tutti may not know, read without trusting it.
 const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
+  Predicate.isObject(value) ? value : undefined
 
 /** The lifecycle states that say the CLI has taken a send, or dropped it. */
 const takenStates = new Set(["started", "completed", "cancelled"])

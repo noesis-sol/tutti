@@ -7,7 +7,7 @@
 // as bd show gives it. The ticket is named by its ID alone outside the tags, and tutti's line on how
 // it was set aside comes last, as Claude reads long inputs best with the request at the end. When it
 // is asked, and what becomes of its verdict, is run/triage.ts's.
-import { Effect, Schema } from "effect"
+import { Effect, Predicate, Schema } from "effect"
 import type { Item } from "../agent/Transcripts.ts"
 import { denier, unknownDenier } from "../run/log.ts"
 import { oneLine } from "../ui/oneLine.ts"
@@ -62,9 +62,7 @@ export const resultCharacters = 200
 type Fields = Readonly<Record<string, unknown>>
 
 const asRecord = (value: unknown): Fields | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Fields)
-    : undefined
+  Predicate.isObject(value) ? value : undefined
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined

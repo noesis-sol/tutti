@@ -16,7 +16,7 @@
 // keeps the commit of each ticket's branch its check last passed on (Passes), so a branch checked
 // as its worker fixed it, or resolved its rebase, isn't checked again while it stays on top.
 import { join } from "node:path"
-import { Clock, Effect, Ref, Result, type Schema, type Scope } from "effect"
+import { Clock, Effect, Predicate, Ref, Result, type Schema, type Scope } from "effect"
 import { O } from "../native/libc.ts"
 import { formatDuration } from "../project/configFile.ts"
 import {
@@ -172,10 +172,7 @@ export interface Unchecked {
  */
 export const uncheckedOf = (value: Schema.Json | undefined): Unchecked | undefined => {
   if (value === undefined || value === null) return undefined
-  const fields: Readonly<Record<string, Schema.Json>> =
-    typeof value === "object" && !Array.isArray(value)
-      ? (value as Readonly<Record<string, Schema.Json>>)
-      : {}
+  const fields: Readonly<Record<string, unknown>> = Predicate.isObject(value) ? value : {}
   const hash = (key: string) => {
     const field = Object.hasOwn(fields, key) ? fields[key] : undefined
     return typeof field === "string" && /^[0-9a-f]{7,64}$/.test(field) ? field : ""
@@ -204,11 +201,9 @@ const handedBackField = "handed_back"
  * rebase in progress in its worktree is then its worker's unfinished resolution (carry.ts).
  */
 export const handedBackOf = (value: Schema.Json | undefined): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
+  Predicate.isObject(value) &&
   Object.hasOwn(value, handedBackField) &&
-  (value as Readonly<Record<string, Schema.Json>>)[handedBackField] === true
+  value[handedBackField] === true
 
 /**
  * Notes on the ticket's mark that its rebase's conflicts are handed back to its worker, the rebase
