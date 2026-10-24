@@ -77,6 +77,7 @@ import {
   SteeredLine,
 } from "./Composer.tsx"
 import { clickable } from "./click.ts"
+import { useFilingDesk } from "./filingDesk.tsx"
 import { hintLines } from "./Hint.tsx"
 import { KeyHelp } from "./KeyHelp.tsx"
 import { Box, useInput, useLayer } from "./keys.ts"
@@ -113,15 +114,7 @@ import {
   useTranscriptKeys,
   useTranscriptWindow,
 } from "./transcriptView.ts"
-import {
-  useCommand,
-  useFilings,
-  useHandBacks,
-  useNow,
-  useRunView,
-  useSpinner,
-  useTheme,
-} from "./useRunView.ts"
+import { useCommand, useHandBacks, useNow, useRunView, useSpinner, useTheme } from "./useRunView.ts"
 
 export { entryId, panelRequests, requestKey, selectable } from "./transcriptView.ts"
 
@@ -1118,7 +1111,6 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
   const looks = useSyntaxStyles(theme)
   const command = useCommand()
   const handBacks = useHandBacks()
-  const filings = useFilings()
   const { width, height } = useTerminalDimensions()
   const found = view.cards.find((each) => each.ticket === viewed)
   // The card last seen, so that the view still shows a worker that has just finished.
@@ -1183,32 +1175,25 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: string }) => {
     return true
   }
   // Once it has finished, Ctrl+T or File as ticket files what you typed as a new ticket; the composer
-  // keeps it until bd has it, and while it isn't filed (tutti-g0wd).
-  const filing = useRef<{ readonly uuid: string; readonly text: string } | null>(null)
+  // keeps it until bd has it, and while it isn't filed (tutti-g0wd). The desk keeps the filing while
+  // bd answers, past the view: reopened, the composer has its text again (tutti-fgr2).
+  const desk = useFilingDesk()
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once a view, as it opens
+  useEffect(() => {
+    const text = desk.opening(viewed)
+    if (text !== "") composer.field.current?.setText(text)
+    return desk.attach(viewed, composer.field)
+  }, [desk, viewed])
   const fileAsTicket = () => {
     if (found !== undefined) return
     const text = composer.field.current?.plainText.trim() ?? ""
     if (text === "") return input.toasts.show(fileWords.nothing)
-    if (filing.current !== null) return input.toasts.show(fileWords.already)
+    if (desk.pending(viewed) !== undefined) return input.toasts.show(fileWords.already)
     const uuid = crypto.randomUUID()
-    filing.current = { uuid, text }
+    desk.ask(viewed, { uuid, text })
     command(UiCommand.FileTicket({ from: viewed, text, uuid }))
     input.toasts.show(fileWords.filing)
   }
-  useEffect(() => {
-    const asked = filing.current
-    const done = asked === null ? undefined : filings.find((each) => each.uuid === asked.uuid)
-    if (asked === null || done === undefined) return
-    filing.current = null
-    if (done.outcome._tag === "NotFiled") {
-      input.toasts.show(fileWords.notFiled(done.outcome.why), { failure: true })
-      return
-    }
-    // What you typed since is yours: only the text filed is emptied.
-    const box = composer.field.current
-    if (box !== null && box.plainText.trim() === asked.text) box.setText("")
-    input.toasts.show(fileWords.filed(done.outcome.id, done.outcome.title))
-  }, [filings, composer.field, input])
   // Ctrl+X asks first; `y` interrupts the turn the question names, and its queued messages go.
   const interrupt = () => {
     if (found === undefined) return

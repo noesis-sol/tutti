@@ -14,6 +14,7 @@ import type { InterviewScreen } from "../run/interview.ts"
 import type { Dashboard as RunDashboard, ScreenInputs } from "../run/screen.ts"
 import type { Clipboard } from "./clipboard.ts"
 import { Dashboard } from "./Dashboard.tsx"
+import { FilingDeskProvider } from "./filingDesk.tsx"
 import { Input } from "./Input.tsx"
 import { InterviewContext, type InterviewValue, InterviewView } from "./InterviewView.tsx"
 import type { UrlOpener } from "./openUrl.ts"
@@ -52,7 +53,9 @@ export const Root = ({
   readonly input?: { readonly pasteLimit?: number; readonly toastTimer?: Timer }
 }) => (
   <ShellContext.Provider value={value}>
-    <Input {...input}>{children ?? <App />}</Input>
+    <Input {...input}>
+      <FilingDeskProvider>{children ?? <App />}</FilingDeskProvider>
+    </Input>
   </ShellContext.Provider>
 )
 
