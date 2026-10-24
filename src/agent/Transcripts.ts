@@ -372,7 +372,10 @@ export class Transcripts extends Context.Service<
     stderr(worker: string): (data: string) => void
     /** The worker's last items in memory, oldest first: at most `ringSize`. */
     recent(worker: string): Effect.Effect<ReadonlyArray<Item>>
-    /** What its card shows: `Bash(scripts/check-fast.sh)`, or the last line of its text. */
+    /**
+     * What its card shows: `Bash(scripts/check-fast.sh)`, or the last line of its text; none once
+     * it is released, until something starts it again.
+     */
     latestAction(worker: string): Effect.Effect<string | undefined>
     /** The same, saying whether it is a denied call. */
     action(worker: string): Effect.Effect<LatestAction | undefined>
@@ -431,10 +434,14 @@ export class Transcripts extends Context.Service<
 export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Service"]> =>
   Effect.sync(() => {
     const workers = new Map<string, Worker>()
+    // The workers let go of, until something starts them again: their latest action is none, so
+    // the dashboard's poll doesn't read them back into memory.
+    const letGoOf = new Set<string>()
 
     const workerOf = (id: string): Worker => {
       const known = workers.get(id)
       if (known !== undefined) return known
+      letGoOf.delete(id)
       // A worker seen before, in an earlier session or run, numbers on from its file's last line,
       // and starts its memory and latest action from the file's last items.
       const ring = readBack(storage, id, undefined, ringSize).map(({ item }) => item)
@@ -454,7 +461,7 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
     }
 
     const letGo = (id: string): void => {
-      workers.delete(id)
+      if (workers.delete(id)) letGoOf.add(id)
       storage.release(id)
     }
 
@@ -524,11 +531,13 @@ export const makeTranscripts = (storage: Storage): Effect.Effect<Transcripts["Se
       recent: (id) => Effect.sync(() => [...workerOf(id).ring]),
       latestAction: (id) =>
         Effect.flatMap(Clock.currentTimeMillis, (now) =>
-          Effect.sync(() => latestOf(workerOf(id).activity, now)?.text),
+          Effect.sync(() =>
+            letGoOf.has(id) ? undefined : latestOf(workerOf(id).activity, now)?.text,
+          ),
         ),
       action: (id) =>
         Effect.flatMap(Clock.currentTimeMillis, (now) =>
-          Effect.sync(() => latestOf(workerOf(id).activity, now)),
+          Effect.sync(() => (letGoOf.has(id) ? undefined : latestOf(workerOf(id).activity, now))),
         ),
       view: (id) =>
         Effect.gen(function* () {

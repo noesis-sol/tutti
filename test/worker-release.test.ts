@@ -3,17 +3,23 @@
 // every ticket it finished.
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Effect, Exit, Layer, Scope } from "effect"
+import { Effect, Exit, Layer, Scope, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { AgentHost } from "../src/agent/AgentHost.ts"
 import { makeTranscripts, type Storage, Transcripts } from "../src/agent/Transcripts.ts"
 import { Ledger } from "../src/run/ledger.ts"
+import { make as makeQueue } from "../src/run/mergequeue.ts"
 import { Cause } from "../src/run/phase.ts"
 import { fit } from "../src/run/sessions.ts"
 import { untilSettled } from "../src/run/settle.ts"
+import { Beads } from "../src/services/Beads.ts"
+import { CheckFailed } from "../src/services/Checks.ts"
+import { Git } from "../src/services/Git.ts"
+import { Worktrees } from "../src/services/Worktrees.ts"
 import { layer as hostLayer, turn } from "../src/testing/AgentHost.ts"
 import { layer as attentionLayer, waitForTest } from "../src/testing/Attention.ts"
 import { layer as eventsLayer } from "../src/testing/EventStream.ts"
+import { Repository } from "../src/testing/Git.ts"
 import { layer as logLayer } from "../src/testing/Log.ts"
 import { backlog, scenario } from "./harness.ts"
 
@@ -91,6 +97,47 @@ describe("Transcripts' release", () => {
       }),
     )
     expect(seen).toEqual({ whileOpen: 0, readWhileOpen: 0, oneLeft: 0, closed: 1 })
+  })
+
+  test("a worker let go of has no latest action, and isn't read back for it", async () => {
+    const { storage, counts } = counting()
+    const seen = await Effect.runPromise(
+      Effect.gen(function* () {
+        const transcripts = yield* makeTranscripts(storage)
+        yield* transcripts.record(worker, "s-1", text("one"))
+        yield* transcripts.release(worker)
+        const read = counts.readBack
+        const released = {
+          action: yield* transcripts.action(worker),
+          latest: yield* transcripts.latestAction(worker),
+          readBack: counts.readBack - read,
+        }
+        // Its next message starts it again, its latest action with it.
+        yield* transcripts.record(worker, "s-2", text("two"))
+        return { released, again: yield* transcripts.latestAction(worker) }
+      }),
+    )
+    expect(seen).toEqual({
+      released: { action: undefined, latest: undefined, readBack: 0 },
+      again: "two",
+    })
+  })
+
+  test("a worker never known reads its latest action from its file", async () => {
+    const { storage, counts } = counting()
+    storage.append(
+      worker,
+      `${JSON.stringify({ v: 1, seq: 1, session: "s-1", time: "2026-10-24T09:00:00Z", message: text("earlier") })}\n`,
+    )
+    const latest = await Effect.runPromise(
+      Effect.gen(function* () {
+        const transcripts = yield* makeTranscripts(storage)
+        yield* transcripts.release(worker)
+        return yield* transcripts.latestAction(worker)
+      }),
+    )
+    expect(latest).toBe("earlier")
+    expect(counts.readBack).toBe(1)
   })
 
   test("a view opened and closed with no release asked lets go of nothing", async () => {
@@ -172,6 +219,10 @@ describe("fit, as a ticket's part in the run ends", () => {
     ["closed with no change", Cause.NoChange()],
     ["deferred", Cause.Defer({ why: "by the worker" })],
     ["left for review", Cause.Aside({ why: "CLOSED_WITHOUT_COMMIT" })],
+    [
+      "set aside after a failed check not to be checked again",
+      Cause.Aside({ why: "CHECKS_FAILED" }),
+    ],
   ]
   for (const [what, cause] of ended) {
     test(`${what}: its session closed and its worker ended`, async () => {
@@ -188,4 +239,73 @@ describe("fit, as a ticket's part in the run ends", () => {
       expect(await known(cause)).toEqual({ state: "Closed", closed: true })
     })
   }
+})
+
+/** A check that fails in a file the ticket doesn't change: it is kept to be checked once more. */
+const elsewhere = new CheckFailed({
+  check: "fast",
+  command: "scripts/check-fast.sh",
+  exitCode: 1,
+  outputFile: "/dev/fd/9",
+  failingLines: ["shared/b.go:12: expected 1"],
+  lastLines: ["shared/b.go:12: expected 1", "1 fail"],
+  suites: [],
+  suite: null,
+  flaky: [],
+  flakyCount: 0,
+})
+
+describe("a ticket merged by hand during the run", () => {
+  test("has its worker ended", async () => {
+    const ran = await scenario(
+      {
+        backlog: backlog().ticket(worker).seeds,
+        scripts: { [worker]: [[]] },
+        checks: { fast: [elsewhere] },
+      },
+      Effect.gen(function* () {
+        const host = yield* AgentHost
+        const git = yield* Git
+        const repository = yield* Repository
+        const ledger = yield* Ledger
+        const tree = yield* (yield* Worktrees).prepare(worker)
+        yield* git.addWorktree(repository.dir, tree.path, { branch: tree.branch, base: "main" })
+        yield* ledger.transition(worker, Cause.Ready(), { title: "One ticket" })
+        yield* ledger.transition(worker, Cause.Dispatched())
+        yield* host.start(worker, { sessionId: "s-1", cwd: tree.path })
+        yield* repository.commit(tree.path, `Do ${worker} (${worker})`, { "a/a.go": "a\n" })
+        yield* (yield* Beads).close(worker, "done")
+        yield* repository.commit(repository.dir, "Land something else", { "main.txt": "moved\n" })
+        const queue = yield* makeQueue({ repo: "/repo", base: "main" })
+        yield* queue.offer({
+          id: worker,
+          title: "One ticket",
+          branch: tree.branch,
+          worktree: tree.path,
+        })
+        yield* ledger.changes.pipe(
+          Stream.filter((state) => state.tickets.get(worker)?.phase._tag === "Review"),
+          Stream.runHead,
+        )
+        yield* queue.settled
+        // Kept to be checked once more, its session open, until it is found merged by hand.
+        const kept = (yield* host.current(worker))._tag
+        yield* repository.commit(repository.dir, `Squash-merge ${worker} (${worker})`, {
+          "a/a.go": "a\n",
+        })
+        yield* queue.recheck
+        yield* queue.settled
+        return {
+          kept,
+          phase: (yield* ledger.current).tickets.get(worker)?.phase._tag,
+          now: Exit.isSuccess(yield* Effect.exit(host.current(worker))) ? "known" : "forgotten",
+        }
+      }).pipe(Effect.provide(Ledger.layer)),
+    )
+    if (Exit.isFailure(ran.exit)) throw new Error(`the scenario failed: ${ran.exit.cause}`)
+    expect(ran.exit.value).toEqual({ kept: "Starting", phase: "Done", now: "forgotten" })
+    expect(ran.sent.filter((sent) => sent.ticket === worker).map((sent) => sent._tag)).toContain(
+      "Ended",
+    )
+  })
 })

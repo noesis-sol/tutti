@@ -117,7 +117,8 @@ const takeAsMerged = (
     const store = yield* Store
     const { id } = issue
     yield* rechecks.drop(id)
-    yield* (yield* AgentHost).close(id)
+    // Its part in the run is over: its worker is ended, as sessions.ts's fit ends a merged one's.
+    yield* (yield* AgentHost).end(id)
     // Its worktree, as git has it on its branch.
     const branch = branchOf(id)
     const listed = yield* Effect.result(git.worktrees(options.repo))
