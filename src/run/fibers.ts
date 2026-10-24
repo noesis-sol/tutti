@@ -1,7 +1,13 @@
-// The FiberSets the run forks its fibers into (§ 3.4). Effect 4 has no Supervisor, so every fiber
-// the run forks belongs to a set made here, registered under a name. Once the run's scope has
-// closed, a set still holding fibers was made in a scope that outlives the run: a leak, which
-// whole-run scenarios fail on (§ 13).
+// The FiberSets the run forks its fibers into (§ 3.4). Effect 4 has no Supervisor, so each fiber
+// the run forks into a scope that lasts as long as the run (the scheduler's tickets, the merge
+// queue and its train and hand-backs, triage, the predictor, the usage limit's watchers) belongs
+// to a set made here, registered under a name. Once the run's scope has closed, a set still holding
+// fibers was made in a scope that outlives the run: a leak, which whole-run scenarios fail on
+// (§ 13). A fiber forked with Effect.forkScoped into a scope that closes with the work it serves
+// needs no set, as that scope interrupts it as it closes, and RunFibers.left doesn't see it: a
+// ticket's watchers while its worker settles (work.ts's watchLimit and timeLimit, settle.ts's
+// undeferAtLimit), the view's projection (runView.ts), the screen's followers (screen.ts), the
+// interview's (interview.ts), the keep-awake command (keepAwake.ts) and the SIGTSTP log (quit.ts).
 import { Context, Effect, FiberSet, Layer, type Scope } from "effect"
 
 /** A registered set that still holds fibers. */
