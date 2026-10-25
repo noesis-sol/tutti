@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The npm package is published only after the tag's Release check has succeeded (§ 12 npm; `.github/workflows/npm.yml`'s `release-check` job, `scripts/release-check.ts`, `.github/workflows/release.yml`'s `run-name`; tutti-hljo): the npm workflow published once its own pack and package check passed, without waiting for release.yml's check of the same tag, which runs the whole suite, so a tag whose suite failed would still have reached npm. Now a `release-check` job, beside the pack and its checks, waits for the tag's Release run's check job, the newest of its push's run and the runs started by hand for it, and publish needs it; a failed check, or none within 40 minutes, fails it. Republishing by hand has the same gate. `test/npm-release-check.test.ts` covers it.
+
 ## [0.3.1] - 2026-10-25
 
 - A run says when it is on battery, and warns before the battery runs low (§ 5 item 16, § 7.9, § 10; `src/run/battery.ts`, `src/testing/Battery.ts`, `src/run/holds.ts`'s `withBattery`, `src/run/notices.ts`, `src/main.ts`; tutti-yhjt): a run that starts on battery says `on battery (62%): plug in to keep the run going` in its START block; while it goes, it reads the battery once a minute, counted awake (`pmset -g batt` on macOS, `/sys/class/power_supply/BAT*` on Linux), and as it falls to 20% and to 10%, discharging, says `BATTERY: 10% left, not charging: plug in or the Mac will sleep` once each per discharge, with a `battery` record, on the dashboard's warning line while it stays low, and with a notification at 10%. Plugged in, the notice goes.

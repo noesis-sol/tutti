@@ -16,6 +16,9 @@
 # Without it, or with a key tutti doesn't build in, the check fails, saying so, and nothing is
 # published.
 name: Release
+# The tag in every run's title, a run by hand's too: the npm workflow finds the tag's check by it
+# (scripts/release-check.ts).
+run-name: Release ${{ inputs.tag || github.ref_name }}
 
 on:
   push:

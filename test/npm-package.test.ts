@@ -213,7 +213,7 @@ describe("the npm workflow", () => {
     expect(job("pack").needs).toBe("token")
     expect(job("pack").if).toBe("needs.token.outputs.set == 'true'")
     expect(job("check").needs).toBe("pack")
-    expect(job("publish").needs).toBe("check")
+    expect(job("publish").needs).toEqual(["check", "release-check"])
   })
 
   test("packs the release bundle once, checks that tarball as bunx runs it, and publishes it", () => {

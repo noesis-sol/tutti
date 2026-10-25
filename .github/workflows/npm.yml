@@ -11,6 +11,11 @@
 # (scripts/check-npm.sh), and that tarball is published, with provenance once the repository is
 # public (npm generates none for a private one, and refuses the publish). A tag with a suffix
 # (v1.2.0-rc.1) publishes under the dist-tag next, so bunx @noesis-sol/tutti stays on the release.
+#
+# Nothing is published before the tag's Release check (release.yml's check job, the whole suite on
+# the tag) has succeeded: the release-check job waits for it beside the pack and its checks
+# (scripts/release-check.ts), on a push and by hand alike. A failed check fails it; re-run Release's
+# failed jobs, or run Release for the tag by hand, then this workflow's.
 name: npm
 
 on:
@@ -137,8 +142,33 @@ jobs:
             scripts/check-npm.sh dist/npm/*.tgz
           fi
 
+  # The tag's Release check, which runs the whole suite: publish waits for it to succeed.
+  release-check:
+    needs: token
+    if: needs.token.outputs.set == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read # the Release runs and their jobs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          sparse-checkout: scripts
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Wait for the tag's Release check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bun scripts/release-check.ts "$TAG" "$(git rev-parse HEAD)"
+
   publish:
-    needs: check
+    needs: [check, release-check]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
