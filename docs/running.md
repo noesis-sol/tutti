@@ -364,7 +364,8 @@ stopped, which frees its slot for the next ticket. Its worktree and branch are k
 names its session, for the morning. `bd undefer <id>` brings it back, in this run or a later one:
 its worker's session is resumed in that worktree, told why it was stopped and to carry on, so it
 goes on with what it knew (a session that can't be resumed is said so, and a new one starts there
-instead). Its row reads `↷ deferred` with
+instead). Closed or deleted rather than undeferred, its kept session is forgotten as the next run starts,
+its worktree left as it is. Its row reads `↷ deferred` with
 `(set aside overnight: BLOCKED)` before its title, the summary counts it set aside, and the report
 lists it with the others. A question that is `maintainer_only`, or has no options, waits for you as
 in any run, and the run goes on without its ticket. What makes carrying on unsafe, or would only

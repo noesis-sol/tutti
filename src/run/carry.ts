@@ -32,7 +32,9 @@
 //
 // A ticket an overnight run set aside is no worker to take up: its session is saved suspended with
 // why it was set aside (`set aside overnight: BLOCKED`, overnightAside.ts), and left for its start
-// to resume once bd ready lists it again, undeferred (start.ts), however many runs that takes.
+// to resume once bd ready lists it again, undeferred (start.ts), however many runs that takes. One
+// whose ticket is closed or deleted since, by hand, never comes back through bd ready, so the run's
+// start forgets its record (forgetAside), its worktree left as it is; one bd can't show is kept.
 //
 // A run that ends saves the phase each of its other tickets left it in (saveLeft), and forgets a
 // deferred one, which comes back through bd ready with a new session; a ticket left for review has
@@ -252,12 +254,44 @@ const abortLeftRebase = (
   })
 
 /**
+ * Forgets the record of each ticket an overnight run set aside whose ticket is closed or deleted
+ * since: bd ready never lists it again, for its start to resume its session. Neither is taken up.
+ */
+const forgetAside = Effect.gen(function* () {
+  const beads = yield* Beads
+  const store = yield* Store
+  const logs = yield* Log
+  const aside = ticketsIn(yield* store.state)
+    .filter(([, record]) => record.suspended !== undefined && asideOvernight(record.suspended))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  for (const [id, record] of aside) {
+    const shown = yield* Effect.result(showTrying(beads, id))
+    const gone = Result.isFailure(shown)
+      ? shown.failure._tag === "BeadsFailed" && shown.failure.noSuchIssue
+        ? line`bd has no such ticket`
+        : undefined
+      : shown.success.status === "closed"
+        ? line`it is closed`
+        : undefined
+    if (gone === undefined) continue
+    const worktree =
+      record.worktree === undefined ? line`` : line`; worktree ${record.worktree} left as it is`
+    yield* logs.write(
+      detail`${id}, set aside by an overnight run, is forgotten: ${gone}, so it won't be undeferred${worktree}`,
+    )
+    yield* Effect.ignore(store.remove(id))
+  }
+})
+
+/**
  * Takes up the workers the last run left in state.json, as the run starts (see above): what
- * became of each, by ticket.
+ * became of each, by ticket. The records of tickets set aside overnight and closed or deleted since
+ * are forgotten first.
  */
 export const carryOver = (
   options: CarryOptions,
-): Effect.Effect<ReadonlyMap<TicketId, Carried>, never, CarryEnv> => takeUp(options, undefined)
+): Effect.Effect<ReadonlyMap<TicketId, Carried>, never, CarryEnv> =>
+  Effect.andThen(forgetAside, takeUp(options, undefined))
 
 /**
  * Takes up the workers of `waiting`, those carryOver left waiting for a slot, checking each again
