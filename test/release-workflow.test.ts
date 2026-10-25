@@ -70,7 +70,7 @@ describe("the release workflow", () => {
     expect(job(release, "publish").needs).toEqual(["check", "build", "run"])
   })
 
-  test("fails before building without the release key", () => {
+  test("fails before publishing without the release key", () => {
     const step = job(release, "check").steps.find((s) => s.name === "Check the release key")
     expect(step?.env?.TUTTI_RELEASE_KEY).toBe(gh("secrets.TUTTI_RELEASE_KEY"))
     expect(step?.run).toContain('[ -z "$TUTTI_RELEASE_KEY" ]')
