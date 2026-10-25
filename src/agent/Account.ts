@@ -12,9 +12,11 @@
 //
 // Claude Code 2.1.301 doesn't put the skipped settings files in its initialization result, as the
 // SDK's docs suggest: the session's settings (ClaudeSession's settings) list them. The probe reads
-// both. Only its stderr says the main checkout isn't trusted, so the probe reads every
-// line of it until the session's process has exited.
-import { Cause, Context, Duration, Effect, Layer, Predicate, Schema } from "effect"
+// both. Only its stderr says the main checkout isn't trusted, which Claude Code writes as it loads
+// its settings, before it answers initialize: the probe reads what came until then. Closed, Claude
+// Code takes about 0.75 s to exit, flushing its telemetry: the probe answers without waiting for
+// that, and the exit is awaited in the background, in the probe's Scope.
+import { Cause, Context, Duration, Effect, Exit, Layer, Predicate, Schema, Scope } from "effect"
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import type { billings } from "../cli/flags.ts"
 import type { permissionModes } from "../project/settings.ts"
@@ -323,7 +325,7 @@ export interface ProbeOptions {
   readonly env: Readonly<Record<string, string | undefined>>
 }
 
-/** Starts a probe session and reads what it says of itself. */
+/** Starts a probe session and reads what it says of itself; R may hold the Scope its close is in. */
 export type StartProbe<R = never> = (
   options: ProbeOptions,
 ) => Effect.Effect<Initialization, AccountProbeFailed, R>
@@ -348,58 +350,68 @@ export interface ProbeLimits {
 }
 
 /**
- * The probe over ClaudeCode: one session, closed once it has answered, its stderr read until its
- * process has exited, since the stderr and the answers arrive on different pipes. A session that
- * can't be launched, as when there is no Claude Code, fails it.
+ * The probe over ClaudeCode: one session, closed once it has answered, with what it wrote to stderr
+ * until then. Its Claude Code's exit is awaited in a fiber of the Scope, whose close waits for it,
+ * so the probe answers without waiting out Claude Code's exit flush. A session that can't be
+ * launched, as when there is no Claude Code, fails it.
  */
 export const startProbeWith =
   (
     limits: ProbeLimits = { timeout: probeTimeout, closeLimit: probeCloseLimit },
-  ): StartProbe<ClaudeCode> =>
+  ): StartProbe<ClaudeCode | Scope.Scope> =>
   (options) =>
     Effect.gen(function* () {
       const claudeCode = yield* ClaudeCode
+      const outer = yield* Effect.scope
+      const sessionScope = yield* Scope.make()
       const stderr: Array<string> = []
-      const answers = yield* Effect.scoped(
-        Effect.gen(function* () {
-          const ended = new AbortController()
-          const session = yield* claudeCode
-            .open({
-              options: probeOptions({ config: options.config }),
-              prompt: nothing(ended.signal),
-              billedAs: BilledAs.LoginProbe(),
-              env: options.env,
-              onStderr: (data) => stderr.push(data),
-              closeLimit: limits.closeLimit,
-            })
-            .pipe(Effect.mapError((error) => new AccountProbeFailed({ reason: error.reason })))
-          // Its prompt ends once the session is closed.
-          yield* Effect.addFinalizer(() => Effect.sync(() => ended.abort()))
-          return yield* Effect.all({
-            init: session.initialization,
-            settings: session.settings,
-          }).pipe(
-            // What Claude Code last wrote to stderr says why, where the SDK says only its exit code.
-            Effect.mapError(
-              (error) => new AccountProbeFailed({ reason: error.quoted(stderrQuoted) }),
-            ),
-            Effect.timeoutOrElse({
-              duration: limits.timeout,
-              orElse: () =>
-                Effect.fail(
-                  new AccountProbeFailed({
-                    reason: `no answer within ${Duration.format(limits.timeout)}`,
-                  }),
-                ),
-            }),
-          )
-        }),
+      const answers = yield* Effect.gen(function* () {
+        const ended = new AbortController()
+        const session = yield* claudeCode
+          .open({
+            options: probeOptions({ config: options.config }),
+            prompt: nothing(ended.signal),
+            billedAs: BilledAs.LoginProbe(),
+            env: options.env,
+            onStderr: (data) => stderr.push(data),
+            closeLimit: limits.closeLimit,
+          })
+          .pipe(Effect.mapError((error) => new AccountProbeFailed({ reason: error.reason })))
+        // Its prompt ends once the session is closed.
+        yield* Effect.addFinalizer(() => Effect.sync(() => ended.abort()))
+        const answered = yield* Effect.all({
+          init: session.initialization,
+          settings: session.settings,
+        }).pipe(
+          // What Claude Code last wrote to stderr says why, where the SDK says only its exit code.
+          Effect.mapError(
+            (error) => new AccountProbeFailed({ reason: error.quoted(stderrQuoted) }),
+          ),
+          Effect.timeoutOrElse({
+            duration: limits.timeout,
+            orElse: () =>
+              Effect.fail(
+                new AccountProbeFailed({
+                  reason: `no answer within ${Duration.format(limits.timeout)}`,
+                }),
+              ),
+          }),
+        )
+        // The untrusted-checkout line comes before initialize's answer (the live contract test).
+        return { ...answered, stderr: stderr.join("") }
+      }).pipe(
+        Scope.provide(sessionScope),
+        // Closed now, its exit awaited in the background: uninterruptible, so that `outer`'s close
+        // waits for it, and kills its process group after the close limit.
+        Effect.ensuring(
+          Effect.forkIn(Scope.close(sessionScope, Exit.void), outer, { uninterruptible: true }),
+        ),
       )
-      return readInitialization(answers.init, answers.settings, stderr.join(""))
+      return readInitialization(answers.init, answers.settings, answers.stderr)
     })
 
 /** The live probe, over Claude Code. */
-export const startProbe: StartProbe<ClaudeCode> = startProbeWith()
+export const startProbe: StartProbe<ClaudeCode | Scope.Scope> = startProbeWith()
 
 export class Account extends Context.Service<
   Account,

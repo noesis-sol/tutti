@@ -50,6 +50,7 @@ const run = (
         }),
       )
     }).pipe(
+      Effect.scoped,
       Effect.provide(TestGit.layer({ dir: repo })),
       Effect.provide(
         ConfigProvider.layer(ConfigProvider.fromEnv({ env: { HOME: join(repo, "..", "home") } })),

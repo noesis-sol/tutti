@@ -134,6 +134,7 @@ const run = (repo: string, scenario: Scenario = {}) =>
         }),
       )
     }).pipe(
+      Effect.scoped,
       Effect.provide(TestGit.layer({ dir: repo })),
       Effect.provide(
         ConfigProvider.layer(

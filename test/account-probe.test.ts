@@ -44,6 +44,7 @@ const probe = async (scenario: Scenario, limits: ProbeLimits = live) => {
   const config = appConfig({ claude: fake }, dir)
   const exit = await Effect.runPromiseExit(
     startProbeWith(limits)({ config, env }).pipe(
+      Effect.scoped,
       Effect.provide(ClaudeCode.layer.pipe(Layer.provide(configLayer(config)))),
     ),
   )

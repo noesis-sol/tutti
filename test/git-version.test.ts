@@ -116,7 +116,11 @@ describe("the startup checks with git 2.34.1", () => {
           claude: (given) => Effect.succeed({ path: given, warnings: [], problems: [] }),
           account: TestAccount.layer(),
         }),
-      ).pipe(Effect.provide(liveGit(oldGit(repo))), Effect.provide(BunServices.layer)),
+      ).pipe(
+        Effect.scoped,
+        Effect.provide(liveGit(oldGit(repo))),
+        Effect.provide(BunServices.layer),
+      ),
     )
     if (Exit.isSuccess(exit)) throw new Error("the checks passed")
     const reason = exit.cause.reasons.find((each) => each._tag === "Fail")

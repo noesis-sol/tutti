@@ -40,6 +40,7 @@ const run = (env: Record<string, string>) => {
         account: TestAccount.layer(TestAccount.initialization(), env),
       }),
     ).pipe(
+      Effect.scoped,
       Effect.provide(TestGit.layer({ dir: repo })),
       Effect.provide(
         ConfigProvider.layer(ConfigProvider.fromEnv({ env: { HOME: join(repo, "..", "home") } })),

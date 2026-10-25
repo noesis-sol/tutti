@@ -426,8 +426,15 @@ export const check = <R>(checking: Checking<R>) =>
         checkBeads(repo, checking.beads(repo), notSetUp, config.ticket),
         collect(
           "the login probe",
-          Effect.flatMap(Account, (account) => account.probe).pipe(
-            Effect.provide(Layer.provide(checking.account, Layer.succeed(AppConfig, config))),
+          // Built in the caller's Scope, which awaits the probe's Claude Code's exit, so the
+          // checks don't wait out its exit flush (§ 4.13).
+          Layer.build(Layer.provide(checking.account, Layer.succeed(AppConfig, config))).pipe(
+            Effect.flatMap((built) =>
+              Effect.provideContext(
+                Effect.flatMap(Account, (account) => account.probe),
+                built,
+              ),
+            ),
           ),
         ),
         collect("the MCP servers", resolveServers(repo, config.settings.workers.mcp_servers)),

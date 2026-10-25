@@ -1480,10 +1480,12 @@ live.describe("Agent SDK contract: the account probe", () => {
       const config = configFor(dir)
       const found = await Effect.runPromise(
         startProbe({ config, env: hostEnv() }).pipe(
+          Effect.scoped,
           Effect.provide(ClaudeCode.layer.pipe(Layer.provide(configLayer(config)))),
         ),
       )
-      // untrustedFiles holds what ignoresAllowRules matched in the probe's stderr.
+      // untrustedFiles holds what ignoresAllowRules matched in the stderr the probe had by the
+      // session's answers: Claude Code writes the line before it answers initialize.
       expect(found.untrustedFiles).toHaveLength(1)
       expect(found.untrustedFiles[0]).toContain("settings.json")
     },

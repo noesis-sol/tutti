@@ -57,6 +57,7 @@ describe("the login probe's hooks", () => {
     const config = appConfig({ claude: fake }, dir)
     const found = await Effect.runPromise(
       startProbe({ config, env }).pipe(
+        Effect.scoped,
         Effect.provide(ClaudeCode.layer.pipe(Layer.provide(configLayer(config)))),
       ),
     )

@@ -220,6 +220,7 @@ describe("what Claude Code last wrote to stderr, in the reason its session faile
     const { config, env } = fakeWith({ stderrAtStart: "Error: bad binary\n", exitAtStart: 1 })
     const exit = await Effect.runPromiseExit(
       startProbe({ config, env }).pipe(
+        Effect.scoped,
         Effect.provide(ClaudeCode.layer.pipe(Layer.provide(configLayer(config)))),
       ),
     )
