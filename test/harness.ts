@@ -173,6 +173,8 @@ export interface Ran<A> {
   readonly worktreeCalls: ReadonlyArray<WorktreeCall>
   /** The backlog at the end, closed issues included. */
   readonly issues: ReadonlyArray<Issue>
+  /** The comments bd human respond left, by issue, for those it left any on. */
+  readonly comments: Readonly<Record<string, ReadonlyArray<string>>>
   /** The notifications shown, sanitised, in order. */
   readonly notices: ReadonlyArray<string>
   readonly leaks: Leaks
@@ -241,7 +243,11 @@ export const environment = (
   return host.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
-        attentionLayer(setup.policy ?? allowAll),
+        // --auto-answer's, as main.ts gives the live layer it.
+        attentionLayer(
+          setup.policy ?? allowAll,
+          config.autoAnswer === null ? undefined : { after: config.autoAnswer },
+        ),
         transcriptsLayer(),
         usageLayer,
         usageProbeLayer(setup.usageProbe),
@@ -285,6 +291,17 @@ const killGroup = (pid: number) => {
   }
 }
 
+/** The comments bd human respond left in the backlog, by issue. */
+const commentsOf = Effect.gen(function* () {
+  const backlog = yield* Backlog
+  const all: Record<string, ReadonlyArray<string>> = {}
+  for (const issue of yield* backlog.issues) {
+    const comments = yield* backlog.comments(issue.id)
+    if (comments.length > 0) all[issue.id] = comments
+  }
+  return all
+})
+
 /**
  * Runs `run` as a whole run in the environment `setup` describes, closes its scope, and gives back
  * what it left. Rejects with Leaked when a FiberSet still holds fibers or a process group is left.
@@ -311,6 +328,7 @@ export const scenario = async <A, E>(
         checkRuns: [...checkRuns],
         worktreeCalls: [...worktreeCalls],
         issues: yield* (yield* Backlog).issues,
+        comments: yield* commentsOf,
         notices: yield* (yield* Notices).notices,
         leaks,
       } satisfies Ran<A>
