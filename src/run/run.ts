@@ -98,7 +98,13 @@ import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
-import { AutoAnswer, answerQuestions, autoAnswerName, makeAutoAnswering } from "./autoAnswer.ts"
+import {
+  AutoAnswer,
+  answerQuestions,
+  autoAnswerName,
+  makeAutoAnswering,
+  notifyLeftOpen,
+} from "./autoAnswer.ts"
 import { Battery, watchBattery } from "./battery.ts"
 import { make as makeBlockedWatch } from "./blockedWatch.ts"
 import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carry.ts"
@@ -838,7 +844,8 @@ const runFrom = (
       // asked.ts); one with no slot for it waits for a later look. Not while the run holds or
       // winds down, which takes up only what is running: the next run resumes them.
       yield* Ref.set(unslotted, new Set())
-      if (takesBack(yield* gate)) {
+      const gateNow = yield* gate
+      if (takesBack(gateNow)) {
         const left = yield* carryWaiting(carryOptions, yield* Ref.get(carrying)).pipe(
           Effect.provideContext(context),
         )
@@ -847,7 +854,12 @@ const runFrom = (
         // still waiting for its time keeps the run from ending on it.
         yield* Ref.set(autoAnswering, yield* answerQuestions)
         yield* takeAnswers(carryOptions)
-      } else yield* Ref.set(autoAnswering, false)
+      } else {
+        yield* Ref.set(autoAnswering, false)
+        // Winding down, it answers none: the questions --auto-answer took at once, which notified
+        // nothing, notify now. A hold only puts their answer off.
+        if (gateNow.windingDown) yield* notifyLeftOpen
+      }
       if (takesNew(yield* gate)) {
         const filled = yield* Effect.result(scheduler.fillTrying)
         if (Result.isFailure(filled)) {
@@ -912,6 +924,9 @@ const runFrom = (
     // A ticket set aside and merged by hand since the base last moved counts closed, for the end
     // line and the report (handMerged.ts).
     if (quit === null) yield* queue.mergedByHand
+    // The questions --auto-answer took at once and the run ends with unanswered notify, as their
+    // asked records didn't (autoAnswer.ts).
+    yield* notifyLeftOpen
 
     // The end (endOfRun.ts): the tickets a run can't end in Stopped, and every stopped ticket's
     // session suspended.

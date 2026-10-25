@@ -61,6 +61,19 @@ export interface AutoAnswering {
    * down isn't answered at once.
    */
   readonly takesBack: Ref.Ref<Effect.Effect<boolean>>
+  /**
+   * The questions whose asked record said tutti answers them at once (`auto_answering`), so
+   * notified nothing, not yet answered nor left to you: by question, the ticket waiting on it and
+   * the question's title. One the run winds down or ends with, still open, notifies then
+   * (notifyLeftOpen).
+   */
+  readonly atOnce: Ref.Ref<ReadonlyMap<string, TakenAtOnce>>
+}
+
+/** A question --auto-answer took at once (AutoAnswering's `atOnce`). */
+export interface TakenAtOnce {
+  readonly ticket: TicketId
+  readonly title: string
 }
 
 /** --auto-answer, as the run gives it: null without it, outside a run too. */
@@ -80,6 +93,7 @@ export const makeAutoAnswering = (
       answered: yield* Ref.make<ReadonlyArray<AnsweredQuestion>>([]),
       failed: yield* Ref.make<ReadonlyMap<string, number>>(new Map()),
       takesBack: yield* Ref.make<Effect.Effect<boolean>>(Effect.succeed(true)),
+      atOnce: yield* Ref.make<ReadonlyMap<string, TakenAtOnce>>(new Map()),
     }
   })
 
@@ -134,6 +148,52 @@ export const autoAnswerOf = (question: TicketId): Effect.Effect<AutoAnswerOf, ne
       ? { leaves: "", atOnce: now }
       : { leaves: leavesIt(why), atOnce: false }
   })
+
+/**
+ * Notes `question` (`title`), which `ticket` waits on, as one --auto-answer answers at once
+ * (autoAnswerOf's `atOnce`), its asked record notifying nothing: until it is answered or left to
+ * you, the run's wind-down or end notifies it (notifyLeftOpen).
+ */
+export const takenAtOnce = (
+  ticket: TicketId,
+  question: TicketId,
+  title: string,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const auto = yield* AutoAnswer
+    if (auto === null) return
+    yield* Ref.update(auto.atOnce, (all) => new Map(all).set(question, { ticket, title }))
+  })
+
+/** `question` answered or left to you: no longer one taken at once (takenAtOnce). */
+const settled = (auto: AutoAnswering, question: string): Effect.Effect<void> =>
+  Ref.update(auto.atOnce, (all) => {
+    const left = new Map(all)
+    left.delete(question)
+    return left
+  })
+
+/**
+ * Notifies `<ticket> needs your answer` for each question --auto-answer took at once (takenAtOnce)
+ * and hasn't answered, still open: as the run winds down or ends, which answers none, its asked
+ * record having notified nothing. Each notifies once; one closed meanwhile was answered by you,
+ * and one bd can't show notifies anyway.
+ */
+export const notifyLeftOpen: Effect.Effect<void, never, Beads | Notifier> = Effect.gen(
+  function* () {
+    const auto = yield* AutoAnswer
+    if (auto === null) return
+    const taken = yield* Ref.getAndSet(auto.atOnce, new Map())
+    if (taken.size === 0) return
+    const beads = yield* Beads
+    const notifier = yield* Notifier
+    for (const [question, { ticket, title }] of taken) {
+      const shown = yield* Effect.result(beads.show(question as TicketId))
+      if (Result.isSuccess(shown) && shown.success.status === "closed") continue
+      yield* notifier.notify(about(`${ticket} needs your answer`, title))
+    }
+  },
+)
 
 /** The part of an Asked line about --auto-answer for `question` (autoAnswerOf's `leaves`). */
 export const leavesPart = (question: TicketId): Effect.Effect<string, never, Beads> =>
@@ -201,6 +261,7 @@ const answer = (
         if (Duration.isZero(auto.after)) {
           yield* (yield* Notifier).notify(about(`${ticket} needs your answer`, title))
         }
+        yield* settled(auto, id)
         return "left"
       }
       if (tries === 1) {
@@ -215,6 +276,7 @@ const answer = (
       ...all,
       { ticket, question: id, title, option: option.label },
     ])
+    yield* settled(auto, id)
     const text = ticketLine(
       Tag.autoAnswered,
     )`${id} (${title}), which ${ticket} waits on, answered with its recommended option by --auto-answer, not by you: ${option.label}`

@@ -29,7 +29,7 @@ import { type Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { type TicketWorktree, Worktrees } from "../services/Worktrees.ts"
 import { dropNothingDone, leaveForReview, nothingLeft, putAside } from "./aside.ts"
-import { autoAnswerOf } from "./autoAnswer.ts"
+import { autoAnswerOf, takenAtOnce } from "./autoAnswer.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -265,6 +265,9 @@ export const conclude = (
         )`${id} waits on your answer to ${q.id} (${q.title}); answer with: bd human respond ${q.id}; worktree ${path} left open${leaves}`
         const detail = `${q.id}: ${q.title}`
         const auto = atOnce ? { auto_answering: true as const } : {}
+        // Noted first, so that a look answering it meanwhile finds it: one the run winds down or
+        // ends with notifies then (autoAnswer.ts's notifyLeftOpen).
+        if (atOnce) yield* takenAtOnce(id, q.id, q.title)
         yield* ledger.transition(id, Move.FiledQuestion({ question: q.id }), {
           said: [{ kind: "asked", ticket: id, title, detail, ...auto, text }],
         })
