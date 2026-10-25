@@ -277,6 +277,37 @@ describe("a later run and a ticket an overnight run set aside", () => {
     expect(state.tickets["t-1"]).toEqual(asideRecord(root, "t-1", overnightWhy("BLOCKED")))
   })
 
+  test("its worktree and branch removed since, a new session starts in a worktree made afresh", async () => {
+    const { ran, state } = await later({
+      backlog: backlog().ticket("t-1").seeds,
+      saved: (root) => ({ "t-1": asideRecord(root, "t-1") }),
+      worktrees: [],
+      scripts: (world) => ({
+        "t-1": [
+          turn(
+            [
+              ...bash(
+                "bd update t-1 --claim",
+                orDie(world.beads.update("t-1" as TicketId, { claim: true })),
+              ),
+              ...bash("bd close t-1", orDie(world.beads.close("t-1" as TicketId, "done"))),
+            ],
+            result("Closed t-1."),
+          ),
+        ],
+      }),
+    })
+    // A worktree made afresh, not reused; the scenario's git has none to merge from, which is no
+    // part of this.
+    expectLog(ran, [/^ {2}worktree .*t-1 on tutti\/t-1$/])
+    const sessions = sessionsOf(ran, "t-1")
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]).toMatch(/^Started /)
+    expect(sessions[0]).not.toBe("Started session-t-1")
+    expect(resumedRecords(ran)).toEqual([])
+    expect(state.tickets["t-1"]?.session).toBe(sessions[0]?.replace(/^Started /, ""))
+  })
+
   test("a kept session that can't be resumed gives way to a new one in the same worktree", async () => {
     const { ran } = await later({
       backlog: backlog().ticket("t-1").seeds,

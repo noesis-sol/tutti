@@ -340,7 +340,8 @@ const runFolderFailed = (id: TicketId, worktree: string, error: RunFilesError): 
 /**
  * Resumes the session an overnight run kept as it set the ticket aside (overnightAside.ts), in
  * `worktree`, its ticket undeferred and dispatched again: the worker, told why it was stopped and
- * to carry on, or undefined when none was kept there. One that can't be resumed is said so, and
+ * to carry on, or undefined when none was kept there, or its worktree and branch are gone and
+ * `worktree` was made afresh from the base. One that can't be resumed is said so, and
  * the ticket starts a new session in the same worktree, as before.
  */
 const resumeAside = (id: TicketId, worktree: TicketWorktree) =>
@@ -350,7 +351,8 @@ const resumeAside = (id: TicketId, worktree: TicketWorktree) =>
     const why = saved?.suspended
     const session = saved?.session
     if (why === undefined || !asideOvernight(why) || session === undefined) return undefined
-    if (saved?.worktree !== worktree.path) return undefined
+    // A worktree made afresh, its folder and branch removed since, has none of what it knew.
+    if (!worktree.reused || saved?.worktree !== worktree.path) return undefined
     const facts = runFacts({
       id,
       ticketLimit: config.settings.workers.ticket_limit,
