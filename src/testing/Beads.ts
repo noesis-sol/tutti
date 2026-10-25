@@ -106,6 +106,8 @@ interface Stored {
   readonly createdAt: string
   readonly deferUntil?: string
   readonly closeReason: string
+  /** The comments bd human respond added, oldest first. */
+  readonly comments?: ReadonlyArray<string>
   /** Creation order, which breaks ties in bd's sorts. */
   readonly seq: number
 }
@@ -126,6 +128,8 @@ export class Backlog extends Context.Service<
     get(id: string): Effect.Effect<Issue | undefined>
     /** Adds the issue, or replaces the one with its ID. */
     put(seed: Seed): Effect.Effect<void>
+    /** The comments bd human respond added to the issue, oldest first. */
+    comments(id: string): Effect.Effect<ReadonlyArray<string>>
     /**
      * Makes the next call of the bd command op (`list`, `show`, `update`, `label add`, `dep list`,
      * `human list`, …) give the fault's output, which fails it unless it decodes.
@@ -625,6 +629,20 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
             }),
             decodeQuestions,
           ),
+        // bd human respond adds the response as a comment and closes the question, "Responded".
+        respond: (id, response) =>
+          answer(
+            "write",
+            "human respond",
+            id,
+            change(id, (issue) => ({
+              ...issue,
+              status: "closed",
+              closeReason: "Responded",
+              comments: [...(issue.comments ?? []), response],
+            })),
+            nothing,
+          ),
         metadata: (id) =>
           answer("read", "show", id, show(id), (command, stdout) =>
             Effect.map(issueFor(id, command, stdout), (issue) => issue.metadata),
@@ -664,6 +682,7 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
               return new Map(issues).set(seed.id, stored)
             }),
           ),
+        comments: (id) => Effect.map(Ref.get(state), (issues) => issues.get(id)?.comments ?? []),
         fail: (op, fault = {}) =>
           Effect.sync(() => void faults.push({ op, fault, left: fault.times ?? 1 })),
       })

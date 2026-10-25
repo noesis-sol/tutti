@@ -48,6 +48,7 @@ import { type PhaseName, Store, type TicketRecord, ticketsIn } from "../services
 import { branchOf, nothingEarlier, ticketIdProblem } from "../services/Worktrees.ts"
 import { retrying } from "./again.ts"
 import { type AnswerOptions, takeAnswers } from "./asked.ts"
+import { leavesPart } from "./autoAnswer.ts"
 import { handedBackOf, uncheckedKey, uncheckedOf } from "./check.ts"
 import { byHand, removedText } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
@@ -423,6 +424,8 @@ const takeUp = (
           title: issue.title,
         })
         if (Result.isFailure(moved)) continue
+        // With --auto-answer, why it leaves the question to you: open before the run, at least.
+        const leaves = asked === undefined ? "" : yield* leavesPart(asked.id)
         yield* taken(
           id,
           "asked",
@@ -430,7 +433,7 @@ const takeUp = (
             id,
             asked === undefined
               ? line`waited on ${q}, which is answered since`
-              : line`still waits on your answer to ${asked.id} (${asked.title}); answer with: bd human respond ${asked.id}`,
+              : line`still waits on your answer to ${asked.id} (${asked.title}); answer with: bd human respond ${asked.id}${leaves}`,
           ),
         )
         continue

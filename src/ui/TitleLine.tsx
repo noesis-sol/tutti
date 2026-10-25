@@ -1,8 +1,9 @@
 // The dashboard's title line (§ 7.2, § 7.11), under a blank line: the tutti pill, the version, the
-// ` keep awake ` badge while --keep-awake holds the machine awake, and whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next,
+// ` keep awake ` badge while --keep-awake holds the machine awake, the ` auto-answer ` pill with
+// --auto-answer, and whether the run is quitting (what it waits for) or stopping, or has a solo ticket running or next,
 // and how many other runs share the machine; then, faint, the branch, the run's time and a scoped run's ticket; and on the right tutti's
 // banners, the usage (or, short of a limit, the account's windows) and the holds. A narrow pane
-// drops the badge first, then the branch and the time, then shortens the usage, and keeps the holds'
+// drops the keep-awake badge first, then the auto-answer pill, then the branch and the time, then shortens the usage, and keeps the holds'
 // words longest.
 import { Duration } from "effect"
 import { formatDuration } from "../project/configFile.ts"
@@ -136,7 +137,8 @@ const bannerSegments = (banner: Banner, theme: Theme, now: number, form: Form): 
 
 /**
  * The title line's segments `width` columns wide, the run's time taken at `now`. A pane too narrow
- * for all of it gives up the least needed first: the keep-awake badge; then the branch and the time,
+ * for all of it gives up the least needed first: the keep-awake badge, then the auto-answer pill; then
+ * the branch and the time,
  * cut then dropped; then the usage banner, shortened then dropped; then the states, cut from their
  * end; then what the holds say beyond their words. A hold's word is cut only where the pill and the
  * words alone are wider.
@@ -148,19 +150,29 @@ export const titleSegments = (
   theme: Theme,
   width: number,
 ): Segments => {
-  // The badge says nothing that changes during the run, so it gives way first: it is shown only
-  // where the whole line fits with it, nothing cut or shortened.
+  // The badges say nothing that changes during the run, so they give way first: each is shown only
+  // where the whole line fits with it, nothing cut or shortened. The auto-answer pill, which says
+  // that tutti answers for you, outlasts the keep-awake badge.
+  const autoAnswer = title.autoAnswer
   const forms = function* () {
-    if (title.keepAwake) yield* titleForms(title, banners, now, theme, width, true)
-    yield* titleForms(title, banners, now, theme, width, false)
+    if (title.keepAwake || autoAnswer !== null) {
+      yield* titleForms(title, banners, now, theme, width, {
+        keepAwake: title.keepAwake,
+        autoAnswer,
+      })
+    }
+    if (title.keepAwake && autoAnswer !== null) {
+      yield* titleForms(title, banners, now, theme, width, { keepAwake: false, autoAnswer })
+    }
+    yield* titleForms(title, banners, now, theme, width, null)
   }
   return firstFitting(forms(), (line) => line !== null) ?? []
 }
 
 /**
  * The title line's forms `width` columns wide, fullest first, null for one that doesn't fit; the
- * last always does. With `badge`, the ` keep awake ` badge after the version, and only the whole
- * line.
+ * last always does. With `badges`, those it gives after the version, the ` keep awake ` badge and
+ * the ` auto-answer ` pill, and only the whole line.
  */
 function* titleForms(
   title: TitleView,
@@ -168,12 +180,15 @@ function* titleForms(
   now: number,
   theme: Theme,
   width: number,
-  badge: boolean,
+  badges: { readonly keepAwake: boolean; readonly autoAnswer: string | null } | null,
 ): Generator<Segments | null> {
   const { styles } = theme
   const left: Array<Segment> = [seg(" Tutti ", styles.title)]
   if (title.version !== "") left.push(seg(" "), seg(title.version, styles.dim))
-  if (badge) left.push(seg(" "), seg(" keep awake ", styles.keepAwake))
+  if (badges?.keepAwake === true) left.push(seg(" "), seg(" keep awake ", styles.keepAwake))
+  if (badges !== null && badges.autoAnswer !== null) {
+    left.push(seg(" "), seg(` ${badges.autoAnswer} `, styles.autoAnswer))
+  }
   if (title.quitting !== null) left.push(seg(`  · ${title.quitting}`, styles.stop))
   else if (title.stopping) left.push(seg("  · stopping", styles.stop))
   if (title.solo !== null) {
@@ -213,7 +228,7 @@ function* titleForms(
   }
   const full = right("full", "full")
   const room = width - widthOf(left) - 3 - (full.length === 0 ? 0 : widthOf(full) + 2)
-  if (badge) {
+  if (badges !== null) {
     yield room >= widthOf([seg(where)])
       ? laid([...left, seg("   "), seg(where, styles.dim)], full)
       : null

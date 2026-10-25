@@ -121,6 +121,12 @@ export interface AppConfigValue {
    * run, not in the project's settings (src/run/keepAwake.ts).
    */
   readonly keepAwake: boolean
+  /**
+   * Whether tutti answers the workers' questions with their recommended option (--auto-answer),
+   * and once one has waited how long for the maintainer: Duration.zero at once, null not at all.
+   * Chosen for each run, as --keep-awake is (src/run/autoAnswer.ts).
+   */
+  readonly autoAnswer: Duration.Duration | null
   readonly billing: (typeof billings)[number]
   readonly usageLimitWait: Duration.Duration
   /**
@@ -345,6 +351,7 @@ export const resolveAll = (
     machineWorkers,
     machineWorkersFrom,
     keepAwake: pick("keepAwake", false),
+    autoAnswer: pick("autoAnswer", null),
     billing: pick("billing", user.billing),
     usageLimitWait: pick("usageLimitWait", defaultUsageLimitWait),
     claude: claude === null || !claude.includes("/") ? claude : pathOf("claude", claude),

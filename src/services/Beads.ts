@@ -574,6 +574,8 @@ export class Beads extends Context.Service<
     create(issue: NewIssue): Effect.Effect<Issue, BeadsError>
     /** bd human list: the questions for the maintainer that aren't closed. */
     questions(): Effect.Effect<ReadonlyArray<Issue>, BeadsError>
+    /** bd human respond: adds `response` to the question as a comment, and closes it. */
+    respond(id: TicketId, response: string): Effect.Effect<void, BeadsError>
     /** The issue's metadata, from bd show. */
     metadata(id: TicketId): Effect.Effect<Readonly<Record<string, unknown>>, BeadsError>
     /** Sets one key of the issue's metadata to a string, keeping the others. */
@@ -829,6 +831,12 @@ export class Beads extends Context.Service<
           ),
           questions: Effect.fn("Beads.questions")(() =>
             read(["human", "list", "--json"], decodeQuestions),
+          ),
+          respond: Effect.fn("Beads.respond")((id, response) =>
+            confirmed(
+              [id],
+              Effect.asVoid(write(["human", "respond", id, `--response=${response}`, "--json"])),
+            ),
           ),
           metadata: Effect.fn("Beads.metadata")((id) =>
             Effect.map(show(id), (issue) => issue.metadata),

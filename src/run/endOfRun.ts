@@ -7,9 +7,16 @@
 // part), and the full check when the run ended by itself having merged a ticket (fullcheck.ts).
 import { Clock, Deferred, Duration, Effect, Result } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
+import type { AutoAnswered } from "../agent/Attention.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { type Section, section } from "../organs/evidence.ts"
-import { Ending, type Summary } from "../print/summary.ts"
+import {
+  type AutoAnsweredItem,
+  autoAnsweredHeading,
+  autoAnsweredTexts,
+  Ending,
+  type Summary,
+} from "../print/summary.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type TicketId } from "../services/Beads.ts"
 import { Git } from "../services/Git.ts"
@@ -17,6 +24,7 @@ import { Notifier } from "../services/Notifier.ts"
 import { Store } from "../services/Store.ts"
 import { marks } from "../ui/marks.ts"
 import { windowLabel } from "../ui/TitleLine.tsx"
+import { answeredQuestions } from "./autoAnswer.ts"
 import { saveAsked, saveLeft } from "./carry.ts"
 import { drainedLine } from "./drain.ts"
 import { EventStream } from "./eventstream.ts"
@@ -56,7 +64,9 @@ export const summaryLines = (s: {
   readonly totals: Totals
   readonly figures: ReadonlyArray<FiguresLine>
   readonly rows: ReadonlyArray<Row>
+  readonly autoAnswered?: ReadonlyArray<AutoAnsweredItem>
 }): ReadonlyArray<Line> => {
+  const auto = autoAnsweredTexts(s.autoAnswered ?? [])
   const scoped = s.scope === null ? "" : line` · ticket ${s.scope}`
   const { totals } = s
   return [
@@ -64,6 +74,8 @@ export const summaryLines = (s: {
     detail`Completed ${totals.completed} · Set aside ${totals.deferred + totals.review} · Needs you ${totals.needsYou}`,
     ...(s.rows.length === 0 ? [] : s.figures.map((each) => detail`${figuresText(each)}`)),
     ...s.rows.map((row) => detail`${marks[row.mark]} ${row.ticket} ${row.word}: ${row.note}`),
+    ...(auto.length === 0 ? [] : [detail`${autoAnsweredHeading}:`]),
+    ...auto.map((text) => detail`  ${text}`),
   ]
 }
 
@@ -179,6 +191,8 @@ export const make = (options: {
   readonly setUps: SetUps
   readonly scheduler: Pick<Scheduler, "started" | "limitReached">
   readonly quitting: Deferred.Deferred<Quitting>
+  /** The questions asked in the workers' sessions that --auto-answer answered (Attention's). */
+  readonly autoAnswered?: Effect.Effect<ReadonlyArray<AutoAnswered>>
 }): Effect.Effect<EndOfRun, never, WorkEnv | Notifier> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<WorkEnv | Notifier>()
@@ -285,6 +299,19 @@ export const make = (options: {
           totals: view.totals,
           figures: yield* figures,
           rows: view.rows,
+          autoAnswered: [
+            ...(yield* answeredQuestions).map((each) => ({
+              ticket: each.ticket,
+              question: each.question,
+              title: each.title,
+              choice: each.option,
+            })),
+            ...(yield* options.autoAnswered ?? Effect.succeed([])).map((each) => ({
+              ticket: each.ticket,
+              title: each.question,
+              choice: each.answers.join(", "),
+            })),
+          ],
         }
         const lines = summaryLines({ ...summarised, base })
         yield* logs.write(...lines)

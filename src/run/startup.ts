@@ -40,6 +40,7 @@ import { checkoutChanges } from "../services/gitStatus.ts"
 import { lenientKey } from "../services/lenient.ts"
 import { sanitizeLine } from "../ui/sanitize.ts"
 import { schemeNotices } from "../ui/theme.ts"
+import { autoAnswerName } from "./autoAnswer.ts"
 import { type Line, start, Tag } from "./log.ts"
 import { aboveCapNote, machineWorkersLabel } from "./machine.ts"
 
@@ -515,7 +516,7 @@ export const memoryEstimate = (concurrency: number): string =>
 
 /**
  * The START block of a run that passed its checks: `START tutti <version> in <repo> on <base>`,
- * its scope and settings, then its billing, its permission mode in effect, its MCP servers when it
+ * its scope and settings, ` · auto-answer` with --auto-answer, then its billing, its permission mode in effect, its MCP servers when it
  * has none, its `concurrent` above the cap on the machine's workers, the memory its workers take, why its colour scheme isn't used (a line per notice), and
  * its warnings.
  */
@@ -544,6 +545,10 @@ export const startBlock = (started: Started, version: string): ReadonlyArray<Lin
       ["worktrees", config.worktrees],
       ...(servers.length === 0 ? [] : [["MCP servers", servers.join(", ")] as const]),
     ],
+    // --auto-answer, at the line's end, as orchestra has nothing there.
+    ...(config.autoAnswer === null
+      ? {}
+      : { ends: autoAnswerName(config.autoAnswer, formatDuration(config.autoAnswer)) }),
     notes: [
       billingLine(started.account.billing, started.organs._tag === "Anthropic"),
       permissionModeLine(started.account.permissionMode),

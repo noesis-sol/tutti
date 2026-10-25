@@ -29,6 +29,7 @@ import { type Git, type GitError, gitWhy, shortHash } from "../services/Git.ts"
 import { Store } from "../services/Store.ts"
 import { type TicketWorktree, Worktrees } from "../services/Worktrees.ts"
 import { dropNothingDone, leaveForReview, nothingLeft, putAside } from "./aside.ts"
+import { leavesPart } from "./autoAnswer.ts"
 import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { type Settling, settlingOf } from "./environment.ts"
 import type { EventStream } from "./eventstream.ts"
@@ -256,9 +257,11 @@ export const conclude = (
         return null
       case "Asked": {
         const q = reading.question
+        // With --auto-answer, why it leaves the question to you, if it does (autoAnswer.ts).
+        const leaves = yield* leavesPart(q.id)
         const text = ticketLine(
           Tag.asked,
-        )`${id} waits on your answer to ${q.id} (${q.title}); answer with: bd human respond ${q.id}; worktree ${path} left open`
+        )`${id} waits on your answer to ${q.id} (${q.title}); answer with: bd human respond ${q.id}; worktree ${path} left open${leaves}`
         yield* ledger.transition(id, Move.FiledQuestion({ question: q.id }), {
           said: [{ kind: "asked", ticket: id, title, detail: `${q.id}: ${q.title}`, text }],
         })

@@ -190,6 +190,7 @@ export const attentionSaid = (t: Tally): ReadonlyArray<string> => {
     [t.allowed, "allowed"],
     [t.allowedForRun, "allowed for this run"],
     [t.answered, "answered"],
+    [t.autoAnswered, "answered by --auto-answer, not by you"],
     [t.denied, "denied by you"],
     [t.declined, "declined"],
     [t.cancelled, "withdrawn"],

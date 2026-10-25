@@ -15,6 +15,7 @@ const look = (over: Partial<Snapshot> = {}): Snapshot => ({
   asking: [],
   canTake: true,
   resuming: false,
+  answering: false,
   settled: true,
   triagePending: 0,
   dashboard: true,

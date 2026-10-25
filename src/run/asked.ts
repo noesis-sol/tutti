@@ -7,7 +7,8 @@
 // The ready poll calls takeAnswers, one at a time. It reads each Asked ticket in Beads, and once no
 // open question blocks it (its question answered: closed), moves it Asked → Working (the `answered`
 // record, the ANSWERED line) and resumes its session, keeping its ID, with a client_composed "your
-// question is answered" message (the `resumed` record, the RESUMED line). The resumed worker takes
+// question is answered" message (the `resumed` record, the RESUMED line), which names the option
+// --auto-answer chose when tutti answered it (autoAnswer.ts, which the fill runs first). The resumed worker takes
 // a slot, counting toward no limit (the scheduler's carry), and its ticket goes on as a dispatched
 // one does: settled, read, and moved as its worker leaves it. With no slot for it (every slot
 // taken, a solo ticket running, the machine at --machine-workers, a hold), it stays Asked, and a
@@ -21,6 +22,7 @@ import { Beads, type Issue, type TicketId } from "../services/Beads.ts"
 import { Store } from "../services/Store.ts"
 import { nothingEarlier } from "../services/Worktrees.ts"
 import { leaveForReview } from "./aside.ts"
+import { answeredWith } from "./autoAnswer.ts"
 import { Ledger } from "./ledger.ts"
 import { line, Tag, ticketLine } from "./log.ts"
 import { Move } from "./phase.ts"
@@ -73,10 +75,13 @@ export const takeAnswers = (
       const { question } = phase
       const asked = titleOf(issue.success, question)
       let resumed = false
+      // The option --auto-answer chose, when it answered the question rather than you.
+      const auto = yield* answeredWith(question)
       const start = Effect.gen(function* () {
+        const by = auto === undefined ? "" : " by --auto-answer"
         const text = ticketLine(
           Tag.answered,
-        )`${question} (${asked}) is answered, so ${id} comes back`
+        )`${question} (${asked}) is answered${by}, so ${id} comes back`
         const moved = yield* ledger.transition(id, Move.Answered(), {
           said: [{ kind: "answered", ticket: id, title, detail: `${question}: ${asked}`, text }],
         })
@@ -86,7 +91,12 @@ export const takeAnswers = (
           resume({
             ticket: id,
             why: "answered",
-            message: answeredText({ id, question, title: asked }),
+            message: answeredText({
+              id,
+              question,
+              title: asked,
+              ...(auto === undefined ? {} : { auto }),
+            }),
             what: line`${id}'s question ${question} is answered`,
           }),
         )

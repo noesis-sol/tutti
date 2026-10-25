@@ -43,6 +43,8 @@ export interface LoopParts {
   readonly environment: Pick<EnvironmentHold, "probe">
   /** Whether a worker to be resumed found no slot since the look began (runEnd.ts's Look). */
   readonly resuming: Effect.Effect<boolean>
+  /** Whether a question --auto-answer takes waits for its time (runEnd.ts's Look). */
+  readonly answering: Effect.Effect<boolean>
   /** Shows the end-of-run box, naming the workers waiting on you; null for none. */
   readonly showEndOfRun: (tickets: ReadonlyArray<TicketId> | null) => Effect.Effect<void>
   /** Whether the run has a dashboard, which shows the end-of-run box. */
@@ -75,6 +77,7 @@ export const make = (parts: LoopParts): Effect.Effect<Loop> =>
         running: yield* scheduler.running,
         canTake: takesNew(yield* parts.gate),
         resuming: yield* parts.resuming,
+        answering: yield* parts.answering,
         settled: isSettled(yield* queue.state),
         triagePending: yield* parts.triage.pending,
         dashboard: parts.dashboard,

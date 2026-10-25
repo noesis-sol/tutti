@@ -173,6 +173,7 @@ const runLoop = (w: World, steps: ReadonlyArray<(w: World) => void> = []) => {
         }),
     },
     resuming: Effect.succeed(false),
+    answering: Effect.succeed(false),
     showEndOfRun: (tickets) =>
       Effect.sync(() => calls.push(`box ${tickets === null ? "none" : tickets.join(" ")}`)),
     dashboard: w.dashboard,

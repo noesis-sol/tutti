@@ -59,6 +59,7 @@ export const Tag = {
   deferFailed: "DEFER_FAILED",
   asked: "ASKED",
   answered: "ANSWERED",
+  autoAnswered: "AUTO_ANSWERED",
   waitsForMerge: "WAITS_FOR_MERGE",
   reopenFailed: "REOPEN_FAILED",
   probe: "PROBE",
@@ -178,14 +179,20 @@ export interface Start {
   readonly settings: ReadonlyArray<readonly [label: string, value: string]>
   /** What it says once, below: the permission mode or billing in effect, a scheme not used, … */
   readonly notes?: ReadonlyArray<string>
+  /** What the line ends with, after ` · `: `auto-answer after 10m`. */
+  readonly ends?: string
 }
 
-/** The START block: `START tutti <version> in <repo> on <base> (…)`, then its notes indented. */
+/**
+ * The START block: `START tutti <version> in <repo> on <base> (…)`, ` · <ends>` after it if given,
+ * then its notes indented.
+ */
 export const start = (s: Start): ReadonlyArray<Line> => {
   const scope = s.scope === undefined ? "" : line` · ${s.scope}`
   const settings = s.settings.map(([label, value]) => line`${label}: ${value}`).join(", ")
+  const ends = s.ends === undefined ? "" : line` · ${s.ends}`
   return [
-    `${Tag.start} tutti ${line`${s.version} in ${s.repo} on ${s.base}`}${scope} (${settings})` as Line,
+    `${Tag.start} tutti ${line`${s.version} in ${s.repo} on ${s.base}`}${scope} (${settings})${ends}` as Line,
     ...(s.notes ?? []).map((note) => detail`${note}`),
   ]
 }
@@ -313,11 +320,17 @@ export const answered = (a: {
   readonly verdict: Verdict
   /** The reason given with a denial, or the options chosen for a question. */
   readonly detail?: string
-  readonly via: "screen" | "tutti answer"
+  /** --auto-answer: tutti answered it with the recommended options, not the maintainer. */
+  readonly via: "screen" | "tutti answer" | "--auto-answer"
 }): Marked => {
   const tag = a.kind === "permission" ? Tag.permission : Tag.question
   const detailed = a.detail === undefined ? "" : line` (${a.detail})`
-  const via = a.via === "tutti answer" ? ", via tutti answer" : ""
+  const via =
+    a.via === "tutti answer"
+      ? ", via tutti answer"
+      : a.via === "--auto-answer"
+        ? ", the recommended option, by --auto-answer"
+        : ""
   return marked(tag, a.id)`${a.id}'s worker: ${a.what} ${a.verdict}${detailed}${via}`
 }
 

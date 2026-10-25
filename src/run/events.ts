@@ -154,6 +154,11 @@ export const Start = Schema.Struct({
   billing: Schema.Literals(billings),
   /** The permission mode in effect, as the login probe reports it (§ 4.13). */
   permission_mode: Schema.String,
+  /**
+   * --auto-answer: how long a question waits for you before tutti answers it, in ms, 0 for at once;
+   * absent without it. tutti's own.
+   */
+  auto_answer: optional(Count),
 })
 
 /** Progress: the START block, worktrees, how workers settled… */
@@ -185,6 +190,17 @@ export const Deferred = endingRecord("deferred")
 export const Asked = ticketRecord("asked")
 /** Its question was answered. */
 export const Answered = ticketRecord("answered")
+/** tutti answered a question ticket by --auto-answer, with its recommended `option`. tutti's own. */
+export const AutoAnswered = Schema.Struct({
+  ...head("auto_answered"),
+  /** The ticket that waits on the question. */
+  ticket: Schema.String,
+  question: Schema.String,
+  /** The question's title. */
+  title: Schema.String,
+  option: Schema.String,
+  text: Schema.String,
+})
 /** Back in the queue until a blocker merges (`WAITS_FOR_MERGE`); `detail` lists them. */
 export const Waits = ticketRecord("waits")
 /** The triage organ's verdict: `title` is its summary, `detail` as in `environment · high`. */
@@ -472,7 +488,8 @@ export const Attention = Schema.Struct({
 })
 
 export const permissionAnswers = ["allow", "deny", "allow_run"] as const
-export const answeredVia = ["screen", "answer_command"] as const
+/** Who answered: `auto_answer` is tutti, by --auto-answer. */
+export const answeredVia = ["screen", "answer_command", "auto_answer"] as const
 
 /** A request was answered, or withdrawn by the SDK (`cancelled`, with no answer). */
 export const AttentionAnswered = Schema.Struct({
@@ -575,6 +592,7 @@ export const kinds = {
   deferred: Deferred,
   asked: Asked,
   answered: Answered,
+  auto_answered: AutoAnswered,
   waits: Waits,
   reopened: Reopened,
   triage: Triage,

@@ -70,6 +70,12 @@
         "keepAwakeText": {
           "$ref": "#/$defs/RoleColour"
         },
+        "autoAnswer": {
+          "$ref": "#/$defs/RoleColour"
+        },
+        "autoAnswerText": {
+          "$ref": "#/$defs/RoleColour"
+        },
         "heading1": {
           "$ref": "#/$defs/RoleColour"
         },

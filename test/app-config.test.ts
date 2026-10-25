@@ -100,6 +100,7 @@ describe("flags", () => {
       "concurrent",
       "machine-workers",
       "keep-awake",
+      "auto-answer",
       "tickets",
       "ticket",
       "feature",

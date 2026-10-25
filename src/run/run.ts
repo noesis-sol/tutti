@@ -89,6 +89,7 @@ import { section } from "../organs/evidence.ts"
 import { OrganCost } from "../organs/OrganCost.ts"
 import { Organs } from "../organs/Organs.ts"
 import { type Ending, printSummary, type Summary } from "../print/summary.ts"
+import { formatDuration } from "../project/configFile.ts"
 import { checkCommands } from "../project/settings.ts"
 import { Beads, beadsWhy, type Issue, type TicketId } from "../services/Beads.ts"
 import { Git, gitWhy } from "../services/Git.ts"
@@ -97,6 +98,7 @@ import { Store } from "../services/Store.ts"
 import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
+import { AutoAnswer, answerQuestions, autoAnswerName, makeAutoAnswering } from "./autoAnswer.ts"
 import { make as makeBlockedWatch } from "./blockedWatch.ts"
 import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carry.ts"
 import { closedBranches } from "./closedBranches.ts"
@@ -284,6 +286,20 @@ export const showEndOfRun = (
 export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv | Scope.Scope> =>
   Effect.gen(function* () {
     const config = yield* AppConfig
+    const begun = yield* Clock.currentTimeMillis
+    // --auto-answer (autoAnswer.ts), for every part of the run that asks of it.
+    const auto =
+      config.autoAnswer === null ? null : yield* makeAutoAnswering(config.autoAnswer, begun)
+    return yield* runFrom(options, begun).pipe(Effect.provideService(AutoAnswer, auto))
+  })
+
+/** The run, begun at `begun`, as `run` says. */
+const runFrom = (
+  options: RunOptions,
+  begun: number,
+): Effect.Effect<Outcome, never, RunEnv | Scope.Scope> =>
+  Effect.gen(function* () {
+    const config = yield* AppConfig
     const beads = yield* Beads
     const host = yield* AgentHost
     const store = yield* Store
@@ -294,7 +310,6 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     const fibers = yield* RunFibers
     const context = yield* Effect.context<WorkEnv>()
     const { base } = options
-    const begun = yield* Clock.currentTimeMillis
     // The base's commit as the run starts, for the report's commits merged.
     const startHead = yield* (yield* Git)
       .revParse(config.repo, base)
@@ -311,6 +326,10 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       scope: config.ticket,
       began: begun,
       concurrency: config.settings.concurrent,
+      autoAnswer:
+        config.autoAnswer === null
+          ? null
+          : autoAnswerName(config.autoAnswer, formatDuration(config.autoAnswer)),
       subscription: options.subscription ?? false,
       warnings: notices,
     })
@@ -648,6 +667,8 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
     // state.json as they were, for the next run.
     // The workers to be resumed that found no slot since the look began, for its end (runEnd.ts).
     const unslotted = yield* Ref.make<ReadonlySet<string>>(new Set())
+    // Whether a question --auto-answer takes waits for its time, as the last fill found (look.ts).
+    const autoAnswering = yield* Ref.make(false)
     const carryOptions: CarryOptions = {
       base,
       queue,
@@ -797,8 +818,11 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
           Effect.provideContext(context),
         )
         yield* Ref.set(carrying, waitingOf(left))
+        // --auto-answer's questions first, so that takeAnswers resumes their tickets at once; one
+        // still waiting for its time keeps the run from ending on it.
+        yield* Ref.set(autoAnswering, yield* answerQuestions)
         yield* takeAnswers(carryOptions)
-      }
+      } else yield* Ref.set(autoAnswering, false)
       if (takesNew(yield* gate)) {
         const filled = yield* Effect.result(scheduler.fillTrying)
         if (Result.isFailure(filled)) {
@@ -826,6 +850,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       commands,
       environment,
       resuming: Effect.map(Ref.get(unslotted), (all) => all.size > 0),
+      answering: Ref.get(autoAnswering),
       showEndOfRun: (tickets) => showEndOfRun(status, tickets),
       dashboard: screen !== null,
     })
@@ -874,6 +899,7 @@ export const run = (options: RunOptions): Effect.Effect<Outcome, never, RunEnv |
       setUps,
       scheduler,
       quitting,
+      autoAnswered: attention.autoAnswered,
     })
     const { saved, handedBack, neverSent } = yield* end.suspend({
       quit,

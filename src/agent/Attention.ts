@@ -13,6 +13,11 @@
 // are never passed (one switched the session to acceptEdits in the spike), and neither are the
 // suggested destinations, `localSettings` and `projectSettings`, which resolve in the worktree.
 //
+// With --auto-answer (Options.autoAnswer), an AskUserQuestion call is answered with each question's
+// recommended option, at once or once it has waited that long with the machine awake: one waiting
+// past blockedAfter holds the run with BLOCKED first, and the answer lifts the hold. A permission
+// request is never answered so, the safety check's holds included.
+//
 // Every request and answer is a PERMISSION or QUESTION log line and an `attention` or
 // `attention_answered` event, and is tallied per ticket. So is each call Claude Code denied without
 // asking (`permission_denied`): a DENIED line and a `denied` event, tallied by what denied it.
@@ -45,6 +50,7 @@ import { EventStream } from "../run/eventstream.ts"
 import * as log from "../run/log.ts"
 import { Log } from "../run/log.ts"
 import type { TicketId } from "../services/Beads.ts"
+import { sleepAwake } from "../services/Wake.ts"
 import { sanitize, sanitizeLine } from "../ui/sanitize.ts"
 import type { AnswerWord } from "./attentionFiles.ts"
 import type { SessionFibers } from "./callbacks.ts"
@@ -139,8 +145,8 @@ export type Answer =
     }
   | { readonly _tag: "Decline" }
 
-/** Where an answer came from (§ 10's `via`). */
-export type Via = "screen" | "answer_command"
+/** Where an answer came from (§ 10's `via`): `auto_answer` is tutti's, by --auto-answer. */
+export type Via = "screen" | "answer_command" | "auto_answer"
 
 /**
  * The answer was for a request that is no longer open: answered, withdrawn by the SDK, or of a
@@ -178,8 +184,10 @@ export interface Tally {
   /** Allowed without asking, by a rule allowed for this run. */
   readonly allowedByRule: number
   readonly denied: number
-  /** Questions answered and elicitations accepted. */
+  /** Questions answered and elicitations accepted, by a person. */
   readonly answered: number
+  /** Questions tutti answered with their recommended options, by --auto-answer. */
+  readonly autoAnswered: number
   readonly declined: number
   /** Withdrawn by the SDK before an answer. */
   readonly cancelled: number
@@ -202,6 +210,7 @@ export const emptyTally: Tally = {
   allowedByRule: 0,
   denied: 0,
   answered: 0,
+  autoAnswered: 0,
   declined: 0,
   cancelled: 0,
   deniedBy: {},
@@ -412,6 +421,28 @@ export const describe = (request: AttentionRequest): string => {
   }
 }
 
+/** The mark of the recommended option in an AskUserQuestion option's label. */
+const recommendedMark = "(recommended)"
+
+/**
+ * The option --auto-answer chooses for each question, in order: the one whose label says
+ * "(Recommended)" where exactly one does, else the first, as workers put their recommendation first.
+ */
+export const recommendedChoices = (questions: ReadonlyArray<Question>): ReadonlyArray<string> =>
+  questions.map((q) => {
+    const marked = q.options.filter((o) => o.label.toLowerCase().includes(recommendedMark))
+    return (marked.length === 1 ? marked[0] : q.options[0])?.label ?? ""
+  })
+
+/** A question tutti answered by --auto-answer, for the run's summary. */
+export interface AutoAnswered {
+  readonly ticket: TicketId
+  /** The questions, as the log names them. */
+  readonly question: string
+  /** The options chosen, one per question. */
+  readonly answers: ReadonlyArray<string>
+}
+
 /** The requests open longer than `blockedAfter` at `now`, oldest first: what holds the run. */
 export const overdue = (
   requests: ReadonlyArray<AttentionRequest>,
@@ -456,6 +487,8 @@ export class Attention extends Context.Service<
     ): Effect.Effect<void>
     /** The ticket's requests and answers so far. */
     tally(ticket: TicketId): Effect.Effect<Tally>
+    /** The questions answered by --auto-answer so far, in the order they were. */
+    readonly autoAnswered: Effect.Effect<ReadonlyArray<AutoAnswered>>
     /**
      * Refuses every answer from now on to the requests of the ticket's sessions so far, open or yet
      * to open, with NotOpen: the run's end has stopped its fiber, and an answer would run its worker
@@ -465,19 +498,32 @@ export class Attention extends Context.Service<
     refuse(ticket: TicketId): Effect.Effect<void>
   }
 >()("tutti/agent/Attention") {
-  /** The live service: requests wait for a person. */
-  static readonly layer: Layer.Layer<Attention, never, Log | EventStream> = Layer.effect(
-    Attention,
-    Effect.suspend(() => make()),
-  )
+  /** The live service: requests wait for a person, or with `autoAnswer`, questions for tutti. */
+  static readonly layer = (
+    options: Pick<Options, "autoAnswer"> = {},
+  ): Layer.Layer<Attention, never, Log | EventStream> =>
+    Layer.effect(
+      Attention,
+      Effect.suspend(() => make(options)),
+    )
 }
 
 /** Answers a request as it opens, or leaves it open (undefined) for a person. */
 export type Policy = (request: AttentionRequest) => Answer | undefined
 
-/** What `make` takes; the test layer sets both. */
+/** --auto-answer, for questions: how long one waits before tutti answers it. */
+export interface AutoAnswerOptions {
+  /** Duration.zero for at once; counted with the machine awake (Wake.ts). */
+  readonly after: Duration.Duration
+  /** Whether the ticket's questions are answered so; every ticket's when absent. */
+  readonly answers?: (ticket: TicketId) => boolean
+}
+
+/** What `make` takes; the test layer sets the policy and the IDs. */
 export interface Options {
   readonly policy?: Policy
+  /** --auto-answer: questions answered with their recommended options; none when absent. */
+  readonly autoAnswer?: AutoAnswerOptions
   /** Draws a request's ID; by default 8 random hex digits. */
   readonly ids?: Effect.Effect<string>
 }
@@ -511,6 +557,7 @@ export const make = (
     const opened = yield* SubscriptionRef.make<ReadonlyArray<Open>>([])
     const rules = yield* Ref.make<ReadonlySet<string>>(new Set())
     const tallies = yield* Ref.make<ReadonlyMap<string, Tally>>(new Map())
+    const autoAnswered = yield* Ref.make<ReadonlyArray<AutoAnswered>>([])
     // The callbacks made so far, and for each ticket the run's end stopped, how many there were
     // then: the requests of those callbacks are refused.
     const made = yield* Ref.make(0)
@@ -640,7 +687,12 @@ export const make = (
         }
         const kind = request.kind._tag === "Permission" ? "permission" : "question"
         const what = describe(request)
-        const viaLog = via === "answer_command" ? "tutti answer" : "screen"
+        const viaLog =
+          via === "answer_command"
+            ? "tutti answer"
+            : via === "auto_answer"
+              ? "--auto-answer"
+              : "screen"
         // The answer's line, and `record` with it.
         const line = (record: Event, verdict: log.Verdict, detail?: string) =>
           logs.writeWith(
@@ -683,7 +735,11 @@ export const make = (
             yield* line({ ...base, answer: "deny", ...viaField }, "declined")
             return
           case "Choose":
-            yield* count(request.ticket, "answered")
+            yield* count(request.ticket, via === "auto_answer" ? "autoAnswered" : "answered")
+            if (via === "auto_answer") {
+              const auto = { ticket: request.ticket, question: what, answers: outcome.answers }
+              yield* Ref.update(autoAnswered, (all) => [...all, auto])
+            }
             yield* line(
               { ...base, answer: [...outcome.answers], ...viaField },
               "answered",
@@ -740,10 +796,37 @@ export const make = (
         ).pipe(one.withPermit)
         const policy = options.policy?.(request)
         if (policy !== undefined) yield* Effect.ignore(answer(request.id, policy, "screen"))
-        return yield* Effect.raceFirst(
+        const outcome = Effect.raceFirst(
           Deferred.await(done),
           Effect.andThen(aborted(signal), Effect.andThen(cancel(request.id), Deferred.await(done))),
-        ).pipe(Effect.onInterrupt(() => cancel(request.id)))
+        )
+        // --auto-answer: a question's recommended options once it has waited; an answer from a
+        // person first wins, and this one is refused NotOpen.
+        const auto = options.autoAnswer
+        const kind = request.kind
+        const answersIt =
+          auto !== undefined &&
+          kind._tag === "Question" &&
+          (auto.answers === undefined || auto.answers(request.ticket))
+        const answering =
+          answersIt && kind._tag === "Question"
+            ? Effect.raceFirst(
+                outcome,
+                sleepAwake(auto.after).pipe(
+                  Effect.andThen(
+                    Effect.ignore(
+                      answer(
+                        request.id,
+                        { _tag: "Choose", answers: recommendedChoices(kind.questions) },
+                        "auto_answer",
+                      ),
+                    ),
+                  ),
+                  Effect.andThen(Deferred.await(done)),
+                ),
+              )
+            : outcome
+        return yield* answering.pipe(Effect.onInterrupt(() => cancel(request.id)))
       })
 
     // Whether every rule the request suggests was allowed for this run.
@@ -893,6 +976,7 @@ export const make = (
         ),
       denial,
       tally: (ticket) => Effect.map(Ref.get(tallies), (all) => all.get(ticket) ?? emptyTally),
+      autoAnswered: Ref.get(autoAnswered),
       // Under the permit, so that an answer under way is recorded before it, and none after it.
       refuse: (ticket) =>
         Effect.gen(function* () {

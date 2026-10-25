@@ -22,6 +22,7 @@ import { BunServices } from "@effect/platform-bun"
 import {
   Clock,
   Console,
+  Duration,
   Effect,
   Layer,
   ManagedRuntime,
@@ -37,6 +38,7 @@ import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
 import { ClaudeCode } from "./agent/ClaudeCode.ts"
 import { BranchEnv, branchEnv, WorkerEnv, workerEnv } from "./agent/env.ts"
+import { interviewWorker } from "./agent/interview.ts"
 import { requiresServerFor } from "./agent/requiresTools.ts"
 import { Transcripts } from "./agent/Transcripts.ts"
 import { UsageLimits } from "./agent/UsageLimits.ts"
@@ -189,9 +191,20 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     Organs.layer.pipe(Layer.provideMerge(languageModelLayer({ provider: started.organs }))),
     UsageProbe.layer,
   ).pipe(Layer.provideMerge(OrganCost.layer), Layer.provideMerge(organHold))
-  // Attention's records notify too: it is given the EventStream that notifies (notices.ts).
+  // Attention's records notify too: it is given the EventStream that notifies (notices.ts). With
+  // --auto-answer it answers the workers' questions, not the --feature interview's, which is you.
+  const attention = Attention.layer(
+    config.autoAnswer === null
+      ? {}
+      : {
+          autoAnswer: {
+            after: config.autoAnswer,
+            answers: (ticket) => ticket !== interviewWorker,
+          },
+        },
+  )
   return Layer.mergeAll(host, organs).pipe(
-    Layer.provideMerge(Attention.layer),
+    Layer.provideMerge(attention),
     Layer.provideMerge(notifying),
     Layer.provideMerge(second),
     Layer.provideMerge(first),
@@ -442,6 +455,9 @@ const runFrom = (cwd: string, flags: RunFlags) =>
             concurrency: config.settings.concurrent,
             billing: config.billing,
             permission_mode: started.account.permissionMode.inEffect,
+            ...(config.autoAnswer === null
+              ? {}
+              : { auto_answer: Duration.toMillis(config.autoAnswer) }),
           })
         })
       /** A new feature chosen at the start question asked as lines: the interview needs the renderer. */

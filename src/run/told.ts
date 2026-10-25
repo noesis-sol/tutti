@@ -21,9 +21,15 @@ export const answeredText = (a: {
   readonly question: string
   /** The question's title. */
   readonly title: string
+  /** The option tutti chose by --auto-answer, when it answered it rather than the maintainer. */
+  readonly auto?: string
 }): string =>
-  `tutti: your question ${a.question} (${a.title}) is answered. Read the answer with bd show ` +
-  `${a.question}, then carry on with ${a.id} as your instructions say.`
+  a.auto === undefined
+    ? `tutti: your question ${a.question} (${a.title}) is answered. Read the answer with bd show ` +
+      `${a.question}, then carry on with ${a.id} as your instructions say.`
+    : `tutti: your question ${a.question} (${a.title}) is answered, not by the maintainer: tutti ` +
+      `chose its recommended option, ${a.auto}, by --auto-answer. Read the answer with bd show ` +
+      `${a.question}, then carry on with ${a.id} as your instructions say.`
 
 /** What a worker whose session went (§ 4.8) is told as it is resumed. */
 export const goneText = (id: TicketId): string =>

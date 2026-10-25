@@ -29,6 +29,11 @@ export interface Look {
    * tries none while the run holds, which, as for a queued ticket, leaves it for the next run.
    */
   readonly resuming: boolean
+  /**
+   * Whether a question --auto-answer takes waits for its time (autoAnswer.ts): the run stays for
+   * its answer, which the ready poll gives once the time is up, rather than end on it.
+   */
+  readonly answering: boolean
   /** Whether the merge queue is settled now: nothing merging, queued or resolving. */
   readonly settled: boolean
   /** The triage calls under way. */
@@ -89,6 +94,7 @@ export const whatsLeft = (look: Look): { done: boolean; waiting: ReadonlyArray<T
   const done =
     !overlapped &&
     !look.resuming &&
+    !look.answering &&
     busy.length === 0 &&
     !toStart &&
     look.mergedBefore &&

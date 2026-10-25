@@ -4,7 +4,8 @@
 // as they are, then the closing line and a scoped run's scope line. Its styles are § 7.11's ("The summary", and the title line,
 // totals strip and ticket rows as the dashboard draws them), from the theme's styles only. Its
 // lines are the dashboard's text, segments painted as ANSI (line.tsx's paint); the ticket rows are
-// the dashboard's table itself, every row of it.
+// the dashboard's table itself, every row of it. With --auto-answer, the questions tutti answered
+// follow, each with the option it chose, and how to find the question tickets later.
 //
 // Ticket IDs, titles and the words of a stop can quote a worker's or a ticket author's text, so
 // all of it is sanitised to one line here (§ 7.10).
@@ -18,6 +19,38 @@ import { ticketsLines } from "../ui/TicketsTable.tsx"
 import { runTime } from "../ui/TitleLine.tsx"
 import type { Style, Theme } from "../ui/theme.ts"
 import type { Printer } from "./organLine.ts"
+
+/** A question tutti answered by --auto-answer, as the summary lists it. */
+export interface AutoAnsweredItem {
+  /** The ticket whose worker asked it. */
+  readonly ticket: string
+  /** The question ticket's ID; absent for a question asked in the worker's session. */
+  readonly question?: string
+  /** The question ticket's title, or what the session's question asked. */
+  readonly title: string
+  /** The option chosen: the recommended one, each question's, `, ` apart. */
+  readonly choice: string
+}
+
+/** How to find the question tickets --auto-answer answered, once the run is over. */
+export const autoAnsweredHint = "bd list --all --label auto-answered"
+
+/** The heading of the summary's list of what --auto-answer answered. */
+export const autoAnsweredHeading = "Answered by --auto-answer, not by you"
+
+/** The lines listing what --auto-answer answered under its heading: each, then the hint. */
+export const autoAnsweredTexts = (
+  items: ReadonlyArray<AutoAnsweredItem>,
+): ReadonlyArray<string> => {
+  if (items.length === 0) return []
+  const each = items.map((item) =>
+    item.question === undefined
+      ? `${item.ticket}'s worker: ${item.title} → ${item.choice}`
+      : `${item.question} (${item.title}), for ${item.ticket} → ${item.choice}`,
+  )
+  const tickets = items.some((item) => item.question !== undefined)
+  return [...each, ...(tickets ? [`find them later with: ${autoAnsweredHint}`] : [])]
+}
 
 /** What the summary is made from. */
 export interface Summary {
@@ -33,6 +66,8 @@ export interface Summary {
   readonly figures: ReadonlyArray<FiguresLine>
   /** Every ticket the run took up, in the order it took them up. */
   readonly rows: ReadonlyArray<Row>
+  /** The questions --auto-answer answered, in the order it did; none without it. */
+  readonly autoAnswered?: ReadonlyArray<AutoAnsweredItem>
 }
 
 /** How the run ended, for its closing line. */
@@ -154,12 +189,29 @@ const parts = (theme: Theme, width: number) => {
   const tickets = (rows: ReadonlyArray<Row>): ReadonlyArray<Segments> =>
     ticketsLines(rows, theme, w, { fill: false })
 
-  return { title, totals, figures, tickets }
+  /** What --auto-answer answered: its heading as the Tickets label is, each, the hint faint. */
+  const autoAnswered = (items: ReadonlyArray<AutoAnsweredItem>): ReadonlyArray<Segments> => {
+    const texts = autoAnsweredTexts(items)
+    if (texts.length === 0) return []
+    const hint = texts.length > items.length ? texts.at(-1) : undefined
+    return [
+      [seg(autoAnsweredHeading, styles.tickets)],
+      ...texts.map(
+        (text): Segments => [
+          seg("  "),
+          seg(fit(sanitizeLine(text), Math.max(w - 2, 1)), text === hint ? styles.dim : null),
+        ],
+      ),
+    ]
+  }
+
+  return { title, totals, figures, tickets, autoAnswered }
 }
 
 /**
  * The summary `width` columns wide (`minWidth` at the least), in `theme`'s styles: a blank line,
- * the title, the totals and, when the run took any up, its figures and every ticket.
+ * the title, the totals and, when the run took any up, its figures and every ticket; then what
+ * --auto-answer answered, if anything.
  */
 export const summary = (s: Summary, theme: Theme, width: number): string => {
   const p = parts(theme, width)
@@ -168,6 +220,7 @@ export const summary = (s: Summary, theme: Theme, width: number): string => {
     p.title(s),
     ...p.totals(s.totals),
     ...(s.rows.length === 0 ? [] : [...p.figures(s.figures), ...p.tickets(s.rows)]),
+    ...p.autoAnswered(s.autoAnswered ?? []),
   ]
     .map(paint)
     .join("\n")

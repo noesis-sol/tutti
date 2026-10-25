@@ -31,6 +31,8 @@ export const roles = [
   "pillText",
   "keepAwake",
   "keepAwakeText",
+  "autoAnswer",
+  "autoAnswerText",
   "heading1",
   "heading2",
   "heading3",
@@ -64,6 +66,7 @@ export type Role = typeof Role.Type
 export const backgroundRoles: ReadonlySet<Role> = new Set<Role>([
   "pill",
   "keepAwake",
+  "autoAnswer",
   "formAccent",
   "formButton",
   "selection",
@@ -522,6 +525,7 @@ export const styleNames = [
   "dim",
   "title",
   "keepAwake",
+  "autoAnswer",
   "estimate",
 ] as const
 
@@ -573,6 +577,7 @@ export const styleSpecs: { readonly [S in StyleName]: StyleSpec } = {
   dim: spec(null, { faint: true }),
   title: spec("pillText", { bg: "pill", bold: true }),
   keepAwake: spec("keepAwakeText", { bg: "keepAwake" }),
+  autoAnswer: spec("autoAnswerText", { bg: "autoAnswer" }),
   estimate: spec("estimate", { italic: true }),
 }
 

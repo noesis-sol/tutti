@@ -89,6 +89,19 @@ export const time0: Reader<Duration.Duration> = time({ allowed: true, as: Durati
 /** A time such as "2h", or "0" for none: null. */
 export const timeOrNone: Reader<Duration.Duration | null> = time({ allowed: true, as: null })
 
+/**
+ * --auto-answer's value: on (1, true, yes, on, or given alone) answers at once, Duration.zero; a
+ * time such as "10m" answers what has waited that long; off (0, false, no, off) is null.
+ */
+export const autoAnswerAfter: Reader<Duration.Duration | null> = (given) => {
+  const on = onOff(given)
+  if (Result.isSuccess(on)) return Result.succeed(on.success ? Duration.zero : null)
+  const after = positiveTime(given)
+  return Result.isSuccess(after)
+    ? after
+    : Result.fail(`must be on or off, or a time such as 10m ${got(given)}`)
+}
+
 /** One of `choices`. */
 export const oneOf =
   <const L extends ReadonlyArray<string>>(choices: L): Reader<L[number]> =>
@@ -149,6 +162,12 @@ export const runFlags = {
     onOff: true,
     description:
       "keep the machine from sleeping while the run goes, its report included: caffeinate on macOS, systemd-inhibit on Linux (default: off)",
+  }),
+  autoAnswer: runFlag("auto-answer", autoAnswerAfter, {
+    onOff: true,
+    metavar: "on|off|time",
+    description:
+      "answer the workers' questions with their recommended option, at once or once one has waited this long for you, e.g. 10m; never one only you can answer, nor a permission (default: off)",
   }),
   tickets: runFlag("tickets", onOff, {
     onOff: true,

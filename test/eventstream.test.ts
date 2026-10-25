@@ -41,6 +41,7 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       concurrency: 3,
       billing: "subscription",
       permission_mode: "auto",
+      auto_answer: 600000,
     },
     {
       ...head,
@@ -89,6 +90,17 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
   ],
   asked: [{ ...head, kind: "asked", ticket: "a-1", title: "T", detail: "a-2: Which?", text: "x" }],
   answered: [{ ...head, kind: "answered", ticket: "a-1", title: "T", text: "x" }],
+  auto_answered: [
+    {
+      ...head,
+      kind: "auto_answered",
+      ticket: "a-1",
+      question: "a-2",
+      title: "Which way?",
+      option: "B",
+      text: "x",
+    },
+  ],
   waits: [{ ...head, kind: "waits", ticket: "a-1", title: "T", detail: "a-2, a-3", text: "x" }],
   reopened: [
     {
@@ -372,6 +384,15 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       ...head,
       kind: "attention_answered",
       ticket: "a-1",
+      request: "r-4",
+      answer: ["B"],
+      via: "auto_answer",
+      after_ms: 600000,
+    },
+    {
+      ...head,
+      kind: "attention_answered",
+      ticket: "a-1",
       request: "r-3",
       after_ms: 9,
       cancelled: true,
@@ -458,6 +479,7 @@ describe("the records", () => {
           "resumed",
         ],
         ...["check", "turn", "organ", "ticket_end"],
+        "auto_answered",
       ].sort(),
     )
   })

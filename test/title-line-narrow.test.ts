@@ -21,6 +21,7 @@ const title: TitleView = {
   solo: null,
   shared: 0,
   keepAwake: false,
+  autoAnswer: null,
 }
 
 const at = 3_600_000

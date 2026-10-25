@@ -38,6 +38,8 @@ Each role has a variant for light backgrounds and one for dark ones. In the `orc
 | `pillText` | `#FAFAFA` | `#FAFAFA` | text on the pill |
 | `keepAwake` | `#B45309` | `#F59E0B` | the background of the title line's ` keep awake ` badge |
 | `keepAwakeText` | `#FFFBEB` | `#1C1917` | text on the keep-awake badge |
+| `autoAnswer` | `#0F766E` | `#2DD4BF` | the background of the title line's ` auto-answer ` pill, while `--auto-answer` answers questions for you |
+| `autoAnswerText` | `#F0FDFA` | `#042F2E` | text on the auto-answer pill |
 
 **The report, transcripts and selection:**
 
@@ -74,7 +76,7 @@ and the composer.
 | `formPlaceholder` | `ansi:248` | `ansi:243` | placeholders |
 | `formFrame` | `ansi:238` | `ansi:238` | the focused field's left bar |
 
-`pill`, `keepAwake`, `formAccent`, `formButton` and `selection` are drawn as backgrounds.
+`pill`, `keepAwake`, `autoAnswer`, `formAccent`, `formButton` and `selection` are drawn as backgrounds.
 
 ## Choosing a scheme
 
