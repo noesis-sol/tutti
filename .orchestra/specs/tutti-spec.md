@@ -548,7 +548,7 @@ tutti keeps those rules (tool name and rule content) for the run. A later reques
   An accepted answer resolves the request as one given on screen. The log and the event stream say `via tutti answer`.
 - **It works during dashboard runs too**, so an agent can answer while you watch.
 
-**Notification.** The first request in 30 seconds notifies: `<id> needs you · Allow Bash(rm -rf build)?`.
+**Notification.** The first request in 30 seconds notifies: `<id> needs you · Allow Bash(rm -rf build)?`. A question `--auto-answer` answers at once (bare) doesn't, nor does it take the next request's 30 seconds: its `attention` record has `auto_answering: true`, and you would be told of something already answered (tutti-j82e). One it answers after a time notifies, so that you can answer first.
 
 **`--auto-answer` (§8.2).** With it, the live Attention service is given a policy for questions (main.ts; before, only the test layer had one): an `AskUserQuestion` request is answered with each question's recommended option, the one whose label says `(Recommended)` where exactly one does, else the first, as the worker prompt has workers put their recommendation first. Bare, it answers at once; with a time, once the request has waited that long with the machine awake (§3.3): one waiting past the 4 minutes of `blockedAfter` holds the run with `BLOCKED` first, as without the flag, and the answer lifts the hold. An answer from you first wins, and tutti's is refused as one to a request no longer open. The answer is a `QUESTION` line ending `, the recommended option, by --auto-answer`, an `attention_answered` record with `via: "auto_answer"`, and is tallied apart from yours (`autoAnswered`), for triage and the reviewer. It never touches a permission request, the safety check's holds included, nor the `--feature` interview's questions, which are you. orchestra has no such option: a departure on purpose (§8.2).
 
@@ -1285,7 +1285,7 @@ Paste goes to the focused composer or textarea in one piece. A paste left unterm
 
 ### 7.9 Notifications
 
-As orchestra's table (merged, set aside, needs your answer, stopped, finished), plus **needs you** for attention requests (§4.5) and **usage limit** (§4.12).
+As orchestra's table (merged, set aside, needs your answer, stopped, finished), plus **needs you** for attention requests (§4.5) and **usage limit** (§4.12). A question `--auto-answer` answers at once (§8.2), a ticket's or the session's, notifies neither: its `asked` or `attention` record has `auto_answering: true`. With a time, or one it leaves to you, it notifies as without the flag.
 
 - macOS: `osascript`, with Notification Center's title the repository's folder name.
 - Linux: `notify-send` when it is installed.
@@ -1725,7 +1725,8 @@ It is `flock(LOCK_EX|LOCK_NB)` on `<git-common-dir>/tutti.lock`, so the system r
 | `kind` | New or changed | Fields |
 |---|---|---|
 | `phase` | new: a ticket moved from one phase to another (§5.1) | `ticket`, `from` (absent as it enters the run), `to` (absent as it leaves it, gone from `bd ready`), `cause`, and the phase's details where it has them (`place`, `step`, `attempt`, `why`) |
-| `attention` | new: a worker waits on you | `ticket`, `request` (ID), `type` (`permission`, `question`, `elicitation`), `tool` and `summary` (permission) or `questions` (question), `default_to_no` |
+| `attention` | new: a worker waits on you | `ticket`, `request` (ID), `type` (`permission`, `question`, `elicitation`), `tool` and `summary` (permission) or `questions` (question), `default_to_no`; `auto_answering: true` for a question `--auto-answer` answers at once, which doesn't notify (§7.9) |
+| `asked` | `auto_answering` added | orchestra's, and `auto_answering: true` when `--auto-answer` answers the question at once (§5.1), which doesn't notify (§7.9) |
 | `attention_answered` | new | `ticket`, `request`, `answer` (`allow`, `deny`, `allow_run`, or the chosen labels), `via` (`screen`, `answer_command`, or `auto_answer` for `--auto-answer`'s, §4.5), `after_ms`; `cancelled: true` when the SDK withdrew it |
 | `auto_answered` | new: tutti answered a question ticket by `--auto-answer` (§5.1), the log's `AUTO_ANSWERED` | `ticket` (the one waiting on it), `question`, `title` (the question's), `option` (the recommended one, chosen) |
 | `denied` | new: the classifier, the safety check, a rule or the mode denied a tool call | `ticket`, `tool`, `reason_type` (`classifier`, `safetyCheck`, `mode`, `rule`, or another the SDK gives), `reason` |

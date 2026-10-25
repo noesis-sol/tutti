@@ -186,8 +186,14 @@ export const Queue = Schema.Struct({ ...head("queue"), ...queueFields })
 export const Closed = endingRecord("closed")
 /** Set aside; `detail` says why. */
 export const Deferred = endingRecord("deferred")
-/** Waits on a question for you; `detail` is the question's ID and title. */
-export const Asked = ticketRecord("asked")
+/**
+ * Waits on a question for you; `detail` is the question's ID and title. `auto_answering`: tutti
+ * answers it at once by --auto-answer, so it doesn't notify.
+ */
+export const Asked = Schema.Struct({
+  ...ticketRecord("asked").fields,
+  auto_answering: optional(Schema.Literal(true)),
+})
 /** Its question was answered. */
 export const Answered = ticketRecord("answered")
 /** tutti answered a question ticket by --auto-answer, with its recommended `option`. tutti's own. */
@@ -484,6 +490,8 @@ export const Attention = Schema.Struct({
   /** A question: what it asks. */
   questions: optional(Schema.Array(AttentionQuestion)),
   default_to_no: Schema.Boolean,
+  /** A question tutti answers at once by --auto-answer, which doesn't notify. */
+  auto_answering: optional(Schema.Literal(true)),
   text: optional(Schema.String),
 })
 

@@ -4,7 +4,9 @@
 // full check failing, and, at most once in 30 seconds, a worker needing you (§ 4.5). The usage
 // limit's hold notifies by itself (usageLimit.ts), and the run's end says how it finished with its
 // totals (run.ts). The other holds, probes, warnings that set no ticket aside, triage and a run with
-// nothing to run don't notify: they are in the log, the event stream and the dashboard.
+// nothing to run don't notify: they are in the log, the event stream and the dashboard. Nor does a
+// question --auto-answer answers at once (`auto_answering`), already answered as the notice shows;
+// with a time it notifies, so you can answer first.
 import { Clock, Duration, Effect, Layer } from "effect"
 import { Notifier } from "../services/Notifier.ts"
 import { oneLine } from "../ui/oneLine.ts"
@@ -74,13 +76,16 @@ export const notice = (event: Event, needsYou = true): string | null => {
         ? about(`Set aside ${event.ticket}`, event.detail)
         : null
     case "asked": {
+      if (event.auto_answering === true) return null
       // After the question's ID, its title.
       const detail = event.detail ?? ""
       const colon = detail.indexOf(": ")
       return about(`${event.ticket} needs your answer`, colon < 0 ? "" : detail.slice(colon + 2))
     }
     case "attention":
-      return needsYou ? about(`${event.ticket} needs you`, asks(event)) : null
+      return needsYou && event.auto_answering !== true
+        ? about(`${event.ticket} needs you`, asks(event))
+        : null
     case "stop":
       return `Stopped${event.detail === "" ? "" : `: ${event.detail}`}${event.ticket === undefined ? "" : ` on ${event.ticket}`}`
     case "full_check":
@@ -107,7 +112,8 @@ export const notifying: Layer.Layer<EventStream, never, EventStream | Notifier> 
     const send = (event: Event) =>
       Effect.gen(function* () {
         let needsYou = false
-        if (event.kind === "attention") {
+        // One --auto-answer answers at once doesn't notify, and leaves the next its 30 seconds.
+        if (event.kind === "attention" && event.auto_answering !== true) {
           const now = yield* Clock.currentTimeMillis
           needsYou = lastNeedsYou === null || now - lastNeedsYou >= Duration.toMillis(needsYouEvery)
           if (needsYou) lastNeedsYou = now

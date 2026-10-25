@@ -590,6 +590,19 @@ export const make = (
         return found === undefined ? [undefined, all] : [found, all.filter((o) => o !== found)]
       })
 
+    // Whether --auto-answer takes the request, a question of a ticket it answers.
+    const autoAnswers = (request: AttentionRequest) => {
+      const auto = options.autoAnswer
+      return (
+        auto !== undefined &&
+        request.kind._tag === "Question" &&
+        (auto.answers === undefined || auto.answers(request.ticket))
+      )
+    }
+    // Whether it answers it at once: the request's record then doesn't notify (notices.ts).
+    const answersAtOnce = (request: AttentionRequest) =>
+      autoAnswers(request) && Duration.isZero(options.autoAnswer?.after ?? Duration.zero)
+
     const asked = (request: AttentionRequest) =>
       Effect.gen(function* () {
         const kind = request.kind
@@ -643,7 +656,12 @@ export const make = (
                   })),
                 }),
               ],
-              events.emit({ ...base, type: "question", questions }),
+              events.emit({
+                ...base,
+                type: "question",
+                questions,
+                ...(answersAtOnce(request) ? { auto_answering: true as const } : {}),
+              }),
             )
             return
           }
@@ -804,12 +822,8 @@ export const make = (
         // person first wins, and this one is refused NotOpen.
         const auto = options.autoAnswer
         const kind = request.kind
-        const answersIt =
-          auto !== undefined &&
-          kind._tag === "Question" &&
-          (auto.answers === undefined || auto.answers(request.ticket))
         const answering =
-          answersIt && kind._tag === "Question"
+          auto !== undefined && autoAnswers(request) && kind._tag === "Question"
             ? Effect.raceFirst(
                 outcome,
                 sleepAwake(auto.after).pipe(

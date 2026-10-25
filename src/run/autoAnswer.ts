@@ -97,20 +97,36 @@ export const leftWhy = (question: Issue, since: number): string | undefined => {
 /** What a question's line adds for --auto-answer leaving it to the maintainer, `why`. */
 export const leavesIt = (why: string): Line => line`; --auto-answer leaves it to you: ${why}`
 
+/** What --auto-answer does with a question, for its Asked line and record. */
+export interface AutoAnswerOf {
+  /** The part of the line about it: why it leaves the question to you, or nothing. */
+  readonly leaves: string
+  /** Whether it answers the question at once, in the look that sees it: then nothing notifies. */
+  readonly atOnce: boolean
+}
+
 /**
- * The part of an Asked line about --auto-answer for `question`: why it leaves it, or nothing when
- * it answers it or is off. bd shows the question first, as a dependency's metadata may be partial;
- * a question it can't show is said nothing of.
+ * What --auto-answer does with `question`: why it leaves it, or nothing when it answers it or is
+ * off, and whether it answers it at once (bare, not after a time). bd shows the question first, as
+ * a dependency's metadata may be partial; a question it can't show is said nothing of, and
+ * notifies.
  */
-export const leavesPart = (question: TicketId): Effect.Effect<string, never, Beads> =>
+export const autoAnswerOf = (question: TicketId): Effect.Effect<AutoAnswerOf, never, Beads> =>
   Effect.gen(function* () {
     const auto = yield* AutoAnswer
-    if (auto === null) return ""
+    const none = { leaves: "", atOnce: false }
+    if (auto === null) return none
     const shown = yield* Effect.result((yield* Beads).show(question))
-    if (Result.isFailure(shown)) return ""
+    if (Result.isFailure(shown)) return none
     const why = leftWhy(shown.success, auto.since)
-    return why === undefined ? "" : leavesIt(why)
+    return why === undefined
+      ? { leaves: "", atOnce: Duration.isZero(auto.after) }
+      : { leaves: leavesIt(why), atOnce: false }
   })
+
+/** The part of an Asked line about --auto-answer for `question` (autoAnswerOf's `leaves`). */
+export const leavesPart = (question: TicketId): Effect.Effect<string, never, Beads> =>
+  Effect.map(autoAnswerOf(question), (of) => of.leaves)
 
 /** The option tutti chose for `question` by --auto-answer this run, if it did. */
 export const answeredWith = (question: string): Effect.Effect<string | undefined> =>
