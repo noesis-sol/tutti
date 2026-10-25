@@ -1,4 +1,4 @@
-# Releases a version (§ 12 Releases) for each v* tag pushed: the check first, then the six builds
+# Releases a version (§ 12 Releases) for each v* tag pushed: the check, and beside it the six builds
 # (scripts/build.sh, cross-compiled on Linux), each run on its own system, their archives
 # tutti_<ver>_<os>_<arch>[_musl].tar.gz with checksums.txt, signed with the ed25519 release key as
 # checksums.txt.sig, and the archives' build provenance attested; the tag's scripts/install.sh is
@@ -13,8 +13,8 @@
 #
 # The release key: the repository secret TUTTI_RELEASE_KEY holds a PKCS#8 PEM ed25519 private key
 # (scripts/sign-checksums.ts says how to make one), whose public half is in src/update/keys.ts.
-# Without it, or with a key tutti doesn't build in, the first job fails, saying so, and nothing is
-# built or published.
+# Without it, or with a key tutti doesn't build in, the check fails, saying so, and nothing is
+# published.
 name: Release
 
 on:
@@ -60,7 +60,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       # The key signs a file here, so a missing or bad key, or one not in src/update/keys.ts, fails the
-      # release before anything is built.
+      # release before anything is published.
       - name: Check the release key
         env:
           TUTTI_RELEASE_KEY: ${{ secrets.TUTTI_RELEASE_KEY }}
@@ -87,14 +87,18 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # The tests on every core of the runner, as ci.yml's check.
+      - name: Use every core
+        run: echo "TUTTI_TEST_PARALLEL=$(getconf _NPROCESSORS_ONLN)" >> "$GITHUB_ENV"
+
       - name: Check
         run: scripts/check-full.sh
 
   # Each target on a runner of its own, so each install holds only its target's packages (§ 12
   # Cross-compiling). Linux cross-compiles the darwin binaries: Bun signs a Mach-O it builds there,
   # and a darwin-arm64 built on Linux x64 runs on Apple Silicon (docs/spikes/07-compile.md, § 4).
+  # The builds and their runs go beside the check, not after it: only publish waits for it.
   build:
-    needs: check
     strategy:
       matrix:
         target:
@@ -171,7 +175,7 @@ jobs:
           [ "$version" = "tutti $TAG" ] || { echo "::error::tutti --version printed '$version', not 'tutti $TAG'"; exit 1; }
 
   publish:
-    needs: [build, run]
+    needs: [check, build, run]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

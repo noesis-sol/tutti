@@ -64,10 +64,10 @@ describe("the release workflow", () => {
     )
   })
 
-  test("checks first, and everything else waits for it", () => {
+  test("builds beside the check, and publishes only after it", () => {
     expect(runs(job(release, "check"))).toContain("scripts/check-full.sh")
-    expect(job(release, "build").needs).toBe("check")
-    expect(job(release, "publish").needs).toEqual(["build", "run"])
+    expect(job(release, "build").needs).toBeUndefined()
+    expect(job(release, "publish").needs).toEqual(["check", "build", "run"])
   })
 
   test("fails before building without the release key", () => {

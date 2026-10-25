@@ -67,6 +67,12 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # The tests on every core of the runner, which runs nothing else, rather than the half
+      # scripts/test.sh keeps to on a shared machine (testWorkers): macos-latest's 3 cores ran them in
+      # one process.
+      - name: Use every core
+        run: echo "TUTTI_TEST_PARALLEL=$(getconf _NPROCESSORS_ONLN)" >> "$GITHUB_ENV"
+
       - name: Check
         run: scripts/check-full.sh
 
