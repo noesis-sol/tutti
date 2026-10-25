@@ -1,7 +1,8 @@
 // tutti plan [--apply] (§ 8.1), as orchestra v0.9.0's plan: blocks links that order the open
 // tickets touching the same code, so they run one after the other instead of side by side, the
-// higher-priority ticket first. Tickets are linked when they name the same function, or work on the
-// same small file and aren't compared on it by function, read from their footprints (footprint.ts):
+// higher-priority ticket first. Tickets are linked when they name the same function the repository
+// declares (declared.ts), as a run holds them apart, or work on the same small file and aren't
+// compared on it by function, read from their footprints (footprint.ts):
 // a ticket with commits on its branch is footprinted from what the branch changes, as a run does,
 // and the files git merges by union and the queue's shared files (.tutti/settings.json) link
 // nothing.
@@ -13,6 +14,7 @@
 import { Console, Effect, type FileSystem } from "effect"
 import type { ConfigFileInvalid } from "../project/configFile.ts"
 import { checkCommands, readSettings } from "../project/settings.ts"
+import { readDeclared } from "../run/declared.ts"
 import {
   branchFootprint,
   emptyFootprint,
@@ -299,10 +301,13 @@ const proposal = (
     const git = yield* Git
     const repoFilesNow = yield* git.trackedFiles(repo).pipe(
       Effect.flatMap((files) =>
-        git.mergedByUnion(repo, files).pipe(
-          Effect.orElseSucceed((): ReadonlyArray<string> => []),
-          Effect.map((union) => repoFiles(files, checks, union, settings.queue.shared_files)),
-        ),
+        Effect.gen(function* () {
+          const union = yield* git
+            .mergedByUnion(repo, files)
+            .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
+          const declared = yield* readDeclared(repo, files)
+          return repoFiles(files, checks, union, settings.queue.shared_files, declared)
+        }),
       ),
       Effect.orElseSucceed(() => repoFiles(undefined, checks, [], settings.queue.shared_files)),
     )

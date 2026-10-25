@@ -1583,7 +1583,7 @@ Carried over too, and not part of any scheme:
 |---|---|
 | `tutti` | a run (§5) |
 | `tutti init` | sets the project up (§8.3) |
-| `tutti plan [--apply]` | proposes blocks links between open tickets that touch the same code, as `orchestra plan` does; a stop (Ctrl+C, SIGTERM) during `--apply` comes between two links, says which it added and which not, exit 130 |
+| `tutti plan [--apply]` | proposes blocks links between open tickets that touch the same code, as `orchestra plan` does, a shared function counting only when the repository declares it, as a run's overlap does (§5 item 5); a stop (Ctrl+C, SIGTERM) during `--apply` comes between two links, says which it added and which not, exit 130 |
 | `tutti answer [<request-id> <answer> …] [--json]` | lists or answers open attention requests (§4.5, D20) |
 | `tutti login` | runs the embedded Claude Code's `auth login`, the claude.ai login (§4.13) |
 | `tutti colours [<name>]` | previews and checks a colour scheme, the one in use by default (§7.11) |

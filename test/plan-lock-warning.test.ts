@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { BunServices } from "@effect/platform-bun"
 import { Console, Effect, Exit, Fiber, Layer } from "effect"
 import { Command } from "effect/cli"
@@ -158,6 +158,8 @@ describe("tutti plan --apply", () => {
     { id: "t-1", priority: 2, description: "Retry in `Loop.merge`." },
     { id: "t-2", priority: 1, description: "Log each rebase in Loop.merge()." },
   ]
+  // The source declaring Loop.merge, so that the tickets naming it are linked.
+  const files = { "src/run/loop.ts": "export class Loop {\n  merge() {\n  }\n}\n" }
 
   const warning = (message: string) =>
     `tutti plan: warning: ${message}. A ticket it has started keeps going and may merge before a ticket it now waits for.`
@@ -169,6 +171,10 @@ describe("tutti plan --apply", () => {
     lock: Layer.Layer<RunLock>,
     seeds: ReadonlyArray<Seed> = backlog,
   ) => {
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(where.repo, file)), { recursive: true })
+      writeFileSync(join(where.repo, file), content)
+    }
     const printed: Array<string> = []
     const errors: Array<string> = []
     const console: Console.Console = Object.assign(Object.create(globalThis.console), {
@@ -185,7 +191,7 @@ describe("tutti plan --apply", () => {
         return { printed, errors, failed: Exit.isFailure(exit) }
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(beadsLayer(seeds), gitLayer({ dir: where.repo, files: {} }), lock),
+          Layer.mergeAll(beadsLayer(seeds), gitLayer({ dir: where.repo, files }), lock),
         ),
         Effect.provide(BunServices.layer),
       ),

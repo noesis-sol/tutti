@@ -201,7 +201,7 @@ describe("tutti plan", () => {
   }
 
   const files = {
-    "src/run/merge.ts": "export const merge = () => refreshBranch()\n",
+    "src/run/merge.ts": "export class Loop {\n  merge() {\n    refreshBranch()\n  }\n}\n",
     "src/run/loop.ts": lines(900),
     "README.md": "# tutti\n",
   }

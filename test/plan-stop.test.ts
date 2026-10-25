@@ -18,7 +18,7 @@ import { layer as gitLayer } from "../src/testing/Git.ts"
 import { layer as lockLayer } from "../src/testing/RunLock.ts"
 
 const files = {
-  "src/run/merge.ts": "export const merge = () => refreshBranch()\n",
+  "src/run/merge.ts": "export class Loop {\n  merge() {\n    refreshBranch()\n  }\n}\n",
   "docs/notes.md": "# Notes\n",
   "README.md": "# tutti\n",
 }

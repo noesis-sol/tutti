@@ -306,6 +306,8 @@ const overlapping = [
   issue("t-1", 1, "Retry in `Loop.merge`.", "2026-10-01T00:00:00Z"),
   issue("t-2", 2, "Log each rebase in Loop.merge().", "2026-10-02T00:00:00Z"),
 ]
+// The source declaring the function both name, so that it links them (declared.ts).
+const loopSource = "export class Loop {\n  merge() {\n  }\n}\n"
 
 describe("tutti plan", () => {
   slow.test("without .tutti/settings.json, reads the tickets with the defaults", async () => {
@@ -403,6 +405,7 @@ describe("tutti plan", () => {
 
   slow.test("two tickets naming one function: the proposal, and nothing changed", async () => {
     const repo = makeRepo()
+    repo.commit("Loop", { "src/run/loop.ts": loopSource })
     const bd = listingBd(overlapping)
     const { code, stdout, stderr } = await tutti(repo.dir, ["plan"], bd.bin)
     expect(stdout).toBe(
@@ -417,6 +420,7 @@ describe("tutti plan", () => {
 
   slow.test("--apply adds the proposed link with bd dep add", async () => {
     const repo = makeRepo()
+    repo.commit("Loop", { "src/run/loop.ts": loopSource })
     const bd = listingBd(overlapping)
     const { code, stdout, stderr } = await tutti(repo.dir, ["plan", "--apply"], bd.bin)
     expect(stdout).toBe(
