@@ -690,7 +690,9 @@ describe("the interview in the command's renderer", () => {
         await act(async () => {
           await setup.renderOnce()
         })
-        const frame = setup.captureCharFrame()
+        // A frame the renderer scheduled itself may be drawing still: its buffer can't be read
+        // (OutputBusy) until that frame ends.
+        const frame = setup.renderer.getSchedulerState().isRendering ? "" : setup.captureCharFrame()
         if (frame.includes(text) || Date.now() > deadline) return frame
         await act(async () => {
           await Bun.sleep(20)
