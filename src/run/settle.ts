@@ -37,6 +37,7 @@ import { asking, type ClosedBranches, offBase } from "./closedBranches.ts"
 import { Ledger, type State } from "./ledger.ts"
 import { detail, Log } from "./log.ts"
 import type { MergeEnv } from "./merge.ts"
+import type { Stuck } from "./overnightAside.ts"
 import { readAgain } from "./schedule.ts"
 import { resumeGone } from "./sessions.ts"
 import type { StartedWorker } from "./start.ts"
@@ -171,7 +172,11 @@ export type Settled = Data.TaggedEnum<{
    * Its ticket is still in progress: its worker stayed idle through the grace (`gone` null), or
    * has gone or been closed, as `gone` says, and can't be told to continue.
    */
-  Paused: { readonly gone: string | null }
+  Paused: {
+    readonly gone: string | null
+    /** How its worker was left when gone or closed, as `gone` starts, without what comes of it. */
+    readonly left?: string
+  }
   /**
    * Its ticket is still in progress, its worker gone, and its session couldn't be resumed (`why`):
    * it is dropped (WORKER_GONE).
@@ -182,6 +187,11 @@ export type Settled = Data.TaggedEnum<{
    * did anything: the run stops (SETUP_PROBLEM).
    */
   Setup: { readonly problem: string }
+  /**
+   * It hadn't settled, but an overnight run sets its ticket aside, as `stuck` says (BLOCKED,
+   * TICKET_LIMIT; overnightAside.ts).
+   */
+  Stuck: { readonly stuck: Stuck }
 }>
 
 export const Settled = Data.taggedEnum<Settled>()
@@ -445,6 +455,7 @@ export const settle = (
           // A steered worker is told nothing, so it isn't resumed to carry on (§ 4.3).
           return Settled.Paused({
             gone: `${how(state)}; you have steered it, so tutti did not resume it to carry on, and the next run resumes it`,
+            left: how(state),
           })
         }
         if (state._tag === "Gone") {
@@ -454,9 +465,10 @@ export const settle = (
           if (back._tag === "Failed") return Settled.Dropped({ why: back.reason })
           return Settled.Paused({
             gone: `${how(state)}; its session was resumed once in this run already, and the next run resumes it again`,
+            left: how(state),
           })
         }
-        if (!idle(state)) return Settled.Paused({ gone: how(state) })
+        if (!idle(state)) return Settled.Paused({ gone: how(state), left: how(state) })
         if (!steered && told < nudges) {
           told++
           if (yield* nudge(id, told)) continue

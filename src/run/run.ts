@@ -19,7 +19,8 @@
 // The holds that come with time (holds.ts): a worker past --ticket-limit stops the run with
 // TICKET_LIMIT and goes on, and the run neither waits for it nor drains it: the end suspends it. A
 // request unanswered for 4 minutes stops the run with BLOCKED, lifted once its ticket has no request
-// open; its banner is on the title line while it holds.
+// open; its banner is on the title line while it holds. An overnight run sets such a ticket aside
+// instead, as it does one PAUSED or past its ticket limit, and goes on (overnightAside.ts).
 //
 // Quitting (§ 4.8, quit.ts): the first request to quit (SIGINT, SIGTERM, SIGHUP, the quit box's
 // `q`), or a panic in one of the run's fibers, cuts the loop short: the workers are interrupted at
@@ -143,6 +144,7 @@ import { make as makeLoop } from "./look.ts"
 import { make as makeMachineGate } from "./machineGate.ts"
 import { make as makeQueue, type QueueState } from "./mergequeue.ts"
 import { putBackLeft } from "./mergetrain.ts"
+import { make as makeOvernightAside } from "./overnightAside.ts"
 import type { TicketPhase } from "./phase.ts"
 import { make as makePredictor } from "./predict.ts"
 import { interruptedText, panicLines, type QuitRequest } from "./quit.ts"
@@ -509,6 +511,9 @@ const runFrom = (
           },
         }),
       )
+    // An overnight run sets a ticket aside rather than hold the run for PAUSED, BLOCKED or
+    // TICKET_LIMIT (overnightAside.ts): its register of the fibers following their workers.
+    const overnight = config.overnight ? { overnight: yield* makeOvernightAside } : {}
     const ticketFiber = (issue: Issue): Effect.Effect<void> =>
       outcomeOf(
         issue.id,
@@ -519,6 +524,7 @@ const runFrom = (
           setUps,
           closedBranches: branches,
           onTicketLimit: onTicketLimit(issue.id),
+          ...overnight,
         }),
       ).pipe(Effect.provideContext(context))
 
@@ -706,6 +712,7 @@ const runFrom = (
       triage,
       closedBranches: branches,
       onTicketLimit: onResumedLimit,
+      ...overnight,
       carry: (ticket, start, issue) =>
         Effect.tap(
           scheduler.carry(
@@ -823,7 +830,7 @@ const runFrom = (
 
     // A request unanswered for blockedAfter holds the run with BLOCKED, for its ticket, until its
     // ticket has none open (blockedWatch.ts).
-    yield* makeBlockedWatch({ holds, ended: commands.ended, wakeUp, watch })
+    yield* makeBlockedWatch({ holds, ended: commands.ended, wakeUp, watch, ...overnight })
 
     // The look's effects, which read bd and git: the tickets put back in the queue, the setups,
     // checks and requires taken again, the carried and answered workers taken up, then the free

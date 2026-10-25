@@ -2311,7 +2311,8 @@
           "enum": [
             "screen",
             "answer_command",
-            "auto_answer"
+            "auto_answer",
+            "overnight"
           ]
         },
         "after_ms": {

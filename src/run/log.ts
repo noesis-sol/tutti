@@ -323,8 +323,11 @@ export const answered = (a: {
   readonly verdict: Verdict
   /** The reason given with a denial, or the options chosen for a question. */
   readonly detail?: string
-  /** --auto-answer: tutti answered it with the recommended options, not the maintainer. */
-  readonly via: "screen" | "tutti answer" | "--auto-answer"
+  /**
+   * --auto-answer: tutti answered it with the recommended options, not the maintainer; --overnight:
+   * tutti denied it, setting its ticket aside overnight.
+   */
+  readonly via: "screen" | "tutti answer" | "--auto-answer" | "--overnight"
 }): Marked => {
   const tag = a.kind === "permission" ? Tag.permission : Tag.question
   const detailed = a.detail === undefined ? "" : line` (${a.detail})`
@@ -333,7 +336,9 @@ export const answered = (a: {
       ? ", via tutti answer"
       : a.via === "--auto-answer"
         ? ", the recommended option, by --auto-answer"
-        : ""
+        : a.via === "--overnight"
+          ? ", by tutti, the run being an overnight one"
+          : ""
   return marked(tag, a.id)`${a.id}'s worker: ${a.what} ${a.verdict}${detailed}${via}`
 }
 

@@ -33,6 +33,7 @@ import { type Entry, handBackWaits, type State, showsCard } from "./ledger.ts"
 import { type Levels, type Pressure, type Reading, unknownMemory } from "./load.ts"
 import { resetLabel } from "./localTime.ts"
 import type { CheckAhead } from "./mergetrain.ts"
+import { asideOvernight } from "./overnightAside.ts"
 import {
   type Activity,
   activityRows,
@@ -773,6 +774,10 @@ const actionOf = (entry: Entry, branch: string, ahead: CheckAhead | undefined): 
 }
 
 const noteOf = (entry: Entry, title: string, branch: string): string => {
+  // A ticket an overnight run set aside says why before its title.
+  if (entry.phase._tag === "Deferred" && asideOvernight(entry.phase.why)) {
+    return `(${entry.phase.why}) ${title}`
+  }
   if (entry.phase._tag !== "Done") return title
   const outcome = entry.phase.outcome
   return outcome._tag === "Merged"

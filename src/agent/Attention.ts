@@ -135,7 +135,8 @@ export interface AttentionRequest {
 export type Answer =
   | { readonly _tag: "Allow" }
   | { readonly _tag: "AllowForRun" }
-  | { readonly _tag: "Deny"; readonly reason?: string }
+  /** A denial: `byTutti` when tutti denies it itself, nobody being there (an overnight run's). */
+  | { readonly _tag: "Deny"; readonly reason?: string; readonly byTutti?: true }
   /** A question's answers, one per question in order: the chosen label or the person's own text. */
   | { readonly _tag: "Choose"; readonly answers: ReadonlyArray<string> }
   /** An elicitation answered: the URL opened, or the form's content. */
@@ -145,8 +146,11 @@ export type Answer =
     }
   | { readonly _tag: "Decline" }
 
-/** Where an answer came from (§ 10's `via`): `auto_answer` is tutti's, by --auto-answer. */
-export type Via = "screen" | "answer_command" | "auto_answer"
+/**
+ * Where an answer came from (§ 10's `via`): `auto_answer` is tutti's, by --auto-answer; `overnight`
+ * tutti's denial as an overnight run sets the request's ticket aside (overnightAside.ts).
+ */
+export type Via = "screen" | "answer_command" | "auto_answer" | "overnight"
 
 /**
  * The answer was for a request that is no longer open: answered, withdrawn by the SDK, or of a
@@ -219,6 +223,9 @@ export const emptyTally: Tally = {
 /** The message a denial sends the worker, before the reason typed with it. */
 export const denialMessage = "Denied by the maintainer in tutti"
 
+/** The message of a denial tutti makes itself, in nobody's name (an overnight run's). */
+export const tuttiDenialMessage = "Denied by tutti, nobody being there to answer"
+
 /** The text an answer is described by, in a DoesNotFit and the log. */
 const answerName: Record<Answer["_tag"], string> = {
   Allow: "allow",
@@ -279,12 +286,14 @@ export const fits = (request: AttentionRequest, answer: Answer): boolean => {
   }
 }
 
-const deny = (reason?: string): PermissionResult => ({
-  behavior: "deny",
-  message:
-    reason === undefined || reason.trim() === "" ? denialMessage : `${denialMessage}: ${reason}`,
-  decisionClassification: "user_reject",
-})
+const deny = (reason?: string, byTutti?: true): PermissionResult => {
+  const said = byTutti === true ? tuttiDenialMessage : denialMessage
+  return {
+    behavior: "deny",
+    message: reason === undefined || reason.trim() === "" ? said : `${said}: ${reason}`,
+    decisionClassification: "user_reject",
+  }
+}
 
 /** What the request was withdrawn with: nobody reads it, since the SDK stopped waiting. */
 const withdrawn: PermissionResult = {
@@ -322,7 +331,7 @@ export const permissionResult = (request: AttentionRequest, answer: Answer): Per
       return { behavior: "allow", updatedInput: { questions: kind.input.questions, answers } }
     }
     case "Deny":
-      return deny(answer.reason)
+      return deny(answer.reason, answer.byTutti)
     default:
       return deny()
   }
@@ -710,7 +719,9 @@ export const make = (
             ? "tutti answer"
             : via === "auto_answer"
               ? "--auto-answer"
-              : "screen"
+              : via === "overnight"
+                ? "--overnight"
+                : "screen"
         // The answer's line, and `record` with it.
         const line = (record: Event, verdict: log.Verdict, detail?: string) =>
           logs.writeWith(

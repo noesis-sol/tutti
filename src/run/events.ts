@@ -511,8 +511,11 @@ export const Attention = Schema.Struct({
 })
 
 export const permissionAnswers = ["allow", "deny", "allow_run"] as const
-/** Who answered: `auto_answer` is tutti, by --auto-answer. */
-export const answeredVia = ["screen", "answer_command", "auto_answer"] as const
+/**
+ * Who answered: `auto_answer` is tutti, by --auto-answer; `overnight` is tutti denying a request
+ * as an overnight run sets its ticket aside.
+ */
+export const answeredVia = ["screen", "answer_command", "auto_answer", "overnight"] as const
 
 /** A request was answered, or withdrawn by the SDK (`cancelled`, with no answer). */
 export const AttentionAnswered = Schema.Struct({

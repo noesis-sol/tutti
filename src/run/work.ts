@@ -21,7 +21,7 @@
 // The session is closed once the ticket no longer needs it (§ 4.8, sessions.ts): kept open while it
 // waits to merge, and when it stopped the run (it is suspended as the run ends); closed once asked,
 // its worker's turn over, to be resumed when the answer is in.
-import { Clock, Effect, Ref, Result, Stream } from "effect"
+import { Clock, Deferred, Effect, Ref, Result, Stream } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { formatDuration } from "../project/configFile.ts"
 import { Beads, type BeadsError, beadsWhy, type Status, type TicketId } from "../services/Beads.ts"
@@ -37,13 +37,20 @@ import { exitCodes, type StopReason, timeLimit } from "./holds.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, type Log, line, Tag, tagged, ticketLine } from "./log.ts"
 import type { MergeQueue } from "./mergequeue.ts"
+import {
+  limitStuck,
+  type OvernightAside,
+  pausedStuck,
+  type Stuck,
+  setAside as setAsideOvernight,
+} from "./overnightAside.ts"
 import { Move, type TicketPhase } from "./phase.ts"
 import { warn } from "./say.ts"
 import { fit, workerGone } from "./sessions.ts"
 import {
   idleGrace,
   listChanges,
-  type Settled,
+  Settled,
   type SettleEnv,
   settle,
   unmergedBlockers,
@@ -88,6 +95,11 @@ export interface WorkOptions {
   readonly triage?: Triage
   /** Takes the TICKET_LIMIT stop of a worker still going --ticket-limit after its dispatch. */
   readonly onTicketLimit?: (stop: StopReason) => Effect.Effect<void>
+  /**
+   * An overnight run's register (overnightAside.ts): with it, PAUSED, BLOCKED and TICKET_LIMIT set
+   * the ticket aside rather than hold the run.
+   */
+  readonly overnight?: OvernightAside
   /** The run's setups (setup.ts), which the merge queue shares; the settings' setup when absent. */
   readonly setUps?: SetUps
   /**
@@ -231,18 +243,32 @@ const setupProblem = (worktree: TicketWorktree, problem: string) =>
 
 /**
  * Moves the ticket as its worker left it, `settled` saying how; the stop when it stopped the run.
+ * In an overnight run (`overnight`), a ticket Paused or Stuck is set aside instead.
  */
 export const conclude = (
   ticket: StartTicket,
   worker: StartedWorker,
   settled: Settled,
   queue: MergeQueue,
+  overnight?: OvernightAside,
 ): Effect.Effect<RunStop | null, never, SettleEnv> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger
     const { id, title } = ticket
     const { path, branch } = worker.worktree
-    if (settled._tag === "Paused") return yield* paused(worker, settled.gone)
+    if (overnight !== undefined && (settled._tag === "Paused" || settled._tag === "Stuck")) {
+      const stuck =
+        settled._tag === "Stuck"
+          ? settled.stuck
+          : pausedStuck(settled.left, formatDuration(idleGrace))
+      yield* setAsideOvernight(ticket, worker, stuck, overnight)
+      yield* fit(id)
+      return null
+    }
+    // Only an overnight run's fiber is Stuck; otherwise its ticket holds the run, as Paused.
+    if (settled._tag === "Paused" || settled._tag === "Stuck") {
+      return yield* paused(worker, settled._tag === "Paused" ? settled.gone : null)
+    }
     if (settled._tag === "Setup") return yield* setupProblem(worker.worktree, settled.problem)
     if (settled._tag === "Dropped") {
       yield* workerGone({ ticket: id, worktree: path, why: settled.why })
@@ -370,26 +396,37 @@ export const follow = (
   since: number,
 ): Effect.Effect<Followed, BeadsError | GitError, WorkEnv> =>
   Effect.gen(function* () {
+    const { overnight } = options
+    // In an overnight run, BLOCKED and TICKET_LIMIT set the ticket aside: whichever comes first ends
+    // the wait for its worker to settle. Registered until its ticket is set aside, so that BLOCKED
+    // finds its fiber until its requests are denied.
+    const stuck = yield* Deferred.make<Stuck>()
+    if (overnight !== undefined) yield* overnight.follow(ticket.id, stuck)
     const [settled, limited] = yield* Effect.scoped(
       Effect.gen(function* () {
         const limited = yield* watchLimit(ticket.id)
-        // TICKET_LIMIT or LONG_RUNNING while it goes on (holds.ts); the worker isn't interrupted.
+        // TICKET_LIMIT or LONG_RUNNING while it goes on (holds.ts); the worker isn't interrupted,
+        // but in an overnight run.
         yield* timeLimit(
           ticket.id,
           worker.worktree.path,
           since,
-          options.onTicketLimit ?? (() => Effect.void),
+          overnight === undefined
+            ? (options.onTicketLimit ?? (() => Effect.void))
+            : (_, limit) => Deferred.succeed(stuck, limitStuck(limit)),
+          overnight === undefined,
         ).pipe(Effect.forkScoped({ startImmediately: true }))
-        return [
-          yield* settle(worker, options.base, options.closedBranches),
-          yield* Ref.get(limited),
-        ] as const
+        const settled = yield* Effect.raceFirst(
+          settle(worker, options.base, options.closedBranches),
+          Effect.map(Deferred.await(stuck), (stuck) => Settled.Stuck({ stuck })),
+        )
+        return [settled, yield* Ref.get(limited)] as const
       }),
     )
-    const stop = yield* conclude(ticket, worker, settled, options.queue)
+    const stop = yield* conclude(ticket, worker, settled, options.queue, overnight)
     yield* leaveAside(worker, settled, limited, options.triage)
     return { settled, limited, stop }
-  })
+  }).pipe(Effect.scoped)
 
 /**
  * The per-ticket fiber, for a ticket dispatched and Working: its worker started on `base`, settled,

@@ -683,15 +683,17 @@ export const goneOn = (
 
 /**
  * The time hold of `ticket`'s worker, dispatched at `since`, its worktree at `worktree`: once it
- * has gone on --ticket-limit, its ticket is noted and `onLimit` given its TICKET_LIMIT stop;
- * without a limit, LONG_RUNNING is said once it has gone on longRunning. Run for as long as the
- * worker goes on, and interrupted once it has settled.
+ * has gone on --ticket-limit, its ticket is noted (unless not `noted`, an overnight run's, whose
+ * note says more) and `onLimit` given its TICKET_LIMIT stop and the limit (`2h`); without a limit,
+ * LONG_RUNNING is said once it has gone on longRunning. Run for as long as the worker goes on, and
+ * interrupted once it has settled.
  */
 export const timeLimit = (
   ticket: TicketId,
   worktree: string,
   since: number,
-  onLimit: (stop: StopReason) => Effect.Effect<void>,
+  onLimit: (stop: StopReason, limit: string) => Effect.Effect<void>,
+  noted = true,
 ): Effect.Effect<void, never, AppConfig | AgentHost | Beads | Log | EventStream> =>
   Effect.gen(function* () {
     const limit = (yield* AppConfig).settings.workers.ticket_limit
@@ -702,10 +704,12 @@ export const timeLimit = (
       return
     }
     const after = formatDuration(limit)
-    yield* Effect.ignore(
-      (yield* Beads).update(ticket, {
-        appendNotes: `tutti: its worker was still working after the ${after} ticket limit (worktree ${worktree}).`,
-      }),
-    )
-    yield* onLimit(ticketLimitStop({ id: ticket, limit: after, worktree }))
+    if (noted) {
+      yield* Effect.ignore(
+        (yield* Beads).update(ticket, {
+          appendNotes: `tutti: its worker was still working after the ${after} ticket limit (worktree ${worktree}).`,
+        }),
+      )
+    }
+    yield* onLimit(ticketLimitStop({ id: ticket, limit: after, worktree }), after)
   })

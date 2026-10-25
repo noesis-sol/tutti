@@ -326,6 +326,28 @@ There is no overnight badge: the title line's ` keep awake ` and ` auto-answer `
 turned on. Unlike orchestra's, the pre-flight doesn't fetch the base from its upstream: tutti's runs
 never fetch.
 
+An overnight run has nobody to answer it until the morning, so a ticket that needs you doesn't hold
+the run ([Holds and stops](#holds-and-stops)): a worker idle with its ticket in progress
+(`PAUSED`), one blocked on a request for 4 minutes (`BLOCKED`), and one still going after the
+ticket limit (`TICKET_LIMIT`) each have their ticket set aside instead, and the run goes on with the
+rest:
+
+```
+  tut-3: its worker was blocked on a permission request for over 4m -> noted and deferred, the run being an overnight one (BLOCKED); worktree ../tutti-worktrees/tut-3 kept for review
+```
+
+The ticket is deferred with a note saying what its worker did and what it waited on. Its open
+requests are denied by tutti, in nobody's name, so that nothing answers them later; its worker is
+stopped, which frees its slot for the next ticket. Its worktree and branch are kept, and the note
+names its session, for the morning (`claude --resume <session>` in its worktree); `bd undefer <id>`
+brings it back, to start again in that worktree. Its row reads `↷ deferred` with
+`(set aside overnight: BLOCKED)` before its title, the summary counts it set aside, and the report
+lists it with the others. A question that is `maintainer_only`, or has no options, waits for you as
+in any run, and the run goes on without its ticket. What makes carrying on unsafe, or would only
+fail again, still stops an overnight run: `DIRTY_TREE`, `GIT_FAILED`, `MERGE_FAILED`,
+`ENVIRONMENT`, `REQUIREMENTS_MISSING`, `BEADS_FAILED`, `SETUP_PROBLEM`, `PANIC`, and the usage
+limit held past `--usage-limit-wait`.
+
 ### One ticket and its subtickets
 
 ```
@@ -690,6 +712,8 @@ and then the run ends with that reason. The log says
 - **`TICKET_LIMIT`**: a worker still going after `--ticket-limit`. It isn't interrupted, and the run
   doesn't wait for it; it is suspended as the run ends, and the next run resumes it with its limit
   counted afresh.
+
+An [overnight run](#overnight) sets the ticket aside for these three instead, and goes on.
 - **`DIRTY_TREE`**, **`GIT_FAILED`**, **`MERGE_FAILED`**: the merges stop.
 - **`BEADS_FAILED`**: `bd` failing. A worker's session that won't start isn't a stop of its own:
   a row of them holds the run as `ENVIRONMENT`.
