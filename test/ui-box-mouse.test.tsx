@@ -145,15 +145,16 @@ describe("a click under an open box", () => {
       await until(rendered, has("← Dashboard"))
       await press(rendered, { ctrl: "x" })
       expect((await until(rendered, has(asked))).chars).toContain(asked)
-      // ← Dashboard, then a line of the transcript: the backdrop takes both.
-      await click(rendered, 3, 0)
+      // ← Dashboard, under the blank line above the head, then a line of the transcript: the
+      // backdrop takes both.
+      await click(rendered, 3, 1)
       await click(rendered, 10, 5)
       expect(taken(commands)).toEqual([])
       expect((await rendered.capture()).chars).toContain(asked)
       // Closed, the view takes the click again.
       await press(rendered, "escape")
       expect((await rendered.capture()).chars).not.toContain(asked)
-      await click(rendered, 3, 0)
+      await click(rendered, 3, 1)
       expect(taken(commands)).toEqual([UiCommand.CloseWorker()])
     })
   })
@@ -182,7 +183,7 @@ describe("a view's own box", () => {
         await until(rendered, has("← Dashboard"))
         await press(rendered, { ctrl: "x" })
         await until(rendered, has(asked))
-        await click(rendered, 3, 0)
+        await click(rendered, 3, 1)
         // The run goes back to the dashboard all the same, as it does on CloseWorker.
         await rendered.input(() => screen.set(Screen.Dashboard()))
         const frame = await until(rendered, has("Title of t-2"))

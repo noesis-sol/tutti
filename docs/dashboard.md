@@ -255,40 +255,51 @@ When the run ends, the dashboard closes and the main screen gets:
 `Enter` on a card, a click, or `1`–`9` opens the worker's view, full screen:
 
 ```
- ← Dashboard   2 ⣾  tut-zq4  testing  1m07s  feature · P2   Add an undo stack for property edits
-  6m53s  1.2M tokens  5h window ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  0.8 GB
-  Each property edit pushes its own entry, so undoing a drag takes as many undos as
-  the drag had frames. Group the edits of one gesture into one entry…  ▾ whole ticket  t
-─────────────────────────────────────────────────────────────────────────────────
+
+ ← Dashboard   ⣾ tut-zq4  testing  6m53s  ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  0.8 GB  feature · P2
+
+  Add an undo stack for property edits
+
+╭─────────────────────────────────────────────────────────────────────────────────────────╮
+│ Each property edit pushes its own entry, so undoing a drag takes as many undos as the   │
+│ drag had frames. Group the edits of one gesture into one entry, closed when the gesture │
+│ ends, so one undo reverts a whole drag…                                                 │
+╰─────────────────────────────────────────────────────────────────── ▾ whole ticket  t ─╯
+───────────────────────────────────────────────────────────────────────────────────────────
   Read  src/history/undo.ts                                                    ✓
   Edit  src/history/undo.ts                                               +42 −3
 ▸ Bash  scripts/check-fast.sh
   The undo stack now records property edits in groups, so one undo reverts
   a whole drag. Next I'll add the keyboard binding.
-─────────────────────────────────────────────────────────────────────────────────
+───────────────────────────────────────────────────────────────────────────────────────────
  > i to write to the worker
  Esc dashboard · i write · t ticket · Ctrl+X interrupt · ↑↓ select · Enter expand · ? keys
 ```
 
-- **What it consumes.** The line under the head: the worker's time on the ticket, its tokens, its
-  dollars on an API key, how full its context window is against the point Claude Code compacts at
-  (yellow from 70%, red from 90%), its compactions once it has had one, and its memory. On a
-  subscription login there are no dollars to spend: the line shows instead the ticket's share of
-  your five-hour window, `5h window ≈1% (estimate)`, in italic sand. Claude Code reports only the
-  account's window, so tutti estimates it: the window's rise over the run, shared among the workers
-  by what each would cost at API prices. It counts what you use beside the run too. Near a usage
-  limit, the line ends with the account's figure, `⚠ 5h window 92% · resets 14:20`. A click on the
-  line opens the whole ticket (below) scrolled to its last section, **Spent**: tokens by model and
-  how many came from the cache, model calls, dollars, how the share is made, what fills the context,
-  and the ticket's share of the run's tokens.
-- **The ticket.** Line 1 has the ticket's type and priority and its title in bold. Under the
-  resource line, the first lines of the ticket's description: 2, 3 on a pane of 40 rows or more, none at the minimum
-  size. `▾ whole ticket  t` ends them when the ticket has more than shows. `t`, or a click on it,
-  opens the whole ticket in their place: the description, design, acceptance criteria as a
-  checklist, notes, links and labels, then **Spent**, in a frame up to 60% of the pane that `PgUp`,
-  `PgDn` and the wheel scroll, `↓ N more lines` at its foot while there is more. Opening it reads the ticket from
-  bd again, so notes added during the run, and the tickets it blocks, show. `t`, a click on
-  `▴ less`, or `Esc` closes it.
+- **The head.** Under a blank line, which keeps the top row where the dashboard has its title, line
+  1: the ticket, its status, what the worker consumes (below), and the ticket's type and priority.
+  It stays one line: a narrow pane drops the memory first, then the type and priority, then the
+  rest from the end, but never the ticket, its status or its time. Then the ticket's title in bold,
+  on up to 2 lines, and the ticket's description in a box. A pane under 30 rows gives up some of the
+  description's lines and the blank lines between; at the minimum size, line 1 and the title.
+- **What it consumes.** On line 1, after the status: the worker's time on the ticket, its dollars
+  on an API key, how full its context window is against the point Claude Code compacts at (yellow
+  from 70%, red from 90%), its compactions once it has had one, and its memory. On a subscription
+  login there are no dollars to spend: line 1 shows instead the ticket's share of your five-hour
+  window, `≈1% (estimate)`, in italic sand. Claude Code reports only the account's window, so tutti
+  estimates it: the window's rise over the run, shared among the workers by what each would cost at
+  API prices. It counts what you use beside the run too. Near a usage limit, the account's figure
+  follows the memory, `⚠ 5h window 92% · resets 14:20`. A click on the figures opens the whole
+  ticket (below) scrolled to its last section, **Spent**: tokens by model and how many came from
+  the cache, model calls, dollars, how the share is made, what fills the context, and the ticket's
+  share of the run's tokens.
+- **The ticket.** The box under the title holds the first lines of the ticket's description, up to
+  5. `▾ whole ticket  t` is in its bottom border when the ticket has more than shows. `t`, or a
+  click on it, grows the same box into the whole ticket: the description, design, acceptance
+  criteria as a checklist, notes, links and labels, then **Spent**, up to 60% of the pane, which
+  `PgUp`, `PgDn` and the wheel scroll, `↓ N more lines ── ▴ less  t · Esc` in its bottom border.
+  Opening it reads the ticket from bd again, so notes added during the run, and the tickets it
+  blocks, show. `t`, a click on `▴ less`, or `Esc` shrinks it back.
 - **The transcript.** What the worker writes is drawn as Markdown. Each tool call is one line, its
   result at the right: `✓`, an error's first line, or `+N −M` for an edit. Selected with the arrows
   and opened with `Enter` or a click, a call shows an edit's diff, a command's output (400 lines at

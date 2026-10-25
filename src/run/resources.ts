@@ -1,4 +1,4 @@
-// What a worker consumes (§ 7.5's resource line, worker-view design D2): its time on the ticket,
+// What a worker consumes (§ 7.5's figures, worker-view design D2): its time on the ticket,
 // its tokens and dollars (Spending's sums, live while a turn goes on), how full its context window
 // is (the host's reading after its model calls and each finished turn), its compactions (the
 // ledger's tallies), and on a subscription login its ticket's estimated share of the account's
@@ -31,7 +31,7 @@ export interface WindowShare {
   readonly runCost: number
 }
 
-/** What a ticket's worker consumes, for its view's resource line and its breakdown. */
+/** What a ticket's worker consumes, for its view's figures and its breakdown. */
 export interface Resources {
   readonly ticket: TicketId
   /** When the run took the ticket up, in epoch milliseconds: its worker's time counts from then. */

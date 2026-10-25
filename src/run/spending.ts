@@ -1,7 +1,7 @@
 // Spending (§ 10): what the workers' turns cost and used, from the SDK's own result messages. Each
 // result gives a `turn` record, and is added to its ticket's sums and the run's, which the records
 // that end a ticket's part in the run (ledger.ts) and the run's `end` record give. The sums are
-// published as they change, for the worker view's resource line (§ 7.5).
+// published as they change, for the worker view's figures (§ 7.5).
 //
 // A worker does its whole ticket in one long turn, so the published sums also count the turns going
 // on, live: each assistant message's usage, by its API message ID, as the SDK repeats one message's

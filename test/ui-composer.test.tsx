@@ -475,7 +475,7 @@ describe("releasing", () => {
     await scene(
       async ({ rendered, commands }) => {
         const frame = await until(rendered, has("Working on it."))
-        expect(linesOf(frame)[0]).toContain("working  steered")
+        expect(linesOf(frame)[1]).toContain("working  steered")
         expect(footOf(frame, 5)).toMatchInlineSnapshot(`
           "
           ────────────────────────────────────────────────────────────────────────────────

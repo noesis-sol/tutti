@@ -727,7 +727,7 @@ const runFrom = (
     yield* watch(Stream.runForEach(queue.checksAhead, showOn(status, "checksAhead", Object.is)))
     // The environment probe's session shows as a card while it runs.
     yield* watch(Stream.runForEach(environment.probing, showOn(status, "probe")))
-    // What each worker consumes, for its view's resource line (§ 7.5): its tokens and dollars, live
+    // What each worker consumes, for its view's figures (§ 7.5): its tokens and dollars, live
     // while a turn goes on, at most once a second (showSums); and how full its context is, as the
     // host last asked it.
     if (screen !== null) {

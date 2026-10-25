@@ -1,9 +1,9 @@
 // The worker view (§ 7.5, § 7.3, § 7.11): tutti's transcript of one worker, drawn by tutti, under
-// orchestra-style chrome: `← Dashboard`, then the worker's card head (number, mark, ticket, status,
-// elapsed time), the ticket's type and priority, and its title in bold, wrapped onto more lines in
-// a narrow pane, then the resource line (ResourceLine.tsx: what the worker consumes; a click opens
-// what it spent), and under it the ticket's description, or its whole ticket while `t` has it open
-// (TicketHead.tsx), over a rule. Below the transcript, the attention panel shows the worker's open
+// orchestra-style chrome: a blank line, then line 1, `← Dashboard`, the worker's mark, ticket and
+// status, what it consumes (worker/figures.ts; a click opens what it spent), and the ticket's type
+// and priority, on one line (worker/Head.tsx); a blank line, the ticket's title alone in bold; a
+// blank line, and the ticket's description in a box, which `t` grows into the whole ticket
+// (TicketHead.tsx); over a rule. Below the transcript, the attention panel shows the worker's open
 // requests with the card's buttons and rules (attentionKeys.ts), each with its description, its
 // reason and its whole input, and a conflict hand-back waiting for a steered worker (§ 4.3) as a
 // notice with Hand it the conflict now. Answer in view, for what a card can't hold, opens the
@@ -61,11 +61,12 @@ import { KeyHelp } from "./KeyHelp.tsx"
 import { type Command, type HelpRow, hintOf, useCommands } from "./keyCommands.ts"
 import { useInput } from "./keys.ts"
 import { Line, Lines, Section, type Segments, seg } from "./line.tsx"
-import { ResourceLine, spentLines } from "./ResourceLine.tsx"
 import {
-  DescriptionView,
-  descriptionLimit,
+  DescriptionBox,
+  descriptionLeast,
   descriptionLines,
+  descriptionMost,
+  hasBox,
   panelLines,
   TicketPanelView,
   useTicketPanel,
@@ -80,7 +81,8 @@ import {
   useTranscriptKeys,
 } from "./transcriptView.ts"
 import { useTheme } from "./useRunView.ts"
-import { WorkerHead } from "./worker/Head.tsx"
+import { spentLines } from "./worker/figures.ts"
+import { aboveLines, titleLines, WorkerHead } from "./worker/Head.tsx"
 import { LooksContext, useSyntaxStyles } from "./worker/Looks.tsx"
 import { handBackLines, RequestPanel, usePanelRooms } from "./worker/Panel.tsx"
 import { TranscriptPane, TranscriptSection } from "./worker/Story.tsx"
@@ -92,20 +94,33 @@ export { entryId, panelRequests, requestKey, selectable } from "./transcriptView
 export const transcriptRows = 3
 
 /**
- * The lines of a transcript view's parts but the transcript and the request panel: the head, the
- * ticket under it, the hand-back notice, the held line, the finished or steered line, the queued
- * messages, the composer and the hint. The Interview view has no ticket, hand-back, held or steered
- * line.
+ * The lines of a transcript view's parts but the transcript and the request panel: the blank line
+ * above the head, the head, the ticket's title and box under it with the blank lines between, the
+ * hand-back notice, the held line, the finished or steered line, the queued messages, the composer
+ * and the hint. The Interview view has no title, ticket, hand-back, held or steered line.
  */
 export interface ViewChrome {
+  /** The blank line above the head (worker/Head.tsx's aboveLines). */
+  readonly above: number
   readonly head: number
   /**
-   * The worker view's resource line under the head (ResourceLine.tsx), none in the Interview view:
-   * a short pane gives it up before the request panel's lines, so it is left out of panelBudget.
+   * The worker view's blank line under line 1, and the one over the ticket's box: a short pane
+   * gives them up before the request panel's lines, so they are left out of panelBudget.
    */
-  readonly resources: number
-  /** The ticket's description under the head, or its whole ticket while that is open (§ 7.5). */
+  readonly headGap: number
+  readonly ticketGap: number
+  /** The worker view's ticket title under line 1. */
+  readonly title: number
+  /**
+   * The ticket's box under the title: its frame and its description's first `descriptionLeast`
+   * lines, or its whole ticket while that is open (§ 7.5).
+   */
   readonly ticket: number
+  /**
+   * The box's description lines past `descriptionLeast`, which a short pane gives up first, before
+   * the request panel's lines, so they are left out of panelBudget.
+   */
+  readonly ticketMore: number
   readonly handBack: number
   readonly held: number
   readonly line: number
@@ -130,7 +145,7 @@ const ruleLines = 2
  * transcript's `transcriptRows` leave it (tutti-7nzv).
  */
 export const panelBudget = (height: number, chrome: ViewChrome): number => {
-  const { resources: _, ...rest } = chrome
+  const { headGap: _, ticketGap: __, ticketMore: ___, ...rest } = chrome
   return (
     height -
     ruleLines -
@@ -139,13 +154,42 @@ export const panelBudget = (height: number, chrome: ViewChrome): number => {
   )
 }
 
+/** The pane's rows from which the head has all of its ticket: its blank lines and 5 lines. */
+export const fullHeadFrom = 30
+
+/** The head's blank lines and description lines past `descriptionLeast`, at their most. */
+const headExtrasMost = 2 + descriptionMost - descriptionLeast
+
+/**
+ * The worker view's blank lines under line 1 and over the box, and its box's description lines
+ * past `descriptionLeast`, of `gaps` and `more`, in a pane `height` tall: all of them from
+ * `fullHeadFrom` rows; below, a row fewer a row, the description's lines first, then the blank
+ * lines, the one over the box first.
+ */
+export const headExtras = (
+  height: number,
+  gaps: { readonly head: number; readonly ticket: number },
+  more: number,
+): { readonly headGap: number; readonly ticketGap: number; readonly ticketMore: number } => {
+  let budget = Math.max(height - fullHeadFrom + headExtrasMost, 0)
+  const take = (lines: number) => {
+    const got = Math.min(lines, budget)
+    budget -= got
+    return got
+  }
+  const headGap = take(gaps.head)
+  const ticketGap = take(gaps.ticket)
+  return { headGap, ticketGap, ticketMore: take(more) }
+}
+
 /**
  * A transcript view's lines in a pane `height` tall, handed out in priority order, each part as
- * many as it needs of what is left, so that they add up to `height`: the hint, the head, the
- * rules, the composer, the finished or steered line, the held line, the queued messages, the
- * hand-back notice and the ticket, then the transcript's `transcriptRows`, then the `panel` lines
- * the request panel takes (panelBudget's at most, but for one request too tall for it), then the
- * resource line, and the transcript the rest.
+ * many as it needs of what is left, so that they add up to `height`: the hint, the head, the blank
+ * line above it, the title, the rules, the composer, the finished or steered line, the held line,
+ * the queued messages, the hand-back notice and the ticket's box, then the transcript's
+ * `transcriptRows`, then the `panel` lines the request panel takes (panelBudget's at most, but for
+ * one request too tall for it), then the blank lines under line 1 and over the box, then the box's
+ * description lines past `descriptionLeast`, and the transcript the rest.
  */
 export const viewLayout = (height: number, chrome: ViewChrome, panel: number): ViewLayout => {
   const { ruleUnder, ruleOver, ...laid } = stack(
@@ -153,6 +197,8 @@ export const viewLayout = (height: number, chrome: ViewChrome, panel: number): V
     [
       ["hint", chrome.hint],
       ["head", chrome.head],
+      ["above", chrome.above],
+      ["title", chrome.title],
       ["ruleUnder", 1],
       ["ruleOver", 1],
       ["composer", chrome.composer],
@@ -163,7 +209,9 @@ export const viewLayout = (height: number, chrome: ViewChrome, panel: number): V
       ["ticket", chrome.ticket],
       ["transcript", transcriptRows],
       ["panel", panel],
-      ["resources", chrome.resources],
+      ["headGap", chrome.headGap],
+      ["ticketGap", chrome.ticketGap],
+      ["ticketMore", chrome.ticketMore],
     ],
     "transcript",
   )
@@ -267,11 +315,14 @@ export const workerViewCommands = (
       run: nothing,
       help: ["Esc, Tab, Enter", "switch workers, by way of the dashboard"],
     },
-    // A click on the resource line opens the whole ticket at what the worker spent (ResourceLine.tsx).
+    // A click on line 1's figures opens the whole ticket at what the worker spent (figures.ts).
     {
       keys: [],
       run: nothing,
-      help: ["a click on resources", "the whole ticket at Spent: tokens, calls, dollars, context"],
+      help: [
+        "a click on the figures",
+        "the whole ticket at Spent: tokens, calls, dollars, context",
+      ],
     },
     { ...keys.write, hint: named(viewing, "i", "write"), help: writeRow },
     {
@@ -367,31 +418,41 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
   // The panel has the height the view's other parts leave it, and a few of the transcript's
   // (tutti-7nzv), the hint as it is with requests.
   const [headLines, setHeadLines] = useState(1)
-  // The ticket under the head (TicketHead.tsx): its description, or its whole ticket while open,
-  // two columns in.
+  // The ticket's title under line 1, and its box (TicketHead.tsx): its description, or its whole
+  // ticket while open, the pane's width.
   const ticketPanel = useTicketPanel(viewed)
   const issue = card?.issue
-  const ticketWidth = Math.max(inner - 2, 1)
-  const description = useMemo(
-    () =>
-      issue === undefined
-        ? null
-        : descriptionLines(issue, theme, ticketWidth, descriptionLimit(height)),
-    [issue, theme, ticketWidth, height],
+  const cardTitle = card?.title
+  const title = useMemo(
+    () => (cardTitle === undefined ? [] : titleLines(cardTitle, theme, inner)),
+    [cardTitle, theme, inner],
   )
-  // The whole ticket's last section: what its worker spent, which a click on the resource line
+  // The description's lines inside the box's frame, as many as it has up to descriptionMost.
+  const textWidth = Math.max(inner - 4, 1)
+  const described = useMemo(
+    () =>
+      issue === undefined || !hasBox(height)
+        ? 0
+        : descriptionLines(issue, theme, textWidth, descriptionMost).lines.length,
+    [issue, theme, textWidth, height],
+  )
+  // The whole ticket's last section: what its worker spent, which a click on line 1's figures
   // opens the panel scrolled to.
   const spent = useMemo(
-    () =>
-      resources === undefined ? null : spentLines(resources, theme, Math.max(ticketWidth - 4, 1)),
-    [resources, theme, ticketWidth],
+    () => (resources === undefined ? null : spentLines(resources, theme, textWidth)),
+    [resources, theme, textWidth],
   )
-  const ticketLines =
-    card === undefined
-      ? 0
-      : ticketPanel.open
-        ? panelLines(issue, height, ticketWidth, spent?.length ?? 0)
-        : (description?.lines.length ?? 0)
+  const boxed = card !== undefined && (ticketPanel.open || described > 0)
+  const ticketLines = !boxed
+    ? 0
+    : ticketPanel.open
+      ? panelLines(issue, height, inner, spent?.length ?? 0)
+      : 2 + Math.min(described, descriptionLeast)
+  const extras = headExtras(
+    height,
+    { head: card === undefined ? 0 : 1, ticket: boxed ? 1 : 0 },
+    boxed && !ticketPanel.open ? Math.max(described - descriptionLeast, 0) : 0,
+  )
   const at = (requests: boolean): WorkerViewAt => ({
     requests,
     composing: composer.typing,
@@ -406,9 +467,11 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
   // The hand-back notice's lines, unselected: the selection draws them again only to show it.
   const handBackDrawn = handBack ? handBackLines(theme, { width: panelWidth, selected: false }) : []
   const chrome = (hint: ReadonlyArray<Segments>): ViewChrome => ({
+    above: aboveLines(width, height),
     head: headLines,
-    resources: resources === undefined ? 0 : 1,
+    title: title.length,
     ticket: ticketLines,
+    ...extras,
     handBack: handBackDrawn.length,
     held: holding ? 1 : 0,
     line: finished || steered ? 1 : 0,
@@ -447,47 +510,51 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
     }),
   )
 
+  // The box's height as laid out, and the description's lines it holds within its frame.
+  const boxLines = laid.ticket + laid.ticketMore
+  const description = useMemo(
+    () =>
+      issue === undefined || ticketPanel.open || boxLines < 3
+        ? null
+        : descriptionLines(issue, theme, textWidth, boxLines - 2),
+    [issue, ticketPanel.open, boxLines, theme, textWidth],
+  )
   const rule: Segments = [seg("─".repeat(inner), theme.look("frame"))]
   const { box } = composer
   return (
     <LooksContext.Provider value={looks}>
       <box flexDirection="column" width={width} height={height}>
+        <Section lines={laid.above} />
         <Section lines={laid.head}>
           <WorkerHead
             ticket={viewed}
             card={card}
+            resources={resources}
             finished={finished}
             leave={commands.close}
+            spent={ticketPanel.openSpent}
             width={inner}
             counted={setHeadLines}
           />
         </Section>
-        <Section lines={laid.resources}>
-          {resources === undefined ? null : (
-            <ResourceLine
-              resources={resources}
-              memory={card?.memory}
-              finished={finished}
-              width={inner}
-              open={ticketPanel.openSpent}
-            />
-          )}
+        <Section lines={laid.headGap} />
+        <Section lines={laid.title}>
+          <Lines lines={title} />
         </Section>
-        <Section lines={laid.ticket}>
-          <box paddingLeft={2} flexDirection="column" height={laid.ticket} flexShrink={0}>
-            {ticketPanel.open ? (
-              <TicketPanelView
-                issue={issue}
-                spent={spent}
-                panel={ticketPanel}
-                looks={looks}
-                width={ticketWidth}
-                lines={laid.ticket}
-              />
-            ) : description === null ? null : (
-              <DescriptionView lines={description} open={ticketPanel.toggle} />
-            )}
-          </box>
+        <Section lines={laid.ticketGap} />
+        <Section lines={boxLines}>
+          {ticketPanel.open ? (
+            <TicketPanelView
+              issue={issue}
+              spent={spent}
+              panel={ticketPanel}
+              looks={looks}
+              width={inner}
+              lines={boxLines}
+            />
+          ) : description === null ? null : (
+            <DescriptionBox lines={description} width={inner} open={ticketPanel.toggle} />
+          )}
         </Section>
         <Section lines={laid.rules[0]}>
           <Line segments={rule} />

@@ -200,9 +200,13 @@ describe("dashboardLayout", () => {
 
 /** A transcript view's chrome: up to 12 lines a part, as a narrow pane and a long message make. */
 const chromeArb: fc.Arbitrary<ViewChrome> = fc.record({
+  above: fc.integer({ min: 0, max: 1 }),
   head: fc.integer({ min: 1, max: 4 }),
-  resources: fc.integer({ min: 0, max: 1 }),
+  headGap: fc.integer({ min: 0, max: 1 }),
+  title: fc.integer({ min: 0, max: 2 }),
+  ticketGap: fc.integer({ min: 0, max: 1 }),
   ticket: fc.integer({ min: 0, max: 12 }),
+  ticketMore: fc.integer({ min: 0, max: 3 }),
   handBack: fc.constantFrom(0, 5),
   held: fc.integer({ min: 0, max: 1 }),
   line: fc.integer({ min: 0, max: 1 }),
@@ -221,9 +225,13 @@ describe("viewLayout", () => {
         (height, chrome, panel) => {
           const laid = viewLayout(height, chrome, panel)
           const parts = [
+            laid.above,
             laid.head,
-            laid.resources,
+            laid.headGap,
+            laid.title,
+            laid.ticketGap,
             laid.ticket,
+            laid.ticketMore,
             laid.rules[0],
             laid.transcript,
             laid.handBack,
@@ -341,7 +349,7 @@ describe("drawn", () => {
       status: { ...emptyStatus, version: "0.1.0", branch: "batch", began, concurrency: 1 },
       actions: new Map(),
     })
-    // 40×16: the 20-line command's request is more than the panel's 3 lines, and is cut there.
+    // 40×16: the 20-line command's request is more than the panel's 4 lines, and is cut there.
     const frame = await renderFrame(
       <Root
         value={{
@@ -360,10 +368,11 @@ describe("drawn", () => {
     const lines = linesOf(frame)
     expect(lines[0]).toContain("← Dashboard")
     const rule = lines.findLastIndex((line) => line.startsWith("────"))
-    expect(lines.slice(rule - 3, rule).map((line) => line.slice(0, 10))).toEqual([
+    expect(lines.slice(rule - 4, rule).map((line) => line.slice(0, 10))).toEqual([
       "┏━━━━━━━━━",
       "┃ Bash: Ru",
       "┃ [ Deny ]",
+      "┃ echo r1 ",
     ])
     expect(lines[rule + 1]).toContain("i to write to the worker")
     expect(lines.slice(rule + 2).join(" ")).toContain("Esc dashboard")

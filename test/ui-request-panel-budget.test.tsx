@@ -146,11 +146,11 @@ describe("the request panel's height", () => {
       const frame = await rendered.capture()
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s   Title of t-1
-          1m07s  0 tokens  $0.00
+
+         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
+          Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
           Two commands to run.
-
 
 
 
@@ -181,7 +181,9 @@ describe("the request panel's height", () => {
       const frame = await rendered.capture()
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s   Title of t-1
+
+         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
+          Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
           Two commands to run.
 
@@ -195,7 +197,6 @@ describe("the request panel's height", () => {
         ┃ echo r1 step 3                                                             ┃
         ┃ echo r1 step 4                                                             ┃
         ┃ echo r1 step 5                                                             ┃
-        ┃ echo r1 step 6                                                             ┃
         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
         ╭────────────────────────────────────────────────────────────────────────────╮
         │ Bash: Run the r2 steps                                                     │
@@ -205,7 +206,6 @@ describe("the request panel's height", () => {
         │ echo r2 step 2                                                             │
         │ echo r2 step 3                                                             │
         │ echo r2 step 4                                                             │
-        │ echo r2 step 5                                                             │
         ╰────────────────────────────────────────────────────────────────────────────╯
         ────────────────────────────────────────────────────────────────────────────────
          > i to write to the worker
@@ -229,9 +229,13 @@ describe("the request panel's height", () => {
       const frame = await rendered.capture()
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s   Title of t-1
+
+         ← Dashboard   • t-1  permission — waiting for you (2)  1m07s  $0.00
+
+          Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
           Two commands to run.
+
 
 
         ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -242,15 +246,11 @@ describe("the request panel's height", () => {
         ┃ echo r1 step 2                                                             ┃
         ┃ echo r1 step 3                                                             ┃
         ┃ echo r1 step 4                                                             ┃
+        ┃ echo r1 step 5                                                             ┃
+        ┃ echo r1 step 6                                                             ┃
+        ┃ echo r1 step 7                                                             ┃
         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-        ╭────────────────────────────────────────────────────────────────────────────╮
-        │ Bash: Run the r2 steps                                                     │
-        │ Path is outside allowed working directories                                │
-        │ [ Deny ]  [ Allow ]                                                        │
-        │ echo r2 step 1                                                             │
-        │ echo r2 step 2                                                             │
-        │ echo r2 step 3                                                             │
-        ╰────────────────────────────────────────────────────────────────────────────╯
+          +1 more requests
         ────────────────────────────────────────────────────────────────────────────────
          > line 1
            line 2
@@ -270,9 +270,8 @@ describe("the request panel's height", () => {
       const frame = await rendered.capture()
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  permission —
-            waiting for you (2)  1m07s   Title
-            of t-1
+         ← Dashboard   • t-1  permission — wait…
+          Title of t-1
         ────────────────────────────────────────
           Two commands to run.
 
@@ -286,6 +285,7 @@ describe("the request panel's height", () => {
         ┃ echo r1 step 2                     ┃
         ┃ echo r1 step 3                     ┃
         ┃ echo r1 step 4                     ┃
+        ┃ echo r1 step 5                     ┃
         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
           +1 more requests
         ────────────────────────────────────────

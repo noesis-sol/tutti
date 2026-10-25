@@ -1,38 +1,34 @@
-// The worker view's resource line (§ 7.5, worker-view design D2), under its head: what the worker
-// is consuming. Its time on the ticket; its tokens, every model's; on an API key its dollars, or on
-// a subscription login its ticket's estimated share of the account's five-hour window,
-// `5h window ≈1% (estimate)`, in the estimate's italic sand with its word, which keeps the meaning
-// under NO_COLOR; its context window as amounts against the window Claude Code compacts at,
-// `context ▰▰▰▰▰▰▱▱▱▱  126k of 200k`, yellow from 70% and red from 90%; its compactions once
-// there has been one; its processes' memory, as its card shows it; and near or at a usage limit,
-// the account's figure as a warning, `⚠ 5h window 92% · resets 14:20`, so you know why the worker
-// may stop. Each part, and a gauge and its figure, are two spaces apart, drawn as segments of
-// their own, so cutting the line never joins them. A narrow pane drops the memory, then the
-// warning's reset time, then the compactions, then whole parts from the end: a gauge never loses
-// its figure, nor the estimate its word.
+// The worker view's figures (§ 7.5, worker-view design D2, redesigned in tutti-cxgo.4): what the
+// worker is consuming, on line 1 of its head after its status (worker/Head.tsx). Its time on the
+// ticket, in the text's colour; on an API key its dollars, or on a subscription login its ticket's
+// estimated share of the account's five-hour window, `≈1% (estimate)`, in the estimate's italic
+// sand with its word, which keeps the meaning under NO_COLOR; its context window as amounts against
+// the window Claude Code compacts at, `context ▰▰▰▰▰▰▱▱▱▱  126k of 200k`, yellow from 70% and red
+// from 90%; its compactions once there has been one; its processes' memory; and near or at a usage
+// limit, the account's figure as a warning, `⚠ 5h window 92% · resets 14:20`, so you know why the
+// worker may stop. Each part, and a gauge and its figure, are two spaces apart, drawn as segments
+// of their own, so cutting the line never joins them. Tokens are not among them: they are in Spent.
 //
-// A click on the line opens the breakdown, `Spent`: the tokens by model with the cache's share,
+// A click on the figures opens the breakdown, `Spent`: the tokens by model with the cache's share,
 // the model calls, the dollars (at API prices on a subscription, an estimate), how the window's
 // share is made, the context's split and the ticket's share of the run's tokens. It is the
 // whole-ticket panel's last section (TicketHead.tsx), which the click opens scrolled to it.
-import { useRef } from "react"
-import type { ContextUsage } from "../agent/contextUsage.ts"
-import type { Tokens } from "../run/events.ts"
-import { dollarsText, tokenCount } from "../run/figures.ts"
-import { resetLabel } from "../run/localTime.ts"
-import { allTokens, type Resources } from "../run/resources.ts"
-import type { Usage } from "../run/runView.ts"
-import { elapsed } from "./Card.tsx"
-import { type FitPart, fitParts } from "./fit.ts"
-import { workerMemory } from "./LoadLine.tsx"
-import { Line, type Look, padded, type Segments, seg, targeting, wrap } from "./line.tsx"
-import { sanitizeLine } from "./sanitize.ts"
-import { gauge } from "./TitleLine.tsx"
-import type { Theme } from "./theme.ts"
-import { useNow, useRunViewPart, useTheme } from "./useRunView.ts"
+import type { ContextUsage } from "../../agent/contextUsage.ts"
+import type { Tokens } from "../../run/events.ts"
+import { dollarsText, tokenCount } from "../../run/figures.ts"
+import { resetLabel } from "../../run/localTime.ts"
+import { allTokens, type Resources } from "../../run/resources.ts"
+import type { Usage } from "../../run/runView.ts"
+import { elapsed } from "../Card.tsx"
+import type { FitPart } from "../fit.ts"
+import { workerMemory } from "../LoadLine.tsx"
+import { type Look, type Segments, seg, targeting, wrap } from "../line.tsx"
+import { sanitizeLine } from "../sanitize.ts"
+import { gauge } from "../TitleLine.tsx"
+import type { Theme } from "../theme.ts"
 
 /** The gap between two parts, and between a gauge and its figure. */
-const gap = "  "
+export const gap = "  "
 
 /** From this full the context gauge is yellow, and from `nearCompaction` red. */
 export const contextNotice = 0.7
@@ -55,7 +51,7 @@ export const shareText = (share: number): string => {
   return points > 0 && points < 0.5 ? "<1%" : `≈${Math.round(points)}%`
 }
 
-/** A usage limit's name as the line says it: `5h window` for the five-hour limit. */
+/** A usage limit's name as the warning says it: `5h window` for the five-hour limit. */
 export const limitLabel = (limit: string | undefined): string => {
   switch (limit) {
     case undefined:
@@ -68,8 +64,10 @@ export const limitLabel = (limit: string | undefined): string => {
   return sanitizeLine(limit.replaceAll("-", " "))
 }
 
-/** What the line shows beside the ticket's resources. */
-export interface LineInputs {
+/** What the figures show beside the ticket's resources. */
+export interface FigureInputs {
+  /** When the worker's time counts from: when the run took the ticket up. */
+  readonly took: number
   /** The worker's processes' memory, as its card has it; none before the run has read it. */
   readonly memory?: number
   /** The account's usage near or at a limit: its warning; null short of one. */
@@ -79,61 +77,72 @@ export interface LineInputs {
 }
 
 /**
- * The ranks of the line's steps down in a narrow pane, the lowest first: the memory dropped, then
- * the warning's reset time, then the compactions, then whole parts from the end of the line.
+ * The ranks of line 1's steps down in a narrow pane, the lowest first: the memory dropped, then the
+ * ticket's type and priority (worker/Head.tsx), then the warning's reset time, then the
+ * compactions, then whole parts from the end of the line.
  */
-const dropMemory = 0
-const shortWarning = 1
-const dropCompactions = 2
-const fromTheEnd = 3
+export const dropMemory = 0
+export const dropBadges = 1
+const shortWarning = 2
+const dropCompactions = 3
+export const fromTheEnd = 4
+
+/** The click target of the figures, which opens Spent. */
+export const spentTarget = 0
 
 /** A part shown whole or left out, at `rank`. */
 const droppable = (segments: Segments, rank: number): FitPart => ({ forms: [segments, []], rank })
 
-/** The line's parts, in order, each in its forms for a narrow pane (fitParts). */
-const partsOf = (r: Resources, inputs: LineInputs, theme: Theme): ReadonlyArray<FitPart> => {
+/**
+ * The figures' parts, in order, each in its forms for a narrow pane (fitParts): `r`, the ticket's
+ * resources, none before the run has any. The time, the estimate or dollars, the context, the
+ * compactions and the memory open Spent (`spentTarget`); the time is never left out.
+ */
+export const figureParts = (
+  r: Resources | undefined,
+  inputs: FigureInputs,
+  theme: Theme,
+): ReadonlyArray<FitPart> => {
   const { styles } = theme
+  const opens = (segments: Segments) => targeting(segments, spentTarget)
   const parts: Array<FitPart> = [
-    // The time is never left out: it is cut last.
-    { forms: [[seg(elapsed(inputs.now - r.took))]], rank: fromTheEnd },
-    droppable([seg(tokenCount(allTokens(r.spent.tokens))), seg(" tokens", styles.dim)], fromTheEnd),
+    { forms: [opens([seg(elapsed(inputs.now - inputs.took))])], rank: fromTheEnd },
   ]
-  if (!r.subscription) {
-    parts.push(droppable([seg(dollarsText(r.spent.costUsd))], fromTheEnd))
-  } else if (r.window !== null) {
+  if (r?.subscription === false) {
+    parts.push(droppable(opens([seg(dollarsText(r.spent.costUsd))]), fromTheEnd))
+  } else if (r?.window != null) {
     parts.push(
       droppable(
-        [
-          seg("5h window ", styles.dim),
-          seg(`${shareText(r.window.share)} (estimate)`, styles.estimate),
-        ],
+        opens([seg(`${shareText(r.window.share)} (estimate)`, styles.estimate)]),
         fromTheEnd,
       ),
     )
   }
-  if (r.context !== null) {
+  if (r?.context != null) {
     const full = fullness(r.context)
     const look = contextLook(full, theme)
     parts.push(
       droppable(
-        [
+        opens([
           seg("context ", styles.dim),
           seg(gauge(full), look ?? styles.dim),
           seg(gap),
           seg(tokenCount(r.context.tokens), look),
           seg(" of ", styles.dim),
           seg(tokenCount(r.context.window)),
-        ],
+        ]),
         fromTheEnd,
       ),
     )
   }
-  if (r.compactions > 0) {
+  if (r !== undefined && r.compactions > 0) {
     const word = r.compactions === 1 ? "compaction" : "compactions"
-    parts.push(droppable([seg(`↻ ${r.compactions}`), seg(` ${word}`, styles.dim)], dropCompactions))
+    parts.push(
+      droppable(opens([seg(`↻ ${r.compactions}`), seg(` ${word}`, styles.dim)]), dropCompactions),
+    )
   }
   if (inputs.memory !== undefined) {
-    parts.push(droppable([seg(workerMemory(inputs.memory), styles.dim)], dropMemory))
+    parts.push(droppable(opens([seg(workerMemory(inputs.memory), styles.dim)]), dropMemory))
   }
   const usage = inputs.usage
   if (usage !== null) {
@@ -148,18 +157,6 @@ const partsOf = (r: Resources, inputs: LineInputs, theme: Theme): ReadonlyArray<
   }
   return parts
 }
-
-/**
- * The resource line's segments, `width` wide, its parts two spaces apart. Where it doesn't fit, it
- * drops the memory, then shows the warning without its reset time, then drops the compactions, then
- * whole parts from its end, down to the time, which is cut last.
- */
-export const resourceSegments = (
-  r: Resources,
-  inputs: LineInputs,
-  theme: Theme,
-  width: number,
-): Segments => fitParts(partsOf(r, inputs, theme), width, [seg(gap)])
 
 /** The cache's share of the input of `t`: its reads of everything read in. */
 const cacheShare = (t: Tokens): number | null => {
@@ -277,48 +274,4 @@ export const spentLines = (r: Resources, theme: Theme, width: number): ReadonlyA
     ]),
   )
   return lines
-}
-
-/** The line's indent, under the head's link. */
-const indent = "  "
-
-/**
- * The resource line of a worker, `resources`, `width` wide, its time stopped once `finished`; a
- * click opens the breakdown, in the whole-ticket panel. The clock ticks here, in a leaf, so the view over it isn't drawn anew
- * every second.
- */
-export const ResourceLine = ({
-  resources,
-  memory,
-  finished,
-  width,
-  open,
-}: {
-  readonly resources: Resources
-  readonly memory: number | undefined
-  readonly finished: boolean
-  readonly width: number
-  readonly open: () => void
-}) => {
-  const theme = useTheme()
-  const now = useNow()
-  const usage = useRunViewPart((view) =>
-    view.banners.flatMap((banner) => (banner._tag === "Usage" ? [banner] : [])).at(0),
-  )
-  // Once the worker has finished, its time stops where the view first saw it so.
-  const ended = useRef<number | undefined>(undefined)
-  if (!finished) ended.current = undefined
-  else ended.current ??= now
-  const segments = resourceSegments(
-    resources,
-    {
-      ...(memory === undefined ? {} : { memory }),
-      usage: usage ?? null,
-      now: ended.current ?? now,
-    },
-    theme,
-    Math.max(width - indent.length, 1),
-  )
-  // The whole line, to the pane's edge, is the breakdown's click target.
-  return <Line segments={targeting(padded([seg(indent), ...segments], width), 0)} press={open} />
 }

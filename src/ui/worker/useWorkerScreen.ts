@@ -47,7 +47,7 @@ export interface WorkerCommands {
 export interface WorkerScreen {
   /** Its card, the last seen once it has gone, so that the view still shows a worker just finished. */
   readonly card: Card | undefined
-  /** What its worker consumes, the last seen kept as its card is (ResourceLine.tsx). */
+  /** What its worker consumes, the last seen kept as its card is (worker/figures.ts). */
   readonly resources: Resources | undefined
   /** Whether the worker has finished, its card gone: nothing is sent to it. */
   readonly finished: boolean

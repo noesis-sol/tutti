@@ -42,7 +42,7 @@
 // itself runs in the session's scope, so closing a Starting session cancels it.
 //
 // The host asks the session how full its context window is (getContextUsage), for the worker
-// view's resource line (§ 7.5): after an assistant message of its own, not a subagent's, at most
+// view's figures (§ 7.5): after an assistant message of its own, not a subagent's, at most
 // once every measureEvery, so the gauge shows from the first model call of a long turn; and after
 // each finished turn.
 //

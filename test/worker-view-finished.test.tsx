@@ -99,8 +99,8 @@ const until = async (rendered: Rendered, ready: (frame: Frame) => boolean): Prom
   }
 }
 
-/** The frame's first line, the view's head. */
-const headOfFrame = (frame: Frame): string => frame.chars.split("\n")[0] ?? ""
+/** The frame's second line, the view's head, under the blank line above it. */
+const headOfFrame = (frame: Frame): string => frame.chars.split("\n")[1] ?? ""
 
 /** The frame's last lines, the composer's hint under the rule. */
 const hintOfFrame = (frame: Frame): string => frame.chars.split("\n").slice(-3).join("\n")
@@ -155,7 +155,8 @@ describe("the worker view of a worker that has finished", () => {
       frame = await until(rendered, has(finishedWords("t-1").finished))
       const head = headOfFrame(frame)
       expect(head).toContain(`• t-1  ${finishedWords("t-1").status}`)
-      expect(head).toContain("Title of t-1")
+      // The title on its own line, under line 1.
+      expect(frame.chars.split("\n").map((line) => line.trimEnd())).toContain("  Title of t-1")
       expect(head).not.toContain("working")
       expect(head).not.toContain("steered")
       const hint = hintOfFrame(frame)

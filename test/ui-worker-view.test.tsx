@@ -513,8 +513,8 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("The undo stack now records"))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s   Title of t-1
-          1m07s  0 tokens  $0.00
+         ← Dashboard   • t-1  done  1m07s  $0.00
+          Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
@@ -543,8 +543,8 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("214 tests"))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s   Title of t-1
-          1m07s  0 tokens  $0.00
+         ← Dashboard   • t-1  done  1m07s  $0.00
+          Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
           › Work on tut-zq4.
             Read the ticket first.
@@ -585,7 +585,8 @@ describe("the worker view", () => {
       async ({ rendered }) => {
         // Collapsed, its first lines, the last ending ` …`.
         const collapsed = await until(rendered, has("Step 5."))
-        expect(linesOf(collapsed).slice(3, 10)).toEqual([
+        // Under the blank line, line 1, a blank line, the title and the rule.
+        expect(linesOf(collapsed).slice(5, 12)).toEqual([
           "  › Work on tut-zq4.",
           "    Step 1.",
           "    Step 2.",
@@ -597,7 +598,7 @@ describe("the worker view", () => {
         expect(collapsed.chars).not.toContain("Step 6.")
         await press(rendered, "up", "enter")
         const frame = await until(rendered, has("Step 8."))
-        expect(linesOf(frame).slice(3, 13)).toEqual([
+        expect(linesOf(frame).slice(5, 15)).toEqual([
           "▸ › Work on tut-zq4.",
           ...steps.map((step) => `    ${step}`),
           "",
@@ -621,8 +622,8 @@ describe("the worker view", () => {
       const frame = await until(rendered, has("Looking for callers."))
       expect(shownOf(frame)).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s   Title of t-1
-          1m07s  0 tokens  $0.00
+         ← Dashboard   • t-1  done  1m07s  $0.00
+          Title of t-1
         ────────────────────────────────────────────────────────────────────────────────
         ▸ Agent  Find the callers                                                      ✓
           │   Looking for callers.
@@ -642,7 +643,7 @@ describe("the worker view", () => {
       const y = linesOf(frame).findIndex((line) => line.includes("Bash  scripts/check-fast.sh"))
       await rendered.input((setup) => setup.mockMouse.click(6, y))
       expect((await until(rendered, has("214 tests"))).chars).toContain("SUITE: unit")
-      await rendered.input((setup) => setup.mockMouse.click(3, 0))
+      await rendered.input((setup) => setup.mockMouse.click(3, 1))
       expect(taken(commands)).toEqual([UiCommand.CloseWorker()])
     })
   })
@@ -719,8 +720,8 @@ describe("the attention panel", () => {
         const frame = await until(rendered, has("clean the build"))
         expect(shownOf(frame)).toMatchInlineSnapshot(`
           "
-           ← Dashboard   • t-1  permission — waiting for you  1m07s   Title of t-1
-            1m07s  0 tokens  $0.00
+           ← Dashboard   • t-1  permission — waiting for you  1m07s  $0.00
+            Title of t-1
           ────────────────────────────────────────────────────────────────────────────────
             I'll clean the build.
           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓

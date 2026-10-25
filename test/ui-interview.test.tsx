@@ -301,7 +301,7 @@ describe("the Interview view", () => {
   test("a click on ← Back asks too", async () => {
     await scene(chat, async ({ rendered }) => {
       await until(rendered, has("Should `--json` replace"))
-      await rendered.input((setup) => setup.mockMouse.click(2, 0))
+      await rendered.input((setup) => setup.mockMouse.click(2, 1))
       expect((await until(rendered, has(leaveQuestion))).chars).toContain(leaveAbout)
     })
   })

@@ -1,5 +1,5 @@
-// What the worker spent as the whole ticket's last section (§ 7.5, tutti-cxgo.3): a click on the
-// resource line opens the whole ticket scrolled to `Spent`, or scrolls it there while it is open
+// What the worker spent as the whole ticket's last section (§ 7.5, tutti-cxgo.3): a click on line
+// 1's figures opens the whole ticket scrolled to `Spent`, or scrolls it there while it is open
 // (Spent being the last section, as far as the panel scrolls: all of it in view); `t` opens it at
 // its top; a scroll after it was put there stays where you put it; and the section has no Esc line
 // of its own, as the breakdown's box over the view had.
@@ -14,7 +14,6 @@ import { emptyStatus, project, ticketText } from "../src/run/runView.ts"
 import { Screen } from "../src/run/screen.ts"
 import type { Issue, TicketId } from "../src/services/Beads.ts"
 import { Root } from "../src/ui/App.tsx"
-import { spentLines } from "../src/ui/ResourceLine.tsx"
 import { panelLines } from "../src/ui/TicketHead.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
@@ -25,6 +24,7 @@ import {
   windowOf,
 } from "../src/ui/transcriptItems.ts"
 import { external } from "../src/ui/useRunView.ts"
+import { spentLines } from "../src/ui/worker/figures.ts"
 import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
@@ -170,8 +170,8 @@ const has = (text: string) => (frame: Frame) => frame.chars.includes(text)
 /** The panel's lines inside its frame. */
 const inside = (frame: Frame): ReadonlyArray<string> => {
   const lines = linesOf(frame)
-  const top = lines.findIndex((line) => line.includes("▴ less"))
-  const bottom = lines.findIndex((line, i) => i > top && line.startsWith("  ╰"))
+  const bottom = lines.findIndex((line) => line.startsWith("╰") && line.includes("▴ less"))
+  const top = lines.findLastIndex((line, i) => i < bottom && line.startsWith("╭"))
   return top < 0 || bottom < 0 ? [] : lines.slice(top + 1, bottom)
 }
 
@@ -182,24 +182,28 @@ const firstInside = (frame: Frame): string => inside(frame)[0] ?? ""
 const showsSpent = (frame: Frame): boolean => {
   const lines = inside(frame)
   return (
-    lines.some((line) => /^ {2}│ Spent +│$/.test(line)) &&
+    lines.some((line) => /^│ Spent +│$/.test(line)) &&
     lines.some((line) => line.includes("of the run  100% of its 1.2M tokens"))
   )
 }
 
-/** The resource line's row. */
-const resourceRow = (frame: Frame): number =>
-  linesOf(frame).findIndex((line) => line.includes("tokens"))
+/** Clicks line 1's time, among its figures. */
+const clickFigures = (rendered: Rendered, frame: Frame) => {
+  const lines = linesOf(frame)
+  const y = lines.findIndex((line) => line.includes("← Dashboard"))
+  const x = /\d+m\d+s/.exec(lines[y] ?? "")?.index ?? 0
+  return rendered.input((setup) => setup.mockMouse.click(x + 1, y))
+}
 
 const taken = (commands: Commands) =>
   Effect.runSync(Queue.clear(commands)).map((command) => command._tag)
 
 describe("Spent in the whole ticket", () => {
-  test("a click on the resource line opens the whole ticket scrolled to Spent", async () => {
+  test("a click on line 1's figures opens the whole ticket scrolled to Spent", async () => {
     await scene(async (rendered, commands) => {
       const frame = await until(rendered, has("Reading the scripts."))
       taken(commands)
-      await rendered.input((setup) => setup.mockMouse.click(4, resourceRow(frame)))
+      await clickFigures(rendered, frame)
       const open = await until(rendered, showsSpent)
       expect(showsSpent(open)).toBe(true)
       // Nothing below it: the bottom border counts no more lines.
@@ -207,7 +211,7 @@ describe("Spent in the whole ticket", () => {
       expect(open.chars).toContain("41 model calls")
       expect(open.chars).toContain("$1.84 at API prices (estimate)")
       expect(open.chars).not.toContain("Note 1.")
-      // The panel has no line of its own to close Spent: its frame's top says how.
+      // The panel has no line of its own to close Spent: its frame's bottom says how.
       expect(open.chars).not.toContain("Esc close")
       expect(taken(commands)).toEqual(["ReadTicket"])
       // Esc closes the whole ticket, as it does opened with t.
@@ -218,7 +222,7 @@ describe("Spent in the whole ticket", () => {
     })
   })
 
-  test("t opens it at its top, and a click on the resource line then scrolls it to Spent", async () => {
+  test("t opens it at its top, and a click on the figures then scrolls it to Spent", async () => {
     await scene(async (rendered) => {
       await until(rendered, has("Reading the scripts."))
       await rendered.input(async (setup) => {
@@ -227,7 +231,7 @@ describe("Spent in the whole ticket", () => {
       const open = await until(rendered, has("▴ less"))
       expect(firstInside(open)).toContain("The first line of the description.")
       expect(open.chars).not.toContain("41 model calls")
-      await rendered.input((setup) => setup.mockMouse.click(4, resourceRow(open)))
+      await clickFigures(rendered, open)
       const scrolled = await until(rendered, showsSpent)
       expect(showsSpent(scrolled)).toBe(true)
       expect(firstInside(scrolled)).not.toContain("The first line of the description.")
@@ -237,7 +241,7 @@ describe("Spent in the whole ticket", () => {
   test("a scroll after it was put at Spent stays where you put it", async () => {
     await scene(async (rendered) => {
       const frame = await until(rendered, has("Reading the scripts."))
-      await rendered.input((setup) => setup.mockMouse.click(4, resourceRow(frame)))
+      await clickFigures(rendered, frame)
       const open = await until(rendered, showsSpent)
       const y = linesOf(open).findIndex((line) => line.includes("│ Spent"))
       await rendered.input(async (setup) => {

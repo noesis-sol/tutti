@@ -45,7 +45,7 @@ import {
 } from "./transcriptView.ts"
 import { type External, useCommand, useRunViewPart, useTheme } from "./useRunView.ts"
 import { panelBudget, underToasts, type ViewChrome, ViewHint, viewLayout } from "./WorkerView.tsx"
-import { ViewHead } from "./worker/Head.tsx"
+import { aboveLines, ViewHead } from "./worker/Head.tsx"
 import { LooksContext, useSyntaxStyles } from "./worker/Looks.tsx"
 import { RequestPanel, usePanelRooms } from "./worker/Panel.tsx"
 import { TranscriptPane, TranscriptSection } from "./worker/Story.tsx"
@@ -193,9 +193,13 @@ export const InterviewView = () => {
     hintLines(hintOf(interviewCommands({ question, composing: composer.typing })), theme, inner)
   const askedHint = hintWith(true)
   const chrome = (hint: ReadonlyArray<Segments>): ViewChrome => ({
+    above: aboveLines(width, height),
     head: headLines,
-    resources: 0,
+    headGap: 0,
+    title: 0,
+    ticketGap: 0,
     ticket: 0,
+    ticketMore: 0,
     handBack: 0,
     held: 0,
     line: 0,
@@ -287,6 +291,7 @@ export const InterviewView = () => {
   return (
     <LooksContext.Provider value={looks}>
       <box flexDirection="column" width={width} height={height}>
+        <Section lines={laid.above} />
         <Section lines={laid.head}>
           <ViewHead
             link={backLink}

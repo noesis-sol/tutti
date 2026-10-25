@@ -1,40 +1,27 @@
-// The worker view's resource line (§ 7.5, worker-view design D2): what the worker consumes, on a
-// subscription and on an API key; the estimate's colour and its word, under NO_COLOR too; the
-// context gauge's amounts and colours; compactions once there has been one; the warning near a
-// limit; a narrow pane dropping its parts in order; the two-space gaps; and the breakdown a click
-// on the line opens.
+// The worker view's figures on line 1 (§ 7.5, worker-view design D2, tutti-cxgo.4): what the
+// worker consumes, on a subscription and on an API key; the estimate's colour and its word, under
+// NO_COLOR too; the context gauge's amounts and colours; compactions once there has been one; the
+// warning near a limit; the two-space gaps; and the breakdown a click on them opens. Line 1 as a
+// whole, its order and its narrow panes, is worker-view-head.test.tsx's.
 
 import { describe, expect, test } from "bun:test"
 import { TextAttributes } from "@opentui/core"
-import { Effect } from "effect"
-import { WorkerState as WS } from "../src/agent/WorkerState.ts"
-import { makeCommands } from "../src/run/commands.ts"
-import { emptyTallies } from "../src/run/ledger.ts"
-import { TicketPhase } from "../src/run/phase.ts"
 import type { Resources } from "../src/run/resources.ts"
-import { emptyStatus, project, type Usage } from "../src/run/runView.ts"
-import { Screen } from "../src/run/screen.ts"
+import type { Usage } from "../src/run/runView.ts"
 import type { TicketId } from "../src/services/Beads.ts"
-import { Root } from "../src/ui/App.tsx"
+import { fitParts } from "../src/ui/fit.ts"
 import { workerMemory } from "../src/ui/LoadLine.tsx"
-import { type Segments, widthOf } from "../src/ui/line.tsx"
-import {
-  contextLook,
-  type LineInputs,
-  resourceSegments,
-  shareText,
-  spentLines,
-} from "../src/ui/ResourceLine.tsx"
+import { type Segments, seg } from "../src/ui/line.tsx"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import {
-  emptyTranscript,
-  type OpenTranscript,
-  type TranscriptFeed,
-  type TranscriptState,
-  windowOf,
-} from "../src/ui/transcriptItems.ts"
-import { external } from "../src/ui/useRunView.ts"
-import { type Frame, pressEscape, withRender } from "./render.ts"
+  contextLook,
+  type FigureInputs,
+  figureParts,
+  gap,
+  shareText,
+  spentLines,
+  spentTarget,
+} from "../src/ui/worker/figures.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -75,7 +62,8 @@ const resources = (over: Partial<Resources> = {}): Resources => ({
   ...over,
 })
 
-const inputs = (over: Partial<LineInputs> = {}): LineInputs => ({
+const inputs = (over: Partial<FigureInputs> = {}): FigureInputs => ({
+  took: began,
   memory,
   usage: null,
   now,
@@ -84,28 +72,48 @@ const inputs = (over: Partial<LineInputs> = {}): LineInputs => ({
 
 const textOf = (segments: Segments): string => segments.map((each) => each.text).join("")
 
-const lineOf = (r: Resources, over: Partial<LineInputs> = {}, width = 200) =>
-  resourceSegments(r, inputs(over), theme, width)
+const segmentsOf = (
+  r: Resources | undefined,
+  over: Partial<FigureInputs> = {},
+  appearance = theme,
+): Segments => fitParts(figureParts(r, inputs(over), appearance), 300, [seg(gap)])
 
-describe("the resource line", () => {
-  test("on a subscription: time, tokens, the 5-hour share as an estimate, context, memory", () => {
+const lineOf = (r: Resources, over: Partial<FigureInputs> = {}) => segmentsOf(r, over)
+
+describe("the figures", () => {
+  test("on a subscription: time, the 5-hour share as an estimate, context, memory; no tokens", () => {
     expect(textOf(lineOf(resources()))).toBe(
-      `6m53s  1.2M tokens  5h window ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
+      `6m53s  ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
     )
   })
 
   test("on an API key: its dollars, in the text's colour, and no window", () => {
     const segments = lineOf(resources({ subscription: false, window: null }))
     expect(textOf(segments)).toBe(
-      `6m53s  1.2M tokens  $1.84  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
+      `6m53s  $1.84  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
     )
     expect(segments.find((each) => each.text === "$1.84")?.look).toBeNull()
   })
 
   test("on a subscription before the window is heard, no share", () => {
     expect(textOf(lineOf(resources({ window: null })))).toBe(
-      `6m53s  1.2M tokens  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
+      `6m53s  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ${workerMemory(memory)}`,
     )
+  })
+
+  test("before the run has resources, the time from the card and the memory", () => {
+    expect(textOf(segmentsOf(undefined))).toBe(`6m53s  ${workerMemory(memory)}`)
+  })
+
+  test("the time, estimate, context, compactions and memory open Spent; the gaps and warning don't", () => {
+    const resetsAt = new Date(2026, 9, 24, 14, 20, 0).getTime()
+    const usage: Usage = { utilization: 0.92, resetsAt, limit: "five-hour" }
+    const segments = lineOf(resources({ compactions: 2 }), { usage })
+    const opening = segments.filter((each) => each.target === spentTarget).map((each) => each.text)
+    expect(opening.join("")).toBe(
+      `6m53s≈1% (estimate)context ▰▰▰▰▰▰▱▱▱▱  126k of 200k↻ 2 compactions${workerMemory(memory)}`,
+    )
+    expect(segments.at(-1)?.target).toBeUndefined()
   })
 
   test("the estimate in its italic colour, followed by its word, which NO_COLOR keeps", () => {
@@ -113,8 +121,8 @@ describe("the resource line", () => {
     expect(estimate?.text).toBe("≈1% (estimate)")
     expect(estimate?.look).toBe(theme.styles.estimate)
     expect((theme.styles.estimate.attributes & TextAttributes.ITALIC) !== 0).toBe(true)
-    const plain = resourceSegments(resources(), inputs(), noColor, 200)
-    expect(textOf(plain)).toContain("5h window ≈1% (estimate)")
+    const plain = segmentsOf(resources(), {}, noColor)
+    expect(textOf(plain)).toContain("≈1% (estimate)")
     expect(shareText(0.004)).toBe("<1%")
     expect(shareText(0)).toBe("≈0%")
     expect(shareText(0.126)).toBe("≈13%")
@@ -172,30 +180,7 @@ describe("the resource line", () => {
     expect(segments[gauge + 2]?.text).toBe("126k")
     // No segment but the gaps starts or ends with a space beside another part.
     const gaps = segments.filter((each) => each.text === "  ")
-    expect(gaps.length).toBe(6)
-  })
-
-  test("a narrow pane drops the memory, then the reset time, then compactions; never a figure", () => {
-    const resetsAt = new Date(2026, 9, 24, 14, 20, 0).getTime()
-    const usage: Usage = { utilization: 0.92, resetsAt, limit: "five-hour" }
-    const r = resources({ compactions: 2 })
-    const full = lineOf(r, { usage })
-    const at = (width: number) => textOf(lineOf(r, { usage }, width))
-    const head = "6m53s  1.2M tokens  5h window ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k"
-    expect(at(widthOf(full))).toBe(
-      `${head}  ↻ 2 compactions  ${workerMemory(memory)}  ⚠ 5h window 92% · resets 14:20`,
-    )
-    const noMemory = `${head}  ↻ 2 compactions  ⚠ 5h window 92% · resets 14:20`
-    expect(at(widthOf(full) - 1)).toBe(noMemory)
-    const noReset = `${head}  ↻ 2 compactions  ⚠ 5h window 92%`
-    expect(at(noMemory.length - 1)).toBe(noReset)
-    const noCompactions = `${head}  ⚠ 5h window 92%`
-    expect(at(noReset.length - 1)).toBe(noCompactions)
-    // Then whole parts from the end: the context goes with its figure, the estimate with its word.
-    expect(at(noCompactions.length - 1)).toBe(head)
-    expect(at(head.length - 1)).toBe("6m53s  1.2M tokens  5h window ≈1% (estimate)")
-    expect(at(30)).toBe("6m53s  1.2M tokens")
-    expect(at(4)).toBe("6m5…")
+    expect(gaps.length).toBe(5)
   })
 })
 
@@ -232,116 +217,5 @@ describe("the breakdown", () => {
 
   test("before the session has said, the context is not measured yet", () => {
     expect(linesText(resources({ context: null }))).toContain("context     not measured yet")
-  })
-})
-
-describe("in the worker view", () => {
-  const said = {
-    v: 1,
-    seq: 1,
-    session: "s-1",
-    time: "2026-10-24T13:00:00.000Z",
-    message: {
-      type: "assistant",
-      message: { role: "assistant", content: [{ type: "text", text: "Reading the scripts." }] },
-      parent_tool_use_id: null,
-    },
-  }
-  const feed: TranscriptFeed = {
-    open: (): OpenTranscript => {
-      const state = external<TranscriptState>({
-        ...emptyTranscript,
-        window: windowOf([said as never]),
-      })
-      return { state, older: () => {}, scrolledBack: () => {}, follow: () => {}, close: () => {} }
-    },
-  }
-  const view = project({
-    ledger: {
-      tickets: new Map([
-        [
-          "t-1" as TicketId,
-          {
-            ticket: "t-1" as TicketId,
-            title: "Title of t-1",
-            phase: TicketPhase.Working(),
-            since: began,
-            worker: 1,
-            row: 0,
-            rechecking: false,
-            steered: false,
-            lastMessage: null,
-            tallies: { ...emptyTallies, compactions: 2 },
-          },
-        ],
-      ]),
-      rows: 1,
-      windDown: null,
-      bugs: [],
-    },
-    workers: new Map([["t-1", WS.Working({ doing: "working" })]]),
-    requests: [],
-    status: {
-      ...emptyStatus,
-      version: "0.1.0",
-      branch: "batch",
-      began,
-      concurrency: 1,
-      subscription: true,
-      rise: 0.06,
-      spending: {
-        tickets: new Map([["t-1", resources().spent]]),
-        total: { ...resources().spent, costUsd: 9.2 },
-      },
-      contexts: new Map([
-        ["t-1", resources().context ?? { tokens: 0, window: 1, percentage: 0, split: [] }],
-      ]),
-    },
-    actions: new Map(),
-    now,
-  })
-
-  const scene = (
-    body: (rendered: Parameters<Parameters<typeof withRender>[2]>[0]) => Promise<void>,
-  ) =>
-    withRender(
-      <Root
-        value={{
-          view: external(view),
-          screen: external<Screen>(Screen.Worker({ ticket: "t-1" as TicketId })),
-          commands: Effect.runSync(makeCommands),
-          appearance: external<Appearance>("dark"),
-          themeOf,
-          now: () => now,
-          transcripts: feed,
-        }}
-      />,
-      { width: 100, height: 30 },
-      body,
-      { treeSitter: "mock" },
-    )
-
-  const linesOf = (frame: Frame): ReadonlyArray<string> =>
-    frame.chars.split("\n").map((line) => line.trimEnd())
-
-  test("the line under the head; a click opens the breakdown, Esc closes it", async () => {
-    await scene(async (rendered) => {
-      const frame = await rendered.capture()
-      const lines = linesOf(frame)
-      const row = lines.findIndex((line) => line.includes("tokens"))
-      expect(row).toBe(1)
-      expect(lines[row]).toBe(
-        "  6m53s  1.2M tokens  5h window ≈1% (estimate)  context ▰▰▰▰▰▰▱▱▱▱  126k of 200k  ↻ 2 compactions",
-      )
-      await rendered.input((setup) => setup.mockMouse.click(4, row))
-      const open = await rendered.capture()
-      expect(open.chars).toContain("Spent")
-      expect(open.chars).toContain("41 model calls")
-      expect(open.chars).toContain("$1.84 at API prices (estimate)")
-      await rendered.input((setup) => pressEscape(setup))
-      const closed = await rendered.capture()
-      expect(closed.chars).not.toContain("41 model calls")
-      expect(closed.chars).toContain("← Dashboard")
-    })
   })
 })

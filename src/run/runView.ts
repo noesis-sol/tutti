@@ -449,7 +449,7 @@ export interface RunView {
   readonly rows: ReadonlyArray<Row>
   /** In their workers' number order. */
   readonly cards: ReadonlyArray<Card>
-  /** What each card's worker consumes, for its view's resource line (§ 7.5); the probe has none. */
+  /** What each card's worker consumes, for its view's figures (§ 7.5); the probe has none. */
   readonly resources: ReadonlyArray<Resources>
   readonly requests: ReadonlyArray<ShownRequest>
   /** The usage, or else the account's windows, first; then each hold. */

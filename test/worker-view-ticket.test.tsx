@@ -1,8 +1,9 @@
-// The ticket in the worker view's head (§ 7.5, tutti-cxgo.1): its type and priority on line 1, its
-// description under it (2 lines, 3 on 40 rows, none at the minimum size), `▾ whole ticket  t` when
-// there is more, and the whole ticket in a framed panel that t, a click or Esc opens and closes,
-// scrolling with PgUp/PgDn and the wheel; all of it sanitised. TicketHead.tsx's pure parts, which
-// read text a ticket author wrote, are checked as properties.
+// The ticket in the worker view's head (§ 7.5, tutti-cxgo.1, its box tutti-cxgo.4): its type and
+// priority on line 1, its description in a box under the title (none at the minimum size),
+// `▾ whole ticket  t` in the box's bottom border when there is more, and the whole ticket in the
+// same box grown, that t, a click or Esc opens and closes, scrolling with PgUp/PgDn and the wheel;
+// all of it sanitised. TicketHead.tsx's pure parts, which read text a ticket author wrote, are
+// checked as properties. The head's layout is worker-view-head.test.tsx's.
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Exit, Queue, Scope } from "effect"
@@ -21,10 +22,9 @@ import { widthOf } from "../src/ui/line.tsx"
 import { sanitize } from "../src/ui/sanitize.ts"
 import {
   checklist,
-  descriptionLimit,
   descriptionLines,
+  hasBox,
   inlineSegments,
-  moreControl,
   panelCap,
   proseOf,
   wholeTicket,
@@ -159,11 +159,6 @@ const linesOf = (frame: Frame): ReadonlyArray<string> =>
     .split("\n")
     .map((line) => line.trimEnd())
 
-const shownOf = (frame: Frame): string =>
-  `\n${linesOf(frame)
-    .filter((line) => line !== "")
-    .join("\n")}\n`
-
 /** Captures frames until `ok` holds of one, or 5 s have gone. */
 const until = async (rendered: Rendered, ok: (frame: Frame) => boolean): Promise<Frame> => {
   const deadline = Date.now() + 5000
@@ -197,43 +192,29 @@ const typeKey = (rendered: Rendered, key: string) =>
 
 const pageDown = "\x1b[6~"
 
+/** The rows of the box at 80x24: its top border, its description's 2 lines, its bottom border. */
+const boxTop = 3
+const boxBottom = 6
+
 describe("the ticket's description in the head", () => {
-  test("at 80x24, two lines, cut with …, and ▾ whole ticket  t at the end of the last", async () => {
+  test("at 80x24, two lines in the box, cut with …, ▾ whole ticket  t in its bottom border", async () => {
     await scene(issueOf({ description }), { width: 80, height: 24 }, async ({ rendered }) => {
       const frame = await until(rendered, has("Reading the scripts."))
-      expect(shownOf(frame).split("\n").slice(0, 6).join("\n")).toMatchInlineSnapshot(`
+      expect(linesOf(frame).slice(0, 8).join("\n")).toMatchInlineSnapshot(`
         "
-         ← Dashboard   • t-1  done  1m07s  bug · P2   Read Chrome's AccountBookmarks
-          1m07s  0 tokens  $0.00
-          Chromium keeps bookmarks saved to the Google account in a second file,
-          AccountBookmarks, beside Bookmarks. mnemos reads only Book…  ▾ whole ticket  t
+         ← Dashboard   • t-1  done  1m07s  $0.00  bug · P2
+          Read Chrome's AccountBookmarks
+        ╭──────────────────────────────────────────────────────────────────────────────╮
+        │ Chromium keeps bookmarks saved to the Google account in a second file,       │
+        │ AccountBookmarks, beside Bookmarks. mnemos reads only Bookmarks, so those…   │
+        ╰────────────────────────────────────────────────────────── ▾ whole ticket  t ─╯
         ────────────────────────────────────────────────────────────────────────────────"
       `)
       const lines = linesOf(frame)
-      // Right aligned, in the link colour.
-      expect(lines[3]?.endsWith("▾ whole ticket  t")).toBe(true)
-      expect(Bun.stringWidth(lines[3] ?? "")).toBe(80)
-      const control = frame.spans.lines[3]?.spans.find((each) => each.text.includes("▾"))
+      expect(Bun.stringWidth(lines[boxBottom] ?? "")).toBe(80)
+      const control = frame.spans.lines[boxBottom]?.spans.find((each) => each.text.includes("▾"))
       expect(control?.fg.toInts()).toEqual(theme.rgba("link", "fg").toInts())
     })
-  })
-
-  test("at 120x40, three lines", async () => {
-    const long = `${description} ${description}`
-    await scene(
-      issueOf({ description: long }),
-      { width: 120, height: 40 },
-      async ({ rendered }) => {
-        const frame = await until(rendered, has("Reading the scripts."))
-        const lines = linesOf(frame)
-        expect(lines.slice(2, 5).every((line) => line.startsWith("  ") && line.trim() !== "")).toBe(
-          true,
-        )
-        expect(lines[4]?.endsWith("▾ whole ticket  t")).toBe(true)
-        expect(lines[4]).toContain("…")
-        expect(lines[5]).toMatch(/^─+$/)
-      },
-    )
   })
 
   test("at 60x16, the minimum size, none; t still opens the whole ticket", async () => {
@@ -254,7 +235,8 @@ describe("the ticket's description in the head", () => {
       { width: 80, height: 24 },
       async ({ rendered }) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        expect(linesOf(frame)[2]).toBe("  Read the second file too.")
+        expect(linesOf(frame)[boxTop + 1]).toStartWith("│ Read the second file too.")
+        expect(linesOf(frame)[boxTop + 2]).toMatch(/^╰─+╯$/)
         expect(frame.chars).not.toContain("whole ticket")
       },
     )
@@ -266,9 +248,8 @@ describe("the ticket's description in the head", () => {
       { width: 80, height: 24 },
       async ({ rendered }) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        const line = linesOf(frame)[2] ?? ""
-        expect(line.startsWith("  Read the second file too.")).toBe(true)
-        expect(line.endsWith("▾ whole ticket  t")).toBe(true)
+        expect(linesOf(frame)[boxTop + 1]).toStartWith("│ Read the second file too.")
+        expect(linesOf(frame)[boxTop + 2]).toMatch(/^╰─+ ▾ whole ticket {2}t ─╯$/)
       },
     )
   })
@@ -280,7 +261,7 @@ describe("the ticket's description in the head", () => {
       { width: 80, height: 24 },
       async ({ rendered }) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        expect(linesOf(frame)[2]?.endsWith("▾ whole ticket  t")).toBe(true)
+        expect(linesOf(frame)[boxTop + 2]).toMatch(/▾ whole ticket {2}t ─╯$/)
       },
     )
     await scene(
@@ -296,27 +277,30 @@ describe("the ticket's description in the head", () => {
   test("no description: No description., faint, with the control only when there is more", async () => {
     await scene(issueOf(), { width: 80, height: 24 }, async ({ rendered }) => {
       const frame = await until(rendered, has("Reading the scripts."))
-      expect(linesOf(frame)[2]).toBe("  No description.")
-      const span = frame.spans.lines[2]?.spans.find((each) => each.text.includes("No description"))
+      expect(linesOf(frame)[boxTop + 1]).toStartWith("│ No description.")
+      const span = frame.spans.lines[boxTop + 1]?.spans.find((each) =>
+        each.text.includes("No description"),
+      )
       expect(span?.attributes ?? 0).not.toBe(0)
+      expect(frame.chars).not.toContain("whole ticket")
     })
     await scene(
       issueOf({ acceptance: "- It reads AccountBookmarks" }),
       { width: 80, height: 24 },
       async ({ rendered }) => {
         const frame = await until(rendered, has("Reading the scripts."))
-        const line = linesOf(frame)[2] ?? ""
-        expect(line.startsWith("  No description.")).toBe(true)
-        expect(line.endsWith("▾ whole ticket  t")).toBe(true)
+        expect(linesOf(frame)[boxTop + 1]).toStartWith("│ No description.")
+        expect(linesOf(frame)[boxTop + 2]).toMatch(/▾ whole ticket {2}t ─╯$/)
       },
     )
   })
 
-  test("line 1 has the ticket's type and priority, and its title in bold", async () => {
+  test("line 1 has the ticket's type and priority at its end, the title bold under it", async () => {
     await scene(issueOf({ description }), { width: 80, height: 24 }, async ({ rendered }) => {
       const frame = await until(rendered, has("Reading the scripts."))
-      expect(linesOf(frame)[0]).toContain("t-1  done  1m07s  bug · P2   Read Chrome's")
-      const span = frame.spans.lines[0]?.spans.find((each) => each.text.includes("Read Chrome"))
+      expect(linesOf(frame)[1]).toEndWith("t-1  done  1m07s  $0.00  bug · P2")
+      expect(linesOf(frame)[2]).toBe("  Read Chrome's AccountBookmarks")
+      const span = frame.spans.lines[2]?.spans.find((each) => each.text.includes("Read Chrome"))
       expect((span?.attributes ?? 0) & 1).toBe(1)
     })
   })
@@ -349,14 +333,16 @@ describe("the whole ticket", () => {
         const open = await until(rendered, has("▴ less"))
         expect(taken(commands)).toEqual(["ReadTicket"])
         const lines = linesOf(open)
-        expect(lines[2]).toMatch(/^ {2}╭─+ ▴ less {2}t · Esc ─╮$/)
+        // The box grown from where it was, its top plain, its control in its bottom border.
+        expect(lines[5]).toMatch(/^╭─+╮$/)
+        expect(lines.find((line) => line.startsWith("╰"))).toMatch(/▴ less {2}t · Esc ─╯$/)
         expect(open.chars).toContain("Acceptance")
         expect(open.chars).toContain("☐ Account bookmarks are indexed under their own label")
         expect(open.chars).toContain("☑ Bookmarks still are")
         expect(open.chars).toContain("Links  parent t-0 · blocked by t-9 · blocks t-5")
         expect(open.chars).not.toContain("▾ whole ticket")
         // At most 60% of the pane; the transcript keeps its line.
-        const panel = lines.filter((line) => /^ {2}[╭│╰]/.test(line))
+        const panel = lines.filter((line) => /^[╭│╰]/.test(line))
         expect(panel.length).toBeLessThanOrEqual(panelCap(40))
         expect(open.chars).toContain("Reading the scripts.")
         expect(open.chars).toContain("t/Esc less · i write · Ctrl+X")
@@ -401,7 +387,8 @@ describe("the whole ticket", () => {
       await until(rendered, has("Reading the scripts."))
       await typeKey(rendered, "t")
       const open = await until(rendered, has("more lines"))
-      const more = (frame: Frame) => Number(/↓ (\d+) more lines? ─╯/.exec(frame.chars)?.[1] ?? 0)
+      const more = (frame: Frame) =>
+        Number(/↓ (\d+) more lines? ── ▴ less/.exec(frame.chars)?.[1] ?? 0)
       const before = more(open)
       expect(before).toBeGreaterThan(20)
       // A page less a line: what the panel shows less one.
@@ -446,7 +433,9 @@ describe("the whole ticket", () => {
   test("before the run has read the ticket, t opens it reading", async () => {
     await scene(undefined, { width: 80, height: 24 }, async ({ rendered, commands }) => {
       const frame = await until(rendered, has("Reading the scripts."))
-      expect(linesOf(frame)[2]).toMatch(/^─+$/)
+      // No box until the run has read the ticket: the title, then the rule.
+      expect(linesOf(frame)[2]).toBe("  Read Chrome's AccountBookmarks")
+      expect(linesOf(frame)[3]).toMatch(/^─+$/)
       taken(commands)
       await typeKey(rendered, "t")
       expect((await until(rendered, has("Reading the ticket…"))).chars).toContain("▴ less")
@@ -503,8 +492,9 @@ describe("the layout with the ticket", () => {
         for (const frame of [closed, open]) {
           const lines = linesOf(frame)
           expect(lines.length).toBe(size.height)
-          // The hint ends the pane, the head starts it.
-          expect(lines[0]).toContain("← Dashboard")
+          // The hint ends the pane, the head starts it, under its blank line.
+          expect(lines[0]).toBe("")
+          expect(lines[1]).toContain("← Dashboard")
           expect(lines.at(-1)?.trim()).not.toBe("")
           expect(frame.chars).toContain("> i to write to the worker")
         }
@@ -521,12 +511,12 @@ describe("the description's and the whole ticket's text", () => {
     maxLength: 200,
   })
 
-  test("the head's lines keep to the width and the limit, the control at the last's end", () => {
+  test("the box's lines keep to the width and the limit, more when there is", () => {
     fc.assert(
       fc.property(
         text,
         fc.integer({ min: 20, max: 140 }),
-        fc.integer({ min: 0, max: 3 }),
+        fc.integer({ min: 0, max: 5 }),
         fc.boolean(),
         (written, width, limit, notes) => {
           const issue = ticketText(issueOf({ description: written, notes: notes ? "n" : "" }))
@@ -534,12 +524,11 @@ describe("the description's and the whole ticket's text", () => {
           expect(lines.length).toBeLessThanOrEqual(limit)
           for (const line of lines) expect(widthOf(line)).toBeLessThanOrEqual(width)
           if (notes && limit > 0) expect(more).toBe(true)
-          // The control, a click target, ends the last line; no other line has a target.
-          const targets = lines.map((line) => line.filter((each) => each.target !== undefined))
-          expect(targets.slice(0, -1).flat()).toEqual([])
-          if (more) {
-            const last = lines.at(-1) ?? []
-            expect(last.slice(-(targets.at(-1)?.length ?? 0))).toEqual([...moreControl(theme)])
+          // The control is in the box's border: no line has a click target.
+          expect(lines.flat().filter((each) => each.target !== undefined)).toEqual([])
+          // A line cut short ends in …, and says there is more.
+          if (limit > 0 && lines.length === limit && lines.at(-1)?.at(-1)?.text.endsWith("…")) {
+            expect(more).toBe(true)
           }
         },
       ),
@@ -606,7 +595,7 @@ describe("the description's and the whole ticket's text", () => {
     )
   })
 
-  test("the description's lines: 3 from 40 rows, 2 above the minimum size, none at it", () => {
-    expect([16, 17, 24, 39, 40, 60].map(descriptionLimit)).toEqual([0, 2, 2, 2, 3, 3])
+  test("the box: none at the minimum size, from a row above it", () => {
+    expect([15, 16, 17, 24, 40].map(hasBox)).toEqual([false, false, true, true, true])
   })
 })

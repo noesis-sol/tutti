@@ -1,14 +1,16 @@
-// The ticket in the worker view's head (§ 7.5; D1 of the worker-view design, tutti-cxgo): under
-// line 1, the ticket's description, its first lines wrapped at words in the normal text colour,
-// inline Markdown shown (bold, code, a link's label) but no headings or lists, 2 lines or 3 on a
-// pane of 40 rows or more, none at the minimum size; cut with `…`. `▾ whole ticket  t` ends the last
-// line, right aligned, when there is more than shows. `t` or a click on it opens the whole ticket in
-// place of those lines: a framed panel of the description, design, acceptance criteria as a
-// checklist, notes, links and labels, drawn with <markdown>, up to 60% of the pane, scrolling with
-// PgUp/PgDn and the wheel, `↓ N more lines` in its bottom border while there is more. `t`, a click on
-// `▴ less` or Esc closes it. Opening it reads the ticket again with bd show (ReadTicket), so that
-// notes added during the run show. Its last section is what the worker spent, `Spent`
-// (ResourceLine.tsx's spentLines), which a click on the resource line opens the panel scrolled to.
+// The ticket in the worker view's head (§ 7.5; D1 of the worker-view design, tutti-cxgo, its box
+// tutti-cxgo.4): under the title, a box in the whole ticket's rounded frame, the pane's width, with
+// the ticket's description, its first lines wrapped at words in the normal text colour, inline
+// Markdown shown (bold, code, a link's label) but no headings or lists, up to 5 lines, cut with
+// `…`; `▾ whole ticket  t` in its bottom border at the right when there is more than shows. A short
+// pane gives some of the lines up, then the box (WorkerView.tsx's viewLayout); there is none at the
+// minimum size. `t` or a click on the control grows the same box into the whole ticket: the
+// description, design, acceptance criteria as a checklist, notes, links and labels, drawn with
+// <markdown>, up to 60% of the pane, scrolling with PgUp/PgDn and the wheel, its top border plain
+// and `↓ N more lines ── ▴ less  t · Esc` in its bottom border while there is more. `t`, a click on
+// `▴ less` or Esc shrinks it back. Opening it reads the ticket again with bd show (ReadTicket), so
+// that notes added during the run show. Its last section is what the worker spent, `Spent`
+// (worker/figures.ts's spentLines), which a click on line 1's figures opens the panel scrolled to.
 //
 // All of it is text a ticket author or a worker wrote, sanitised where it enters RunView (§ 7.10,
 // runView.ts's ticketText); the links' IDs and the labels are escaped for the Markdown.
@@ -19,12 +21,12 @@ import type { TicketLink, TicketText } from "../run/runView.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { minHeight } from "./Dashboard.tsx"
 import {
+  boxSides,
   cut,
   FrameRow,
   frameEdge,
   Line,
   Lines,
-  padded,
   plainFg,
   type Segments,
   seg,
@@ -37,9 +39,14 @@ import type { Theme } from "./theme.ts"
 import { useCommand, useTheme } from "./useRunView.ts"
 import type { Looks } from "./worker/Looks.tsx"
 
-/** The description's lines in a pane `height` tall: 3 from 40 rows, none at the minimum size. */
-export const descriptionLimit = (height: number): number =>
-  height >= 40 ? 3 : height > minHeight ? 2 : 0
+/** The most lines of description the box holds. */
+export const descriptionMost = 5
+
+/** The description's lines a short pane keeps before it gives up the blank lines and the box. */
+export const descriptionLeast = 2
+
+/** Whether a pane `height` tall has the description's box: not at the minimum size. */
+export const hasBox = (height: number): boolean => height > minHeight
 
 /** The most of a pane's height the whole ticket takes, its frame with it. */
 export const panelShare = 0.6
@@ -47,7 +54,7 @@ export const panelShare = 0.6
 /** The lines the whole ticket may take in a pane `height` tall: its frame and a line at least. */
 export const panelCap = (height: number): number => Math.max(Math.floor(height * panelShare), 3)
 
-/** A ticket's type and priority as line 1 shows them after its ID: `bug · P2`; "" for neither. */
+/** A ticket's type and priority as line 1 shows them at its end: `bug · P2`; "" for neither. */
 export const badgesOf = (issue: TicketText | undefined): string =>
   issue === undefined
     ? ""
@@ -55,7 +62,7 @@ export const badgesOf = (issue: TicketText | undefined): string =>
         .filter((each) => each !== "")
         .join(" · ")
 
-/** A title in bold, as line 1 shows it. */
+/** A title in bold, as the head shows it under line 1. */
 export const titleSegment = (title: string, theme: Theme) => seg(title, theme.look(null, "bold"))
 
 // What the description's lines leave out: a fence, a heading, a rule; and what starts a quote or a
@@ -122,17 +129,17 @@ export const moreControl = (theme: Theme): Segments => [
   seg("t", theme.styles.key, 0),
 ]
 
-/** The description's lines, `width` wide, and whether the control ends the last one. */
+/** The description's lines, `width` wide, and whether the box's border has the control. */
 export interface DescriptionLines {
-  /** Its lines, the last ending in the control, right aligned, when there is one. */
   readonly lines: ReadonlyArray<Segments>
+  /** Whether there is more than shows: the description cut, or other fields. */
   readonly more: boolean
 }
 
 /**
- * `issue`'s description as the head shows it, `width` wide, at most `limit` lines: its prose wrapped
- * at words, the last line cut with `…` when there is more of it, `▾ whole ticket  t` at its end,
- * right aligned, when the ticket has more than shows. No description: `No description.`, faint.
+ * `issue`'s description as the box shows it, `width` wide within its frame, at most `limit` lines:
+ * its prose wrapped at words, the last line cut with `…` when there is more of it; `more` when the
+ * ticket has more than shows. No description: `No description.`, faint.
  */
 export const descriptionLines = (
   issue: TicketText,
@@ -148,18 +155,9 @@ export const descriptionLines = (
       : wrap(inlineSegments(prose, theme), width, { limit: limit + 1, long: "line" })
   const cutShort = wrapped.length > limit
   const shown = wrapped.slice(0, limit)
-  if (!cutShort && !hasMore(issue)) return { lines: shown, more: false }
-  const control = moreControl(theme)
-  const room = Math.max(width - widthOf(control) - 2, 0)
+  if (!cutShort) return { lines: shown, more: hasMore(issue) }
   const last = shown.at(-1) ?? []
-  const ended = cutShort || widthOf(last) > room ? cut([...last, seg("…")], room) : last
-  return {
-    lines: [
-      ...shown.slice(0, -1),
-      [...padded(ended, Math.max(width - widthOf(control), 0)), ...control],
-    ],
-    more: true,
-  }
+  return { lines: [...shown.slice(0, -1), cut([...last, seg("…")], width)], more: true }
 }
 
 /**
@@ -224,14 +222,35 @@ export const wholeTicket = (issue: TicketText): string => {
   ].join("\n\n")
 }
 
-/** The description's lines in the head: the control at the end of the last, which a click opens. */
-export const DescriptionView = ({
+/** The box's edge: `edge`'s border, `width` wide, with `label` at its right. */
+const boxEdge = (theme: Theme, edge: "top" | "bottom", width: number, label: Segments = []) =>
+  frameEdge(edge, width, theme.look("frame"), "rounded", label)
+
+/**
+ * The description in its box, `width` wide: its frame's top plain, its lines, its bottom border
+ * with `▾ whole ticket  t` at the right when there is more, which a click opens. Only the control
+ * is a click target, so a drag over the lines selects them.
+ */
+export const DescriptionBox = ({
   lines,
+  width,
   open,
 }: {
   readonly lines: DescriptionLines
+  readonly width: number
   readonly open: () => void
-}) => <Lines lines={lines.lines} press={open} />
+}) => {
+  const theme = useTheme()
+  const drawn = useMemo(
+    () => [
+      boxEdge(theme, "top", width),
+      ...boxSides(lines.lines, width, theme.look("frame")),
+      boxEdge(theme, "bottom", width, lines.more ? moreControl(theme) : []),
+    ],
+    [theme, width, lines],
+  )
+  return <Lines lines={drawn} press={open} />
+}
 
 /** The whole ticket's state in a worker view: open or not, and its scrollbox. */
 export interface TicketPanel {
@@ -303,25 +322,35 @@ export const panelLines = (
   return Math.min(panelCap(height), content + (spent > 0 ? spent + 1 : 0) + 2)
 }
 
-/** The frame's top: `▴ less  t · Esc` at its right, a click on which presses target 0. */
-const topLine = (theme: Theme, width: number): Segments =>
-  frameEdge("top", width, theme.look("frame"), "rounded", [
-    seg("▴ less", theme.look("link"), 0),
-    seg("  ", null, 0),
-    seg("t", theme.styles.key, 0),
-    seg(" · ", theme.styles.dim, 0),
-    seg("Esc", theme.styles.key, 0),
+/** `▴ less  t · Esc`, in the link colour and its keys', a click on it pressing target 0. */
+export const lessControl = (theme: Theme): Segments => [
+  seg("▴ less", theme.look("link"), 0),
+  seg("  ", null, 0),
+  seg("t", theme.styles.key, 0),
+  seg(" · ", theme.styles.dim, 0),
+  seg("Esc", theme.styles.key, 0),
+]
+
+/**
+ * The open box's bottom border, `width` wide: `↓ 12 more lines ── ▴ less  t · Esc` at its right
+ * while there is more below, `▴ less  t · Esc` alone when there isn't.
+ */
+export const bottomLine = (theme: Theme, width: number, more: number): Segments =>
+  boxEdge(theme, "bottom", width, [
+    ...(more <= 0
+      ? []
+      : [
+          seg(`↓ ${more} more ${more === 1 ? "line" : "lines"}`, theme.styles.dim),
+          seg(" ── ", theme.look("frame")),
+        ]),
+    ...lessControl(theme),
   ])
 
-/** The frame's bottom, `↓ 12 more lines` at its right while there is more below. */
-export const bottomLine = (theme: Theme, width: number, more: number): Segments =>
-  frameEdge(
-    "bottom",
-    width,
-    theme.look("frame"),
-    "rounded",
-    more <= 0 ? [] : [seg(`↓ ${more} more ${more === 1 ? "line" : "lines"}`, theme.styles.dim)],
-  )
+/** `line`'s segments before its first click target, and from it on. */
+const splitAtTarget = (line: Segments): readonly [Segments, Segments] => {
+  const at = line.findIndex((each) => each.target !== undefined)
+  return at < 0 ? [line, []] : [line.slice(0, at), line.slice(at)]
+}
 
 /**
  * The whole ticket, `width` wide and `lines` tall with its frame: `issue` drawn with <markdown> in a
@@ -329,7 +358,8 @@ export const bottomLine = (theme: Theme, width: number, more: number): Segments 
  * what its worker spent, `width - 4` wide, where it has one. The bottom border counts the lines
  * below as it is drawn, from the scrollbox as it is then, so that the Markdown laid out and
  * scrolled changes no state; so the scrollbox puts `Spent` at its top as it is drawn, while the
- * panel was opened to it, until you scroll.
+ * panel was opened to it, until you scroll. `▴ less  t · Esc` ends the bottom border, its own line
+ * so that a click on it closes the panel, the count before it drawn as the border is.
  */
 export const TicketPanelView = ({
   issue,
@@ -365,13 +395,16 @@ export const TicketPanelView = ({
     if (this.scrollTop !== offset) this.scrollTop = offset
     panel.toSpent.current = { at: this.scrollTop }
   }
-  const top = useMemo(() => topLine(theme, width), [theme, width])
+  const top = useMemo(() => boxEdge(theme, "top", width), [theme, width])
+  // The control's part of the border is the same however many lines are below.
+  const control = useMemo(() => splitAtTarget(bottomLine(theme, width, 0))[1], [theme, width])
+  const before = Math.max(width - widthOf(control), 0)
   const bottom = function (this: Renderable, buffer: OptimizedBuffer) {
     const box = panel.scroll.current
     const more =
       box === null ? 0 : Math.max(box.scrollHeight - box.scrollTop - box.viewport.height, 0)
     let x = this.x
-    for (const each of bottomLine(theme, width, more)) {
+    for (const each of cut(splitAtTarget(bottomLine(theme, width, more))[0], before)) {
       const look = each.look
       buffer.drawText(each.text, x, this.y, look?.fg ?? plainFg, look?.bg, look?.attributes ?? 0)
       x += Bun.stringWidth(each.text)
@@ -379,7 +412,7 @@ export const TicketPanelView = ({
   }
   return (
     <box flexDirection="column" height={lines} flexShrink={0}>
-      <Line segments={top} press={panel.close} />
+      <Line segments={top} />
       <FrameRow width={width} frame={theme.look("frame")} lines={inside}>
         <scrollbox
           ref={panel.scroll}
@@ -406,7 +439,10 @@ export const TicketPanelView = ({
           )}
         </scrollbox>
       </FrameRow>
-      <box height={1} flexShrink={0} renderAfter={bottom} />
+      <box flexDirection="row" height={1} flexShrink={0}>
+        <box width={before} height={1} flexShrink={0} renderAfter={bottom} />
+        <Line segments={control} press={panel.close} />
+      </box>
     </box>
   )
 }
