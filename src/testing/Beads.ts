@@ -521,9 +521,7 @@ export const layer = (seeds: ReadonlyArray<Seed> = []): Layer.Layer<Beads | Back
           const found = faults.find(
             (each) =>
               each.op === op &&
-              (each.fault.id === undefined ||
-                each.fault.id === id ||
-                ids.includes(each.fault.id)),
+              (each.fault.id === undefined || each.fault.id === id || ids.includes(each.fault.id)),
           )
           if (found !== undefined) {
             found.left -= 1
