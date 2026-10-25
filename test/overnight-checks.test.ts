@@ -83,7 +83,7 @@ describe("the failures", () => {
     expect(offeredConcurrency(12, 0)).toBe(3)
     expect(offeredConcurrency(64, 0)).toBe(4)
     expect(offeredConcurrency(64, 3)).toBe(3)
-    expect(offeredConcurrency(64, 1)).toBe(2)
+    expect(offeredConcurrency(64, 2)).toBe(2)
     const two = withSettings((s) => ({ ...s, concurrent: 2 }))
     expect(concurrencyCheck(two, 10)).toEqual({ verdict: "passed", text: "2 tickets at a time" })
     const one = withSettings((s) => ({ ...s, concurrent: 1 }))
@@ -94,18 +94,32 @@ describe("the failures", () => {
       fix: { question: "Run 3 tickets at a time?", done: "the run works on 3 tickets at a time" },
     })
     expect(fixed(found, startedOf(one)).config.settings.concurrent).toBe(3)
+    // A cap of 1 on the machine's workers leaves nothing to offer.
+    expect(offeredConcurrency(64, 1)).toBe(1)
+    const capped = concurrencyCheck({ ...one, machineWorkers: 1 }, 64)
+    expect(capped.verdict).toBe("failed")
+    expect(capped.fix).toBeUndefined()
+    expect(capped.text).toEndWith(", and --machine-workers 1 allows no more")
   })
 
   test("a permission mode that asks fails, and its fix starts workers in auto", () => {
     const auto = TestAccount.accountProbe()
-    expect(permissionCheck(auto)).toEqual({
+    // The probe asked again once the fix asks for auto: the mode Claude Code puts in effect.
+    const probed: Array<string> = []
+    const probeIn = (inEffect: string) => (c: AppConfigValue) =>
+      Effect.sync(() => {
+        probed.push(c.settings.workers.permission_mode)
+        return { ...auto, permissionMode: { requested: "auto" as const, inEffect } }
+      })
+    const probe = probeIn("auto")
+    expect(permissionCheck(auto, probe)).toEqual({
       verdict: "passed",
       text: "workers start in auto permission mode, which doesn't stop to ask",
     })
     const edits = { ...auto, permissionMode: { requested: "acceptEdits", inEffect: "acceptEdits" } }
-    expect(permissionCheck(edits as AccountProbe).verdict).toBe("passed")
+    expect(permissionCheck(edits as AccountProbe, probe).verdict).toBe("passed")
     const asking = { ...auto, permissionMode: { requested: "default", inEffect: "default" } }
-    const found = permissionCheck(asking as AccountProbe)
+    const found = permissionCheck(asking as AccountProbe, probe)
     expect(found).toMatchObject({
       verdict: "failed",
       fix: {
@@ -121,9 +135,22 @@ describe("the failures", () => {
     const after = fixed(found, startedOf(asked, asking as AccountProbe))
     expect(after.config.settings.workers.permission_mode).toBe("auto")
     expect(after.account.permissionMode).toEqual({ requested: "auto", inEffect: "auto" })
+    expect(probed).toEqual(["auto"])
+    // Where auto isn't available, Claude Code says so, and the fix fixes nothing.
+    const unavailableFix = permissionCheck(asking as AccountProbe, probeIn("default"))
+    expect(
+      Effect.runSync(
+        Effect.flip(
+          unavailableFix.fix?.apply(startedOf(asked, asking as AccountProbe)) as Effect.Effect<
+            Started,
+            string
+          >,
+        ),
+      ),
+    ).toBe("workers would still start in default permission mode: auto mode isn't available here")
     // Auto asked for but not in effect: nothing tutti can do.
     const unavailable = { ...auto, permissionMode: { requested: "auto", inEffect: "default" } }
-    const stuck = permissionCheck(unavailable as AccountProbe)
+    const stuck = permissionCheck(unavailable as AccountProbe, probe)
     expect(stuck.verdict).toBe("failed")
     expect(stuck.fix).toBeUndefined()
     expect(stuck.text).toContain("(auto mode isn't available here)")

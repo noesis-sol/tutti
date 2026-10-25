@@ -35,6 +35,7 @@ import {
 } from "effect"
 import { Command } from "effect/cli"
 import pkg from "../package.json" with { type: "json" }
+import { Account } from "./agent/Account.ts"
 import { layer as agentHostLayer } from "./agent/AgentHostLive.ts"
 import { Attention } from "./agent/Attention.ts"
 import { ClaudeCode } from "./agent/ClaudeCode.ts"
@@ -341,6 +342,18 @@ const overnight = (
           processes: listNamed,
           disk: freeDisk,
           otherRuns: otherRuns(config.runs),
+          // As the startup checks probe the login, under the configuration a fix leaves.
+          probeAccount: (fixed) =>
+            Effect.scoped(
+              Layer.build(Layer.provide(Account.layer, Layer.succeed(AppConfig, fixed))).pipe(
+                Effect.flatMap((built) =>
+                  Effect.provideContext(
+                    Effect.flatMap(Account, (account) => account.probe),
+                    built,
+                  ),
+                ),
+              ),
+            ).pipe(Effect.mapError((error) => error.message)),
         },
         say: { ...printer, theme },
         ask: asks ? Option.some(ask) : Option.none(),

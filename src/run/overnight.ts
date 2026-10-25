@@ -97,6 +97,11 @@ export interface Night {
   >
   /** The machine's other tutti and orchestra runs (machine.ts's otherRuns). */
   readonly otherRuns: Effect.Effect<ReadonlyArray<Registration>, never, Machine>
+  /**
+   * The login probe under `config`, as the startup checks make it (§ 4.13): what Claude Code says
+   * of the account and the permission mode it puts in effect; why, where it can't say.
+   */
+  readonly probeAccount: (config: AppConfigValue) => Effect.Effect<AccountProbe, string, Machine>
 }
 
 /** What the live readings run on. */
@@ -209,11 +214,11 @@ export const limitCheck = (config: AppConfigValue): Found =>
 /**
  * How many tickets at a time the concurrency check offers on a machine of `cores` cores whose runs
  * may have `machineWorkers` workers between them (0 for no cap): one for each 4 cores, from 2 to 4,
- * within the cap, and never fewer than 2.
+ * within the cap; a cap under 2 leaves fewer, which is no fix.
  */
 export const offeredConcurrency = (cores: number, machineWorkers: number): number => {
   const n = Math.min(Math.max(Math.floor(cores / 4), 2), 4)
-  return machineWorkers > 0 ? Math.max(Math.min(n, machineWorkers), 2) : n
+  return machineWorkers > 0 ? Math.min(n, machineWorkers) : n
 }
 
 /** One ticket at a time, where one slow ticket holds up the night: it fails, and offers more. */
@@ -221,25 +226,28 @@ export const concurrencyCheck = (config: AppConfigValue, cores: number): Found =
   const concurrent = config.settings.concurrent
   if (concurrent >= 2) return passed(`${ticketCount(concurrent)} at a time`)
   const n = offeredConcurrency(cores, config.machineWorkers)
-  return failed(
-    `${ticketCount(concurrent)} at a time (concurrent in .tutti/settings.json, --concurrent): one slow ticket would hold up the night`,
-    {
-      question: `Run ${ticketCount(n)} at a time?`,
-      done: `the run works on ${ticketCount(n)} at a time`,
-      apply: (started) =>
-        Effect.succeed(
-          withConfig(started, (c) => ({ ...c, settings: { ...c.settings, concurrent: n } })),
-        ),
-    },
-  )
+  const text = `${ticketCount(concurrent)} at a time (concurrent in .tutti/settings.json, --concurrent): one slow ticket would hold up the night`
+  // A cap on the machine's workers under 2 leaves nothing to offer.
+  if (n < 2) {
+    return failed(`${text}, and --machine-workers ${config.machineWorkers} allows no more`)
+  }
+  return failed(text, {
+    question: `Run ${ticketCount(n)} at a time?`,
+    done: `the run works on ${ticketCount(n)} at a time`,
+    apply: (started) =>
+      Effect.succeed(
+        withConfig(started, (c) => ({ ...c, settings: { ...c.settings, concurrent: n } })),
+      ),
+  })
 }
 
 /**
  * Workers in a permission mode that asks would wait on a prompt, with nobody to answer it: it fails,
  * and offers auto, where the mode asked for is default; where auto isn't in effect though asked
- * for, there is nothing tutti can do.
+ * for, there is nothing tutti can do. The fix asks Claude Code again, with `probe`, which mode it
+ * puts in effect once auto is asked for: one where auto isn't available fixes nothing.
  */
-export const permissionCheck = (account: AccountProbe): Found => {
+export const permissionCheck = (account: AccountProbe, probe: Night["probeAccount"]): Found => {
   const { requested, inEffect } = account.permissionMode
   if (neverAsks.includes(inEffect)) {
     return passed(`workers start in ${inEffect} permission mode, which doesn't stop to ask`)
@@ -252,12 +260,21 @@ export const permissionCheck = (account: AccountProbe): Found => {
     question: "Start workers in auto permission mode?",
     done: "workers start in auto permission mode",
     apply: (started) =>
-      Effect.succeed({
-        ...withConfig(started, (c) => ({
+      Effect.gen(function* () {
+        const fixed = withConfig(started, (c) => ({
           ...c,
           settings: { ...c.settings, workers: { ...c.settings.workers, permission_mode: "auto" } },
-        })),
-        account: { ...started.account, permissionMode: { requested: "auto", inEffect: "auto" } },
+        }))
+        const probed = yield* probe(fixed.config).pipe(
+          Effect.mapError((why) => `Claude Code couldn't say which mode it puts in effect: ${why}`),
+        )
+        const { inEffect } = probed.permissionMode
+        if (!neverAsks.includes(inEffect)) {
+          return yield* Effect.fail(
+            `workers would still start in ${inEffect} permission mode: auto mode isn't available here`,
+          )
+        }
+        return { ...fixed, account: probed }
       }),
   })
 }
@@ -768,7 +785,7 @@ export const checks = (started: Started, night: Night, say: Say) =>
     return [
       limitCheck(config),
       concurrencyCheck(config, night.cores),
-      permissionCheck(account),
+      permissionCheck(account, night.probeAccount),
       loginCheck(account),
       usageNow,
       usageWaitCheck(config),

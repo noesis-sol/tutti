@@ -88,6 +88,15 @@ const quietNight: Night = {
   processes: Effect.succeed([]),
   disk: () => Effect.succeed({ free: 100 * gb, where: "/work" }),
   otherRuns: Effect.succeed([]),
+  // Claude Code puts the mode asked for in effect.
+  probeAccount: (config) =>
+    Effect.succeed({
+      ...TestAccount.accountProbe(config),
+      permissionMode: {
+        requested: config.settings.workers.permission_mode,
+        inEffect: config.settings.workers.permission_mode,
+      },
+    }),
 }
 
 interface Scenario {
@@ -277,6 +286,38 @@ describe("an overnight pre-flight", () => {
       expect(printed).toContain(`◆ Fixed: ${done}`)
       expect(logged).toContain(`overnight pre-flight: fixed: ${done}`)
     }
+  })
+
+  test("a fix that can't be made leaves its check failed, and the run refused", async () => {
+    const repo = project()
+    const base = goodConfig(repo)
+    const config = {
+      ...base,
+      settings: {
+        ...base.settings,
+        workers: { ...base.settings.workers, permission_mode: "default" as const },
+      },
+    }
+    const { cleared, printed, logged, asked } = await runPreflight({
+      config,
+      // Auto isn't available: Claude Code keeps workers in default mode.
+      night: {
+        probeAccount: (fixed) =>
+          Effect.succeed({
+            ...TestAccount.accountProbe(fixed),
+            permissionMode: { requested: "auto", inEffect: "default" },
+          }),
+      },
+      answers: [true],
+    })
+    expect(asked).toEqual([["Start workers in auto permission mode?", true]])
+    expect(cleared).toEqual({ _tag: "Refused", failed: 1 })
+    const said = printed.find((line) => line.includes("couldn't fix")) ?? ""
+    expect(said).toEndWith(
+      ": workers would still start in default permission mode: auto mode isn't available here",
+    )
+    expect(printed.some((line) => line.includes("Fixed:"))).toBe(false)
+    expect(logged.some((line) => line.startsWith("overnight pre-flight: couldn't fix "))).toBe(true)
   })
 
   test("with a failed check left, asks whether to start anyway, no first", async () => {

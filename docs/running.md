@@ -271,9 +271,10 @@ What fails, refusing the run until it is fixed:
 
 - **A ticket limit** (`--limit`): the run would stop early. Fix: run without one.
 - **One ticket at a time** (`concurrent` 1): one slow ticket holds up the night. Fix: one for each
-  4 cores, 2 to 4, within `--machine-workers`.
+  4 cores, 2 to 4, within `--machine-workers` (none under a cap of 2).
 - **A permission mode that asks** (`workers.permission_mode` `default`): a worker would wait on a
-  prompt all night. `auto` and `acceptEdits` pass. Fix: start workers in `auto`.
+  prompt all night. `auto` and `acceptEdits` pass. Fix: start workers in `auto`, once Claude Code
+  says it puts auto in effect for your account.
 - **`--keep-awake` turned off** (`--keep-awake=false`): the merge checks would time out while the
   machine sleeps. Where tutti has no way to keep it awake, it warns instead: set the machine not
   to sleep.
