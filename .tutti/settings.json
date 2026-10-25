@@ -18,6 +18,9 @@
       "command": "bun install --frozen-lockfile"
     }
   },
+  "queue": {
+    "shared_files": [".orchestra/specs/tutti-spec.md", "docs/*.md"]
+  },
   "workers": {
     "mcp_servers": [],
     "effort": "high"
