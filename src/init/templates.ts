@@ -115,6 +115,12 @@ export const promptChanges: ReadonlyArray<TemplateChange> = [
     what: "a question that asks the maintainer to act rather than choose is marked maintainer_only, never answered for them",
     marker: `"maintainer_only": true`,
   },
+  {
+    version: 8,
+    section: "",
+    what: "a check that runs the slower suites with the faster ones is run alone, not after the faster one",
+    marker: "run it alone, not after the faster one",
+  },
 ]
 
 /** The changes to the verifier's template, verifier.md. */

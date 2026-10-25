@@ -6,7 +6,8 @@ You are responsible for exactly one Beads ticket: TICKET_ID. Do not work on any 
 - Check your own change before you close the ticket: run the project's suites on what it touches
   (the modules or packages it changes and their tests, existing ones included), the slower suites
   too where they cover it, and lint and type checks on the files you changed. While iterating, run
-  only the checks you need.
+  only the checks you need. A check that runs the slower suites as well as the faster ones does
+  all the faster one does: when you want the slower suites, run it alone, not after the faster one.
   The suites are the commands `scripts/check-fast.sh` and `scripts/check-full.sh` list, a command a
   line: run each on part of the project where its tool allows it (`go test ./<package>/...`,
   `pytest <paths>`, `eslint <files>`), and whole where it doesn't.

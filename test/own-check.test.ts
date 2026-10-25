@@ -59,7 +59,8 @@ describe("the worker prompt's check section", () => {
       "- Check your own change before you close the ticket: run the project's suites on what it touches\n" +
         "  (the modules or packages it changes and their tests, existing ones included), the slower suites\n" +
         "  too where they cover it, and lint and type checks on the files you changed. While iterating, run\n" +
-        "  only the checks you need.\n" +
+        "  only the checks you need. A check that runs the slower suites as well as the faster ones does\n" +
+        "  all the faster one does: when you want the slower suites, run it alone, not after the faster one.\n" +
         unknownSuitesLines +
         "- Leave the whole suite to tutti: its merge check, `scripts/check-fast.sh`, runs on every ticket\n" +
         "  before it merges it, and hands the ticket back to you when your change breaks something you\n" +
@@ -116,7 +117,7 @@ describe("each suite on part of the project", () => {
     const filled = withSuites(builtInWorkerPrompt, suiteLines([unit], []))
     expect(filled).not.toContain(unknownSuitesLines)
     expect(filled).toContain(
-      "  only the checks you need.\n" +
+      "run it alone, not after the faster one.\n" +
         `${suitesIntro}  - unit tests: \`bun test <files>\`\n` +
         "- Leave the whole suite to tutti",
     )

@@ -1,8 +1,9 @@
 // scripts/check-own.ts: picks the test files a change touches, for scripts/check-own.sh.
 //
 // A test file is touched when it changed, or when it reads a changed file: imports it, or a module
-// that imports it, at any depth, or names it by path (a script it runs, a fixture it reads): tests and
-// their helpers only, as the product's own modules name paths of the projects it runs in. Imports
+// that imports it, at any depth, or names it by path outside its imports (a script it runs, a fixture
+// it reads): tests and their helpers only, as the product's own modules name paths of the projects
+// it runs in. Imports
 // are read from the text, not resolved by Bun, so type-only imports count too, and a deleted module
 // still counts for the files that import it. A change to the test runner (scripts/test.ts) or its
 // preload (test/warm-up.ts) touches every test.
@@ -20,11 +21,19 @@ export const isTestFile = (file: string): boolean =>
 
 const isModule = (file: string): boolean => /\.(ts|tsx|js|mjs)$/.test(file)
 
+/** An import, re-export or require in a module's text, its specifier the first group. */
+const importPattern = /\b(?:from|import|require)\s*\(?\s*["']([^"'\n]+)["']/g
+
 /** The specifiers a module's text imports, re-exports or requires, relative or not. */
 export const specifiers = (source: string): ReadonlyArray<string> =>
-  [...source.matchAll(/\b(?:from|import|require)\s*\(?\s*["']([^"'\n]+)["']/g)].map(
-    (match) => match[1] ?? "",
-  )
+  [...source.matchAll(importPattern)].map((match) => match[1] ?? "")
+
+/**
+ * A module's text with its imports, re-exports and requires taken out, for pathMentions to look in:
+ * the import graph follows those exactly, and a folder named in one ("../src/run/x.ts" names
+ * src/run) doesn't make a test read every file in it.
+ */
+export const withoutImports = (source: string): string => source.replace(importPattern, "")
 
 /**
  * The repository-relative file a relative specifier in `from` names, trying the extensions an
@@ -46,11 +55,13 @@ export const resolveSpecifier = (
  * The texts that name a file in a test that reads it other than by importing it (a script or a
  * fixture it runs or reads): its path, and each folder it is in, from the folder under the top one
  * down (fixtures/bd for test/fixtures/bd/x.json), relative to test/ for the files there, as tests
- * name them from their own folder.
+ * name them from their own folder. The path is named as join's arguments too ("src", "main.ts"),
+ * as the tests that start tutti name src/main.ts.
  */
 export const pathMentions = (file: string): ReadonlyArray<string> => {
   const parts = (file.startsWith("test/") ? file.slice("test/".length) : file).split("/")
   const mentions = [parts.join("/")]
+  if (parts.length > 1) mentions.push(`"${parts.join('", "')}"`)
   for (let end = parts.length - 1; end >= 2; end--) {
     const folder = parts.slice(0, end)
     mentions.push(folder.join("/"), folder.join('", "'))
@@ -90,11 +101,13 @@ export const testsFor = (
     touched.add(file)
     queue.push(file)
   }
+  const testTexts = [...sources]
+    .filter(([source]) => source.startsWith("test/"))
+    .map(([source, text]) => [source, withoutImports(text)] as const)
   for (const file of changed) {
     touch(file)
     const mentions = pathMentions(file)
-    for (const [source, text] of sources) {
-      if (!source.startsWith("test/")) continue
+    for (const [source, text] of testTexts) {
       if (mentions.some((mention) => text.includes(mention))) touch(source)
     }
   }

@@ -6,7 +6,13 @@ import { describe, expect, test } from "bun:test"
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import fc from "fast-check"
-import { pathMentions, resolveSpecifier, specifiers, testsFor } from "../scripts/check-own.ts"
+import {
+  pathMentions,
+  resolveSpecifier,
+  specifiers,
+  testsFor,
+  withoutImports,
+} from "../scripts/check-own.ts"
 import { testEnv, which } from "./env.ts"
 import { slow } from "./gates.ts"
 import { makeRepo } from "./git.ts"
@@ -70,10 +76,40 @@ describe("pathMentions", () => {
   test("names a file by its path and the folders it is in, relative to test/ for test files", () => {
     expect(pathMentions("test/fixtures/bd/ready.json")).toEqual([
       "fixtures/bd/ready.json",
+      '"fixtures", "bd", "ready.json"',
       "fixtures/bd",
       'fixtures", "bd',
     ])
-    expect(pathMentions("scripts/check.sh")).toEqual(["scripts/check.sh"])
+    expect(pathMentions("scripts/check.sh")).toEqual(["scripts/check.sh", '"scripts", "check.sh"'])
+  })
+})
+
+describe("withoutImports", () => {
+  test("takes out imports, re-exports and requires, and keeps the rest", () => {
+    const source = [
+      'import { a } from "../src/run/a.ts"',
+      'export * from "../src/run/c.ts"',
+      'const d = await import("../src/run/d.ts")',
+      'const fixture = "fixtures/bd/ready.json"',
+      'const dir = resolve(import.meta.dir, "../src/run")',
+    ].join("\n")
+    const left = withoutImports(source)
+    expect(left).not.toContain("src/run/a.ts")
+    expect(left).not.toContain("src/run/c.ts")
+    expect(left).not.toContain("src/run/d.ts")
+    expect(left).toContain('"fixtures/bd/ready.json"')
+    expect(left).toContain('resolve(import.meta.dir, "../src/run")')
+  })
+
+  test("leaves no specifier behind in any source", () => {
+    const specifier = fc.stringMatching(/^\.{1,2}\/[a-zA-Z0-9_./-]{1,30}$/)
+    fc.assert(
+      fc.property(fc.array(specifier, { maxLength: 8 }), fc.string(), (list, noise) => {
+        const clean = noise.replace(/["'\n]/g, "")
+        const source = list.map((s) => `// ${clean}\nimport { x } from "${s}"`).join("\n")
+        expect(specifiers(withoutImports(source))).toEqual([])
+      }),
+    )
   })
 })
 
@@ -114,6 +150,37 @@ describe("testsFor", () => {
   test("leaves out a test that was deleted, and takes nothing for a change no test reads", () => {
     expect(tests(["test/gone.test.ts"])).toEqual([])
     expect(tests(["docs/setup.md"])).toEqual([])
+  })
+
+  test("doesn't take a test for a file in a folder it imports from but doesn't reach", () => {
+    const run = {
+      "src/run/a.ts": "export const a = 1",
+      "src/run/b.ts": "export const b = 2",
+      "src/run/c.ts": 'export { a } from "./a.ts"',
+      "test/a.test.ts": 'import { a } from "../src/run/a.ts"',
+      "test/c.test.ts": 'import { a } from "../src/run/c.ts"',
+      "test/b.test.ts": 'import {\n  b,\n} from "../src/run/b.ts"',
+    }
+    const picks = (changed: ReadonlyArray<string>) => testsFor(changed, sources(run), existing(run))
+    expect(picks(["src/run/b.ts"])).toEqual(["test/b.test.ts"])
+    expect(picks(["src/run/a.ts"])).toEqual(["test/a.test.ts", "test/c.test.ts"])
+  })
+
+  test("takes a test that names a changed file's folder or path outside its imports", () => {
+    const named = {
+      "src/entries/a.ts": "export const a = 1",
+      "src/main.ts": 'import { a } from "./entries/a.ts"',
+      "test/release.test.ts": 'const entries = resolve(root, "src/entries")',
+      "test/binary.test.ts": 'const main = join(import.meta.dir, "..", "src", "main.ts")',
+      "test/other.test.ts": 'const other = join(import.meta.dir, "..", "src", "other.ts")',
+      "test/fixture.test.ts": 'const ready = readFileSync("fixtures/bd/ready.json")',
+      "test/fixtures/bd/ready.json": "[]",
+    }
+    const picks = (changed: ReadonlyArray<string>) =>
+      testsFor(changed, sources(named), existing(named))
+    expect(picks(["src/entries/a.ts"])).toEqual(["test/release.test.ts"])
+    expect(picks(["src/main.ts"])).toEqual(["test/binary.test.ts"])
+    expect(picks(["test/fixtures/bd/ready.json"])).toEqual(["test/fixture.test.ts"])
   })
 
   test("takes the whole suite for a change to the test runner or its preload", () => {

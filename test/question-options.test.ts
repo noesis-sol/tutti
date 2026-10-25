@@ -29,7 +29,7 @@ describe("the worker prompt's question rule", () => {
 
   test("is the template's version 7, its options change marked in orchestra's words too", () => {
     const seventh = promptChanges.filter((change) => change.version === 7)
-    expect(latestVersion(promptChanges)).toBe(7)
+    expect(latestVersion(promptChanges)).toBeGreaterThanOrEqual(7)
     expect(seventh.map((change) => change.section)).toEqual(["Close", "Close"])
     // orchestra 0.9.5's line: a prompt imported from orchestra has the options change, not
     // maintainer_only, which is tutti's own.
