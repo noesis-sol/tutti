@@ -86,6 +86,34 @@ export const readSources = (
   return readFiles(repo, wanted, new Map())
 }
 
+/** The checkout at repo with its links resolved, as readSource compares a file's path with it. */
+export const realRoot = (fs: FileSystem.FileSystem, repo: string): Effect.Effect<string> =>
+  fs.realPath(repo).pipe(Effect.orElseSucceed(() => repo))
+
+/**
+ * Up to `maxSource` bytes of a file in the checkout at repo, whose resolved path is root
+ * (realRoot): undefined for one that can't be read or resolves outside it.
+ */
+export const readSource = (
+  fs: FileSystem.FileSystem,
+  root: string,
+  repo: string,
+  file: string,
+): Effect.Effect<string | undefined> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const real = yield* fs.realPath(join(repo, file))
+      if (!real.startsWith(`${root}/`)) return Option.none<Uint8Array>()
+      const handle = yield* fs.open(real, { flag: "r" })
+      return yield* handle.readAlloc(maxSource)
+    }),
+  ).pipe(
+    Effect.map((content) =>
+      Option.isSome(content) ? new TextDecoder().decode(content.value) : undefined,
+    ),
+    Effect.orElseSucceed(() => undefined),
+  )
+
 /**
  * The contents of files, in the checkout at repo: up to `maxSource` bytes of each, never a file that
  * resolves outside repo, those in `sources` as read before, and the others read into it. A file
@@ -99,22 +127,8 @@ const readFiles = (
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const unread = [...files].filter((f) => !sources.has(f))
-    const root =
-      unread.length === 0 ? repo : yield* fs.realPath(repo).pipe(Effect.orElseSucceed(() => repo))
-    for (const file of unread) {
-      const content = yield* Effect.scoped(
-        Effect.gen(function* () {
-          const real = yield* fs.realPath(join(repo, file))
-          if (!real.startsWith(`${root}/`)) return Option.none<Uint8Array>()
-          const handle = yield* fs.open(real, { flag: "r" })
-          return yield* handle.readAlloc(maxSource)
-        }),
-      ).pipe(Effect.orElseSucceed(() => Option.none<Uint8Array>()))
-      sources.set(
-        file,
-        Option.isSome(content) ? new TextDecoder().decode(content.value) : undefined,
-      )
-    }
+    const root = unread.length === 0 ? repo : yield* realRoot(fs, repo)
+    for (const file of unread) sources.set(file, yield* readSource(fs, root, repo, file))
     const contents = new Map<string, string>()
     for (const file of files) {
       const content = sources.get(file)

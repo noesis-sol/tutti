@@ -49,6 +49,12 @@ export interface Footprint {
   readonly globs: ReadonlyArray<string>
   /** Functions and types, as named: Loop.merge, refreshBranch. Sorted. */
   readonly funcs: ReadonlyArray<string>
+  /**
+   * The functions the ticket names that the repository doesn't declare (`RepoFiles.declares`),
+   * sorted: a library's or an everyday one (Effect.fn, JSON.stringify), shown with `funcs` but
+   * holding no ticket apart.
+   */
+  readonly undeclared: ReadonlyArray<string>
   /** The ticket's area:<name> labels, sorted. */
   readonly areas: ReadonlyArray<string>
   /**
@@ -92,6 +98,7 @@ export const emptyFootprint: Footprint = {
   files: [],
   globs: [],
   funcs: [],
+  undeclared: [],
   areas: [],
   cited: [],
   listed: false,
@@ -102,7 +109,7 @@ export const emptyFootprint: Footprint = {
 
 /** Whether the footprint names nothing (its worktree's changes aside). */
 export const isEmpty = (fp: Footprint): boolean =>
-  fp.files.length + fp.globs.length + fp.funcs.length + fp.areas.length === 0
+  fp.files.length + fp.globs.length + fp.funcs.length + fp.undeclared.length + fp.areas.length === 0
 
 /**
  * The footprint for the log: functions, files, globs, then areas (`<id> footprint: …`). A glob
@@ -113,7 +120,7 @@ export const showFootprint = (fp: Footprint): string =>
   isEmpty(fp)
     ? "nothing named"
     : [
-        ...fp.funcs,
+        ...sorted([...fp.funcs, ...fp.undeclared]),
         ...fp.files,
         ...fp.globs.filter((g) => !fp.files.includes(g) && !fp.files.includes(`${g}/`)),
         ...fp.areas,
@@ -183,7 +190,8 @@ const areasOf = (ticket: Pick<FootprintTicket, "labels">): ReadonlyArray<string>
  *   A path keeps its brackets and a + starting a name (`src/routes/[slug]/+page.svelte`).
  *   Functions are `Type.method`, a call (`refreshBranch()`, not `len(x)`, `os.Exit()` or
  *   `t.Run()`), or a camel-case name in backticks (`waitSettled`, not `GitHub`). Text names no
- *   folder or glob.
+ *   folder or glob. A function the repository doesn't declare (`repo.declares`: Effect.fn,
+ *   JSON.stringify) is kept apart in `undeclared`, holding no ticket apart.
  * - **The files metadata** also takes a folder (`src/run/`, or `run/`), meaning the files under it
  *   and, kept as `src/run/`, those another ticket adds there, and a glob (`*.ts`, `src/**\/*.ts`)
  *   meaning the files it matches and, kept in `globs`, those another ticket adds where it matches
@@ -217,7 +225,8 @@ export const ticketFootprint = (ticket: FootprintTicket, repo: RepoFiles): Footp
     ...emptyFootprint,
     files: sorted(files.keys()),
     globs: sorted(globs),
-    funcs: sorted(funcs),
+    funcs: sorted([...funcs].filter((f) => repo.declares(f))),
+    undeclared: sorted([...funcs].filter((f) => !repo.declares(f))),
     areas: areasOf(ticket),
     cited: sorted([...files].filter(([, change]) => !change).map(([f]) => f)),
     listed,

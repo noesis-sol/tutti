@@ -47,6 +47,7 @@ import { Git, type Sha } from "../services/Git.ts"
 import { branchFolder, branchOf, ticketIdProblem } from "../services/Worktrees.ts"
 import { type Again, retrying } from "./again.ts"
 import type { ClosedBranches } from "./closedBranches.ts"
+import { readDeclared } from "./declared.ts"
 import { EventStream } from "./eventstream.ts"
 import { RunFibers } from "./fibers.ts"
 import { type Footprint, showFootprint, withChanges, worktreeChanges } from "./footprint.ts"
@@ -107,7 +108,10 @@ export interface Start {
 
 /** Where tickets work, read for each fill: what keeps overlapping tickets apart (§ 5 Footprints). */
 export interface Footprints {
-  /** The repository's files (git ls-files) and the files the check commands name. */
+  /**
+   * The repository's files (git ls-files), the files the check commands name and the names their
+   * sources declare.
+   */
   readonly repo: Effect.Effect<RepoFiles>
   /**
    * The files the running ticket's worktree has changed since it left the base, but those git
@@ -139,8 +143,9 @@ export interface Footprints {
 /**
  * The footprints of the checkout at `repo`: its files from git, those git merges by union among
  * them, each running ticket's changes from its worktree (`worktree` gives its folder) against
- * `base`, each ticket's branch's against `base`, and its files' contents. git failing leaves names
- * judged by their look, none merged by union, and a ticket's changes unknown. `sharedFiles`, the
+ * `base`, each ticket's branch's against `base`, its files' contents, and the names its source
+ * files declare (`readDeclared`). git failing leaves names judged by their look, none merged by
+ * union, a ticket's changes unknown and every function declared. `sharedFiles`, the
  * settings' `queue.shared_files`, hold no tickets apart (`RepoFiles.shared`).
  */
 export const footprintsOf = (options: {
@@ -160,19 +165,20 @@ export const footprintsOf = (options: {
         Effect.map((union) => files.filter((f) => !union.includes(f))),
         Effect.orElseSucceed(() => files),
       )
-    // The files git lists, read again only once the checkout's commit moves, as a merge moves it:
-    // a fill comes on almost every wake. What git failing gives is read again the next time.
+    // The files git lists and the names their sources declare, read again only once the checkout's
+    // commit moves, as a merge moves it: a fill comes on almost every wake. What git failing gives
+    // is read again the next time.
     const listed = yield* Ref.make<{ readonly at: Sha; readonly files: RepoFiles } | undefined>(
       undefined,
     )
-    const read = git.trackedFiles(options.repo).pipe(
-      Effect.flatMap((files) =>
-        git.mergedByUnion(options.repo, files).pipe(
-          Effect.orElseSucceed((): ReadonlyArray<string> => []),
-          Effect.map((union) => repoFiles(files, options.checkCommands, union, sharedFiles)),
-        ),
-      ),
-    )
+    const read = Effect.gen(function* () {
+      const files = yield* git.trackedFiles(options.repo)
+      const union = yield* git
+        .mergedByUnion(options.repo, files)
+        .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
+      const declared = yield* readDeclared(options.repo, files).pipe(Effect.provideContext(context))
+      return repoFiles(files, options.checkCommands, union, sharedFiles, declared)
+    })
     return {
       repo: Effect.gen(function* () {
         const at = yield* git
