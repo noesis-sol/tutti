@@ -51,6 +51,7 @@ import { chosenLayer as languageModelLayer } from "./organs/AnthropicProvider.ts
 import { OrganCost } from "./organs/OrganCost.ts"
 import { Organs } from "./organs/Organs.ts"
 import { guardOutput, makePrinter, type Out, stdout } from "./print/organLine.ts"
+import { Battery, batteryNote, liveBattery } from "./run/battery.ts"
 import { carriedTickets } from "./run/carry.ts"
 import {
   asking,
@@ -149,6 +150,8 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
     otherWorkers,
     // The machine's load, which the run reads for the dashboard's load line.
     Layer.succeed(Load, liveLoad()),
+    // The battery, which the run reads every minute to warn before it runs low.
+    Layer.succeed(Battery, liveBattery()),
     // The environment of the setup, the checks and the requires list's commands: the workers' but
     // tutti's variables, the API key handled as theirs is (§ 4.13).
     Layer.succeed(
@@ -303,9 +306,15 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       pid: process.pid,
       which: whichOnPath,
     })
+    // A run that starts on battery says so in its START block (src/run/battery.ts).
+    const onBattery = batteryNote(yield* liveBattery().read)
+    const notes = [
+      ...(awake._tag === "Missing" ? [awake.warning] : []),
+      ...(onBattery === null ? [] : [onBattery]),
+    ]
     const started: Started =
-      awake._tag === "Missing"
-        ? { ...checked.success, warnings: [...checked.success.warnings, awake.warning] }
+      notes.length > 0
+        ? { ...checked.success, warnings: [...checked.success.warnings, ...notes] }
         : checked.success
     const { config, base } = started
     // Whether workers bill the subscription login: the summary's dollars are estimates then.

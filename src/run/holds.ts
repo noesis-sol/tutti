@@ -494,6 +494,8 @@ export interface RunHolds {
   readonly machine: boolean
   /** What the usage limit's hold shows: the usage line, its banner and its notice. */
   readonly usage: UsageView
+  /** The battery's notice while it runs low (battery.ts): it holds nothing, but shows beside them. */
+  readonly battery: string | null
 }
 
 export const noHolds: RunHolds = {
@@ -501,6 +503,7 @@ export const noHolds: RunHolds = {
   overLimit: new Set(),
   machine: false,
   usage: { usage: null, hold: null, notice: null },
+  battery: null,
 }
 
 /** `holds` with its stops changed by `change`. */
@@ -534,6 +537,10 @@ export const liftBlocked = (holds: RunHolds, ticket: TicketId): RunHolds =>
 /** `holds` with the machine's hold on (`full`) or off. */
 export const withMachineHold = (holds: RunHolds, full: boolean): RunHolds =>
   holds.machine === full ? holds : { ...holds, machine: full }
+
+/** `holds` showing the battery's `notice`, or none. */
+export const withBattery = (holds: RunHolds, notice: string | null): RunHolds =>
+  holds.battery === notice ? holds : { ...holds, battery: notice }
 
 /** `holds` showing the usage limit's `view`. */
 export const showUsage = (holds: RunHolds, view: UsageView): RunHolds => ({ ...holds, usage: view })

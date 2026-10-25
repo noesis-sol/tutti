@@ -65,6 +65,7 @@ export const Tag = {
   probe: "PROBE",
   probeOk: "PROBE_OK",
   slept: "SLEPT",
+  battery: "BATTERY",
   paused: "PAUSED",
   ticketLimit: "TICKET_LIMIT",
   longRunning: "LONG_RUNNING",

@@ -171,6 +171,15 @@ const examples: { readonly [K in Kind]: ReadonlyArray<Extract<EventRecord, { kin
       text: "SLEPT: the machine slept 34m (14:03-14:37); checks and limits don't count it",
     },
   ],
+  battery: [
+    {
+      ...head,
+      kind: "battery",
+      level: 9,
+      threshold: 10,
+      text: "BATTERY: 9% left, not charging: plug in or the Mac will sleep",
+    },
+  ],
   stop: [
     {
       ...head,
@@ -467,7 +476,7 @@ describe("the records", () => {
       [
         ...["start", "info", "dispatch", "queue", "closed", "deferred", "asked", "answered"],
         ...["waits", "reopened", "triage", "warn", "hold", "drain", "resume", "probed", "stop"],
-        ...["shared_machine", "machine_hold", "slept"],
+        ...["shared_machine", "machine_hold", "slept", "battery"],
         ...["done", "full_check", "end", "phase", "attention", "attention_answered", "denied"],
         ...[
           "usage_limit",

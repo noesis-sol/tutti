@@ -275,6 +275,19 @@ export const Slept = Schema.Struct({
   text: Schema.String,
 })
 
+/**
+ * The battery fell to one of the levels the run says (`BATTERY: …`), discharging: once each per
+ * discharge. tutti's own.
+ */
+export const Battery = Schema.Struct({
+  ...head("battery"),
+  /** The level read, in percent. */
+  level: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
+  /** The level it is at or under: 20 or 10. */
+  threshold: Schema.Literals([20, 10]),
+  text: Schema.String,
+})
+
 /** The words a stop's `detail` takes that are tutti's: orchestra's `TERMINAL_FAILED` is gone. */
 export const StopWord = { usageLimit: "USAGE_LIMIT" } as const
 
@@ -612,6 +625,7 @@ export const kinds = {
   shared_machine: SharedMachine,
   machine_hold: MachineHold,
   slept: Slept,
+  battery: Battery,
   stop: Stop,
   done: Done,
   full_check: FullCheck,

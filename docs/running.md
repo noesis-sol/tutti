@@ -166,6 +166,28 @@ The second line comes once, in a run without `--keep-awake`. tutti takes a gap o
 seconds in its own once-a-second look at the clock for a sleep, so tutti stopped as long (`kill
 -STOP`) reads as one too.
 
+### On battery
+
+A run on a laptop's battery goes only as long as the battery does: a Mac that runs it flat sleeps
+or shuts down, and a shut-down Mac ends the run, its workers resumed only by the next tutti. A
+run that starts on battery says so in its START block:
+
+```
+  on battery (62%): plug in to keep the run going
+```
+
+While the run goes, tutti reads the battery once a minute (`pmset -g batt` on macOS,
+`/sys/class/power_supply/BAT*` on Linux). On battery, as it falls to 20% and again to 10%, the
+log says so once each, with a `battery` record ([Event records](events.md)), and the dashboard's
+warning line keeps saying it while the battery stays low:
+
+```
+BATTERY: 10% left, not charging: plug in or the Mac will sleep
+```
+
+At 10% it also notifies. Plugged in, the notice goes; should the battery run down again, it says
+both again. A machine without a battery says nothing.
+
 ### Answering for you while you're away
 
 A run you leave going overnight or while you are out stops each ticket that asks you something

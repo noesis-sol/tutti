@@ -99,6 +99,7 @@ import { outputMode, Tty } from "../services/Tty.ts"
 import { schemeNotices } from "../ui/theme.ts"
 import { takeAnswers } from "./asked.ts"
 import { AutoAnswer, answerQuestions, autoAnswerName, makeAutoAnswering } from "./autoAnswer.ts"
+import { Battery, watchBattery } from "./battery.ts"
 import { make as makeBlockedWatch } from "./blockedWatch.ts"
 import { type Carried, type CarryOptions, carryOver, carryWaiting } from "./carry.ts"
 import { closedBranches } from "./closedBranches.ts"
@@ -126,6 +127,7 @@ import {
   stopOfLine,
   takesBack,
   takesNew,
+  withBattery,
 } from "./holds.ts"
 import { make as makeHoldsGate } from "./holdsGate.ts"
 import { Ledger } from "./ledger.ts"
@@ -608,6 +610,18 @@ const runFrom = (
 
     // Each sleep of the machine the run notices, said with its SLEPT line (slept.ts).
     yield* watch(watchSleeps({ keepAwake: config.keepAwake }))
+    // The battery, read every minute while the run goes (battery.ts): a BATTERY line and record as
+    // it falls to 20% and to 10%, discharging, and its notice on the dashboard's warning line.
+    const batterySource = yield* Battery
+    if (batterySource !== null) {
+      yield* watch(
+        watchBattery({
+          source: batterySource,
+          platform: process.platform,
+          show: (notice) => changeHolds((now) => withBattery(now, notice)),
+        }),
+      )
+    }
 
     // Requests to quit (quitting.ts): the first quits, the second says what is under way and how to
     // abandon it, and the third ends tutti at once, saving the workers not merged or dropped.

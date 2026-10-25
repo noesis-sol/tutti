@@ -1,7 +1,7 @@
 // What holds the run (§ 5 item 10, holds.ts), as the run keeps it: its stops, the tickets past
 // --ticket-limit, the machine's hold and the usage limit's view, changed one change at a time, each
 // shown on the dashboard as it comes: `· stopping` while a stop holds the run, the banners, the usage
-// line and its notice. A stop holds the run: said as it comes while tickets still run, unless its
+// line and its notice, and beside them the battery's notice (battery.ts). A stop holds the run: said as it comes while tickets still run, unless its
 // line was, and the run is woken to look again.
 import { Effect, Option, SubscriptionRef } from "effect"
 import type { TicketId } from "../services/Beads.ts"
@@ -69,7 +69,14 @@ export const make = (options: {
         const after = change(before)
         if (after === before) return Effect.succeed([before, Option.none()] as const)
         const { notice, ...shown } = shownHolds(after)
-        const next = { ...shown, warnings: [...notices, ...(notice === null ? [] : [notice])] }
+        const next = {
+          ...shown,
+          warnings: [
+            ...notices,
+            ...(notice === null ? [] : [notice]),
+            ...(after.battery === null ? [] : [after.battery]),
+          ],
+        }
         const show = SubscriptionRef.updateSome(status, (now) => {
           const { stopping, holds: banners, usage, warnings } = now
           return same({ stopping, holds: banners, usage, warnings }, next)
