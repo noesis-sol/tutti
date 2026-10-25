@@ -20,8 +20,11 @@
 // comes back through bd ready, in this run or a later one, and its start resumes that session in
 // its worktree rather than draw a new one, so its worker carries on with what it knew (start.ts).
 //
-// A BLOCKED request of a worker no fiber follows (one handed a conflict or a failed check, Resolving
-// or Fixing) still holds the run, as in any run.
+// A worker handed a conflict or a failed check (Resolving, Fixing; handback.ts's give) is followed
+// by its hand-back instead (tutti-bqr0): BLOCKED ends the hand-back early, its requests denied, its
+// worker stopped and told so, and the ticket set aside as one not done in time is (Blocked
+// MERGE_CONFLICT, Review CHECKS_FAILED), with its branch put back and its notes saying why; what git
+// shows done already is taken as it is, as past resolve_timeout.
 import { Deferred, Effect, Option, Ref, type Scope } from "effect"
 import { AgentHost } from "../agent/AgentHost.ts"
 import { Attention, type AttentionRequest, blockedAfter, describe } from "../agent/Attention.ts"
@@ -104,8 +107,9 @@ export const asideNote = (worker: StartedWorker, stuck: Stuck): string => {
 }
 
 /**
- * An overnight run's register of the tickets whose fibers follow their workers, for BLOCKED to
- * set them aside; the run makes it only with --overnight.
+ * An overnight run's register of the tickets whose fibers follow their workers, or whose hand-backs
+ * wait on them (handback.ts's give), for BLOCKED to set them aside; the run makes it only with
+ * --overnight.
  */
 export interface OvernightAside {
   /** Registers `ticket`'s fiber for the scope: BLOCKED's Stuck completes `stuck`. */

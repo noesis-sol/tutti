@@ -37,8 +37,20 @@
 // A conflict that can't be handed back is Blocked at once, its rebase aborted, and the MERGE_CONFLICT
 // line says why. For a worker you have steered, the hand-back due to it waits: it is kept in
 // `waiting`, for its view to offer as a notice (§ 4.3).
-import { Clock, Data, Duration, Effect, Option, Ref, Result, Stream, SubscriptionRef } from "effect"
+import {
+  Clock,
+  Data,
+  Deferred,
+  Duration,
+  Effect,
+  Option,
+  Ref,
+  Result,
+  Stream,
+  SubscriptionRef,
+} from "effect"
 import { type AgentGone, AgentHost, type MessageUuid } from "../agent/AgentHost.ts"
+import { blockedAfter } from "../agent/Attention.ts"
 import type { WorkerState } from "../agent/WorkerState.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -66,6 +78,7 @@ import {
   type Unchanged,
   unchanged,
 } from "./merge.ts"
+import type { Stuck } from "./overnightAside.ts"
 import { Move } from "./phase.ts"
 import { info, say } from "./say.ts"
 import { type Resuming, resume } from "./sessions.ts"
@@ -401,6 +414,64 @@ const doneWords = (mode: HandBackMode): string =>
   mode === "resolving" ? "its rebase has finished" : "its fix is committed"
 
 /**
+ * Why a hand-back ends before its worker settles, as its worker is told it and the log says it:
+ * its time limit up (lateEnding), or, in an overnight run, its worker blocked on a request
+ * (blockedEnding).
+ */
+interface Ending {
+  /** How its worker was left, for the log: `a's worker was still at its hand-back after 20m`. */
+  readonly still: Line
+  /** What its worker is told before `so tutti has stopped you`, `what` it has done. */
+  readonly taken: (what: string) => string
+  /** What its worker is told before `: it puts … back`, not done: that the hand-back is over. */
+  readonly over: string
+}
+
+/** The Ending of a hand-back past its time limit, `limit` (`20m`). */
+const lateEnding = (id: TicketId, limit: string): Ending => ({
+  still: line`${id}'s worker was still at its hand-back after ${limit}`,
+  taken: (what) => `the ${limit} for this hand-back is up, and your ${what}`,
+  over: `the ${limit} for this hand-back is up, so tutti has stopped you and ends it`,
+})
+
+/**
+ * The Ending of a hand-back whose worker an overnight run found blocked on a request, as `stuck`
+ * says: nobody is there to answer it, so tutti denied it (overnightAside.ts).
+ */
+const blockedEnding = (id: TicketId, stuck: Stuck): Ending => {
+  const nobody =
+    `nobody was there to answer your request for over ${formatDuration(blockedAfter)}, ` +
+    "the run being an overnight one, so tutti denied it"
+  return {
+    still: line`${id}: ${stuck.how} on its hand-back, the run being an overnight one (${stuck.why})`,
+    taken: (what) => `${nobody}; your ${what}`,
+    over: `${nobody}, stopped you, and ends this hand-back`,
+  }
+}
+
+/**
+ * What the worker is told when its hand-back ends, `ending` saying why, with what it was asked done
+ * already: its branch, at commit `at` (undefined when git couldn't say), is taken as it is, to be
+ * checked with `check`.
+ */
+const takenAs = (
+  handBack: HandBack,
+  ending: Ending,
+  at: Sha | undefined,
+  check: string,
+): string => {
+  const { branch, worktree } = handBack.ticket
+  const what = handBack.mode === "resolving" ? "rebase has finished" : "fix is committed"
+  const where = at === undefined ? "" : `, at ${givenHash(at)}`
+  return (
+    `tutti: ${ending.taken(what)}, so tutti has stopped you ` +
+    `and takes ${branch} as it is now${where}, to check with '${check}' and merge. ` +
+    `Leave ${worktree} as it is: no more commits, no amending, no git commands in it, ` +
+    "no ticket changes. Say DONE."
+  )
+}
+
+/**
  * What the worker is told when its hand-back is past its time limit, `limit`, with what it was
  * asked done already: its branch, at commit `at` (undefined when git couldn't say), is taken as it
  * is, to be checked with `check`.
@@ -410,28 +481,14 @@ export const handBackTaken = (
   limit: string,
   at: Sha | undefined,
   check: string,
-): string => {
-  const { branch, worktree } = handBack.ticket
-  const what = handBack.mode === "resolving" ? "rebase has finished" : "fix is committed"
-  const where = at === undefined ? "" : `, at ${givenHash(at)}`
-  return (
-    `tutti: the ${limit} for this hand-back is up, and your ${what}, so tutti has stopped you ` +
-    `and takes ${branch} as it is now${where}, to check with '${check}' and merge. ` +
-    `Leave ${worktree} as it is: no more commits, no amending, no git commands in it, ` +
-    "no ticket changes. Say DONE."
-  )
-}
+): string => takenAs(handBack, lateEnding(handBack.ticket.id, limit), at, check)
 
 /**
- * What the worker is told when its hand-back is past its time limit, `limit`, and not done: the
+ * What the worker is told when its hand-back ends, `ending` saying why, and it is not done: the
  * hand-back is over, its branch put back at `handBack.to` and its ticket set aside, its attempt, the
  * commit it had got to (undefined for none), kept in git.
  */
-export const handBackOver = (
-  handBack: HandBack,
-  limit: string,
-  attempt: Sha | undefined,
-): string => {
+const overAs = (handBack: HandBack, ending: Ending, attempt: Sha | undefined): string => {
   const { id, branch, worktree } = handBack.ticket
   const to = givenHash(handBack.to)
   const back =
@@ -443,11 +500,19 @@ export const handBackOver = (
       ? "Nothing of your attempt was committed, so none of it is kept."
       : `Your attempt so far is commit ${givenHash(attempt)}, which git keeps (git show ${givenHash(attempt)}).`
   return (
-    `tutti: the ${limit} for this hand-back is up, so tutti has stopped you and ends it: it ${back} ` +
+    `tutti: ${ending.over}: it ${back} ` +
     `and sets ${id} aside for review. ${kept} Don't work on it any more: no git commands in ` +
     `${worktree}, no ticket changes. Say DONE.`
   )
 }
+
+/**
+ * What the worker is told when its hand-back is past its time limit, `limit`, and not done: the
+ * hand-back is over, its branch put back at `handBack.to` and its ticket set aside, its attempt, the
+ * commit it had got to (undefined for none), kept in git.
+ */
+export const handBackOver = (handBack: HandBack, limit: string, attempt: Sha | undefined): string =>
+  overAs(handBack, lateEnding(handBack.ticket.id, limit), attempt)
 
 /** What give needs: the host, what a resume records (sessions.ts), and git to end a hand-back. */
 export type GiveEnv = AgentHost | AppConfig | EventStream | Git | Ledger | Log | Store
@@ -551,8 +616,11 @@ const whenState = (
 
 const isLimited = (state: WorkerState) => state._tag === "UsageLimited"
 
-/** What a hand-back's give reads of the run: its atReset and whether the machine is loaded. */
-type GiveOptions = Pick<MergeOptions, "atReset" | "loaded">
+/**
+ * What a hand-back's give reads of the run: its atReset, whether the machine is loaded, and an
+ * overnight run's register.
+ */
+type GiveOptions = Pick<MergeOptions, "atReset" | "loaded" | "overnight">
 
 /** A hand-back past its time limit: `loaded`, the time the machine's load added to it. */
 interface Late {
@@ -641,15 +709,16 @@ const interruptWith = (id: TicketId, text: string): Effect.Effect<void, never, G
   })
 
 /**
- * Ends the hand-back of its worker, still at it past its time limit, `limit`, as orchestra does
- * since tutti-nrg.5.9's worker lost a resolution it had committed, and worked an hour on a ticket set
- * aside: what git shows done already is taken as it is, the worker stopped and told so; otherwise
- * the worker is stopped and told the hand-back is over and where its attempt is kept, before the
- * caller puts its branch back. Why it failed, `why`; undefined when it is taken.
+ * Ends the hand-back of its worker before it settles, `ending` saying why (its time limit up, or its
+ * worker blocked on a request overnight), as orchestra does since tutti-nrg.5.9's worker lost a
+ * resolution it had committed, and worked an hour on a ticket set aside: what git shows done already
+ * is taken as it is, the worker stopped and told so; otherwise the worker is stopped and told the
+ * hand-back is over and where its attempt is kept, before the caller puts its branch back. Why it
+ * failed, `why`; undefined when it is taken.
  */
-const endLate = (
+const endEarly = (
   handBack: HandBack,
-  limit: Duration.Duration,
+  ending: Ending,
   why: string,
 ): Effect.Effect<string | undefined, never, GiveEnv> =>
   Effect.gen(function* () {
@@ -657,16 +726,15 @@ const endLate = (
     const git = yield* Git
     const logs = yield* Log
     const { id, branch, worktree } = handBack.ticket
-    const after = formatDuration(limit)
     if (yield* handBack.done) {
       const at = yield* Effect.result(git.revParse(worktree, branch))
       yield* logs.write(
-        detail`${id}'s worker was still at its hand-back after ${after}, but ${doneWords(handBack.mode)}: ${branch} is taken as it is`,
+        detail`${ending.still}, but ${doneWords(handBack.mode)}: ${branch} is taken as it is`,
       )
       const check = config.settings.checks.fast.command ?? ""
       yield* interruptWith(
         id,
-        handBackTaken(handBack, after, Result.isSuccess(at) ? at.success : undefined, check),
+        takenAs(handBack, ending, Result.isSuccess(at) ? at.success : undefined, check),
       )
       return undefined
     }
@@ -675,7 +743,7 @@ const endLate = (
       Result.isFailure(head) || head.success === handBack.to || head.success === handBack.onto
         ? undefined
         : head.success
-    yield* interruptWith(id, handBackOver(handBack, after, attempt))
+    yield* interruptWith(id, overAs(handBack, ending, attempt))
     yield* logs.write(detail`${id}'s worker was stopped and told its hand-back is over`)
     return why
   })
@@ -748,9 +816,11 @@ const sendAtReset = (
  * the account's usage limit not counting, nor the time the machine is loaded meanwhile
  * (`options.loaded`), up to `limit` again (clock). A worker at the limit already is handed it once
  * the limit lifts, by `options.atReset` (sendAtReset). A worker at the limit with what it
- * was asked done in git has given its answer; one past the limit is stopped (endLate), the line
- * saying how much more the machine's load gave it. Why it wasn't done; undefined when what it left
- * is to be looked at.
+ * was asked done in git has given its answer; one past the limit is stopped (endEarly), the line
+ * saying how much more the machine's load gave it. In an overnight run (`options.overnight`), one
+ * left blocked on a request for blockedAfter is stopped too, its open requests denied, rather than
+ * hold the run (overnightAside.ts): the hand-back ends as one not done in time does, its caller
+ * setting the ticket aside. Why it wasn't done; undefined when what it left is to be looked at.
  */
 export const give = (
   handBack: HandBack,
@@ -759,56 +829,83 @@ export const give = (
 ): Effect.Effect<string | undefined, never, GiveEnv> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const host = yield* AgentHost
-      const { ticket, prompt, what } = handBack
-      const { id } = ticket
-      const { atReset } = options
-      const state = yield* Effect.result(host.current(id))
-      let taken: Effect.Effect<void, never, AgentHost>
-      if (Result.isSuccess(state) && state.success._tag === "Gone") {
-        const failed = yield* resumeGoneFor({
-          ticket: id,
-          gone: state.success.why,
-          message: prompt,
-          what,
-        })
-        if (failed !== undefined) return failed
-        // As below: the resume put its state back at Starting.
-        taken = Effect.void
-      } else if (Result.isSuccess(state) && state.success._tag !== "Closed") {
-        const sent =
-          state.success._tag === "UsageLimited"
-            ? yield* sendAtReset(handBack, limit, atReset)
-            : yield* sendNow(id, prompt)
-        // It left the limit without the hand-back: given as to any worker, from its state now.
-        if (sent === undefined) return yield* give(handBack, limit, options)
-        if (Result.isFailure(sent)) return sent.failure
-        taken = host.answered(id, sent.success)
-      } else {
-        const failed = yield* resumeFor({ ticket: id, why: "hand_back", message: prompt, what })
-        if (failed !== undefined) return line`its session could not be resumed: ${failed}`
-        // The resume put its state back at Starting: it settles only once the hand-back's turn,
-        // the first of a resumed session, is over.
-        taken = Effect.void
-      }
-      const ended = yield* Effect.raceFirst(
-        Effect.as(Effect.andThen(taken, untilSettled(id)), "settled" as const),
-        clock(handBack, limit, options),
-      )
-      if (ended === "settled" || ended === "taken") return undefined
-      const now = yield* Effect.result(host.current(id))
-      const how = Result.isSuccess(now) ? still(now.success) : "its worker is gone"
-      const more =
-        Duration.toMillis(ended.loaded) > 0
-          ? ` (and ${formatDuration(ended.loaded)} more for the machine's load)`
-          : ""
-      return yield* endLate(
-        handBack,
-        limit,
-        line`${how} after ${formatDuration(limit)}${more}, with the hand-back not done`,
-      )
+      // BLOCKED finds the hand-back's fiber until its requests are denied, at its end.
+      const stuck = yield* Deferred.make<Stuck>()
+      const { overnight } = options
+      if (overnight !== undefined) yield* overnight.follow(handBack.ticket.id, stuck)
+      return yield* giveTo(handBack, limit, options, stuck)
     }),
   )
+
+/** give, BLOCKED's Stuck completing `stuck` in an overnight run. */
+const giveTo = (
+  handBack: HandBack,
+  limit: Duration.Duration,
+  options: GiveOptions,
+  stuck: Deferred.Deferred<Stuck>,
+): Effect.Effect<string | undefined, never, GiveEnv> =>
+  Effect.gen(function* () {
+    const host = yield* AgentHost
+    const { ticket, prompt, what } = handBack
+    const { id } = ticket
+    const { atReset } = options
+    const state = yield* Effect.result(host.current(id))
+    let taken: Effect.Effect<void, never, AgentHost>
+    if (Result.isSuccess(state) && state.success._tag === "Gone") {
+      const failed = yield* resumeGoneFor({
+        ticket: id,
+        gone: state.success.why,
+        message: prompt,
+        what,
+      })
+      if (failed !== undefined) return failed
+      // As below: the resume put its state back at Starting.
+      taken = Effect.void
+    } else if (Result.isSuccess(state) && state.success._tag !== "Closed") {
+      const sent =
+        state.success._tag === "UsageLimited"
+          ? yield* sendAtReset(handBack, limit, atReset)
+          : yield* sendNow(id, prompt)
+      // It left the limit without the hand-back: given as to any worker, from its state now.
+      if (sent === undefined) return yield* giveTo(handBack, limit, options, stuck)
+      if (Result.isFailure(sent)) return sent.failure
+      taken = host.answered(id, sent.success)
+    } else {
+      const failed = yield* resumeFor({ ticket: id, why: "hand_back", message: prompt, what })
+      if (failed !== undefined) return line`its session could not be resumed: ${failed}`
+      // The resume put its state back at Starting: it settles only once the hand-back's turn,
+      // the first of a resumed session, is over.
+      taken = Effect.void
+    }
+    const ended = yield* Effect.raceFirst(
+      Effect.raceFirst(
+        Effect.as(Effect.andThen(taken, untilSettled(id)), "settled" as const),
+        clock(handBack, limit, options),
+      ),
+      Effect.map(Deferred.await(stuck), (stuck) => ({ stuck })),
+    )
+    if (ended === "settled" || ended === "taken") return undefined
+    if ("stuck" in ended) {
+      if (options.overnight !== undefined) yield* options.overnight.deny(id)
+      const { how, why } = ended.stuck
+      return yield* endEarly(
+        handBack,
+        blockedEnding(id, ended.stuck),
+        line`${how}, and nobody was there to answer, the run being an overnight one (${why}): its request was denied`,
+      )
+    }
+    const now = yield* Effect.result(host.current(id))
+    const how = Result.isSuccess(now) ? still(now.success) : "its worker is gone"
+    const more =
+      Duration.toMillis(ended.loaded) > 0
+        ? ` (and ${formatDuration(ended.loaded)} more for the machine's load)`
+        : ""
+    return yield* endEarly(
+      handBack,
+      lateEnding(id, formatDuration(limit)),
+      line`${how} after ${formatDuration(limit)}${more}, with the hand-back not done`,
+    )
+  })
 
 /**
  * Why the worktree its worker left after a hand-back, `mode`, can't be taken as it is, without

@@ -2,7 +2,8 @@
 // ticket; once that ticket has none open, the hold is lifted. Each request is looked at again as it
 // reaches its time, and every request open at each change, which wakes the run too: a worker that
 // asks, or is answered, may end it or keep it open (D19). In an overnight run, a ticket whose fiber
-// follows its worker is given BLOCKED instead, and set aside (overnightAside.ts).
+// follows its worker, or whose hand-back waits on it, is given BLOCKED instead, and set aside
+// (overnightAside.ts).
 import { Clock, Duration, Effect, Ref, Semaphore, Stream } from "effect"
 import { Attention, blockedAfter } from "../agent/Attention.ts"
 import type { EventStream } from "./eventstream.ts"

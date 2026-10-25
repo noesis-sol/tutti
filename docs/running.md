@@ -367,7 +367,11 @@ goes on with what it knew (a session that can't be resumed is said so, and a new
 instead). Closed or deleted rather than undeferred, its kept session is forgotten as the next run starts,
 its worktree left as it is. Its row reads `↷ deferred` with
 `(set aside overnight: BLOCKED)` before its title, the summary counts it set aside, and the report
-lists it with the others. A question that is `maintainer_only`, or has no options, waits for you as
+lists it with the others. A worker handed back a conflict or a failed check
+([Hand-backs](workers.md#hand-backs)) and blocked on a request for 4 minutes has its hand-back
+ended instead: its request is denied, its worker stopped and told why, and its ticket set aside as
+a hand-back not done in time is (`MERGE_CONFLICT`, `CHECKS_FAILED`), its notes saying so; what it
+had done already, the rebase finished or a fix committed, is taken and checked. A question that is `maintainer_only`, or has no options, waits for you as
 in any run, and the run goes on without its ticket. What makes carrying on unsafe, or would only
 fail again, still stops an overnight run: `DIRTY_TREE`, `GIT_FAILED`, `MERGE_FAILED`,
 `ENVIRONMENT`, `REQUIREMENTS_MISSING`, `BEADS_FAILED`, `SETUP_PROBLEM`, `PANIC`, and the usage

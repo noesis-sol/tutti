@@ -450,6 +450,10 @@ const runFrom = (
     // Whether the machine's last load reading has it pressed (load.ts's pressing), read with the
     // dashboard alone: with machineFull, the time a hand-back's limit leaves out (handback.ts).
     const pressed = yield* Ref.make(false)
+    // An overnight run sets a ticket aside rather than hold the run for PAUSED, BLOCKED or
+    // TICKET_LIMIT (overnightAside.ts): its register of the fibers following their workers, the
+    // hand-backs' included.
+    const overnight = config.overnight ? { overnight: yield* makeOvernightAside } : {}
     const queue = yield* makeQueue(
       {
         repo: config.repo,
@@ -463,6 +467,7 @@ const runFrom = (
           Effect.all([machineFull, Ref.get(pressed)]),
           ([full, hard]) => full || hard,
         ),
+        ...overnight,
       },
       (where, defect) =>
         panicked(where, stopFor("PANIC", `${where}: ${firstLine(defect)}`), defect),
@@ -511,9 +516,6 @@ const runFrom = (
           },
         }),
       )
-    // An overnight run sets a ticket aside rather than hold the run for PAUSED, BLOCKED or
-    // TICKET_LIMIT (overnightAside.ts): its register of the fibers following their workers.
-    const overnight = config.overnight ? { overnight: yield* makeOvernightAside } : {}
     const ticketFiber = (issue: Issue): Effect.Effect<void> =>
       outcomeOf(
         issue.id,

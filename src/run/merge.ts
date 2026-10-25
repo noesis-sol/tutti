@@ -111,6 +111,7 @@ import {
 } from "./handback.ts"
 import { Ledger } from "./ledger.ts"
 import { type Arg, branchOn, detail, type Line, Log, line, Tag, tagged, ticketLine } from "./log.ts"
+import type { OvernightAside } from "./overnightAside.ts"
 import { Detail, Move } from "./phase.ts"
 import { keepForRecheck, type Rechecks } from "./recheck.ts"
 import { noteFailedCheck } from "./reportEvidence.ts"
@@ -157,6 +158,12 @@ export interface MergeOptions {
    * the limit again (handback.ts's give). Without it, the machine is never loaded.
    */
   readonly loaded: Effect.Effect<boolean>
+  /**
+   * An overnight run's register (overnightAside.ts): with it, a worker on a hand-back left blocked on
+   * a request for blockedAfter ends its hand-back, set aside as the hand-back's own failure, rather
+   * than hold the run (handback.ts's give).
+   */
+  readonly overnight?: OvernightAside
   /**
    * Takes a slot for a ticket checked once more (recheck.ts) and runs `work` in it, as a running
    * ticket's: false, taking none, while a solo ticket runs or is next, no slot is free, or the
