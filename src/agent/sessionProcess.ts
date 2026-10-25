@@ -2,12 +2,21 @@
 // or an organ's, kept one way by ClaudeCode's adapter (§ 3.2): spawned into a process group of its own
 // (spawnInOwnProcessGroup), the end of its stderr kept for the reason a session failed, and its
 // exit waited for once its session is closed, its group killed when it doesn't come in time. A
-// setup problem or an unwanted turn kills the group at once, without the SDK's grace.
+// setup problem or an unwanted turn kills the group at once, without the SDK's grace. A worker's runs
+// at a lower CPU priority (workerNice), so that the merge check keeps its pace beside the workers.
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
+import { getPriority, setPriority } from "node:os"
 import type { Options, SpawnOptions } from "@anthropic-ai/claude-agent-sdk"
 import { Duration, Effect } from "effect"
 import { killTree } from "../services/processTree.ts"
 import { spawnInOwnProcessGroup } from "./options.ts"
+
+/**
+ * How far below normal a worker's Claude Code runs (its nice value), and with it what it starts, its
+ * commands and their checks: the merge check, which holds the merge queue, runs at normal priority
+ * and keeps its pace beside the workers' own checks (tutti-ejkt.12).
+ */
+export const workerNice = 10
 
 /** How much of Claude Code's stderr a session keeps, at most, for the reason it failed. */
 export const stderrKept = 2000
@@ -66,11 +75,26 @@ const waitFor = (child: ChildProcessWithoutNullStreams, event: "exit" | "close",
   })
 
 /**
+ * Lowers `child`'s priority to `nice`, unless it runs lower already, as tutti's own may: a priority
+ * that can't be set leaves it as it was.
+ */
+const lower = (child: ChildProcessWithoutNullStreams, nice: number) => {
+  if (child.pid === undefined) return
+  try {
+    if (getPriority(child.pid) < nice) setPriority(child.pid, nice)
+  } catch {
+    // An exited child, or a platform that refuses it: the session runs at normal priority.
+  }
+}
+
+/**
  * `options` with the spawn of a SessionProcess, and the SessionProcess: Claude Code spawned into a
- * process group of its own, its stderr passed to `options.stderr` as before, and its end kept.
+ * process group of its own, at `nice` when given, its stderr passed to `options.stderr` as before,
+ * and its end kept.
  */
 export const withSessionProcess = (
   options: Options,
+  nice?: number,
 ): { readonly options: Options; readonly process: SessionProcess } => {
   let child: ChildProcessWithoutNullStreams | undefined
   let tail = ""
@@ -107,6 +131,7 @@ export const withSessionProcess = (
       ...options,
       spawnClaudeCodeProcess: (spawnOptions: SpawnOptions) => {
         const spawned = spawn(spawnOptions)
+        if (nice !== undefined) lower(spawned, nice)
         child = spawned
         spawned.once("close", () => {
           stderrClosed = true

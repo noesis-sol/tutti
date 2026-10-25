@@ -8,7 +8,7 @@
 //   the login probe) (§ 4.13);
 // - the Claude Code to run (--claude, AppConfig's `claude`);
 // - the spawn into a process group of its own, its stderr kept for the reason a session failed
-//   (withSessionProcess, § 3.2);
+//   (withSessionProcess, § 3.2), a worker's at a lower CPU priority (workerNice);
 // - the SDK's AbortController;
 // - a query() that throws as it is called, as the SDK's does when it finds no Claude Code to run,
 //   as LaunchFailed (queryThrew);
@@ -43,7 +43,7 @@ import {
 import { AppConfig, type AppConfigValue } from "../cli/AppConfig.ts"
 import { queryThrew } from "./claudeBinary.ts"
 import { probeEnv, sharedEnv, WorkerEnv } from "./env.ts"
-import { stderrKept, withSessionProcess, withStderr } from "./sessionProcess.ts"
+import { stderrKept, withSessionProcess, withStderr, workerNice } from "./sessionProcess.ts"
 
 /**
  * What a session is, as the SDK's options say it, without what the adapter launches it with: its
@@ -87,7 +87,7 @@ export interface Launch {
   readonly billedAs: BilledAs
   /** tutti's environment, the login probe's is made from; process.env when left out. */
   readonly env?: Readonly<Record<string, string | undefined>>
-  /** A worker's share of the machine; none for a session that runs no checks. */
+  /** A worker's share of the machine, and its lower priority; none for a session that runs no checks. */
   readonly share?: WorkerShare
   /** Every piece of Claude Code's stderr, as it comes: a transcript's stderr.log, say. */
   readonly onStderr?: (data: string) => void
@@ -227,13 +227,16 @@ const opener =
       const abort = new AbortController()
       const inbox = yield* Queue.unbounded<SDKUserMessage, Cause.Done>()
       if (launch.prompt !== undefined) yield* Queue.end(inbox)
-      const { options, process } = withSessionProcess({
-        ...launch.options,
-        env: launchEnv(launch, workers),
-        ...(launch.onStderr === undefined ? {} : { stderr: launch.onStderr }),
-        ...(config.claude === null ? {} : { pathToClaudeCodeExecutable: config.claude }),
-        abortController: abort,
-      })
+      const { options, process } = withSessionProcess(
+        {
+          ...launch.options,
+          env: launchEnv(launch, workers),
+          ...(launch.onStderr === undefined ? {} : { stderr: launch.onStderr }),
+          ...(config.claude === null ? {} : { pathToClaudeCodeExecutable: config.claude }),
+          abortController: abort,
+        },
+        launch.share === undefined ? undefined : workerNice,
+      )
       // Claude Code, spawned, is closed with the scope, though what opened it is interrupted.
       const handle: Query = yield* Effect.acquireRelease(
         Effect.try({
