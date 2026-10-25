@@ -150,10 +150,20 @@ const leftWorktree = (
   })
 
 /**
+ * Whether `ticket`, as bd list gives it, is known from its links alone to have no blocker or one
+ * not merged: no blocks link, or one to a ticket among `unclosed`, which isn't closed and so hasn't
+ * merged. mergedBlockers would give it none, so its bd show is spared.
+ */
+const plainlyHeld = (ticket: Issue, unclosed: ReadonlySet<TicketId>): boolean => {
+  const blockers = ticket.dependencies.filter((link) => link.type === "blocks")
+  return blockers.length === 0 || blockers.some((link) => unclosed.has(link.id))
+}
+
+/**
  * The deferred tickets among `unclosed` (bd's tickets not closed) that are in the run's scope, not
  * questions nor of an excluded type, not deferred until a later date, and have at least one
- * blocker, each closed and merged. bd show is read for each deferred one; its error is bd's, and
- * drops the list.
+ * blocker, each closed and merged. bd show is read for each deferred one whose links, as bd list
+ * gives them, don't already rule it out; its error is bd's, and drops the list.
  */
 export const list = (
   freeing: Freeing,
@@ -164,13 +174,15 @@ export const list = (
     const now = yield* Clock.currentTimeMillis
     const excluded = excludedTypes(freeing.filter)
     const free: Array<DeferredFree> = []
+    const open = new Set(unclosed.map((ticket) => ticket.id))
     for (const ticket of unclosed) {
       if (
         ticket.status !== "deferred" ||
         !freeing.inScope(ticket.id) ||
         excluded.includes(ticket.type) ||
         ticket.labels.includes(HumanLabel) ||
-        deferredUntilLater(ticket, now)
+        deferredUntilLater(ticket, now) ||
+        plainlyHeld(ticket, open)
       ) {
         continue
       }

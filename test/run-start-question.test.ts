@@ -87,8 +87,9 @@ const count = (seeds: ReadonlyArray<Seed>, fields: Partial<Options> = {}, failin
         ),
       ).pipe(Layer.provide(beadsLayer(seeds)))
     : beadsLayer(seeds)
+  const asked = options(fields)
   return Effect.runPromise(
-    ticketCount(options(fields)).pipe(
+    ticketCount(asked, Effect.succeed(asked)).pipe(
       Effect.provide(
         Layer.mergeAll(beads, gitLayer({ dir: "/repo" })).pipe(
           Layer.provideMerge(TestClock.layer()),

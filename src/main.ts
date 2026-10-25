@@ -384,17 +384,20 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       let scope = config.ticket
       yield* ready.step(readySteps.backlog)
       // bd failing to list the tickets left unmerged is something to run: the run lists them again,
-      // and stops on it.
-      const unmerged = yield* Effect.result(stillUnmerged({ repo: config.repo, base }))
+      // and stops on it. Only the nothing check needs them: read once, as the start question opens
+      // or when the check first asks.
+      const unmergedNow = yield* Effect.cached(
+        Effect.result(stillUnmerged({ repo: config.repo, base })),
+      )
       const beads = yield* Beads
       const carried = yield* carriedTickets
-      const nothingOptions = (): NothingOptions => {
-        const left = Result.isSuccess(unmerged) ? unmerged.success : new Set<TicketId>()
+      const filter = { excludeTypes: config.settings.queue.exclude_types }
+      const nothingOptions = (left: ReadonlySet<TicketId>): NothingOptions => {
         // A blocker closed by hand while its branch has commits the base lacks holds, as in the run.
         const branches = startBranches({ repo: config.repo, base })
         return {
           scope,
-          filter: { excludeTypes: config.settings.queue.exclude_types },
+          filter,
           repo: config.repo,
           base,
           carried,
@@ -406,8 +409,9 @@ const runFrom = (cwd: string, flags: RunFlags) =>
       /** Nothing to run, to report once the renderer has gone; null when there is something. */
       const nothingYet = Effect.gen(function* () {
         yield* ready.step(readySteps.backlog)
+        const unmerged = yield* unmergedNow
         const nothing = Result.isSuccess(unmerged)
-          ? yield* Effect.result(checkNothing(nothingOptions()))
+          ? yield* Effect.result(checkNothing(nothingOptions(unmerged.success)))
           : Result.succeed(null)
         yield* ready.step(readySteps.starting)
         return Result.isSuccess(nothing) && nothing.success !== null
@@ -422,7 +426,17 @@ const runFrom = (cwd: string, flags: RunFlags) =>
         yield* endWith(nothing.nothing, output)
         return true
       })
-      const count = asks === "no" ? TicketCount.Unknown() : yield* ticketCount(nothingOptions())
+      const count =
+        asks === "no"
+          ? TicketCount.Unknown()
+          : yield* ticketCount(
+              { scope, filter },
+              Effect.map(unmergedNow, (unmerged) =>
+                nothingOptions(Result.isSuccess(unmerged) ? unmerged.success : new Set()),
+              ),
+            )
+      // The question opens: the tickets left unmerged are read while it is asked.
+      if (asks !== "no") yield* Effect.forkChild(unmergedNow)
       yield* ready.step(readySteps.starting)
 
       // Whether the keep-awake command holds the machine awake, for the title line's badge.

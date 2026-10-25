@@ -13,7 +13,7 @@ import type { Theme } from "../ui/theme.ts"
 import type { Branches } from "./closedBranches.ts"
 import * as free from "./deferredFree.ts"
 import { EventStream } from "./eventstream.ts"
-import { exitCodes } from "./holds.ts"
+import { exitCodes, waitsOnLinks } from "./holds.ts"
 import { dated, detail, type Line, Log, line } from "./log.ts"
 import { say } from "./say.ts"
 import * as scope from "./scope.ts"
@@ -152,6 +152,8 @@ export const heldAtStart =
       if (children.some((child) => child.status !== "closed" || unmerged.has(child.id))) {
         return "parent"
       }
+      // bd ready gives a ticket's links: one linking to none it could wait on has no bd show.
+      if (!waitsOnLinks(issue)) return undefined
       const links = (yield* beads.show(issue.id)).dependencies
       const by = (type: string) =>
         Effect.gen(function* () {
@@ -233,23 +235,24 @@ const scopeNothing = (
  * Why the run `options` describes has nothing to run, or null when it has something: bd ready, in
  * the run's scope, lists a ticket it would start, or the last run left a worker on a ticket in the
  * scope for this one to carry on with. A ready ticket held back at the start is not one it would
- * start. With nothing to run, it lists the deferred tickets whose blockers have merged. It only
- * reads, so it can run before the loop. Its error is bd's, when it can't tell: the run then goes
- * ahead, and the loop reports it.
+ * start. With nothing to run, it lists the deferred tickets whose blockers have merged, unless
+ * `deferred` is false (the start question's count, which doesn't show them). `ready` is bd ready
+ * in the scope when the caller has just read it, read here otherwise. It only reads, so it can run
+ * before the loop. Its error is bd's, when it can't tell: the run then goes ahead, and the loop
+ * reports it.
  */
 export const check = (
   options: Options,
+  read: { readonly deferred?: boolean; readonly ready?: ReadonlyArray<Issue> } = {},
 ): Effect.Effect<NothingToRun | null, BeadsError, Beads | Git> =>
   Effect.gen(function* () {
     const beads = yield* Beads
     const root = options.scope
-    const ready = yield* scope.ready(beads, root, options.filter)
+    const ready = read.ready ?? (yield* scope.ready(beads, root, options.filter))
     const subs = root === null ? [] : yield* scope.descendants(beads, root)
     const inScope = new Set([...(root === null ? [] : [root]), ...subs.map((issue) => issue.id)])
     const within = (id: TicketId) => root === null || inScope.has(id)
     if ([...options.carried].some(within)) return null
-    let unclosed: ReadonlyArray<Issue> | null =
-      ready.length > 0 || root === null ? yield* beads.list() : null
     const held = new Map<string, HoldKind>()
     for (const issue of ready) {
       if (options.carried.has(issue.id)) continue
@@ -257,17 +260,20 @@ export const check = (
       if (hold === undefined) return null
       held.set(issue.id, hold)
     }
+    // Read only once every ready ticket has turned out held back.
+    let unclosed: ReadonlyArray<Issue> | null =
+      ready.length > 0 || root === null ? yield* beads.list() : null
     const n =
       root === null
         ? allNothing(options.filter, unclosed ?? [], options.unmerged.size, held)
         : yield* scopeNothing(beads, root, options.filter, options.unmerged)
-    if (n === null) return null
+    if (n === null || read.deferred === false) return n
     if (unclosed === null) {
-      const read = yield* Effect.result(beads.list())
-      if (Result.isFailure(read)) {
-        return { ...n, freeError: free.unreadable(free.reasonOf(read.failure)) }
+      const listed = yield* Effect.result(beads.list())
+      if (Result.isFailure(listed)) {
+        return { ...n, freeError: free.unreadable(free.reasonOf(listed.failure)) }
       }
-      unclosed = read.success
+      unclosed = listed.success
     }
     const freeing: free.Freeing = {
       repo: options.repo,

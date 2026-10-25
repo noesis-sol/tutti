@@ -47,18 +47,22 @@ export const asking = (
 
 /**
  * What the start question says of the current tickets the run `options` describes: how many bd
- * ready lists in its scope, or, with none, whether all is done or how many are open but held or
- * waiting, as nothing to run would say. Unknown when bd can't say.
+ * ready lists in `where`, its scope, or, with none, whether all is done or how many are open but
+ * held or waiting, as nothing to run would say, without the deferred tickets it would list. Unknown
+ * when bd can't say. `options` is only read with none ready.
  */
-export const ticketCount = (
-  options: nothing.Options,
-): Effect.Effect<TicketCount, never, Beads | Git> =>
+export const ticketCount = <R>(
+  where: Pick<nothing.Options, "scope" | "filter">,
+  options: Effect.Effect<nothing.Options, never, R>,
+): Effect.Effect<TicketCount, never, Beads | Git | R> =>
   Effect.gen(function* () {
     const beads = yield* Beads
-    const ready = yield* Effect.result(scope.ready(beads, options.scope, options.filter))
+    const ready = yield* Effect.result(scope.ready(beads, where.scope, where.filter))
     if (Result.isFailure(ready)) return TicketCount.Unknown()
     if (ready.success.length > 0) return TicketCount.Ready({ n: ready.success.length })
-    const n = yield* Effect.result(nothing.check(options))
+    const n = yield* Effect.result(
+      nothing.check(yield* options, { deferred: false, ready: ready.success }),
+    )
     if (Result.isFailure(n)) return TicketCount.Unknown()
     if (n.success === null) return TicketCount.Ready({ n: 0 })
     if (n.success.allDone) return TicketCount.AllDone()
