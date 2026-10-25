@@ -61,7 +61,7 @@ import { loadSegments } from "./LoadLine.tsx"
 import { cut, Line, Lines, Section, type Segments, seg } from "./line.tsx"
 import { fewestTableLines, rowsBesideCurrent, tableLines, ticketsLines } from "./TicketsTable.tsx"
 import { TitleLine } from "./TitleLine.tsx"
-import { useHintHeight } from "./Toasts.tsx"
+import { useLinesUnderToasts } from "./Toasts.tsx"
 import { totalsLines } from "./Totals.tsx"
 import type { Theme } from "./theme.ts"
 import { useKeyState } from "./useKeyState.ts"
@@ -460,7 +460,7 @@ export const Dashboard = () => {
   const input = useInput()
   const { box } = input
   // Toasts are drawn above the hint's lines, however many it wraps onto.
-  useHintHeight(input.toasts, laid.hint.length)
+  useLinesUnderToasts(input.toasts, laid.hint.length)
   const showHelp = (shown: boolean) => setHelp(() => shown)
   const unlessHelp =
     <A extends ReadonlyArray<unknown>>(run: (...args: A) => void) =>

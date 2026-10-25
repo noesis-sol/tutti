@@ -1,6 +1,6 @@
-// Toasts over the Interview view (§ 4.10, § 7.3; tutti-fgwf): Ctrl+Z's toast is drawn above the
-// hint's lines however many it wraps onto (ViewHint, useHintHeight), and opaque, so the composer's
-// text under it doesn't show through its spaces.
+// Toasts over the Interview view (§ 4.10, § 7.3; tutti-fgwf, tutti-fknd): Ctrl+Z's toast is drawn
+// on the rule over the composer, above the composer and the hint's lines however many it wraps
+// onto (ViewHint, underToasts), and opaque, so the rule doesn't show through its spaces.
 import { describe, expect, test } from "bun:test"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
@@ -103,7 +103,7 @@ const toastAt = (width: number): string =>
     .trim()
 
 describe("a toast over the Interview view", () => {
-  test("at 50 columns it is drawn above the hint's two lines, whole over the composer", async () => {
+  test("at 50 columns it is drawn on the rule, above the composer and the hint's two lines", async () => {
     await interviewAt(50, async (rendered) => {
       await until(rendered, "beside the table")
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
@@ -114,12 +114,13 @@ describe("a toast over the Interview view", () => {
         "  Esc back · i answer · ↑↓ select · Enter expand",
         "  PgUp/PgDn scroll · ? keys",
       ])
-      // The composer's row: none of `> i to answer` shows through the toast's spaces.
-      expect(lines[hintAt - 1]).toBe(`  ${toastAt(50)}`)
+      expect(lines[hintAt - 1]).toBe(" > i to answer")
+      // The rule's row: none of its line shows through the toast's spaces.
+      expect(lines[hintAt - 2]).toBe(`─ ${toastAt(50)}─`)
     })
   })
 
-  test("at 80 columns, the hint one line, it is drawn above that line", async () => {
+  test("at 80 columns, the hint one line, it is drawn on the rule over the composer", async () => {
     await interviewAt(80, async (rendered) => {
       await until(rendered, "beside the table")
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
@@ -128,8 +129,8 @@ describe("a toast over the Interview view", () => {
       expect(lines[19]).toBe(
         "  Esc back · i answer · ↑↓ select · Enter expand · PgUp/PgDn scroll · ? keys",
       )
-      expect(lines[18]).toEndWith(` ${suspendToast}`)
-      expect(lines[18]).not.toContain("answer")
+      expect(lines[18]).toBe(" > i to answer")
+      expect(lines[17]).toBe(`──── ${suspendToast} ─`)
     })
   })
 })

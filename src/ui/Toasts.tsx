@@ -38,8 +38,11 @@ export interface ToastStore extends External<ReadonlyArray<Toast>> {
   readonly show: (text: string, options?: { readonly failure?: boolean }) => void
   /** Takes every toast down and stops their timers. */
   readonly dispose: () => void
-  /** How many lines the hint at the screen's foot takes, which the toasts are drawn above. */
-  readonly hint: Settable<number>
+  /**
+   * How many lines at the screen's foot the toasts are drawn above: the dashboard's hint, a
+   * transcript view's hint and composer with the lines over it up to the rule (tutti-fknd).
+   */
+  readonly under: Settable<number>
 }
 
 /** An empty ToastStore whose toasts are shown `life` ms each, timed by `timer`. */
@@ -50,7 +53,7 @@ export const makeToasts = (life: number = toastLife, timer: Timer = realTimer): 
   return {
     get: store.get,
     subscribe: store.subscribe,
-    hint: external(1),
+    under: external(1),
     show: (text, options = {}) => {
       const toast: Toast = { id: next++, text, failure: options.failure ?? false }
       store.set([...store.get(), toast].slice(-toastsShown))
@@ -68,18 +71,18 @@ export const makeToasts = (life: number = toastLife, timer: Timer = realTimer): 
   }
 }
 
-/** Has `store`'s toasts drawn above a hint `lines` tall while the caller is mounted. */
-export const useHintHeight = (store: ToastStore, lines: number): void => {
+/** Has `store`'s toasts drawn above the screen's last `lines` while the caller is mounted. */
+export const useLinesUnderToasts = (store: ToastStore, lines: number): void => {
   useEffect(() => {
-    store.hint.set(lines)
-    return () => store.hint.set(1)
+    store.under.set(lines)
+    return () => store.under.set(1)
   }, [store, lines])
 }
 
-/** The toasts of `store`, right-aligned above the hint's lines. */
+/** The toasts of `store`, right-aligned above the lines under them (ToastStore's `under`). */
 export const Toasts = ({ store }: { readonly store: ToastStore }) => {
   const toasts = useSyncExternalStore(store.subscribe, store.get)
-  const hint = useSyncExternalStore(store.hint.subscribe, store.hint.get)
+  const under = useSyncExternalStore(store.under.subscribe, store.under.get)
   const theme = useTheme()
   const { width, height } = useTerminalDimensions()
   if (toasts.length === 0) return null
@@ -92,7 +95,7 @@ export const Toasts = ({ store }: { readonly store: ToastStore }) => {
       position="absolute"
       zIndex={20}
       right={1}
-      top={Math.max(height - hint - lines.length, 0)}
+      top={Math.max(height - under - lines.length, 0)}
       flexDirection="column"
       alignItems="flex-end"
     >

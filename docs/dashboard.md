@@ -300,6 +300,8 @@ When the run ends, the dashboard closes and the main screen gets:
   while a turn is under way shows as `queued` until the worker takes it. Sending makes the worker
   **steered**: tutti then sends it nothing by itself until you release it (see
   [Steering](workers.md#steering)). The line under the composer says so, with **Release**.
+  A toast in the view sits on the rule over the composer and the lines above it, never over what
+  you type; on the dashboard, toasts sit above the hint.
 - **Interrupting.** `Ctrl+X` asks `Interrupt <id>'s turn?`; `y` stops the worker's turn, cancels the
   messages still queued and its background tasks, and steers it.
 - **A hand-back waiting.** A steered worker isn't handed a conflict or a failing check. The view

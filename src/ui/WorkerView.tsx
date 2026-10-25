@@ -70,7 +70,7 @@ import {
   TicketPanelView,
   useTicketPanel,
 } from "./TicketHead.tsx"
-import { useHintHeight } from "./Toasts.tsx"
+import { useLinesUnderToasts } from "./Toasts.tsx"
 import {
   inertTranscript,
   type TranscriptActions,
@@ -328,10 +328,27 @@ export const workerViewCommands = (
   ]
 }
 
-/** A view's hint, its `lines` as hintLines wraps every key onto them; toasts go above them. */
-export const ViewHint = ({ lines }: { readonly lines: ReadonlyArray<Segments> }) => {
+/**
+ * The lines a transcript view draws under its toasts, as `laid` gives them: what you write or are
+ * about to send, from the rule over it down (the held line, the finished or steered line, the
+ * queued messages, the composer) and the hint (tutti-fknd). The first toast sits on the rule.
+ */
+export const underToasts = (laid: ViewLayout): number =>
+  laid.held + laid.line + laid.queued + laid.composer + laid.hint
+
+/**
+ * A view's hint, its `lines` as hintLines wraps every key onto them; toasts go above the view's
+ * last `under` lines (underToasts).
+ */
+export const ViewHint = ({
+  lines,
+  under,
+}: {
+  readonly lines: ReadonlyArray<Segments>
+  readonly under: number
+}) => {
   const input = useInput()
-  useHintHeight(input.toasts, lines.length)
+  useLinesUnderToasts(input.toasts, under)
   return <Lines lines={lines} />
 }
 
@@ -530,7 +547,7 @@ export const WorkerView = ({ ticket: viewed }: { readonly ticket: TicketId }) =>
           />
         </Section>
         <Section lines={laid.hint}>
-          <ViewHint lines={hint} />
+          <ViewHint lines={hint} under={underToasts(laid)} />
         </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
         {box?._tag === "Interrupt" ? (

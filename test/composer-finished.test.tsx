@@ -149,9 +149,12 @@ describe("the composer of a worker that has finished", () => {
 
       await rendered.input((setup) => setup.mockInput.pressEnter())
       frame = await until(rendered, has(finishedWords("t-1").toast))
-      // The toast is drawn over the composer's row, opaque: the text under it is still in the
-      // field, as backspacing it below shows.
-      expect(frame.chars).toContain(` > Please also cover the e ${finishedWords("t-1").toast}`)
+      // The toast is drawn on the rule over the finished line (tutti-fknd): the message it is about
+      // and the finished line stay whole under it.
+      const lines = frame.chars.split("\n").map((line) => line.trimEnd())
+      const composerAt = lines.indexOf(" > Please also cover the empty case")
+      expect(lines[composerAt - 2]).toEndWith(` ${finishedWords("t-1").toast} ─`)
+      expect(lines[composerAt - 1]).toContain(finishedWords("t-1").finished)
       expect(taken(commands)).toEqual([])
 
       // Emptied by hand, the field's placeholder says the worker has finished.

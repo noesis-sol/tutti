@@ -162,14 +162,16 @@ describe("the worker view in a narrow pane", () => {
     })
   })
 
-  test("a toast is drawn above the hint's lines, not over them", async () => {
+  test("a toast is drawn on the rule over the composer, not over it or the hint", async () => {
     await narrow(60, async (rendered) => {
       await until(rendered, "Reading the scripts.")
       await rendered.input((setup) => setup.mockInput.pressKey("z", { ctrl: true }))
       const frame = await until(rendered, "can't be suspended")
       const lines = frame.chars.split("\n").map((line) => line.trimEnd())
       const hintAt = lines.findIndex((line) => line.startsWith("  Esc dashboard"))
-      expect(lines[hintAt - 1]).toContain("tutti can't be suspended")
+      expect(lines[hintAt - 2]).toContain("tutti can't be suspended")
+      expect(lines[hintAt - 2]).toStartWith("─")
+      expect(lines[hintAt - 1]).toBe(" > i to write to the worker")
       expect(lines.slice(hintAt, hintAt + 3)).toEqual([
         "  Esc dashboard · i write · t ticket · Ctrl+X interrupt",
         "  ↑↓ select · Enter expand · ? keys · PgUp/PgDn scroll",

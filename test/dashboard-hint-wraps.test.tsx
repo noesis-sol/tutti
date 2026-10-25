@@ -2,7 +2,7 @@
 // tutti-p19v): at 60 to 75 columns with a request open, the whole hint is 76 columns, and a hint cut
 // to one line lost `? keys` and part of `s`. Where a request's buttons aren't drawn, the hint
 // without `d` and `a` gives the lines it no longer needs to the blank ones above the foot. A toast
-// is drawn above the hint's lines, however many it wraps onto (useHintHeight).
+// is drawn above the hint's lines, however many it wraps onto (useLinesUnderToasts).
 
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"

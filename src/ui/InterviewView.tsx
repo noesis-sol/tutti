@@ -44,7 +44,7 @@ import {
   useTranscriptWindow,
 } from "./transcriptView.ts"
 import { type External, useCommand, useRunViewPart, useTheme } from "./useRunView.ts"
-import { panelBudget, type ViewChrome, ViewHint, viewLayout } from "./WorkerView.tsx"
+import { panelBudget, underToasts, type ViewChrome, ViewHint, viewLayout } from "./WorkerView.tsx"
 import { ViewHead } from "./worker/Head.tsx"
 import { LooksContext, useSyntaxStyles } from "./worker/Looks.tsx"
 import { RequestPanel, usePanelRooms } from "./worker/Panel.tsx"
@@ -330,7 +330,7 @@ export const InterviewView = () => {
           />
         </Section>
         <Section lines={laid.hint}>
-          <ViewHint lines={hint} />
+          <ViewHint lines={hint} under={underToasts(laid)} />
         </Section>
         {help ? <KeyHelp theme={theme} width={width} height={height} keys={keys.help} /> : null}
         {box?._tag === "Leave" ? (
