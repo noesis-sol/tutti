@@ -44,6 +44,7 @@ import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
 import { advance, backlog, type Env, type Ran, scenario, type World } from "./harness.ts"
+import { drawnFrame } from "./render.ts"
 
 const stopOf = (id: TicketId): RebaseStop => ({
   ticket: { id, title: `Ticket ${id}`, branch: `tutti/${id}`, worktree: `/w/${id}` },
@@ -109,10 +110,7 @@ describe("dashboard()", () => {
     const frameWhen = async (ready: (frame: string) => boolean): Promise<string> => {
       const deadline = Date.now() + 5000
       for (;;) {
-        await act(async () => {
-          await setup.renderOnce()
-        })
-        const frame = setup.captureCharFrame()
+        const frame = await drawnFrame(setup)
         if (ready(frame) || Date.now() > deadline) return frame
         await act(async () => {
           await Bun.sleep(20)

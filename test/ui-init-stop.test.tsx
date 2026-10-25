@@ -10,6 +10,7 @@ import { openInitForm } from "../src/ui/InitForm.tsx"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
+import { drawnFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -47,16 +48,13 @@ const driven = async <A,>(
     })
     const until = async (text: string) => {
       for (let tries = 0; tries < 200; tries++) {
-        await act(async () => {
-          await setup.renderOnce()
-        })
-        const now = setup.captureCharFrame()
+        const now = await drawnFrame(setup)
         if (now.includes(text)) return now
         await act(async () => {
           await Bun.sleep(5)
         })
       }
-      throw new Error(`the form never showed ${JSON.stringify(text)}:\n${setup.captureCharFrame()}`)
+      throw new Error(`the form never showed ${JSON.stringify(text)}:\n${await drawnFrame(setup)}`)
     }
     const press = async (drive: (setup: TestRendererSetup) => void) => {
       await act(async () => {

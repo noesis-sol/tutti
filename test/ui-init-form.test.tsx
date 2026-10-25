@@ -19,7 +19,7 @@ import { streamInput } from "../src/ui/plain/forms.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { pressEscape, TestClock } from "./render.ts"
+import { drawnFrame, pressEscape, TestClock } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -126,12 +126,7 @@ const driven = async <A, E>(
         ).pipe(Scope.provide(scope)),
       )
     })
-    const frame = async () => {
-      await act(async () => {
-        await setup.renderOnce()
-      })
-      return setup.captureCharFrame()
-    }
+    const frame = () => drawnFrame(setup)
     const until = async (text: string) => {
       for (let tries = 0; tries < 200; tries++) {
         const now = await frame()

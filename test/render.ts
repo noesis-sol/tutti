@@ -132,6 +132,18 @@ const testClock = (setup: TestRendererSetup): TestClock => {
 /** Moves the renderer's clock, a TestClock, `ms` ahead: its timers due by then fire at once. */
 export const leap = (setup: TestRendererSetup, ms: number): void => testClock(setup).leap(ms)
 
+/**
+ * Draws a frame inside act() and returns its characters, or "" while a frame the renderer scheduled
+ * itself is drawing still: its buffer can't be read (OutputBusy) until that frame ends (tutti-vjuk).
+ * For a test that draws again until the frame shows what it waits for.
+ */
+export const drawnFrame = async (setup: TestRendererSetup): Promise<string> => {
+  await act(async () => {
+    await setup.renderOnce()
+  })
+  return setup.renderer.getSchedulerState().isRendering ? "" : setup.captureCharFrame()
+}
+
 /** Renders node at size, runs body, and disposes inside act(), whether body succeeds or not. */
 export const withRender = async <A>(
   node: ReactNode,

@@ -74,7 +74,7 @@ import {
   windowOf,
 } from "../src/ui/transcriptItems.ts"
 import { type External, external, type Settable, type ShellValue } from "../src/ui/useRunView.ts"
-import { type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
+import { drawnFrame, type Frame, pressEscape, type Rendered, withRender } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -687,12 +687,7 @@ describe("the interview in the command's renderer", () => {
     const showing = async (text: string): Promise<string> => {
       const deadline = Date.now() + 5000
       for (;;) {
-        await act(async () => {
-          await setup.renderOnce()
-        })
-        // A frame the renderer scheduled itself may be drawing still: its buffer can't be read
-        // (OutputBusy) until that frame ends.
-        const frame = setup.renderer.getSchedulerState().isRendering ? "" : setup.captureCharFrame()
+        const frame = await drawnFrame(setup)
         if (frame.includes(text) || Date.now() > deadline) return frame
         await act(async () => {
           await Bun.sleep(20)
