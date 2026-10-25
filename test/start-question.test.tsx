@@ -25,7 +25,14 @@ import {
   orchestra,
 } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
-import { type Frame, pressEscape, type Rendered, TestClock, withRender } from "./render.ts"
+import {
+  type Frame,
+  idleFrame,
+  pressEscape,
+  type Rendered,
+  TestClock,
+  withRender,
+} from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -231,17 +238,13 @@ describe("askStart", () => {
     const { setup, shell } = await shellOf()
     try {
       const fiber = await forked(askStart(shell, themeOf, TicketCount.Ready({ n: 2 })))
-      await act(async () => {
-        await setup.renderOnce()
-      })
-      expect(setup.captureCharFrame()).toContain("Current tickets: 2 ready")
+      expect(await idleFrame(setup)).toContain("Current tickets: 2 ready")
       await act(async () => {
         setup.mockInput.pressEnter()
       })
       const exit = await Effect.runPromise(Fiber.await(fiber))
       expect(Exit.isSuccess(exit) && exit.value._tag).toBe("Tickets")
-      await setup.renderOnce()
-      expect(setup.captureCharFrame()).not.toContain("Current tickets")
+      expect(await idleFrame(setup)).not.toContain("Current tickets")
     } finally {
       setup.renderer.destroy()
     }
@@ -267,15 +270,11 @@ describe("askStart", () => {
     const { setup, shell } = await shellOf()
     try {
       const fiber = await forked(askStart(shell, themeOf, TicketCount.Unknown()))
-      await act(async () => {
-        await setup.renderOnce()
-      })
-      expect(setup.captureCharFrame()).toContain("What should this run work on?")
+      expect(await idleFrame(setup)).toContain("What should this run work on?")
       await act(async () => {
         await Effect.runPromise(Fiber.interrupt(fiber))
       })
-      await setup.renderOnce()
-      expect(setup.captureCharFrame()).not.toContain("What should this run work on?")
+      expect(await idleFrame(setup)).not.toContain("What should this run work on?")
     } finally {
       setup.renderer.destroy()
     }

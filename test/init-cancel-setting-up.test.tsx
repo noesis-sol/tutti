@@ -20,6 +20,7 @@ import { FormCancelled } from "../src/ui/questions.ts"
 import { rendererConfig, type Shell } from "../src/ui/renderer.ts"
 import { type Appearance, makeTheme, orchestra } from "../src/ui/theme.ts"
 import { external } from "../src/ui/useRunView.ts"
+import { idleFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -105,9 +106,8 @@ describe("Ctrl+C while init sets up, before it catches stops", () => {
       })
       await act(async () => {
         await Effect.runPromise(Deferred.await(reading))
-        await setup.renderOnce()
       })
-      expect(setup.captureCharFrame()).toContain("Setting the project up…")
+      expect(await idleFrame(setup)).toContain("Setting the project up…")
       await act(async () => {
         setup.mockInput.pressCtrlC()
       })

@@ -144,6 +144,25 @@ export const drawnFrame = async (setup: TestRendererSetup): Promise<string> => {
   return setup.renderer.getSchedulerState().isRendering ? "" : setup.captureCharFrame()
 }
 
+/** How many frames `idleFrame` draws, waiting for one the renderer scheduled itself to end. */
+const idlePasses = 100
+
+/**
+ * Draws a frame inside act(), again while a frame the renderer scheduled itself is drawing still,
+ * and returns the characters of the first drawn with none drawing: the buffer can't be read
+ * (OutputBusy) until that frame ends (tutti-vjuk). For a one-shot expect on the frame, where
+ * `drawnFrame`'s "" would fail it. Fails after `idlePasses` frames with the renderer still drawing.
+ */
+export const idleFrame = async (setup: TestRendererSetup): Promise<string> => {
+  for (let pass = 0; pass < idlePasses; pass++) {
+    await act(async () => {
+      await setup.renderOnce()
+    })
+    if (!setup.renderer.getSchedulerState().isRendering) return setup.captureCharFrame()
+  }
+  throw new Error(`the renderer was still drawing a frame of its own after ${idlePasses} frames`)
+}
+
 /** Renders node at size, runs body, and disposes inside act(), whether body succeeds or not. */
 export const withRender = async <A>(
   node: ReactNode,

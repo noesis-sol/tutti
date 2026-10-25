@@ -34,6 +34,7 @@ import {
   useRunView,
 } from "../src/ui/useRunView.ts"
 import { type Ran, type Setup, scenario, tty } from "./harness.ts"
+import { idleFrame } from "./render.ts"
 
 const themeOf = (appearance: Appearance) =>
   makeTheme(orchestra, { appearance, depth: "truecolor", noColor: false })
@@ -98,7 +99,7 @@ describe("the bridge", () => {
   test("a RunView change re-renders the screen", async () => {
     const { ref, view } = await bridged()
     const setup = await draw(<Root value={shellValue(view)} />)
-    expect(setup.captureCharFrame()).not.toContain("✓ 3")
+    expect(await idleFrame(setup)).not.toContain("✓ 3")
     await act(async () => {
       await Effect.runPromise(SubscriptionRef.set(ref, withCompleted(3)))
     })
@@ -181,7 +182,7 @@ describe("the bridge", () => {
         <Root value={shellValue(view, { screen })} />
       </InterviewContext.Provider>,
     )
-    expect(setup.captureCharFrame()).toContain("Completed")
+    expect(await idleFrame(setup)).toContain("Completed")
     await act(async () => screen.set(Screen.Worker({ ticket: "t-2" as TicketId })))
     await setup.waitForFrame((frame) => frame.includes("← Dashboard"))
     await act(async () => screen.set(Screen.Interview()))
