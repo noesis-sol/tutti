@@ -1,11 +1,23 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { Effect, Layer } from "effect"
+import { BunServices } from "@effect/platform-bun"
+import { ConfigProvider, Effect, Layer } from "effect"
 import { Account, startProbe } from "../src/agent/Account.ts"
 import { ClaudeCode } from "../src/agent/ClaudeCode.ts"
+import { builtInWorkerPrompt } from "../src/project/prompt.ts"
+import { check } from "../src/run/startup.ts"
 import { appConfig, layer as configLayer } from "../src/testing/AppConfig.ts"
+import * as TestBeads from "../src/testing/Beads.ts"
+import * as TestGit from "../src/testing/Git.ts"
 import { testEnv } from "./env.ts"
 
 // The login probe answers once its session has answered, without waiting out Claude Code's exit
@@ -23,17 +35,17 @@ const untrusted =
   "Ignoring 1 permissions.allow entry from /work/.claude/settings.json: this workspace has not been trusted.\n"
 
 /** The fake, lingering once closed, in a fresh checkout; with its log. */
-const lingering = () => {
-  const dir = mkdtempSync(join(tmpdir(), "tutti-probe-exit-"))
+const lingering = (stderrAtStart = untrusted) => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "tutti-probe-exit-")))
   const log = join(dir, "fake.jsonl")
   const scenario = {
     initialize: { account: { email: "ada@example.com", subscriptionType: "Claude Max" } },
-    stderrAtStart: untrusted,
+    stderrAtStart,
     lingerOnClose: linger,
     log,
   }
   const env = { ...testEnv, FAKE_CLAUDE_SCENARIO: JSON.stringify(scenario) }
-  return { config: appConfig({ claude: fake }, dir), env, log }
+  return { dir, config: appConfig({ claude: fake }, dir), env, log }
 }
 
 /** The fake's log: one entry a line. */
@@ -93,6 +105,37 @@ describe("the login probe's Claude Code exits in the background", () => {
     // The checkout isn't trusted, which the probe fails with; its Claude Code exited all the same.
     expect(exit._tag).toBe("Failure")
     expect(exitedAtAnswer).toBe(false)
+    expect(exited(log)).toBe(true)
+  })
+
+  test("the startup checks answer before the probe's Claude Code has exited, and the caller's Scope waits for it", async () => {
+    const { dir, env, log } = lingering("")
+    mkdirSync(join(dir, ".tutti"))
+    mkdirSync(join(dir, ".beads"))
+    writeFileSync(join(dir, ".tutti", "settings.json"), "{}\n")
+    writeFileSync(join(dir, ".tutti", "worker-prompt.md"), builtInWorkerPrompt)
+    let exitedAtCheck = true
+    const checked = await Effect.runPromise(
+      check({
+        cwd: dir,
+        env: {},
+        config: (top) => Effect.succeed(appConfig({ claude: fake }, top)),
+        beads: () => TestBeads.layer(),
+        claude: (given) => Effect.succeed({ path: given, warnings: [], problems: [] }),
+        account: Account.layerWith(startProbe, env).pipe(Layer.provide(ClaudeCode.layer)),
+      }).pipe(
+        Effect.tap(() => Effect.sync(() => (exitedAtCheck = exited(log)))),
+        Effect.scoped,
+        Effect.provide(TestGit.layer({ dir })),
+        Effect.provide(
+          ConfigProvider.layer(ConfigProvider.fromEnv({ env: { HOME: join(dir, "home") } })),
+        ),
+        Effect.provide(BunServices.layer),
+      ),
+    )
+    expect(checked.account.billing._tag).toBe("Subscription")
+    // The checks didn't close the probe's layer, which would have waited for the exit.
+    expect(exitedAtCheck).toBe(false)
     expect(exited(log)).toBe(true)
   })
 })
