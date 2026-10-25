@@ -2696,7 +2696,8 @@
             "suspended",
             "answered",
             "gone",
-            "hand_back"
+            "hand_back",
+            "set_aside"
           ]
         },
         "text": {

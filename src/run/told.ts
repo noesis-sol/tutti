@@ -45,6 +45,26 @@ export const resumedText = (id: TicketId, why: string, facts: ReadonlyArray<stri
     ...facts,
   ].join("\n\n")
 
+/**
+ * What a worker an overnight run set aside (`why`, `set aside overnight: BLOCKED`) is told as its
+ * session is resumed, its ticket undeferred (start.ts); `denied`: the request it waited on was
+ * denied as it was set aside.
+ */
+export const asideResumedText = (
+  id: TicketId,
+  why: string,
+  denied: boolean,
+  facts: ReadonlyArray<string> = [],
+): string =>
+  [
+    `tutti: an overnight run stopped you and deferred ${id} (${why}), nobody being there to ` +
+      `answer${denied ? ", and denied the request you were waiting on" : ""}. ${id} is ` +
+      "undeferred now, and this run resumes your session. Claim it again " +
+      `(bd update ${id} --claim) and carry on where you left off, as your instructions say` +
+      `${denied ? "; if you still need what was denied, ask for it again" : ""}.`,
+    ...facts,
+  ].join("\n\n")
+
 /** The message a worker waiting for the usage limit (usageLimit.ts) is sent once it has reset. */
 export const resetText = (id: TicketId): string =>
   `tutti: the account's usage limit has reset. Carry on with your ticket ${id} where you left off.`

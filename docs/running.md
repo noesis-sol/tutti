@@ -361,8 +361,10 @@ rest:
 The ticket is deferred with a note saying what its worker did and what it waited on. Its open
 requests are denied by tutti, in nobody's name, so that nothing answers them later; its worker is
 stopped, which frees its slot for the next ticket. Its worktree and branch are kept, and the note
-names its session, for the morning (`claude --resume <session>` in its worktree); `bd undefer <id>`
-brings it back, to start again in that worktree. Its row reads `↷ deferred` with
+names its session, for the morning. `bd undefer <id>` brings it back, in this run or a later one:
+its worker's session is resumed in that worktree, told why it was stopped and to carry on, so it
+goes on with what it knew (a session that can't be resumed is said so, and a new one starts there
+instead). Its row reads `↷ deferred` with
 `(set aside overnight: BLOCKED)` before its title, the summary counts it set aside, and the report
 lists it with the others. A question that is `maintainer_only`, or has no options, waits for you as
 in any run, and the run goes on without its ticket. What makes carrying on unsafe, or would only

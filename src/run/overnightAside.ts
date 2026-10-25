@@ -15,7 +15,10 @@
 // shows before its title. Its open requests are denied by tutti, in nobody's name, so that nothing
 // answers them later; its worker is interrupted, and its session closed as for any deferred ticket
 // (sessions.ts's fit), which frees its slot. Its worktree and branch are kept, and its session's ID
-// is in the note, for the morning: undeferred, it comes back through bd ready in that worktree.
+// is in the note, for the morning. The session is kept in state.json too, suspended with its why
+// (`set aside overnight: BLOCKED`), which carry-over leaves alone (carry.ts): undeferred, the ticket
+// comes back through bd ready, in this run or a later one, and its start resumes that session in
+// its worktree rather than draw a new one, so its worker carries on with what it knew (start.ts).
 //
 // A BLOCKED request of a worker no fiber follows (one handed a conflict or a failed check, Resolving
 // or Fixing) still holds the run, as in any run.
@@ -25,6 +28,7 @@ import { Attention, type AttentionRequest, blockedAfter, describe } from "../age
 import { settled } from "../agent/WorkerState.ts"
 import { formatDuration } from "../project/configFile.ts"
 import type { Beads, TicketId } from "../services/Beads.ts"
+import { Store } from "../services/Store.ts"
 import { putAside } from "./aside.ts"
 import type { Ledger } from "./ledger.ts"
 import { detail, type Log } from "./log.ts"
@@ -153,22 +157,24 @@ export const make: Effect.Effect<OvernightAside, never, Attention> = Effect.gen(
 
 /**
  * Sets `ticket` aside overnight, as `stuck` says: its open requests denied, its worker interrupted
- * if it is at a turn, and the ticket deferred with its note and line. Its session is the caller's
- * to close (sessions.ts's fit).
+ * if it is at a turn, and the ticket deferred with its note and line, its saved session suspended
+ * with its why for its start to resume once it is undeferred. Its session is the caller's to close
+ * (sessions.ts's fit).
  */
 export const setAside = (
   ticket: StartTicket,
   worker: StartedWorker,
   stuck: Stuck,
   aside: OvernightAside,
-): Effect.Effect<void, never, AgentHost | Beads | Ledger | Log> =>
+): Effect.Effect<void, never, AgentHost | Beads | Ledger | Log | Store> =>
   Effect.gen(function* () {
     const host = yield* AgentHost
+    const store = yield* Store
     const { id, path } = worker.worktree
     yield* aside.deny(id)
     const state = yield* Effect.option(host.current(id))
     if (Option.isSome(state) && !settled(state.value)) yield* Effect.ignore(host.interrupt(id))
-    yield* putAside(ticket, {
+    const deferred = yield* putAside(ticket, {
       note: asideNote(worker, stuck),
       reason: `${stuck.how}, the run being an overnight one (${stuck.why})`,
       detail: overnightWhy(stuck.why),
@@ -176,4 +182,9 @@ export const setAside = (
       failed: `${id}: ${stuck.how}, the run being an overnight one (${stuck.why}), and bd could not defer it`,
       instead: `worktree ${path} kept for review`,
     })
+    // One bd couldn't defer isn't waiting to be undeferred: the run's end forgets it as it does.
+    const saved = yield* store.ticket(id)
+    if (deferred && saved?.session !== undefined) {
+      yield* Effect.ignore(store.suspend(id, overnightWhy(stuck.why), "Deferred"))
+    }
   })

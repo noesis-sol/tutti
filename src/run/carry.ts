@@ -30,6 +30,10 @@
 // for the next run, as is one outside this run's --ticket scope. A dropped ticket is forgotten in
 // state.json.
 //
+// A ticket an overnight run set aside is no worker to take up: its session is saved suspended with
+// why it was set aside (`set aside overnight: BLOCKED`, overnightAside.ts), and left for its start
+// to resume once bd ready lists it again, undeferred (start.ts), however many runs that takes.
+//
 // A run that ends saves the phase each of its other tickets left it in (saveLeft), and forgets a
 // deferred one, which comes back through bd ready with a new session; a ticket left for review has
 // its phase saved as it is (aside.ts). So a record with neither why it was suspended nor a phase is
@@ -54,6 +58,7 @@ import { byHand, removedText } from "./handMerged.ts"
 import { Ledger } from "./ledger.ts"
 import { detail, type Line, Log, line } from "./log.ts"
 import { removeMerged } from "./merge.ts"
+import { asideOvernight } from "./overnightAside.ts"
 import { Move } from "./phase.ts"
 import { info } from "./say.ts"
 import { readAgain } from "./schedule.ts"
@@ -156,14 +161,16 @@ const leftByCrash = (record: TicketRecord): boolean =>
   record.suspended === undefined && record.phase === undefined && record.session !== undefined
 
 /**
- * The records of the workers the last run left in state.json: suspended, or left by a crash, when
- * state.json named the run that wrote it as the Store read it.
+ * The records of the workers the last run left in state.json: suspended, but for one set aside
+ * overnight, or left by a crash, when state.json named the run that wrote it as the Store read it.
  */
 const toCarry = Effect.gen(function* () {
   const store = yield* Store
   const crashed = store.previousRun !== undefined
-  return ticketsIn(yield* store.state).filter(
-    ([, record]) => record.suspended !== undefined || (crashed && leftByCrash(record)),
+  return ticketsIn(yield* store.state).filter(([, record]) =>
+    record.suspended !== undefined
+      ? !asideOvernight(record.suspended)
+      : crashed && leftByCrash(record),
   )
 })
 

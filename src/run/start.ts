@@ -21,7 +21,7 @@
 // the queue a ticket at a time. git failing to make the worktree, and a state.json that can't be written, are
 // errors for the run to stop on.
 import { join } from "node:path"
-import { Data, Duration, Effect, Exit, Option, Stream } from "effect"
+import { Data, Duration, Effect, Exit, Option, Result, Stream } from "effect"
 import { AgentHost, type AgentStartFailed } from "../agent/AgentHost.ts"
 import { AppConfig } from "../cli/AppConfig.ts"
 import { formatDuration } from "../project/configFile.ts"
@@ -51,8 +51,11 @@ import type { EventStream } from "./eventstream.ts"
 import type { Ledger } from "./ledger.ts"
 import type { Log } from "./log.ts"
 import * as log from "./log.ts"
+import { asideOvernight, overnightWhy } from "./overnightAside.ts"
 import { info } from "./say.ts"
+import { resume } from "./sessions.ts"
 import { leaveSetupFailed, makeSetUps, type SetUps, setUpWorktree, setupNote } from "./setup.ts"
+import { asideResumedText } from "./told.ts"
 
 /** The ticket to start, as bd ready gives it. */
 export interface StartTicket extends AsideTicket {
@@ -335,6 +338,44 @@ const runFolderFailed = (id: TicketId, worktree: string, error: RunFilesError): 
   })
 
 /**
+ * Resumes the session an overnight run kept as it set the ticket aside (overnightAside.ts), in
+ * `worktree`, its ticket undeferred and dispatched again: the worker, told why it was stopped and
+ * to carry on, or undefined when none was kept there. One that can't be resumed is said so, and
+ * the ticket starts a new session in the same worktree, as before.
+ */
+const resumeAside = (id: TicketId, worktree: TicketWorktree) =>
+  Effect.gen(function* () {
+    const config = yield* AppConfig
+    const saved = yield* (yield* Store).ticket(id)
+    const why = saved?.suspended
+    const session = saved?.session
+    if (why === undefined || !asideOvernight(why) || session === undefined) return undefined
+    if (saved?.worktree !== worktree.path) return undefined
+    const facts = runFacts({
+      id,
+      ticketLimit: config.settings.workers.ticket_limit,
+      scope: config.ticket,
+    })
+    const resumed = yield* Effect.result(
+      resume({
+        ticket: id,
+        why: "set_aside",
+        message: asideResumedText(id, why, why === overnightWhy("BLOCKED"), facts),
+        what: log.line`${id} was ${why.replace(/: /, " (")}) and is undeferred`,
+      }),
+    )
+    if (Result.isFailure(resumed)) {
+      yield* info(
+        log.detail`${id}'s session ${session}, kept as an overnight run set it aside, could not be resumed (${resumed.failure.reason}); starting a new one`,
+        id,
+      )
+      return undefined
+    }
+    const worker: StartedWorker = { ticket: id, worktree, session, message: resumed.success }
+    return worker
+  })
+
+/**
  * Starts the dispatched ticket's worker on `base`: its worktree, set up for it (the run's
  * `setUps`), its session and its first message, the session's ID saved once it begins. A ticket
  * that can't be started is set aside (Working → Deferred); one whose setup fails is back in the
@@ -380,6 +421,10 @@ export const start = (
       yield* leaveSetupFailed(ticket, path, setup, setups)
       return Start.SetupFailed({ output: setup.output })
     }
+
+    // Set aside by an overnight run, and undeferred since: its kept session carries on.
+    const kept = yield* resumeAside(id, worktree)
+    if (kept !== undefined) return Start.Started({ worker: kept })
 
     const message = firstMessage({
       id,

@@ -91,7 +91,7 @@ the time.
 | `message` | you sent a worker a message | `ticket`; `length`, in characters. The message itself is recorded nowhere |
 | `steered`, `released` | a worker became steered, or was released (see [Steering](workers.md#steering)) | `ticket`, `text` |
 | `suspended` | a worker's session was suspended as the run ended | `ticket`, `session`; `why`: `quit`, `PAUSED`, `TICKET_LIMIT`, `waiting on you`, `run ended`, … |
-| `resumed` | a worker's session was resumed | `ticket`, `session`; `why`: `suspended` (by the last run), `answered` (its question), `gone` (it ended unexpectedly), `hand_back`; `text` |
+| `resumed` | a worker's session was resumed | `ticket`, `session`; `why`: `suspended` (by the last run), `answered` (its question), `gone` (it ended unexpectedly), `hand_back`, `set_aside` (an overnight run set its ticket aside, undeferred since); `text` |
 | `turn` | a worker's turn ended: its SDK result | `ticket` (`tutti-probe` for the environment probe's session, `tutti-interview` for the feature interview's); `session`; `subtype`, the result's (`success`, `error_during_execution`, `error_max_turns`, …); `is_error: true` when it ended on an error; `cost_usd`, the turn's share of the session's cost; `turns`, its model round-trips; `duration_ms`, and `api_ms` of it waiting on the API; `tokens`, the turn's share by model, its subagents' and compactions' included |
 
 **Phases.** A `phase` record's `from` and `to` are among `Queued`, `HeldBack`, `Working`, `ToMerge`,

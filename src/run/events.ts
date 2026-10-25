@@ -597,7 +597,7 @@ export const Suspended = Schema.Struct({
   text: optional(Schema.String),
 })
 
-export const resumedWhy = ["suspended", "answered", "gone", "hand_back"] as const
+export const resumedWhy = ["suspended", "answered", "gone", "hand_back", "set_aside"] as const
 
 /** A worker's session was resumed (the log's `RESUMED`). */
 export const Resumed = Schema.Struct({
