@@ -100,12 +100,12 @@ export const decodeItem = (line: string): Item | undefined => {
     : undefined
 }
 
-/** A content block a partial message is building: text, thinking, or a tool call's input JSON. */
+/** A content block a partial message is building: text, thinking, or a tool call. */
 export interface LiveBlock {
   readonly kind: "text" | "thinking" | "tool_use"
   /** The tool's name, for a tool call. */
   readonly name?: string
-  /** The text so far: the text, or the tool call's input JSON. Thinking keeps none. */
+  /** The text so far. Thinking and a tool call keep none: neither draws it. */
   readonly text: string
 }
 
@@ -311,12 +311,8 @@ const fold = (live: Live, event: Readonly<Record<string, unknown>>): Live => {
   if (event.type === "content_block_delta" && index !== undefined) {
     const block = live.blocks[index]
     const delta = asRecord(event.delta)
-    const more =
-      delta?.type === "text_delta"
-        ? asString(delta.text)
-        : delta?.type === "input_json_delta"
-          ? asString(delta.partial_json)
-          : undefined
+    // A tool call's input deltas change nothing shown: the live entry draws only its name.
+    const more = delta?.type === "text_delta" ? asString(delta.text) : undefined
     if (block === undefined || more === undefined || more === "") return live
     const blocks = [...live.blocks]
     blocks[index] = { ...block, text: block.text + more }

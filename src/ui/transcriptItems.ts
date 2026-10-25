@@ -13,7 +13,7 @@
 // `mountLimit` are let go. Back at the bottom, the window is the latest items again.
 //
 // Every text here is a model's or a tool's, so it is sanitised as it comes in (§ 7.10).
-import { Effect, Fiber, type Scope, Stream } from "effect"
+import { Duration, Effect, Fiber, type Scope, Stream } from "effect"
 import {
   type Item,
   type Live,
@@ -24,6 +24,7 @@ import {
   toolSummary,
 } from "../agent/Transcripts.ts"
 import { asRecord, asString } from "../agent/untrusted.ts"
+import { interval } from "../run/runView.ts"
 import { keepAll } from "../run/same.ts"
 import type { TicketId } from "../services/Beads.ts"
 import { sanitize, sanitizeLine } from "./sanitize.ts"
@@ -685,9 +686,26 @@ const liveWith = (
   return next === undefined ? others : [...others, next]
 }
 
-/** A TranscriptFeed over `transcripts`, its views' fibers in the scope. */
+/** Runs `run` once after `ms` milliseconds, unless the returned function is called first. */
+export type Timeout = (run: () => void, ms: number) => () => void
+
+const realTimeout: Timeout = (run, ms) => {
+  const timer = setTimeout(run, ms)
+  return () => clearTimeout(timer)
+}
+
+/** At most this often a view's live messages are published, as RunView is written. */
+const liveInterval = Duration.toMillis(interval)
+
+/**
+ * A TranscriptFeed over `transcripts`, its views' fibers in the scope. Each change is folded into
+ * a view's state at once; a partial message's is published on the first, then at most once per
+ * `liveInterval` on `timeout`, the latest each time, and every other change at once, with any
+ * pending text.
+ */
 export const transcriptFeed = (
   transcripts: Transcripts["Service"],
+  timeout: Timeout = realTimeout,
 ): Effect.Effect<TranscriptFeed, never, Scope.Scope> =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
@@ -695,22 +713,52 @@ export const transcriptFeed = (
     return {
       open: (ticket) => {
         const store = external<TranscriptState>(emptyTranscript)
-        const update = (change: (state: TranscriptState) => TranscriptState) =>
-          store.set(change(store.get()))
+        let state = emptyTranscript
+        // While set, a partial message was published less than liveInterval ago: the next waits.
+        let cancel: (() => void) | undefined
+        let pending = false
+        let closed = false
+        const publish = () => {
+          pending = false
+          store.set(state)
+        }
+        const update = (change: (state: TranscriptState) => TranscriptState) => {
+          state = change(state)
+          publish()
+        }
+        const quiet = (): void => {
+          if (closed) return
+          cancel = timeout(() => {
+            cancel = undefined
+            if (!pending) return
+            publish()
+            quiet()
+          }, liveInterval)
+        }
+        const updateLive = (change: (state: TranscriptState) => TranscriptState) => {
+          if (cancel !== undefined) {
+            state = change(state)
+            pending = true
+            return
+          }
+          update(change)
+          quiet()
+        }
         let opened = false
         const viewing = fork(
           Effect.scoped(
             Effect.gen(function* () {
               const view = yield* transcripts.view(ticket)
               opened = true
-              store.set({ window: windowOf(view.items), live: view.live, loading: false })
+              update(() => ({ window: windowOf(view.items), live: view.live, loading: false }))
               yield* Stream.runForEach(view.updates, (change) =>
                 Effect.sync(() =>
-                  update((state) =>
-                    change._tag === "Appended"
-                      ? { ...state, window: appended(state.window, change.item) }
-                      : { ...state, live: liveWith(state.live, change.parent, change.live) },
-                  ),
+                  change._tag === "Appended"
+                    ? update((now) => ({ ...now, window: appended(now.window, change.item) }))
+                    : updateLive((now) => ({
+                        ...now,
+                        live: liveWith(now.live, change.parent, change.live),
+                      })),
                 ),
               )
             }),
@@ -719,7 +767,6 @@ export const transcriptFeed = (
         return {
           state: store,
           older: () => {
-            const state = store.get()
             if (!opened || state.loading || state.window.start) return
             const first = state.window.items[0]?.seq
             update((now) => ({ ...now, loading: true }))
@@ -738,9 +785,12 @@ export const transcriptFeed = (
               ),
             )
           },
-          scrolledBack: () => update((state) => ({ ...state, window: scrolledBack(state.window) })),
-          follow: () => update((state) => ({ ...state, window: followed(state.window) })),
+          scrolledBack: () => update((now) => ({ ...now, window: scrolledBack(now.window) })),
+          follow: () => update((now) => ({ ...now, window: followed(now.window) })),
           close: () => {
+            closed = true
+            cancel?.()
+            cancel = undefined
             fork(Fiber.interrupt(viewing))
           },
         }

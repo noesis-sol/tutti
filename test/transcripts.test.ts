@@ -384,7 +384,7 @@ describe("Transcripts in memory", () => {
               }),
             ])
             const opened = view
-            const updates = yield* Stream.runCollect(Stream.take(view.updates, 8))
+            const updates = yield* Stream.runCollect(Stream.take(view.updates, 7))
             // A second view sees the live message as it stands.
             const again = yield* t.view(worker)
             yield* recordAll([
@@ -402,7 +402,8 @@ describe("Transcripts in memory", () => {
         return { opened, updates, after: yield* t.recent(worker) }
       }),
     )
-    const tool: LiveBlock = { kind: "tool_use", name: "Bash", text: '{"command":' }
+    // The tool call's input delta changed nothing shown: none was published.
+    const tool: LiveBlock = { kind: "tool_use", name: "Bash", text: "" }
     expect(seqs(opened[0]?.items ?? [])).toEqual([1])
     expect(opened[0]?.live).toEqual([])
     expect(opened[1]?.live).toEqual([{ parent: null, blocks: [undefined, tool] }])
@@ -418,7 +419,6 @@ describe("Transcripts in memory", () => {
       live([{ kind: "text", text: "Hello" }]),
       live(undefined),
       2,
-      live([undefined, { kind: "tool_use", name: "Bash", text: "" }]),
       live([undefined, tool]),
       live(undefined),
       3,
