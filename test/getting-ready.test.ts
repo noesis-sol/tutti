@@ -2,7 +2,7 @@
 // after frameInterval with the step under way, erased with nothing left when it ends, nothing
 // drawn for a start sooner than that, off a terminal or on a dumb one, erased by an interrupt;
 // the embedded Claude Code's extraction under it; and a run that can't start saying why once it
-// has gone.
+// has gone. The run path's order on a real terminal is test/getting-ready-binary.test.ts's.
 import { describe, expect, test } from "bun:test"
 import { Console, Effect, Fiber } from "effect"
 import { TestClock } from "effect/testing"
@@ -174,7 +174,7 @@ describe("the getting-ready line", () => {
     expect(writes.at(-1)).toBe(eraseLine)
   })
 
-  test("--feature's organ lines come after it has gone: one spinner at a time", async () => {
+  test("once it has gone, an organ line after it draws alone, as --feature's does", async () => {
     const { writes, out } = terminal()
     const theme = makeTheme(orchestra, { appearance: "dark", depth: "256", noColor: true })
     await run(
