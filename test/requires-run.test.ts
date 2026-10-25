@@ -46,7 +46,7 @@ describe("the requires list at a run's start", () => {
       /^REQUIREMENTS_MISSING: license \(accept the licence in the app\); meet it \(each entry of 'requires' in \.tutti\/settings\.json says how\), then run again$/,
     ])
     expect(ran.sent).toEqual([])
-    expect(ran.log.some((each) => each.includes("t-1"))).toBe(false)
+    expect(ran.log.some((each) => /\bt-1\b/.test(each))).toBe(false)
     expect(ran.events).toContainEqual(
       expect.objectContaining({ kind: "stop", detail: "REQUIREMENTS_MISSING" }),
     )

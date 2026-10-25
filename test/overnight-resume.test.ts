@@ -273,7 +273,7 @@ describe("a later run and a ticket an overnight run set aside", () => {
     expectExitCode(ran, 0)
     expectPhases(ran, { "t-2": "Done" })
     expect(sessionsOf(ran, "t-1")).toEqual([])
-    expect(ran.log.some((text) => text.includes("t-1"))).toBe(false)
+    expect(ran.log.some((text) => /\bt-1\b/.test(text))).toBe(false)
     expect(state.tickets["t-1"]).toEqual(asideRecord(root, "t-1", overnightWhy("BLOCKED")))
   })
 
