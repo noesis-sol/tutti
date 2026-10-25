@@ -1,6 +1,6 @@
 {
   "name": "@noesis-sol/tutti",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Runs Claude Code workers on a Beads backlog, one git worktree per ticket.",
   "license": "MIT",
   "repository": {
