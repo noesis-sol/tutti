@@ -765,7 +765,7 @@ describe("waits for merge", () => {
       { op: "prepare", id: "b" as TicketId },
       { op: "remove", id: "b" as TicketId, force: false },
       { op: "prepare", id: "b" as TicketId },
-      { op: "remove", id: "b" as TicketId, force: false },
+      { op: "remove", id: "b" as TicketId, force: false, aside: true },
     ])
   }, 30_000)
 

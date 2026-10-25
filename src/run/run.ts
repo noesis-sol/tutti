@@ -150,6 +150,7 @@ import { make as makeScreenCommands } from "./screenCommands.ts"
 import { makeSetUps, retrySetups } from "./setup.ts"
 import { watchSleeps } from "./slept.ts"
 import { endRecord, Spending, showSums } from "./spending.ts"
+import { Trash } from "./trash.ts"
 import { make as makeTriage, off as triageOff } from "./triage.ts"
 import { loadUnmerged } from "./unmerged.ts"
 import { make as makeUsageHold } from "./usageLimit.ts"
@@ -219,6 +220,7 @@ export type RunEnv =
   | Exclude<WorkEnv, Ledger>
   | Attention
   | RunFibers
+  | Trash
   | Transcripts
   | Tty
   | UsageLimits
@@ -665,6 +667,10 @@ const runFrom = (
 
     // The full check's worktrees a run killed while its full check ran left, removed (fullcheck.ts).
     yield* untilQuit(removeLeftFullChecks, undefined)
+
+    // The merged worktrees' folders an earlier run left in the trash folder, deleted in the
+    // background (trash.ts), before a carried-over ticket's merge sets aside any more.
+    yield* untilQuit((yield* Trash).clearLeft, undefined)
 
     // The workers the last run left (carry.ts), taken up before the first dispatch: each resumed
     // takes a slot, counting toward no limit, its ticket limit counted afresh; one with no slot

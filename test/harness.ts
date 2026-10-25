@@ -28,6 +28,7 @@ import type { Log } from "../src/run/log.ts"
 import { notifying } from "../src/run/notices.ts"
 import type { PhaseTag, TicketPhase } from "../src/run/phase.ts"
 import type { Spending } from "../src/run/spending.ts"
+import { type Trash, layer as trashLayer } from "../src/run/trash.ts"
 import { Beads, type Issue, type TicketId } from "../src/services/Beads.ts"
 import type { Checks } from "../src/services/Checks.ts"
 import { ProcessGroups } from "../src/services/exec.ts"
@@ -101,6 +102,7 @@ export type Env =
   | OrganCost
   | Spending
   | RunFibers
+  | Trash
   | TestClock.TestClock
   | BunServices.BunServices
 
@@ -257,6 +259,7 @@ export const environment = (
     // One OrganCost, as the run's (main.ts): the probe's costs and those of the organs a scenario
     // adds (testing/Organs.ts) add up in it.
     Layer.provideMerge(OrganCost.layer),
+    Layer.provideMerge(trashLayer),
     Layer.provideMerge(notifying),
     Layer.provideMerge(notifierLayer),
     Layer.provideMerge(

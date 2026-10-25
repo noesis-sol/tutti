@@ -118,6 +118,7 @@ import { info, type Said } from "./say.ts"
 import { excludedTypes, unmergedLabel } from "./scope.ts"
 import { shownChanges } from "./settle.ts"
 import { fileList, type SetUps, setUp } from "./setup.ts"
+import { Trash } from "./trash.ts"
 import { unlabel } from "./unmerged.ts"
 
 /** A ticket its worker finished: closed, committed, its worktree clean and on its branch. */
@@ -276,6 +277,7 @@ export type MergeEnv =
   | Checks
   | AgentHost
   | Store
+  | Trash
 
 /** `<tag>: <id> closed, but …`, the line of a ticket its merge sets aside or blocks. */
 const closedButLine =
@@ -1145,13 +1147,15 @@ export interface DoneTicket {
  * as merged when the base holds its changes without its commits (its reflog keeps them); "ahead"
  * when it has commits beyond the base, or git can't say. `leaveChanged`: a worktree with any
  * changes, tutti's files too, or one git can't read, is left with its branch rather than handed to
- * git, as one a person may be working in. Without a worktree, only the branch is removed.
+ * git, as one a person may be working in. Without a worktree, only the branch is removed. A worktree
+ * with no changes, or only tutti's files, is set aside in the trash folder rather than deleted by
+ * git, its files deleted in the background (trash.ts), so the merge queue doesn't wait on them.
  */
 export const removeMerged = (
   ticket: Omit<DoneTicket, "title">,
   options: MergeTarget,
   how: { readonly moveToBase: boolean | "ahead"; readonly leaveChanged?: boolean },
-): Effect.Effect<Cleanup, never, Git | Worktrees | Log> =>
+): Effect.Effect<Cleanup, never, Git | Worktrees | Log | Trash> =>
   Effect.gen(function* () {
     const git = yield* Git
     const worktrees = yield* Worktrees
@@ -1179,8 +1183,12 @@ export const removeMerged = (
         : Effect.succeed(how.moveToBase)
     if (yield* ahead) yield* restoreBranch({ branch, worktree: at }, options.base, 1)
     const removal = written === undefined ? { at } : { at, untracked: true }
-    const removed = yield* Effect.result(worktrees.remove(id, removal))
+    // Nothing in it git would refuse to delete: its files go in the background.
+    const aside =
+      Result.isSuccess(status) && (written !== undefined || allChanges(status.success).length === 0)
+    const removed = yield* Effect.result(worktrees.remove(id, { ...removal, aside }))
     if (Result.isFailure(removed)) return failed(removed.failure)
+    if (removed.success !== undefined) yield* (yield* Trash).delete(removed.success, id)
     if (written !== undefined) {
       yield* (yield* Log).write(
         detail`${id}: its setup or check left ${fileList(written)} untracked in ${at}, removed with it`,

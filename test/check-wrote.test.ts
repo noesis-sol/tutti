@@ -131,7 +131,7 @@ describe("untracked files the merge check wrote", () => {
       /^ {2}a closed \(.*\); merged into main, worktree and branch removed$/,
     ])
     expect(removals(ran)).toEqual([
-      { op: "remove", id: "a" as TicketId, force: false, untracked: true },
+      { op: "remove", id: "a" as TicketId, force: false, untracked: true, aside: true },
     ])
     expect(ran.main.get("a.txt")).toBe("a\n")
     expect(ran.main.has("coverage.txt")).toBe(false)

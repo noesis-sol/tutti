@@ -14,7 +14,7 @@
 // folder and not a link) wouldn't cover files written through it, for a worker's git add -A to
 // commit. So every link on the way is refused, wherever it points, with RunFilesOutside.
 import { readSync, writeSync } from "node:fs"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Result, Schema, type Scope } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import {
@@ -70,6 +70,12 @@ export const runFolder = ".tutti/run"
 export const runExcludeEntry = `/${runFolder}/`
 
 const runExcludeComment = "# per-ticket files written by tutti"
+
+/**
+ * The folder under the worktrees' folder that merged worktrees are moved into, to be deleted outside
+ * the merge queue (trash.ts). A ticket's ID can't start with a dot, so it names no worktree.
+ */
+export const trashFolder = ".trash"
 
 /** The branch a ticket's worker commits on, in its own worktree (§ 11). */
 export const branchOf = (id: TicketId): string => `tutti/${id}`
@@ -291,11 +297,28 @@ export class Worktrees extends Context.Service<
      * only when no worktree has the branch, as one of them may hold it.
      * It makes no path of the ID, which names only the branch git looks for, so it takes one
      * unchecked: prepare checks it, once, before it makes a folder of it.
+     * `aside`, with `at`: the worktree's folder moved into the trash folder (trashFolder), a rename
+     * on the same disk, and git's record of it pruned, rather than git deleting its files, which
+     * can take minutes; the folder in the trash is given back, for deleteAside. git's refusal of a
+     * worktree with changes is skipped, so the caller checks first that it has none to keep. A
+     * folder that can't be moved there is removed by git, as without it, and undefined given back.
      */
     remove(
       id: TicketId,
-      options?: { readonly force?: boolean; readonly untracked?: boolean; readonly at?: string },
-    ): Effect.Effect<void, GitError>
+      options?: {
+        readonly force?: boolean
+        readonly untracked?: boolean
+        readonly at?: string
+        readonly aside?: boolean
+      },
+    ): Effect.Effect<string | undefined, GitError>
+    /** Deletes a folder remove set aside in the trash folder, whatever is in it. */
+    deleteAside(path: string): Effect.Effect<void, PlatformError>
+    /**
+     * The folders in the trash folder, absolute, in order of name: those remove set aside that
+     * were never deleted, a run killed or ended before it could.
+     */
+    readonly leftAside: Effect.Effect<ReadonlyArray<string>, PlatformError>
     /**
      * A new worktree in a folder of its own under the worktrees' folder, its name starting with
      * `prefix`, with `commit` checked out on no branch, its run files excluded from git first: the
@@ -381,26 +404,52 @@ export class Worktrees extends Context.Service<
             )
           })
 
+        const trash = join(root, trashFolder)
+
+        // Moves the folder at `at` into a new folder of its own in the trash, which it gives back.
+        const moveAside = (at: string) =>
+          Effect.gen(function* () {
+            yield* fs.makeDirectory(trash, { recursive: true })
+            const aside = yield* fs.makeTempDirectory({
+              directory: trash,
+              prefix: `${basename(at)}-`,
+            })
+            yield* fs
+              .rename(at, join(aside, basename(at)))
+              .pipe(Effect.tapError(() => Effect.ignore(fs.remove(aside, { recursive: true }))))
+            return aside
+          })
+
         const remove = (
           id: TicketId,
           removal: {
             readonly force?: boolean
             readonly untracked?: boolean
             readonly at?: string
+            readonly aside?: boolean
           } = {},
         ) =>
           Effect.gen(function* () {
             const branch = branchOf(id)
             const force = removal.force === true
             const forceWorktree = force || removal.untracked === true
-            yield* writer.withLock(
+            return yield* writer.withLock(
               Effect.gen(function* () {
                 const at = removal.at
+                const moved =
+                  at !== undefined && removal.aside === true
+                    ? yield* Effect.result(moveAside(at))
+                    : undefined
+                const aside =
+                  moved !== undefined && Result.isSuccess(moved) ? moved.success : undefined
+                // Its folder gone, git forgets the worktree on a prune.
+                if (aside !== undefined) yield* git.pruneWorktrees(repo)
                 const removed =
-                  at !== undefined &&
-                  Result.isSuccess(
-                    yield* Effect.result(git.removeWorktree(repo, at, { force: forceWorktree })),
-                  )
+                  aside !== undefined ||
+                  (at !== undefined &&
+                    Result.isSuccess(
+                      yield* Effect.result(git.removeWorktree(repo, at, { force: forceWorktree })),
+                    ))
                 if (!removed) {
                   const existing = yield* worktreeOf(branch)
                   if (existing !== undefined)
@@ -410,9 +459,17 @@ export class Worktrees extends Context.Service<
                 }
                 if (yield* git.branchExists(repo, branch))
                   yield* git.deleteBranch(repo, branch, { force })
+                return aside
               }),
             )
           })
+
+        const deleteAside = (path: string) => fs.remove(path, { recursive: true, force: true })
+
+        const leftAside = Effect.gen(function* () {
+          if (!(yield* fs.exists(trash))) return []
+          return (yield* fs.readDirectory(trash)).sort().map((name) => join(trash, name))
+        })
 
         const addDetached = (prefix: string, commit: string) =>
           writer.withLock(
@@ -455,6 +512,8 @@ export class Worktrees extends Context.Service<
         return Worktrees.of({
           prepare,
           remove,
+          deleteAside,
+          leftAside,
           addDetached,
           removeDetached,
           leftDetached,

@@ -105,7 +105,7 @@ describe("a ticket left with no change of its own as it merges", () => {
     // Nothing is left to check, or to merge.
     expect(ran.checkRuns).toEqual([])
     expect(ran.worktreeCalls.filter((call) => call.op === "remove")).toEqual([
-      { op: "remove", id: "a" as TicketId, force: false },
+      { op: "remove", id: "a" as TicketId, force: false, aside: true },
     ])
     expectLog(ran, [
       "  a closed with no change: rebased onto main, which has its changes already, tutti/a changes nothing, so there is nothing to merge; worktree and branch removed",
@@ -131,7 +131,7 @@ describe("a ticket left with no change of its own as it merges", () => {
     expect(merged.branch).toBe(merged.before)
     expect(ran.checkRuns).toEqual([])
     expect(ran.worktreeCalls.filter((call) => call.op === "remove")).toEqual([
-      { op: "remove", id: "a" as TicketId, force: false },
+      { op: "remove", id: "a" as TicketId, force: false, aside: true },
     ])
     expectLog(ran, [
       "  a closed with no change: the commits on tutti/a, taken together, change nothing, so there is nothing to merge; worktree and branch removed",

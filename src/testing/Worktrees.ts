@@ -3,8 +3,17 @@
 // say its branch was left without it, with what they say an earlier attempt left, as live's found
 // counts it. A detached worktree is a new folder under <root>, its name starting with
 // its prefix. IDs are checked by prepare, and run files opened through the symlink guard, as live;
-// remove, which takes an ID unchecked as live does, deletes no folder for one prepare refuses.
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs"
+// remove, which takes an ID unchecked as live does, deletes no folder for one prepare refuses; asked
+// to set a worktree aside, it moves its folder into <root>/.trash, as live, when it is there.
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
@@ -18,6 +27,7 @@ import {
   openRunFile,
   type TicketWorktree,
   ticketIdProblem,
+  trashFolder,
   Worktrees,
   writeRunFile,
 } from "../services/Worktrees.ts"
@@ -31,7 +41,10 @@ export type WorktreeCall =
       readonly force: boolean
       /** Only when asked: the worktree removed with its untracked files. */
       readonly untracked?: true
+      /** Only when asked: its folder moved into the trash folder. */
+      readonly aside?: true
     }
+  | { readonly op: "deleteAside"; readonly path: string }
   | { readonly op: "addDetached"; readonly path: string; readonly commit: string }
   | { readonly op: "removeDetached"; readonly path: string }
 
@@ -49,6 +62,7 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
   Layer.sync(Worktrees, () => {
     const root = options.root ?? realpathSync(mkdtempSync(join(tmpdir(), "tutti-worktrees-")))
     const branchesLeft = new Set(options.branchesLeft)
+    const trash = join(root, trashFolder)
     return Worktrees.of({
       prepare: (id) =>
         Effect.flatMap(checkTicketId(id), () =>
@@ -62,16 +76,38 @@ export const layer = (options: Options = {}, calls: Array<WorktreeCall> = []) =>
         ),
       remove: (id, removal = {}) =>
         Effect.sync(() => {
+          const aside = removal.aside === true && removal.at !== undefined
           calls.push({
             op: "remove",
             id,
             force: removal.force === true,
             ...(removal.untracked === true ? { untracked: true as const } : {}),
+            ...(aside ? { aside: true as const } : {}),
           })
-          if (ticketIdProblem(id) === undefined)
-            rmSync(join(root, id), { recursive: true, force: true })
           branchesLeft.delete(id)
+          if (ticketIdProblem(id) !== undefined) return undefined
+          const path = join(root, id)
+          if (!aside || !existsSync(path)) {
+            rmSync(path, { recursive: true, force: true })
+            return undefined
+          }
+          mkdirSync(trash, { recursive: true })
+          const moved = mkdtempSync(join(trash, `${id}-`))
+          renameSync(path, join(moved, id))
+          return moved
         }),
+      deleteAside: (path) =>
+        Effect.sync(() => {
+          calls.push({ op: "deleteAside", path })
+          rmSync(path, { recursive: true, force: true })
+        }),
+      leftAside: Effect.sync(() =>
+        existsSync(trash)
+          ? readdirSync(trash)
+              .sort()
+              .map((name) => join(trash, name))
+          : [],
+      ),
       addDetached: (prefix, commit) =>
         Effect.sync(() => {
           const path = mkdtempSync(join(root, prefix))

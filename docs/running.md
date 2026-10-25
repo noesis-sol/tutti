@@ -455,6 +455,10 @@ its turn (`◼ to merge`). Tickets merge one at a time, in the order they finish
    checked again.
 4. **Fast-forward** the base to the branch. The worktree and branch are removed:
    `<id> closed (ffd6ce4 Add a --json flag (tut-12)); merged into main, worktree and branch removed`.
+   The worktree's folder is moved into `.trash/` in the worktrees' folder and its files, a
+   `node_modules` among them, are deleted in the background, so the next merge doesn't wait for
+   them; one that can't be deleted is a `CLEANUP_FAILED` warning naming the folder, and what a run
+   left in `.trash/` (tutti quit or killed meanwhile) is deleted as the next run starts.
 
 A ticket closed with nothing of its own to merge, or whose commits together change nothing, or whose
 rebase leaves nothing because the base has its changes already, is done with `no change to merge`.

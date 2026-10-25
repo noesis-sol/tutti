@@ -146,7 +146,7 @@ describe("a hand-back whose resolution leaves the branch changing nothing", () =
       "Done",
     ])
     expect(ran.worktreeCalls.filter((call) => call.op === "remove")).toEqual([
-      { op: "remove", id: "a" as TicketId, force: false },
+      { op: "remove", id: "a" as TicketId, force: false, aside: true },
     ])
     expectLog(ran, [
       resolvingLine,

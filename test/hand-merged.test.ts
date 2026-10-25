@@ -151,7 +151,12 @@ describe("a ticket set aside and merged by hand during the run", () => {
     ])
     expect(ran.log.some((line) => line.includes("RECHECK"))).toBe(false)
     expect(ran.checkRuns).toHaveLength(1)
-    expect(ran.worktreeCalls).toContainEqual({ op: "remove", id: "a" as TicketId, force: false })
+    expect(ran.worktreeCalls).toContainEqual({
+      op: "remove",
+      id: "a" as TicketId,
+      force: false,
+      aside: true,
+    })
     expect(records(ran, "closed")).toEqual([
       expect.objectContaining({ ticket: "a", detail: expect.stringMatching(/ merged by hand$/) }),
     ])

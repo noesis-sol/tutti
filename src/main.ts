@@ -86,6 +86,7 @@ import { catchSignals, listen, logSuspends, type QuitRequest, quitBy, runMain } 
 import { finish, run } from "./run/run.ts"
 import { endRecord, Spending } from "./run/spending.ts"
 import { check, live, type Started, StartupFailed, startBlock } from "./run/startup.ts"
+import { layer as trashLayer } from "./run/trash.ts"
 import { stillUnmerged } from "./run/unmerged.ts"
 import { organHold } from "./run/usageLimit.ts"
 import { Beads, type TicketId } from "./services/Beads.ts"
@@ -205,6 +206,8 @@ const liveLayers = (started: Started, at: string, sink: Sink) => {
   )
   return Layer.mergeAll(host, organs).pipe(
     Layer.provideMerge(attention),
+    // Merged worktrees' folders, deleted in the background (trash.ts).
+    Layer.provideMerge(trashLayer),
     Layer.provideMerge(notifying),
     Layer.provideMerge(second),
     Layer.provideMerge(first),

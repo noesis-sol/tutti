@@ -155,7 +155,7 @@ describe("a clean merge", () => {
     expect(done?._tag === "Done" && done.outcome._tag === "Merged").toBe(true)
     expect(ran.checkRuns).toEqual([])
     expect(ran.worktreeCalls.filter((call) => call.op === "remove")).toEqual([
-      { op: "remove", id: "a" as TicketId, force: false },
+      { op: "remove", id: "a" as TicketId, force: false, aside: true },
     ])
     expectLog(ran, [
       /^ {2}a closed \([0-9a-f]{7} Do a \(a\)\); merged into main, worktree and branch removed$/,

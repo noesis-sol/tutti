@@ -9,7 +9,8 @@
 // undeferAtLimit), the view's projection (runView.ts), the screen's followers (screen.ts), the
 // interview's (interview.ts), the keep-awake command (keepAwake.ts) and the SIGTSTP log (quit.ts).
 // So does a session's own FiberSet, in the session's scope, that the SDK's callbacks run in
-// (src/agent/callbacks.ts).
+// (src/agent/callbacks.ts). The trash's deletions (trash.ts) are in a set of its layer's, as long as
+// tutti's rather than the run's, on purpose: a merged worktree's files may still be going as it ends.
 import { Context, Effect, FiberSet, Layer, type Scope } from "effect"
 
 /** A registered set that still holds fibers. */

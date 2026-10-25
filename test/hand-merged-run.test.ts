@@ -274,7 +274,12 @@ describe("a carried-over ticket dropped as merged by hand", () => {
     expectLog(ran, [
       /^ {2}t-1, carried over from the last run, is dropped: tutti\/t-1 is on main already \([0-9a-f]{7} Change \(t-1\)\); worktree and branch removed$/,
     ])
-    expect(ran.worktreeCalls).toContainEqual({ op: "remove", id: "t-1" as TicketId, force: false })
+    expect(ran.worktreeCalls).toContainEqual({
+      op: "remove",
+      id: "t-1" as TicketId,
+      force: false,
+      aside: true,
+    })
   })
 
   test("with uncommitted changes, keeps its worktree and branch, saying so", async () => {
